@@ -142,10 +142,16 @@ class TestEnergyPlusParameterizedTemplate:
             f"Expected VT=0.42, got {params.get('VISIBLE_TRANSMITTANCE')}"
         )
 
+        # Log all output signals for visibility
+        logger.info("PASSED: Good double-pane window (U=1.70, SHGC=0.25, VT=0.42)")
+        logger.info("  Output signals:")
+        for slug, value in sorted(signals.items()):
+            logger.info("    %-35s = %s", slug, value)
         logger.info(
-            "Passing scenario complete: heat_loss=%.1f kWh, "
-            "heating=%.1f kWh, cooling=%.1f kWh",
+            "  Verdict: heat_loss=%.1f kWh (< %d threshold), "
+            "heating=%.1f kWh > cooling=%.1f kWh",
             heat_loss_val,
+            HEAT_LOSS_THRESHOLD_KWH,
             heating,
             cooling,
         )
@@ -213,9 +219,21 @@ class TestEnergyPlusParameterizedTemplate:
             f"Expected U_FACTOR=6.00, got {params.get('U_FACTOR')}"
         )
 
+        # Log output signals and assertion errors for visibility
+        signals = get_output_signals(result)
         logger.info(
-            "Failing scenario complete: heat_loss=%.1f kWh (> 800 threshold)",
+            "FAILED (as expected): Poor single-pane window (U=6.00, SHGC=0.25, VT=0.42)"
+        )
+        logger.info("  Output signals:")
+        for slug, value in sorted(signals.items()):
+            logger.info("    %-35s = %s", slug, value)
+        logger.info("  Assertion errors:")
+        for err in errors:
+            logger.info("    %s", err.get("message", "(no message)"))
+        logger.info(
+            "  Verdict: heat_loss=%.1f kWh (> %d threshold) — correctly rejected",
             heat_loss_val,
+            HEAT_LOSS_THRESHOLD_KWH,
         )
 
     # ------------------------------------------------------------------
@@ -272,4 +290,17 @@ class TestEnergyPlusParameterizedTemplate:
             f"Expected error to mention U_FACTOR or 7.0 but got: {combined}"
         )
 
-        logger.info("Input validation test complete: out-of-range correctly rejected")
+        logger.info("REJECTED (as expected): Out-of-range U_FACTOR=10.0 (max 7.0)")
+        if all_issues:
+            logger.info("  Issues reported:")
+            for issue in all_issues:
+                logger.info(
+                    "    [%s] %s",
+                    issue.get("severity", "?"),
+                    issue.get("message", "(no message)"),
+                )
+        if run_error:
+            logger.info("  Run error: %s", run_error)
+        if user_error:
+            logger.info("  User error: %s", user_error)
+        logger.info("  Verdict: rejected at preprocessing — no simulation wasted")

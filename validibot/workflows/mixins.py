@@ -243,6 +243,19 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
             for entry in entries:
                 label = f"{entry.label} ({entry.slug})"
                 choices.append((entry.slug, label))
+
+        # Step-level FMU uploads store variables in step config
+        # instead of catalog entries.  Include them as choices so
+        # the assertion form can target FMU variables.
+        fmu_vars = (self.step.config or {}).get("fmu_variables", [])
+        for var in fmu_vars:
+            causality = var.get("causality", "")
+            if causality in ("input", "output"):
+                name = var.get("name", "")
+                label = var.get("label") or name
+                role = _("Input") if causality == "input" else _("Output")
+                choices.append((name, f"{label} · {role}"))
+
         self._catalog_entries_cache = entries
         self._catalog_choice_cache = choices
         return choices

@@ -245,6 +245,8 @@ class WorkflowSlimSerializer(serializers.ModelSerializer):
             "org",
             "is_active",
             "allowed_file_types",
+            "agent_access_enabled",
+            "agent_price_cents",
             "url",
         ]
         read_only_fields = fields
@@ -282,6 +284,8 @@ class WorkflowFullSerializer(WorkflowSlimSerializer):
             "data_retention",
             "output_retention",
             "success_message",
+            "agent_billing_mode",
+            "agent_max_launches_per_hour",
             "steps",
         ]
         read_only_fields = fields

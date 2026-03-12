@@ -8,6 +8,8 @@ Design: Simple factory functions, not classes. Each validator type gets its own
 builder function. This keeps the code straightforward and easy to test.
 """
 
+import json
+import logging
 from typing import Protocol
 
 from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
@@ -27,6 +29,8 @@ from validibot_shared.validations.envelopes import WorkflowInfo
 
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import ValidationType
+
+logger = logging.getLogger(__name__)
 
 
 class ValidatorLike(Protocol):
@@ -338,24 +342,69 @@ def build_input_envelope(
             skip_callback=skip_callback,
         )
     if validator.validation_type == ValidationType.FMU:
-        # FMU location: use gcs_uri when present, otherwise local file path
-        fmu_model = validator.fmu_model
-        if not fmu_model:
-            msg = f"Validator {validator.id} has no FMU model attached"
-            raise ValueError(msg)
-        fmu_uri = fmu_model.gcs_uri or getattr(fmu_model.file, "path", "")
-        if not fmu_uri:
-            msg = f"FMU model {fmu_model.id} has no storage URI or file path"
-            raise ValueError(msg)
+        from validibot.workflows.models import WorkflowStepResource
 
-        # Resolve inputs keyed by catalog slug from the submission content
-        # based on catalog binding paths.
-        # Here we only carry the values; the launcher is responsible
-        # for resolution.
+        # Step-level FMU: check for a step-owned FMU resource first.
+        # Falls back to the library validator's FMU model.
+        fmu_resource = step.step_resources.filter(
+            role=WorkflowStepResource.FMU_MODEL,
+        ).first()
+
+        if fmu_resource:
+            # Step-level upload — use get_storage_uri() which returns
+            # gs:// in production (GCS) or file:// locally, matching
+            # what the container runner expects.
+            fmu_uri = fmu_resource.get_storage_uri()
+            sim_config = (step.config or {}).get("fmu_simulation") or {}
+        else:
+            # Library validator — existing behavior
+            fmu_model = validator.fmu_model
+            if not fmu_model:
+                msg = f"Validator {validator.id} has no FMU model attached"
+                raise ValueError(msg)
+            fmu_uri = fmu_model.gcs_uri or getattr(fmu_model.file, "path", "")
+            if not fmu_uri:
+                msg = f"FMU model {fmu_model.id} has no storage URI or file path"
+                raise ValueError(msg)
+            sim_config = {}
+
+        # Build simulation config, only overriding fields that have values.
+        # The shared FMUSimulationConfig has non-optional defaults for
+        # start_time, stop_time, step_size — only pass them if explicitly set.
+        sim_kwargs = {}
+        for key in ("start_time", "stop_time", "step_size", "tolerance"):
+            val = sim_config.get(key)
+            if val is not None:
+                sim_kwargs[key] = val
+
+        # Parse the user's submission JSON to get input values for the FMU.
+        # These become fmpy's ``start_values`` — overriding the FMU's
+        # default parameter/input values with the user's scenario.
+        input_values: dict = {}
+        if run.submission:
+            try:
+                content = run.submission.get_content()
+                if content:
+                    parsed = json.loads(content)
+                    if isinstance(parsed, dict):
+                        input_values = parsed
+            except (json.JSONDecodeError, Exception):
+                logger.warning(
+                    "Could not parse submission content as JSON for run %s",
+                    run.id,
+                )
+
+        # Extract output variable names from the step's FMU config so the
+        # runner knows which outputs to collect after simulation.
+        fmu_variables = (step.config or {}).get("fmu_variables") or []
+        output_variables = [
+            v["name"] for v in fmu_variables if v.get("causality") == "output"
+        ]
+
         fmu_inputs = FMUInputs(
-            input_values={},
-            simulation=FMUSimulationConfig(),
-            output_variables=[],
+            input_values=input_values,
+            simulation=FMUSimulationConfig(**sim_kwargs),
+            output_variables=output_variables,
         )
 
         input_files = [

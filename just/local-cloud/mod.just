@@ -78,23 +78,30 @@ e2e-tests *args:
         exit 1
     fi
 
-    # --- 3. Provision E2E workflow data ---
+    # --- 3. Run prerequisites (idempotent) ---
+    echo "Ensuring prerequisites (setup_validibot, seed_weather_files)..."
+    docker compose -f "$compose" exec -T web \
+        bash -c '{{_db_url}} python manage.py setup_validibot' >/dev/null 2>&1
+    docker compose -f "$compose" exec -T web \
+        bash -c '{{_db_url}} python manage.py seed_weather_files' >/dev/null 2>&1
+
+    # --- 4. Provision E2E workflow data ---
     echo "Provisioning E2E workflow data..."
     env_output=$(docker compose -f "$compose" exec -T web \
         bash -c '{{_db_url}} python manage.py setup_e2e_workflows --export-env' 2>/dev/null)
     if [ -z "$env_output" ]; then
         echo ""
         echo "Error: Could not provision E2E workflow data."
-        echo "Make sure the app has been set up:"
-        echo "  docker compose -f $compose exec web bash -c '{{_db_url}} python manage.py setup_validibot'"
-        echo "  docker compose -f $compose exec web bash -c '{{_db_url}} python manage.py seed_weather_files'"
+        echo "Check container logs: docker compose -f $compose logs web"
         echo ""
         exit 1
     fi
-    eval "$(echo "$env_output")"
+
+    # Filter out non-env lines (e.g. Django startup logs) and eval only KEY=VALUE lines
+    eval "$(echo "$env_output" | grep -E '^[A-Z_]+=.+$')"
     export FULLSTACK_API_TOKEN FULLSTACK_ORG_SLUG E2E_ENERGYPLUS_TEMPLATE_WORKFLOW_ID
 
-    # --- 4. Run E2E tests ---
+    # --- 5. Run E2E tests ---
     echo ""
     echo "Running EnergyPlus E2E tests against: ${FULLSTACK_API_URL:-http://localhost:8000/api/v1}"
     echo "Workflow ID: ${E2E_ENERGYPLUS_TEMPLATE_WORKFLOW_ID}"

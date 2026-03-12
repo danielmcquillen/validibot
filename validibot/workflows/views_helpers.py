@@ -27,6 +27,7 @@ from validibot.validations.models import Ruleset
 from validibot.validations.models import Validator
 from validibot.workflows.forms import AiAssistStepConfigForm
 from validibot.workflows.forms import EnergyPlusStepConfigForm
+from validibot.workflows.forms import FMUValidatorStepConfigForm
 from validibot.workflows.forms import JsonSchemaStepConfigForm
 from validibot.workflows.forms import XmlSchemaStepConfigForm
 from validibot.workflows.models import Workflow
@@ -738,6 +739,28 @@ def build_unified_signals(
             },
         )
 
+    # 3. FMU variables (from step-level FMU upload)
+    fmu_vars = step_config.get("fmu_variables", [])
+    for i, var in enumerate(fmu_vars):
+        causality = var.get("causality", "")
+        if causality == "input":
+            input_signals.append(
+                {
+                    "slug": var.get("name", ""),
+                    "label": (
+                        var.get("label")
+                        or var.get("description")
+                        or var.get("name", "")
+                    ),
+                    "source": "fmu",
+                    "required": True,
+                    "default_value": "",
+                    "catalog_entry": None,
+                    "variable_index": i,
+                    "variable": var,
+                },
+            )
+
     # -- Output signals --
     output_signals: list[dict[str, Any]] = []
 
@@ -760,6 +783,26 @@ def build_unified_signals(
                     "label": entry.label or entry.slug,
                     "show_to_user": show,
                     "catalog_entry": entry,
+                },
+            )
+
+    # FMU output variables
+    for i, var in enumerate(fmu_vars):
+        causality = var.get("causality", "")
+        if causality == "output":
+            show = _is_signal_shown(var.get("name", ""), display_signals)
+            output_signals.append(
+                {
+                    "slug": var.get("name", ""),
+                    "label": (
+                        var.get("label")
+                        or var.get("description")
+                        or var.get("name", "")
+                    ),
+                    "show_to_user": show,
+                    "catalog_entry": None,
+                    "variable_index": i,
+                    "variable": var,
                 },
             )
 
@@ -851,6 +894,143 @@ def _sync_energyplus_resources(
         )
 
 
+def build_fmu_config(
+    form: FMUValidatorStepConfigForm,
+    step: WorkflowStep,
+) -> dict[str, Any]:
+    """Build step config for an FMU step with a step-level FMU upload.
+
+    Handles FMU upload, introspection, variable extraction, and simulation
+    defaults. Returns the config dict to store on ``step.config``.
+
+    For library FMU validators (non-system), returns an empty config —
+    the signals come from catalog entries, not step config.
+
+    Mirrors ``build_energyplus_config()`` for consistency.
+    """
+    if not getattr(form, "is_system_validator", False):
+        # Library validator — no step-level config needed
+        return {}
+
+    from validibot.validations.services.fmu import FMUIntrospectionError
+    from validibot.validations.services.fmu import introspect_fmu
+
+    # Preserve existing config (variables + simulation) if no new upload
+    existing_config = step.config or {}
+    fmu_file = form.cleaned_data.get("fmu_file")
+    remove_fmu = form.cleaned_data.get("remove_fmu", False)
+
+    if remove_fmu:
+        # Author is removing the FMU — clear everything
+        return {}
+
+    fmu_variables = existing_config.get("fmu_variables", [])
+
+    if fmu_file:
+        # New FMU uploaded — introspect it
+        raw_bytes = fmu_file.read()
+        try:
+            result = introspect_fmu(payload=raw_bytes, filename=fmu_file.name)
+        except FMUIntrospectionError as exc:
+            raise ValidationError(str(exc)) from exc
+
+        # Check that the FMU has at least one input or output variable
+        has_io = any(v.causality in ("input", "output") for v in result.variables)
+        if not has_io:
+            raise ValidationError(
+                _(
+                    "This FMU has no input or output variables. An FMU must "
+                    "have at least one input or output variable to be used "
+                    "in a workflow step."
+                )
+            )
+
+        # Convert FMUVariableInfo dataclasses to config dicts
+        fmu_variables = [
+            {
+                "name": v.name,
+                "causality": v.causality,
+                "variability": v.variability,
+                "value_reference": v.value_reference,
+                "value_type": v.value_type,
+                "unit": v.unit,
+                "description": v.description,
+                "label": "",
+            }
+            for v in result.variables
+        ]
+
+        # Build simulation config from DefaultExperiment defaults
+        sim = result.simulation_defaults
+        sim_config = {
+            "start_time": sim.start_time,
+            "stop_time": sim.stop_time,
+            "step_size": sim.step_size,
+            "tolerance": sim.tolerance,
+        }
+    else:
+        # No new upload — keep existing simulation config, apply form overrides
+        sim_config = existing_config.get("fmu_simulation") or {}
+
+    # Apply simulation setting overrides from the form
+    for field_name, config_key in [
+        ("sim_start_time", "start_time"),
+        ("sim_stop_time", "stop_time"),
+        ("sim_step_size", "step_size"),
+        ("sim_tolerance", "tolerance"),
+    ]:
+        form_value = form.cleaned_data.get(field_name)
+        if form_value is not None:
+            sim_config[config_key] = form_value
+
+    config: dict[str, Any] = {}
+    if fmu_variables:
+        config["fmu_variables"] = fmu_variables
+    if any(v is not None for v in sim_config.values()):
+        config["fmu_simulation"] = sim_config
+
+    return config
+
+
+def _sync_fmu_resources(
+    step: WorkflowStep,
+    form: FMUValidatorStepConfigForm,
+) -> None:
+    """Sync the ``WorkflowStepResource`` for a step-level FMU upload.
+
+    Called *after* ``step.save()`` so the step has a PK.  Handles three cases:
+
+    - New upload: create ``FMU_MODEL`` resource
+    - Replace: delete old, create new
+    - Remove: delete without replacement
+
+    Mirrors ``_sync_energyplus_resources()`` for consistency.
+    """
+    remove_fmu = form.cleaned_data.get("remove_fmu", False)
+    fmu_file = form.cleaned_data.get("fmu_file")
+
+    if remove_fmu:
+        step.step_resources.filter(
+            role=WorkflowStepResource.FMU_MODEL,
+        ).delete()
+    elif fmu_file:
+        # Replace any existing FMU resource
+        step.step_resources.filter(
+            role=WorkflowStepResource.FMU_MODEL,
+        ).delete()
+
+        # Reset file pointer — build_fmu_config() already called .read()
+        fmu_file.seek(0)
+
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.FMU_MODEL,
+            step_resource_file=fmu_file,
+            filename=fmu_file.name,
+            resource_type="application/octet-stream",
+        )
+
+
 def build_ai_config(form: AiAssistStepConfigForm) -> dict[str, Any]:
     selectors = form.cleaned_data.get("selectors", [])
     policy_rules = form.cleaned_data.get("policy_rules", [])
@@ -916,7 +1096,7 @@ def save_workflow_step(
                     )
                 )
     elif vtype == ValidationType.FMU:
-        config = {}
+        config = build_fmu_config(form, step)
     elif vtype == ValidationType.AI_ASSIST:
         config = build_ai_config(form)
     else:
@@ -937,10 +1117,12 @@ def save_workflow_step(
 
     step.save()
 
-    # Sync relational resource bindings (weather files, templates) after
-    # step.save() gives us a PK for new steps.
+    # Sync relational resource bindings (weather files, templates, FMUs)
+    # after step.save() gives us a PK for new steps.
     if vtype == ValidationType.ENERGYPLUS:
         _sync_energyplus_resources(step, form)
+    elif vtype == ValidationType.FMU and getattr(form, "is_system_validator", False):
+        _sync_fmu_resources(step, form)
 
     return step
 

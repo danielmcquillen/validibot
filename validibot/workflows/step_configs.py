@@ -305,12 +305,76 @@ class EnergyPlusStepConfig(BaseStepConfig):
     shown as findings; WARNING and INFO messages are suppressed."""
 
 
+class FMUVariableConfig(BaseModel):
+    """Metadata for a single FMU variable stored in step config.
+
+    Mirrors the structure of ``FMUVariableInfo`` (from the introspection
+    layer) but as a Pydantic model for JSON serialization in
+    ``step.config``.  Unlike the library flow's ``FMUVariable`` Django
+    model, this is a lightweight dict — no separate database rows.
+    """
+
+    name: str
+    """Variable name from modelDescription.xml (e.g., ``'T_outdoor'``)."""
+
+    causality: str
+    """FMI causality: ``'input'``, ``'output'``, ``'parameter'``, etc."""
+
+    variability: str = ""
+    """FMI variability: ``'continuous'``, ``'discrete'``, ``'fixed'``, etc."""
+
+    value_reference: int = 0
+    """FMI value reference number."""
+
+    value_type: str = "Real"
+    """FMI data type: ``'Real'``, ``'Integer'``, ``'Boolean'``, ``'String'``."""
+
+    unit: str = ""
+    """Physical unit from modelDescription.xml (e.g., ``'K'``, ``'W'``)."""
+
+    description: str = ""
+    """Human-readable description from modelDescription.xml or
+    author-provided override."""
+
+    label: str = ""
+    """Author-provided display label (e.g., ``'Outdoor Temperature'``).
+    If empty, the variable name is shown."""
+
+
+class FMUSimulationConfig(BaseModel):
+    """Simulation settings for step-level FMU execution.
+
+    Pre-populated from the FMU's ``DefaultExperiment`` element when
+    available.  The workflow author can override any value.  When a
+    field is ``None``, the container runner uses its own default.
+    """
+
+    start_time: float | None = None
+    stop_time: float | None = None
+    step_size: float | None = None
+    tolerance: float | None = None
+
+
 class FmuStepConfig(BaseStepConfig):
     """Config for FMU validator steps.
 
-    FMU validation has no per-step configuration -- all settings are
-    determined by the container and any attached assertions.
+    When the step uses a step-level FMU upload (primary path), the
+    ``fmu_variables`` and ``fmu_simulation`` fields store the discovered
+    variable metadata and simulation defaults.  When the step uses a
+    library FMU validator (secondary path), these fields are empty and
+    the metadata comes from the validator's catalog entries and
+    ``FMUModel`` instead.
+
+    See ADR-2026-03-12: Step-Level FMU Upload for Workflow Authors.
     """
+
+    fmu_variables: list[FMUVariableConfig] = Field(default_factory=list)
+    """FMU variables discovered from modelDescription.xml.
+    Only populated for step-level FMU uploads."""
+
+    fmu_simulation: FMUSimulationConfig | None = None
+    """Simulation settings, pre-populated from DefaultExperiment.
+    Only populated for step-level FMU uploads."""
 
 
 class BasicStepConfig(BaseStepConfig):

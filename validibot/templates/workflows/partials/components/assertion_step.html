@@ -7,8 +7,8 @@
      data-run-stage="{{ run_stage|default:assertion.resolved_run_stage }}">
   <div class="assertion-card card shadow-sm">
     <div class="card-body">
-      <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-        <div>
+      <div class="d-flex justify-content-between align-items-start gap-2">
+        <div class="min-w-0 flex-grow-1">
           <div class="d-flex align-items-center gap-2 mb-1">
             <span class="badge text-bg-light text-uppercase">{{ assertion.get_assertion_type_display }}</span>
             <span class="badge text-bg-secondary">{{ assertion.get_severity_display }}</span>
@@ -20,7 +20,7 @@
           {% endif %}
         </div>
         {% if can_manage_assertions %}
-          <div class="btn-group btn-group-sm assertion-actions"
+          <div class="btn-group btn-group-sm assertion-actions flex-shrink-0"
                role="group"
                aria-label="{% trans 'Assertion actions' %}">
             <button type="button"

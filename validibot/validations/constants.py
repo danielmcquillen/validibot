@@ -263,6 +263,7 @@ class Severity(TextChoices):
 class ValidationRunSource(TextChoices):
     LAUNCH_PAGE = "LAUNCH_PAGE", _("Launch Page")
     API = "API", _("API")
+    MCP = "MCP", _("MCP (AI Agent)")
 
 
 class XMLSchemaType(TextChoices):

@@ -29,11 +29,13 @@ class AssertionContext:
     Attributes:
         validator: The Validator model instance with catalog entries.
         engine: The validator instance for shared utilities.
+        stage: The assertion evaluation stage ("input" or "output").
         cel_context: CEL evaluation context, built lazily on first CEL assertion.
     """
 
     validator: Validator
     engine: BaseValidator
+    stage: str = "input"
     cel_context: dict[str, Any] | None = field(default=None)
 
     def get_cel_context(self, payload: Any) -> dict[str, Any]:
@@ -44,7 +46,9 @@ class AssertionContext:
         CEL assertions in the same evaluation pass.
         """
         if self.cel_context is None:
-            self.cel_context = self.engine._build_cel_context(payload, self.validator)
+            self.cel_context = self.engine._build_cel_context(
+                payload, self.validator, stage=self.stage
+            )
         return self.cel_context
 
 

@@ -60,33 +60,50 @@ def poll_until_complete(
     is reached before a terminal status, returns the last response seen.
     """
     deadline = time.time() + timeout_s
+    start = time.time()
     last: dict = {}
     last_status_code = 0
+    poll_count = 0
 
     while time.time() < deadline:
         resp = client.get(url)
         last_status_code = resp.status_code
+        poll_count += 1
         if resp.status_code == HTTPStatus.OK:
             data = resp.json()
             last = data
             status = (data.get("status") or "").upper()
 
             if status in TERMINAL_STATUSES:
+                elapsed = time.time() - start
+                result_str = (data.get("result") or "").upper()
                 logger.info(
-                    "Run %s reached terminal status: %s",
+                    "Run %s completed: status=%s result=%s (%.0fs, %d polls)",
                     str(data.get("id", "?"))[:8],
                     status,
+                    result_str,
+                    elapsed,
+                    poll_count,
                 )
                 return data, resp.status_code
 
-            logger.debug(
-                "Run %s status: %s (%.0fs remaining)",
-                str(data.get("id", "?"))[:8],
+            remaining = deadline - time.time()
+            elapsed = time.time() - start
+            logger.info(
+                "  Waiting... status=%s (%.0fs elapsed, %.0fs remaining)",
                 status,
-                deadline - time.time(),
+                elapsed,
+                remaining,
             )
         time.sleep(interval_s)
 
+    elapsed = time.time() - start
+    logger.warning(
+        "Polling timed out after %.0fs (%d polls). Last status: %s",
+        elapsed,
+        poll_count,
+        (last.get("status") or "unknown"),
+    )
     return last, last_status_code
 
 
@@ -121,7 +138,10 @@ def submit_and_poll(
     ) as client:
         start_url = f"{api_url}/orgs/{org_slug}/workflows/{workflow_id}/runs/"
 
-        logger.info("Submitting run to %s", start_url)
+        # Log the payload so the user can see what parameters are being tested
+        param_summary = ", ".join(f"{k}={v}" for k, v in sorted(payload.items()))
+        logger.info("Submitting run: %s", param_summary)
+        logger.info("  POST %s", start_url)
         resp = client.post(start_url, json=payload)
 
         if resp.status_code not in (
@@ -129,6 +149,11 @@ def submit_and_poll(
             HTTPStatus.CREATED,
             HTTPStatus.ACCEPTED,
         ):
+            logger.error(
+                "Submission failed: HTTP %d — %s",
+                resp.status_code,
+                resp.text[:500],
+            )
             return {
                 "error": f"Submission failed: {resp.status_code} {resp.text[:500]}",
                 "run_id": None,
@@ -139,7 +164,7 @@ def submit_and_poll(
 
         data = resp.json()
         run_id = data.get("id")
-        logger.info("Created run %s, polling for completion...", str(run_id)[:8])
+        logger.info("  Run created: %s — polling for completion...", run_id)
 
         poll_url = f"{api_url}/orgs/{org_slug}/runs/{run_id}/"
         result_data, _status_code = poll_until_complete(

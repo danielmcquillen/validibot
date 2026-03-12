@@ -32,6 +32,11 @@ class TriggerType(models.TextChoices):
     GITHUB_APP = "GITHUB_APP", _("GitHub App")
 
 
+class AgentBillingMode(models.TextChoices):
+    AUTHOR_PAYS = "author_pays", _("Author pays (default)")
+    AGENT_PAYS_ACP = "agent_pays_acp", _("Agent pays via Stripe ACP")
+
+
 class WorkflowStartErrorCode(models.TextChoices):
     NO_WORKFLOW_STEPS = "NO_WORKFLOW_STEPS", _("Workflow has no steps to execute")
     WORKFLOW_INACTIVE = "WORKFLOW_INACTIVE", _("Workflow is inactive")

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from django.db import models
@@ -41,7 +40,6 @@ class EventsTimeSeriesWidget(DashboardWidget):
         values = [value for _, value in series]
         return {
             "chart_config": chart_config,
-            "chart_config_json": json.dumps(chart_config),
             "has_data": any(values),
         }
 
@@ -92,6 +90,5 @@ class UsersTimeSeriesWidget(DashboardWidget):
         values = [value for _, value in api_series] + [value for _, value in web_series]
         return {
             "chart_config": chart_config,
-            "chart_config_json": json.dumps(chart_config),
             "has_data": any(values),
         }

@@ -91,10 +91,12 @@ nav:
       - Add a Form: how-to/add-a-form.md
       - Configure Storage: how-to/configure-storage.md
       - Configure Scheduled Tasks: how-to/configure-scheduled-tasks.md
-      - Run Integration Tests: how-to/run-integration-tests.md
-      - Run Stress Tests: how-to/run-e2e-tests.md
       - Debug a Run: how-to/debug-a-run.md
       - Manage Organizations & Projects: organization_management.md
+  - Testing:
+      - Testing Overview: how-to/testing.md
+      - Integration Tests: how-to/run-integration-tests.md
+      - E2E and Stress Tests: how-to/run-e2e-tests.md
   - Integrations:
       - EnergyPlus Modal: integrations/energyplus_modal.md
   - API:

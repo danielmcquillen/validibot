@@ -79,42 +79,9 @@ Deploy Validibot to production:
 
 ## Testing
 
-Run the test suite with `uv run --group dev pytest`. Integration tests require Docker.
+Run the test suite with `uv run --group dev pytest`. Integration and E2E tests
+have their own `just` recipes.
 
-### Integration Tests
-
-Pytest ignores `tests_integration` by default. Use `just test-integration` for the end-to-end suite, which:
-
-1. Ensures the `django` Docker image exists (Chromium + chromedriver baked in for Selenium)
-2. Resets and starts Postgres + Mailpit containers
-3. Runs tests inside the Django container
-4. Stops containers when done
-
-```bash
-# Manual equivalent
-docker compose -f docker-compose.local.yml down -v
-docker compose -f docker-compose.local.yml up -d postgres mailpit
-docker compose -f docker-compose.local.yml run --rm \
-  -e DJANGO_SETTINGS_MODULE=config.settings.test \
-  django uv run --group dev pytest tests/tests_integration/ -v
-docker compose -f docker-compose.local.yml stop postgres mailpit
-```
-
-**Tips:**
-
-- Set `BUILD_DJANGO_IMAGE=1` to force a rebuild after Dockerfile changes
-- Set `SELENIUM_HEADLESS=0` to watch Selenium tests in a browser
-- If running outside Docker, set `CHROME_BIN` and `CHROMEDRIVER_PATH`
-
-### psycopg3 + live_server Fix
-
-Django's `live_server` fixture uses a threaded WSGI server, but psycopg3 connections aren't thread-safe. After Selenium tests hit the live server, database connections can become corrupted.
-
-The fix in `tests/tests_integration/conftest.py`:
-
-1. **Autouse fixture** — Resets BAD psycopg3 connections before/after each test
-2. **Monkey-patched flush** — Resets connections before Django's teardown flush
-
-Additionally, `config/settings/test.py` sets `CONN_MAX_AGE = 0` to disable persistent connections.
-
-This is a known Django + psycopg3 issue (Django tickets #32416, #35455).
+See **[Testing Overview](how-to/testing.md)** for the full testing strategy,
+including when to use each test layer and detailed guides for integration,
+stress, and EnergyPlus E2E tests.

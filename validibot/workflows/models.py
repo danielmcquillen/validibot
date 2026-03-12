@@ -33,6 +33,7 @@ from validibot.users.models import Role
 from validibot.users.models import User
 from validibot.users.permissions import PermissionCode
 from validibot.users.permissions import roles_for_permission
+from validibot.workflows.constants import AgentBillingMode
 
 if TYPE_CHECKING:
     from validibot.users.constants import RoleCode
@@ -290,6 +291,45 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         default=False,
         help_text=_(
             "If true, any authenticated user can launch this workflow.",
+        ),
+    )
+
+    # ── Agent (MCP) access ──────────────────────────────────────────────
+    # These fields control whether AI agents can discover and invoke this
+    # workflow via MCP. They are dormant in the community edition — the
+    # cloud layer (or a self-hosted MCP server) reads them via the REST API.
+
+    agent_access_enabled = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Allow AI agents to discover and submit to this workflow via MCP.",
+        ),
+    )
+
+    agent_max_launches_per_hour = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=_(
+            "Maximum MCP-initiated launches per hour. Null means use the plan default.",
+        ),
+    )
+
+    agent_billing_mode = models.CharField(
+        max_length=20,
+        choices=AgentBillingMode.choices,
+        default=AgentBillingMode.AUTHOR_PAYS,
+        help_text=_(
+            "Who pays for agent-initiated runs: the workflow author's plan, "
+            "or the agent operator via Stripe ACP.",
+        ),
+    )
+
+    agent_price_cents = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=_(
+            "Price per agent invocation in US cents. "
+            "Required when billing mode is AGENT_PAYS_ACP.",
         ),
     )
 
@@ -887,6 +927,7 @@ class WorkflowStepResource(models.Model):
     # Role constants — the purpose of this resource in the step.
     WEATHER_FILE = "WEATHER_FILE"
     MODEL_TEMPLATE = "MODEL_TEMPLATE"
+    FMU_MODEL = "FMU_MODEL"
 
     step = models.ForeignKey(
         "workflows.WorkflowStep",

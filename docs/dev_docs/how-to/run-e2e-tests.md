@@ -1,8 +1,9 @@
-# Running Stress and Multi-Run Tests
+# Running E2E and Stress Tests
 
-Validibot includes two levels of multi-run testing that verify the validation
-system handles repeated and concurrent workloads correctly. They catch
-database integrity errors, ID collisions, and lost or duplicated runs.
+Validibot includes several levels of end-to-end and stress testing. These range
+from quick in-process tests that run as part of the normal `pytest` suite, to
+full-stack tests that exercise real Docker-based simulations against a running
+Validibot environment.
 
 ## In-Process Multi-Run Tests
 
@@ -34,9 +35,9 @@ pytest tests/tests_use_cases/test_multi_run_validation.py -v
 
 ## E2E Stress Tests
 
-These tests live in `tests/tests_e2e/` and run against a real, running
-Validibot environment. They make real HTTP requests and exercise the complete
-stack including Celery dispatch, Redis broker, and worker concurrency.
+These tests live in `tests/tests_e2e/test_stress.py` and run against a real,
+running Validibot environment. They make real HTTP requests and exercise the
+complete stack including Celery dispatch, Redis broker, and worker concurrency.
 
 ### Why separate tests?
 
@@ -96,3 +97,94 @@ When any of these are set manually, auto-provisioning is skipped.
 - All runs reach a terminal status (no runs lost)
 - No duplicated run IDs
 - Identical payloads produce consistent results under concurrent load
+
+## EnergyPlus E2E Tests
+
+These tests live in `tests/tests_e2e/test_energyplus_template.py` and run a
+**real EnergyPlus simulation** in Docker against the local Docker Compose stack.
+They reproduce the exact scenario from the blog post "Validating With EnergyPlus
+- Window Glazing Analysis": submit JSON parameter values via the API, wait for
+the EnergyPlus simulation to complete, and verify output signals and assertion
+results.
+
+Each test takes 2-5 minutes because it runs a real EnergyPlus simulation inside
+a Docker container.
+
+### What the tests verify
+
+- **Passing scenario**: A well-insulated window (U=1.70, SHGC=0.25) passes all
+  output assertions (heat loss under 800 kWh, heating-dominated)
+- **Failing scenario**: A poorly-insulated window (U=6.00) runs the simulation
+  but fails the heat loss assertion (over 800 kWh)
+- **Input validation**: An out-of-range U-Factor (10.0, exceeds max 7.0) is
+  rejected before the simulation even starts
+
+### Running
+
+The simplest way to run the EnergyPlus E2E tests is a single command that
+handles everything - starting Docker, provisioning test data, and running the
+tests:
+
+```bash
+just local-cloud e2e-tests
+```
+
+This command automatically:
+
+1. Checks the Docker Compose stack is running (starts it if needed)
+2. Verifies the EnergyPlus validator Docker image exists
+3. Runs prerequisite setup (`setup_validibot`, `seed_weather_files`)
+4. Provisions the E2E workflow via `setup_e2e_workflows`
+5. Runs the pytest suite
+
+You can pass additional pytest arguments:
+
+```bash
+# Run only the passing scenario test
+just local-cloud e2e-tests -k test_passing
+
+# Run with extra debug output
+just local-cloud e2e-tests --log-cli-level=DEBUG
+```
+
+### Prerequisites
+
+The `just local-cloud e2e-tests` recipe handles most prerequisites
+automatically, but you do need to build the EnergyPlus validator Docker image
+first (one-time step):
+
+```bash
+# In the validibot-validators repo
+cd ../validibot-validators
+just build energyplus
+```
+
+### How it works
+
+The test workflow is provisioned by the `setup_e2e_workflows` management
+command, which creates:
+
+- A workflow that accepts JSON parameter values
+- A workflow step with an EnergyPlus parameterized IDF template
+  (`tests/assets/idf/window_glazing_template.idf`)
+- Template variable definitions with bounds (U_FACTOR 0.1-7.0, SHGC 0.01-0.99,
+  VISIBLE_TRANSMITTANCE 0.01-0.99)
+- Two CEL output assertions: `window_heat_loss_kwh < 800` and
+  `cooling_energy_kwh < heating_energy_kwh`
+- A weather file reference (San Francisco TMY3)
+
+The tests submit JSON payloads via the API, which triggers the full validation
+pipeline: template substitution, EnergyPlus simulation in Docker, output signal
+extraction, and CEL assertion evaluation.
+
+### Adding new E2E workflow tests
+
+The framework is designed to be extended. To add a new E2E scenario (e.g. FMU,
+another EnergyPlus workflow):
+
+1. Add a `_ensure_*_workflow()` method to `setup_e2e_workflows.py` and register
+   it in `handle()`
+2. Add an `E2E_{SCENARIO}_WORKFLOW_ID` fixture to `tests/tests_e2e/conftest.py`
+3. Create a new test file in `tests/tests_e2e/` using the helpers from
+   `tests/tests_e2e/helpers.py` (submit/poll/assert pattern)
+4. Add a `just` recipe if the scenario needs different prerequisites

@@ -58,6 +58,10 @@
         }
       }
     }
+    .assertion-card .card-body p {
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
 
     .validator-process-divider {
       position: relative;

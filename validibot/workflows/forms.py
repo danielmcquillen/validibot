@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from crispy_forms.helper import FormHelper
+from crispy_forms.layout import HTML
 from crispy_forms.layout import Div
 from crispy_forms.layout import Field
 from crispy_forms.layout import Layout
@@ -705,10 +706,153 @@ class BaseStepConfigForm(forms.Form):
 
 
 class FMUValidatorStepConfigForm(BaseStepConfigForm):
-    """Placeholder FMU step configuration. Inputs/outputs
-    bind via the validator catalog."""
+    """FMU step configuration form.
 
-    # No implementation yet; using base form.
+    Supports two modes, selected automatically based on the validator:
+
+    - **Library validator**: The FMU is already attached to the validator
+      via ``validator.fmu_model``.  No upload fields are shown — signals
+      come from the validator's catalog entries.
+
+    - **System FMU validator (step-level upload)**: The author uploads
+      an FMU directly in the step form.  The system introspects the FMU
+      and stores discovered variables in ``step.config["fmu_variables"]``
+      and simulation defaults in ``step.config["fmu_simulation"]``.
+
+    See ADR-2026-03-12: Step-Level FMU Upload for Workflow Authors.
+    """
+
+    # ── FMU upload ────────────────────────────────────────────────
+    fmu_file = forms.FileField(
+        label=_("FMU file"),
+        required=False,
+        help_text=_(
+            "Upload an FMU file (.fmu). Input and output variables will "
+            "be auto-detected from modelDescription.xml."
+        ),
+    )
+    remove_fmu = forms.BooleanField(
+        required=False,
+        widget=forms.HiddenInput,
+    )
+
+    # ── Simulation settings ──────────────────────────────────────
+    # Pre-populated from the FMU's DefaultExperiment when available.
+    sim_start_time = forms.FloatField(
+        label=_("Start time (s)"),
+        required=False,
+        help_text=_(
+            "When the simulation begins (in seconds). Usually 0. "
+            "Auto-detected from the FMU if available."
+        ),
+    )
+    sim_stop_time = forms.FloatField(
+        label=_("Stop time (s)"),
+        required=False,
+        help_text=_(
+            "When the simulation ends (in seconds). For example, 3600 = one hour. "
+            "Auto-detected from the FMU if available."
+        ),
+    )
+    sim_step_size = forms.FloatField(
+        label=_("Step size (s)"),
+        required=False,
+        min_value=0.0001,
+        help_text=_(
+            "How often results are exchanged during the simulation (in seconds). "
+            "Smaller values give more detail but take longer. "
+            "Auto-detected from the FMU if available."
+        ),
+    )
+    sim_tolerance = forms.FloatField(
+        label=_("Tolerance"),
+        required=False,
+        min_value=0,
+        help_text=_(
+            "Solver accuracy. Smaller values (e.g. 1e-6) are more "
+            "precise but slower. Auto-detected from the FMU if "
+            "available. Leave blank for the solver default."
+        ),
+    )
+
+    def __init__(self, *args, step=None, org=None, validator=None, **kwargs):
+        super().__init__(*args, step=step, org=org, validator=validator, **kwargs)
+        self.fields.pop("display_schema", None)
+
+        # Determine whether this is a system FMU validator (step-level
+        # upload path) or a library validator (catalog path).
+        self.is_system_validator = getattr(validator, "is_system", False)
+
+        # Template state for display in the form
+        self.has_fmu = False
+        self.fmu_filename = ""
+
+        # Hide upload fields for library validators — the FMU is
+        # already attached to the validator.
+        if not self.is_system_validator:
+            self.fields.pop("fmu_file", None)
+            self.fields.pop("remove_fmu", None)
+            self.fields.pop("sim_start_time", None)
+            self.fields.pop("sim_stop_time", None)
+            self.fields.pop("sim_step_size", None)
+            self.fields.pop("sim_tolerance", None)
+            self.helper.layout = Layout(
+                "name",
+                "description",
+                "show_success_messages",
+                "notes",
+            )
+            return
+
+        # Pre-populate simulation fields from step config
+        if step:
+            from validibot.workflows.models import WorkflowStepResource
+
+            config = step.config or {}
+            sim = config.get("fmu_simulation") or {}
+            if sim.get("start_time") is not None:
+                self.fields["sim_start_time"].initial = sim["start_time"]
+            if sim.get("stop_time") is not None:
+                self.fields["sim_stop_time"].initial = sim["stop_time"]
+            if sim.get("step_size") is not None:
+                self.fields["sim_step_size"].initial = sim["step_size"]
+            if sim.get("tolerance") is not None:
+                self.fields["sim_tolerance"].initial = sim["tolerance"]
+
+            # Check for existing FMU resource
+            fmu_resource = step.step_resources.filter(
+                role=WorkflowStepResource.FMU_MODEL,
+            ).first()
+            if fmu_resource:
+                self.has_fmu = True
+                self.fmu_filename = fmu_resource.filename or ""
+
+        # ── Crispy Layout ─────────────────────────────────────────
+        self.helper.layout = Layout(
+            "name",
+            "description",
+            "show_success_messages",
+            "fmu_file",
+            "remove_fmu",
+            Div(
+                HTML(
+                    '<h3 class="h6 text-muted mt-3 mb-2">'
+                    "Simulation Settings"
+                    "</h3>"
+                    '<p class="text-muted small mb-3">'
+                    "These control how long and how precisely the FMU runs. "
+                    "Values are auto-detected from the FMU when you upload it. "
+                    "Override them here if needed."
+                    "</p>"
+                ),
+                "sim_start_time",
+                "sim_stop_time",
+                "sim_step_size",
+                "sim_tolerance",
+                css_class="fmu-simulation-settings",
+            ),
+            "notes",
+        )
 
 
 class JsonSchemaStepConfigForm(BaseStepConfigForm):

@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import io
 import zipfile
+from dataclasses import dataclass
+from dataclasses import field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -45,6 +47,66 @@ DISALLOWED_EXTENSIONS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Introspection data types
+# ---------------------------------------------------------------------------
+# These are plain dataclasses (not Django models) so that introspection
+# results can be consumed by both:
+#   - the library-validator flow (converts to FMUVariable + CatalogEntry rows)
+#   - the step-level flow (converts to step config JSON dicts)
+
+
+@dataclass
+class FMUVariableInfo:
+    """Parsed metadata for a single FMU variable.
+
+    A plain data object (not a Django model instance) so it can be
+    used by both the library-validator and step-level flows without
+    coupling to the database layer.
+    """
+
+    name: str
+    causality: str
+    variability: str = ""
+    value_reference: int = 0
+    value_type: str = "Real"
+    unit: str = ""
+    description: str = ""
+
+
+@dataclass
+class FMUSimulationDefaults:
+    """Default simulation settings from the FMU's DefaultExperiment element.
+
+    These are optional — not all FMUs include a DefaultExperiment.
+    When present, they serve as pre-populated defaults in the step
+    config form.  The workflow author can override any of them.
+    """
+
+    start_time: float | None = None
+    stop_time: float | None = None
+    step_size: float | None = None
+    tolerance: float | None = None
+
+
+@dataclass
+class FMUIntrospectionResult:
+    """Result of introspecting an FMU archive.
+
+    Contains everything needed by both the library-validator flow
+    (which creates FMUModel + FMUVariable rows) and the step-level
+    flow (which stores variable metadata in step config).
+    """
+
+    model_name: str
+    fmi_version: str
+    variables: list[FMUVariableInfo] = field(default_factory=list)
+    simulation_defaults: FMUSimulationDefaults = field(
+        default_factory=FMUSimulationDefaults,
+    )
+    checksum: str = ""
+
+
 class FMUIntrospectionError(ValueError):
     """Raised when an FMU cannot be parsed or introspected."""
 
@@ -53,8 +115,19 @@ class FMUStorageError(ValueError):
     """Raised when FMU files cannot be stored or accessed."""
 
 
-def _parse_variables(xml_text: str) -> tuple[str, str, list[FMUVariable]]:
-    """Load ScalarVariable entries from modelDescription.xml into FMUVariable shells."""
+# ---------------------------------------------------------------------------
+# Shared introspection layer
+# ---------------------------------------------------------------------------
+
+
+def _parse_model_description(
+    xml_text: str,
+) -> tuple[str, str, list[FMUVariableInfo], FMUSimulationDefaults]:
+    """Parse modelDescription.xml into variable info and simulation defaults.
+
+    Returns ``(model_name, fmi_version, variables, simulation_defaults)``.
+    This is a pure parsing function with no side effects or database access.
+    """
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
@@ -63,9 +136,10 @@ def _parse_variables(xml_text: str) -> tuple[str, str, list[FMUVariable]]:
     fmi_version = root.attrib.get("fmiVersion", "2.0")
     model_name = root.attrib.get("modelName", "fmu")
     ns_prefix = root.tag.split("}")[0].strip("{") if "}" in root.tag else ""
-    tag_name = f"{{{ns_prefix}}}ScalarVariable" if ns_prefix else "ScalarVariable"
 
-    variables: list[FMUVariable] = []
+    # -- ScalarVariable extraction --
+    tag_name = f"{{{ns_prefix}}}ScalarVariable" if ns_prefix else "ScalarVariable"
+    variables: list[FMUVariableInfo] = []
     for node in root.iter(tag_name):
         attrs = node.attrib
         name = attrs.get("name") or ""
@@ -76,29 +150,50 @@ def _parse_variables(xml_text: str) -> tuple[str, str, list[FMUVariable]]:
             "Real",
         )
         variables.append(
-            FMUVariable(
+            FMUVariableInfo(
                 name=name,
                 causality=attrs.get("causality", "unknown"),
                 variability=attrs.get("variability", ""),
                 value_reference=int(attrs.get("valueReference") or 0),
                 value_type=value_type,
                 unit=attrs.get("unit", ""),
+                description=attrs.get("description", ""),
             ),
         )
-    return model_name, fmi_version, variables
+
+    # -- DefaultExperiment extraction --
+    de_tag = f"{{{ns_prefix}}}DefaultExperiment" if ns_prefix else "DefaultExperiment"
+    sim_defaults = FMUSimulationDefaults()
+    de_node = root.find(de_tag)
+    if de_node is not None:
+        de_attrs = de_node.attrib
+        if "startTime" in de_attrs:
+            sim_defaults.start_time = float(de_attrs["startTime"])
+        if "stopTime" in de_attrs:
+            sim_defaults.stop_time = float(de_attrs["stopTime"])
+        if "stepSize" in de_attrs:
+            sim_defaults.step_size = float(de_attrs["stepSize"])
+        if "tolerance" in de_attrs:
+            sim_defaults.tolerance = float(de_attrs["tolerance"])
+
+    return model_name, fmi_version, variables, sim_defaults
 
 
-def _validate_fmu_bytes(
-    payload: bytes, filename: str
-) -> tuple[str, str, list[FMUVariable], str]:
+def introspect_fmu(payload: bytes, filename: str) -> FMUIntrospectionResult:
+    """Validate and introspect an FMU archive.
+
+    Performs structural validation (ZIP, modelDescription.xml presence,
+    no dangerous files), parses variable metadata from ScalarVariables,
+    and extracts DefaultExperiment settings.
+
+    Used by both:
+    - ``create_fmu_validator()`` (library flow) — results feed into
+      FMUModel + FMUVariable + ValidatorCatalogEntry creation.
+    - ``build_fmu_config()`` (step-level flow) — results feed into
+      ``step.config["fmu_variables"]`` and ``step.config["fmu_simulation"]``.
+
+    Raises ``FMUIntrospectionError`` on validation failure.
     """
-    Perform structural, safety, and metadata validation on an FMU payload.
-
-    Returns ``(model_name, fmi_version, variables, checksum)`` after verifying
-    the archive is a ZIP, contains modelDescription.xml, and does not include
-    obviously dangerous file types.
-    """
-
     display_name = filename or "fmu"
     if len(payload) > MAX_FMU_SIZE_BYTES:
         raise FMUIntrospectionError(
@@ -138,9 +233,17 @@ def _validate_fmu_bytes(
             % {"name": display_name}
         ) from exc
 
-    model_name, fmi_version, variables = _parse_variables(xml_text)
+    model_name, fmi_version, variables, sim_defaults = _parse_model_description(
+        xml_text,
+    )
     checksum = hashlib.sha256(payload).hexdigest()
-    return model_name, fmi_version, variables, checksum
+    return FMUIntrospectionResult(
+        model_name=model_name,
+        fmi_version=fmi_version,
+        variables=variables,
+        simulation_defaults=sim_defaults,
+        checksum=checksum,
+    )
 
 
 def _data_type_for_variable(value_type: str) -> str:
@@ -198,6 +301,18 @@ def _upload_fmu_to_cloud_storage(checksum: str, payload: bytes) -> str:
     return f"gs://{bucket_name}/{object_path}"
 
 
+def _variable_info_to_model(info: FMUVariableInfo) -> FMUVariable:
+    """Convert a plain FMUVariableInfo dataclass to an unsaved FMUVariable model."""
+    return FMUVariable(
+        name=info.name,
+        causality=info.causality,
+        variability=info.variability,
+        value_reference=info.value_reference,
+        value_type=info.value_type,
+        unit=info.unit,
+    )
+
+
 def create_fmu_validator(
     *,
     org: Organization,
@@ -212,6 +327,10 @@ def create_fmu_validator(
     """
     Create an FMU validator, parse the uploaded FMU, and seed catalog entries.
 
+    Uses the shared ``introspect_fmu()`` layer for validation and metadata
+    extraction, then converts the results into Django model instances
+    (FMUModel, FMUVariable, ValidatorCatalogEntry).
+
     When ``approve_immediately`` is False the FMU will remain unapproved until a
     probe run is completed. ``storage_backend`` can be supplied to stream the
     upload to S3 or other storage providers; by default Django's FileField
@@ -220,10 +339,7 @@ def create_fmu_validator(
 
     with transaction.atomic():
         raw_bytes = upload.read()
-        model_name, fmi_version, variables, checksum = _validate_fmu_bytes(
-            payload=raw_bytes,
-            filename=upload.name,
-        )
+        result = introspect_fmu(payload=raw_bytes, filename=upload.name)
         wrapped_upload = ContentFile(raw_bytes, name=upload.name)
         fmu = FMUModel.objects.create(
             org=org,
@@ -231,8 +347,8 @@ def create_fmu_validator(
             name=name,
             description=description,
             size_bytes=len(raw_bytes),
-            checksum=checksum,
-            gcs_uri=_upload_fmu_to_cloud_storage(checksum, raw_bytes)
+            checksum=result.checksum,
+            gcs_uri=_upload_fmu_to_cloud_storage(result.checksum, raw_bytes)
             if _should_use_cloud_storage()
             else "",
         )
@@ -247,10 +363,10 @@ def create_fmu_validator(
             fmu.file.save(upload.name, stored_file, save=False)
         except Exception as exc:  # pragma: no cover - storage failures are surfaced
             raise FMUStorageError(str(exc)) from exc
-        fmu.fmu_version = fmi_version
+        fmu.fmu_version = result.fmi_version
         fmu.introspection_metadata = {
-            "model_name": model_name,
-            "variable_count": len(variables),
+            "model_name": result.model_name,
+            "variable_count": len(result.variables),
         }
         fmu.is_approved = approve_immediately
         fmu.save()
@@ -269,14 +385,15 @@ def create_fmu_validator(
             supports_assertions=True,
         )
 
-        _persist_variables(fmu, validator, variables)
+        model_variables = [_variable_info_to_model(info) for info in result.variables]
+        _persist_variables(fmu, validator, model_variables)
         FMUProbeResult.objects.create(
             fmu_model=fmu,
             status=FMUProbeStatus.SUCCEEDED
             if approve_immediately
             else FMUProbeStatus.PENDING,
             last_error="" if approve_immediately else _("Awaiting probe run."),
-            details={"variable_count": len(variables)},
+            details={"variable_count": len(result.variables)},
         )
     return validator
 
@@ -286,6 +403,7 @@ def _persist_variables(
     validator: Validator,
     variables: Iterable[FMUVariable],
 ) -> None:
+    """Persist FMUVariable model instances and create matching catalog entries."""
     prepared: list[FMUVariable] = []
     for var in variables:
         var.fmu_model = fmu_model
@@ -389,12 +507,11 @@ def run_fmu_probe(
 
     try:
         payload = _read_fmu_bytes(fmu_model)
-        model_name, fmi_version, variables, _checksum = _validate_fmu_bytes(
+        result = introspect_fmu(
             payload=payload,
             filename=fmu_model.name or "model.fmu",
         )
     except FMUIntrospectionError as exc:
-        elapsed = time.monotonic() - start_time
         probe_record.status = FMUProbeStatus.FAILED
         probe_record.last_error = str(exc)
         probe_record.save(update_fields=["status", "last_error", "modified"])
@@ -402,7 +519,6 @@ def run_fmu_probe(
         fmu_model.save(update_fields=["is_approved", "modified"])
         return FMUProbeResultSchema.failure(errors=[str(exc)])
     except Exception as exc:
-        elapsed = time.monotonic() - start_time
         probe_record.status = FMUProbeStatus.FAILED
         probe_record.last_error = str(exc)
         probe_record.save(update_fields=["status", "last_error", "modified"])
@@ -412,7 +528,7 @@ def run_fmu_probe(
 
     elapsed = time.monotonic() - start_time
 
-    # Convert FMUVariable (Django model) to FMUVariableMeta (Pydantic schema)
+    # Convert FMUVariableInfo (dataclass) to FMUVariableMeta (Pydantic schema)
     variable_metas = [
         FMUVariableMeta(
             name=var.name,
@@ -422,14 +538,14 @@ def run_fmu_probe(
             value_type=var.value_type,
             unit=var.unit or None,
         )
-        for var in variables
+        for var in result.variables
     ]
 
     # Update FMU metadata
-    fmu_model.fmu_version = fmi_version
+    fmu_model.fmu_version = result.fmi_version
     fmu_model.introspection_metadata = {
-        "model_name": model_name,
-        "variable_count": len(variables),
+        "model_name": result.model_name,
+        "variable_count": len(result.variables),
     }
 
     # Refresh variables and catalog entries from probe results
@@ -438,7 +554,7 @@ def run_fmu_probe(
     # Mark as approved
     probe_record.status = FMUProbeStatus.SUCCEEDED
     probe_record.last_error = ""
-    probe_record.details = {"variable_count": len(variables)}
+    probe_record.details = {"variable_count": len(result.variables)}
     fmu_model.is_approved = True
 
     probe_record.save(update_fields=["status", "last_error", "details", "modified"])
@@ -454,7 +570,9 @@ def run_fmu_probe(
     return FMUProbeResultSchema.success(
         variables=variable_metas,
         execution_seconds=elapsed,
-        messages=[f"Parsed {len(variables)} variables from modelDescription.xml"],
+        messages=[
+            f"Parsed {len(result.variables)} variables from modelDescription.xml",
+        ],
     )
 
 

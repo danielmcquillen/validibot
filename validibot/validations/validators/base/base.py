@@ -327,12 +327,27 @@ class BaseValidator(ABC):
                 return None, False
         return current, True
 
-    def _build_cel_context(self, payload: Any, validator: Validator) -> dict[str, Any]:
+    def _build_cel_context(
+        self,
+        payload: Any,
+        validator: Validator,
+        *,
+        stage: str = "input",
+    ) -> dict[str, Any]:
         """
         Build a context mapping catalog entry slugs to values resolved from payload.
+
         Include the raw payload so expressions can reference it directly if needed.
         If run_context includes downstream signals from earlier steps, expose them
         under a namespaced ``steps`` key to support cross-step assertions.
+
+        For output-stage assertions, all payload dict keys are automatically
+        exposed as top-level CEL variables. Output payloads come from validator
+        execution (e.g. FMU simulation, EnergyPlus results) and their keys ARE
+        the signals — there's no reason to gate them behind catalog entries.
+
+        For input-stage assertions, only catalog-mapped keys are exposed unless
+        ``allow_custom_assertion_targets`` is set on the validator.
         """
         context: dict[str, Any] = {"payload": payload}
         derived_enabled = getattr(settings, "ENABLE_DERIVED_SIGNALS", False)
@@ -398,7 +413,22 @@ class BaseValidator(ABC):
                     matches.extend(_collect_matches(item, key))
             return matches
 
-        if getattr(validator, "allow_custom_assertion_targets", False):
+        # Expose payload keys as top-level CEL variables when appropriate.
+        #
+        # Two cases trigger this:
+        # 1. Output stage on a processor-backed validator — the output
+        #    payload comes from container execution (FMU simulation,
+        #    EnergyPlus, etc.) and its keys ARE the output signals.
+        #    These should always be available as CEL variables regardless
+        #    of whether they appear in the catalog.
+        # 2. allow_custom_assertion_targets — the validator explicitly
+        #    permits assertion targets outside the catalog (e.g. Basic
+        #    validators, XML validators with arbitrary paths).
+        has_processor = getattr(validator, "has_processor", False)
+        expose_payload_keys = (stage == "output" and has_processor) or getattr(
+            validator, "allow_custom_assertion_targets", False
+        )
+        if expose_payload_keys:
             if isinstance(payload, dict):
                 for k, v in payload.items():
                     # Skip keys that aren't valid CEL identifiers (e.g.,
@@ -590,7 +620,7 @@ class BaseValidator(ABC):
             return AssertionEvaluationResult(issues=[], total=0, failures=0)
 
         # Build evaluation context (CEL context is lazy-built on first use)
-        context = AssertionContext(validator=validator, engine=self)
+        context = AssertionContext(validator=validator, engine=self, stage=stage)
 
         issues: list[ValidationIssue] = []
         for assertion in stage_assertions:

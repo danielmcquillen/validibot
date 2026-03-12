@@ -9,13 +9,7 @@
                 data-chart-config-id="{{ chart_config_id }}"
                 data-chart-type="bar"></canvas>
       </div>
-      <script type="application/json" id="{{ chart_config_id }}">
-        {
-          {
-            chart_config_json | safe
-          }
-        }
-      </script>
+      {{ chart_config|json_script:chart_config_id }}
     {% else %}
       <div class="d-flex flex-column justify-content-center align-items-center text-center py-5">
         <i class="bi bi-people text-muted display-5 mb-3"></i>

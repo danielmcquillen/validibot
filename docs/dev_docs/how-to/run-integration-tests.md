@@ -1,45 +1,28 @@
-# How to Run Integration Tests
+# Integration Tests
 
-This guide covers running integration and end-to-end tests for Validibot.
+Integration tests verify that Validibot's cloud integrations work correctly.
+They run against real infrastructure - a local Postgres instance, GCS buckets,
+Cloud Run Jobs, and Selenium-driven browser tests. Unlike unit tests, they
+exercise the actual infrastructure layer but don't test the full HTTP request
+lifecycle (that's what [E2E tests](./run-e2e-tests.md) are for).
 
-## Test Categories
+For an overview of all test layers, see the [Testing Overview](./testing.md).
 
-Validibot has several types of tests:
+## What integration tests cover
 
-| Type              | Location                                       | What It Tests                    |
-| ----------------- | ---------------------------------------------- | -------------------------------- |
-| Unit tests        | `validibot/*/tests/`                           | Individual functions and classes |
-| Integration tests | `tests/tests_integration/`                     | Cloud Run Jobs, GCS, database    |
-| E2E tests         | `tests/tests_integration/test_e2e_workflow.py` | Full API -> callback flow        |
-| Use case tests    | `tests/tests_use_cases/`                       | Business scenarios               |
+- Cloud Run Job execution (launching validator containers)
+- GCS storage operations (uploading, downloading, signed URLs)
+- Selenium browser tests (UI flows with a real browser)
+- Database operations against a real Postgres instance
 
-## Quick Reference
+## Prerequisites
 
-```bash
-# Run all unit tests
-uv run --group dev pytest validibot/
-
-# Run integration tests (starts local Postgres)
-just test-integration
-
-# Run E2E tests against deployed staging
-E2E_TEST_API_URL=https://your-app.run.app/api/v1 \
-E2E_TEST_API_TOKEN=your-token \
-E2E_TEST_WORKFLOW_ID=workflow-uuid \
-just test-e2e
-```
-
-## Integration Tests
-
-Integration tests verify Cloud Run Job execution and GCS operations. They run against real GCP infrastructure but skip callbacks (since there's no Django endpoint listening).
-
-### Prerequisites
-
-- GCP credentials configured (`gcloud auth application-default login`)
-- Required environment variables (see below)
 - Docker Compose available
+- GCP credentials configured (`gcloud auth application-default login`) for
+  cloud tests
+- Required environment variables (see below)
 
-### Running Integration Tests
+## Running
 
 ```bash
 # Run all integration tests
@@ -52,7 +35,21 @@ just test-integration tests/tests_integration/test_validator_jobs.py
 just test-integration -vvv
 ```
 
-### Required Environment Variables
+The `just test-integration` recipe:
+
+1. Ensures the `django` Docker image exists (Chromium + chromedriver baked in
+   for Selenium)
+2. Resets and starts Postgres + Mailpit containers
+3. Runs tests inside the Django container
+4. Stops containers when done
+
+**Tips:**
+
+- Set `BUILD_DJANGO_IMAGE=1` to force a rebuild after Dockerfile changes
+- Set `SELENIUM_HEADLESS=0` to watch Selenium tests in a browser
+- If running outside Docker, set `CHROME_BIN` and `CHROMEDRIVER_PATH`
+
+## Required environment variables
 
 For Cloud Run Job tests:
 
@@ -64,13 +61,17 @@ export GCS_FMU_JOB_NAME=$GCP_APP_NAME-validator-fmu
 export GCP_REGION=us-west1
 ```
 
-These are typically exported in your shell (often via `source set-env.sh`) or loaded from `.envs/` in Docker/GCP.
+These are typically exported in your shell (often via `source set-env.sh`) or
+loaded from `.envs/` in Docker/GCP.
 
-## E2E Tests
+## Cloud E2E tests (staging)
 
-E2E tests verify the complete validation flow including callbacks. Unlike integration tests, these require a deployed staging environment where Cloud Run Jobs can call back to Django.
+The integration test directory also includes tests that verify the complete
+validation flow against a deployed staging environment, including Cloud Run
+Job callbacks. These require a deployed environment where Cloud Run Jobs can
+call back to Django.
 
-### What E2E Tests Cover
+What the cloud E2E flow tests:
 
 1. Submit file via API
 2. Django creates ValidationRun
@@ -80,15 +81,12 @@ E2E tests verify the complete validation flow including callbacks. Unlike integr
 6. Test polls API until completion
 7. Test verifies status and findings
 
-If your environment uses a custom public domain (via load balancer or domain mapping), make sure `WORKER_URL` is set to the worker `*.run.app` URL. Otherwise callbacks may accidentally route to the public domain (which points at the web service) and fail.
+If your environment uses a custom public domain (via load balancer or domain
+mapping), make sure `WORKER_URL` is set to the worker `*.run.app` URL.
+Otherwise callbacks may accidentally route to the public domain (which points
+at the web service) and fail.
 
-### Prerequisites
-
-1. **Deployed staging environment** - Cloud Run web service accessible
-2. **API key** - Create one in Settings -> API Key
-3. **Test workflow** - A workflow with an EnergyPlus validator step
-
-### Running E2E Tests
+### Running cloud E2E tests
 
 ```bash
 # Set environment variables
@@ -96,14 +94,9 @@ export E2E_TEST_API_URL=https://your-staging-app.run.app/api/v1
 export E2E_TEST_API_TOKEN=your-api-token
 export E2E_TEST_WORKFLOW_ID=your-workflow-uuid
 
-# Run E2E tests
+# Run
 just test-e2e
-
-# Or pass variables inline
-E2E_TEST_API_URL=https://... E2E_TEST_API_TOKEN=... E2E_TEST_WORKFLOW_ID=... just test-e2e
 ```
-
-### E2E Test Configuration
 
 | Variable                            | Required | Description                                                          |
 | ----------------------------------- | -------- | -------------------------------------------------------------------- |
@@ -112,23 +105,7 @@ E2E_TEST_API_URL=https://... E2E_TEST_API_TOKEN=... E2E_TEST_WORKFLOW_ID=... jus
 | `E2E_TEST_WORKFLOW_ID`              | Yes      | UUID of workflow with EnergyPlus validator step                      |
 | `E2E_TEST_WORKFLOW_EXPECTS_SUCCESS` | No       | Set to `false` if test file should fail validation (default: `true`) |
 
-### Creating a Test Workflow
-
-For E2E tests, you need a workflow configured with an EnergyPlus validator step:
-
-1. Log into the staging environment
-2. Create a new workflow
-3. Add a step with the EnergyPlus validator
-4. Note the workflow UUID from the URL
-5. Use this UUID for `E2E_TEST_WORKFLOW_ID`
-
-### Test File
-
-The E2E tests use `tests/data/energyplus/example_epjson.json` as the test input. This should be a valid EnergyPlus model that runs quickly.
-
-## Running Tests in CI
-
-For CI/CD pipelines:
+### Running in CI
 
 ```yaml
 # Integration tests (skip callbacks)
@@ -148,46 +125,49 @@ For CI/CD pipelines:
   run: just test-e2e
 ```
 
+## psycopg3 + live_server fix
+
+Django's `live_server` fixture uses a threaded WSGI server, but psycopg3
+connections aren't thread-safe. After Selenium tests hit the live server,
+database connections can become corrupted.
+
+The fix in `tests/tests_integration/conftest.py`:
+
+1. **Autouse fixture** — Resets BAD psycopg3 connections before/after each test
+2. **Monkey-patched flush** — Resets connections before Django's teardown flush
+
+Additionally, `config/settings/test.py` sets `CONN_MAX_AGE = 0` to disable
+persistent connections. This is a known Django + psycopg3 issue (Django tickets
+#32416, #35455).
+
 ## Troubleshooting
 
-### Tests Skip with "missing settings"
+### Tests skip with "missing settings"
 
-Ensure all required environment variables are set. Run `env | grep -E "(GCP|GCS|E2E)"` to check.
+Ensure all required environment variables are set. Run
+`env | grep -E "(GCP|GCS|E2E)"` to check.
 
-### E2E Test Times Out
+### E2E test times out
 
 - Check Cloud Logging for the validation run
 - Verify the callback URL is correct and reachable
 - Check Cloud Run Job execution status
 
-### Integration Tests Fail on GCS
+### Integration tests fail on GCS
 
 - Verify GCP credentials: `gcloud auth application-default print-access-token`
 - Check bucket exists: `gcloud storage buckets describe gs://your-bucket`
 
-### "Workflow not accessible" Error
+### "Workflow not accessible" error
 
 - Verify the workflow UUID is correct
 - Check the API token has permission for that organization
 - Ensure the workflow is not archived
 
-## Multi-Run and Stress Tests
-
-For testing the validation system under load, Validibot includes two
-additional test suites:
-
-- **In-process multi-run tests** (`tests/tests_use_cases/test_multi_run_validation.py`):
-  Submit many runs in series. Runs as part of normal `pytest`. Verifies no
-  ID collisions or data corruption under rapid sequential load.
-- **E2E stress tests** (`tests/tests_e2e/`):
-  Submit concurrent HTTP requests against a live environment via
-  `just test-e2e`. Tests true concurrency with real Celery workers.
-
-See [Running Stress and Multi-Run Tests](./run-e2e-tests.md) for details.
-
 ## Related
 
-- [Running Stress Tests](./run-e2e-tests.md) - Multi-run and E2E stress tests
+- [Testing Overview](./testing.md) - All test layers and when to use each
+- [E2E and Stress Tests](./run-e2e-tests.md) - Local stack stress and
+  EnergyPlus simulation tests
 - [Debug a Run](./debug-a-run.md) - Troubleshooting failed validations
 - [Cloud Logging](../google_cloud/logging.md) - Viewing logs
-- [Deployment Guide](../google_cloud/deployment.md) - Staging setup

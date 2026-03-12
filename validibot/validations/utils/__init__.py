@@ -137,6 +137,7 @@ def create_default_validators():
             "order": 4,
             "has_processor": True,
             "supports_assertions": True,
+            "allow_custom_assertion_targets": True,
         },
         {
             "name": _("AI Assisted Validator"),

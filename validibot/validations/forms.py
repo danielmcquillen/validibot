@@ -431,6 +431,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         catalog_entries=None,
         validator=None,
         target_slug_datalist_id=None,
+        fmu_variables=None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -450,6 +451,20 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 self.outputs_by_slug.setdefault(entry.slug, entry)
             else:
                 self.inputs_by_slug.setdefault(entry.slug, entry)
+
+        # Step-level FMU variables (no catalog entries).  Build name
+        # sets so _resolve_target_data_path() and _validate_cel_identifiers()
+        # can recognise FMU variable names as valid targets.
+        self.fmu_input_names: set[str] = set()
+        self.fmu_output_names: set[str] = set()
+        for var in fmu_variables or []:
+            causality = var.get("causality", "")
+            name = var.get("name", "")
+            if causality == "input":
+                self.fmu_input_names.add(name)
+            elif causality == "output":
+                self.fmu_output_names.add(name)
+
         self.catalog_slugs = set(
             list(self.inputs_by_slug.keys()) + list(self.outputs_by_slug.keys())
         )
@@ -644,6 +659,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         }
         allowed = set(self.catalog_slugs)
         allowed.update(f"output.{slug}" for slug in self.outputs_by_slug)
+        # Step-level FMU variable names are also valid CEL identifiers.
+        allowed.update(self.fmu_input_names)
+        allowed.update(self.fmu_output_names)
         unknown = set()
         for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\\.]*", expression):
             name = match.group(0)
@@ -720,6 +738,14 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                     )
                 self.cleaned_data["target_catalog_entry"] = self.outputs_by_slug[value]
                 self.cleaned_data["target_data_path_value"] = ""
+                return
+
+            # Step-level FMU variables — no catalog entry, stored as
+            # target_data_path.  Recognised without requiring
+            # allow_custom_assertion_targets.
+            if value in self.fmu_input_names or value in self.fmu_output_names:
+                self.cleaned_data["target_catalog_entry"] = None
+                self.cleaned_data["target_data_path_value"] = value
                 return
 
             if not self._validator_allows_custom_targets():
@@ -983,6 +1009,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             allowed.add(target)
         if self._validator_allows_custom_targets():
             return set()
+        # Step-level FMU variable names are valid CEL identifiers.
+        allowed.update(self.fmu_input_names)
+        allowed.update(self.fmu_output_names)
         identifiers = {
             match.group(0)
             for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\.]*", expression)

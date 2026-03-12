@@ -41,6 +41,8 @@ Context:
             <td class="text-muted small">
               {% if signal.source == "template" %}
                 {% trans "Template" %}
+              {% elif signal.source == "fmu" %}
+                {% trans "FMU" %}
               {% else %}
                 {% trans "Catalog" %}
               {% endif %}

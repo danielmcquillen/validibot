@@ -2161,6 +2161,48 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         return breadcrumbs
 
 
+# ── FMU signal-stage helpers ─────────────────────────────────────────
+# Step-level FMU uploads store variable metadata (with causality) in
+# step.config["fmu_variables"] instead of in ValidatorCatalogEntry rows.
+# These helpers let the step detail view detect signal stages and group
+# assertions correctly for such steps.
+
+
+def _step_has_fmu_signal_stages(step) -> bool:
+    """True when step config FMU variables include both input and output causality."""
+    fmu_vars = (step.config or {}).get("fmu_variables", [])
+    causalities = {v.get("causality", "") for v in fmu_vars}
+    return "input" in causalities and "output" in causalities
+
+
+def _build_fmu_causality_map(step) -> dict[str, str]:
+    """Build variable-name → causality map from step config FMU variables."""
+    return {
+        v.get("name", ""): v.get("causality", "")
+        for v in (step.config or {}).get("fmu_variables", [])
+    }
+
+
+def _resolve_assertion_stage(
+    assertion,
+    fmu_causality_map: dict[str, str],
+) -> CatalogRunStage:
+    """Resolve assertion run stage, considering FMU variable causality.
+
+    For assertions that target a catalog entry, the entry's ``run_stage``
+    is authoritative.  For free-form ``target_data_path`` assertions that
+    match an FMU variable name, the variable's causality determines the
+    stage.  Everything else defaults to OUTPUT.
+    """
+    if assertion.target_catalog_entry_id and assertion.target_catalog_entry:
+        return CatalogRunStage(assertion.target_catalog_entry.run_stage)
+    if assertion.target_data_path and assertion.target_data_path in fmu_causality_map:
+        causality = fmu_causality_map[assertion.target_data_path]
+        if causality == "input":
+            return CatalogRunStage.INPUT
+    return CatalogRunStage.OUTPUT
+
+
 class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
     """Two-column overview for validator-based steps."""
 
@@ -2212,16 +2254,23 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                     "slug",
                 ),
             )
+        # Group assertions by run stage, considering FMU variable causality
+        # for step-level FMU uploads where there are no catalog entries.
+        fmu_causality_map = _build_fmu_causality_map(self.step)
         grouped_assertions = {
             "input": [],
             "output": [],
         }
         for assertion in assertions:
-            stage = assertion.resolved_run_stage
+            stage = _resolve_assertion_stage(assertion, fmu_causality_map)
             key = "input" if stage == CatalogRunStage.INPUT else "output"
             grouped_assertions[key].append(assertion)
         uses_signal_stages = bool(
-            validator and validator.has_signal_stages() and allow_assertions,
+            validator
+            and (
+                validator.has_signal_stages() or _step_has_fmu_signal_stages(self.step)
+            )
+            and allow_assertions,
         )
         default_assertions_count = (
             validator.default_ruleset.assertions.count()
@@ -2689,6 +2738,7 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
         kwargs["catalog_entries"] = getattr(self, "_catalog_entries_cache", [])
         kwargs["validator"] = self.step.validator
         kwargs["target_slug_datalist_id"] = self.get_target_slug_datalist_id()
+        kwargs["fmu_variables"] = (self.step.config or {}).get("fmu_variables", [])
         return kwargs
 
     def get_target_slug_datalist_id(self) -> str:

@@ -492,6 +492,106 @@ class CelContextInvalidKeyTests(TestCase):
         self.assertNotIn("Materials", context)
 
 
+# ---------------------------------------------------------------------------
+# CEL context output namespace
+#
+# Output catalog entries are stored in a nested ``output`` dict so that
+# CEL member access (``output.slug``) resolves correctly.  Previously
+# these were stored as flat dotted keys (``"output.slug"``), which
+# CEL couldn't resolve because it parses ``output.slug`` as member
+# access, not a single identifier.
+# ---------------------------------------------------------------------------
+
+
+class CelContextOutputNamespaceTests(TestCase):
+    """Verify that output catalog entries are exposed in a nested
+    ``output`` namespace in the CEL context.
+
+    The nested dict structure is critical because:
+    - CEL parses ``output.slug`` as member access (variable ``output``,
+      field ``slug``), not as a single identifier with a dot.
+    - Basic assertions use ``_resolve_path()`` which splits on dots,
+      navigating ``data["output"]["slug"]``.
+
+    Both evaluation paths require a real nested dict, not a flat
+    dotted key.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+
+    def test_output_entries_in_nested_namespace(self):
+        """Output catalog entries appear under ``context["output"]``.
+
+        Every output signal should be accessible as ``output.<slug>``
+        in CEL expressions.
+        """
+        ValidatorCatalogEntryFactory(
+            validator=self.validator,
+            slug="temperature",
+            run_stage=CatalogRunStage.OUTPUT,
+        )
+        engine = BasicValidator()
+        payload = {"temperature": 296.63}
+        context = engine._build_cel_context(payload, self.validator)
+
+        # Nested namespace exists and contains the output entry
+        self.assertIn("output", context)
+        self.assertIsInstance(context["output"], dict)
+        self.assertEqual(context["output"]["temperature"], 296.63)
+        # Bare name also available (no collision)
+        self.assertEqual(context["temperature"], 296.63)
+
+    def test_collision_input_keeps_bare_name_output_in_namespace(self):
+        """When an input and output share the same slug, the input
+        keeps the bare name and the output goes in the namespace.
+
+        This matches the convention: bare ``price`` → input value,
+        ``output.price`` → output value.
+        """
+        ValidatorCatalogEntryFactory(
+            validator=self.validator,
+            slug="price",
+            run_stage=CatalogRunStage.INPUT,
+        )
+        ValidatorCatalogEntryFactory(
+            validator=self.validator,
+            slug="price",
+            run_stage=CatalogRunStage.OUTPUT,
+        )
+        engine = BasicValidator()
+        payload = {"price": 42.0}
+        context = engine._build_cel_context(payload, self.validator)
+
+        # Bare name keeps the input value (INPUT entry is processed
+        # first and writes to context["price"]; the OUTPUT entry sees
+        # the collision and writes only to the namespace).
+        self.assertIn("price", context)
+        # Output available via namespace
+        self.assertIn("output", context)
+        self.assertEqual(context["output"]["price"], 42.0)
+
+    def test_no_output_entries_no_namespace(self):
+        """When there are no output catalog entries, the ``output``
+        namespace is not created (keeping the context clean).
+        """
+        ValidatorCatalogEntryFactory(
+            validator=self.validator,
+            slug="weight",
+            run_stage=CatalogRunStage.INPUT,
+        )
+        engine = BasicValidator()
+        payload = {"weight": 10}
+        context = engine._build_cel_context(payload, self.validator)
+
+        self.assertNotIn("output", context)
+        self.assertEqual(context["weight"], 10)
+
+
 class BasicValidatorHyphenatedXmlEndToEndTests(TestCase):
     """End-to-end validation tests with XML documents whose element names
     contain hyphens, confirming the full pipeline doesn't crash.

@@ -660,8 +660,12 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         allowed = set(self.catalog_slugs)
         allowed.update(f"output.{slug}" for slug in self.outputs_by_slug)
         # Step-level FMU variable names are also valid CEL identifiers.
+        # Both bare names and the ``output.<name>`` form are accepted —
+        # bare names resolve to the input when there's a collision, and
+        # the ``output.`` prefix explicitly targets the output signal.
         allowed.update(self.fmu_input_names)
         allowed.update(self.fmu_output_names)
+        allowed.update(f"output.{name}" for name in self.fmu_output_names)
         unknown = set()
         for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\\.]*", expression):
             name = match.group(0)
@@ -743,7 +747,34 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             # Step-level FMU variables — no catalog entry, stored as
             # target_data_path.  Recognised without requiring
             # allow_custom_assertion_targets.
-            if value in self.fmu_input_names or value in self.fmu_output_names:
+            is_fmu_input = value in self.fmu_input_names
+            is_fmu_output = value in self.fmu_output_names
+
+            if explicit_output and is_fmu_output:
+                # User explicitly wrote ``output.X`` → target the
+                # output FMU variable.  Store with the ``output.``
+                # path prefix so _resolve_path navigates the nested
+                # ``output`` namespace at evaluation time.
+                self.cleaned_data["target_catalog_entry"] = None
+                self.cleaned_data["target_data_path_value"] = f"output.{value}"
+                return
+
+            if is_fmu_input and is_fmu_output and not explicit_output:
+                # Name collision: the same name appears as both an
+                # FMU input and output variable.  Force the user to
+                # be explicit about which they mean.
+                raise ValidationError(
+                    {
+                        "target_data_path": _(
+                            "Both an input and output variable are named "
+                            "'%(name)s'. Use `output.%(name)s` to target "
+                            "the output signal."
+                        )
+                        % {"name": value}
+                    }
+                )
+
+            if is_fmu_input or is_fmu_output:
                 self.cleaned_data["target_catalog_entry"] = None
                 self.cleaned_data["target_data_path_value"] = value
                 return
@@ -1010,8 +1041,10 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         if self._validator_allows_custom_targets():
             return set()
         # Step-level FMU variable names are valid CEL identifiers.
+        # Both bare names and ``output.<name>`` forms are accepted.
         allowed.update(self.fmu_input_names)
         allowed.update(self.fmu_output_names)
+        allowed.update(f"output.{name}" for name in self.fmu_output_names)
         identifiers = {
             match.group(0)
             for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\.]*", expression)

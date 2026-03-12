@@ -410,8 +410,13 @@ differs between input and output stages (see step 5 below).
    `_resolve_path(payload, entry.slug)` to extract the value from the payload.
    If found, adds it to the context under the slug key.
 
-3. **Handles stage prefixing.** When both INPUT and OUTPUT stages define the same
-   slug, output signals are namespaced as `output.<slug>` to avoid collisions.
+3. **Builds the `output` namespace.** All OUTPUT catalog entries are collected
+   into a nested `output` dict (e.g., `context["output"]["T_room"]`). This
+   structure is required because CEL parses `output.T_room` as member access
+   (variable `output`, field `T_room`), and basic assertion path resolution
+   splits on dots to navigate `data["output"]["T_room"]`. When an input and
+   output share the same slug, the input keeps the bare name and the output
+   is accessible only via `output.<slug>`.
 
 4. **Injects downstream signals.** If the `RunContext` includes `downstream_signals`
    from prior steps, they are added to the context under `steps`:
@@ -464,10 +469,16 @@ differs between input and output stages (see step 5 below).
 |-----------|--------|
 | `site_eui_kwh_m2` | Direct catalog signal (INPUT or OUTPUT) |
 | `T_room` | Output payload key (processor-backed validator, output stage) |
-| `output.site_eui_kwh_m2` | Prefixed output signal (when slug conflicts with input) |
+| `output.T_room` | Nested output namespace — always available for output signals, required when an input shares the same name |
 | `steps["42"].signals.site_eui_kwh_m2` | Cross-step signal from step run ID 42 |
 | `payload` | Raw submission/envelope data |
 | `payload.results.energy` | Direct access to raw payload fields |
+
+**Name collision convention**: When a signal name exists as both input and
+output, the bare name (`T_room`) resolves to the input value. Use
+`output.T_room` to reference the output value. The assertion form enforces
+this: if a name is ambiguous, the form requires the `output.` prefix for
+output signals.
 
 ## Path resolution
 

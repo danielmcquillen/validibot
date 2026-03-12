@@ -36,6 +36,7 @@ and assertion evaluation.
 
 from __future__ import annotations
 
+import json
 import logging
 from abc import abstractmethod
 from typing import TYPE_CHECKING
@@ -315,10 +316,21 @@ class AdvancedValidator(BaseValidator):
             )
 
             if validator and ruleset:
+                # Build assertion payload: merge submission input data with
+                # output signals so output-stage assertions can reference
+                # both.  For example, an FMU assertion like
+                # ``Q_cooling_actual < Q_cooling_max * 0.85`` compares an
+                # output signal against a user-provided input value.
+                #
+                # On name collision, the input keeps the bare name and the
+                # output is available via the ``output.`` prefix — matching
+                # the convention in ``_build_cel_context``.
+                assertion_payload = self._build_assertion_payload(signals, run_context)
+
                 assertion_result = self.evaluate_assertions_for_stage(
                     validator=validator,
                     ruleset=ruleset,
-                    payload=signals,
+                    payload=assertion_payload,
                     stage="output",
                 )
                 logger.debug(
@@ -361,6 +373,84 @@ class AdvancedValidator(BaseValidator):
 
     # PRIVATE METHODS
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    @staticmethod
+    def _build_assertion_payload(
+        signals: dict[str, Any],
+        run_context: RunContext | None,
+    ) -> dict[str, Any]:
+        """
+        Build a combined payload for output-stage assertion evaluation.
+
+        Output-stage assertions often compare validator outputs against user
+        inputs (e.g., ``Q_cooling_actual <= Q_cooling_max``).  The output
+        signals alone don't contain the input values, so we merge in the
+        submission's content when it's parseable as a JSON dict.
+
+        **Name collision convention** (matches ``_build_cel_context``):
+
+        - Input values keep their **bare name** (``Q_cooling_max``).
+        - Output values keep their bare name when there is no collision.
+        - All output values are also available under a nested ``output``
+          dict so ``output.T_room`` resolves correctly via both CEL
+          member access and basic-assertion dot-path navigation.
+        - On collision, the bare name keeps the input value and the
+          output is only reachable via ``output.<name>``.
+
+        **Resulting structure example**::
+
+            {
+                "Q_cooling_max": 6000,          # input (bare)
+                "T_room": 296.63,               # output (bare, no collision)
+                "Q_cooling_actual": 5172.83,    # output (bare, no collision)
+                "output": {                     # nested namespace
+                    "T_room": 296.63,
+                    "Q_cooling_actual": 5172.83,
+                },
+            }
+
+        This is a no-op when the submission content isn't JSON (e.g.,
+        EnergyPlus IDF files) — only the output signals are returned.
+        """
+        if not run_context or not run_context.validation_run:
+            return dict(signals)
+
+        submission = getattr(run_context.validation_run, "submission", None)
+        if not submission:
+            return dict(signals)
+
+        try:
+            content = submission.get_content()
+            if not content:
+                return dict(signals)
+            parsed = json.loads(content)
+            if isinstance(parsed, dict):
+                # Start with submission inputs (bare names).
+                merged = dict(parsed)
+                # Build a nested ``output`` namespace so that
+                # ``output.T_room`` works in both CEL (member access)
+                # and basic assertions (dot-path navigation).  All
+                # output signals are always available under the
+                # namespace; on collision the input keeps the bare
+                # name and the output is only reachable via
+                # ``output.<name>``.
+                output_ns: dict[str, object] = {}
+                for key, value in signals.items():
+                    if key not in merged:
+                        # No collision — bare name resolves to output.
+                        merged[key] = value
+                    output_ns[key] = value
+                if output_ns:
+                    merged["output"] = output_ns
+                return merged
+        except (json.JSONDecodeError, TypeError, Exception):
+            logger.debug(
+                "Could not parse submission content as JSON for assertion "
+                "payload merging (run=%s); using output signals only.",
+                getattr(run_context.validation_run, "id", "?"),
+            )
+
+        return dict(signals)
 
     @staticmethod
     def _extract_issues_from_envelope(envelope: Any) -> list[ValidationIssue]:

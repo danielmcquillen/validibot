@@ -419,6 +419,34 @@ needing to be pre-declared as catalog entries. This is critical for validators
 like FMU, where the output variable names (e.g. `T_room`, `Q_cooling_actual`)
 come from the model itself and vary between models.
 
+### The `output` namespace
+
+At the output stage, advanced validators merge submission inputs with output
+signals into a single assertion payload via `_build_assertion_payload()`. All
+output signals are placed in a **nested `output` dict** so that `output.T_room`
+resolves correctly via both CEL member access and basic-assertion dot-path
+navigation.
+
+**Name collision convention**: When a submission key shares a name with an output
+signal, the input keeps the bare name and the output is reachable only via
+`output.<name>`. Example payload:
+
+```python
+{
+    "Q_cooling_max": 6000,          # input (bare)
+    "T_room": 296.63,               # output (no collision → bare)
+    "Q_cooling_actual": 5172.83,    # output (no collision → bare)
+    "output": {                     # nested namespace
+        "T_room": 296.63,
+        "Q_cooling_actual": 5172.83,
+    },
+}
+```
+
+The assertion form enforces this convention: when a target signal name is
+ambiguous (exists as both input and output), the form requires the `output.`
+prefix for the output signal. See `signals.md` for full details.
+
 ### Assertion Evaluation Happens in Validators
 
 A key design decision: **validators evaluate assertions, not processors**.

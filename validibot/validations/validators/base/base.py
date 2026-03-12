@@ -360,6 +360,10 @@ class BaseValidator(ABC):
         if not derived_enabled:
             qs = qs.filter(entry_type=CatalogEntryType.SIGNAL)
         entries = list(qs)
+        # Nested namespace for output signals.  CEL parses ``output.slug``
+        # as member access (variable ``output``, field ``slug``), so output
+        # signals must live inside a dict—not as flat dotted keys.
+        output_ns: dict[str, Any] = {}
         for entry in entries:
             value, found = self._resolve_path(payload, entry.slug)
             if found:
@@ -369,17 +373,19 @@ class BaseValidator(ABC):
                     and entry.slug in context
                 ):
                     # Preserve existing input mapping; expose output via
-                    # prefix for disambiguation.
-                    context.setdefault(f"output.{entry.slug}", value)
+                    # nested ``output`` namespace for disambiguation.
+                    output_ns.setdefault(entry.slug, value)
                 else:
                     context[entry.slug] = value
                 if (
                     entry.entry_type == CatalogEntryType.SIGNAL
                     and entry.run_stage == CatalogRunStage.OUTPUT
                 ):
-                    context.setdefault(f"output.{entry.slug}", value)
+                    output_ns.setdefault(entry.slug, value)
             elif entry.is_required:
                 context[entry.slug] = None
+        if output_ns:
+            context["output"] = output_ns
 
         # Surface downstream signals for CEL expressions
         # (e.g., steps.<id>.signals.<slug>).

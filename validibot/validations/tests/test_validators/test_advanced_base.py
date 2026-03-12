@@ -576,3 +576,111 @@ class AdvancedValidatorHelperTests(TestCase):
         stats = _StubAdvancedValidator._extract_outputs_stats(envelope)
 
         self.assertEqual(stats, {})
+
+
+# ==============================================================================
+# _build_assertion_payload — nested output namespace
+#
+# Output-stage assertions can reference both user inputs (from the submission
+# JSON) and validator outputs (from extract_output_signals).  The payload
+# merges these into a single dict with a nested ``output`` namespace so that
+# CEL member access (``output.T_room``) and basic-assertion dot-path
+# navigation (``output.T_room``) both resolve correctly.
+# ==============================================================================
+
+
+class BuildAssertionPayloadTests(TestCase):
+    """Tests for the merged assertion payload structure.
+
+    The ``_build_assertion_payload`` static method combines submission
+    input values with output signals for evaluation at the output stage.
+    The nested ``output`` namespace ensures that ``output.<name>``
+    resolves via both CEL member access and basic-assertion dot-path
+    navigation.
+    """
+
+    def _build(self, signals, content_json=None):
+        """Call _build_assertion_payload with a mock RunContext.
+
+        Args:
+            signals: Output signals dict (from extract_output_signals).
+            content_json: Optional JSON string for the submission content.
+                If None, the submission mock returns None for get_content().
+        """
+        run_context = MagicMock()
+        submission = MagicMock()
+        submission.get_content.return_value = content_json
+        run_context.validation_run = MagicMock()
+        run_context.validation_run.submission = submission
+        return _StubAdvancedValidator._build_assertion_payload(signals, run_context)
+
+    def test_no_submission_content_returns_signals(self):
+        """When the submission has no content, only output signals are
+        returned — no nested namespace since there's nothing to merge.
+        """
+        result = self._build({"T_room": 296.63}, content_json=None)
+        self.assertEqual(result, {"T_room": 296.63})
+
+    def test_non_json_content_returns_signals(self):
+        """Non-JSON submission content (e.g., EnergyPlus IDF files)
+        can't be merged with output signals.
+        """
+        result = self._build({"T_room": 296.63}, content_json="!- IDF file")
+        self.assertEqual(result, {"T_room": 296.63})
+
+    def test_no_collision_bare_names_and_namespace(self):
+        """When there are no name collisions between inputs and outputs,
+        all values are available under bare names AND outputs are in the
+        nested ``output`` namespace.
+
+        This means ``Q_cooling_actual`` and ``output.Q_cooling_actual``
+        both work in CEL expressions.
+        """
+        result = self._build(
+            {"T_room": 296.63, "Q_cooling_actual": 5172.83},
+            content_json='{"Q_cooling_max": 6000, "T_setpoint": 295}',
+        )
+        # Inputs under bare names
+        self.assertEqual(result["Q_cooling_max"], 6000)
+        self.assertEqual(result["T_setpoint"], 295)
+        # Outputs under bare names (no collision)
+        self.assertEqual(result["T_room"], 296.63)
+        self.assertEqual(result["Q_cooling_actual"], 5172.83)
+        # All outputs also in nested namespace
+        self.assertIn("output", result)
+        self.assertEqual(result["output"]["T_room"], 296.63)
+        self.assertEqual(result["output"]["Q_cooling_actual"], 5172.83)
+
+    def test_collision_input_keeps_bare_name(self):
+        """When a submission key collides with an output signal name,
+        the input value keeps the bare name and the output is only
+        reachable via the nested ``output`` namespace.
+
+        This is the key design decision: bare ``T_room`` resolves to
+        the input value, and ``output.T_room`` resolves to the output.
+        """
+        result = self._build(
+            {"T_room": 296.63},
+            content_json='{"T_room": 293.15, "T_setpoint": 295}',
+        )
+        # Bare name keeps input value
+        self.assertEqual(result["T_room"], 293.15)
+        # Output via nested namespace
+        self.assertEqual(result["output"]["T_room"], 296.63)
+        # Non-colliding input still under bare name
+        self.assertEqual(result["T_setpoint"], 295)
+
+    def test_no_run_context_returns_signals_copy(self):
+        """Without run_context, a plain copy of signals is returned."""
+        signals = {"T_room": 296.63}
+        result = _StubAdvancedValidator._build_assertion_payload(signals, None)
+        self.assertEqual(result, {"T_room": 296.63})
+        # Must be a copy, not the original dict
+        self.assertIsNot(result, signals)
+
+    def test_non_dict_json_returns_signals(self):
+        """JSON content that isn't a dict (e.g., an array) can't be
+        merged — only the output signals are returned.
+        """
+        result = self._build({"T_room": 296.63}, content_json="[1, 2, 3]")
+        self.assertEqual(result, {"T_room": 296.63})

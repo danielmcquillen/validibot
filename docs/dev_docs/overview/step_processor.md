@@ -65,7 +65,8 @@ Validibot distinguishes between two categories of validators based on how they e
 These validators:
 - Run directly in the Django process
 - Complete synchronously (blocking)
-- Have a single assertion stage (input-only)
+- Have a single assertion stage (input-only) — they check the submitted data
+  but don't transform it into something new
 - Are fast and lightweight
 
 ```python
@@ -86,6 +87,21 @@ These validators:
 - May complete synchronously or asynchronously (depending on deployment)
 - Have two assertion stages (input AND output)
 - Can be computationally intensive
+
+Advanced validators are **container-based** — they run as isolated Docker
+containers (locally or on Cloud Run). An FMU validator takes input parameters
+(e.g. outdoor temperature, equipment load) and runs a simulation to produce
+output signals (e.g. room temperature, cooling power). EnergyPlus takes a
+building model and produces energy metrics.
+
+Advanced validators always have `has_processor=True` on the `Validator` model,
+which means they have both input and output assertion stages. But
+`has_processor` is a broader concept than "advanced" — future validators that
+are not container-based could still set `has_processor=True` if they transform
+input data to produce output data. Any validator with `has_processor=True` gets
+both assertion stages, and its output payload keys are automatically exposed as
+CEL variables. See [Signals — CEL context building](../data-model/signals.md#cel-context-building-in-detail)
+for details.
 
 ```python
 # Advanced validator flow (sync)
@@ -392,7 +408,16 @@ output.metrics.site_eui_kwh_m2 < 100
 | Stage | When Evaluated | Available Data | Applies To |
 |-------|----------------|----------------|------------|
 | Input | During `engine.validate()` | Submission content, metadata | All validators |
-| Output | During `engine.post_execute_validate()` | Container output, signals, metrics | Advanced validators only |
+| Output | During `engine.post_execute_validate()` | Processor output, signals, metrics | Validators with `has_processor=True` only |
+
+The output stage only exists for validators that perform a transformation —
+they take input data, do something with it (run a simulation, execute a model),
+and produce new output data. At the output stage, every key in the output
+payload is automatically exposed as a CEL variable, so workflow authors can
+write assertions against processor-generated values without those values
+needing to be pre-declared as catalog entries. This is critical for validators
+like FMU, where the output variable names (e.g. `T_room`, `Q_cooling_actual`)
+come from the model itself and vary between models.
 
 ### Assertion Evaluation Happens in Validators
 

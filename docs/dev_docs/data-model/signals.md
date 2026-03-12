@@ -392,8 +392,14 @@ def _build_cel_context(
     self,
     payload: Any,
     validator: Validator,
+    *,
+    stage: str = "input",
 ) -> dict[str, Any]
 ```
+
+The `stage` parameter tells the context builder which evaluation stage is
+active. This matters because the set of CEL variables that should be available
+differs between input and output stages (see step 5 below).
 
 **What it does**:
 
@@ -418,15 +424,46 @@ def _build_cel_context(
    }
    ```
 
-5. **Custom assertion targets.** For validators with `allow_custom_assertion_targets=True`,
-   top-level payload keys are exposed directly to CEL (allows assertions against
-   arbitrary fields without predefined signals).
+5. **Exposes payload keys as top-level CEL variables.** Two cases trigger this:
+
+   - **Output stage on a processor-backed validator** (`has_processor=True`).
+     Validators that transform input data to produce output data have
+     `has_processor=True`. Today these are all container-based advanced
+     validators (FMU, EnergyPlus, custom containers), but `has_processor`
+     is intentionally broader — future non-container validators that still
+     perform a transformation would also set this flag. The output payload's
+     keys *are* the output signals and should always be available as CEL
+     variables regardless of whether they appear in the catalog. This is
+     especially important for step-level FMU uploads, where the output
+     variable names (e.g. `T_room`, `Q_cooling_actual`) come from the FMU
+     model itself and are not pre-declared as catalog entries.
+
+   - **`allow_custom_assertion_targets=True`** on the validator. This flag
+     explicitly permits assertions to target arbitrary data paths not in the
+     catalog (e.g. Basic validators, validators with dynamic output schemas).
+
+   In code:
+
+   ```python
+   has_processor = getattr(validator, "has_processor", False)
+   expose_payload_keys = (stage == "output" and has_processor) or getattr(
+       validator, "allow_custom_assertion_targets", False
+   )
+   ```
+
+   The key insight is that input/output stages only exist together on
+   validators that perform some operation on the input data to produce
+   output. At the input stage, the only available data is what the user
+   submitted — the validator hasn't run yet. At the output stage, the
+   payload contains the validator's results, and every key in that payload
+   is a meaningful signal that assertions should be able to reference.
 
 **Signal availability in CEL expressions**:
 
 | Expression | Source |
 |-----------|--------|
 | `site_eui_kwh_m2` | Direct catalog signal (INPUT or OUTPUT) |
+| `T_room` | Output payload key (processor-backed validator, output stage) |
 | `output.site_eui_kwh_m2` | Prefixed output signal (when slug conflicts with input) |
 | `steps["42"].signals.site_eui_kwh_m2` | Cross-step signal from step run ID 42 |
 | `payload` | Raw submission/envelope data |
@@ -554,13 +591,21 @@ classes involved:
 class AssertionContext:
     validator: Validator
     engine: BaseValidator
-    cel_context: dict[str, Any] | None = None
+    stage: str = "input"
+    cel_context: dict[str, Any] | None = field(default=None)
 
     def get_cel_context(self, payload: Any) -> dict[str, Any]:
         if self.cel_context is None:
-            self.cel_context = self.engine._build_cel_context(payload, self.validator)
+            self.cel_context = self.engine._build_cel_context(
+                payload, self.validator, stage=self.stage
+            )
         return self.cel_context
 ```
+
+The `stage` field flows the current evaluation stage (`"input"` or `"output"`)
+from `evaluate_assertions_for_stage()` through to `_build_cel_context()`. This
+lets the context builder decide which payload keys to expose as CEL variables
+(see step 5 in the section above).
 
 The CEL context is built lazily on first access and cached for reuse across
 multiple assertions in the same evaluation pass.
@@ -572,7 +617,8 @@ This is the unified entry point for assertion evaluation. It:
 1. Merges assertions from two sources: `validator.default_ruleset` (always runs)
    and the step-level `ruleset` (per-workflow assertions)
 2. Filters assertions by `resolved_run_stage` matching the current stage
-3. Builds a single `AssertionContext` (CEL context lazy-built once)
+3. Builds a single `AssertionContext` with the current stage (CEL context
+   lazy-built once, stage-aware)
 4. Evaluates all matching assertions via their type-specific evaluator
 5. Returns `AssertionEvaluationResult` with issues, totals, and failure counts
 

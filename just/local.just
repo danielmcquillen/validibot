@@ -254,4 +254,5 @@ test-e2e-energyplus *args:
 # Serve developer documentation locally (port 9000)
 # For contributors and maintainers
 docs-dev:
+    -lsof -ti :9000 | xargs kill 2>/dev/null
     uv run zensical serve -f mkdocs.dev.yml -a localhost:9000

@@ -480,6 +480,122 @@ output, the bare name (`T_room`) resolves to the input value. Use
 this: if a name is ambiguous, the form requires the `output.` prefix for
 output signals.
 
+## How output variables are elevated into the CEL context
+
+Output signals from advanced validators (FMU, EnergyPlus) go through a
+multi-stage pipeline before they become CEL variables. This section traces
+the full path from container output to evaluable expression.
+
+### Stage 1: Extraction — `extract_output_signals()`
+
+Each advanced validator class defines a `extract_output_signals()` classmethod
+that converts the container's output envelope into a flat Python dict of
+signal names to values. For FMU validators, this dict contains the final
+time-step values of each output variable:
+
+```python
+# FMU extract_output_signals() returns:
+{"T_room": 296.63, "Q_cooling_actual": 5172.83}
+```
+
+This method is called in `AdvancedValidator.post_execute_validate()` after
+the container completes. The extracted dict is stored in
+`ValidationResult.signals` and later persisted to `run.summary` by the
+processor's `store_signals()` method.
+
+### Stage 2: Payload merging — `_build_assertion_payload()`
+
+Before output-stage assertions are evaluated, `_build_assertion_payload()`
+(`validators/base/advanced.py`) merges the submission's input data with the
+extracted output signals. The merge uses two rules:
+
+1. **No collision**: If an output signal name doesn't exist in the submission
+   inputs, it gets a bare top-level key (e.g., `payload["T_room"] = 296.63`).
+2. **Collision**: If a submission input already has that key (e.g., the user
+   submitted `Q_cooling_max` and the model also outputs `Q_cooling_max`),
+   the input value keeps the bare name and the output is only reachable
+   through the nested namespace.
+
+In *all* cases, every output signal is also placed in a nested `output` dict:
+
+```python
+# Merged assertion payload:
+{
+    "T_outdoor": 308.15,           # from submission (input)
+    "Q_equipment": 5000,           # from submission (input)
+    "Q_cooling_max": 7000,         # from submission (input)
+    "T_room": 296.63,              # from output (no collision → bare)
+    "Q_cooling_actual": 5172.83,   # from output (no collision → bare)
+    "output": {                    # nested namespace (ALL outputs)
+        "T_room": 296.63,
+        "Q_cooling_actual": 5172.83,
+    },
+}
+```
+
+### Stage 3: CEL context building — `_build_cel_context()`
+
+The merged payload flows into `_build_cel_context()`, which builds the
+activation dict that CEL expressions evaluate against. At the output stage
+on a processor-backed validator, the context builder exposes every top-level
+payload key as a CEL variable (see step 5 above). This means:
+
+- `T_room` becomes a CEL variable with value `296.63`
+- `output` becomes a CEL variable whose value is a Python dict
+  `{"T_room": 296.63, "Q_cooling_actual": 5172.83}`
+
+### Stage 4: CEL evaluation — standard member access
+
+When cel-python compiles the expression `output.T_room < 300.15`, it parses
+the dot as **member access** — the standard CEL operator for selecting a
+field from a map or message. At evaluation time:
+
+1. CEL looks up the variable `output` in the activation context
+2. Finds the Python dict `{"T_room": 296.63, ...}`
+3. cel-python's `json_to_cel()` converts the dict to a CEL `MapType`
+4. The `.T_room` selector retrieves the value `296.63` from the map
+5. The comparison `296.63 < 300.15` evaluates to `true`
+
+This is standard CEL — no custom operators, no dialect extensions. The
+`output` variable is a real CEL map, and `.T_room` is standard field
+selection on that map. The same syntax works in Google's cel-go, cel-java,
+and any other conformant CEL implementation.
+
+### Why nested dicts, not flat dotted keys?
+
+An earlier implementation stored output signals as flat dotted keys:
+`context["output.T_room"] = 296.63`. This **does not work** for two reasons:
+
+1. **CEL parsing**: CEL parses `output.T_room` as member access (`output`
+   variable, `T_room` field), not as a single identifier with a dot. A flat
+   key `"output.T_room"` would require backtick-quoting in CEL, which is
+   non-obvious and breaks the clean syntax.
+
+2. **Path resolution**: `_resolve_path()` splits on dots to navigate nested
+   structures. Given `data["output.T_room"]`, the resolver would look for
+   `data["output"]["T_room"]` and fail because the key is flat, not nested.
+
+The nested dict structure satisfies both CEL's member access semantics and
+the dot-path resolution used by basic assertions.
+
+### Summary: the elevation pipeline
+
+```
+Container output envelope
+    │
+    ▼
+extract_output_signals()          →  {"T_room": 296.63, ...}
+    │
+    ▼
+_build_assertion_payload()        →  {..., "output": {"T_room": 296.63}}
+    │
+    ▼
+_build_cel_context()              →  CEL activation: {"output": MapType, "T_room": 296.63, ...}
+    │
+    ▼
+CEL: output.T_room < 300.15      →  member access on MapType → 296.63 < 300.15 → true
+```
+
 ## Path resolution
 
 Two parallel `_resolve_path()` implementations exist in the codebase:

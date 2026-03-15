@@ -94,7 +94,7 @@ Context:
     <button type="submit" class="btn btn-secondary">{% trans "Save" %}</button>
   </div>
 </form>
-<script>
+<script nonce="{{ csp_nonce }}">
   (function() {
     var form = document.querySelector('#template-variable-edit-modal-content form');
     if (!form) return;

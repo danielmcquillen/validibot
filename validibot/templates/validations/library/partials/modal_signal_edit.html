@@ -5,7 +5,7 @@
      tabindex="-1"
      aria-labelledby="modalSignalEditLabel-{{ entry_id }}"
      aria-hidden="true"
-     hx-on="htmx:afterSwap: bootstrap.Modal.getOrCreateInstance('#modal-signal-edit-{{ entry_id }}').show();">
+     data-show-modal-on-swap="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">

@@ -4,7 +4,7 @@
 {% get_current_language as LANGUAGE_CODE %}
 <html lang="{{ LANGUAGE_CODE }}">
   <head>
-    <script>
+    <script nonce="{{ csp_nonce }}">
       (function applyInitialLeftNavState() {
         const storageKey = 'validibot:leftNavCollapsed';
         try {

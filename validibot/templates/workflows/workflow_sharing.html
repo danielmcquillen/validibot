@@ -91,7 +91,7 @@
 {% endblock modal %}
 {% block inline_javascript %}
   {{ block.super }}
-  <script>
+  <script nonce="{{ csp_nonce }}">
     document.body.addEventListener('close-modal', function(event) {
       const modalEl = document.getElementById('guestInviteModal');
       if (modalEl) {

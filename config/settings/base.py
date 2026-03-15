@@ -287,6 +287,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "csp.middleware.CSPMiddleware",
+    "django_permissions_policy.PermissionsPolicyMiddleware",
     "allauth.account.middleware.AccountMiddleware",
 ]
 
@@ -573,6 +575,59 @@ SUBMISSION_FILE_MAX_BYTES = 1_000_000_000  # 1GB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# REFERRER-POLICY
+# ------------------------------------------------------------------------------
+# Prevents leaking URL parameters (tokens, IDs) to external sites via the
+# Referer header. "strict-origin-when-cross-origin" sends the full URL for
+# same-origin requests but only the origin for cross-origin navigation.
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+
+# PERMISSIONS-POLICY
+# ------------------------------------------------------------------------------
+# Disables browser APIs that Validibot doesn't use. Defense-in-depth against
+# potential XSS or iframe-based attacks accessing device capabilities.
+# https://github.com/adamchainz/django-permissions-policy
+PERMISSIONS_POLICY: dict[str, list[str]] = {
+    "camera": [],
+    "geolocation": [],
+    "microphone": [],
+    "payment": [],
+    "usb": [],
+}
+
+# CONTENT SECURITY POLICY (CSP)
+# ------------------------------------------------------------------------------
+# Report-only mode: logs violations without blocking anything. This lets us
+# identify issues before switching to enforcing mode.
+# https://django-csp.readthedocs.io/
+CONTENT_SECURITY_POLICY_REPORT_ONLY = {
+    "DIRECTIVES": {
+        "default-src": ("'self'",),
+        "script-src": ("'self'",),
+        "style-src": (
+            "'self'",
+            "https://fonts.googleapis.com",
+        ),
+        # Allow inline style= attributes on HTML elements. These are layout
+        # values (heights, widths) not user-controlled content, so the security
+        # risk is negligible and migrating 46 templates to CSS classes isn't
+        # worth the effort.
+        "style-src-attr": ("'unsafe-inline'",),
+        "font-src": (
+            "'self'",
+            "https://fonts.gstatic.com",
+        ),
+        "img-src": ("'self'", "data:"),
+        "connect-src": (
+            "'self'",
+            "https://us.i.posthog.com",
+        ),
+        # Preserves current iframe embedding behavior (e.g., embedded
+        # validation badges).
+        "frame-ancestors": ("*",),
+    },
+}
 
 
 # Workflow validation run settings

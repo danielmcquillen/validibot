@@ -43,7 +43,7 @@
 {% endblock app_content %}
 {% block inline_javascript %}
   {{ block.super }}
-  <script>
+  <script nonce="{{ csp_nonce }}">
     window.addEventListener('DOMContentLoaded', () => {
       const timeSelect = document.querySelector('[data-dashboard-time-range]');
       if (!timeSelect) {

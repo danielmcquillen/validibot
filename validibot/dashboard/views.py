@@ -86,6 +86,13 @@ class WidgetDetailView(LoginRequiredMixin, BreadcrumbMixin, View):
             raise Http404(str(exc)) from exc
 
         widget = definition.instantiate(request=request, time_range=time_range)
+
+        # Widgets scope all queries by organization. If no org is available
+        # (e.g., workflow guest, broken session state), querying without an
+        # org filter would return data across all orgs — a data leak.
+        if widget.get_org() is None:
+            raise Http404("No organization context available for dashboard widgets.")
+
         context = widget.as_context()
         context.update(
             {

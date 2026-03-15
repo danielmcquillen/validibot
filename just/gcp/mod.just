@@ -22,11 +22,9 @@
 # Quick start (new environment):
 #   source .envs/.production/.google-cloud/.just
 #   just gcp init-stage dev           # Create infrastructure
-#   just gcp secrets-init dev         # Create env file template
-#   # Edit .envs/.dev/.google-cloud/.django
-#   just gcp secrets dev              # Upload secrets
-#   just gcp deploy-all dev           # Deploy services
-#   just gcp migrate dev              # Run migrations
+#   # Create .envs/.dev/.google-cloud/.django manually (see .envs.example/)
+#   just gcp secrets dev              # Upload secrets to Secret Manager
+#   just gcp deploy-all dev           # Build, migrate, and deploy services
 #   just gcp setup-data dev           # Seed initial data
 #
 # Daily operations:
@@ -168,9 +166,63 @@ _service-account stage:
 # Build Docker image for Cloud Run (linux/amd64 for Cloud Run on x86_64).
 # Set GCP_BUILD_VALIDIBOT_CLOUD=1 to include the commercial layers (Pro + Cloud).
 # Community users can ignore this flag.
+#
+# Safety: Before building, checks all repos for uncommitted changes. Building
+# from a dirty working tree is dangerous because rsync copies whatever is on
+# disk — you could accidentally deploy unreleased or broken code. The check
+# covers the community repo plus Pro and Cloud (when included). Set
+# GCP_ALLOW_DIRTY=1 to bypass in emergencies.
 build: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
+
+    # ── Dirty-repo guard ────────────────────────────────────────────────
+    # Docker images are tagged with the HEAD commit SHA. If the working
+    # tree has uncommitted changes, the image contents won't match what
+    # that SHA represents in git — making rollbacks unreliable and
+    # debugging impossible ("but that commit doesn't have that code…").
+    #
+    # We check every repo that contributes code to the image:
+    #   1. This repo (community — the Docker build context)
+    #   2. validibot-pro and validibot-cloud (when GCP_BUILD_VALIDIBOT_CLOUD=1)
+    #
+    # In emergencies, set GCP_ALLOW_DIRTY=1 to skip this check.
+    # ────────────────────────────────────────────────────────────────────
+    if [ "${GCP_ALLOW_DIRTY:-0}" != "1" ]; then
+        DIRTY_REPOS=()
+
+        # Check community repo (always — it's the base image)
+        if [ -n "$(git status --porcelain)" ]; then
+            DIRTY_REPOS+=("validibot (community)")
+        fi
+
+        # Check commercial repos when they'll be included in the build
+        if [ "${GCP_BUILD_VALIDIBOT_CLOUD:-0}" = "1" ]; then
+            for REPO in validibot-pro validibot-cloud; do
+                if [ -d "../$REPO" ] && [ -n "$(git -C "../$REPO" status --porcelain)" ]; then
+                    DIRTY_REPOS+=("$REPO")
+                fi
+            done
+        fi
+
+        if [ ${#DIRTY_REPOS[@]} -gt 0 ]; then
+            echo "Error: Uncommitted changes detected in:"
+            for REPO in "${DIRTY_REPOS[@]}"; do
+                echo "  - $REPO"
+            done
+            echo ""
+            echo "Building from a dirty working tree means the image contents"
+            echo "won't match the git SHA tag ({{git_sha}}). This makes rollbacks"
+            echo "unreliable and debugging difficult."
+            echo ""
+            echo "Commit or stash your changes first, or set GCP_ALLOW_DIRTY=1"
+            echo "to bypass this check in an emergency."
+            exit 1
+        fi
+    else
+        echo "Warning: GCP_ALLOW_DIRTY=1 — skipping dirty-repo check."
+        echo "The image may contain uncommitted changes not tracked by git."
+    fi
 
     echo "Building image: {{gcp_image}}:{{git_sha}}"
 
@@ -227,10 +279,22 @@ push:
 # Deploy Services
 # =============================================================================
 
-# Deploy web service to a specific stage
+# Deploy web service to a specific stage.
 # This is the main user-facing service that handles HTTP requests.
 #
-# Usage: just gcp deploy dev | just gcp deploy prod
+# The deploy chain runs in order:
+#   1. build   — Build Docker image (with dirty-repo guard)
+#   2. push    — Push to Artifact Registry
+#   3. _migrate — Run database migrations via Cloud Run Job (new image)
+#   4. _deploy-web — Update the Cloud Run service to the new image
+#
+# Migrations run BEFORE new instances start, so the database schema is
+# always compatible with the code that's about to serve traffic. If
+# migrations fail, the deploy is aborted and the current version keeps
+# running.
+#
+# To skip migrations (e.g., hotfix with no schema changes):
+#   GCP_SKIP_MIGRATE=1 just gcp deploy prod
 #
 # Key configuration:
 #   - min-instances: prod=1 (avoid cold starts), dev/staging=0 (cost saving)
@@ -238,9 +302,9 @@ push:
 #   - memory: 1Gi (sufficient for Django + gunicorn)
 #   - allow-unauthenticated: public web access
 [arg('stage', pattern='dev|staging|prod')]
-deploy stage: _require-gcp-config (_require-not-maintenance stage) build push (_deploy-web stage)
+deploy stage: _require-gcp-config (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-web stage)
 
-# Deploy worker service to a specific stage
+# Deploy worker service to a specific stage.
 # The worker handles background tasks triggered by Cloud Tasks.
 #
 # Key differences from web service:
@@ -248,16 +312,39 @@ deploy stage: _require-gcp-config (_require-not-maintenance stage) build push (_
 #   - Always scales to zero (no warm instances needed)
 #   - Same image as web, different APP_ROLE env var
 #
+# Migrations run before the worker deploy too, because the worker
+# processes may rely on new database schema (new model fields, etc.).
+#
 # Usage: just gcp deploy-worker dev | just gcp deploy-worker prod
 [arg('stage', pattern='dev|staging|prod')]
-deploy-worker stage: _require-gcp-config (_require-not-maintenance stage) build push (_deploy-worker stage)
+deploy-worker stage: _require-gcp-config (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-worker stage)
 
-# Deploy both web and worker to a stage (single build+push)
+# Deploy both web and worker to a stage (single build+push, single migrate).
 # Usage: just gcp deploy-all dev | just gcp deploy-all prod
 [arg('stage', pattern='dev|staging|prod')]
-deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build push (_deploy-web stage) (_deploy-worker stage)
+deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-web stage) (_deploy-worker stage)
     @echo ""
     @echo "All services deployed to {{stage}}"
+    @echo ""
+    @echo "Note: This deploy does NOT upload secrets. If you changed"
+    @echo "environment variables in .envs/, run:"
+    @echo "  just gcp secrets {{stage}}"
+    @echo "  just gcp deploy-all {{stage}}"
+
+# Internal: conditionally run migrations before deploy.
+# Skipped when GCP_SKIP_MIGRATE=1 (for hotfixes with no schema changes).
+[private]
+_maybe-migrate stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "${GCP_SKIP_MIGRATE:-0}" = "1" ]; then
+        echo ""
+        echo "Skipping migrations (GCP_SKIP_MIGRATE=1)"
+        echo "Warning: Ensure the new code is compatible with the current database schema."
+        echo ""
+    else
+        just gcp _migrate "{{stage}}"
+    fi
 
 # Internal: deploy web service (assumes image already built and pushed)
 _deploy-web stage:
@@ -390,14 +477,19 @@ secrets stage: _require-gcp-config
         ENV_FILE=".envs/.{{stage}}/.google-cloud/.django"
     fi
 
-    # Check if env file exists
+    # Each stage must have its own env file with stage-specific values.
+    # These are created manually — never copy from another stage, as
+    # accidentally using production credentials in dev/staging could
+    # cause data corruption or security issues.
     if [ ! -f "$ENV_FILE" ]; then
         echo "Error: $ENV_FILE not found"
         echo ""
-        echo "Create the environment file first. For dev, copy from production:"
-        echo "  mkdir -p .envs/.dev/.google-cloud"
-        echo "  cp .envs/.production/.google-cloud/.django .envs/.dev/.google-cloud/.django"
-        echo "  # Then edit with dev-specific values"
+        echo "Create the environment file manually:"
+        echo "  mkdir -p $(dirname "$ENV_FILE")"
+        echo "  # Create $ENV_FILE with stage-specific values"
+        echo ""
+        echo "See .envs.example/ for the required variables."
+        echo "IMPORTANT: Do NOT copy from another stage's secrets."
         exit 1
     fi
 
@@ -418,48 +510,6 @@ secrets stage: _require-gcp-config
     echo ""
     echo "Secret $SECRET_NAME updated."
     echo "Run 'just gcp deploy {{stage}}' to apply changes."
-
-# Create an environment file template for dev or staging
-# Copies from production template and provides instructions for customization.
-#
-# Usage: just gcp secrets-init dev | just gcp secrets-init staging
-[arg('stage', pattern='dev|staging|prod')]
-secrets-init stage: _require-gcp-config
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [[ ! "{{stage}}" =~ ^(dev|staging)$ ]]; then
-        echo "Error: stage must be 'dev' or 'staging'"
-        exit 1
-    fi
-    TARGET_DIR=".envs/.{{stage}}/.google-cloud"
-    TARGET_FILE="$TARGET_DIR/.django"
-    PROD_FILE=".envs/.production/.google-cloud/.django"
-    if [ ! -f "$PROD_FILE" ]; then
-        echo "Error: Production file not found at $PROD_FILE"
-        exit 1
-    fi
-    mkdir -p "$TARGET_DIR"
-    if [ -s "$TARGET_FILE" ]; then
-        echo "Error: $TARGET_FILE already exists and is not empty"
-        echo "Edit it directly or remove it first."
-        exit 1
-    fi
-    echo "Creating {{stage}} environment file from production template..."
-    cp "$PROD_FILE" "$TARGET_FILE"
-    echo ""
-    echo "Created $TARGET_FILE (copy of production)"
-    echo ""
-    echo "IMPORTANT - Edit the following values for {{stage}}:"
-    echo "  - DATABASE_URL: Update to use {{app_name}}-db-{{stage}}"
-    echo "  - DJANGO_ALLOWED_HOSTS: Add the {{stage}} service URL"
-    echo "  - SITE_URL: Set to the {{stage}} web service URL (the *.run.app URL is fine)"
-    echo "  - WORKER_URL: Set to the {{stage}} worker service URL (the *.run.app URL)"
-    echo "  - CLOUD_SQL_CONNECTION_NAME: Change to {{app_name}}-db-{{stage}}"
-    echo ""
-    echo "Next steps:"
-    echo "  1. Edit $TARGET_FILE                   # Update stage-specific values"
-    echo "  2. Run: just gcp secrets {{stage}}      # Upload secrets"
-    echo "  3. Run: just gcp deploy {{stage}}       # Deploy"
 
 # =============================================================================
 # Operations
@@ -621,17 +671,100 @@ health-check stage: _require-gcp-config
 # Management Commands
 # =============================================================================
 
-# Run database migrations for a stage
-# Creates a temporary Cloud Run Job to run migrations against the database.
+# Run database migrations for a stage.
 #
-# Usage: just gcp migrate dev | just gcp migrate prod
+# This creates (or updates) a Cloud Run Job and executes it. The job uses
+# the same image, service account, Cloud SQL instance, and secrets as the
+# web service — so migrations run in an identical environment.
+#
+# When called standalone (`just gcp migrate prod`), the recipe looks up
+# the image currently deployed on the web service. When called as part of
+# a deploy (`just gcp deploy prod`), the internal `_migrate` recipe passes
+# the newly-built image SHA so migrations run against the NEW code before
+# any instances start serving traffic.
+#
+# The job is NOT deleted after execution — it stays around so you can
+# inspect logs via `gcloud run jobs executions list` or the GCP console.
+# It's updated in-place on subsequent runs.
+#
+# Usage:
+#   just gcp migrate dev        # Run migrations using currently-deployed image
+#   just gcp migrate prod       # Run migrations using currently-deployed image
 [arg('stage', pattern='dev|staging|prod')]
 migrate stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
 
-    # Compute environment-specific names
+    # Determine which image to use: the one currently deployed on the web service.
+    # (When called from the deploy chain, _migrate passes the newly-built image instead.)
+    if [ "{{stage}}" = "prod" ]; then
+        WEB_SERVICE="${APP_NAME}-web"
+    else
+        WEB_SERVICE="${APP_NAME}-web-{{stage}}"
+    fi
+
+    IMAGE=$(gcloud run services describe "$WEB_SERVICE" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="value(spec.template.spec.containers[0].image)" 2>/dev/null) || {
+        echo "Error: Could not determine deployed image for $WEB_SERVICE."
+        echo "Is the web service deployed to {{stage}}?"
+        exit 1
+    }
+
+    echo "Running migrations on {{stage}} with currently-deployed image..."
+    echo "Image: $IMAGE"
+
+    just gcp _run-migrate-job "{{stage}}" "$IMAGE"
+
+# Internal: Run migrations as part of a deploy using the NEWLY-BUILT image.
+#
+# This is the key difference from the public `migrate` recipe: during a
+# deploy, we want to run migrations with the NEW code (which may contain
+# new migration files) BEFORE the new instances start serving traffic.
+# Using the old image would miss any migrations added in this release.
+#
+# Called by: deploy, deploy-all, deploy-worker dependency chains
+[private]
+_migrate stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "Running pre-deploy migrations on {{stage}} with new image..."
+    echo "Image: {{gcp_image}}:{{git_sha}}"
+
+    just gcp _run-migrate-job "{{stage}}" "{{gcp_image}}:{{git_sha}}"
+
+# Internal: The actual Cloud Run Job creation and execution logic.
+#
+# Shared by both `migrate` (standalone) and `_migrate` (deploy chain).
+# Separated to avoid duplicating the job orchestration code.
+#
+# How it works:
+#   1. Compute stage-specific names (job, service account, DB, secret)
+#   2. Create or update the Cloud Run Job with the given image
+#   3. Execute the job and wait for it to complete
+#   4. Check the exit status and fail the recipe if migrations failed
+#   5. Show the execution logs for visibility
+#
+# The job runs: /entrypoint → gosu django → manage.py migrate --noinput
+# This means it goes through the same entrypoint as the web service
+# (loading /secrets/.env, waiting for the DB, etc.) but runs migrate
+# instead of gunicorn.
+[private]
+_run-migrate-job stage image:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+
+    # ── Stage-specific configuration ────────────────────────────────────
+    # Each stage has its own:
+    #   - Job name: so concurrent deploys to different stages don't collide
+    #   - Service account: for security isolation between environments
+    #   - Cloud SQL instance: each stage has its own database
+    #   - Secret: each stage has its own env vars in Secret Manager
+    # ────────────────────────────────────────────────────────────────────
     if [ "{{stage}}" = "prod" ]; then
         JOB_NAME="${APP_NAME}-migrate"
         SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
@@ -644,53 +777,82 @@ migrate stage: _require-gcp-config
         SECRET="django-env-{{stage}}"
     fi
 
-    echo "Running migrate on {{stage}}..."
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Database Migration — {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Job:     $JOB_NAME"
+    echo "  Image:   {{image}}"
+    echo "  DB:      $DB"
+    echo "  Account: $SA"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
 
-    # Use the image currently deployed on the web service (not :latest)
-    if [ "{{stage}}" = "prod" ]; then WEB_SERVICE="${APP_NAME}-web"; else WEB_SERVICE="${APP_NAME}-web-{{stage}}"; fi
-    DEPLOYED_IMAGE=$(gcloud run services describe "$WEB_SERVICE" \
-        --region {{gcp_region}} \
-        --project {{gcp_project}} \
-        --format="value(spec.template.spec.containers[0].image)" 2>/dev/null) || {
-        echo "Error: Could not determine deployed image. Is the web service deployed?"
-        echo "Falling back to :latest"
-        DEPLOYED_IMAGE="{{gcp_image}}:latest"
-    }
-    echo "Using image: $DEPLOYED_IMAGE"
-
-    # Delete existing job if present
-    gcloud run jobs delete "$JOB_NAME" --region {{gcp_region}} --project {{gcp_project}} --quiet 2>/dev/null || true
-
-    # Create and run job
+    # ── Create or update the job ────────────────────────────────────────
+    # We use `create --update-if-exists` (replaces delete + create) so
+    # previous execution history is preserved for debugging. The job
+    # definition is updated with the new image on each deploy.
+    # ────────────────────────────────────────────────────────────────────
+    echo "Creating/updating Cloud Run Job '$JOB_NAME'..."
     gcloud run jobs create "$JOB_NAME" \
-        --image "$DEPLOYED_IMAGE" \
+        --image "{{image}}" \
         --region {{gcp_region}} \
         --service-account "$SA" \
         --set-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
         --memory 1Gi \
+        --task-timeout 300s \
         --command "/bin/bash" \
-        --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput" \
-        --project {{gcp_project}}
+        --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && echo '✓ Migrations complete'" \
+        --project {{gcp_project}} \
+        --update-if-exists \
+        --quiet
 
-    # Execute and wait for completion
+    # ── Execute and wait ────────────────────────────────────────────────
+    # --wait blocks until the job finishes (success or failure).
+    # We capture the execution name for log retrieval.
+    # ────────────────────────────────────────────────────────────────────
+    echo "Executing migrations (waiting for completion)..."
     EXECUTION=$(gcloud run jobs execute "$JOB_NAME" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
         --wait \
-        --format="value(metadata.name)")
+        --format="value(metadata.name)" 2>&1) || {
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  ✗ MIGRATION FAILED on {{stage}}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "  The deploy has been ABORTED. No new instances will be started."
+        echo "  The currently-deployed version continues serving traffic."
+        echo ""
+        echo "  To investigate:"
+        echo "    gcloud run jobs executions list --job=$JOB_NAME --region={{gcp_region}} --project={{gcp_project}}"
+        echo "    gcloud beta run jobs executions logs read <execution-name> --region={{gcp_region}} --project={{gcp_project}}"
+        echo ""
+        echo "  Common causes:"
+        echo "    - Migration file conflicts (two developers created migrations on the same app)"
+        echo "    - Database schema already modified manually"
+        echo "    - Missing data migration dependency"
+        echo ""
+        exit 1
+    }
 
-    echo "Execution: $EXECUTION"
+    # ── Show execution logs ─────────────────────────────────────────────
+    # Non-fatal: the gcloud beta logs command can occasionally crash
+    # even when the job succeeded. Don't fail the deploy for a log
+    # retrieval issue.
+    # ────────────────────────────────────────────────────────────────────
     echo ""
-
-    # Show logs from the completed execution (non-fatal: gcloud CLI can crash
-    # on logs read even when the job succeeded - don't fail the recipe for that)
+    echo "Execution: $EXECUTION"
     gcloud beta run jobs executions logs read "$EXECUTION" \
         --region {{gcp_region}} \
-        --project {{gcp_project}} || true
+        --project {{gcp_project}} 2>/dev/null || echo "(Could not retrieve execution logs — check GCP console)"
 
     echo ""
-    echo "migrate completed on {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ✓ Migrations complete on {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Run setup_validibot to initialize site and default data
 # Configures site domain, validators, roles, workspaces, etc.
@@ -860,12 +1022,10 @@ job-logs job:
 #
 # Full setup workflow:
 #   1. just gcp init-stage dev          # Create infrastructure
-#   2. just gcp secrets-init dev        # Create env file template
-#   3. Edit .envs/.dev/.google-cloud/.django  # Configure dev-specific values
-#   4. just gcp secrets dev             # Upload secrets
-#   5. just gcp deploy-all dev          # Deploy services
-#   6. just gcp migrate dev             # Run migrations
-#   7. just gcp setup-data dev          # Seed initial data
+#   2. Create .envs/.dev/.google-cloud/.django manually (see .envs.example/)
+#   3. just gcp secrets dev             # Upload secrets to Secret Manager
+#   4. just gcp deploy-all dev          # Build, migrate, and deploy services
+#   5. just gcp setup-data dev          # Seed initial data
 #
 # =============================================================================
 

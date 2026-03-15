@@ -15,8 +15,11 @@ DEPLOYMENT_TARGET = env("DEPLOYMENT_TARGET", default="local_docker_compose")
 # https://docs.djangoproject.com/en/dev/ref/settings/#secret-key
 SECRET_KEY = env(
     "DJANGO_SECRET_KEY",
-    default="vYFSWUQZszpWqRqe0s8sdP60HQGXX0t8erh3EZMFOLIxeMCZnDn9zOGnTJGW4n5B",
+    default=None,
 )
+if not SECRET_KEY:
+    raise ValueError("DJANGO_SECRET_KEY must be set in local development")
+
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
 ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1"]  # noqa: S104
 

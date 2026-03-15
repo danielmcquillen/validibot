@@ -8,8 +8,21 @@ set -o nounset
 
 # Note: Environment variables are loaded by the entrypoint script (/entrypoint)
 
-# Run database migrations without prompting for input.
-python manage.py migrate --noinput
+# ── Database migrations are NOT run here ────────────────────────────
+# Migrations run as a dedicated Cloud Run Job BEFORE new instances
+# start receiving traffic (see `just gcp deploy`). This prevents:
+#   - Multiple instances racing to apply the same migration
+#   - Wasted DB connections from concurrent SELECT ... FOR UPDATE locks
+#   - Unclear error attribution (migration failure vs app failure)
+#
+# For Docker Compose deployments, migrations run via `just migrate`
+# before starting the stack.
+#
+# If you need to run migrations manually:
+#   GCP:   just gcp migrate <stage>
+#   Local: just migrate
+# ────────────────────────────────────────────────────────────────────
+
 # Collect static assets for serving.
 python manage.py collectstatic --noinput
 

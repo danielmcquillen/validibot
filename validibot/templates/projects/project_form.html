@@ -42,7 +42,7 @@
 {% endblock app_content %}
 {% block inline_javascript %}
   {{ block.super }}
-  <script>
+  <script nonce="{{ csp_nonce }}">
     window.addEventListener("DOMContentLoaded", () => {
       const input = document.querySelector('[data-testid="project-color-input"]');
       if (!input) {

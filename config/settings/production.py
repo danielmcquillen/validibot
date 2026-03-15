@@ -366,8 +366,10 @@ elif EMAIL_HOST:
     EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
     EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 else:
-    # Console backend (for development/testing)
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+    raise ImproperlyConfigured(
+        "Production requires an email backend. Set POSTMARK_SERVER_TOKEN "
+        "or EMAIL_HOST in the environment."
+    )
 
 # ADMIN
 # ------------------------------------------------------------------------------

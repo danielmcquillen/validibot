@@ -1,5 +1,5 @@
 {% if include_tracker and posthog_key %}
-  <script>
+  <script nonce="{{ csp_nonce }}">
     ! function(t, e) {
       var o, n, p, r;
       e.__SV || (window.posthog = e, e._i = [], e.init = function(i, s, a) {

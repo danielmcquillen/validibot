@@ -591,11 +591,9 @@ dependencies = [
     { name = "asgiref" },
     { name = "django" },
 ]
-
-sdist = { url = "https://files.pythonhosted.org/packages/84/c1/d3385f4c3169c1d6eea3c63aed0f36af51478c1d72e46db12bb1a08f8034/django_allauth-65.15.0.tar.gz", hash = "sha256:b404d48cf0c3ee14dacc834c541f30adedba2ff1c433980ecc494d6cb0b395a8", size = 2215709, upload-time = "2026-03-09T13:51:28.675Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/84/c1/d3385f4c3169c1d6eea3c63aed0f36af51478c1d72e46db12bb1a08f8034/django_allauth-65.15.0.tar.gz", hash = "sha256:b404d48cf0c3ee14dacc834c541f30adedba2ff1c433980ecc494d6cb0b395a8", size = 2215709 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/75/b8/c8411339171bd8bc075c09ef190fb42195e9a2149e5c5026e094fe62fce0/django_allauth-65.15.0-py3-none-any.whl", hash = "sha256:ad9fc49c49a9368eaa5bb95456b76e2a4f377b3c6862ee8443507816578c098d", size = 2022994, upload-time = "2026-03-09T13:51:19.711Z" },
-
+    { url = "https://files.pythonhosted.org/packages/75/b8/c8411339171bd8bc075c09ef190fb42195e9a2149e5c5026e094fe62fce0/django_allauth-65.15.0-py3-none-any.whl", hash = "sha256:ad9fc49c49a9368eaa5bb95456b76e2a4f377b3c6862ee8443507816578c098d", size = 2022994 },
 ]
 
 [package.optional-dependencies]
@@ -683,6 +681,19 @@ wheels = [
 ]
 
 [[package]]
+name = "django-csp"
+version = "4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/52/db/23567744dff2169aadb095f726088074476b24dfff5a759ffcf6389cf401/django_csp-4.0.tar.gz", hash = "sha256:b27010bb702eb20a3dad329178df2b61a2b82d338b70fbdc13c3a3bd28712833", size = 20028 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e1/a4/736ab90ee527a23e194d1ce7358c6bcced66381ced83c28268b4aea236f7/django_csp-4.0-py3-none-any.whl", hash = "sha256:d5a0a05463a6b75a4f1fc1828c58c89af8db9364d09fc6e12f122b4d7f3d00dc", size = 25689 },
+]
+
+[[package]]
 name = "django-debug-toolbar"
 version = "6.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -752,6 +763,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/81/60/5e232c32a2c977cc1af8c70a38ef436598bc649ad89c2c4568454edde2c9/django_model_utils-5.0.0.tar.gz", hash = "sha256:041cdd6230d2fbf6cd943e1969318bce762272077f4ecd333ab2263924b4e5eb", size = 80559 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fd/13/87a42048700c54bfce35900a34e2031245132775fb24363fc0e33664aa9c/django_model_utils-5.0.0-py3-none-any.whl", hash = "sha256:fec78e6c323d565a221f7c4edc703f4567d7bb1caeafe1acd16a80c5ff82056b", size = 42630 },
+]
+
+[[package]]
+name = "django-permissions-policy"
+version = "4.28.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "asgiref" },
+    { name = "django" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ce/ad/6445c82d70bcac2b9e2b3e42b59553a195c799c63b7187c310a02a775dc2/django_permissions_policy-4.28.0.tar.gz", hash = "sha256:956ce8b08b82efb11ebabe3c5b11a6eb380f44eb543b3a2130adaec5d7fec651", size = 10728 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/7c/395dff3ce4a299de2b0f069c2572bc8f20c149066b6c754b2a08486dacf9/django_permissions_policy-4.28.0-py3-none-any.whl", hash = "sha256:bea079be235a7e10325d4eb84cfb97f44e1ee8a1786da0e3f9122c0a0b1e66ec", size = 6773 },
 ]
 
 [[package]]
@@ -2901,11 +2925,9 @@ dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-
-
-sdist = { url = "https://files.pythonhosted.org/packages/63/01/59d92650146c6340e333c22b8a238561b022e8641ba255298dfe46b4137d/stripe-14.4.1.tar.gz", hash = "sha256:e3eecfb336819326cd2ab9a93f98eb01b49c4d4d93c9d167a52a68ab99c19a88", size = 1473321, upload-time = "2026-03-06T22:59:45.822Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/63/01/59d92650146c6340e333c22b8a238561b022e8641ba255298dfe46b4137d/stripe-14.4.1.tar.gz", hash = "sha256:e3eecfb336819326cd2ab9a93f98eb01b49c4d4d93c9d167a52a68ab99c19a88", size = 1473321 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/35/0f/547eab75052384a72771b396a484556e5636629c031e5eafa8dc27af89ed/stripe-14.4.1-py3-none-any.whl", hash = "sha256:d6722b985dc3b4d6da01ff4fa95a975d3694a89bba96895bf17aa858073ff2b8", size = 2116642, upload-time = "2026-03-06T22:59:43.72Z" },
+    { url = "https://files.pythonhosted.org/packages/35/0f/547eab75052384a72771b396a484556e5636629c031e5eafa8dc27af89ed/stripe-14.4.1-py3-none-any.whl", hash = "sha256:d6722b985dc3b4d6da01ff4fa95a975d3694a89bba96895bf17aa858073ff2b8", size = 2116642 },
 ]
 
 [[package]]
@@ -3134,7 +3156,6 @@ source = { editable = "." }
 dependencies = [
     { name = "argon2-cffi" },
     { name = "authlib" },
-    { name = "bleach" },
     { name = "cel-python" },
     { name = "celery", extra = ["redis"] },
     { name = "crispy-bootstrap5" },
@@ -3147,10 +3168,12 @@ dependencies = [
     { name = "django-cloud-tasks" },
     { name = "django-cors-headers" },
     { name = "django-crispy-forms" },
+    { name = "django-csp" },
     { name = "django-environ" },
     { name = "django-filter" },
     { name = "django-markdownify" },
     { name = "django-model-utils" },
+    { name = "django-permissions-policy" },
     { name = "django-recaptcha" },
     { name = "django-redis" },
     { name = "django-storages", extra = ["google"] },
@@ -3213,7 +3236,6 @@ dev = [
 requires-dist = [
     { name = "argon2-cffi", specifier = "==25.1.0" },
     { name = "authlib", specifier = "==1.6.9" },
-    { name = "bleach", specifier = "==6.3.0" },
     { name = "cel-python", specifier = "==0.5.0" },
     { name = "celery", extras = ["redis"], specifier = ">=5.6.2" },
     { name = "crispy-bootstrap5", specifier = "==2026.3" },
@@ -3226,10 +3248,12 @@ requires-dist = [
     { name = "django-cloud-tasks", specifier = ">=0.0.4" },
     { name = "django-cors-headers", specifier = "==4.9.0" },
     { name = "django-crispy-forms", specifier = "==2.6" },
+    { name = "django-csp", specifier = ">=4.0" },
     { name = "django-environ", specifier = "==0.13.0" },
     { name = "django-filter", specifier = "==25.2" },
     { name = "django-markdownify", specifier = "==0.9.6" },
     { name = "django-model-utils", specifier = "==5.0.0" },
+    { name = "django-permissions-policy", specifier = ">=4.28.0" },
     { name = "django-recaptcha", specifier = ">=4.1.0" },
     { name = "django-redis", specifier = "==6.0.0" },
     { name = "django-storages", extras = ["google"], specifier = "==1.14.6" },
@@ -3291,11 +3315,9 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-
-sdist = { url = "https://files.pythonhosted.org/packages/a7/2a/62d6eca426c753bcd911af97289da00846c9d1a4fab517399ac6067c21ba/validibot_shared-0.3.1.tar.gz", hash = "sha256:e5b6bcd64ac8319fe958c2fb23fbb5050b36812d26ab10a5f5117c5580799159", size = 21556, upload-time = "2026-03-09T23:44:28.729Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/2a/62d6eca426c753bcd911af97289da00846c9d1a4fab517399ac6067c21ba/validibot_shared-0.3.1.tar.gz", hash = "sha256:e5b6bcd64ac8319fe958c2fb23fbb5050b36812d26ab10a5f5117c5580799159", size = 21556 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/13/94f62bb430e22fa52b6b51e453284a4e098870133d3f528ca0201daf85d3/validibot_shared-0.3.1-py3-none-any.whl", hash = "sha256:9a1bf92d50572f261cd9516d718c1e81bedc8862303be673e1f33e2e770c39ee", size = 22616, upload-time = "2026-03-09T23:44:27.224Z" },
-
+    { url = "https://files.pythonhosted.org/packages/be/13/94f62bb430e22fa52b6b51e453284a4e098870133d3f528ca0201daf85d3/validibot_shared-0.3.1-py3-none-any.whl", hash = "sha256:9a1bf92d50572f261cd9516d718c1e81bedc8862303be673e1f33e2e770c39ee", size = 22616 },
 ]
 
 [[package]]

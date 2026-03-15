@@ -1,7 +1,7 @@
 import json
 
-import bleach
 import markdown2
+import nh3
 from django.http import HttpRequest
 from django.urls import reverse
 from lxml import etree
@@ -76,14 +76,14 @@ ALLOWED_TAGS = [
     "img",
 ]
 ALLOWED_ATTRS = {
-    "a": ["href", "title", "target", "rel"],
-    "img": ["src", "alt", "title", "width", "height"],
-    "th": ["colspan", "rowspan"],
-    "td": ["colspan", "rowspan"],
-    "span": ["class"],
-    "code": ["class"],
+    "a": {"href", "title", "target"},
+    "img": {"src", "alt", "title", "width", "height"},
+    "th": {"colspan", "rowspan"},
+    "td": {"colspan", "rowspan"},
+    "span": {"class"},
+    "code": {"class"},
 }
-ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
+ALLOWED_URL_SCHEMES = {"http", "https", "mailto"}
 
 
 def render_markdown_safe(text_md: str) -> str:
@@ -96,25 +96,14 @@ def render_markdown_safe(text_md: str) -> str:
             "cuddled-lists",
         ],
     )
-    # First pass: clean
-    html = bleach.clean(
+    return nh3.clean(
         html,
-        tags=ALLOWED_TAGS,
+        tags=set(ALLOWED_TAGS),
         attributes=ALLOWED_ATTRS,
-        protocols=ALLOWED_PROTOCOLS,
-        strip=True,
+        url_schemes=ALLOWED_URL_SCHEMES,
+        link_rel="noopener nofollow ugc",
+        strip_comments=True,
     )
-
-    # Second pass: linkify + safe target/rel
-    def set_target(attrs, *, new=False):
-        href = attrs.get("href", "")
-        if href.startswith(("http://", "https://")):
-            attrs["target"] = "_blank"
-            attrs["rel"] = "noopener nofollow ugc"
-        return attrs
-
-    html = bleach.linkify(html, callbacks=[set_target])
-    return html
 
 
 def pretty_xml(text: str) -> str:

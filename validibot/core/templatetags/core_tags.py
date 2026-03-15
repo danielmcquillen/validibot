@@ -94,7 +94,7 @@ def render_markdown_filter(value: str) -> str:
     """
     Render a Markdown string to sanitised HTML and mark it safe for templates.
 
-    Sanitisation is performed by bleach (via render_markdown_safe), so the
+    Sanitisation is performed by nh3 (via render_markdown_safe), so the
     returned value can be used directly in templates without the |safe filter.
     Supports bold, italic, links, lists, code, tables, and strikethrough.
     Script tags, event handlers, and other dangerous constructs are stripped.

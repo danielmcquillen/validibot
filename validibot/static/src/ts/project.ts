@@ -46,6 +46,17 @@ function initializeCharts(root: ParentNode | Document = document): void {
             canvas.dataset.chartInitialized = '1';
         } catch (err) {
             console.error('Error initialising dashboard chart', err);
+            // Replace the canvas with a user-visible error message so the
+            // widget doesn't just show a blank space. This content is
+            // hardcoded (no user input), so innerHTML is safe here.
+            const wrapper = canvas.closest('.chart-wrapper');
+            if (wrapper) {
+                wrapper.innerHTML =
+                    '<div class="d-flex flex-column justify-content-center align-items-center text-center py-4 text-muted">' +
+                    '<i class="bi bi-exclamation-triangle display-6 mb-2"></i>' +
+                    '<p class="small mb-0">Chart failed to load</p>' +
+                    '</div>';
+            }
         }
     });
 }
@@ -312,12 +323,26 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // Show the shared help drawer after HTMX swaps content into it.
+// Also auto-show modals that have data-show-modal-on-swap (replaces inline
+// hx-on handlers which are blocked by Content Security Policy).
 document.body.addEventListener('htmx:afterSwap', (event: Event) => {
     const detail = (event as CustomEvent).detail;
-    if (detail?.target?.id === 'helpDrawerBody') {
+    const target = detail?.target;
+
+    if (target?.id === 'helpDrawerBody') {
         const drawerEl = document.getElementById('helpDrawer');
         if (drawerEl) {
             bootstrap.Offcanvas.getOrCreateInstance(drawerEl).show();
+        }
+    }
+
+    // Auto-show modals marked with data-show-modal-on-swap after HTMx swaps
+    // their content in. Used by signal-edit modals (and any future modal that
+    // needs to open automatically after a content refresh).
+    if (target instanceof HTMLElement) {
+        const modal = target.closest<HTMLElement>('[data-show-modal-on-swap]');
+        if (modal) {
+            bootstrap.Modal.getOrCreateInstance(modal).show();
         }
     }
 });

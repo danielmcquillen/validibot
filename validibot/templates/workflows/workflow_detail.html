@@ -267,7 +267,7 @@
 {% endblock modal %}
 {% block inline_javascript %}
   {{ block.super }}
-  <script>
+  <script nonce="{{ csp_nonce }}">
     document.body.addEventListener('close-modal', function(event) {
       const detail = event?.detail;
       const targetId =

@@ -17,6 +17,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_http_methods
 
+from validibot.core.filesafety import sanitize_filename
 from validibot.core.forms import SupportMessageForm
 
 logger = logging.getLogger(__name__)
@@ -120,7 +121,8 @@ def data_download(request: HttpRequest) -> HttpResponse:
         logger.warning("Download path does not exist: %s", path)
         return HttpResponseForbidden("File not found.")
 
-    filename = request.GET.get("filename") or full_path.name
+    raw_filename = request.GET.get("filename") or full_path.name
+    filename = sanitize_filename(raw_filename, fallback=full_path.name)
     content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
     return FileResponse(

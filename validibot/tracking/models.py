@@ -77,6 +77,10 @@ class TrackingEvent(BaseEvent):
     class Meta:
         indexes = [
             models.Index(fields=["project", "event_type"]),
+            # Dashboard widgets aggregate events by created timestamp
+            # (TruncHour/TruncDay with org filter). Without this index,
+            # 90-day queries can table-scan the entire events table.
+            models.Index(fields=["org", "created"]),
         ]
 
     event_type = models.CharField(

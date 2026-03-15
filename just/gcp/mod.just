@@ -796,24 +796,48 @@ _run-migrate-job stage image:
     echo ""
 
     # ── Create or update the job ────────────────────────────────────────
-    # We use `create --update-if-exists` (replaces delete + create) so
-    # previous execution history is preserved for debugging. The job
-    # definition is updated with the new image on each deploy.
+    # Check if the job already exists. If so, update it with the new image.
+    # If not, create it fresh. We use `update` rather than delete+create
+    # so that previous execution history is preserved for debugging.
     # ────────────────────────────────────────────────────────────────────
-    echo "Creating/updating Cloud Run Job '$JOB_NAME'..."
-    gcloud run jobs create "$JOB_NAME" \
-        --image "{{image}}" \
+    JOB_ARGS="--image {{image}} \
         --region {{gcp_region}} \
-        --service-account "$SA" \
-        --set-cloudsql-instances "$DB" \
-        --set-secrets=/secrets/.env="$SECRET":latest \
+        --service-account $SA \
+        --set-cloudsql-instances $DB \
+        --set-secrets=/secrets/.env=$SECRET:latest \
         --memory 1Gi \
         --task-timeout 300s \
-        --command "/bin/bash" \
-        --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && echo '✓ Migrations complete'" \
-        --project {{gcp_project}} \
-        --update-if-exists \
-        --quiet
+        --command /bin/bash \
+        --args -c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && echo Migrations complete \
+        --project {{gcp_project}}"
+
+    if gcloud run jobs describe "$JOB_NAME" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
+        echo "Updating Cloud Run Job '$JOB_NAME'..."
+        gcloud run jobs update "$JOB_NAME" \
+            --image "{{image}}" \
+            --region {{gcp_region}} \
+            --set-secrets=/secrets/.env="$SECRET":latest \
+            --memory 1Gi \
+            --task-timeout 300s \
+            --command "/bin/bash" \
+            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && echo Migrations complete" \
+            --project {{gcp_project}} \
+            --quiet
+    else
+        echo "Creating Cloud Run Job '$JOB_NAME'..."
+        gcloud run jobs create "$JOB_NAME" \
+            --image "{{image}}" \
+            --region {{gcp_region}} \
+            --service-account "$SA" \
+            --set-cloudsql-instances "$DB" \
+            --set-secrets=/secrets/.env="$SECRET":latest \
+            --memory 1Gi \
+            --task-timeout 300s \
+            --command "/bin/bash" \
+            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && echo Migrations complete" \
+            --project {{gcp_project}} \
+            --quiet
+    fi
 
     # ── Execute and wait ────────────────────────────────────────────────
     # --wait blocks until the job finishes (success or failure).

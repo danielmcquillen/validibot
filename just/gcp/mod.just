@@ -257,7 +257,14 @@ build: _require-gcp-config
         DOCKERFILE="_validibot-cloud/deploy/Dockerfile"
     fi
 
-    docker build --platform linux/amd64 \
+    # --provenance=false: Docker 28+ defaults to provenance attestations,
+    # which creates a multi-platform manifest index. When pushing a
+    # cross-platform image (amd64 built on arm64 Mac), Artifact Registry
+    # sees the manifest but can't resolve the platform, causing:
+    #   "image was found but does not provide any platform"
+    # Disabling provenance produces a simple single-platform image that
+    # pushes and deploys correctly.
+    docker build --platform linux/amd64 --provenance=false \
         -f "$DOCKERFILE" \
         -t {{gcp_image}}:{{git_sha}} \
         -t {{gcp_image}}:latest .

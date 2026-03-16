@@ -563,6 +563,12 @@ class ValidationCallbackService:
         """
         from validibot.core.tasks import enqueue_validation_run
 
+        # NOTE: resume_from_step here is the *completed* step's order, not
+        # the next step's order. The orchestrator uses order__gt (not __gte)
+        # to skip it and start from the next one. This avoids fabricating a
+        # step order value that doesn't exist in the database — WorkflowStep
+        # uses gapped numbering (10, 20, 30…).
+        #
         # user_id can be NULL if the run was created via API without user
         # context. Pass 0 to signal "no user" — execute_workflow_steps()
         # handles this gracefully.

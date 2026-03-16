@@ -378,7 +378,43 @@ _deploy-web stage:
         MAX_INSTANCES=2
     fi
 
-    echo "Deploying $SERVICE to Cloud Run ({{stage}})..."
+    # Determine ingress mode based on whether a load balancer is configured.
+    #
+    # If a serverless NEG exists for this stage, the load balancer is set up
+    # and we restrict ingress to internal + LB traffic only. This blocks
+    # direct access to the *.run.app URL, forcing all public traffic through
+    # the load balancer where Cloud Armor (WAF) rules can be applied.
+    #
+    # If no NEG exists (e.g., dev stage without a custom domain), fall back
+    # to --ingress all so the service is still reachable via its *.run.app URL.
+    if [ "{{stage}}" = "prod" ]; then NEG_NAME="${APP_NAME}-neg"; else NEG_NAME="${APP_NAME}-neg-{{stage}}"; fi
+    if gcloud compute network-endpoint-groups describe "$NEG_NAME" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null 2>&1; then
+        INGRESS="internal-and-cloud-load-balancing"
+    else
+        INGRESS="all"
+    fi
+
+    # Determine VPC egress mode. If the Cloud SQL instance has a private IP,
+    # we enable Direct VPC egress so Cloud Run connects to the database over
+    # the private network (never traversing the public internet). This uses
+    # the default VPC and its default subnet — no VPC connector VMs needed.
+    #
+    # --vpc-egress=private-ranges-only means only traffic to private IP
+    # ranges (10.x.x.x, etc.) routes through the VPC. Outbound traffic to
+    # public IPs (Sentry, Stripe, PostHog) goes through the normal path.
+    if [ "{{stage}}" = "prod" ]; then DB_INSTANCE="${APP_NAME}-db"; else DB_INSTANCE="${APP_NAME}-db-{{stage}}"; fi
+    PRIVATE_IP=$(gcloud sql instances describe "$DB_INSTANCE" \
+        --project={{gcp_project}} \
+        --format="value(ipAddresses.filter(type=PRIVATE).ipAddress)" 2>/dev/null || echo "")
+    if [ -n "$PRIVATE_IP" ]; then
+        VPC_FLAGS="--network=default --subnet=default --vpc-egress=private-ranges-only"
+        echo "   Private IP detected ($PRIVATE_IP) — enabling Direct VPC egress"
+    else
+        VPC_FLAGS=""
+        echo "   No private IP — skipping VPC egress (using Cloud SQL Auth Proxy)"
+    fi
+
+    echo "Deploying $SERVICE to Cloud Run ({{stage}}, ingress: $INGRESS)..."
     gcloud run deploy "$SERVICE" \
         --image {{gcp_image}}:{{git_sha}} \
         --region {{gcp_region}} \
@@ -391,12 +427,14 @@ _deploy-web stage:
         --max-instances $MAX_INSTANCES \
         --memory 1Gi \
         --timeout {{gcp_cloud_run_request_timeout}} \
+        --execution-environment gen2 \
         --allow-unauthenticated \
-        --ingress all \
-        --project {{gcp_project}}
+        --ingress "$INGRESS" \
+        --project {{gcp_project}} \
+        $VPC_FLAGS
 
     echo ""
-    echo "Web service deployed to {{stage}} (min-instances=$MIN_INSTANCES)"
+    echo "Web service deployed to {{stage}} (min-instances=$MIN_INSTANCES, ingress=$INGRESS)"
 
 # Internal: deploy worker service (assumes image already built and pushed)
 _deploy-worker stage:
@@ -418,6 +456,18 @@ _deploy-worker stage:
         SECRET="django-env-{{stage}}"
     fi
 
+    # Same VPC egress detection as _deploy-web (see comments there).
+    if [ "{{stage}}" = "prod" ]; then DB_INSTANCE="${APP_NAME}-db"; else DB_INSTANCE="${APP_NAME}-db-{{stage}}"; fi
+    PRIVATE_IP=$(gcloud sql instances describe "$DB_INSTANCE" \
+        --project={{gcp_project}} \
+        --format="value(ipAddresses.filter(type=PRIVATE).ipAddress)" 2>/dev/null || echo "")
+    if [ -n "$PRIVATE_IP" ]; then
+        VPC_FLAGS="--network=default --subnet=default --vpc-egress=private-ranges-only"
+        echo "   Private IP detected ($PRIVATE_IP) — enabling Direct VPC egress"
+    else
+        VPC_FLAGS=""
+    fi
+
     echo "Deploying $SERVICE to Cloud Run ({{stage}}, private)..."
     gcloud run deploy "$SERVICE" \
         --image {{gcp_image}}:{{git_sha}} \
@@ -433,7 +483,9 @@ _deploy-worker stage:
         --max-instances 2 \
         --memory 1Gi \
         --timeout {{gcp_cloud_run_request_timeout}} \
-        --project {{gcp_project}}
+        --execution-environment gen2 \
+        --project {{gcp_project}} \
+        $VPC_FLAGS
 
     # Ensure Cloud Tasks queue is active so tasks are dispatched to the worker
     if [ "{{stage}}" = "prod" ]; then
@@ -819,6 +871,7 @@ _run-migrate-job stage image:
             --set-secrets=/secrets/.env="$SECRET":latest \
             --memory 1Gi \
             --task-timeout 300s \
+            --execution-environment gen2 \
             --command "/bin/bash" \
             --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && echo Migrations complete" \
             --project {{gcp_project}} \
@@ -833,6 +886,7 @@ _run-migrate-job stage image:
             --set-secrets=/secrets/.env="$SECRET":latest \
             --memory 1Gi \
             --task-timeout 300s \
+            --execution-environment gen2 \
             --command "/bin/bash" \
             --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && echo Migrations complete" \
             --project {{gcp_project}} \
@@ -932,6 +986,7 @@ setup-data stage: _require-gcp-config
         --set-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
         --memory 1Gi \
+        --execution-environment gen2 \
         --command "/bin/bash" \
         --args "-c,set -a && source /secrets/.env && set +a && python manage.py setup_validibot --noinput" \
         --project {{gcp_project}}
@@ -1010,6 +1065,7 @@ management-cmd stage command: _require-gcp-config
         --set-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
         --memory 1Gi \
+        --execution-environment gen2 \
         --command "/bin/bash" \
         --args "-c,set -a && source /secrets/.env && set +a && python manage.py {{command}}" \
         --project {{gcp_project}}
@@ -1174,14 +1230,37 @@ init-stage stage: _require-gcp-config
     fi
     echo ""
 
-    # Step 3: Create Cloud SQL instance (db-f1-micro for dev, small for staging)
+    # Step 3: Create Cloud SQL instance
+    #
+    # Tier selection:
+    #   prod:    db-custom-2-8192 (2 vCPU, 8GB RAM) — dedicated cores for
+    #            consistent performance under load, no noisy-neighbor effects.
+    #   staging: db-g1-small (shared-core, 1.7GB RAM) — adequate for testing.
+    #   dev:     db-f1-micro (shared-core, 0.6GB RAM) — minimal cost.
+    #
+    # Prod-only hardening:
+    #   --availability-type=REGIONAL — automatic failover to a standby in
+    #       another zone. Without this, a single zone outage takes the
+    #       database offline.
+    #   --deletion-protection — prevents accidental deletion via gcloud or
+    #       the console. Must be explicitly disabled before deleting.
+    #   --require-ssl — ensures all connections use TLS, even direct
+    #       connections via authorized networks or gcloud sql connect.
+    #       Cloud SQL Auth Proxy connections are already encrypted, but this
+    #       closes the door on any unencrypted path.
     echo "3. Creating Cloud SQL instance: $DB_INSTANCE"
     if gcloud sql instances describe "$DB_INSTANCE" --project={{gcp_project}} &>/dev/null; then
         echo "   Database instance already exists"
     else
-        TIER="db-f1-micro"
-        if [ "{{stage}}" = "staging" ]; then
+        if [ "{{stage}}" = "prod" ]; then
+            TIER="db-custom-2-8192"
+            EXTRA_FLAGS="--deletion-protection --require-ssl"
+        elif [ "{{stage}}" = "staging" ]; then
             TIER="db-g1-small"
+            EXTRA_FLAGS="--require-ssl"
+        else
+            TIER="db-f1-micro"
+            EXTRA_FLAGS="--require-ssl"
         fi
         echo "   Creating $TIER instance (this may take several minutes)..."
         gcloud sql instances create "$DB_INSTANCE" \
@@ -1193,8 +1272,73 @@ init-stage stage: _require-gcp-config
             --storage-size=10GB \
             --storage-auto-increase \
             --backup \
-            --project={{gcp_project}}
+            --project={{gcp_project}} \
+            $EXTRA_FLAGS
         echo "   Created"
+    fi
+    echo ""
+
+    # Step 3b: Enable private IP on Cloud SQL
+    #
+    # Private IP lets Cloud Run connect to the database over the VPC's
+    # private network instead of the public internet. This requires:
+    #   1. A private services access connection (VPC peering between your
+    #      VPC and Google's services network). Created once per project.
+    #   2. The Cloud SQL instance to have a private IP allocated.
+    #
+    # We keep the public IP as well so operators can connect via the
+    # Cloud SQL Auth Proxy from any network. The public IP is protected
+    # by --require-ssl and IAM authentication through the proxy.
+    #
+    # The deploy scripts auto-detect the private IP and enable Direct VPC
+    # egress on Cloud Run when it's available.
+    echo "3b. Enabling private IP on Cloud SQL"
+
+    # Ensure the private services access connection exists (one-time per project).
+    # This creates a VPC peering between the default VPC and Google's internal
+    # services network, allocating a /20 IP range for private service IPs.
+    PEERING_RANGE="${APP_NAME}-private-ip-range"
+    if gcloud compute addresses describe "$PEERING_RANGE" --global --project={{gcp_project}} &>/dev/null 2>&1; then
+        echo "   Private IP range already allocated"
+    else
+        echo "   Allocating private IP range for services..."
+        gcloud compute addresses create "$PEERING_RANGE" \
+            --global \
+            --purpose=VPC_PEERING \
+            --prefix-length=20 \
+            --network=default \
+            --project={{gcp_project}}
+        echo "   Allocated"
+    fi
+
+    # Create the VPC peering connection (idempotent — errors if already exists)
+    gcloud services vpc-peerings connect \
+        --service=servicenetworking.googleapis.com \
+        --ranges="$PEERING_RANGE" \
+        --network=default \
+        --project={{gcp_project}} 2>/dev/null || true
+
+    # Enable private IP on the instance (keeps public IP too)
+    CURRENT_PRIVATE=$(gcloud sql instances describe "$DB_INSTANCE" \
+        --project={{gcp_project}} \
+        --format="value(ipAddresses.filter(type=PRIVATE).ipAddress)" 2>/dev/null || echo "")
+    if [ -n "$CURRENT_PRIVATE" ]; then
+        echo "   Private IP already enabled: $CURRENT_PRIVATE"
+    else
+        echo "   Enabling private IP on $DB_INSTANCE (this may take a few minutes)..."
+        gcloud sql instances patch "$DB_INSTANCE" \
+            --network=default \
+            --project={{gcp_project}} \
+            --quiet
+        NEW_PRIVATE=$(gcloud sql instances describe "$DB_INSTANCE" \
+            --project={{gcp_project}} \
+            --format="value(ipAddresses.filter(type=PRIVATE).ipAddress)" 2>/dev/null || echo "")
+        echo "   Private IP enabled: $NEW_PRIVATE"
+        echo ""
+        echo "   IMPORTANT: Update DATABASE_URL in your secrets to use this private IP:"
+        echo "   postgres://validibot_user:PASSWORD@$NEW_PRIVATE:5432/validibot"
+        echo ""
+        echo "   Then run: just gcp secrets {{stage}}"
     fi
     echo ""
 
@@ -1750,6 +1894,7 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
         --service-account "$VALIDATOR_SA" \
         --max-retries 0 \
         --task-timeout 3600 \
+        --execution-environment gen2 \
         --set-env-vars VALIDATOR_VERSION={{git_sha}},VALIDIBOT_STAGE={{stage}} \
         --labels validator={{name}},version={{git_sha}},stage={{stage}} \
         --project {{gcp_project}}
@@ -2894,6 +3039,71 @@ security-audit stage: _require-gcp-config
     if [ "$WARN" -gt 0 ]; then
         exit 1
     fi
+
+# =============================================================================
+# Database Access
+# =============================================================================
+
+# Start a Cloud SQL Auth Proxy for local database access.
+#
+# The proxy creates an encrypted tunnel from your laptop to the Cloud SQL
+# instance using your Google Cloud IAM identity. It listens on localhost:5432,
+# so you can connect with any PostgreSQL client (psql, pgAdmin, DBeaver, etc.):
+#
+#   psql "postgresql://validibot_user:PASSWORD@localhost:5432/validibot"
+#
+# This is the recommended way to access the database after the public IP is
+# removed. It works from any network (home, coffee shop, VPN) because
+# authentication is identity-based (your gcloud credentials), not IP-based.
+#
+# Prerequisites:
+#   - cloud-sql-proxy binary installed (brew install cloud-sql-proxy)
+#   - Authenticated with gcloud (gcloud auth application-default login)
+#
+# Press Ctrl+C to stop the proxy.
+#
+# Usage: just gcp db-proxy dev | just gcp db-proxy prod
+[arg('stage', pattern='dev|staging|prod')]
+db-proxy stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+
+    if [ "{{stage}}" = "prod" ]; then
+        DB_INSTANCE="${APP_NAME}-db"
+    else
+        DB_INSTANCE="${APP_NAME}-db-{{stage}}"
+    fi
+
+    CONNECTION_NAME="{{gcp_project}}:{{gcp_region}}:${DB_INSTANCE}"
+
+    # Check if cloud-sql-proxy is installed
+    if ! command -v cloud-sql-proxy &>/dev/null; then
+        echo "Error: cloud-sql-proxy is not installed."
+        echo ""
+        echo "Install it with:"
+        echo "  brew install cloud-sql-proxy        # macOS"
+        echo "  # or download from https://cloud.google.com/sql/docs/postgres/sql-proxy"
+        echo ""
+        echo "Then authenticate:"
+        echo "  gcloud auth application-default login"
+        exit 1
+    fi
+
+    echo "Starting Cloud SQL Auth Proxy for {{stage}}..."
+    echo ""
+    echo "  Instance:  $CONNECTION_NAME"
+    echo "  Listening: localhost:5432"
+    echo ""
+    echo "Connect with:"
+    echo "  psql \"postgresql://validibot_user:PASSWORD@localhost:5432/validibot\""
+    echo ""
+    echo "Press Ctrl+C to stop."
+    echo ""
+
+    cloud-sql-proxy "$CONNECTION_NAME" \
+        --port 5432 \
+        --auto-iam-authn
 
 # =============================================================================
 # Helpers

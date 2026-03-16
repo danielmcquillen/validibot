@@ -110,7 +110,10 @@ LANGUAGE_COOKIE_SECURE = True
 LANGUAGE_COOKIE_SAMESITE = "Lax"
 LANGUAGE_COOKIE_AGE = 31536000  # 1 year
 # https://docs.djangoproject.com/en/dev/ref/settings/#secure-hsts-seconds
-SECURE_HSTS_SECONDS = env.int("DJANGO_SECURE_HSTS_SECONDS", default=2592000)
+# 31536000 = 1 year. The HSTS preload list (hstspreload.org) requires a
+# minimum max-age of 1 year. The previous value of 2592000 (30 days) did
+# not meet this requirement.
+SECURE_HSTS_SECONDS = env.int("DJANGO_SECURE_HSTS_SECONDS", default=31536000)
 # https://docs.djangoproject.com/en/dev/ref/settings/#secure-hsts-include-subdomains
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool(
     "DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS",

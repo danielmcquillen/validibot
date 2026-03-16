@@ -38,8 +38,8 @@
                 </tr>
               </thead>
               <tbody>
-                {% for row in admin_rows %}
-                  {% with membership=row.membership member_count=row.member_count %}
+                {% for membership in admin_rows %}
+                  {% with member_count=membership.member_count %}
                     <tr>
                       <td class="fw-semibold">{{ membership.org.name }}</td>
                       <td class="d-none d-md-table-cell text-muted">{{ membership.org.slug }}</td>

@@ -10,11 +10,13 @@ from django.db import models
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
+from validibot.core.constants import InviteStatus
 from validibot.core.features import CommercialFeature
 from validibot.core.mixins import BreadcrumbMixin
 from validibot.core.mixins import FeatureRequiredMixin
@@ -52,10 +54,11 @@ class MemberListView(
             .prefetch_related("membership_roles__role")
             .order_by("user__name", "user__username")
         )
-        all_invites = MemberInvite.objects.filter(
+        pending_invites = MemberInvite.objects.filter(
             org=self.organization,
+            status=InviteStatus.PENDING,
+            expires_at__gt=timezone.now(),
         ).order_by("-created")
-        pending_invites = [inv for inv in all_invites if inv.is_pending]
         context.update(
             {
                 "organization": self.organization,
@@ -523,11 +526,13 @@ class GuestListView(
             guests[user_id]["grants"].append(grant)
             guests[user_id]["workflow_count"] += 1
 
-        # Get pending guest invites
+        # Get pending guest invites — filter status and expiry in the
+        # queryset so we don't need to re-check in Python.
         pending_invites = (
             GuestInvite.objects.filter(
                 org=self.organization,
-                status=GuestInvite.Status.PENDING,
+                status=InviteStatus.PENDING,
+                expires_at__gt=timezone.now(),
             )
             .select_related("inviter", "invitee_user")
             .prefetch_related("workflows")
@@ -539,7 +544,7 @@ class GuestListView(
                 "organization": self.organization,
                 "guests": list(guests.values()),
                 "guest_count": len(guests),
-                "pending_invites": [inv for inv in pending_invites if inv.is_pending],
+                "pending_invites": pending_invites,
             },
         )
         return context

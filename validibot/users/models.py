@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
 from datetime import timedelta
-from datetime import timezone
 from uuid import uuid4
 
 from django.contrib.auth.models import AbstractUser
@@ -11,6 +9,7 @@ from django.core.files.storage import storages
 from django.db import models
 from django.db.models import CharField
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
@@ -659,7 +658,7 @@ class MemberInvite(TimeStampedModel):
         """Check if invite has expired without updating status."""
         return (
             self.status == self.InviteStatus.EXPIRED
-            or datetime.now(timezone.utc) >= self.expires_at  # noqa: UP017
+            or timezone.now() >= self.expires_at
         )
 
     @property
@@ -676,7 +675,7 @@ class MemberInvite(TimeStampedModel):
         """
         if self.status != self.InviteStatus.PENDING:
             return False
-        if datetime.now(timezone.utc) >= self.expires_at:  # noqa: UP017
+        if timezone.now() >= self.expires_at:
             self.status = self.InviteStatus.EXPIRED
             self.save(update_fields=["status", "modified"])
             return True
@@ -774,7 +773,7 @@ class MemberInvite(TimeStampedModel):
         """
         expiry = kwargs.pop(
             "expires_at",
-            datetime.now(timezone.utc) + timedelta(days=cls.DEFAULT_EXPIRY_DAYS),  # noqa: UP017
+            timezone.now() + timedelta(days=cls.DEFAULT_EXPIRY_DAYS),
         )
         invite = cls.objects.create(expires_at=expiry, **kwargs)
 

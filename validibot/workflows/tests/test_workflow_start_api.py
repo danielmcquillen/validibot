@@ -5,11 +5,16 @@ Covers the ``POST /api/v1/workflows/<uuid>/start/`` endpoint, which accepts
 raw file bodies or multipart uploads and creates validation runs.  Most tests
 stub ``ValidationRunService`` so we verify request parsing, authentication,
 error codes, and response shaping without running actual validators.
+
+Also tests ``_resolve_api_source()``, which reads the ``X-Validibot-Source``
+header to let API clients self-identify their run source (e.g. ``MCP`` for
+AI-agent-initiated runs).
 """
 
 import contextlib
 import json
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -30,6 +35,7 @@ from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
+from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import ValidationRun
@@ -39,6 +45,7 @@ from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.constants import WorkflowStartErrorCode
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
+from validibot.workflows.views_launch_helpers import _resolve_api_source
 
 try:
     from validibot.workflows.tests.factories import WorkflowFactory
@@ -839,3 +846,89 @@ class TestWorkflowStartAPI:
             "detail": "This workflow has no steps defined and cannot be executed.",
             "code": WorkflowStartErrorCode.NO_WORKFLOW_STEPS.value,
         }
+
+
+# ── _resolve_api_source ──────────────────────────────────────────────────
+# The X-Validibot-Source header lets API clients self-identify the source
+# of a validation run (e.g. the MCP server sends "MCP"). The function
+# validates the header against the ValidationRunSource enum and rejects
+# spoofing of LAUNCH_PAGE (which is reserved for the web form).
+
+
+def _fake_request(source_header: str | None = None) -> MagicMock:
+    """Build a minimal Django-like request with an optional source header.
+
+    Django 4.0+ provides ``request.headers`` — a case-insensitive dict
+    that maps standard HTTP header names (e.g. ``x-validibot-source``).
+    The ``_resolve_api_source()`` function uses this modern interface.
+    """
+    headers: dict[str, str] = {}
+    if source_header is not None:
+        headers["x-validibot-source"] = source_header
+    request = MagicMock()
+    request.headers = headers
+    return request
+
+
+class TestResolveApiSource:
+    """Verify that _resolve_api_source correctly maps the X-Validibot-Source
+    header to a ValidationRunSource enum value.
+
+    This is a pure function with no database dependency — it only reads
+    request.headers. The tests ensure the enum constraint is enforced and
+    that LAUNCH_PAGE cannot be spoofed by external API callers.
+    """
+
+    def test_mcp_header_returns_mcp_source(self):
+        """The MCP server sends X-Validibot-Source: MCP on every request."""
+        result = _resolve_api_source(_fake_request("MCP"))
+        assert result == ValidationRunSource.MCP
+
+    def test_api_header_returns_api_source(self):
+        """An explicit 'API' header should be accepted as-is."""
+        result = _resolve_api_source(_fake_request("API"))
+        assert result == ValidationRunSource.API
+
+    def test_missing_header_defaults_to_api(self):
+        """When no header is sent, the source should default to API.
+
+        This preserves backward compatibility — existing API clients that
+        predate the header will continue to be recorded as API-sourced.
+        """
+        result = _resolve_api_source(_fake_request())
+        assert result == ValidationRunSource.API
+
+    def test_empty_header_defaults_to_api(self):
+        """An empty string header is treated the same as missing."""
+        result = _resolve_api_source(_fake_request(""))
+        assert result == ValidationRunSource.API
+
+    def test_invalid_value_defaults_to_api(self):
+        """Unrecognized header values must not crash — default to API.
+
+        This protects against typos or future client versions sending
+        values the server doesn't yet understand.
+        """
+        result = _resolve_api_source(_fake_request("EVIL"))
+        assert result == ValidationRunSource.API
+
+    def test_launch_page_spoofing_blocked(self):
+        """LAUNCH_PAGE is reserved for the web form and must not be claimable
+        by API callers.
+
+        Without this guard, an API caller could send X-Validibot-Source:
+        LAUNCH_PAGE to disguise automated runs as human-initiated, skewing
+        usage analytics and potentially bypassing future rate limits.
+        """
+        result = _resolve_api_source(_fake_request("LAUNCH_PAGE"))
+        assert result == ValidationRunSource.API
+
+    def test_case_sensitive(self):
+        """The header value must match the enum exactly — lowercase 'mcp'
+        should not resolve to MCP.
+
+        ValidationRunSource uses uppercase values. Case-insensitive matching
+        would create ambiguity if new enum members were added.
+        """
+        result = _resolve_api_source(_fake_request("mcp"))
+        assert result == ValidationRunSource.API

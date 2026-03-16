@@ -108,6 +108,25 @@ def launch_web_validation_run(
     )
 
 
+def _resolve_api_source(request: HttpRequest) -> ValidationRunSource:
+    """Determine the run source from the X-Validibot-Source request header.
+
+    API clients can self-identify by sending this header. The value must
+    match a ``ValidationRunSource`` member (e.g. ``MCP``). Invalid or
+    missing values default to ``API``. The ``LAUNCH_PAGE`` source is
+    reserved for the web form and cannot be claimed by API callers.
+    """
+    header_value = request.headers.get("x-validibot-source", "")
+    try:
+        source = ValidationRunSource(header_value)
+    except ValueError:
+        return ValidationRunSource.API
+    # Don't let API callers claim to be the web launch page.
+    if source == ValidationRunSource.LAUNCH_PAGE:
+        return ValidationRunSource.API
+    return source
+
+
 def launch_api_validation_run(
     *,
     request: HttpRequest,
@@ -115,6 +134,11 @@ def launch_api_validation_run(
     submission_build: SubmissionBuild,
 ) -> APIResponse:
     """Launches a workflow run initiated by the REST API.
+
+    The run source defaults to ``API`` but can be overridden via the
+    ``X-Validibot-Source`` header (e.g. ``MCP`` for agent-initiated runs).
+    Only valid ``ValidationRunSource`` values are accepted; invalid
+    values fall back to ``API``.
 
     Args:
         request: DRF/Django request received by the API endpoint.
@@ -125,6 +149,7 @@ def launch_api_validation_run(
         APIResponse: Serializer payload, headers, and status for the run request.
     """
 
+    source = _resolve_api_source(request)
     service = ValidationRunService()
     try:
         launch_result: ValidationRunLaunchResults = service.launch(
@@ -134,7 +159,7 @@ def launch_api_validation_run(
             submission=submission_build.submission,
             metadata=submission_build.metadata,
             user_id=getattr(request.user, "id", None),
-            source=ValidationRunSource.API,
+            source=source,
         )
     except PermissionError:
         payload = {

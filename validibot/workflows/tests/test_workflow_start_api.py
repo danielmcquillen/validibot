@@ -1,3 +1,12 @@
+"""
+Tests for the workflow start REST API endpoint.
+
+Covers the ``POST /api/v1/workflows/<uuid>/start/`` endpoint, which accepts
+raw file bodies or multipart uploads and creates validation runs.  Most tests
+stub ``ValidationRunService`` so we verify request parsing, authentication,
+error codes, and response shaping without running actual validators.
+"""
+
 import contextlib
 import json
 from types import SimpleNamespace
@@ -9,7 +18,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-import validibot.workflows.views as views_mod
+import validibot.workflows.views.launch as views_mod
 import validibot.workflows.views_launch_helpers as launch_helpers_mod
 from validibot.core.models import SiteSettings
 from validibot.events.constants import AppEventType

@@ -1,3 +1,12 @@
+"""
+Tests for the ValidationRun REST API viewset.
+
+Covers the DRF ``ValidationRunViewSet`` — list, retrieve, and filter
+endpoints for validation runs via the ``/api/v1/validations/`` URL
+namespace.  Tests verify authentication, org-scoped filtering,
+pagination, and field-level filtering via ``ValidationRunFilter``.
+"""
+
 import contextlib
 import logging
 from datetime import timedelta
@@ -19,13 +28,13 @@ from validibot.users.models import Role
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
+from validibot.validations.api.viewsets import ValidationRunViewSet
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import ValidationRun
 from validibot.validations.tests.factories import ValidationFindingFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
-from validibot.validations.views import ValidationRunViewSet
 from validibot.workflows.tests.factories import WorkflowFactory
 
 logger = logging.getLogger(__name__)

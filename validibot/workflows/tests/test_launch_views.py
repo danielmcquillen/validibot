@@ -1,3 +1,12 @@
+"""
+Tests for the workflow launch UI views.
+
+Covers the end-to-end launch flow: rendering the launch form, submitting
+files for validation, polling run status, and cancelling in-progress runs.
+The ``ValidationRunService.launch`` method is monkeypatched in most tests
+so we can verify the view layer in isolation from the orchestration engine.
+"""
+
 from __future__ import annotations
 
 import html
@@ -114,7 +123,7 @@ def test_launch_post_creates_run_and_redirects(client, monkeypatch):
         )
 
     monkeypatch.setattr(
-        "validibot.workflows.views.ValidationRunService.launch",
+        "validibot.workflows.views.launch.ValidationRunService.launch",
         fake_launch,
     )
 
@@ -156,7 +165,7 @@ def test_launch_start_records_upload_preference(client, monkeypatch):
         )
 
     monkeypatch.setattr(
-        "validibot.workflows.views.ValidationRunService.launch",
+        "validibot.workflows.views.launch.ValidationRunService.launch",
         fake_launch,
     )
 
@@ -206,7 +215,7 @@ def test_launch_upload_flow_accepts_file_and_creates_submission(client, monkeypa
         )
 
     monkeypatch.setattr(
-        "validibot.workflows.views.ValidationRunService.launch",
+        "validibot.workflows.views.launch.ValidationRunService.launch",
         fake_launch,
     )
 
@@ -257,7 +266,7 @@ def test_launch_inline_flow_accepts_json_payload(client, monkeypatch):
         )
 
     monkeypatch.setattr(
-        "validibot.workflows.views.ValidationRunService.launch",
+        "validibot.workflows.views.launch.ValidationRunService.launch",
         fake_launch,
     )
 

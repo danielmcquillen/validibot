@@ -21,7 +21,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-import validibot.workflows.views as views_mod
+import validibot.workflows.views.launch as views_mod
 import validibot.workflows.views_launch_helpers as launch_helpers_mod
 from validibot.core.models import IdempotencyKey
 from validibot.core.models import IdempotencyKeyStatus

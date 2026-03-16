@@ -1,0 +1,1319 @@
+"""Step management views including the wizard and editing.
+
+Contains the step list, add-step wizard, step form (create/update),
+step edit detail page, template variable editing, display signal
+selection, and step reordering/deletion. Also includes helper functions
+for FMU signal-stage resolution.
+"""
+
+import json
+import logging
+from http import HTTPStatus
+
+from django.contrib import messages
+from django.db import models
+from django.db import transaction
+from django.http import Http404
+from django.http import HttpResponse
+from django.http import HttpResponseRedirect
+from django.shortcuts import get_object_or_404
+from django.shortcuts import render
+from django.template.loader import render_to_string
+from django.utils.translation import gettext_lazy as _
+from django.views import View
+from django.views.generic import TemplateView
+from django.views.generic.edit import FormView
+
+from validibot.actions.constants import ActionCategoryType
+from validibot.actions.models import ActionDefinition
+from validibot.actions.models import SignedCertificateAction
+from validibot.actions.models import SlackMessageAction
+from validibot.actions.registry import get_action_form
+from validibot.core.utils import reverse_with_org
+from validibot.core.view_helpers import hx_trigger_response
+from validibot.submissions.constants import SubmissionDataFormat
+from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.constants import CatalogRunStage
+from validibot.validations.constants import JSONSchemaVersion
+from validibot.validations.constants import ValidationType
+from validibot.validations.constants import ValidatorReleaseState
+from validibot.validations.constants import XMLSchemaType
+from validibot.validations.models import Validator
+from validibot.workflows.forms import WorkflowStepTypeForm
+from validibot.workflows.forms import get_config_form_class
+from validibot.workflows.mixins import WorkflowObjectMixin
+from validibot.workflows.models import Workflow
+from validibot.workflows.models import WorkflowStep
+from validibot.workflows.views.management import MAX_STEP_COUNT
+from validibot.workflows.views_helpers import ensure_advanced_ruleset
+from validibot.workflows.views_helpers import resequence_workflow_steps
+from validibot.workflows.views_helpers import save_workflow_action_step
+from validibot.workflows.views_helpers import save_workflow_step
+
+logger = logging.getLogger(__name__)
+
+
+class WorkflowStepListView(WorkflowObjectMixin, View):
+    template_name = "workflows/partials/workflow_step_list.html"
+
+    def get(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        steps = (
+            workflow.steps.all()
+            .order_by("order", "pk")
+            .select_related("validator", "ruleset", "action", "action__definition")
+        )
+        for step in steps:
+            config = dict(step.config or {})
+            if step.validator:
+                vtype = step.validator.validation_type
+                if vtype == ValidationType.XML_SCHEMA:
+                    schema_type = config.get("schema_type")
+                    if schema_type:
+                        try:
+                            config["schema_type_label"] = XMLSchemaType(
+                                schema_type,
+                            ).label
+                        except ValueError:
+                            config["schema_type_label"] = schema_type
+                elif vtype == ValidationType.JSON_SCHEMA:
+                    schema_type = config.get("schema_type")
+                    if schema_type:
+                        try:
+                            config["schema_type_label"] = JSONSchemaVersion(
+                                schema_type,
+                            ).label
+                        except ValueError:
+                            config["schema_type_label"] = schema_type
+            elif step.action:
+                definition = step.action.definition
+                variant = step.action.get_variant()
+                step.action_variant = variant
+                if not config and variant:
+                    if isinstance(variant, SlackMessageAction):
+                        config["message"] = variant.message
+                    elif isinstance(variant, SignedCertificateAction):
+                        config["certificate_template"] = (
+                            variant.get_certificate_template_display_name()
+                        )
+                step.action_meta = {
+                    "category_label": definition.get_action_category_display(),
+                    "type": definition.type,
+                    "icon": definition.icon or "bi-gear",
+                    "definition_name": definition.name,
+                    "definition_description": definition.description,
+                }
+                extras = {
+                    key: value
+                    for key, value in config.items()
+                    if key not in {"message", "certificate_template"}
+                }
+                step.action_summary = {
+                    "message": config.get("message"),
+                    "certificate_template": config.get("certificate_template"),
+                    "extras": extras,
+                }
+            step.config = config
+        show_private_notes = self.user_can_manage_workflow()
+        context = {
+            "workflow": workflow,
+            "steps": steps,
+            "max_step_count": MAX_STEP_COUNT,
+            "show_private_notes": show_private_notes,
+            "can_view_workflow": self.user_can_view_workflow(),
+            "can_manage_workflow": self.user_can_manage_workflow(),
+            "can_launch_workflow": workflow.can_execute(user=request.user),
+        }
+        return render(request, self.template_name, context)
+
+
+class WorkflowStepWizardView(WorkflowObjectMixin, View):
+    """Present the validator selector in the add-step modal."""
+
+    template_select = "workflows/partials/workflow_step_wizard_select.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.headers.get("HX-Request"):
+            return HttpResponse(status=400)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        step = self._get_step()
+        if step is not None:
+            edit_url = reverse_with_org(
+                "workflows:workflow_step_edit",
+                request=request,
+                kwargs={"pk": workflow.pk, "step_id": step.pk},
+            )
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = edit_url
+            return response
+        if workflow.steps.count() >= MAX_STEP_COUNT:
+            context = {
+                "workflow": workflow,
+                "form": None,
+                "validators_by_type": [],
+                "max_step_count": MAX_STEP_COUNT,
+                "step": None,
+                "limit_reached": True,
+            }
+            return render(request, self.template_select, context, status=409)
+        return self._render_select(request, workflow)
+
+    def post(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        step = self._get_step()
+        stage = request.POST.get("stage", "select")
+
+        if stage != "select":
+            if step is not None:
+                redirect_url = reverse_with_org(
+                    "workflows:workflow_step_edit",
+                    request=request,
+                    kwargs={"pk": workflow.pk, "step_id": step.pk},
+                )
+            else:
+                redirect_url = reverse_with_org(
+                    "workflows:workflow_detail",
+                    request=request,
+                    kwargs={"pk": workflow.pk},
+                )
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = redirect_url
+            return response
+
+        validators = self._available_validators(workflow)
+        action_definitions = self._available_action_definitions()
+        tabs, options = self._build_step_tabs(
+            workflow,
+            validators,
+            action_definitions,
+        )
+        form = WorkflowStepTypeForm(request.POST, options=options)
+        if form.is_valid():
+            if workflow.steps.count() >= MAX_STEP_COUNT:
+                message = _("You can add up to %(count)s steps per workflow.") % {
+                    "count": MAX_STEP_COUNT,
+                }
+                return hx_trigger_response(message, level="warning", status_code=409)
+            selection = form.get_selection()
+            if selection["kind"] == "validator":
+                validator = selection["object"]
+                if not workflow.validator_is_compatible(validator):
+                    allowed = ", ".join(workflow.allowed_file_type_labels())
+                    form.add_error(
+                        None,
+                        _(
+                            "%(validator)s cannot be added because this workflow only "
+                            "accepts %(allowed)s submissions.",
+                        )
+                        % {
+                            "validator": validator.name,
+                            "allowed": allowed or _("the selected"),
+                        },
+                    )
+                    return self._render_select(
+                        request,
+                        workflow,
+                        form=form,
+                        status=400,
+                    )
+                create_url = reverse_with_org(
+                    "workflows:workflow_step_create",
+                    request=request,
+                    kwargs={"pk": workflow.pk, "validator_id": validator.pk},
+                )
+            else:
+                definition: ActionDefinition = selection["object"]
+                create_url = reverse_with_org(
+                    "workflows:workflow_step_action_create",
+                    request=request,
+                    kwargs={
+                        "pk": workflow.pk,
+                        "action_definition_id": definition.pk,
+                    },
+                )
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = create_url
+            response["HX-Trigger"] = json.dumps(
+                {
+                    "close-modal": "workflowStepModal",
+                },
+            )
+            return response
+        return self._render_select(request, workflow, form=form)
+
+    # Helper methods ---------------------------------------------------------
+
+    def _get_step(self) -> WorkflowStep | None:
+        step_id = self.kwargs.get("step_id")
+        if not step_id:
+            return None
+        workflow = self.get_workflow()
+        return get_object_or_404(WorkflowStep, workflow=workflow, pk=step_id)
+
+    def _available_validators(self, workflow: Workflow) -> list[Validator]:
+        """
+        Return validators visible to this workflow's org. Compatibility is
+        enforced at save time so the selector can still show validators that
+        would require different file types.
+
+        Excludes DRAFT validators (not ready for display). COMING_SOON validators
+        are included but will be disabled in the UI.
+        """
+        validators: list[Validator] = []
+        for validator in (
+            Validator.objects.filter(
+                models.Q(org__isnull=True) | models.Q(org=workflow.org),
+                is_enabled=True,
+            )
+            .exclude(
+                release_state=ValidatorReleaseState.DRAFT,
+            )
+            .order_by("validation_type", "name", "pk")
+        ):
+            self._ensure_validator_defaults(validator)
+            validators.append(validator)
+        return validators
+
+    def _available_action_definitions(self) -> list[ActionDefinition]:
+        return list(
+            ActionDefinition.objects.filter(is_active=True).order_by(
+                "action_category",
+                "name",
+            ),
+        )
+
+    def _render_select(self, request, workflow: Workflow, form=None, status=200):
+        validators = self._available_validators(workflow)
+        action_definitions = self._available_action_definitions()
+
+        tabs, options = self._build_step_tabs(
+            workflow,
+            validators,
+            action_definitions,
+        )
+
+        selected_value = None
+        if form is not None:
+            selected_value = form.data.get("choice") or form.initial.get("choice")
+        else:
+            selected_value = request.GET.get("selected")
+
+        selected_tab = self._resolve_selected_tab(tabs, selected_value)
+        form = form or WorkflowStepTypeForm(options=options)
+
+        context = {
+            "workflow": workflow,
+            "form": form,
+            "validator_tabs": tabs,
+            "selected_tab": selected_tab,
+            "max_step_count": MAX_STEP_COUNT,
+            "step": None,
+            "limit_reached": False,
+            "selected_value": str(selected_value) if selected_value else None,
+        }
+        return render(request, self.template_select, context, status=status)
+
+    def _build_step_tabs(
+        self,
+        workflow: Workflow,
+        validators: list[Validator],
+        action_definitions: list[ActionDefinition],
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        tabs: list[dict[str, object]] = []
+        options: list[dict[str, object]] = []
+
+        validator_groups: list[tuple[str, str, set[str] | None]] = [
+            (
+                "basic",
+                str(_("Validators")),
+                {
+                    ValidationType.BASIC,
+                    ValidationType.JSON_SCHEMA,
+                    ValidationType.XML_SCHEMA,
+                },
+            ),
+            (
+                "advanced",
+                str(_("Advanced Validators")),
+                {
+                    ValidationType.AI_ASSIST,
+                    ValidationType.ENERGYPLUS,
+                    ValidationType.FMU,
+                },
+            ),
+            (
+                "custom",
+                str(_("Custom Validators")),
+                {
+                    ValidationType.CUSTOM_VALIDATOR,
+                },
+            ),
+        ]
+
+        handled: list[Validator] = []
+        for slug, label, types in validator_groups:
+            if types:
+                filtered = [
+                    v
+                    for v in validators
+                    if v.validation_type in types and v not in handled
+                ]
+                handled.extend(filtered)
+            else:
+                filtered = []
+            members = [self._serialize_validator(workflow, v) for v in filtered]
+            tabs.append({"slug": slug, "label": label, "entries": members})
+            options.extend(members)
+
+        remaining_validators = [v for v in validators if v not in handled]
+        if remaining_validators:
+            advanced_tab = next(
+                (tab for tab in tabs if tab["slug"] == "advanced"),
+                None,
+            )
+            if advanced_tab is not None:
+                serialized = [
+                    self._serialize_validator(workflow, v) for v in remaining_validators
+                ]
+                advanced_tab["entries"].extend(serialized)
+                options.extend(serialized)
+
+        integration_entries = [
+            self._serialize_action_definition(defn)
+            for defn in action_definitions
+            if defn.action_category == ActionCategoryType.INTEGRATION
+        ]
+        certification_entries = [
+            self._serialize_action_definition(defn)
+            for defn in action_definitions
+            if defn.action_category == ActionCategoryType.CERTIFICATION
+        ]
+
+        tabs.append(
+            {
+                "slug": "integrations",
+                "label": str(_("Integrations")),
+                "entries": integration_entries,
+            },
+        )
+        tabs.append(
+            {
+                "slug": "certifications",
+                "label": str(_("Certifications")),
+                "entries": certification_entries,
+            },
+        )
+        options.extend(integration_entries)
+        options.extend(certification_entries)
+
+        return tabs, options
+
+    def _ensure_validator_defaults(self, validator: Validator) -> None:
+        """
+        Backfill expected supported formats/file types for validators created
+        before defaults expanded (notably FMU, which now accepts JSON/TEXT).
+        """
+        if validator.validation_type != ValidationType.FMU:
+            return
+        changed = False
+        if validator.supported_file_types is None:
+            validator.supported_file_types = []
+            changed = True
+        if validator.supported_data_formats is None:
+            validator.supported_data_formats = []
+            changed = True
+        for ft in (SubmissionFileType.JSON, SubmissionFileType.TEXT):
+            if ft not in validator.supported_file_types:
+                validator.supported_file_types.append(ft)
+                changed = True
+        for fmt in (SubmissionDataFormat.JSON, SubmissionDataFormat.TEXT):
+            if fmt not in validator.supported_data_formats:
+                validator.supported_data_formats.append(fmt)
+                changed = True
+        if changed:
+            validator.save(
+                update_fields=["supported_file_types", "supported_data_formats"],
+            )
+
+    def _serialize_validator(
+        self,
+        workflow: Workflow,
+        validator: Validator,
+    ) -> dict[str, object]:
+        is_compatible = workflow.validator_is_compatible(validator)
+        allowed = ", ".join(workflow.allowed_file_type_labels())
+        disabled_reason = None
+        is_disabled = False
+
+        # Check if coming soon (takes precedence over compatibility)
+        if validator.is_coming_soon:
+            is_disabled = True
+            disabled_reason = _("Coming soon")
+        elif not is_compatible:
+            is_disabled = True
+            disabled_reason = _(
+                "Not allowed for this workflow's submission types (%(allowed)s).",
+            ) % {"allowed": allowed or _("selected types")}
+
+        return {
+            "value": f"validator:{validator.pk}",
+            "label": validator.name,
+            "name": validator.name,
+            "subtitle": validator.get_validation_type_display(),
+            "description": validator.description,
+            "short_description": validator.short_description,
+            "icon": getattr(validator, "display_icon", "bi-sliders"),
+            "kind": "validator",
+            "object": validator,
+            "disabled": is_disabled,
+            "disabled_reason": disabled_reason,
+        }
+
+    def _serialize_action_definition(
+        self,
+        definition: ActionDefinition,
+    ) -> dict[str, object]:
+        return {
+            "value": f"action:{definition.pk}",
+            "label": definition.name,
+            "name": definition.name,
+            "subtitle": definition.get_action_category_display(),
+            "description": definition.description,
+            "icon": definition.icon or "bi-gear",
+            "kind": "action",
+            "object": definition,
+        }
+
+    def _resolve_selected_tab(
+        self,
+        tabs: list[dict[str, object]],
+        selected_value: str | None,
+    ) -> str:
+        if selected_value:
+            for tab in tabs:
+                for entry in tab["entries"]:
+                    if str(entry["value"]) == str(selected_value):
+                        return tab["slug"]
+        for tab in tabs:
+            if tab["entries"]:
+                return tab["slug"]
+        return tabs[0]["slug"] if tabs else "basic"
+
+
+class WorkflowStepFormView(WorkflowObjectMixin, FormView):
+    """Render the full-screen workflow step editor for create/update."""
+
+    template_name = "workflows/workflow_step_form.html"
+    mode: str = "create"
+    validator_url_kwarg = "validator_id"
+    action_definition_url_kwarg = "action_definition_id"
+    step_url_kwarg = "step_id"
+    saved_step: WorkflowStep | None = None
+
+    def dispatch(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=403)
+        if self.mode == "create" and workflow.steps.count() >= MAX_STEP_COUNT:
+            messages.warning(
+                request,
+                _("You can add up to %(count)s steps per workflow.")
+                % {
+                    "count": MAX_STEP_COUNT,
+                },
+            )
+            detail_url = reverse_with_org(
+                "workflows:workflow_detail",
+                request=request,
+                kwargs={"pk": workflow.pk},
+            )
+            return HttpResponseRedirect(detail_url)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_step(self) -> WorkflowStep | None:
+        if self.mode != "update":
+            return None
+        if not hasattr(self, "_step"):
+            workflow = self.get_workflow()
+            step_id = self.kwargs.get(self.step_url_kwarg)
+            self._step = get_object_or_404(
+                WorkflowStep,
+                workflow=workflow,
+                pk=step_id,
+            )
+        return getattr(self, "_step", None)
+
+    def _validator_queryset(self):
+        """Return validators that can be selected for workflow steps.
+
+        Only PUBLISHED validators can be used in workflows. DRAFT and
+        COMING_SOON validators are excluded.
+        """
+        from django.db.models import Q
+
+        workflow = self.get_workflow()
+        return Validator.objects.filter(
+            Q(is_system=True) | Q(org=workflow.org),
+            release_state=ValidatorReleaseState.PUBLISHED,
+        )
+
+    def get_validator(self) -> Validator:
+        if self.is_action_step():
+            raise Http404
+        if not hasattr(self, "_validator"):
+            if self.mode == "update":
+                step = self.get_step()
+                if step is None:
+                    raise Http404
+                self._validator = step.validator
+            else:
+                validator_id = self.kwargs.get(self.validator_url_kwarg)
+                self._validator = get_object_or_404(
+                    self._validator_queryset(),
+                    pk=validator_id,
+                )
+        return self._validator
+
+    def get_action_definition(self) -> ActionDefinition:
+        if not hasattr(self, "_action_definition"):
+            if self.mode == "update":
+                step = self.get_step()
+                if step is None or not step.action:
+                    raise Http404
+                self._action_definition = step.action.definition
+            else:
+                definition_id = self.kwargs.get(self.action_definition_url_kwarg)
+                self._action_definition = get_object_or_404(
+                    ActionDefinition,
+                    pk=definition_id,
+                    is_active=True,
+                )
+        return self._action_definition
+
+    def is_action_step(self) -> bool:
+        if self.mode == "update":
+            step = self.get_step()
+            return bool(step and step.action_id)
+        return bool(self.kwargs.get(self.action_definition_url_kwarg))
+
+    def get_form_class(self):
+        if self.is_action_step():
+            definition = self.get_action_definition()
+            form_class = get_action_form(definition.type)
+            if form_class is None:
+                raise Http404("Unsupported action type.")
+            return form_class
+        validator = self.get_validator()
+        return get_config_form_class(validator.validation_type)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["step"] = self.get_step()
+        if self.is_action_step():
+            kwargs["definition"] = self.get_action_definition()
+        else:
+            # Pass org and validator for forms that need them (e.g., EnergyPlus)
+            workflow = self.get_workflow()
+            kwargs["org"] = workflow.org
+            kwargs["validator"] = self.get_validator()
+        return kwargs
+
+    def form_valid(self, form):
+        workflow = self.get_workflow()
+        if self.is_action_step():
+            definition = self.get_action_definition()
+            saved_step = save_workflow_action_step(
+                workflow,
+                definition,
+                form,
+                step=self.get_step(),
+            )
+        else:
+            validator = self.get_validator()
+            if not workflow.validator_is_compatible(validator):
+                allowed = ", ".join(workflow.allowed_file_type_labels())
+                form.add_error(
+                    None,
+                    _(
+                        "%(validator)s cannot be added because this workflow only "
+                        "accepts %(allowed)s submissions.",
+                    )
+                    % {
+                        "validator": validator.name,
+                        "allowed": allowed or _("the selected"),
+                    },
+                )
+                return self.form_invalid(form)
+            saved_step = save_workflow_step(
+                workflow,
+                validator,
+                form,
+                step=self.get_step(),
+            )
+        resequence_workflow_steps(workflow)
+        self.saved_step = saved_step
+        if self.mode == "create":
+            message = _("Workflow step added.")
+        else:
+            message = _("Workflow step updated.")
+        messages.success(self.request, message)
+        return HttpResponseRedirect(self.get_success_url())
+
+    def form_invalid(self, form):
+        return self.render_to_response(
+            self.get_context_data(form=form),
+            status=400,
+        )
+
+    def get_success_url(self):
+        workflow = self.get_workflow()
+        detail_url = reverse_with_org(
+            "workflows:workflow_detail",
+            request=self.request,
+            kwargs={"pk": workflow.pk},
+        )
+        if hasattr(self, "saved_step") and self.saved_step:
+            validator = self.saved_step.validator
+            supports_assertions = validator and validator.supports_assertions
+            # Schema-only validators don't support assertions — skip
+            # the step edit screen and return to the workflow detail.
+            if not supports_assertions:
+                return f"{detail_url}#workflow-steps-col"
+
+            anchor = (
+                "#workflow-step-assertions"
+                if supports_assertions
+                else "#workflow-step-details"
+            )
+            return (
+                reverse_with_org(
+                    "workflows:workflow_step_edit",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk, "step_id": self.saved_step.pk},
+                )
+                + anchor
+            )
+        return f"{detail_url}#workflow-steps-col"
+
+    def get_neighbor_steps(self) -> tuple[WorkflowStep | None, WorkflowStep | None]:
+        step = self.get_step()
+        if step is None:
+            return (None, None)
+        steps = list(self.get_workflow().steps.all().order_by("order", "pk"))
+        previous_step = None
+        next_step = None
+        for index, current in enumerate(steps):
+            if current.pk == step.pk:
+                if index > 0:
+                    previous_step = steps[index - 1]
+                if index < len(steps) - 1:
+                    next_step = steps[index + 1]
+                break
+        return previous_step, next_step
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_workflow()
+        step = self.get_step()
+        details: dict[str, object]
+        icon = "bi-sliders"
+        if self.is_action_step():
+            definition = self.get_action_definition()
+            icon = definition.icon or icon
+            details = {
+                "name": definition.name,
+                "description": definition.description,
+                "type_label": definition.get_action_category_display(),
+                "icon": icon,
+            }
+        else:
+            validator = self.get_validator()
+            icon = getattr(validator, "display_icon", icon)
+            details = {
+                "name": validator.name,
+                "description": validator.description,
+                "short_description": validator.short_description,
+                "type_label": validator.get_validation_type_display(),
+                "icon": icon,
+            }
+        prev_step, next_step = self.get_neighbor_steps()
+        context.update(
+            {
+                "workflow": workflow,
+                "step": step,
+                "subject_details": details,
+                "validator_details": details,
+                "is_action_step": self.is_action_step(),
+                "is_create": self.mode == "create",
+                "max_step_count": MAX_STEP_COUNT,
+                "previous_step": prev_step,
+                "next_step": next_step,
+                "steps_count": workflow.steps.count(),
+                "show_assertion_link": bool(
+                    not self.is_action_step()
+                    and step
+                    and step.validator
+                    and step.validator.supports_assertions,
+                ),
+            },
+        )
+        return context
+
+    def get_breadcrumbs(self):
+        workflow = self.get_workflow()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Workflows"),
+                "url": reverse_with_org(
+                    "workflows:workflow_list",
+                    request=self.request,
+                ),
+            },
+        )
+        if self.mode == "create":
+            breadcrumbs.append({"name": _("Add step"), "url": ""})
+        else:
+            step = self.get_step()
+            breadcrumbs.append(
+                {
+                    "name": workflow.name,
+                    "url": reverse_with_org(
+                        "workflows:workflow_detail",
+                        request=self.request,
+                        kwargs={"pk": workflow.pk},
+                    ),
+                },
+            )
+            step_url = reverse_with_org(
+                "workflows:workflow_step_edit",
+                request=self.request,
+                kwargs={"pk": workflow.pk, "step_id": step.pk if step else ""},
+            )
+
+            breadcrumbs.append(
+                {
+                    "name": step.step_number_display,
+                    "url": step_url,
+                },
+            )
+            breadcrumbs.append({"name": _("Edit Step Detail"), "url": ""})
+        return breadcrumbs
+
+
+# ── FMU signal-stage helpers ─────────────────────────────────────────
+# Step-level FMU uploads store variable metadata (with causality) in
+# step.config["fmu_variables"] instead of in ValidatorCatalogEntry rows.
+# These helpers let the step detail view detect signal stages and group
+# assertions correctly for such steps.
+
+
+def _step_has_fmu_signal_stages(step) -> bool:
+    """True when step config FMU variables include both input and output causality."""
+    fmu_vars = (step.config or {}).get("fmu_variables", [])
+    causalities = {v.get("causality", "") for v in fmu_vars}
+    return "input" in causalities and "output" in causalities
+
+
+def _build_fmu_causality_map(step) -> dict[str, str]:
+    """Build variable-name → causality map from step config FMU variables."""
+    return {
+        v.get("name", ""): v.get("causality", "")
+        for v in (step.config or {}).get("fmu_variables", [])
+    }
+
+
+def _resolve_assertion_stage(
+    assertion,
+    fmu_causality_map: dict[str, str],
+) -> CatalogRunStage:
+    """Resolve assertion run stage, considering FMU variable causality.
+
+    For assertions that target a catalog entry, the entry's ``run_stage``
+    is authoritative.  For free-form ``target_data_path`` assertions that
+    match an FMU variable name, the variable's causality determines the
+    stage.  Everything else defaults to OUTPUT.
+    """
+    if assertion.target_catalog_entry_id and assertion.target_catalog_entry:
+        return CatalogRunStage(assertion.target_catalog_entry.run_stage)
+    if assertion.target_data_path and assertion.target_data_path in fmu_causality_map:
+        causality = fmu_causality_map[assertion.target_data_path]
+        if causality == "input":
+            return CatalogRunStage.INPUT
+    return CatalogRunStage.OUTPUT
+
+
+class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
+    """Two-column overview for validator-based steps."""
+
+    template_name = "workflows/workflow_step_detail.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=403)
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        if self.step.action_id:
+            return HttpResponseRedirect(
+                reverse_with_org(
+                    "workflows:workflow_step_settings",
+                    request=request,
+                    kwargs={
+                        "pk": self.get_workflow().pk,
+                        "step_id": self.step.pk,
+                    },
+                ),
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_workflow()
+        validator = self.step.validator
+        ruleset = None
+        assertions = []
+        catalog_entries = []
+        catalog_display = validator.catalog_display if validator else None
+        allow_assertions = validator and validator.supports_assertions
+        if allow_assertions:
+            ruleset = self.step.ruleset or ensure_advanced_ruleset(
+                workflow,
+                self.step,
+                validator,
+            )
+            assertions = list(ruleset.assertions.all().order_by("order", "pk"))
+        if validator:
+            catalog_entries = list(
+                validator.catalog_entries.order_by(
+                    "entry_type",
+                    "run_stage",
+                    "order",
+                    "slug",
+                ),
+            )
+        # Group assertions by run stage, considering FMU variable causality
+        # for step-level FMU uploads where there are no catalog entries.
+        fmu_causality_map = _build_fmu_causality_map(self.step)
+        grouped_assertions = {
+            "input": [],
+            "output": [],
+        }
+        for assertion in assertions:
+            stage = _resolve_assertion_stage(assertion, fmu_causality_map)
+            key = "input" if stage == CatalogRunStage.INPUT else "output"
+            grouped_assertions[key].append(assertion)
+        uses_signal_stages = bool(
+            validator
+            and (
+                validator.has_signal_stages() or _step_has_fmu_signal_stages(self.step)
+            )
+            and allow_assertions,
+        )
+        default_assertions_count = (
+            validator.default_ruleset.assertions.count()
+            if validator and validator.default_ruleset_id
+            else 0
+        )
+
+        # Build unified input/output signals for the right-column card.
+        # Merges catalog entries with template variables into one view.
+        from validibot.workflows.views_helpers import build_unified_signals
+
+        unified_signals = build_unified_signals(catalog_display, self.step)
+
+        context.update(
+            {
+                "workflow": workflow,
+                "step": self.step,
+                "validator": validator,
+                "assertions": assertions,
+                "assertion_groups": grouped_assertions,
+                "uses_signal_stages": uses_signal_stages,
+                "ruleset": ruleset,
+                "can_manage_assertions": self.user_can_manage_workflow()
+                and allow_assertions,
+                "supports_assertions": allow_assertions,
+                "catalog_entries": catalog_entries,
+                "catalog_display": catalog_display,
+                "catalog_tab_prefix": f"workflow-step-{self.step.pk}-catalog",
+                "validator_default_assertions_count": default_assertions_count,
+                "unified_signals": unified_signals,
+            },
+        )
+        return context
+
+    def get_breadcrumbs(self):
+        workflow = self.get_workflow()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Workflows"),
+                "url": reverse_with_org(
+                    "workflows:workflow_list",
+                    request=self.request,
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": workflow.name,
+                "url": reverse_with_org(
+                    "workflows:workflow_detail",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk},
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": self.step.step_number_display,
+                "url": reverse_with_org(
+                    "workflows:workflow_step_edit",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk, "step_id": self.step.pk},
+                ),
+            },
+        )
+        return breadcrumbs
+
+
+class WorkflowStepTemplateVariablesView(WorkflowObjectMixin, FormView):
+    """HTMx endpoint for editing template variable annotations.
+
+    Renders and processes the template variables card that appears in
+    the step detail page's right column.  This view is declared as the
+    ``view_class`` in the EnergyPlus ``StepEditorCardSpec``.
+
+    GET returns the rendered card partial (for initial page load).
+    POST validates the form, merges annotations into ``step.config``,
+    and returns the re-rendered card with a toast trigger.
+    """
+
+    template_name = "workflows/partials/template_variables_card.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form(self, form_class=None):
+        from validibot.workflows.forms import TemplateVariableAnnotationForm
+
+        return TemplateVariableAnnotationForm(
+            data=self.request.POST or None,
+            step=self.step,
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        validator = self.step.validator
+        catalog_display = validator.catalog_display if validator else None
+        step_config = self.step.config or {}
+        context.update(
+            {
+                "workflow": self.get_workflow(),
+                "step": self.step,
+                "tplvar_form": context.get("form"),
+                "catalog_display": catalog_display,
+                "catalog_tab_prefix": (f"workflow-step-{self.step.pk}-catalog"),
+                "display_signals": step_config.get("display_signals", []),
+            },
+        )
+        return context
+
+    def form_valid(self, form):
+        from validibot.workflows.views_helpers import (
+            merge_template_variable_annotations,
+        )
+
+        existing_vars = (self.step.config or {}).get("template_variables", [])
+        merged = merge_template_variable_annotations(
+            existing_vars,
+            form.cleaned_data,
+        )
+        config = dict(self.step.config or {})
+        config["template_variables"] = merged
+        self.step.config = config
+        self.step.save(update_fields=["config"])
+
+        if self.request.headers.get("HX-Request"):
+            # Re-render the card with updated data and a toast trigger
+            context = self.get_context_data(form=self.get_form())
+            html = render_to_string(
+                self.template_name,
+                context,
+                request=self.request,
+            )
+            response = HttpResponse(html)
+            response["HX-Trigger"] = json.dumps(
+                {
+                    "showToast": {
+                        "message": str(
+                            _("Template variable annotations saved."),
+                        ),
+                        "level": "success",
+                    },
+                },
+            )
+            return response
+
+        return HttpResponseRedirect(
+            reverse_with_org(
+                "workflows:workflow_step_edit",
+                request=self.request,
+                kwargs={
+                    "pk": self.get_workflow().pk,
+                    "step_id": self.step.pk,
+                },
+            ),
+        )
+
+    def form_invalid(self, form):
+        context = self.get_context_data(form=form)
+        return render(self.request, self.template_name, context)
+
+
+class WorkflowStepDisplaySignalsView(WorkflowObjectMixin, FormView):
+    """HTMx modal endpoint for editing which output signals are shown to users.
+
+    GET returns the modal form content (loaded into displaySignalsModal).
+    POST validates and saves the selection to ``step.config["display_signals"]``,
+    then triggers a page reload via HX-Trigger.
+    """
+
+    template_name = "workflows/partials/display_signals_modal_content.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form(self, form_class=None):
+        from validibot.workflows.forms import DisplaySignalsForm
+
+        return DisplaySignalsForm(
+            data=self.request.POST or None,
+            step=self.step,
+            validator=self.step.validator,
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "workflow": self.get_workflow(),
+                "step": self.step,
+            },
+        )
+        return context
+
+    def form_valid(self, form):
+        selected = form.cleaned_data.get("display_signals", [])
+        config = dict(self.step.config or {})
+        config["display_signals"] = selected
+        self.step.config = config
+        self.step.save(update_fields=["config"])
+
+        response = HttpResponse(status=HTTPStatus.NO_CONTENT)
+        response["HX-Trigger"] = json.dumps(
+            {
+                "close-modal": "displaySignalsModal",
+                "showToast": {
+                    "message": str(_("Display signals updated.")),
+                    "level": "success",
+                },
+            },
+        )
+        response["HX-Refresh"] = "true"
+        return response
+
+    def form_invalid(self, form):
+        context = self.get_context_data(form=form)
+        return render(self.request, self.template_name, context)
+
+
+class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
+    """HTMx modal endpoint for editing a single template variable's annotations.
+
+    Replaces the old "save all at once" template variables form with a
+    per-variable modal pattern.  The variable is identified by its index
+    in the ``step.config["template_variables"]`` list.
+
+    GET returns the modal form content for the specified variable.
+    POST validates and saves annotations for that single variable,
+    then triggers a page reload.
+
+    See ADR-2026-03-10: Unified Input/Output Signals UI.
+    """
+
+    template_name = "workflows/partials/template_variable_edit_modal_content.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        self.var_index = int(self.kwargs.get("var_index", 0))
+        template_vars = (self.step.config or {}).get("template_variables", [])
+        if self.var_index < 0 or self.var_index >= len(template_vars):
+            return HttpResponse(status=HTTPStatus.NOT_FOUND)
+        self.variable = template_vars[self.var_index]
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form(self, form_class=None):
+        from validibot.workflows.forms import SingleTemplateVariableForm
+
+        return SingleTemplateVariableForm(
+            data=self.request.POST or None,
+            variable=self.variable,
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "workflow": self.get_workflow(),
+                "step": self.step,
+                "variable": self.variable,
+                "var_index": self.var_index,
+            },
+        )
+        return context
+
+    def form_valid(self, form):
+        from validibot.workflows.views_helpers import _parse_choices
+        from validibot.workflows.views_helpers import _parse_optional_float
+
+        config = dict(self.step.config or {})
+        template_vars = list(config.get("template_variables", []))
+
+        # Update only this variable, preserving the immutable name
+        template_vars[self.var_index] = {
+            "name": self.variable["name"],
+            "description": form.cleaned_data.get("description", ""),
+            "default": form.cleaned_data.get("default", ""),
+            "units": form.cleaned_data.get("units", ""),
+            "variable_type": form.cleaned_data.get("variable_type", "text"),
+            "min_value": _parse_optional_float(
+                form.cleaned_data.get("min_value", ""),
+            ),
+            "min_exclusive": form.cleaned_data.get("min_exclusive", False),
+            "max_value": _parse_optional_float(
+                form.cleaned_data.get("max_value", ""),
+            ),
+            "max_exclusive": form.cleaned_data.get("max_exclusive", False),
+            "choices": _parse_choices(
+                form.cleaned_data.get("choices", ""),
+            ),
+        }
+
+        config["template_variables"] = template_vars
+        self.step.config = config
+        self.step.save(update_fields=["config"])
+
+        response = HttpResponse(status=HTTPStatus.NO_CONTENT)
+        response["HX-Trigger"] = json.dumps(
+            {
+                "close-modal": "templateVariableEditModal",
+                "showToast": {
+                    "message": str(
+                        _("Variable %(name)s updated.")
+                        % {"name": f"${self.variable['name']}"},
+                    ),
+                    "level": "success",
+                },
+            },
+        )
+        response["HX-Refresh"] = "true"
+        return response
+
+    def form_invalid(self, form):
+        context = self.get_context_data(form=form)
+        return render(self.request, self.template_name, context)
+
+
+class WorkflowStepCreateView(WorkflowStepFormView):
+    """Create a new workflow step for the given validator."""
+
+    mode = "create"
+
+
+class WorkflowActionStepCreateView(WorkflowStepFormView):
+    """Create a new workflow step for the selected action definition."""
+
+    mode = "create"
+
+
+class WorkflowStepUpdateView(WorkflowStepFormView):
+    """Edit an existing workflow step in full-page mode."""
+
+    mode = "update"
+
+
+class WorkflowStepDeleteView(WorkflowObjectMixin, View):
+    def post(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=403)
+        step = get_object_or_404(
+            WorkflowStep,
+            workflow=workflow,
+            pk=self.kwargs.get("step_id"),
+        )
+        step.delete()
+        resequence_workflow_steps(workflow)
+        message = _("Workflow step removed.")
+        return hx_trigger_response(message, close_modal=None)
+
+
+class WorkflowStepMoveView(WorkflowObjectMixin, View):
+    def post(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=403)
+        step = get_object_or_404(
+            WorkflowStep,
+            workflow=workflow,
+            pk=self.kwargs.get("step_id"),
+        )
+        direction = request.POST.get("direction")
+        steps = list(workflow.steps.all().order_by("order", "pk"))
+        try:
+            index = steps.index(step)
+        except ValueError:
+            return hx_trigger_response(
+                status_code=400,
+                message=_("Step not found."),
+                level="warning",
+            )
+        if direction == "up" and index > 0:
+            steps[index - 1], steps[index] = steps[index], steps[index - 1]
+        elif direction == "down" and index < len(steps) - 1:
+            steps[index], steps[index + 1] = steps[index + 1], steps[index]
+        else:
+            return hx_trigger_response(status_code=204)
+        with transaction.atomic():
+            for pos, item in enumerate(steps, start=1):
+                WorkflowStep.objects.filter(pk=item.pk).update(order=1000 + pos)
+            resequence_workflow_steps(workflow)
+        message = _("Workflow step order updated.")
+        return hx_trigger_response(message, close_modal=None)

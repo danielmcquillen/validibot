@@ -22,9 +22,9 @@ from validibot.core.api.org_scoped import OrgMembershipPermission
 from validibot.core.api.org_scoped import OrgScopedMixin
 from validibot.core.utils import truthy
 from validibot.users.constants import PermissionCode
+from validibot.validations.api.viewsets import ValidationRunFilter
 from validibot.validations.models import ValidationRun
 from validibot.validations.serializers import ValidationRunSerializer
-from validibot.validations.views import ValidationRunFilter
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet

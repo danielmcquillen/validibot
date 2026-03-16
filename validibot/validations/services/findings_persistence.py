@@ -47,9 +47,11 @@ def normalize_issue(issue: Any) -> ValidationIssue:
             meta=issue.get("meta"),
             assertion_id=issue.get("assertion_id"),
         )
+    # Cap length to prevent unbounded memory usage from malformed
+    # validator output (e.g., a huge object repr).
     return ValidationIssue(
         path="",
-        message=str(issue),
+        message=str(issue)[:5000],
         severity=Severity.ERROR,
     )
 

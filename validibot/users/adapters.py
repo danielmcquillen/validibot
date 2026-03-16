@@ -103,19 +103,27 @@ class AccountAdapter(DefaultAccountAdapter):
             if redirect_url:
                 return redirect_url
 
-        # Check for trial invite token (cloud onboarding)
-        trial_token = request.session.get(TRIAL_INVITE_SESSION_KEY)
+        # Trial invite tokens: activation is now handled by the
+        # email_confirmed signal in validibot_cloud.onboarding.signals.
+        # Just clear the session key if present (it was stashed by
+        # AcceptTrialInviteView but is no longer needed here).
+        trial_token = request.session.pop(TRIAL_INVITE_SESSION_KEY, None)
         if trial_token:
-            redirect_url = self._handle_trial_invite_signup(request, trial_token)
-            if redirect_url:
-                return redirect_url
+            logger.debug(
+                "Trial invite token cleared from session"
+                " (activation deferred to email confirmation)",
+            )
 
-        # Check for self-register plan (cloud self-registration)
+        # Self-register plan: activation is now handled by the
+        # email_confirmed signal in validibot_cloud.onboarding.signals.
+        # Leave the session key in place — the signal handler will
+        # consume it when the user confirms their email.
         plan = request.session.get(SELF_REGISTER_PLAN_SESSION_KEY)
         if plan:
-            redirect_url = self._handle_self_register_signup(request, plan)
-            if redirect_url:
-                return redirect_url
+            logger.debug(
+                "Self-register plan in session"
+                " (activation deferred to email confirmation)",
+            )
 
         # Default: redirect to standard login redirect
         return settings.LOGIN_REDIRECT_URL
@@ -191,104 +199,6 @@ class AccountAdapter(DefaultAccountAdapter):
             logger.warning("Failed to accept workflow invite: %s", e)
             messages.error(request, str(e))
             return None
-
-    def _handle_trial_invite_signup(
-        self,
-        request: HttpRequest,
-        trial_token: str,
-    ) -> str | None:
-        """
-        Handle trial invite activation after signup.
-
-        Delegates to the cloud onboarding service to activate the trial
-        on the user's personal organization. Returns the redirect URL
-        on success, or None to fall back to default redirect.
-        """
-        from django.contrib import messages
-        from django.utils.translation import gettext_lazy as _
-
-        # Clear the session key regardless of outcome
-        del request.session[TRIAL_INVITE_SESSION_KEY]
-
-        try:
-            from validibot_cloud.onboarding.services import activate_trial_for_user
-        except ImportError:
-            logger.exception(
-                "Trial invite token in session but validibot-cloud not installed",
-            )
-            return None
-
-        try:
-            activate_trial_for_user(request.user, trial_token)
-        except Exception:
-            logger.exception(
-                "Failed to activate trial for user %s with token %s",
-                request.user,
-                trial_token,
-            )
-            messages.warning(
-                request,
-                _(
-                    "Your account was created but we couldn't activate your trial. "
-                    "Please contact support."
-                ),
-            )
-            return None
-        else:
-            messages.success(
-                request,
-                _("Welcome! Your free trial is now active."),
-            )
-            return settings.LOGIN_REDIRECT_URL
-
-    def _handle_self_register_signup(
-        self,
-        request: HttpRequest,
-        plan: str,
-    ) -> str | None:
-        """
-        Handle self-register trial activation after signup.
-
-        Delegates to the cloud onboarding service to activate the trial
-        on the user's personal organization with the selected plan.
-        Returns the redirect URL on success, or None to fall back to
-        default redirect.
-        """
-        from django.contrib import messages
-        from django.utils.translation import gettext_lazy as _
-
-        # Clear the session key regardless of outcome
-        del request.session[SELF_REGISTER_PLAN_SESSION_KEY]
-
-        try:
-            from validibot_cloud.onboarding.services import activate_self_register_trial
-        except ImportError:
-            logger.exception(
-                "signup_plan in session but validibot-cloud not installed",
-            )
-            return None
-
-        try:
-            activate_self_register_trial(request.user, plan)
-        except Exception:
-            logger.exception(
-                "Failed to activate self-register trial for user %s",
-                request.user,
-            )
-            messages.warning(
-                request,
-                _(
-                    "Your account was created but we couldn't start your trial. "
-                    "Please contact support."
-                ),
-            )
-            return None
-        else:
-            messages.success(
-                request,
-                _("Welcome! Your free trial is now active."),
-            )
-            return settings.LOGIN_REDIRECT_URL
 
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):

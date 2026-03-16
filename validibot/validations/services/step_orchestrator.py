@@ -118,7 +118,9 @@ class StepOrchestrator:
         Args:
             validation_run_id: ID of the ValidationRun to execute (UUID).
             user_id: ID of the user who initiated the run (for tracking).
-            resume_from_step: Step order to resume from (None for initial).
+            resume_from_step: Step order of the last completed step. The
+                orchestrator resumes from the *next* step (order__gt). None
+                for initial execution.
 
         Returns:
             ValidationRunTaskResult with the final (or current) run status.
@@ -211,10 +213,12 @@ class StepOrchestrator:
 
         try:
             workflow_steps = workflow.steps.all().order_by("order")
-            # Filter steps for resume execution
+            # Filter steps for resume execution — resume_from_step is the
+            # order of the last *completed* step, so we use __gt to skip it
+            # and start from the next one.
             if resume_from_step is not None:
                 workflow_steps = workflow_steps.filter(
-                    order__gte=resume_from_step,
+                    order__gt=resume_from_step,
                 )
 
             for wf_step in workflow_steps:

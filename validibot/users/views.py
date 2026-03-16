@@ -4,6 +4,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core.exceptions import PermissionDenied
+from django.db.models import Count
+from django.db.models import Q
 from django.db.models import QuerySet
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
@@ -233,12 +235,24 @@ def switch_current_org_view(request, org_id: int) -> HttpResponse:
 
 
 def _admin_memberships_for(user: User) -> list[Membership]:
+    """Return memberships where the user has admin-manage-org permission.
+
+    Each returned Membership is annotated with ``member_count`` — the number
+    of active members in that organization — so callers can display it without
+    issuing additional queries.
+    """
     if not user.is_authenticated:
         return []
     memberships = (
         user.memberships.filter(is_active=True)
         .select_related("org")
         .prefetch_related("membership_roles__role")
+        .annotate(
+            member_count=Count(
+                "org__memberships",
+                filter=Q(org__memberships__is_active=True),
+            ),
+        )
     )
     admin_memberships: list[Membership] = []
     for membership in memberships:
@@ -265,19 +279,12 @@ class OrganizationListView(
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        # member_count is annotated by _admin_memberships_for(), so no
+        # additional queries are needed per membership.
         memberships = _admin_memberships_for(self.request.user)
-        rows = [
-            {
-                "membership": membership,
-                "member_count": Membership.objects.filter(
-                    org=membership.org, is_active=True
-                ).count(),
-            }
-            for membership in memberships
-        ]
         context.update(
             {
-                "admin_rows": rows,
+                "admin_rows": memberships,
                 "create_url": reverse_with_org(
                     "users:organization-create",
                     request=self.request,
@@ -643,30 +650,6 @@ class OrganizationMemberDeleteView(
                 messages.error(
                     request,
                     _("Cannot remove the final administrator from an organization."),
-                )
-                return redirect(
-                    reverse_with_org(
-                        "users:organization-detail",
-                        request=request,
-                        kwargs={"pk": organization.pk},
-                    )
-                )
-
-        if membership.has_role(RoleCode.OWNER):
-            remaining_owners = (
-                Membership.objects.filter(
-                    org=organization,
-                    is_active=True,
-                    membership_roles__role__code=RoleCode.OWNER,
-                )
-                .exclude(pk=membership.pk)
-                .distinct()
-                .count()
-            )
-            if remaining_owners == 0:
-                messages.error(
-                    request,
-                    _("Cannot remove the final owner from an organization."),
                 )
                 return redirect(
                     reverse_with_org(

@@ -553,10 +553,15 @@ class ValidationCallbackService:
         run: ValidationRun,
         step_run: ValidationStepRun,
     ) -> None:
-        """Enqueue a Cloud Task to resume the workflow from the next step."""
-        from validibot.core.tasks import enqueue_validation_run
+        """Enqueue a Cloud Task to resume the workflow after the completed step.
 
-        next_step_order = step_run.step_order + 1
+        Passes the completed step's order so the orchestrator can filter with
+        ``order__gt`` to find the next step. This avoids the fragile ``+ 1``
+        assumption — WorkflowStep.order uses gapped numbering (10, 20, 30…)
+        so ``step_order + 1`` would produce a value that doesn't correspond
+        to any real step.
+        """
+        from validibot.core.tasks import enqueue_validation_run
 
         # user_id can be NULL if the run was created via API without user
         # context. Pass 0 to signal "no user" — execute_workflow_steps()
@@ -564,12 +569,12 @@ class ValidationCallbackService:
         enqueue_validation_run(
             validation_run_id=run.id,
             user_id=run.user_id or 0,
-            resume_from_step=next_step_order,
+            resume_from_step=step_run.step_order,
         )
         logger.info(
-            "Enqueued resume task for run %s from step %s",
+            "Enqueued resume task for run %s after step_order %s",
             run.id,
-            next_step_order,
+            step_run.step_order,
         )
 
     def _finalize_run(

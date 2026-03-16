@@ -42,7 +42,9 @@ def enqueue_validation_run(
     Args:
         validation_run_id: ID of the ValidationRun to execute.
         user_id: ID of the user who initiated the run.
-        resume_from_step: Step order to resume from (None for initial execution).
+        resume_from_step: Step order of the last completed step. The
+            orchestrator uses ``order__gt`` to skip it and start from the
+            next one. None for initial execution.
 
     Returns:
         Task identifier if applicable, None for sync execution.

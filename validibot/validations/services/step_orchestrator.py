@@ -46,7 +46,7 @@ from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
-from validibot.validations.services.evidence_hash import stamp_evidence_hash
+from validibot.validations.services.evidence_hash import safe_stamp_evidence_hash
 from validibot.validations.services.findings_persistence import normalize_issue
 from validibot.validations.services.findings_persistence import persist_findings
 from validibot.validations.services.models import ValidationRunTaskResult
@@ -351,19 +351,7 @@ class StepOrchestrator:
                 validation_run=validation_run,
                 step_metrics=step_metrics,
             )
-            # Evidence hash is a tamper-evident seal — valuable for audit
-            # integrity but never worth blocking run finalization.  If hashing
-            # fails (e.g., null submission, DB error), we log and continue so
-            # that the rest of the finalization (submission purge, task result)
-            # still completes.
-            try:
-                stamp_evidence_hash(validation_run)
-            except Exception:
-                logger.exception(
-                    "Failed to stamp evidence hash for run %s — "
-                    "run finalization will continue without it.",
-                    validation_run.id,
-                )
+            safe_stamp_evidence_hash(validation_run)
             from validibot.submissions.models import queue_submission_purge
 
             queue_submission_purge(validation_run.submission)
@@ -386,14 +374,7 @@ class StepOrchestrator:
                 validation_run=validation_run,
                 step_metrics=step_metrics,
             )
-            try:
-                stamp_evidence_hash(validation_run)
-            except Exception:
-                logger.exception(
-                    "Failed to stamp evidence hash for run %s — "
-                    "run finalization will continue without it.",
-                    validation_run.id,
-                )
+            safe_stamp_evidence_hash(validation_run)
             extra_payload = {
                 "step_count": len(step_metrics),
                 "finding_count": (
@@ -451,14 +432,7 @@ class StepOrchestrator:
             validation_run=validation_run,
             step_metrics=step_metrics,
         )
-        try:
-            stamp_evidence_hash(validation_run)
-        except Exception:
-            logger.exception(
-                "Failed to stamp evidence hash for run %s — "
-                "run finalization will continue without it.",
-                validation_run.id,
-            )
+        safe_stamp_evidence_hash(validation_run)
 
         result = ValidationRunTaskResult(
             run_id=validation_run.id,

@@ -89,3 +89,25 @@ def stamp_evidence_hash(run: ValidationRun) -> str:
     run.save(update_fields=["evidence_hash"])
     logger.debug("Evidence hash stamped for run %s: %s", run.id, digest)
     return digest
+
+
+def safe_stamp_evidence_hash(run: ValidationRun) -> None:
+    """Stamp the evidence hash, logging but never raising on failure.
+
+    The evidence hash is a tamper-evident seal — valuable for audit
+    integrity but never worth blocking run finalization.  If hashing
+    fails (e.g., null submission, DB error), we log the exception and
+    continue so that the rest of the finalization (receipt updates,
+    submission purge, task result) still completes.
+
+    Use this wrapper at all finalization call sites instead of
+    duplicating the try/except pattern around ``stamp_evidence_hash()``.
+    """
+    try:
+        stamp_evidence_hash(run)
+    except Exception:
+        logger.exception(
+            "Failed to stamp evidence hash for run %s — "
+            "finalization will continue without it.",
+            run.id,
+        )

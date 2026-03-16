@@ -234,6 +234,51 @@ def switch_current_org_view(request, org_id: int) -> HttpResponse:
     return redirect(next_url)
 
 
+def _ensure_role_retained(
+    org,
+    role_code: str,
+    exclude_membership,
+    form,
+    label: str,
+) -> bool:
+    """Check that at least one other active member holds ``role_code``.
+
+    When an admin edits roles and removes a critical role (ADMIN, OWNER)
+    from a member, we must verify that at least one *other* active member
+    still holds that role.  If not, a form error is added and ``False``
+    is returned so the caller can short-circuit with ``form_invalid()``.
+
+    Args:
+        org: The Organization instance.
+        role_code: The RoleCode constant to check (e.g. ``RoleCode.ADMIN``).
+        exclude_membership: The Membership being edited (excluded from count).
+        form: The form to attach the error to.
+        label: Human-readable role name for the error message
+               (e.g. "administrator", "owner").
+
+    Returns:
+        ``True`` if the role is retained by at least one other member,
+        ``False`` if a form error was added.
+    """
+    remaining = (
+        Membership.objects.filter(
+            org=org,
+            is_active=True,
+            membership_roles__role__code=role_code,
+        )
+        .exclude(pk=exclude_membership.pk)
+        .distinct()
+        .count()
+    )
+    if remaining == 0:
+        form.add_error(
+            None,
+            _("An organization must retain at least one %(role)s.") % {"role": label},
+        )
+        return False
+    return True
+
+
 def _admin_memberships_for(user: User) -> list[Membership]:
     """Return memberships where the user has admin-manage-org permission.
 
@@ -548,41 +593,21 @@ class OrganizationMemberRolesUpdateView(
     def form_valid(self, form):
         organization = self.organization
         new_roles = set(form.cleaned_data.get("roles") or [])
-        if RoleCode.ADMIN not in new_roles:
-            remaining_admins = (
-                Membership.objects.filter(
-                    org=organization,
-                    is_active=True,
-                    membership_roles__role__code=RoleCode.ADMIN,
-                )
-                .exclude(pk=self.membership.pk)
-                .distinct()
-                .count()
-            )
-            if remaining_admins == 0:
-                form.add_error(
-                    None,
-                    _("An organization must retain at least one administrator."),
-                )
-                return self.form_invalid(form)
 
-        if RoleCode.OWNER not in new_roles:
-            remaining_owners = (
-                Membership.objects.filter(
+        # Guard against removing the last admin or owner from the org.
+        for role_code, label in [
+            (RoleCode.ADMIN, "administrator"),
+            (RoleCode.OWNER, "owner"),
+        ]:
+            if role_code not in new_roles:
+                if not _ensure_role_retained(
                     org=organization,
-                    is_active=True,
-                    membership_roles__role__code=RoleCode.OWNER,
-                )
-                .exclude(pk=self.membership.pk)
-                .distinct()
-                .count()
-            )
-            if remaining_owners == 0:
-                form.add_error(
-                    None,
-                    _("An organization must retain at least one owner."),
-                )
-                return self.form_invalid(form)
+                    role_code=role_code,
+                    exclude_membership=self.membership,
+                    form=form,
+                    label=label,
+                ):
+                    return self.form_invalid(form)
 
         form.save()
         messages.success(self.request, _("Roles updated."))

@@ -49,7 +49,13 @@ class TaskDispatchRequest:
     """ID of the user who initiated the run."""
 
     resume_from_step: int | None = None
-    """Step order to resume from (None for initial execution)."""
+    """Step order of the last completed step (None for initial execution).
+
+    Despite the name, this is NOT the step to start from — the orchestrator
+    uses ``order__gt`` to skip this step and begin with the next one. The
+    value is always a real WorkflowStep.order from the database, never a
+    fabricated ``order + 1``.
+    """
 
     def to_payload(self) -> dict:
         """Convert to JSON-serializable payload for task queues."""

@@ -147,6 +147,14 @@ class ValidatorConfig(BaseModel):
     # startup by ``populate_registry()`` via ``import_string()``.
     validator_class: str = ""
 
+    # --- Output envelope class ---
+    # Dotted Python path to the Pydantic model used to deserialize
+    # the output.json returned by a container-based validator.  Only
+    # relevant for advanced (container) validators — built-in validators
+    # leave this empty.  Resolved at startup alongside ``validator_class``
+    # and stored in ``registry._ENVELOPE_REGISTRY`` for O(1) lookups.
+    output_envelope_class: str = ""
+
     # --- File handling ---
     supported_file_types: list[str] = Field(default_factory=list)
     supported_data_formats: list[str] = Field(default_factory=list)
@@ -231,16 +239,18 @@ _CONFIG_REGISTRY: dict[str, ValidatorConfig] = {}
 
 
 def populate_registry() -> None:
-    """Discover all configs and populate both the config and class registries.
+    """Discover all configs and populate the config, class, and envelope registries.
 
     Called once from ``ValidationsConfig.ready()``.  Pulls configs from:
 
     1. ``discover_configs()`` — package-based validators with ``config.py``
     2. ``BUILTIN_CONFIGS`` — single-file built-in validators
 
-    For each config that declares a ``validator_class`` dotted path, the
-    class is resolved via ``import_string()`` and stored in the validator
-    class registry (``registry._VALIDATOR_REGISTRY``).
+    For each config, resolves dotted paths via ``import_string()`` and
+    populates:
+
+    - ``registry._VALIDATOR_REGISTRY`` — from ``validator_class``
+    - ``registry._ENVELOPE_REGISTRY`` — from ``output_envelope_class``
 
     Idempotent: skips if the registry is already populated (handles
     Django's autoreloader calling ``ready()`` twice).
@@ -251,6 +261,7 @@ def populate_registry() -> None:
     from django.utils.module_loading import import_string
 
     from validibot.validations.validators.base.builtin_configs import BUILTIN_CONFIGS
+    from validibot.validations.validators.base.registry import _ENVELOPE_REGISTRY
     from validibot.validations.validators.base.registry import _VALIDATOR_REGISTRY
 
     all_configs = list(discover_configs()) + list(BUILTIN_CONFIGS)
@@ -279,6 +290,18 @@ def populate_registry() -> None:
                 ) from exc
             _VALIDATOR_REGISTRY[cfg.validation_type] = cls
             cls.validation_type = cfg.validation_type
+
+        if cfg.output_envelope_class:
+            try:
+                envelope_cls = import_string(cfg.output_envelope_class)
+            except (ImportError, AttributeError) as exc:
+                raise ImportError(
+                    f"Cannot import output envelope class "
+                    f"'{cfg.output_envelope_class}' declared in config "
+                    f"'{cfg.slug}' "
+                    f"(validation_type='{cfg.validation_type}'): {exc}"
+                ) from exc
+            _ENVELOPE_REGISTRY[cfg.validation_type] = envelope_cls
 
 
 def get_config(validation_type: str) -> ValidatorConfig | None:

@@ -96,6 +96,9 @@ BUILTIN_CONFIGS: list[ValidatorConfig] = [
         validator_class=(
             "validibot.validations.validators.custom.validator.CustomValidator"
         ),
+        output_envelope_class=(
+            "validibot_shared.validations.envelopes.ValidationOutputEnvelope"
+        ),
         version="1.0",
         order=99,
         is_system=False,

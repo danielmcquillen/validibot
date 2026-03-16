@@ -400,23 +400,22 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 output_data = output_data.decode("utf-8")
             output_dict = json.loads(output_data)
 
-            # Determine envelope class based on validator type
-            validator_type = output_dict.get("validator", {}).get("type", "").upper()
+            # Look up the output envelope class from the registry using the
+            # validator type embedded in the envelope JSON.
+            from validibot.validations.validators.base import registry
 
-            if validator_type == "ENERGYPLUS":
-                from validibot_shared.energyplus.envelopes import (
-                    EnergyPlusOutputEnvelope,
+            validator_type = output_dict.get("validator", {}).get("type", "").upper()
+            envelope_class = registry.get_output_envelope_class(validator_type)
+
+            if envelope_class is None:
+                # Fall back to the generic base envelope for unknown types.
+                from validibot_shared.validations.envelopes import (
+                    ValidationOutputEnvelope,
                 )
 
-                return EnergyPlusOutputEnvelope.model_validate(output_dict)
-            if validator_type == "FMU":
-                from validibot_shared.fmu.envelopes import FMUOutputEnvelope
+                envelope_class = ValidationOutputEnvelope
 
-                return FMUOutputEnvelope.model_validate(output_dict)
-            # Generic envelope
-            from validibot_shared.validations.envelopes import ValidationOutputEnvelope
-
-            return ValidationOutputEnvelope.model_validate(output_dict)
+            return envelope_class.model_validate(output_dict)
 
         except Exception:
             logger.exception("Failed to read output envelope from %s", output_path)

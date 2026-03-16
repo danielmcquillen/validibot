@@ -25,6 +25,9 @@ config = ValidatorConfig(
     validator_class=(
         "validibot.validations.validators.energyplus.validator.EnergyPlusValidator"
     ),
+    output_envelope_class=(
+        "validibot_shared.energyplus.envelopes.EnergyPlusOutputEnvelope"
+    ),
     version="1.0",
     order=10,
     has_processor=True,

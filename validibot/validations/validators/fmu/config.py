@@ -18,6 +18,7 @@ config = ValidatorConfig(
     description="Validate and simulate Functional Mock-up Units (FMUs).",
     validation_type=ValidationType.FMU,
     validator_class="validibot.validations.validators.fmu.validator.FMUValidator",
+    output_envelope_class="validibot_shared.fmu.envelopes.FMUOutputEnvelope",
     version="1.0",
     order=20,
     has_processor=True,

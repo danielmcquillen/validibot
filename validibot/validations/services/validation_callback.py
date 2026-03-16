@@ -19,16 +19,16 @@ handles all assertion types (CEL, etc.) for the output stage.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
+from typing import Any
 
 from django.db import DatabaseError
 from django.db import transaction
 from pydantic import ValidationError
 from rest_framework import status
 from rest_framework.response import Response
-from validibot_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
-from validibot_shared.fmu.envelopes import FMUOutputEnvelope
 from validibot_shared.validations.envelopes import ValidationCallback
 from validibot_shared.validations.envelopes import ValidationStatus
 
@@ -36,7 +36,6 @@ from validibot.core.models import CallbackReceiptStatus
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
-from validibot.validations.constants import ValidationType
 from validibot.validations.models import CallbackReceipt
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
@@ -44,6 +43,44 @@ from validibot.validations.services.cloud_run.gcs_client import download_envelop
 from validibot.validations.services.validation_run import ValidationRunService
 
 logger = logging.getLogger(__name__)
+
+
+# ── Exception for early-exit error responses ──────────────────────────
+#
+# _process_callback delegates to several helper methods that each validate
+# preconditions (active step run exists, envelope downloads successfully,
+# envelope IDs match the expected run/validator).  Rather than threading
+# Response objects back through return values, helpers raise this exception
+# and the top-level method catches it once and converts it to a Response.
+
+
+class _CallbackProcessingError(Exception):
+    """Raised by helpers when callback processing cannot continue.
+
+    Carries the HTTP status code and response body so _process_callback
+    can convert it to a DRF Response in one place.
+    """
+
+    def __init__(self, status_code: int, detail: str) -> None:
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail)
+
+
+# ── Result container for step completion ──────────────────────────────
+
+
+@dataclass(frozen=True)
+class _StepCompletionResult:
+    """Intermediate result from _complete_step, consumed by _finalize_or_resume."""
+
+    step_run: ValidationStepRun
+    step_status: StepStatus
+    step_error: str
+    output_envelope: Any  # typed as Any to avoid coupling to envelope base class
+
+
+# ── Helpers ───────────────────────────────────────────────────────────
 
 
 def _coerce_finished_at(finished_at_candidate) -> datetime:
@@ -96,6 +133,8 @@ class ValidationCallbackService:
     processor handles all of that via validator.post_execute_validate().
     """
 
+    # ── Public entry point ────────────────────────────────────────────
+
     def process(self, *, payload: dict) -> Response:
         """
         Validate and process a validator callback payload.
@@ -107,6 +146,13 @@ class ValidationCallbackService:
             DRF Response with an appropriate status code and body.
         """
         try:
+            # The callback is intentionally minimal — it just says "run X
+            # finished with status Y, go fetch the full results from this URI."
+            # The actual validation-specific data (findings, outputs) lives in
+            # the output.json at result_uri, which Django downloads and
+            # processes separately. This keeps the callback contract stable
+            # across all validator types — the container doesn't need to
+            # serialize its full output into the HTTP POST.
             callback = ValidationCallback.model_validate(payload)
 
             logger.info(
@@ -116,7 +162,7 @@ class ValidationCallbackService:
                 callback.callback_id,
             )
 
-            # Get the validation run FIRST - before idempotency check.
+            # Get the validation run FIRST — before idempotency check.
             # This ensures we return a clean 404 if the run doesn't exist,
             # rather than an FK error when creating the receipt.
             try:
@@ -128,90 +174,7 @@ class ValidationCallbackService:
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            receipt = None
-            receipt_created = False
-            should_process = True
-            if callback.callback_id:
-                try:
-                    with transaction.atomic():
-                        # Try to get existing receipt with lock
-                        try:
-                            receipt = CallbackReceipt.objects.select_for_update(
-                                nowait=True
-                            ).get(callback_id=callback.callback_id)
-                            receipt_created = False
-                        except CallbackReceipt.DoesNotExist:
-                            # No receipt exists - create one with PROCESSING status
-                            receipt = CallbackReceipt.objects.create(
-                                callback_id=callback.callback_id,
-                                validation_run=run,
-                                status=CallbackReceiptStatus.PROCESSING,
-                                result_uri=callback.result_uri or "",
-                            )
-                            receipt_created = True
-
-                        if not receipt_created:
-                            # Receipt already exists - check if it was fully processed.
-                            # If status is still PROCESSING, a previous attempt failed
-                            # mid-processing, so we should retry. Otherwise, it's a true
-                            # duplicate and we return the cached response.
-                            if receipt.status != CallbackReceiptStatus.PROCESSING:
-                                logger.info(
-                                    "Callback %s already processed at %s",
-                                    callback.callback_id,
-                                    receipt.received_at,
-                                )
-                                should_process = False
-                            else:
-                                # Status is PROCESSING - previous attempt failed, retry
-                                logger.info(
-                                    "Callback %s still PROCESSING (previous attempt "
-                                    "failed), retrying",
-                                    callback.callback_id,
-                                )
-
-                        # Process the callback inside the transaction so the lock is
-                        # held until we update the receipt status to a terminal value.
-                        if should_process:
-                            return self._process_callback(
-                                callback=callback,
-                                run=run,
-                                receipt=receipt,
-                            )
-
-                except DatabaseError:
-                    # Lock acquisition failed - another callback is processing
-                    # Return 409 Conflict so Cloud Tasks will retry later
-                    logger.info(
-                        "Callback %s locked by concurrent request, returning 409",
-                        callback.callback_id,
-                    )
-                    return Response(
-                        {
-                            "message": "Callback is being processed by another request",
-                            "retry": True,
-                        },
-                        status=status.HTTP_409_CONFLICT,
-                    )
-
-                # If we get here, it means should_process was False (duplicate callback)
-                if not should_process and receipt:
-                    received_at_iso = receipt.received_at.isoformat()
-                    return Response(
-                        {
-                            "message": "Callback already processed",
-                            "idempotent_replayed": True,
-                            "original_received_at": received_at_iso,
-                        },
-                        status=status.HTTP_200_OK,
-                    )
-
-            # No callback_id - process without idempotency protection
-            return self._process_callback(
-                callback=callback,
-                run=run,
-                receipt=None,
-            )
+            return self._process_with_idempotency_guard(callback, run)
 
         except ValidationError as exc:
             logger.warning("Invalid callback payload: %s", exc)
@@ -226,6 +189,121 @@ class ValidationCallbackService:
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    # ── Idempotency guard ─────────────────────────────────────────────
+
+    def _process_with_idempotency_guard(
+        self,
+        callback: ValidationCallback,
+        run: ValidationRun,
+    ) -> Response:
+        """
+        Ensure exactly-once processing for callbacks with a callback_id.
+
+        Cloud Tasks (and most message queues) guarantee at-least-once delivery,
+        so duplicate callbacks are expected. This method uses a CallbackReceipt
+        table as an idempotency ledger:
+
+        1. No callback_id → skip idempotency, process immediately.
+        2. New callback_id → create a PROCESSING receipt, process under a
+           row-level lock so no concurrent request can duplicate the work.
+        3. Existing receipt still PROCESSING → previous attempt crashed
+           mid-flight, so retry.
+        4. Existing receipt in a terminal state → true duplicate, return
+           the cached "already processed" response.
+        5. Lock contention (another request holds the row lock) → return
+           409 so Cloud Tasks retries later.
+        """
+        if not callback.callback_id:
+            return self._process_callback(
+                callback=callback,
+                run=run,
+                receipt=None,
+            )
+
+        try:
+            with transaction.atomic():
+                receipt, receipt_created = self._get_or_create_receipt(
+                    callback,
+                    run,
+                )
+
+                if not receipt_created:
+                    if receipt.status != CallbackReceiptStatus.PROCESSING:
+                        logger.info(
+                            "Callback %s already processed at %s",
+                            callback.callback_id,
+                            receipt.received_at,
+                        )
+                        # Return inside the atomic block isn't needed for
+                        # processing, but exiting cleanly releases the lock.
+                        return Response(
+                            {
+                                "message": "Callback already processed",
+                                "idempotent_replayed": True,
+                                "original_received_at": (
+                                    receipt.received_at.isoformat()
+                                ),
+                            },
+                            status=status.HTTP_200_OK,
+                        )
+
+                    logger.info(
+                        "Callback %s still PROCESSING (previous attempt "
+                        "failed), retrying",
+                        callback.callback_id,
+                    )
+
+                # Process inside the transaction so the row lock is held
+                # until the receipt status reaches a terminal value.
+                return self._process_callback(
+                    callback=callback,
+                    run=run,
+                    receipt=receipt,
+                )
+
+        except DatabaseError:
+            # Lock acquisition failed — another request is processing this
+            # callback. Return 409 so Cloud Tasks retries later.
+            logger.info(
+                "Callback %s locked by concurrent request, returning 409",
+                callback.callback_id,
+            )
+            return Response(
+                {
+                    "message": "Callback is being processed by another request",
+                    "retry": True,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+    @staticmethod
+    def _get_or_create_receipt(
+        callback: ValidationCallback,
+        run: ValidationRun,
+    ) -> tuple[CallbackReceipt, bool]:
+        """
+        Fetch an existing receipt under a row lock, or create a new one.
+
+        Returns:
+            (receipt, created) — mirrors Django's get_or_create convention.
+        """
+        try:
+            receipt = CallbackReceipt.objects.select_for_update(
+                nowait=True,
+            ).get(callback_id=callback.callback_id)
+        except CallbackReceipt.DoesNotExist:
+            receipt = CallbackReceipt.objects.create(
+                callback_id=callback.callback_id,
+                validation_run=run,
+                status=CallbackReceiptStatus.PROCESSING,
+                result_uri=callback.result_uri or "",
+            )
+            return receipt, True
+        else:
+            return receipt, False
+
+    # ── Core processing pipeline ──────────────────────────────────────
+
     def _process_callback(
         self,
         *,
@@ -234,64 +312,126 @@ class ValidationCallbackService:
         receipt: CallbackReceipt | None,
     ) -> Response:
         """
-        Process the callback payload and update the validation run.
+        Orchestrate the callback processing pipeline.
 
-        This method contains the core callback processing logic, extracted to
-        allow it to run inside a transaction that holds a row lock on the
-        callback receipt (for idempotency).
+        This method is the core of the service, called either inside a
+        transaction (with idempotency guard) or directly (without). It
+        delegates to focused helper methods for each phase:
 
-        Args:
-            callback: The validated callback payload.
-            run: The ValidationRun being updated.
-            receipt: Optional CallbackReceipt for idempotency tracking.
+        1. Resolve the active step run and its validator
+        2. Download and validate the output envelope from GCS
+        3. Complete the step (processor handles findings + assertions)
+        4. Either resume the next step or finalize the run
+        5. Mark the receipt as completed (idempotency bookkeeping)
+        """
+        try:
+            step_run, validator = self._resolve_active_step_run(run)
+            output_envelope = self._download_and_validate_envelope(
+                callback,
+                run,
+                validator,
+            )
+            result = self._complete_step(run, step_run, output_envelope)
+            self._finalize_or_resume(run, result)
+        except _CallbackProcessingError as exc:
+            return Response(
+                {"error": exc.detail},
+                status=exc.status_code,
+            )
+
+        self._mark_receipt_completed(callback, receipt, run)
+
+        logger.info(
+            "Processed callback for run %s, step status=%s",
+            callback.run_id,
+            result.step_status,
+        )
+
+        return Response(
+            {"message": "Callback processed successfully"},
+            status=status.HTTP_200_OK,
+        )
+
+    # ── Step 1: Resolve the active step run ───────────────────────────
+
+    @staticmethod
+    def _resolve_active_step_run(
+        run: ValidationRun,
+    ) -> tuple[ValidationStepRun, Any]:
+        """
+        Find the active (RUNNING/PENDING) step run and its validator.
+
+        We use select_related rather than run.current_step_run because we
+        need step_run.workflow_step.validator in subsequent steps.
 
         Returns:
-            DRF Response to send back to the caller.
+            (step_run, validator) tuple.
+
+        Raises:
+            _CallbackProcessingError: If no active step run or no validator.
         """
-        # Locate the active step run (RUNNING/PENDING) for this validation.
-        step_run = run.current_step_run
-        if not step_run:
-            step_run = (
-                ValidationStepRun.objects.select_related(
-                    "workflow_step__validator",
-                )
-                .filter(
-                    validation_run=run,
-                    status__in=[StepStatus.RUNNING, StepStatus.PENDING],
-                )
-                .order_by("step_order")
-                .first()
+        step_run = (
+            ValidationStepRun.objects.select_related(
+                "workflow_step__validator",
             )
+            .filter(
+                validation_run=run,
+                status__in=[StepStatus.RUNNING, StepStatus.PENDING],
+            )
+            .order_by("step_order")
+            .first()
+        )
 
         if not step_run:
             logger.warning("No active step run found for run %s", run.id)
-            return Response(
-                {"error": "Step run not found"},
-                status=status.HTTP_404_NOT_FOUND,
+            raise _CallbackProcessingError(
+                status.HTTP_404_NOT_FOUND,
+                "Step run not found",
             )
 
         validator = step_run.workflow_step.validator
         if not validator:
             logger.error("No validator found for step run: %s", step_run.id)
-            return Response(
-                {"error": "No validator found for step"},
-                status=status.HTTP_400_BAD_REQUEST,
+            raise _CallbackProcessingError(
+                status.HTTP_400_BAD_REQUEST,
+                "No validator found for step",
             )
 
-        # Determine the envelope class based on validator type
-        if validator.validation_type == ValidationType.ENERGYPLUS:
-            envelope_class = EnergyPlusOutputEnvelope
-        elif validator.validation_type == ValidationType.FMU:
-            envelope_class = FMUOutputEnvelope
-        else:
+        return step_run, validator
+
+    # ── Step 2: Download and validate the output envelope ─────────────
+
+    @staticmethod
+    def _download_and_validate_envelope(
+        callback: ValidationCallback,
+        run: ValidationRun,
+        validator,
+    ):
+        """
+        Download the output envelope from GCS and verify it matches expectations.
+
+        Each advanced validator declares its output envelope class in its
+        ValidatorConfig; these are resolved at startup and stored in the
+        validator registry for O(1) lookups.
+
+        Raises:
+            _CallbackProcessingError: On download failure, missing envelope
+                class, or validator/run ID mismatch.
+        """
+        from validibot.validations.validators.base import registry
+
+        envelope_class = registry.get_output_envelope_class(
+            validator.validation_type,
+        )
+        if not envelope_class:
             logger.error(
-                "Unsupported validator type: %s",
+                "No output envelope class registered for validator type: %s",
                 validator.validation_type,
             )
-            error_msg = f"Unsupported validator type: {validator.validation_type}"
-            return Response(
-                {"error": error_msg},
-                status=status.HTTP_400_BAD_REQUEST,
+            raise _CallbackProcessingError(
+                status.HTTP_400_BAD_REQUEST,
+                f"No output envelope class registered for "
+                f"validator type: {validator.validation_type}",
             )
 
         try:
@@ -301,21 +441,24 @@ class ValidationCallbackService:
             )
         except Exception as exc:
             logger.exception("Failed to download output envelope")
-            return Response(
-                {"error": f"Failed to download output envelope: {exc}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            raise _CallbackProcessingError(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                f"Failed to download output envelope: {exc}",
+            ) from exc
 
-        # Double-check the envelope matches the expected validator
+        # Verify the envelope belongs to the expected validator and run.
+        # We don't validate org/workflow because ValidationOutputEnvelope
+        # doesn't contain those fields — they're only in the input envelope.
+        # The run_id check is sufficient to match callback to run.
         if str(output_envelope.validator.id) != str(validator.id):
             logger.warning(
                 "Envelope validator mismatch: envelope=%s expected=%s",
                 output_envelope.validator.id,
                 validator.id,
             )
-            return Response(
-                {"error": "Validator mismatch in output envelope"},
-                status=status.HTTP_400_BAD_REQUEST,
+            raise _CallbackProcessingError(
+                status.HTTP_400_BAD_REQUEST,
+                "Validator mismatch in output envelope",
             )
 
         if str(getattr(output_envelope, "run_id", "")) != str(run.id):
@@ -324,17 +467,32 @@ class ValidationCallbackService:
                 getattr(output_envelope, "run_id", ""),
                 run.id,
             )
-            return Response(
-                {"error": "Run mismatch in output envelope"},
-                status=status.HTTP_400_BAD_REQUEST,
+            raise _CallbackProcessingError(
+                status.HTTP_400_BAD_REQUEST,
+                "Run mismatch in output envelope",
             )
-        # Note: We don't validate org/workflow from the output envelope because
-        # ValidationOutputEnvelope doesn't contain those fields - they're only in
-        # the input envelope. The run_id check above is sufficient to match the
-        # callback to the correct run.
 
-        # Use the processor to complete the step from the callback
-        # This handles: findings persistence, output-stage assertions, signals storage
+        return output_envelope
+
+    # ── Step 3: Complete the step via the processor ───────────────────
+
+    def _complete_step(
+        self,
+        run: ValidationRun,
+        step_run: ValidationStepRun,
+        output_envelope,
+    ) -> _StepCompletionResult:
+        """
+        Delegate to ValidationStepProcessor and emit the step-completed signal.
+
+        The processor handles findings persistence, output-stage assertion
+        evaluation, and signal storage. After it completes, we refresh the
+        step_run from the database to get the authoritative final status
+        (which may differ from the envelope status if assertions failed).
+
+        Returns:
+            _StepCompletionResult with the refreshed step status and error.
+        """
         from validibot.validations.services.step_processor import get_step_processor
 
         processor = get_step_processor(run, step_run)
@@ -343,20 +501,11 @@ class ValidationCallbackService:
         # Refresh step_run to get the final status set by the processor.
         # The processor's finalize_step() sets step_run.status based on:
         # 1. Container envelope status (authoritative for container execution)
-        # 2. Output-stage assertion failures (can fail step even if container succeeded)
-        # We must use this status, NOT output_envelope.status, for run-level decisions.
+        # 2. Output-stage assertion failures (can fail step even if container
+        #    succeeded)
+        # We must use this status, NOT output_envelope.status, for run-level
+        # decisions.
         step_run.refresh_from_db()
-        step_status = StepStatus(step_run.status)
-
-        # Extract error for run-level error message from step_run
-        # (processor already extracted and stored this)
-        step_error = step_run.error or ""
-
-        # NOTE: The processor has already:
-        # 1. Persisted findings (envelope messages + assertion results)
-        # 2. Evaluated output-stage assertions
-        # 3. Stored signals in run.summary["steps"][step_id]["signals"]
-        # 4. Finalized step_run with status, timing, output
 
         # Notify listeners that a step completed (e.g., cloud metering for
         # credit deduction). Using send_robust so a failing receiver doesn't
@@ -369,124 +518,173 @@ class ValidationCallbackService:
             validation_run=run,
         )
 
-        # Get finished_at for run-level finalization
-        finished_at = _coerce_finished_at(output_envelope.timing.finished_at)
+        return _StepCompletionResult(
+            step_run=step_run,
+            step_status=StepStatus(step_run.status),
+            step_error=step_run.error or "",
+            output_envelope=output_envelope,
+        )
 
-        # Only proceed with remaining steps if the current step passed
+    # ── Step 4: Resume next step or finalize the run ──────────────────
+
+    def _finalize_or_resume(
+        self,
+        run: ValidationRun,
+        result: _StepCompletionResult,
+    ) -> None:
+        """
+        Either enqueue the next workflow step or finalize the run.
+
+        If more steps remain and the current step passed, enqueue a resume
+        task for the next step. Otherwise, finalize the run with the
+        appropriate status, error category, timing, summary, and evidence hash.
+        """
         remaining_steps = run.workflow.steps.filter(
-            order__gt=step_run.step_order,
+            order__gt=result.step_run.step_order,
         ).exists()
-        if remaining_steps and step_status == StepStatus.PASSED:
-            from validibot.core.tasks import enqueue_validation_run
 
-            # user_id can be NULL if the run was created via API without user context.
-            # Pass 0 to signal "no user" - execute_workflow_steps() handles this
-            # gracefully.
-            enqueue_validation_run(
-                validation_run_id=run.id,
-                user_id=run.user_id or 0,
-                resume_from_step=step_run.step_order + 1,
-            )
-            logger.info(
-                "Enqueued resume task for run %s from step %s",
-                run.id,
-                step_run.step_order + 1,
-            )
+        if remaining_steps and result.step_status == StepStatus.PASSED:
+            self._enqueue_next_step(run, result.step_run)
         else:
-            # Map step status to run status.
-            # We use step_status (from processor) rather than envelope status because
-            # the processor accounts for output-stage assertion failures that can fail
-            # the step even when the container returned SUCCESS.
-            step_to_run_status = {
-                StepStatus.PASSED: ValidationRunStatus.SUCCEEDED,
-                StepStatus.FAILED: ValidationRunStatus.FAILED,
-                StepStatus.SKIPPED: ValidationRunStatus.CANCELED,
-            }
+            self._finalize_run(run, result)
 
-            # Determine error category based on envelope status (for runtime vs
-            # validation) combined with step status (for assertion failures)
-            if step_status == StepStatus.PASSED:
-                error_category = ""
-            elif step_status == StepStatus.SKIPPED:
-                # Cancelled jobs have no error category
-                error_category = ""
-            elif output_envelope.status == ValidationStatus.FAILED_RUNTIME:
-                error_category = ValidationRunErrorCategory.RUNTIME_ERROR
-            else:
-                # FAILED_VALIDATION, SUCCESS with assertion failures, or unknown
-                error_category = ValidationRunErrorCategory.VALIDATION_FAILED
+    @staticmethod
+    def _enqueue_next_step(
+        run: ValidationRun,
+        step_run: ValidationStepRun,
+    ) -> None:
+        """Enqueue a Cloud Task to resume the workflow from the next step."""
+        from validibot.core.tasks import enqueue_validation_run
 
-            run.status = step_to_run_status.get(
-                step_status,
-                ValidationRunStatus.FAILED,
-            )
-            run.error_category = error_category
-            run.ended_at = finished_at
-            run.error = step_error
+        next_step_order = step_run.step_order + 1
 
-            if run.started_at and run.ended_at:
-                delta = run.ended_at - run.started_at
-                run.duration_ms = int(delta.total_seconds() * 1000)
+        # user_id can be NULL if the run was created via API without user
+        # context. Pass 0 to signal "no user" — execute_workflow_steps()
+        # handles this gracefully.
+        enqueue_validation_run(
+            validation_run_id=run.id,
+            user_id=run.user_id or 0,
+            resume_from_step=next_step_order,
+        )
+        logger.info(
+            "Enqueued resume task for run %s from step %s",
+            run.id,
+            next_step_order,
+        )
 
-            run.save()
+    def _finalize_run(
+        self,
+        run: ValidationRun,
+        result: _StepCompletionResult,
+    ) -> None:
+        """
+        Finalize the validation run after the last step (or a failed step).
 
-            ValidationRunService().rebuild_run_summary_record(
-                validation_run=run,
-            )
+        Sets run status, error category, timing, rebuilds the summary record,
+        stamps the evidence hash, and queues a submission purge if the
+        retention policy requires it.
+        """
+        # Map step status to run status. We use the processor's step_status
+        # (not envelope status) because the processor accounts for output-stage
+        # assertion failures that can fail a step even when the container
+        # returned SUCCESS.
+        step_to_run_status = {
+            StepStatus.PASSED: ValidationRunStatus.SUCCEEDED,
+            StepStatus.FAILED: ValidationRunStatus.FAILED,
+            StepStatus.SKIPPED: ValidationRunStatus.CANCELED,
+        }
 
-            from validibot.validations.services.evidence_hash import stamp_evidence_hash
+        # Determine error category based on envelope status (runtime vs
+        # validation) combined with step status (for assertion failures).
+        if result.step_status in {StepStatus.PASSED, StepStatus.SKIPPED}:
+            error_category = ""
+        elif result.output_envelope.status == ValidationStatus.FAILED_RUNTIME:
+            error_category = ValidationRunErrorCategory.RUNTIME_ERROR
+        else:
+            # FAILED_VALIDATION, SUCCESS with assertion failures, or unknown
+            error_category = ValidationRunErrorCategory.VALIDATION_FAILED
 
-            # Evidence hash is a tamper-evident seal — valuable but never
-            # worth blocking callback finalization.  Log and continue on
-            # failure so receipt update and submission purge still happen.
-            try:
-                stamp_evidence_hash(run)
-            except Exception:
-                logger.exception(
-                    "Failed to stamp evidence hash for run %s — "
-                    "callback finalization will continue without it.",
-                    run.id,
-                )
+        finished_at = _coerce_finished_at(
+            result.output_envelope.timing.finished_at,
+        )
 
-            logger.info(
-                "Finalized run %s with status %s",
+        run.status = step_to_run_status.get(
+            result.step_status,
+            ValidationRunStatus.FAILED,
+        )
+        run.error_category = error_category
+        run.ended_at = finished_at
+        run.error = result.step_error
+
+        if run.started_at and run.ended_at:
+            delta = run.ended_at - run.started_at
+            run.duration_ms = int(delta.total_seconds() * 1000)
+
+        run.save()
+
+        ValidationRunService().rebuild_run_summary_record(
+            validation_run=run,
+        )
+
+        # Evidence hash is a tamper-evident seal — valuable but never worth
+        # blocking callback finalization. Log and continue on failure so
+        # receipt update and submission purge still happen.
+        from validibot.validations.services.evidence_hash import stamp_evidence_hash
+
+        try:
+            stamp_evidence_hash(run)
+        except Exception:
+            logger.exception(
+                "Failed to stamp evidence hash for run %s — "
+                "callback finalization will continue without it.",
                 run.id,
-                run.status,
             )
-            self._queue_purge_if_do_not_store(run)
-
-        # Update the receipt status from PROCESSING to COMPLETED.
-        # The receipt tracks callback processing, not step outcome.
-        if callback.callback_id and receipt:
-            try:
-                receipt.status = CallbackReceiptStatus.COMPLETED
-                receipt.validation_run = run
-                receipt.save(update_fields=["status", "validation_run"])
-                logger.debug(
-                    "Updated callback receipt %s to status %s",
-                    callback.callback_id,
-                    receipt.status,
-                )
-            except Exception:
-                # If receipt update fails, log but don't fail the request.
-                logger.warning(
-                    "Failed to update callback receipt for %s",
-                    callback.callback_id,
-                    exc_info=True,
-                )
 
         logger.info(
-            "Processed callback for run %s, step status=%s",
-            callback.run_id,
-            step_status,
+            "Finalized run %s with status %s",
+            run.id,
+            run.status,
         )
+        self._queue_purge_if_do_not_store(run)
 
-        return Response(
-            {"message": "Callback processed successfully"},
-            status=status.HTTP_200_OK,
-        )
+    # ── Step 5: Receipt bookkeeping ───────────────────────────────────
 
-    def _queue_purge_if_do_not_store(self, run: ValidationRun) -> None:
+    @staticmethod
+    def _mark_receipt_completed(
+        callback: ValidationCallback,
+        receipt: CallbackReceipt | None,
+        run: ValidationRun,
+    ) -> None:
+        """
+        Update receipt status from PROCESSING to COMPLETED.
+
+        The receipt tracks callback processing state, not step outcome.
+        A failure here is logged but does not fail the request — the run
+        is already in a consistent state.
+        """
+        if not callback.callback_id or not receipt:
+            return
+
+        try:
+            receipt.status = CallbackReceiptStatus.COMPLETED
+            receipt.validation_run = run
+            receipt.save(update_fields=["status", "validation_run"])
+            logger.debug(
+                "Updated callback receipt %s to status %s",
+                callback.callback_id,
+                receipt.status,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to update callback receipt for %s",
+                callback.callback_id,
+                exc_info=True,
+            )
+
+    # ── Submission purge ──────────────────────────────────────────────
+
+    @staticmethod
+    def _queue_purge_if_do_not_store(run: ValidationRun) -> None:
         """
         Queue submission purge if the retention policy is DO_NOT_STORE.
 

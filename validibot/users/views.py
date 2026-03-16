@@ -249,8 +249,8 @@ def _admin_memberships_for(user: User) -> list[Membership]:
         .prefetch_related("membership_roles__role")
         .annotate(
             member_count=Count(
-                "org__memberships",
-                filter=Q(org__memberships__is_active=True),
+                "org__membership",
+                filter=Q(org__membership__is_active=True),
             ),
         )
     )

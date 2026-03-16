@@ -446,9 +446,19 @@ SOCIALACCOUNT_ADAPTER = "validibot.users.adapters.SocialAccountAdapter"
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
 SOCIALACCOUNT_FORMS = {"signup": "validibot.users.forms.UserSocialSignupForm"}
 # https://docs.allauth.org/en/latest/account/configuration.html
-# Brute force protection: lock out after 5 failed attempts for 5 minutes
+#
+# Rate limits for allauth views. Format: "count/period/scope"
+# Scopes: ip = per IP address, key = per key (email/user), user = per user
+#
+# Allauth provides sensible defaults for all keys (signup=20/m/ip,
+# login=30/m/ip, confirm_email=1/3m/key, etc.). We override specific
+# keys to tighten limits for our use case. Unspecified keys keep their
+# allauth defaults.
 ACCOUNT_RATE_LIMITS = {
-    "login_failed": "5/5m",  # 5 failed attempts per 5 minutes
+    "login_failed": "5/5m",
+    "signup": "5/m/ip",
+    "confirm_email": "1/3m/key",
+    "reset_password": "5/m/ip,3/m/key",
 }
 
 # django-rest-framework

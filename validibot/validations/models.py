@@ -1750,6 +1750,9 @@ class ValidationRunSummary(TimeStampedModel):
         help_text=_("Optional metadata for reporting (for example exemplar messages)."),
     )
 
+    def __str__(self) -> str:  # pragma: no cover - display helper
+        return f"Summary for run {self.run_id} ({self.status})"
+
 
 class ValidationStepRun(TimeStampedModel):
     """
@@ -2076,6 +2079,9 @@ class Artifact(TimeStampedModel):
     file = models.FileField(upload_to=artifact_upload_to)
 
     size_bytes = models.BigIntegerField(default=0)
+
+    def __str__(self) -> str:  # pragma: no cover - display helper
+        return f"{self.label} (run {self.validation_run_id})"
 
     def clean(self):
         super().clean()

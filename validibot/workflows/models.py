@@ -335,6 +335,10 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
     featured_image_alt_candidates = ("name",)
 
+    def __str__(self) -> str:  # pragma: no cover - display helper
+        version = f" v{self.version}" if self.version else ""
+        return f"{self.name}{version}"
+
     allowed_file_types = ArrayField(
         base_field=models.CharField(
             max_length=32,

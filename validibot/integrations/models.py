@@ -39,6 +39,10 @@ class WebhookEndpoint(TimeStampedModel):
         help_text="Subset of official event types to deliver.",
     )
 
+    def __str__(self) -> str:  # pragma: no cover - display helper
+        state = "active" if self.is_active else "disabled"
+        return f"{self.url} ({state})"
+
     def clean(self):
         super().clean()
         # Deduplicate and keep stable ordering
@@ -92,6 +96,13 @@ class WebhookDelivery(TimeStampedModel):
         blank=True,
     )  # backoff scheduler hook
 
+    def __str__(self) -> str:  # pragma: no cover - display helper
+        status = "OK" if self.success else f"HTTP {self.status_code or '?'}"
+        return (
+            f"Delivery to endpoint {self.endpoint_id}"
+            f" ({status}, attempt {self.attempt})"
+        )
+
 
 class OutboundEvent(TimeStampedModel):
     """
@@ -139,3 +150,6 @@ class OutboundEvent(TimeStampedModel):
 
     # optional dedupe key if you ever re-emit
     dedupe_key = models.CharField(max_length=128, blank=True, default="")
+
+    def __str__(self) -> str:  # pragma: no cover - display helper
+        return f"{self.event_type} ({self.resource_type}:{self.resource_id})"

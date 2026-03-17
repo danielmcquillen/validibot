@@ -2,7 +2,6 @@
 volumes:
   validibot_local_postgres_data:
   validibot_local_postgres_backups:
-  validibot_local_venv:  # Shared venv for web and worker containers
   validibot_local_redis_data:
   validibot_local_storage:  # Shared storage for validation files
 
@@ -27,7 +26,6 @@ services:
     networks:
       - validibot
     volumes:
-      - validibot_local_venv:/app/.venv
       - .:/app
       # Shared storage volume for validation files (accessible by validator containers)
       - validibot_local_storage:/app/storage

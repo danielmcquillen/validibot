@@ -342,6 +342,10 @@ TEMPLATES = [
                 "validibot.core.context_processors.features_context",
                 "validibot.users.context_processors.organization_context",
                 "validibot.notifications.context_processors.notifications_context",
+                # django-csp: makes {{ csp_nonce }} available in all templates.
+                # Without this, the nonce is never generated and inline scripts
+                # with nonce attributes will trigger CSP violations.
+                "csp.context_processors.nonce",
             ],
         },
     },

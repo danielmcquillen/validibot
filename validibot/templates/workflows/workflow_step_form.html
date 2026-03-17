@@ -115,7 +115,7 @@
     Crispy renders the groups with data-mode="direct" or data-mode="template"
     CSS classes; this script toggles Bootstrap's d-none on each.
   {% endcomment %}
-  <script nonce="{{ csp_nonce }}">
+  <script nonce="{{ CSP_NONCE }}">
     (function initModeToggle() {
       const radios = document.querySelectorAll('input[name="validation_mode"]');
       if (!radios.length) return;

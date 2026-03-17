@@ -4,7 +4,7 @@
 {% get_current_language as LANGUAGE_CODE %}
 <html lang="{{ LANGUAGE_CODE }}">
   <head>
-    <script nonce="{{ csp_nonce }}">
+    <script nonce="{{ CSP_NONCE }}">
       (function applyInitialLeftNavState() {
         const storageKey = 'validibot:leftNavCollapsed';
         try {
@@ -36,7 +36,7 @@
       indicator style injection (we define those styles in project.scss).
     {% endcomment %}
     <meta name="htmx-config"
-          content='{"inlineStyleNonce":"{{ csp_nonce }}","inlineScriptNonce":"{{ csp_nonce }}","includeIndicatorStyles":false}' />
+          content='{"inlineStyleNonce":"{{ CSP_NONCE }}","inlineScriptNonce":"{{ CSP_NONCE }}","includeIndicatorStyles":false}' />
     {% block css %}
       {% include 'core/partial/core_css_includes.html' %}
     {% endblock css %}

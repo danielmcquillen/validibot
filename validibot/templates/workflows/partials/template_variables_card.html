@@ -84,7 +84,7 @@ Context:
   {# close card app-card #}
 {% endwith %}
 {# -- Toggle type-specific fields per variable card -- #}
-<script nonce="{{ csp_nonce }}">
+<script nonce="{{ CSP_NONCE }}">
   (function() {
     document.querySelectorAll("[data-tplvar-card]").forEach(function(card) {
       var radios = card.querySelectorAll("input[type=radio][name$=_variable_type]");

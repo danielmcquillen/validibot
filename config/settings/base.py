@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 import environ
+from csp.constants import NONCE
 from django.utils.translation import gettext_lazy as _
 
 logger = logging.getLogger(__name__)
@@ -611,11 +612,18 @@ PERMISSIONS_POLICY: dict[str, list[str]] = {
 # Report-only mode: logs violations without blocking anything. This lets us
 # identify issues before switching to enforcing mode.
 # https://django-csp.readthedocs.io/
+#
+# The NONCE sentinel tells django-csp to generate a unique cryptographic nonce
+# per request and include it in the CSP header. Templates use {{ csp_nonce }}
+# to attach the same nonce to inline <script> tags.
+
+
 CONTENT_SECURITY_POLICY_REPORT_ONLY = {
     "DIRECTIVES": {
         "default-src": ("'self'",),
         "script-src": (
             "'self'",
+            NONCE,
             # PostHog analytics — the tracker stub (in web_tracker.html) has a
             # nonce, but it dynamically creates a <script> tag to load the full
             # SDK from PostHog's CDN. That injected script can't carry a nonce,
@@ -624,6 +632,7 @@ CONTENT_SECURITY_POLICY_REPORT_ONLY = {
         ),
         "style-src": (
             "'self'",
+            NONCE,
             "https://fonts.googleapis.com",
         ),
         # Allow inline style= attributes on HTML elements. These are layout

@@ -405,7 +405,8 @@ _deploy-web stage:
     if [ "{{stage}}" = "prod" ]; then DB_INSTANCE="${APP_NAME}-db"; else DB_INSTANCE="${APP_NAME}-db-{{stage}}"; fi
     PRIVATE_IP=$(gcloud sql instances describe "$DB_INSTANCE" \
         --project={{gcp_project}} \
-        --format="value(ipAddresses.filter(type=PRIVATE).ipAddress)" 2>/dev/null || echo "")
+        --format=json 2>/dev/null \
+        | python3 -c "import json,sys; [print(a['ipAddress']) for a in json.load(sys.stdin).get('ipAddresses',[]) if a.get('type')=='PRIVATE']" 2>/dev/null || echo "")
     if [ -n "$PRIVATE_IP" ]; then
         VPC_FLAGS="--network=default --subnet=default --vpc-egress=private-ranges-only"
         echo "   Private IP detected ($PRIVATE_IP) — enabling Direct VPC egress"
@@ -460,7 +461,8 @@ _deploy-worker stage:
     if [ "{{stage}}" = "prod" ]; then DB_INSTANCE="${APP_NAME}-db"; else DB_INSTANCE="${APP_NAME}-db-{{stage}}"; fi
     PRIVATE_IP=$(gcloud sql instances describe "$DB_INSTANCE" \
         --project={{gcp_project}} \
-        --format="value(ipAddresses.filter(type=PRIVATE).ipAddress)" 2>/dev/null || echo "")
+        --format=json 2>/dev/null \
+        | python3 -c "import json,sys; [print(a['ipAddress']) for a in json.load(sys.stdin).get('ipAddresses',[]) if a.get('type')=='PRIVATE']" 2>/dev/null || echo "")
     if [ -n "$PRIVATE_IP" ]; then
         VPC_FLAGS="--network=default --subnet=default --vpc-egress=private-ranges-only"
         echo "   Private IP detected ($PRIVATE_IP) — enabling Direct VPC egress"
@@ -1321,7 +1323,8 @@ init-stage stage: _require-gcp-config
     # Enable private IP on the instance (keeps public IP too)
     CURRENT_PRIVATE=$(gcloud sql instances describe "$DB_INSTANCE" \
         --project={{gcp_project}} \
-        --format="value(ipAddresses.filter(type=PRIVATE).ipAddress)" 2>/dev/null || echo "")
+        --format=json 2>/dev/null \
+        | python3 -c "import json,sys; [print(a['ipAddress']) for a in json.load(sys.stdin).get('ipAddresses',[]) if a.get('type')=='PRIVATE']" 2>/dev/null || echo "")
     if [ -n "$CURRENT_PRIVATE" ]; then
         echo "   Private IP already enabled: $CURRENT_PRIVATE"
     else
@@ -1332,7 +1335,8 @@ init-stage stage: _require-gcp-config
             --quiet
         NEW_PRIVATE=$(gcloud sql instances describe "$DB_INSTANCE" \
             --project={{gcp_project}} \
-            --format="value(ipAddresses.filter(type=PRIVATE).ipAddress)" 2>/dev/null || echo "")
+            --format=json 2>/dev/null \
+        | python3 -c "import json,sys; [print(a['ipAddress']) for a in json.load(sys.stdin).get('ipAddresses',[]) if a.get('type')=='PRIVATE']" 2>/dev/null || echo "")
         echo "   Private IP enabled: $NEW_PRIVATE"
         echo ""
         echo "   IMPORTANT: Update DATABASE_URL in your secrets to use this private IP:"

@@ -10,6 +10,7 @@ import logging
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Count
 from django.http import HttpResponse
@@ -376,8 +377,19 @@ class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
             return self.form_invalid(form)
         form.instance.org = org
         form.instance.user = user
+        try:
+            response = super().form_valid(form)
+        except ValidationError as exc:
+            # Workflow.save() calls full_clean() which can raise a model-level
+            # ValidationError (e.g., unique constraint on org+slug+version).
+            # The form has already passed is_valid() at this point because
+            # the slug is auto-generated in save() — the form never sees it.
+            # Convert the model error to a form error so the user gets a
+            # friendly message instead of a 500.
+            form.add_error(None, exc)
+            return self.form_invalid(form)
         messages.success(self.request, _("Workflow created."))
-        return super().form_valid(form)
+        return response
 
     def get_success_url(self):
         return reverse_with_org(
@@ -434,8 +446,13 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
         return breadcrumbs
 
     def form_valid(self, form):
+        try:
+            response = super().form_valid(form)
+        except ValidationError as exc:
+            form.add_error(None, exc)
+            return self.form_invalid(form)
         messages.success(self.request, _("Workflow updated."))
-        return super().form_valid(form)
+        return response
 
     def get_success_url(self):
         return reverse_with_org(

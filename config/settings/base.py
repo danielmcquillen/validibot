@@ -614,7 +614,14 @@ PERMISSIONS_POLICY: dict[str, list[str]] = {
 CONTENT_SECURITY_POLICY_REPORT_ONLY = {
     "DIRECTIVES": {
         "default-src": ("'self'",),
-        "script-src": ("'self'",),
+        "script-src": (
+            "'self'",
+            # PostHog analytics — the tracker stub (in web_tracker.html) has a
+            # nonce, but it dynamically creates a <script> tag to load the full
+            # SDK from PostHog's CDN. That injected script can't carry a nonce,
+            # so we must whitelist the PostHog asset host.
+            "https://*.i.posthog.com",
+        ),
         "style-src": (
             "'self'",
             "https://fonts.googleapis.com",
@@ -623,6 +630,11 @@ CONTENT_SECURITY_POLICY_REPORT_ONLY = {
         # values (heights, widths) not user-controlled content, so the security
         # risk is negligible and migrating 46 templates to CSS classes isn't
         # worth the effort.
+        #
+        # Note: HTMx swap transitions apply styles via JavaScript
+        # (element.style), which triggers a CSP report-only violation
+        # against style-src. This is a known cosmetic issue — the styles
+        # are framework-internal, not user-controlled.
         "style-src-attr": ("'unsafe-inline'",),
         "font-src": (
             "'self'",

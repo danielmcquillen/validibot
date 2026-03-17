@@ -207,20 +207,20 @@ def parse_policy_rules(raw_text: str) -> list[ParsedPolicyRule]:
 
 class WorkflowForm(forms.ModelForm):
     description_md = forms.CharField(
-        label=_("Workflow description (Markdown)"),
+        label=_("Public info page description (Markdown)"),
         required=False,
         widget=forms.Textarea(
             attrs={
                 "rows": 6,
                 "placeholder": _(
-                    "Describe what this workflow validates and who it's for...",
+                    "Optional: a more detailed description for the public info page...",
                 ),
             },
         ),
         help_text=_(
-            "Shown on the workflow info page. This is stored as Markdown and "
-            "sanitized before display. You can control visibility from the "
-            "Public Info card on the workflow detail page.",
+            "Use this to provide a separate, more involved description for the "
+            "workflow's public info page. Supports Markdown formatting. "
+            "Leave blank to use the standard description above."
         ),
     )
     allowed_file_types = forms.MultipleChoiceField(
@@ -239,6 +239,7 @@ class WorkflowForm(forms.ModelForm):
         model = Workflow
         fields = [
             "name",
+            "description",
             "slug",
             "project",
             "allowed_file_types",
@@ -274,6 +275,11 @@ class WorkflowForm(forms.ModelForm):
         self.helper.form_tag = False
         self.helper.layout = Layout(
             Field("name", placeholder=_("Name your workflow"), autofocus=True),
+            Field(
+                "description",
+                placeholder=_("Brief description of what this workflow validates"),
+                rows=3,
+            ),
             Field("description_md"),
             Field("slug", placeholder=""),
             Field("project"),

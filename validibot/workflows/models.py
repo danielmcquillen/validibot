@@ -221,6 +221,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     description = models.TextField(
         blank=True,
         default="",
+        max_length=5000,
         help_text=_(
             "Short description of what this workflow validates. "
             "Shown to authenticated users in the web UI, CLI, and API. "

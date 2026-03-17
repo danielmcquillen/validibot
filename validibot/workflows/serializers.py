@@ -241,6 +241,7 @@ class WorkflowSlimSerializer(serializers.ModelSerializer):
             "uuid",
             "slug",
             "name",
+            "description",
             "version",
             "org",
             "is_active",

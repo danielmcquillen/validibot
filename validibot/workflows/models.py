@@ -218,6 +218,17 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         help_text=_("Name of the workflow, e.g. 'My Workflow'"),
     )
 
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text=_(
+            "Short description of what this workflow validates. "
+            "Shown to authenticated users in the web UI, CLI, and API. "
+            "For a longer public-facing description, use the workflow's "
+            "public info page instead."
+        ),
+    )
+
     uuid = models.UUIDField(
         default=uuid.uuid4,
         editable=False,

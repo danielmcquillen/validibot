@@ -1,0 +1,22 @@
+// HTMx indicator styles — replaces the inline <style> tag that HTMx
+// normally injects on load. We disable that injection via
+// htmx.config.includeIndicatorStyles = false (set in base.html) to
+// avoid a CSP violation, and define the same styles here instead.
+//
+// These styles control the visibility of loading indicators:
+// - .htmx-indicator elements are hidden by default (opacity: 0)
+// - When a parent has .htmx-request (added during an HTMx request),
+//   child .htmx-indicator elements fade in (opacity: 1)
+
+.htmx-indicator {
+  opacity: 0;
+  transition: opacity 200ms ease-in;
+}
+
+.htmx-request .htmx-indicator {
+  opacity: 1;
+}
+
+.htmx-request.htmx-indicator {
+  opacity: 1;
+}

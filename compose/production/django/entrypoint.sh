@@ -21,7 +21,19 @@ fi
 # Cloud SQL uses Unix sockets, Docker Compose uses TCP
 # Check if we're using Cloud SQL (socket path exists or CLOUD_SQL_CONNECTION_NAME is set)
 if [ -n "${CLOUD_SQL_CONNECTION_NAME:-}" ] || [ -d "/cloudsql" ]; then
-  echo "Cloud SQL detected, skipping TCP wait (using Unix socket)..."
+  echo "Cloud SQL detected, waiting for Unix socket..."
+  SOCKET_PATH="/cloudsql/${CLOUD_SQL_CONNECTION_NAME}/.s.PGSQL.5432"
+  WAIT_SECONDS=0
+  MAX_WAIT=30
+  while [ ! -S "$SOCKET_PATH" ] && [ "$WAIT_SECONDS" -lt "$MAX_WAIT" ]; do
+    sleep 1
+    WAIT_SECONDS=$((WAIT_SECONDS + 1))
+  done
+  if [ -S "$SOCKET_PATH" ]; then
+    echo "Cloud SQL socket ready after ${WAIT_SECONDS}s"
+  else
+    echo "WARNING: Cloud SQL socket not found after ${MAX_WAIT}s at ${SOCKET_PATH}"
+  fi
 else
   postgres_host="${POSTGRES_HOST:-postgres}"
   postgres_port="${POSTGRES_PORT:-5432}"

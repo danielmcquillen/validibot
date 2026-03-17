@@ -23,7 +23,12 @@
 
 @use "app";
 
-@import "bootstrap-icons/font/bootstrap-icons.css";
+// Bootstrap Icons — self-hosted. The font files live in static/fonts/
+// (committed to the repo). We override the font directory variable so the
+// @font-face points to our local path instead of a relative ./fonts/ path
+// that would break after sass compilation.
+$bootstrap-icons-font-dir: "/static/fonts";
+@import "bootstrap-icons/font/bootstrap-icons.scss";
 
 // Fonts
 @import url("https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap");

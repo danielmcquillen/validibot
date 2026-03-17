@@ -19,9 +19,10 @@ node_modules
 .readthedocs.yml
 .travis.yml
 venv
-.git
 .envs/
 .env
+# uv cache — large and not needed in the image
+.uv-cache/
 # Exclude validator containers - they build separately
 validators/
 # Exclude generated documentation

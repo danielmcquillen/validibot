@@ -613,16 +613,17 @@ PERMISSIONS_POLICY: dict[str, list[str]] = {
 
 # CONTENT SECURITY POLICY (CSP)
 # ------------------------------------------------------------------------------
-# Report-only mode: logs violations without blocking anything. This lets us
-# identify issues before switching to enforcing mode.
+# Enforcing mode: the browser blocks any script, style, font, or connection
+# that doesn't match the policy. Previously in report-only mode for testing.
+# Switched to enforcing 2026-03-17 after verifying no violations on all pages.
 # https://django-csp.readthedocs.io/
 #
 # The NONCE sentinel tells django-csp to generate a unique cryptographic nonce
-# per request and include it in the CSP header. Templates use {{ csp_nonce }}
+# per request and include it in the CSP header. Templates use {{ CSP_NONCE }}
 # to attach the same nonce to inline <script> tags.
 
 
-CONTENT_SECURITY_POLICY_REPORT_ONLY = {
+CONTENT_SECURITY_POLICY = {
     "DIRECTIVES": {
         "default-src": ("'self'",),
         "script-src": (

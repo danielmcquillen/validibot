@@ -6,13 +6,13 @@
   "@type": "sysml:Package",
   "@id": "pkg-thermal-radiator-subsystem",
   "name": "ThermalRadiatorSubsystem",
-  "description": "FMU FAIL: Passes JSON Schema (correct structure, correct fmuReference) and passes all CEL assertions (every individual value is in valid range). However, the combination of emissivity=0.02 and absorptivity=0.85 is pathological: the FMU computes an equilibrium temperature of ~1005 K, which exceeds the physically plausible range (150-400 K) for spacecraft thermal control coatings. The radiator coating would melt long before reaching this temperature.",
+  "description": "FMU FAIL: Passes JSON Schema (correct structure, correct fmuReference) and passes all CEL assertions (every individual value is in valid range). However, the combination of emissivity=0.02 and absorptivity=0.85 is unrealistic: the FMU computes an equilibrium temperature of ~1005 K, which exceeds the physically plausible range (150-400 K) for spacecraft thermal control coatings. The radiator coating would melt long before reaching this temperature.",
   "ownedMember": [
     {
       "@type": "sysml:PartDefinition",
       "@id": "def-radiator-panel",
       "name": "RadiatorPanel",
-      "description": "A flat-plate spacecraft radiator panel with pathological coating properties.",
+      "description": "A flat-plate spacecraft radiator panel with unrealistic coating properties.",
       "ownedAttribute": [
         {
           "@type": "sysml:AttributeUsage",

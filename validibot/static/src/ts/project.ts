@@ -259,6 +259,22 @@ window.addEventListener('DOMContentLoaded', () => {
     initAppFeatures(document);
     initTableSorting(document);
     initRolePickers(document);
+
+    // Reorder flash: when the URL hash points to an element, briefly
+    // highlight it to confirm a reorder or move action just completed.
+    // Used by assertion and step reorder views.
+    const hash = window.location.hash;
+    if (hash) {
+        const target = document.querySelector(hash);
+        if (target instanceof HTMLElement) {
+            target.classList.add('reorder-flash');
+            target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            target.addEventListener('animationend', () => {
+                target.classList.remove('reorder-flash');
+            }, { once: true });
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+    }
 });
 
 /**

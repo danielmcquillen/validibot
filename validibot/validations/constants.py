@@ -169,6 +169,7 @@ class ValidationType(TextChoices):
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
     AI_ASSIST = "AI_ASSIST", _("AI Assist")
     THERM = "THERM", _("THERM Thermal Analysis")
+    # SYSMLV2 = "SYSMLV2", _("SysMLv2 Model Validator")
 
 
 class ValidatorReleaseState(TextChoices):
@@ -237,6 +238,7 @@ DEFAULT_COMPUTE_TIERS: dict[str, str] = {
     ValidationType.FMU: ComputeTier.HIGH,
     ValidationType.THERM: ComputeTier.HIGH,
     ValidationType.AI_ASSIST: ComputeTier.LOW,
+    # ValidationType.SYSMLV2: ComputeTier.LOW,
 }
 
 

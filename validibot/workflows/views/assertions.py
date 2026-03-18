@@ -365,5 +365,5 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
                     "step_id": self.step.pk,
                 },
             )
-            + "#workflow-step-assertions",
+            + f"#assertion-card-{assertion.pk}",
         )

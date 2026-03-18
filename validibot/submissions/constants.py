@@ -147,6 +147,7 @@ class SubmissionDataFormat(models.TextChoices):
     FMU = "fmu", _("FMU")
     THERM_THMX = "therm_thmx", _("THERM THMX")
     THERM_THMZ = "therm_thmz", _("THERM THMZ (Archive)")
+    # SYSMLV2_JSON = "sysmlv2_json", _("SysMLv2 JSON")
     UNKNOWN = "unknown", _("Unknown")
 
 

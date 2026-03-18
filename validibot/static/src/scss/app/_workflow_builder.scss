@@ -296,3 +296,23 @@
     }
   }
 }
+
+// Reorder flash — brief highlight applied to an element after it has been
+// moved (e.g. assertion reorder, step reorder). Use this pattern whenever
+// items in an ordered list are rearranged via up/down buttons to give the
+// user visual confirmation that the move happened.
+//
+// Triggered by JS (project.ts) when the URL hash matches an element ID.
+@keyframes reorder-flash {
+  0% {
+    background-color: var(--bs-primary-bg-subtle);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
+
+.reorder-flash {
+  animation: reorder-flash 1s ease-out;
+}

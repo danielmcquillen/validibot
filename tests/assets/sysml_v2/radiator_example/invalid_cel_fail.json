@@ -1,0 +1,123 @@
+{
+  "@context": {
+    "sysml": "https://www.omg.org/spec/SysML/2.0/",
+    "kerml": "https://www.omg.org/spec/KerML/1.0/"
+  },
+  "@type": "sysml:Package",
+  "@id": "pkg-thermal-radiator-subsystem",
+  "name": "ThermalRadiatorSubsystem",
+  "description": "CEL FAIL: Passes JSON Schema (correct structure, correct fmuReference) but has four domain violations caught by CEL assertions: negative emissivity (-0.5), negative mass (-1.0 kg), one-ended interface, and a dangling requirement reference (req-nonexistent).",
+  "ownedMember": [
+    {
+      "@type": "sysml:PartDefinition",
+      "@id": "def-radiator-panel",
+      "name": "RadiatorPanel",
+      "description": "A flat-plate spacecraft radiator panel with thermal coating properties.",
+      "ownedAttribute": [
+        {
+          "@type": "sysml:AttributeUsage",
+          "@id": "attr-panel-area",
+          "name": "panelArea",
+          "attributeType": "kerml:Real",
+          "defaultValue": 2.0,
+          "unit": "m²",
+          "description": "Active radiating surface area"
+        },
+        {
+          "@type": "sysml:AttributeUsage",
+          "@id": "attr-emissivity",
+          "name": "emissivity",
+          "attributeType": "kerml:Real",
+          "defaultValue": -0.5,
+          "unit": "dimensionless",
+          "description": "ERROR: Negative emissivity is physically impossible"
+        },
+        {
+          "@type": "sysml:AttributeUsage",
+          "@id": "attr-absorptivity",
+          "name": "absorptivity",
+          "attributeType": "kerml:Real",
+          "defaultValue": 0.20,
+          "unit": "dimensionless",
+          "description": "Solar absorptivity of the radiator coating (0–1)"
+        },
+        {
+          "@type": "sysml:AttributeUsage",
+          "@id": "attr-mass",
+          "name": "mass",
+          "attributeType": "kerml:Real",
+          "defaultValue": -1.0,
+          "unit": "kg",
+          "description": "ERROR: Negative mass is physically impossible"
+        }
+      ],
+      "ownedPort": [
+        {
+          "@type": "sysml:PortUsage",
+          "@id": "port-thermal-in",
+          "name": "thermalInput",
+          "direction": "in",
+          "portType": "ThermalFluxPort",
+          "description": "Incident solar flux and spacecraft internal heat load"
+        }
+      ]
+    },
+    {
+      "@type": "sysml:PartDefinition",
+      "@id": "def-thermal-environment",
+      "name": "ThermalEnvironment",
+      "description": "Orbital thermal environment parameters.",
+      "ownedAttribute": [
+        {
+          "@type": "sysml:AttributeUsage",
+          "@id": "attr-solar-irradiance",
+          "name": "solarIrradiance",
+          "attributeType": "kerml:Real",
+          "defaultValue": 1361.0,
+          "unit": "W/m²",
+          "description": "Solar constant at spacecraft orbital distance"
+        }
+      ]
+    },
+    {
+      "@type": "sysml:InterfaceDefinition",
+      "@id": "iface-thermal-coupling",
+      "name": "ThermalCoupling",
+      "description": "ERROR: This interface has only ONE end instead of the required two.",
+      "end": [
+        {
+          "@type": "sysml:InterfaceEnd",
+          "partRef": "def-thermal-environment",
+          "portRef": null
+        }
+      ]
+    },
+    {
+      "@type": "sysml:RequirementDefinition",
+      "@id": "req-thermal-range",
+      "name": "OperatingTemperatureRange",
+      "description": "The radiator panel equilibrium temperature shall remain within the allowable range for the thermal coating.",
+      "text": "The radiator equilibrium temperature shall be between 150 K and 400 K under all operational thermal environments."
+    },
+    {
+      "@type": "sysml:SatisfyRequirementUsage",
+      "@id": "satisfy-thermal-range",
+      "satisfiedRequirement": "req-nonexistent",
+      "satisfyingPart": "def-radiator-panel",
+      "description": "ERROR: References a requirement ID that doesn't exist in this model."
+    },
+    {
+      "@type": "sysml:AnalysisCaseDefinition",
+      "@id": "analysis-equilibrium-temp",
+      "name": "EquilibriumTemperatureAnalysis",
+      "description": "Compute radiator equilibrium temperature.",
+      "subject": "def-radiator-panel",
+      "analysisAction": {
+        "@type": "sysml:ActionUsage",
+        "name": "runThermalFMU",
+        "description": "Execute the ThermalRadiator.fmu with panel properties as inputs.",
+        "fmuReference": "ThermalRadiator.fmu"
+      }
+    }
+  ]
+}

@@ -178,7 +178,7 @@ indent_size = 2
 [tool.ruff]
 target-version = "py313"
 # Exclude a variety of commonly ignored directories.
-extend-exclude = ["*/migrations/*.py", "staticfiles/*", "scripts/*"]
+extend-exclude = ["*/migrations/*.py", "staticfiles/*", "scripts/*", "tests/assets/*"]
 
 [tool.ruff.lint]
 select = [
@@ -265,6 +265,9 @@ ignore = [
   "PERF401", # Allow use of list comprehensions that could be replaced with generator expressions
   "G004",    # Allow f-strings in logging statements
   "SLF001",  # Allow private member access across modules
+  "RUF001",  # Allow ambiguous unicode characters in strings (e.g. curly quotes, em dashes)
+  "RUF002",  # Allow ambiguous unicode characters in docstrings
+  "RUF003",  # Allow ambiguous unicode characters in comments
 ]
 
 [tool.ruff.lint.isort]

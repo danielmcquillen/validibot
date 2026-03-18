@@ -1,0 +1,50 @@
+// =============================================================================
+// CEL Assertions for SysML v2 Thermal Radiator Model
+// Used by Validibot's CEL Assertion Validator (Step 2) to check domain
+// constraints that a JSON Schema can't express.
+//
+// In Validibot, each expression references catalog entry slugs as variables.
+// You map data paths from the incoming JSON to named catalog entries (e.g.
+// "emissivity" maps to ownedMember[0].ownedAttribute[1].defaultValue), and
+// the slug becomes the variable name in the CEL expression.
+// =============================================================================
+
+
+// --- Step 2: Input domain assertions (on the submitted SysML JSON) ----------
+
+// Emissivity must be between 0 (exclusive) and 1 (inclusive).
+// Zero emissivity means the surface can't radiate at all.
+// Negative emissivity is physically meaningless.
+emissivity > 0.0 && emissivity <= 1.0
+
+// Absorptivity must be between 0 and 1 (inclusive).
+absorptivity >= 0.0 && absorptivity <= 1.0
+
+// Panel area must be positive.
+panelArea > 0.0
+
+// Mass must be positive.
+mass > 0.0
+
+// Solar irradiance must be non-negative.
+// Zero is valid (eclipse condition). Negative is not.
+solarIrradiance >= 0.0
+
+// Every InterfaceDefinition must have exactly 2 ends.
+// A thermal coupling with one end doesn't couple anything.
+size(end) == 2
+
+// Every SatisfyRequirementUsage must reference a requirement
+// that actually exists in the model. Dangling references mean
+// your traceability matrix is lying to you.
+satisfiedRequirement != null
+
+
+// --- Step 3: Output assertions (on the FMU simulation results) --------------
+
+// Equilibrium temperature must be within the survivable range
+// for spacecraft thermal control coatings (150-400 K).
+equilibrium_temp >= 150.0 && equilibrium_temp <= 400.0
+
+// Heat rejected must be positive (a radiator that rejects no heat isn't working).
+heat_rejected > 0.0

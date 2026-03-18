@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ThermalRadiatorSubsystem",
+  "description": "JSON Schema for validating SysML v2 thermal radiator model artifacts submitted to the Validibot workflow.",
+  "type": "object",
+  "required": ["@type", "name", "ownedMember"],
+  "properties": {
+    "@type": {
+      "const": "sysml:Package"
+    },
+    "@id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "ownedMember": {
+      "type": "array",
+      "contains": {
+        "properties": {
+          "@type": { "const": "sysml:AnalysisCaseDefinition" }
+        },
+        "required": ["@type"]
+      },
+      "items": {
+        "type": "object",
+        "required": ["@type"],
+        "properties": {
+          "@type": {
+            "enum": [
+              "sysml:PartDefinition",
+              "sysml:InterfaceDefinition",
+              "sysml:RequirementDefinition",
+              "sysml:SatisfyRequirementUsage",
+              "sysml:AnalysisCaseDefinition"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "@type": { "const": "sysml:PartDefinition" } }
+            },
+            "then": {
+              "required": ["name", "ownedAttribute"],
+              "properties": {
+                "ownedAttribute": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["name", "defaultValue"],
+                    "properties": {
+                      "name": { "type": "string" },
+                      "defaultValue": { "type": "number" },
+                      "unit": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": { "@type": { "const": "sysml:InterfaceDefinition" } }
+            },
+            "then": {
+              "required": ["name", "end"],
+              "properties": {
+                "end": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["partRef"]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": { "@type": { "const": "sysml:RequirementDefinition" } }
+            },
+            "then": {
+              "required": ["@id", "text"]
+            }
+          },
+          {
+            "if": {
+              "properties": { "@type": { "const": "sysml:SatisfyRequirementUsage" } }
+            },
+            "then": {
+              "required": ["satisfiedRequirement"]
+            }
+          },
+          {
+            "if": {
+              "properties": { "@type": { "const": "sysml:AnalysisCaseDefinition" } }
+            },
+            "then": {
+              "required": ["analysisAction"],
+              "properties": {
+                "analysisAction": {
+                  "type": "object",
+                  "required": ["fmuReference"],
+                  "properties": {
+                    "fmuReference": {
+                      "const": "ThermalRadiator.fmu"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

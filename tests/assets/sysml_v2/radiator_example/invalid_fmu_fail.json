@@ -1,0 +1,173 @@
+{
+  "@context": {
+    "sysml": "https://www.omg.org/spec/SysML/2.0/",
+    "kerml": "https://www.omg.org/spec/KerML/1.0/"
+  },
+  "@type": "sysml:Package",
+  "@id": "pkg-thermal-radiator-subsystem",
+  "name": "ThermalRadiatorSubsystem",
+  "description": "FMU FAIL: Passes JSON Schema (correct structure, correct fmuReference) and passes all CEL assertions (every individual value is in valid range). However, the combination of emissivity=0.02 and absorptivity=0.85 is pathological: the FMU computes an equilibrium temperature of ~1005 K, which exceeds the physically plausible range (150-400 K) for spacecraft thermal control coatings. The radiator coating would melt long before reaching this temperature.",
+  "ownedMember": [
+    {
+      "@type": "sysml:PartDefinition",
+      "@id": "def-radiator-panel",
+      "name": "RadiatorPanel",
+      "description": "A flat-plate spacecraft radiator panel with pathological coating properties.",
+      "ownedAttribute": [
+        {
+          "@type": "sysml:AttributeUsage",
+          "@id": "attr-panel-area",
+          "name": "panelArea",
+          "attributeType": "kerml:Real",
+          "defaultValue": 2.0,
+          "unit": "m²",
+          "description": "Active radiating surface area"
+        },
+        {
+          "@type": "sysml:AttributeUsage",
+          "@id": "attr-emissivity",
+          "name": "emissivity",
+          "attributeType": "kerml:Real",
+          "defaultValue": 0.02,
+          "unit": "dimensionless",
+          "description": "Extremely low emissivity — technically valid (0 < ε ≤ 1) but the surface barely radiates"
+        },
+        {
+          "@type": "sysml:AttributeUsage",
+          "@id": "attr-absorptivity",
+          "name": "absorptivity",
+          "attributeType": "kerml:Real",
+          "defaultValue": 0.85,
+          "unit": "dimensionless",
+          "description": "High absorptivity — combined with low emissivity, this ratio drives equilibrium temp to ~1005 K"
+        },
+        {
+          "@type": "sysml:AttributeUsage",
+          "@id": "attr-mass",
+          "name": "mass",
+          "attributeType": "kerml:Real",
+          "defaultValue": 3.6,
+          "unit": "kg",
+          "description": "Panel mass including mounting hardware"
+        }
+      ],
+      "ownedPort": [
+        {
+          "@type": "sysml:PortUsage",
+          "@id": "port-thermal-in",
+          "name": "thermalInput",
+          "direction": "in",
+          "portType": "ThermalFluxPort",
+          "description": "Incident solar flux and spacecraft internal heat load"
+        },
+        {
+          "@type": "sysml:PortUsage",
+          "@id": "port-thermal-out",
+          "name": "thermalOutput",
+          "direction": "out",
+          "portType": "ThermalFluxPort",
+          "description": "Radiated heat to deep space"
+        }
+      ]
+    },
+    {
+      "@type": "sysml:PartDefinition",
+      "@id": "def-thermal-environment",
+      "name": "ThermalEnvironment",
+      "description": "Orbital thermal environment parameters.",
+      "ownedAttribute": [
+        {
+          "@type": "sysml:AttributeUsage",
+          "@id": "attr-solar-irradiance",
+          "name": "solarIrradiance",
+          "attributeType": "kerml:Real",
+          "defaultValue": 1361.0,
+          "unit": "W/m²",
+          "description": "Solar constant at spacecraft orbital distance"
+        },
+        {
+          "@type": "sysml:AttributeUsage",
+          "@id": "attr-albedo-factor",
+          "name": "albedoFactor",
+          "attributeType": "kerml:Real",
+          "defaultValue": 0.30,
+          "unit": "dimensionless",
+          "description": "Planetary albedo contribution factor"
+        }
+      ]
+    },
+    {
+      "@type": "sysml:InterfaceDefinition",
+      "@id": "iface-thermal-coupling",
+      "name": "ThermalCoupling",
+      "description": "Thermal interface between environment and radiator panel.",
+      "end": [
+        {
+          "@type": "sysml:InterfaceEnd",
+          "partRef": "def-thermal-environment",
+          "portRef": null
+        },
+        {
+          "@type": "sysml:InterfaceEnd",
+          "partRef": "def-radiator-panel",
+          "portRef": "port-thermal-in"
+        }
+      ]
+    },
+    {
+      "@type": "sysml:RequirementDefinition",
+      "@id": "req-thermal-range",
+      "name": "OperatingTemperatureRange",
+      "description": "The radiator panel equilibrium temperature shall remain within the allowable range for the thermal coating.",
+      "text": "The radiator equilibrium temperature shall be between 150 K and 400 K under all operational thermal environments.",
+      "ownedConstraint": [
+        {
+          "@type": "sysml:ConstraintUsage",
+          "@id": "constraint-temp-bounds",
+          "expression": "equilibriumTemp >= 150.0 && equilibriumTemp <= 400.0"
+        }
+      ]
+    },
+    {
+      "@type": "sysml:RequirementDefinition",
+      "@id": "req-mass-budget",
+      "name": "MassBudget",
+      "description": "The radiator panel shall not exceed the allocated mass budget.",
+      "text": "The radiator panel mass (including mounting hardware) shall not exceed 5.0 kg.",
+      "ownedConstraint": [
+        {
+          "@type": "sysml:ConstraintUsage",
+          "@id": "constraint-mass-limit",
+          "expression": "mass <= 5.0"
+        }
+      ]
+    },
+    {
+      "@type": "sysml:SatisfyRequirementUsage",
+      "@id": "satisfy-thermal-range",
+      "satisfiedRequirement": "req-thermal-range",
+      "satisfyingPart": "def-radiator-panel",
+      "description": "RadiatorPanel satisfies the operating temperature range requirement."
+    },
+    {
+      "@type": "sysml:SatisfyRequirementUsage",
+      "@id": "satisfy-mass-budget",
+      "satisfiedRequirement": "req-mass-budget",
+      "satisfyingPart": "def-radiator-panel",
+      "description": "RadiatorPanel satisfies the mass budget requirement."
+    },
+    {
+      "@type": "sysml:AnalysisCaseDefinition",
+      "@id": "analysis-equilibrium-temp",
+      "name": "EquilibriumTemperatureAnalysis",
+      "description": "Compute radiator equilibrium temperature using Stefan-Boltzmann law. Delegates to the ThermalRadiator FMU for co-simulation.",
+      "subject": "def-radiator-panel",
+      "analysisAction": {
+        "@type": "sysml:ActionUsage",
+        "name": "runThermalFMU",
+        "description": "Execute the ThermalRadiator.fmu with panel properties as inputs.",
+        "fmuReference": "ThermalRadiator.fmu"
+      }
+    }
+  ]
+}

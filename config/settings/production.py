@@ -70,7 +70,12 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 
 # DATABASES
 # ------------------------------------------------------------------------------
-DATABASES["default"]["CONN_MAX_AGE"] = env.int("CONN_MAX_AGE", default=60)
+# Keep connections open for 10 minutes to reduce connection overhead through
+# the Cloud SQL Auth Proxy. CONN_HEALTH_CHECKS runs a lightweight SELECT 1
+# before reusing a connection, catching stale connections from Cloud SQL
+# restarts or proxy reconnections.
+DATABASES["default"]["CONN_MAX_AGE"] = env.int("CONN_MAX_AGE", default=600)
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 
 # CACHES
 # ------------------------------------------------------------------------------

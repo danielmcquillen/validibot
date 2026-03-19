@@ -11,10 +11,8 @@ from crispy_forms.layout import Column
 from crispy_forms.layout import Layout
 from crispy_forms.layout import Row
 from django import forms
-from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.template.loader import render_to_string
-from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.safestring import SafeString
 from django.utils.safestring import mark_safe
@@ -25,13 +23,13 @@ from validibot.projects.models import Project
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
-from validibot.validations.constants import CatalogEntryType
-from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import Severity
+from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import SignalOriginKind
 from validibot.validations.constants import ValidatorRuleType
 from validibot.validations.constants import get_resource_type_config
 from validibot.validations.constants import get_resource_types_for_validator
-from validibot.validations.models import ValidatorCatalogEntry
+from validibot.validations.models import SignalDefinition
 from validibot.validations.models import ValidatorResourceFile
 
 
@@ -431,39 +429,37 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         catalog_entries=None,
         validator=None,
         target_slug_datalist_id=None,
-        fmu_variables=None,
         **kwargs,
     ):
+        # Ignore fmu_variables kwarg if passed.
+        kwargs.pop("fmu_variables", None)
         super().__init__(*args, **kwargs)
         self.catalog_choices = list(catalog_choices or [])
-        derived_enabled = getattr(settings, "ENABLE_DERIVED_SIGNALS", False)
-        self.catalog_entries = [
-            entry
-            for entry in list(catalog_entries or [])
-            if derived_enabled or entry.entry_type == CatalogEntryType.SIGNAL
-        ]
-        self.catalog_entry_map = {}
-        self.inputs_by_slug: dict[str, ValidatorCatalogEntry] = {}
-        self.outputs_by_slug: dict[str, ValidatorCatalogEntry] = {}
-        self.choice_map: dict[str, ValidatorCatalogEntry] = {}
-        for entry in self.catalog_entries:
-            if entry.run_stage == CatalogRunStage.OUTPUT:
-                self.outputs_by_slug.setdefault(entry.slug, entry)
+        # catalog_entries parameter contains SignalDefinition objects
+        # (passed from the mixin's signal_definitions query).
+        self.signal_definitions: list[SignalDefinition] = list(catalog_entries or [])
+        self.inputs_by_slug: dict[str, SignalDefinition] = {}
+        self.outputs_by_slug: dict[str, SignalDefinition] = {}
+        self.choice_map: dict[str, SignalDefinition] = {}
+        for sig in self.signal_definitions:
+            if sig.direction == SignalDirection.OUTPUT:
+                self.outputs_by_slug.setdefault(sig.contract_key, sig)
             else:
-                self.inputs_by_slug.setdefault(entry.slug, entry)
+                self.inputs_by_slug.setdefault(sig.contract_key, sig)
 
-        # Step-level FMU variables (no catalog entries).  Build name
-        # sets so _resolve_target_data_path() and _validate_cel_identifiers()
-        # can recognise FMU variable names as valid targets.
+        # Step-level FMU signals are now included in signal_definitions
+        # via the mixin's get_catalog_choices(). Build name sets for
+        # CEL validation and target resolution using native_name (the
+        # original FMU variable name from modelDescription.xml).
         self.fmu_input_names: set[str] = set()
         self.fmu_output_names: set[str] = set()
-        for var in fmu_variables or []:
-            causality = var.get("causality", "")
-            name = var.get("name", "")
-            if causality == "input":
-                self.fmu_input_names.add(name)
-            elif causality == "output":
-                self.fmu_output_names.add(name)
+        for sig in self.signal_definitions:
+            if sig.origin_kind == SignalOriginKind.FMU:
+                fmu_name = sig.native_name or sig.contract_key
+                if sig.direction == SignalDirection.INPUT:
+                    self.fmu_input_names.add(fmu_name)
+                elif sig.direction == SignalDirection.OUTPUT:
+                    self.fmu_output_names.add(fmu_name)
 
         self.catalog_slugs = set(
             list(self.inputs_by_slug.keys()) + list(self.outputs_by_slug.keys())
@@ -471,13 +467,13 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         self.validator = validator
         self.target_slug_datalist_id = target_slug_datalist_id
         signal_choices = []
-        for entry in self.catalog_entries:
+        for sig in self.signal_definitions:
             role = (
-                _("Output") if entry.run_stage == CatalogRunStage.OUTPUT else _("Input")
+                _("Output") if sig.direction == SignalDirection.OUTPUT else _("Input")
             )
-            label = entry.label or entry.slug
-            value = f"{entry.run_stage}:{entry.slug}"
-            self.choice_map[value] = entry
+            label = sig.label or sig.contract_key
+            value = f"{sig.direction}:{sig.contract_key}"
+            self.choice_map[value] = sig
             signal_choices.append((value, f"{label} · {role}"))
         self.no_signal_choices = len(signal_choices) == 0
         self.fields["target_catalog_entry"].choices = [
@@ -591,6 +587,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         assertion_type = cleaned.get("assertion_type")
         if assertion_type == AssertionType.CEL_EXPRESSION:
             # CEL expressions declare their own targets inside the expression.
+            self.cleaned_data["resolved_signal"] = None
             self.cleaned_data["target_catalog_entry"] = None
             self.cleaned_data["target_data_path_value"] = ""
         else:
@@ -688,8 +685,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         value = (self.cleaned_data.get("target_data_path") or "").strip()
 
         if catalog_choice:
-            entry = self.choice_map.get(catalog_choice)
-            if not entry:
+            sig = self.choice_map.get(catalog_choice)
+            if not sig:
                 raise ValidationError(
                     {
                         "target_data_path": _(
@@ -698,7 +695,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                         )
                     }
                 )
-            self.cleaned_data["target_catalog_entry"] = entry
+            self.cleaned_data["resolved_signal"] = sig
+            self.cleaned_data["target_catalog_entry"] = None
             self.cleaned_data["target_data_path_value"] = ""
             return
 
@@ -710,7 +708,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 value = value.replace("output.", "", 1)
 
             if explicit_output and value in self.outputs_by_slug:
-                self.cleaned_data["target_catalog_entry"] = self.outputs_by_slug[value]
+                self.cleaned_data["resolved_signal"] = self.outputs_by_slug[value]
+                self.cleaned_data["target_catalog_entry"] = None
                 self.cleaned_data["target_data_path_value"] = ""
                 return
 
@@ -725,7 +724,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                             % {"name": value}
                         }
                     )
-                self.cleaned_data["target_catalog_entry"] = self.inputs_by_slug[value]
+                self.cleaned_data["resolved_signal"] = self.inputs_by_slug[value]
+                self.cleaned_data["target_catalog_entry"] = None
                 self.cleaned_data["target_data_path_value"] = ""
                 return
 
@@ -740,7 +740,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                             % {"name": value}
                         }
                     )
-                self.cleaned_data["target_catalog_entry"] = self.outputs_by_slug[value]
+                self.cleaned_data["resolved_signal"] = self.outputs_by_slug[value]
+                self.cleaned_data["target_catalog_entry"] = None
                 self.cleaned_data["target_data_path_value"] = ""
                 return
 
@@ -755,6 +756,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 # output FMU variable.  Store with the ``output.``
                 # path prefix so _resolve_path navigates the nested
                 # ``output`` namespace at evaluation time.
+                self.cleaned_data["resolved_signal"] = None
                 self.cleaned_data["target_catalog_entry"] = None
                 self.cleaned_data["target_data_path_value"] = f"output.{value}"
                 return
@@ -775,6 +777,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 )
 
             if is_fmu_input or is_fmu_output:
+                self.cleaned_data["resolved_signal"] = None
                 self.cleaned_data["target_catalog_entry"] = None
                 self.cleaned_data["target_data_path_value"] = value
                 return
@@ -797,6 +800,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                         ),
                     },
                 )
+            self.cleaned_data["resolved_signal"] = None
             self.cleaned_data["target_catalog_entry"] = None
             self.cleaned_data["target_data_path_value"] = value
             return
@@ -1099,8 +1103,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         return expr.strip()
 
     def _target_identifier(self) -> str:
-        if self.cleaned_data.get("target_catalog_entry"):
-            return self.cleaned_data["target_catalog_entry"].slug
+        signal = self.cleaned_data.get("resolved_signal")
+        if signal:
+            return signal.contract_key
         return self.cleaned_data.get("target_data_path_value") or ""
 
     def _format_literal(self, value: Any) -> str:
@@ -1122,10 +1127,10 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             "message_template": assertion.message_template,
             "success_message": assertion.success_message,
         }
-        if assertion.target_catalog_entry_id:
-            entry = assertion.target_catalog_entry
-            initial["target_catalog_entry"] = f"{entry.run_stage}:{entry.slug}"
-            initial["target_data_path"] = entry.slug
+        if assertion.target_signal_definition_id:
+            sig = assertion.target_signal_definition
+            initial["target_catalog_entry"] = f"{sig.direction}:{sig.contract_key}"
+            initial["target_data_path"] = sig.contract_key
         else:
             initial["target_data_path"] = assertion.target_data_path
         if assertion.assertion_type == AssertionType.BASIC:
@@ -1263,21 +1268,18 @@ class ValidatorRuleForm(CelHelpLabelMixin, forms.Form):
         return expr
 
 
-class ValidatorCatalogEntryForm(forms.ModelForm):
-    """Form for creating/updating validator catalog entries (signals/derivations)."""
+class SignalDefinitionForm(forms.ModelForm):
+    """Form for creating/updating signal definitions on a validator."""
 
     class Meta:
-        model = ValidatorCatalogEntry
+        model = SignalDefinition
         fields = [
-            "run_stage",
-            "slug",
-            "target_data_path",
+            "direction",
+            "contract_key",
+            "native_name",
             "label",
             "data_type",
             "description",
-            "is_required",
-            "is_hidden",
-            "default_value",
             "order",
         ]
         widgets = {
@@ -1291,45 +1293,26 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
         self.fields["label"].required = False
         self.fields["label"].widget = forms.HiddenInput()
         self.fields["label"].initial = ""
-        self.fields["slug"].label = _("Signal name")
-        self.fields["slug"].help_text = _(
+        self.fields["contract_key"].label = _("Signal name")
+        self.fields["contract_key"].help_text = _(
             "Short, slug-form name (lowercase letters, numbers, hyphens) used in "
             "assertions and CEL expressions."
         )
-        self.fields["slug"].validators = []
-        self.fields["slug"].error_messages["required"] = _("Signal name is required.")
+        self.fields["contract_key"].error_messages["required"] = _(
+            "Signal name is required.",
+        )
         self.fields["description"].help_text = _(
             "A short description to help you remember what data this signal represents."
-        )
-        self.fields["is_required"].help_text = _(
-            "Requires the signal to be present in the submission (inputs) or "
-            "processor output (outputs)."
-        )
-        if not getattr(settings, "ENABLE_DERIVED_SIGNALS", False):
-            # Always treat as signal and hide type selection.
-            self.instance.entry_type = CatalogEntryType.SIGNAL
-            self.fields["entry_type"] = forms.CharField(
-                initial=CatalogEntryType.SIGNAL,
-                widget=forms.HiddenInput(),
-            )
-        # Update target_data_path label and help text with link to help page.
-        self.fields["target_data_path"].label = _("Data path")
-        help_url = reverse("help:help_page", kwargs={"path": "validators/data-paths"})
-        self.fields["target_data_path"].help_text = format_html(
-            "Path to locate this signal in the data. Use dot notation for nested "
-            "values (e.g. <code>dimensions.width</code>). "
-            '<a href="{}" target="_blank" rel="noopener">Read more</a>',
-            help_url,
         )
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.layout = Layout(
             Row(
-                Column("run_stage", css_class="col-12 col-md-6"),
+                Column("direction", css_class="col-12 col-md-6"),
             ),
             Row(
-                Column("slug", css_class="col-12 col-md-6"),
-                Column("target_data_path", css_class="col-12 col-md-6"),
+                Column("contract_key", css_class="col-12 col-md-6"),
+                Column("native_name", css_class="col-12 col-md-6"),
             ),
             Row(
                 Column("data_type", css_class="col-12 col-md-6"),
@@ -1337,16 +1320,11 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
             "description",
             Row(
                 Column("order", css_class="col-12 col-md-6"),
-                Column("is_required", css_class="col-12 col-md-6"),
-            ),
-            Row(
-                Column("is_hidden", css_class="col-12 col-md-6"),
-                Column("default_value", css_class="col-12 col-md-6"),
             ),
         )
 
-    def clean_slug(self):
-        value = (self.cleaned_data.get("slug") or "").strip()
+    def clean_contract_key(self):
+        value = (self.cleaned_data.get("contract_key") or "").strip()
         if not value:
             raise ValidationError(_("Signal name is required."))
         suggested = slugify(value)
@@ -1360,9 +1338,9 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
             )
         if not self.validator:
             return value
-        existing = ValidatorCatalogEntry.objects.filter(
+        existing = SignalDefinition.objects.filter(
             validator=self.validator,
-            slug=value,
+            contract_key=value,
         ).exclude(pk=self.instance.pk)
         if existing.exists():
             raise ValidationError(
@@ -1375,13 +1353,6 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        entry_type = cleaned.get("entry_type")
-        if entry_type == CatalogEntryType.DERIVATION:
-            cleaned["is_required"] = False
-            self.cleaned_data["is_required"] = False
-        if not cleaned.get("is_hidden"):
-            cleaned["default_value"] = None
-            self.cleaned_data["default_value"] = None
         cleaned["label"] = ""
         self.cleaned_data["label"] = ""
         return cleaned

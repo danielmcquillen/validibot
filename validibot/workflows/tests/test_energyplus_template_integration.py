@@ -5,9 +5,10 @@ These tests verify the end-to-end pipeline from form submission through
 config building and resource syncing:
 
 1. ``build_energyplus_config()`` — Validates uploaded IDF files, scans for
-   ``$VARIABLE_NAME`` placeholders, populates ``template_variables`` in the
-   config dict, handles template removal, and preserves existing config
-   as-is when no upload occurs.
+   ``$VARIABLE_NAME`` placeholders, returns them as a separate list for
+   ``_sync_template_signals()`` to persist as ``SignalDefinition`` rows,
+   handles template removal, and preserves existing config as-is when no
+   upload occurs.
 
 2. ``_sync_energyplus_resources()`` — Creates/deletes ``WorkflowStepResource``
    rows with ``role=MODEL_TEMPLATE`` for step-owned template files.
@@ -43,6 +44,7 @@ from unittest.mock import patch
 import pytest
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import ENERGYPLUS_MODEL_TEMPLATE
@@ -140,7 +142,7 @@ def _make_form(
             weather_file_id = str(vrf.pk)
 
     # Infer a sensible validation_mode default: template mode when the
-    # test uploads a template file or the step already has template_variables.
+    # test uploads a template file or the step already has template signals.
     has_template_context = bool(files and files.get("template_file"))
     if step and (step.config or {}).get("template_variables"):
         has_template_context = True
@@ -181,17 +183,18 @@ class TestBuildConfigWithTemplateUpload:
     """Tests for ``build_energyplus_config`` when a template file is uploaded.
 
     This verifies the pipeline: uploaded file → ``validate_idf_template()``
-    → ``scan_idf_template_variables()`` → ``template_variables`` dicts in
-    the config.  The scan/validation is tested exhaustively in
+    → ``scan_idf_template_variables()`` → template variable dicts returned
+    to the caller.  The scan/validation is tested exhaustively in
     ``test_idf_template.py``; here we test the integration with the form
     and config builder.
     """
 
     def test_upload_populates_template_variables(self):
-        """A valid template upload produces ``template_variables`` in config.
+        """A valid template upload returns one dict per detected variable.
 
-        The config should contain one dict per detected variable, with
-        auto-populated metadata from the IDF annotation.
+        The returned ``template_vars`` list contains auto-populated metadata
+        from the IDF annotation, ready for ``_sync_template_signals()``
+        to persist as ``SignalDefinition`` rows.
         """
         validator = _make_energyplus_validator()
         upload = _make_template_upload()
@@ -200,16 +203,15 @@ class TestBuildConfigWithTemplateUpload:
             files={"template_file": upload},
         )
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form)
+        _config, template_vars = build_energyplus_config(form)
 
-        assert "template_variables" in config
-        assert len(config["template_variables"]) == 3  # noqa: PLR2004
-        names = [v["name"] for v in config["template_variables"]]
+        assert len(template_vars) == 3  # noqa: PLR2004
+        names = [v["name"] for v in template_vars]
         assert names == ["U_FACTOR", "SHGC", "VISIBLE_TRANSMITTANCE"]
 
     def test_upload_preserves_annotation_metadata(self):
         """Auto-populated descriptions and units from IDF annotations are
-        stored in the variable dicts.
+        stored in the returned variable dicts.
 
         The ``!- U-Factor {W/m2-K}`` annotation should produce
         ``description='U-Factor'`` and ``units='W/m2-K'``.
@@ -221,9 +223,9 @@ class TestBuildConfigWithTemplateUpload:
             files={"template_file": upload},
         )
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form)
+        _config, template_vars = build_energyplus_config(form)
 
-        u_factor = config["template_variables"][0]
+        u_factor = template_vars[0]
         assert u_factor["description"] == "U-Factor"
         assert u_factor["units"] == "W/m2-K"
 
@@ -241,7 +243,7 @@ class TestBuildConfigWithTemplateUpload:
             files={"template_file": upload},
         )
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form)
+        config, _template_vars = build_energyplus_config(form)
 
         assert config["case_sensitive"] is False
 
@@ -257,7 +259,7 @@ class TestBuildConfigWithTemplateUpload:
             files={"template_file": upload},
         )
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form)
+        config, _template_vars = build_energyplus_config(form)
 
         assert config["display_signals"] == []
 
@@ -321,9 +323,9 @@ WindowMaterial:SimpleGlazingSystem,
             files={"template_file": upload},
         )
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form)
+        _config, template_vars = build_energyplus_config(form)
 
-        for var in config["template_variables"]:
+        for var in template_vars:
             assert var["variable_type"] == "text"
             assert var["default"] == ""
             assert var["choices"] == []
@@ -359,14 +361,14 @@ class TestBuildConfigValidationMode:
             },
         )
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form)
+        config, _template_vars = build_energyplus_config(form)
 
         assert config["validation_mode"] == "direct"
         assert config["idf_checks"] == ["duplicate-names"]
         assert config["run_simulation"] is True
 
     def test_direct_mode_clears_template_metadata(self):
-        """Direct mode clears template variables and display signals.
+        """Direct mode returns empty template vars and clears display signals.
 
         Even if template data existed before, switching to direct mode should
         produce empty template metadata so the step no longer expects JSON
@@ -380,18 +382,19 @@ class TestBuildConfigValidationMode:
             },
         )
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form)
+        config, template_vars = build_energyplus_config(form)
 
-        assert config["template_variables"] == []
+        assert template_vars == []
         assert config["display_signals"] == []
         assert config["case_sensitive"] is True
+        assert "template_variables" not in config
 
     def test_template_mode_stores_template_settings(self):
-        """Template mode populates template-specific config keys.
+        """Template mode returns template vars and populates config keys.
 
-        When a template file is uploaded, the config should include
-        ``template_variables`` from the IDF scan, plus the author's
-        ``case_sensitive`` and ``display_signals`` preferences.
+        When a template file is uploaded, the returned ``template_vars``
+        list contains the scanned variables, and the config includes the
+        author's ``case_sensitive`` and ``display_signals`` preferences.
         """
         validator = _make_energyplus_validator()
         upload = _make_template_upload()
@@ -403,11 +406,12 @@ class TestBuildConfigValidationMode:
             files={"template_file": upload},
         )
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form)
+        config, template_vars = build_energyplus_config(form)
 
         assert config["validation_mode"] == "template"
         expected_var_count = 3
-        assert len(config["template_variables"]) == expected_var_count
+        assert len(template_vars) == expected_var_count
+        assert "template_variables" not in config
         assert config["idf_checks"] == []
         assert config["run_simulation"] is True
 
@@ -444,7 +448,7 @@ class TestBuildConfigValidationMode:
                 files = None
             form = _make_form(validator=validator, data=data, files=files)
             assert form.is_valid(), form.errors
-            config = build_energyplus_config(form)
+            config, _template_vars = build_energyplus_config(form)
             assert config["validation_mode"] == mode
 
 
@@ -460,11 +464,13 @@ class TestBuildConfigWithTemplateRemoval:
     IDF submission.  All template metadata should be cleared from config.
     """
 
-    def test_remove_clears_template_variables(self):
-        """Switching to direct mode clears the ``template_variables`` list.
+    def test_remove_clears_template_signals(self):
+        """Switching to direct mode returns an empty template vars list.
 
-        Even if the step had template variables before, the config should
-        come back with an empty list because the author selected direct mode.
+        Even if the step had template SignalDefinition rows before, the
+        returned list should be empty because the author selected direct
+        mode. ``_sync_template_signals()`` will clear the SignalDefinition
+        rows.
         """
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(
@@ -472,7 +478,6 @@ class TestBuildConfigWithTemplateRemoval:
             config={
                 "idf_checks": [],
                 "run_simulation": False,
-                "template_variables": [{"name": "U_FACTOR"}],
                 "case_sensitive": True,
             },
         )
@@ -485,11 +490,12 @@ class TestBuildConfigWithTemplateRemoval:
             },
         )
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form, step)
+        config, template_vars = build_energyplus_config(form, step)
 
-        assert config["template_variables"] == []
+        assert template_vars == []
         assert config["case_sensitive"] is True
         assert config["display_signals"] == []
+        assert "template_variables" not in config
 
     def test_remove_preserves_non_template_config(self):
         """Simulation settings are preserved when switching to direct mode.
@@ -513,7 +519,7 @@ class TestBuildConfigWithTemplateRemoval:
             },
         )
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form, step)
+        config, _template_vars = build_energyplus_config(form, step)
 
         assert config["idf_checks"] == ["duplicate-names"]
         assert config["run_simulation"] is True
@@ -531,86 +537,65 @@ class TestBuildConfigPreservesExisting:
     touching the template, existing template metadata should be preserved.
     """
 
-    def test_preserves_existing_template_variables(self):
-        """Existing ``template_variables`` survive a settings-only edit.
+    def test_preserves_existing_config_on_settings_edit(self):
+        """Existing config settings survive a settings-only edit.
 
-        When no template upload or removal occurs, ``build_energyplus_config()``
-        preserves existing ``template_variables`` from the step's config as-is.
-        Annotation editing now happens in the dedicated template variables card
-        (via ``merge_template_variable_annotations``), not in the step config form.
+        When no template upload or removal occurs in template mode,
+        ``build_energyplus_config()`` preserves existing config as-is
+        (case_sensitive, display_signals).  Template variable data lives
+        in ``SignalDefinition`` rows and is not affected by a
+        settings-only re-save.
         """
         validator = _make_energyplus_validator()
-        existing_vars = [
-            {
-                "name": "U_FACTOR",
-                "description": "U-Factor",
-                "default": "",
-                "units": "W/m2-K",
-                "variable_type": "text",
-                "min_value": None,
-                "min_exclusive": False,
-                "max_value": None,
-                "max_exclusive": False,
-                "choices": [],
-            },
-            {
-                "name": "SHGC",
-                "description": "Solar Heat Gain Coefficient",
-                "default": "",
-                "units": "",
-                "variable_type": "text",
-                "min_value": None,
-                "min_exclusive": False,
-                "max_value": None,
-                "max_exclusive": False,
-                "choices": [],
-            },
-        ]
         step = WorkflowStepFactory(
             validator=validator,
             config={
+                "validation_mode": "template",
                 "idf_checks": [],
-                "run_simulation": False,
-                "template_variables": existing_vars,
+                "run_simulation": True,
                 "case_sensitive": True,
+                "display_signals": ["some_signal"],
             },
         )
         form = _make_form(
             validator=validator,
             step=step,
-            data={"run_simulation": True},
+            data={
+                "validation_mode": EnergyPlusStepConfigForm.VALIDATION_MODE_TEMPLATE,
+            },
         )
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form, step)
+        config, template_vars = build_energyplus_config(form, step)
 
-        assert len(config["template_variables"]) == 2  # noqa: PLR2004
-        assert config["template_variables"][0]["name"] == "U_FACTOR"
-        assert config["template_variables"][0]["description"] == "U-Factor"
-        assert config["template_variables"][0]["units"] == "W/m2-K"
-        assert config["template_variables"][1]["name"] == "SHGC"
+        # No template upload — returns empty list (existing
+        # SignalDefinition rows are left unchanged by the caller).
+        assert template_vars == []
+        assert "template_variables" not in config
         assert config["case_sensitive"] is True
+        assert config["display_signals"] == ["some_signal"]
 
     def test_no_step_no_template_keys(self):
-        """A new step (no existing step) in direct mode has empty template metadata.
+        """A new step (no existing step) in direct mode has no template data.
 
         When ``step=None`` and no template is uploaded, the config should
-        contain simulation settings with empty template metadata (direct mode
-        always clears template data).
+        contain simulation settings without template data (direct mode
+        returns an empty template vars list).
         """
         validator = _make_energyplus_validator()
         form = _make_form(validator=validator)
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form, step=None)
+        config, template_vars = build_energyplus_config(form, step=None)
 
-        assert config["template_variables"] == []
+        assert template_vars == []
+        assert "template_variables" not in config
         assert config["display_signals"] == []
 
-    def test_step_without_template_has_empty_template_keys(self):
-        """An existing step in direct mode has empty template metadata.
+    def test_step_without_template_has_no_template_keys(self):
+        """An existing step in direct mode has no template signals.
 
         Pre-template steps have ``config={"idf_checks": [], "run_simulation": False}``
-        with no template keys.  Re-saving in direct mode produces empty
-        template lists (consistent cleanup).
+        with no template keys.  Re-saving in direct mode returns an empty
+        template vars list and creates no SignalDefinition rows.
         """
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(
@@ -619,9 +604,10 @@ class TestBuildConfigPreservesExisting:
         )
         form = _make_form(validator=validator, step=step)
         assert form.is_valid(), form.errors
-        config = build_energyplus_config(form, step)
+        config, template_vars = build_energyplus_config(form, step)
 
-        assert config["template_variables"] == []
+        assert template_vars == []
+        assert "template_variables" not in config
         assert config["display_signals"] == []
 
 
@@ -839,7 +825,8 @@ class TestFileTypeEnforcement:
         """Template activation succeeds when the workflow allows JSON.
 
         This is the normal case — the factory default includes JSON in
-        ``allowed_file_types``.
+        ``allowed_file_types``.  Template variables are stored as
+        SignalDefinition rows (not in config JSON).
         """
         validator = _make_energyplus_validator()
         workflow = WorkflowFactory(
@@ -854,8 +841,18 @@ class TestFileTypeEnforcement:
 
         step = save_workflow_step(workflow, validator, form)
 
-        assert step.config.get("template_variables") is not None
-        assert len(step.config["template_variables"]) == 3  # noqa: PLR2004
+        # Template variables are now stored as SignalDefinition rows,
+        # not in config JSON.
+        assert "template_variables" not in step.config
+        from validibot.validations.constants import SignalOriginKind
+
+        expected_signal_count = 3
+        assert (
+            step.signal_definitions.filter(
+                origin_kind=SignalOriginKind.TEMPLATE,
+            ).count()
+            == expected_signal_count
+        )
 
     def test_template_rejected_when_json_not_in_file_types(self):
         """Template activation fails when the workflow doesn't allow JSON.
@@ -890,9 +887,9 @@ class TestFileTypeEnforcement:
         form = _make_form(validator=validator)
         assert form.is_valid(), form.errors
 
-        # Should not raise — direct mode has empty template variables
+        # Should not raise — direct mode has no template variables
         step = save_workflow_step(workflow, validator, form)
-        assert step.config["template_variables"] == []
+        assert "template_variables" not in step.config
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -970,8 +967,8 @@ def _make_annotation_form(step):
     """Create a ``TemplateVariableAnnotationForm`` bound to the given step.
 
     This is the standalone form that renders the per-variable annotation
-    card on the step detail page.  It reads ``template_variables`` from
-    ``step.config`` and creates dynamic ``tplvar_*`` fields.
+    card on the step detail page.  It reads from step-owned
+    ``SignalDefinition`` rows and creates dynamic ``tplvar_*`` fields.
     """
     return TemplateVariableAnnotationForm(step=step)
 
@@ -979,7 +976,7 @@ def _make_annotation_form(step):
 class TestVariableEditorDynamicFields:
     """Tests for the dynamic per-variable fields on TemplateVariableAnnotationForm.
 
-    When a step has ``template_variables`` in its config, the standalone
+    When a step has template ``SignalDefinition`` rows, the standalone
     annotation form creates dynamic fields (``tplvar_0_description``,
     ``tplvar_0_variable_type``, etc.) for each variable.  These fields
     let the author annotate each variable with a type, constraints,
@@ -991,17 +988,20 @@ class TestVariableEditorDynamicFields:
 
         Each detected variable gets nine fields: description, default, units,
         variable_type, min_value, min_exclusive, max_value, max_exclusive,
-        and choices.
+        and choices.  The form reads from step-owned SignalDefinition rows.
         """
+        from validibot.validations.services.template_signals import (
+            sync_step_template_signals,
+        )
+
         validator = _make_energyplus_validator()
-        step = WorkflowStepFactory(
-            validator=validator,
-            config={
-                "template_variables": [
-                    {"name": "U_FACTOR", "description": "U-Factor"},
-                    {"name": "SHGC", "description": "SHGC"},
-                ],
-            },
+        step = WorkflowStepFactory(validator=validator)
+        sync_step_template_signals(
+            step,
+            [
+                {"name": "U_FACTOR", "description": "U-Factor"},
+                {"name": "SHGC", "description": "SHGC"},
+            ],
         )
         form = _make_annotation_form(step)
 
@@ -1031,30 +1031,33 @@ class TestVariableEditorDynamicFields:
         assert tplvar_fields == []
 
     def test_dynamic_fields_have_correct_initial_values(self):
-        """Dynamic field initial values match the step config.
+        """Dynamic field initial values match the signal definition data.
 
         When editing an existing step, each variable's fields should be
-        pre-populated with the saved annotation data.
+        pre-populated with the saved annotation data from SignalDefinition.
         """
+        from validibot.validations.services.template_signals import (
+            sync_step_template_signals,
+        )
+
         validator = _make_energyplus_validator()
-        step = WorkflowStepFactory(
-            validator=validator,
-            config={
-                "template_variables": [
-                    {
-                        "name": "U_FACTOR",
-                        "description": "Window U-Factor",
-                        "default": "2.0",
-                        "units": "W/m2-K",
-                        "variable_type": "number",
-                        "min_value": 0.1,
-                        "min_exclusive": False,
-                        "max_value": 7.0,
-                        "max_exclusive": True,
-                        "choices": [],
-                    },
-                ],
-            },
+        step = WorkflowStepFactory(validator=validator)
+        sync_step_template_signals(
+            step,
+            [
+                {
+                    "name": "U_FACTOR",
+                    "description": "Window U-Factor",
+                    "default": "2.0",
+                    "units": "W/m2-K",
+                    "variable_type": "number",
+                    "min_value": 0.1,
+                    "min_exclusive": False,
+                    "max_value": 7.0,
+                    "max_exclusive": True,
+                    "choices": [],
+                },
+            ],
         )
         form = _make_annotation_form(step)
 
@@ -1099,14 +1102,15 @@ class TestTemplateVariableFieldsProperty:
         The ``name`` and ``index`` are strings/ints for display; the field
         keys are BoundField objects that render as HTML form controls.
         """
+        from validibot.validations.services.template_signals import (
+            sync_step_template_signals,
+        )
+
         validator = _make_energyplus_validator()
-        step = WorkflowStepFactory(
-            validator=validator,
-            config={
-                "template_variables": [
-                    {"name": "U_FACTOR", "description": "U-Factor"},
-                ],
-            },
+        step = WorkflowStepFactory(validator=validator)
+        sync_step_template_signals(
+            step,
+            [{"name": "U_FACTOR", "description": "U-Factor"}],
         )
         form = _make_annotation_form(step)
 
@@ -1126,14 +1130,15 @@ class TestTemplateVariableFieldsProperty:
         The required/optional badge is derived from the default value:
         empty default = required, non-empty default = optional.
         """
+        from validibot.validations.services.template_signals import (
+            sync_step_template_signals,
+        )
+
         validator = _make_energyplus_validator()
-        step = WorkflowStepFactory(
-            validator=validator,
-            config={
-                "template_variables": [
-                    {"name": "U_FACTOR", "default": ""},
-                ],
-            },
+        step = WorkflowStepFactory(validator=validator)
+        sync_step_template_signals(
+            step,
+            [{"name": "U_FACTOR", "default": ""}],
         )
         form = _make_annotation_form(step)
 
@@ -1141,14 +1146,15 @@ class TestTemplateVariableFieldsProperty:
 
     def test_is_optional_when_default_set(self):
         """Variable is marked optional when default is non-empty."""
+        from validibot.validations.services.template_signals import (
+            sync_step_template_signals,
+        )
+
         validator = _make_energyplus_validator()
-        step = WorkflowStepFactory(
-            validator=validator,
-            config={
-                "template_variables": [
-                    {"name": "U_FACTOR", "default": "2.0"},
-                ],
-            },
+        step = WorkflowStepFactory(validator=validator)
+        sync_step_template_signals(
+            step,
+            [{"name": "U_FACTOR", "default": "2.0"}],
         )
         form = _make_annotation_form(step)
 
@@ -1371,8 +1377,8 @@ class TestDisplaySignals:
 
         assert "display_signals" not in form.fields
 
-    def test_display_signals_form_choices_empty_without_catalog_entries(self):
-        """When the validator has no output catalog entries, choices are empty.
+    def test_display_signals_form_choices_empty_without_signal_definitions(self):
+        """When the validator has no output signal definitions, choices are empty.
 
         This is the typical case for a freshly created test validator.
         """
@@ -1385,106 +1391,137 @@ class TestDisplaySignals:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Unified signals — build_unified_signals() helper
+# Unified signals — build_unified_signals_from_definitions() helper
 # ══════════════════════════════════════════════════════════════════════════════
 # ADR-2026-03-10 introduced a unified "Inputs and Outputs" card that merges
-# catalog entries (from the validator config) with template variables (from
-# the step config) into a single view.  ``build_unified_signals()`` is the
-# view-layer helper that builds this merged representation.
+# validator-owned signals (from SignalDefinition rows) with step-owned
+# template/FMU signals into a single view.
+# ``build_unified_signals_from_definitions()`` is the view-layer helper
+# that builds this merged representation.
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-class TestBuildUnifiedSignals:
-    """Tests for ``build_unified_signals()`` — the view helper that merges
-    catalog entries and template variables into unified signal lists.
+class TestBuildUnifiedSignals(TestCase):
+    """Tests for ``build_unified_signals_from_definitions()`` — the view helper
+    that queries ``SignalDefinition`` and ``StepSignalBinding`` rows to build
+    unified input/output signal lists.
 
     The helper produces four keys: ``input_signals``, ``output_signals``,
-    ``has_inputs``, ``has_outputs``.  Input signals come from two sources:
-    catalog INPUT entries (source="catalog") and template variables
-    (source="template").  Output signals come only from catalog OUTPUT
-    entries, each annotated with ``show_to_user`` based on the step's
+    ``has_inputs``, ``has_outputs``.  Input signals come from two ownership
+    levels: step-owned ``SignalDefinition`` rows (e.g. template variables)
+    and validator-owned ``SignalDefinition`` rows (catalog signals).
+    When step-owned inputs exist, validator-owned inputs are excluded.
+    Output signals come from both levels and are always merged.
+    Each output is annotated with ``show_to_user`` based on the step's
     ``display_signals`` config.
     """
 
     def test_template_variables_only(self):
-        """Steps with template variables but no catalog entries still show inputs.
+        """Steps with template-origin signal definitions still show inputs.
 
-        This is the typical case for an EnergyPlus template-mode step
-        before catalog entries have been synced.
+        This is the typical case for an EnergyPlus template-mode step:
+        step-owned SignalDefinition rows with origin_kind="template" and
+        StepSignalBinding rows controlling defaults and required status.
         """
-        from validibot.workflows.views_helpers import build_unified_signals
-
-        step = WorkflowStepFactory(
-            config={
-                "template_variables": [
-                    {"name": "U_FACTOR", "description": "U-Factor", "default": ""},
-                    {"name": "SHGC", "description": "", "default": "0.4"},
-                ],
-            },
+        from validibot.validations.tests.factories import SignalDefinitionFactory
+        from validibot.validations.tests.factories import StepSignalBindingFactory
+        from validibot.workflows.views_helpers import (
+            build_unified_signals_from_definitions,
         )
 
-        result = build_unified_signals(catalog_display=None, step=step)
+        step = WorkflowStepFactory(config={})
+
+        # First variable: no default → required
+        sig0 = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            contract_key="u_factor",
+            native_name="$U_FACTOR",
+            label="U-Factor",
+            direction="input",
+            origin_kind="template",
+            order=0,
+        )
+        StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig0,
+            source_data_path="u_factor",
+            default_value=None,
+            is_required=True,
+        )
+
+        # Second variable: has default → not required
+        sig1 = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            contract_key="shgc",
+            native_name="$SHGC",
+            label="",
+            direction="input",
+            origin_kind="template",
+            order=1,
+        )
+        StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig1,
+            source_data_path="shgc",
+            default_value="0.4",
+            is_required=False,
+        )
+
+        result = build_unified_signals_from_definitions(step=step)
 
         assert result["has_inputs"] is True
         assert result["has_outputs"] is False
-        input_signals = result["input_signals"]
-        assert len(input_signals) == len(step.config["template_variables"])
+        assert len(result["input_signals"]) == 2  # noqa: PLR2004
 
         # First variable: no default → required
-        sig0 = result["input_signals"][0]
-        assert sig0["slug"] == "U_FACTOR"
-        assert sig0["label"] == "U-Factor"
-        assert sig0["source"] == "template"
-        assert sig0["required"] is True
-        assert sig0["variable_index"] == 0
+        inp0 = result["input_signals"][0]
+        assert inp0["slug"] == "$U_FACTOR"
+        assert inp0["label"] == "U-Factor"
+        assert inp0["source"] == "template"
+        assert inp0["required"] is True
 
-        # Second variable: has default → not required
-        sig1 = result["input_signals"][1]
-        assert sig1["slug"] == "SHGC"
-        assert sig1["label"] == "SHGC"  # Falls back to name when no description
-        assert sig1["source"] == "template"
-        assert sig1["required"] is False
-        assert sig1["variable_index"] == 1
+        # Second variable: has default → not required; label falls back
+        # to native_name when label is empty.
+        inp1 = result["input_signals"][1]
+        assert inp1["slug"] == "$SHGC"
+        assert inp1["source"] == "template"
+        assert inp1["required"] is False
 
-    def test_catalog_entries_only(self):
-        """Steps with catalog entries but no template variables.
+    def test_validator_signal_definitions_only(self):
+        """Steps with validator-owned signal definitions but no step-owned signals.
 
         This is the typical case for validators like FMU or THERM that
-        define their signals entirely through the catalog.
+        define their signals entirely through validator-level
+        ``SignalDefinition`` rows.
         """
-        from validibot.validations.models import CatalogDisplay
-        from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
-        from validibot.workflows.views_helpers import build_unified_signals
+        from validibot.validations.tests.factories import SignalDefinitionFactory
+        from validibot.workflows.views_helpers import (
+            build_unified_signals_from_definitions,
+        )
 
         validator = _make_energyplus_validator()
-        input_entry = ValidatorCatalogEntryFactory(
-            validator=validator,
-            run_stage="input",
-            entry_type="signal",
-            slug="weather-file",
-            label="Weather File",
-            is_required=True,
-        )
-        output_entry = ValidatorCatalogEntryFactory(
-            validator=validator,
-            run_stage="output",
-            entry_type="signal",
-            slug="total-energy",
-            label="Total Energy",
-        )
-        catalog = CatalogDisplay(
-            entries=[input_entry, output_entry],
-            inputs=[input_entry],
-            outputs=[output_entry],
-            input_derivations=[],
-            output_derivations=[],
-            input_total=1,
-            output_total=1,
-            uses_tabs=True,
-        )
-        step = WorkflowStepFactory(config={})
+        step = WorkflowStepFactory(config={}, validator=validator)
 
-        result = build_unified_signals(catalog_display=catalog, step=step)
+        SignalDefinitionFactory(
+            validator=validator,
+            workflow_step=None,
+            contract_key="weather-file",
+            label="Weather File",
+            direction="input",
+            origin_kind="catalog",
+        )
+        SignalDefinitionFactory(
+            validator=validator,
+            workflow_step=None,
+            contract_key="total-energy",
+            label="Total Energy",
+            direction="output",
+            origin_kind="catalog",
+        )
+
+        result = build_unified_signals_from_definitions(step=step)
 
         assert result["has_inputs"] is True
         assert result["has_outputs"] is True
@@ -1497,71 +1534,82 @@ class TestBuildUnifiedSignals:
         assert result["output_signals"][0]["show_to_user"] is True
 
     def test_template_vars_exclude_catalog_inputs(self):
-        """When template variables exist, catalog INPUT entries are excluded.
+        """When step-owned input signals exist, validator-owned inputs are excluded.
 
         In template mode the submitter provides parameter values, not a
-        full file.  Catalog INPUT entries (e.g. submission metadata fields)
-        are irrelevant because the submission shape is defined entirely by
-        the template variables.  Output signals are still shown.
+        full file.  The step owns its input signals (template variables),
+        so validator-level input signals (e.g. submission metadata fields)
+        are suppressed by the helper.  Output signals from the validator
+        are still shown.
         """
-        from validibot.validations.models import CatalogDisplay
-        from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
-        from validibot.workflows.views_helpers import build_unified_signals
+        from validibot.validations.tests.factories import SignalDefinitionFactory
+        from validibot.validations.tests.factories import StepSignalBindingFactory
+        from validibot.workflows.views_helpers import (
+            build_unified_signals_from_definitions,
+        )
 
         validator = _make_energyplus_validator()
-        input_entry = ValidatorCatalogEntryFactory(
+        step = WorkflowStepFactory(config={}, validator=validator)
+
+        # Validator-owned input (should be excluded when step inputs exist)
+        SignalDefinitionFactory(
             validator=validator,
-            run_stage="input",
-            entry_type="signal",
-            slug="epw-file",
+            workflow_step=None,
+            contract_key="epw-file",
             label="EPW File",
+            direction="input",
+            origin_kind="catalog",
+        )
+        # Validator-owned output (should still appear)
+        SignalDefinitionFactory(
+            validator=validator,
+            workflow_step=None,
+            contract_key="total-energy",
+            label="Total Energy",
+            direction="output",
+            origin_kind="catalog",
+        )
+
+        # Step-owned template input
+        sig = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            contract_key="u_factor",
+            native_name="$U_FACTOR",
+            label="U-Factor",
+            direction="input",
+            origin_kind="template",
+        )
+        StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig,
+            source_data_path="u_factor",
             is_required=True,
         )
-        output_entry = ValidatorCatalogEntryFactory(
-            validator=validator,
-            run_stage="output",
-            entry_type="signal",
-            slug="total-energy",
-            label="Total Energy",
-        )
-        catalog = CatalogDisplay(
-            entries=[input_entry, output_entry],
-            inputs=[input_entry],
-            outputs=[output_entry],
-            input_derivations=[],
-            output_derivations=[],
-            input_total=1,
-            output_total=1,
-            uses_tabs=True,
-        )
-        step = WorkflowStepFactory(
-            config={
-                "template_variables": [
-                    {"name": "U_FACTOR", "description": "U-Factor", "default": ""},
-                ],
-            },
-        )
 
-        result = build_unified_signals(catalog_display=catalog, step=step)
+        result = build_unified_signals_from_definitions(step=step)
 
-        # Only template variables appear as inputs — catalog inputs excluded
-        assert len(result["input_signals"]) == len(step.config["template_variables"])
+        # Only step-owned template inputs appear — validator inputs excluded
+        assert len(result["input_signals"]) == 1
         assert result["input_signals"][0]["source"] == "template"
-        assert result["input_signals"][0]["slug"] == "U_FACTOR"
-        # Output signals still present
+        assert result["input_signals"][0]["slug"] == "$U_FACTOR"
+        # Output signals from validator still present
         assert result["has_outputs"] is True
         assert result["output_signals"][0]["slug"] == "total-energy"
 
     def test_empty_step_produces_no_signals(self):
-        """A step with no catalog entries and no template variables is empty.
+        """A step with no signal definitions at all is empty.
 
-        This happens for newly created steps before any config is set.
+        This happens for newly created steps before any signals have
+        been synced from a catalog, template scan, or FMU probe.
         """
-        from validibot.workflows.views_helpers import build_unified_signals
+        from validibot.workflows.views_helpers import (
+            build_unified_signals_from_definitions,
+        )
 
         step = WorkflowStepFactory(config={})
 
-        result = build_unified_signals(catalog_display=None, step=step)
+        result = build_unified_signals_from_definitions(step=step)
 
         assert result["has_inputs"] is False
         assert result["has_outputs"] is False
@@ -1571,44 +1619,41 @@ class TestBuildUnifiedSignals:
     def test_output_display_signals_filtering(self):
         """Output signals respect the step's ``display_signals`` config.
 
-        When ``display_signals`` is empty, all outputs show (backward
-        compat).  When it lists specific slugs, only those are shown.
+        When ``display_signals`` lists specific contract_keys, only those
+        outputs have ``show_to_user=True``.  Others are still returned
+        but marked hidden.
         """
-        from validibot.validations.models import CatalogDisplay
-        from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
-        from validibot.workflows.views_helpers import build_unified_signals
+        from validibot.validations.tests.factories import SignalDefinitionFactory
+        from validibot.workflows.views_helpers import (
+            build_unified_signals_from_definitions,
+        )
 
         validator = _make_energyplus_validator()
-        out1 = ValidatorCatalogEntryFactory(
-            validator=validator,
-            run_stage="output",
-            entry_type="signal",
-            slug="total-energy",
-            label="Total Energy",
-        )
-        out2 = ValidatorCatalogEntryFactory(
-            validator=validator,
-            run_stage="output",
-            entry_type="signal",
-            slug="peak-load",
-            label="Peak Load",
-        )
-        catalog = CatalogDisplay(
-            entries=[out1, out2],
-            inputs=[],
-            outputs=[out1, out2],
-            input_derivations=[],
-            output_derivations=[],
-            input_total=0,
-            output_total=2,
-            uses_tabs=True,
-        )
-
-        # With display_signals filtering to just one
         step = WorkflowStepFactory(
             config={"display_signals": ["total-energy"]},
+            validator=validator,
         )
-        result = build_unified_signals(catalog_display=catalog, step=step)
+
+        SignalDefinitionFactory(
+            validator=validator,
+            workflow_step=None,
+            contract_key="total-energy",
+            label="Total Energy",
+            direction="output",
+            origin_kind="catalog",
+            order=0,
+        )
+        SignalDefinitionFactory(
+            validator=validator,
+            workflow_step=None,
+            contract_key="peak-load",
+            label="Peak Load",
+            direction="output",
+            origin_kind="catalog",
+            order=1,
+        )
+
+        result = build_unified_signals_from_definitions(step=step)
 
         shown = [s for s in result["output_signals"] if s["show_to_user"]]
         hidden = [s for s in result["output_signals"] if not s["show_to_user"]]
@@ -1618,74 +1663,67 @@ class TestBuildUnifiedSignals:
         assert hidden[0]["slug"] == "peak-load"
 
     def test_output_all_shown_when_display_signals_empty(self):
-        """When ``display_signals`` is empty, all outputs are shown.
+        """When ``display_signals`` is absent, all outputs are shown.
 
         This is the backward-compatible default — before the author
         configures signal visibility, everything is visible.
         """
-        from validibot.validations.models import CatalogDisplay
-        from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
-        from validibot.workflows.views_helpers import build_unified_signals
+        from validibot.validations.tests.factories import SignalDefinitionFactory
+        from validibot.workflows.views_helpers import (
+            build_unified_signals_from_definitions,
+        )
 
         validator = _make_energyplus_validator()
-        out1 = ValidatorCatalogEntryFactory(
-            validator=validator,
-            run_stage="output",
-            entry_type="signal",
-            slug="total-energy",
-        )
-        catalog = CatalogDisplay(
-            entries=[out1],
-            inputs=[],
-            outputs=[out1],
-            input_derivations=[],
-            output_derivations=[],
-            input_total=0,
-            output_total=1,
-            uses_tabs=True,
-        )
-        step = WorkflowStepFactory(config={})
+        step = WorkflowStepFactory(config={}, validator=validator)
 
-        result = build_unified_signals(catalog_display=catalog, step=step)
+        SignalDefinitionFactory(
+            validator=validator,
+            workflow_step=None,
+            contract_key="total-energy",
+            label="Total Energy",
+            direction="output",
+            origin_kind="catalog",
+        )
+
+        result = build_unified_signals_from_definitions(step=step)
 
         assert result["output_signals"][0]["show_to_user"] is True
 
-    def test_input_derivations_included(self):
-        """Input derivations from the catalog appear in the input list.
+    def test_validator_owned_input_signals_shown_when_no_step_inputs(self):
+        """Validator-owned input signals appear when no step-owned inputs exist.
 
-        Derivations are computed values that still need to be shown
-        in the input stage — e.g. a derived ratio from two input signals.
+        This replaces the old "input derivations included" test.  In the
+        unified model, derivations are in the separate ``Derivation`` model
+        and are not returned by ``build_unified_signals_from_definitions()``.
+        Instead, this test verifies that validator-level input signals
+        (origin_kind="catalog") appear when the step has no step-owned
+        input signals, and that signals without a binding default to
+        required.
         """
-        from validibot.validations.models import CatalogDisplay
-        from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
-        from validibot.workflows.views_helpers import build_unified_signals
+        from validibot.validations.tests.factories import SignalDefinitionFactory
+        from validibot.workflows.views_helpers import (
+            build_unified_signals_from_definitions,
+        )
 
         validator = _make_energyplus_validator()
-        derivation = ValidatorCatalogEntryFactory(
-            validator=validator,
-            run_stage="input",
-            entry_type="derivation",
-            slug="window-ratio",
-            label="Window-to-Wall Ratio",
-        )
-        catalog = CatalogDisplay(
-            entries=[derivation],
-            inputs=[],
-            outputs=[],
-            input_derivations=[derivation],
-            output_derivations=[],
-            input_total=1,
-            output_total=0,
-            uses_tabs=True,
-        )
-        step = WorkflowStepFactory(config={})
+        step = WorkflowStepFactory(config={}, validator=validator)
 
-        result = build_unified_signals(catalog_display=catalog, step=step)
+        SignalDefinitionFactory(
+            validator=validator,
+            workflow_step=None,
+            contract_key="window-ratio",
+            label="Window-to-Wall Ratio",
+            direction="input",
+            origin_kind="catalog",
+        )
+
+        result = build_unified_signals_from_definitions(step=step)
 
         assert len(result["input_signals"]) == 1
         assert result["input_signals"][0]["slug"] == "window-ratio"
         assert result["input_signals"][0]["source"] == "catalog"
-        assert result["input_signals"][0]["required"] is False
+        # No binding → defaults to required
+        assert result["input_signals"][0]["required"] is True
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1701,7 +1739,7 @@ class TestSingleTemplateVariableForm:
 
     This form is rendered in a modal when the user clicks "Edit" on a
     template-source input signal.  It populates initial values from the
-    variable dict stored in ``step.config["template_variables"]``.
+    step's ``SignalDefinition`` rows (origin_kind=TEMPLATE).
     """
 
     def test_initial_values_from_variable(self):
@@ -1832,32 +1870,36 @@ class TestTemplateVariableEditView:
     """
 
     def _make_step_with_variables(self):
-        """Create a workflow step with template variables for testing.
+        """Create a workflow step with template signal definitions for testing.
 
         Returns a (workflow, step) tuple.  Uses ``with_owner=True`` so
         the factory auto-creates an org membership for the workflow user.
+        Signal definitions are created via sync_step_template_signals.
         """
+        from validibot.validations.services.template_signals import (
+            sync_step_template_signals,
+        )
+
         workflow = WorkflowFactory(with_owner=True)
-        step = WorkflowStepFactory(
-            workflow=workflow,
-            config={
-                "template_variables": [
-                    {
-                        "name": "U_FACTOR",
-                        "description": "U-Factor",
-                        "default": "",
-                        "units": "W/m2-K",
-                        "variable_type": "number",
-                    },
-                    {
-                        "name": "SHGC",
-                        "description": "Solar Heat Gain",
-                        "default": "0.4",
-                        "units": "",
-                        "variable_type": "text",
-                    },
-                ],
-            },
+        step = WorkflowStepFactory(workflow=workflow)
+        sync_step_template_signals(
+            step,
+            [
+                {
+                    "name": "U_FACTOR",
+                    "description": "U-Factor",
+                    "default": "",
+                    "units": "W/m2-K",
+                    "variable_type": "number",
+                },
+                {
+                    "name": "SHGC",
+                    "description": "Solar Heat Gain",
+                    "default": "0.4",
+                    "units": "",
+                    "variable_type": "text",
+                },
+            ],
         )
         return workflow, step
 
@@ -1948,17 +1990,31 @@ class TestTemplateVariableEditView:
 
         assert response.status_code == HTTPStatus.NO_CONTENT
 
-        # Verify the variable was updated
-        step.refresh_from_db()
-        tvars = step.config["template_variables"]
-        assert tvars[0]["name"] == "U_FACTOR"  # Name preserved
-        assert tvars[0]["description"] == "Updated U-Factor Label"
-        assert tvars[0]["default"] == "2.5"
-        assert tvars[0]["units"] == "BTU/h-ft2-F"
+        # Verify the signal definition was updated
+        from validibot.validations.constants import SignalOriginKind
+        from validibot.validations.models import StepSignalBinding
+
+        bindings = list(
+            StepSignalBinding.objects.filter(
+                workflow_step=step,
+                signal_definition__origin_kind=SignalOriginKind.TEMPLATE,
+            )
+            .select_related("signal_definition")
+            .order_by(
+                "signal_definition__order",
+                "signal_definition__contract_key",
+            )
+        )
+        sig0 = bindings[0].signal_definition
+        assert sig0.native_name == "U_FACTOR"  # Name preserved
+        assert sig0.label == "Updated U-Factor Label"
+        assert bindings[0].default_value == "2.5"
+        assert sig0.unit == "BTU/h-ft2-F"
 
         # Second variable untouched
-        assert tvars[1]["name"] == "SHGC"
-        assert tvars[1]["description"] == "Solar Heat Gain"
+        sig1 = bindings[1].signal_definition
+        assert sig1.native_name == "SHGC"
+        assert sig1.label == "Solar Heat Gain"
 
     def test_invalid_index_returns_404(self, client):
         """Requesting a variable index beyond the list returns 404.
@@ -1999,9 +2055,19 @@ class TestTemplateVariableEditView:
         )
 
         assert response.status_code == HTTPStatus.NO_CONTENT
-        step.refresh_from_db()
-        # Name is preserved from the original, not from form data
-        assert step.config["template_variables"][0]["name"] == "U_FACTOR"
+        # Name (native_name) is preserved from the original, not from form data
+        from validibot.validations.constants import SignalOriginKind
+        from validibot.validations.models import SignalDefinition
+
+        sig = (
+            SignalDefinition.objects.filter(
+                workflow_step=step,
+                origin_kind=SignalOriginKind.TEMPLATE,
+            )
+            .order_by("order", "contract_key")
+            .first()
+        )
+        assert sig.native_name == "U_FACTOR"
 
 
 # ===========================================================================

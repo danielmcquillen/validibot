@@ -28,7 +28,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_PATH_TOKEN_PATTERN = re.compile(r"([A-Za-z0-9_-]+)|\[(\d+)\]")
 _TEMPLATE_PATTERN = re.compile(r"{{\s*(?P<expr>.*?)\s*}}")
 _FILTER_PATTERN = re.compile(r"^(?P<name>\w+)(?:\((?P<args>.*)\))?$")
 
@@ -133,39 +132,32 @@ class BasicAssertionEvaluator:
         )
 
     def _assertion_path(self, assertion: RulesetAssertion) -> str:
-        """Get the target path for an assertion."""
-        if assertion.target_catalog_entry_id and assertion.target_catalog_entry:
-            return assertion.target_catalog_entry.slug
+        """Get the target path for an assertion.
+
+        Checks target_signal_definition first, then falls back to
+        target_data_path (custom free-form targets).
+        """
+        if assertion.target_signal_definition_id:
+            return assertion.target_signal_definition.contract_key
         return assertion.target_data_path
 
     def _resolve_path(self, data: Any, path: str | None) -> tuple[Any, bool]:
-        """
-        Resolve a dot/bracket path in the data.
+        """Resolve a dot/bracket path in the data.
+
+        Delegates to the shared ``resolve_path()`` function in
+        ``validations.services.path_resolution``. This method is kept
+        as a thin wrapper so the evaluator API remains unchanged.
 
         Args:
             data: The payload to navigate.
-            path: Path like "foo.bar[0].baz".
+            path: Path like ``"foo.bar[0].baz"``.
 
         Returns:
-            Tuple of (resolved_value, was_found).
+            Tuple of ``(resolved_value, was_found)``.
         """
-        if not path:
-            return data, True
-        current = data
-        for match in _PATH_TOKEN_PATTERN.finditer(path):
-            key, index = match.groups()
-            if key:
-                if isinstance(current, dict) and key in current:
-                    current = current[key]
-                else:
-                    return None, False
-            elif index is not None:
-                position = int(index)
-                if isinstance(current, (list, tuple)) and 0 <= position < len(current):
-                    current = current[position]
-                else:
-                    return None, False
-        return current, True
+        from validibot.validations.services.path_resolution import resolve_path
+
+        return resolve_path(data, path)
 
     # ------------------------------------------------------ Operator dispatch
 
@@ -627,9 +619,7 @@ class BasicAssertionEvaluator:
             "field": assertion.target_display or path or "",
             "target": assertion.target_display or path or "",
             "target_field": assertion.target_data_path,
-            "target_slug": getattr(assertion.target_catalog_entry, "slug", "")
-            if assertion.target_catalog_entry_id
-            else "",
+            "target_slug": self._assertion_path(assertion),
             "path": path or "",
             "actual": actual,
             "value": rhs.get("value"),
@@ -656,8 +646,8 @@ class BasicAssertionEvaluator:
     ) -> None:
         """Add a target alias to the context based on the assertion target."""
         alias = ""
-        if assertion.target_catalog_entry_id and assertion.target_catalog_entry:
-            alias = assertion.target_catalog_entry.slug or ""
+        if assertion.target_signal_definition_id:
+            alias = assertion.target_signal_definition.contract_key or ""
         elif assertion.target_data_path:
             alias = assertion.target_data_path
         alias = alias.strip()

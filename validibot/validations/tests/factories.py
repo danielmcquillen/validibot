@@ -9,9 +9,6 @@ from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
-from validibot.validations.constants import CatalogEntryType
-from validibot.validations.constants import CatalogRunStage
-from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ResourceFileType
@@ -31,7 +28,6 @@ from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.models import Validator
-from validibot.validations.models import ValidatorCatalogEntry
 from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.models import default_supported_data_formats_for_validation
 from validibot.validations.models import default_supported_file_types_for_validation
@@ -129,17 +125,56 @@ class ValidatorFactory(DjangoModelFactory):
                 self.save(update_fields=["allow_custom_assertion_targets"])
 
 
-class ValidatorCatalogEntryFactory(DjangoModelFactory):
-    class Meta:
-        model = ValidatorCatalogEntry
+class SignalDefinitionFactory(DjangoModelFactory):
+    """Factory for the unified SignalDefinition model.
 
+    Creates signal definitions with sensible defaults. Typically owned
+    by a validator (library signals) — set workflow_step instead for
+    step-level signals.
+    """
+
+    class Meta:
+        model = "validations.SignalDefinition"
+
+    contract_key = factory.Sequence(lambda n: f"signal_{n}")
+    native_name = factory.LazyAttribute(lambda o: o.contract_key)
+    direction = "input"
+    data_type = "number"
+    origin_kind = "catalog"
     validator = factory.SubFactory(ValidatorFactory)
-    entry_type = CatalogEntryType.SIGNAL
-    run_stage = CatalogRunStage.INPUT
-    slug = factory.Sequence(lambda n: f"signal-input-{n}")
-    label = factory.LazyAttribute(lambda o: o.slug.replace("-", " ").title())
-    data_type = CatalogValueType.NUMBER
-    order = 0
+    order = factory.Sequence(lambda n: n)
+
+
+class StepSignalBindingFactory(DjangoModelFactory):
+    """Factory for per-step signal bindings.
+
+    Links a SignalDefinition to a WorkflowStep with binding configuration
+    (source_data_path, default_value, is_required).
+    """
+
+    class Meta:
+        model = "validations.StepSignalBinding"
+
+    workflow_step = factory.SubFactory(
+        "validibot.workflows.tests.factories.WorkflowStepFactory",
+    )
+    signal_definition = factory.SubFactory(SignalDefinitionFactory)
+    source_scope = "submission_payload"
+    source_data_path = ""
+    is_required = True
+
+
+class DerivationFactory(DjangoModelFactory):
+    """Factory for computed derivation values."""
+
+    class Meta:
+        model = "validations.Derivation"
+
+    contract_key = factory.Sequence(lambda n: f"derived_{n}")
+    expression = "signal_a + signal_b"
+    data_type = "number"
+    validator = factory.SubFactory(ValidatorFactory)
+    order = factory.Sequence(lambda n: n)
 
 
 class CustomValidatorFactory(DjangoModelFactory):

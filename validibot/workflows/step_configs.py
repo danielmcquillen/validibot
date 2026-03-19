@@ -31,7 +31,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import Literal
 
 from pydantic import BaseModel
 from pydantic import ConfigDict
@@ -108,114 +107,6 @@ class XmlSchemaStepConfig(BaseStepConfig):
 
 
 # ---------------------------------------------------------------------------
-# Template variable schemas
-# ---------------------------------------------------------------------------
-# These are embedded models used inside step configs (e.g.,
-# EnergyPlusStepConfig.template_variables), not standalone step configs.
-# They extend BaseModel directly (not BaseStepConfig) because they should
-# reject unknown keys rather than silently allowing them.
-
-
-class TemplateVariable(BaseModel):
-    """Base schema for a template variable placeholder.
-
-    Generic enough to work with any template format — IDF, epJSON, or future
-    formats. Contains the core variable metadata that all template types share:
-    name, description, default, type constraints, and allowed values.
-
-    Required/optional logic:
-
-    - If ``default`` is non-empty, the variable is optional — the default is
-      used when the submitter omits it.
-    - If ``default`` is empty, the variable is required — the submitter must
-      provide a value or the submission will be rejected.
-    """
-
-    name: str
-    """Variable name (without any prefix). e.g., ``'U_FACTOR'``."""
-
-    description: str = ""
-    """Human-readable label shown to submitters. e.g., ``'Window U-Factor'``.
-    The author can override this with a more descriptive label."""
-
-    default: str = ""
-    """Default value used when the submitter omits this variable.
-    When non-empty, the variable becomes optional.
-    When empty, the variable is required.
-    e.g., ``'2.0'`` for a U-factor, ``'VerySmooth'`` for a roughness choice."""
-
-    units: str = ""
-    """Display units. e.g., ``'W/m2-K'``. Informational only — not enforced."""
-
-    variable_type: Literal["text", "number", "choice"] = "text"
-    """Input type constraint.
-
-    - ``'text'``: Accepts any non-empty string (subclasses may add further
-      restrictions, e.g., blocking IDF structural characters).
-    - ``'number'``: Enables min/max validation. Value must parse as a float
-      (subclasses may also accept keywords like ``'Autosize'``).
-    - ``'choice'``: Restricts values to the ``choices`` list.
-
-    Unknown values are rejected at validation time."""
-
-    min_value: float | None = None
-    """Minimum allowed value. Only enforced when ``variable_type='number'``.
-    See ``min_exclusive`` for whether the bound is inclusive or exclusive."""
-
-    min_exclusive: bool = False
-    """If True, ``min_value`` is an exclusive lower bound (value must be
-    strictly greater). If False (default), ``min_value`` is inclusive.
-    Auto-set to True when populated from a schema's ``exclusiveMinimum``."""
-
-    max_value: float | None = None
-    """Maximum allowed value. Only enforced when ``variable_type='number'``.
-    See ``max_exclusive`` for whether the bound is inclusive or exclusive."""
-
-    max_exclusive: bool = False
-    """If True, ``max_value`` is an exclusive upper bound (value must be
-    strictly less). If False (default), ``max_value`` is inclusive.
-    Auto-set to True when populated from a schema's ``exclusiveMaximum``."""
-
-    choices: list[str] = Field(default_factory=list)
-    """Allowed values when ``variable_type='choice'``. Submission is rejected
-    if the provided value is not in this list. Useful for fields that accept
-    enumerated values (e.g., surface roughness: ``['VeryRough', 'Rough',
-    'MediumRough', 'MediumSmooth', 'Smooth', 'VerySmooth']``)."""
-
-
-class IDFTemplateVariable(TemplateVariable):
-    """IDF-specific template variable.
-
-    Inherits all fields from ``TemplateVariable``. Currently adds no extra
-    properties, but exists as a distinct type so that:
-
-    1. IDF-specific behavior (e.g., blocking IDF structural characters in
-       ``'text'`` values, accepting ``'Autosize'``/``'Autocalculate'`` in
-       ``'number'`` values) is clearly scoped to IDF templates.
-    2. Future template formats (epJSON, gbXML) can define their own subclasses
-       with format-specific constraints without polluting the base schema.
-    3. Serialization and deserialization can use the type to dispatch to the
-       correct validation logic.
-
-    IDF-specific conventions:
-
-    - Variable names use ``$UPPERCASE_WITH_UNDERSCORES`` (matching EnergyPlus
-      parametric convention). Name must match ``[A-Z][A-Z0-9_]*``
-      (case-sensitive) or ``[A-Za-z][A-Za-z0-9_]*`` (case-insensitive).
-    - ``'text'`` type values must not contain IDF structural characters
-      (``,`` ``;`` ``!`` newline).
-    - ``'number'`` type also accepts ``'Autosize'`` and ``'Autocalculate'``
-      keywords, which bypass float parsing and range checks.
-    - ``'choice'`` values bypass the structural character check
-      (author-trusted).
-    - Labels and units are auto-populated from IDF ``!-`` annotations during
-      template upload (see Phase 2).
-    - ``min``/``max`` can be auto-populated from the EnergyPlus JSON schema
-      (Phase 2+).
-    """
-
-
-# ---------------------------------------------------------------------------
 # EnergyPlus
 # ---------------------------------------------------------------------------
 
@@ -223,14 +114,15 @@ class IDFTemplateVariable(TemplateVariable):
 class EnergyPlusStepConfig(BaseStepConfig):
     """Config for EnergyPlus validator steps.
 
-    Stores simulation settings (checks, timestep) and, when a parameterized
-    template is active, template variable metadata and output signal selection.
+    Stores simulation settings (checks, timestep) and template configuration
+    (case sensitivity, output signal selection).  Template variable metadata
+    is stored relationally in ``SignalDefinition`` rows rather than here.
 
     Resource files (weather EPWs, model templates) are stored relationally
     via ``WorkflowStepResource`` rather than in this config. See the
     ``step.step_resources`` reverse relation. The template *file* lives on
     ``WorkflowStepResource`` with ``role=MODEL_TEMPLATE``; the template
-    *configuration* (variable definitions, case sensitivity) lives here.
+    *configuration* (case sensitivity) lives here.
     """
 
     # ── Simulation settings ──────────────────────────────────────────
@@ -270,16 +162,7 @@ class EnergyPlusStepConfig(BaseStepConfig):
        but the validator runner currently ignores it.
     """
 
-    # ── Template metadata ────────────────────────────────────────────
-    # The template FILE is stored in WorkflowStepResource (role=MODEL_TEMPLATE).
-    # These fields store template CONFIGURATION that governs how variables
-    # are scanned, validated, and substituted.
-
-    template_variables: list[IDFTemplateVariable] = Field(default_factory=list)
-    """Detected ``$VARIABLE_NAME`` placeholders with author-provided metadata.
-    Ordered by first appearance in the IDF template. Uses
-    ``IDFTemplateVariable`` (not the base ``TemplateVariable``) so IDF-specific
-    validation rules apply."""
+    # ── Template settings ──────────────────────────────────────────
 
     case_sensitive: bool = True
     """Whether template variable matching is case-sensitive.
@@ -305,42 +188,6 @@ class EnergyPlusStepConfig(BaseStepConfig):
     shown as findings; WARNING and INFO messages are suppressed."""
 
 
-class FMUVariableConfig(BaseModel):
-    """Metadata for a single FMU variable stored in step config.
-
-    Mirrors the structure of ``FMUVariableInfo`` (from the introspection
-    layer) but as a Pydantic model for JSON serialization in
-    ``step.config``.  Unlike the library flow's ``FMUVariable`` Django
-    model, this is a lightweight dict — no separate database rows.
-    """
-
-    name: str
-    """Variable name from modelDescription.xml (e.g., ``'T_outdoor'``)."""
-
-    causality: str
-    """FMI causality: ``'input'``, ``'output'``, ``'parameter'``, etc."""
-
-    variability: str = ""
-    """FMI variability: ``'continuous'``, ``'discrete'``, ``'fixed'``, etc."""
-
-    value_reference: int = 0
-    """FMI value reference number."""
-
-    value_type: str = "Real"
-    """FMI data type: ``'Real'``, ``'Integer'``, ``'Boolean'``, ``'String'``."""
-
-    unit: str = ""
-    """Physical unit from modelDescription.xml (e.g., ``'K'``, ``'W'``)."""
-
-    description: str = ""
-    """Human-readable description from modelDescription.xml or
-    author-provided override."""
-
-    label: str = ""
-    """Author-provided display label (e.g., ``'Outdoor Temperature'``).
-    If empty, the variable name is shown."""
-
-
 class FMUSimulationConfig(BaseModel):
     """Simulation settings for step-level FMU execution.
 
@@ -359,18 +206,14 @@ class FmuStepConfig(BaseStepConfig):
     """Config for FMU validator steps.
 
     When the step uses a step-level FMU upload (primary path), the
-    ``fmu_variables`` and ``fmu_simulation`` fields store the discovered
-    variable metadata and simulation defaults.  When the step uses a
-    library FMU validator (secondary path), these fields are empty and
-    the metadata comes from the validator's catalog entries and
-    ``FMUModel`` instead.
+    ``fmu_simulation`` field stores the discovered simulation defaults.
+    FMU variable metadata is stored relationally in ``SignalDefinition``
+    rows rather than in the step config.  When the step uses a library
+    FMU validator (secondary path), this field is empty and the metadata
+    comes from the validator's ``SignalDefinition`` rows and ``FMUModel``.
 
     See ADR-2026-03-12: Step-Level FMU Upload for Workflow Authors.
     """
-
-    fmu_variables: list[FMUVariableConfig] = Field(default_factory=list)
-    """FMU variables discovered from modelDescription.xml.
-    Only populated for step-level FMU uploads."""
 
     fmu_simulation: FMUSimulationConfig | None = None
     """Simulation settings, pre-populated from DefaultExperiment.

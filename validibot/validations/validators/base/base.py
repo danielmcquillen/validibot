@@ -56,13 +56,10 @@ from gettext import gettext as _
 from typing import TYPE_CHECKING
 from typing import Any
 
-from django.conf import settings
-
 from validibot.validations.cel import DEFAULT_HELPERS
 from validibot.validations.cel import CelHelper
-from validibot.validations.constants import CatalogEntryType
-from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import Severity
+from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import ValidationType
 
 if TYPE_CHECKING:
@@ -294,38 +291,18 @@ class BaseValidator(ABC):
     # ------------------------------------------------------------------ CEL helpers
 
     def _resolve_path(self, data: Any, path: str | None) -> tuple[Any, bool]:
+        """Resolve dotted / [index] paths into nested dict/list payloads.
+
+        Delegates to the shared ``resolve_path()`` function in
+        ``validations.services.path_resolution``. This method is kept
+        as a thin wrapper so existing callers (``_build_cel_context``,
+        subclasses) continue to work without changes.
+
+        Returns ``(value, found_flag)``.
         """
-        Resolve dotted / [index] paths into nested dict/list payloads.
-        Returns (value, found_flag).
-        """
-        if not path:
-            return data, True
-        current = data
-        tokens = str(path or "").split(".")
-        for token in tokens:
-            if not token:
-                continue
-            if "[" in token and token.endswith("]"):
-                key, index_part = token.split("[", 1)
-                index_str = index_part.rstrip("]")
-                if key:
-                    if isinstance(current, dict) and key in current:
-                        current = current[key]
-                    else:
-                        return None, False
-                try:
-                    position = int(index_str)
-                except ValueError:
-                    return None, False
-                if isinstance(current, (list, tuple)) and 0 <= position < len(current):
-                    current = current[position]
-                else:
-                    return None, False
-            elif isinstance(current, dict) and token in current:
-                current = current[token]
-            else:
-                return None, False
-        return current, True
+        from validibot.validations.services.path_resolution import resolve_path
+
+        return resolve_path(data, path)
 
     def _build_cel_context(
         self,
@@ -335,7 +312,10 @@ class BaseValidator(ABC):
         stage: str = "input",
     ) -> dict[str, Any]:
         """
-        Build a context mapping catalog entry slugs to values resolved from payload.
+        Build a context mapping signal contract keys to values resolved from payload.
+
+        Reads from ``SignalDefinition`` (the unified signal model) to determine
+        which payload keys to expose as CEL variables.
 
         Include the raw payload so expressions can reference it directly if needed.
         If run_context includes downstream signals from earlier steps, expose them
@@ -344,46 +324,43 @@ class BaseValidator(ABC):
         For output-stage assertions, all payload dict keys are automatically
         exposed as top-level CEL variables. Output payloads come from validator
         execution (e.g. FMU simulation, EnergyPlus results) and their keys ARE
-        the signals — there's no reason to gate them behind catalog entries.
+        the signals — there's no reason to gate them behind signal definitions.
 
-        For input-stage assertions, only catalog-mapped keys are exposed unless
+        For input-stage assertions, only signal-mapped keys are exposed unless
         ``allow_custom_assertion_targets`` is set on the validator.
         """
         context: dict[str, Any] = {"payload": payload}
-        derived_enabled = getattr(settings, "ENABLE_DERIVED_SIGNALS", False)
-        qs = validator.catalog_entries.all().only(
-            "slug",
-            "is_required",
-            "entry_type",
-            "run_stage",
+        signals = list(
+            validator.signal_definitions.all().only(
+                "contract_key",
+                "direction",
+            )
         )
-        if not derived_enabled:
-            qs = qs.filter(entry_type=CatalogEntryType.SIGNAL)
-        entries = list(qs)
         # Nested namespace for output signals.  CEL parses ``output.slug``
         # as member access (variable ``output``, field ``slug``), so output
         # signals must live inside a dict—not as flat dotted keys.
         output_ns: dict[str, Any] = {}
-        for entry in entries:
-            value, found = self._resolve_path(payload, entry.slug)
+        for sig in signals:
+            value, found = self._resolve_path(payload, sig.contract_key)
             if found:
                 if (
-                    entry.entry_type == CatalogEntryType.SIGNAL
-                    and entry.run_stage == CatalogRunStage.OUTPUT
-                    and entry.slug in context
+                    sig.direction == SignalDirection.OUTPUT
+                    and sig.contract_key in context
                 ):
                     # Preserve existing input mapping; expose output via
                     # nested ``output`` namespace for disambiguation.
-                    output_ns.setdefault(entry.slug, value)
+                    output_ns.setdefault(sig.contract_key, value)
                 else:
-                    context[entry.slug] = value
-                if (
-                    entry.entry_type == CatalogEntryType.SIGNAL
-                    and entry.run_stage == CatalogRunStage.OUTPUT
-                ):
-                    output_ns.setdefault(entry.slug, value)
-            elif entry.is_required:
-                context[entry.slug] = None
+                    context[sig.contract_key] = value
+                if sig.direction == SignalDirection.OUTPUT:
+                    output_ns.setdefault(sig.contract_key, value)
+            else:
+                # Every declared signal is available as a CEL variable,
+                # defaulting to None when not found in the payload. This
+                # lets CEL expressions check for missing values (e.g.,
+                # ``signal_name == null``) without causing undefined
+                # variable errors.
+                context[sig.contract_key] = None
         if output_ns:
             context["output"] = output_ns
 
@@ -615,7 +592,7 @@ class BaseValidator(ABC):
                 continue
             assertions = list(
                 rs.assertions.all()
-                .select_related("target_catalog_entry")
+                .select_related("target_signal_definition")
                 .order_by("order", "pk")
             )
             stage_assertions.extend(

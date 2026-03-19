@@ -303,7 +303,7 @@ class WorkflowJsonView(WorkflowObjectMixin, TemplateView):
             Workflow.objects.filter(pk=self.kwargs["pk"])
             .prefetch_related(
                 "steps__validator",
-                "steps__ruleset__assertions__target_catalog_entry",
+                "steps__ruleset__assertions__target_signal_definition",
             )
             .get()
         )

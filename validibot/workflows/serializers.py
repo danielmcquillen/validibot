@@ -18,20 +18,26 @@ class RulesetAssertionSerializer(serializers.ModelSerializer):
     Read-only representation of a single assertion rule within a ruleset.
 
     ``target_field`` normalises the two possible target storage styles
-    (catalog-entry slug vs free-form data path) into a single string field
+    (signal definition contract_key vs free-form data path) into a single string field
     so consumers don't need to know about the internal XOR constraint.
     """
 
     target_field = serializers.SerializerMethodField(
         help_text=(
-            "The assertion target: the catalog entry slug when targeting a known "
-            "signal, or the free-form data path otherwise."
+            "The assertion target: the signal definition contract_key "
+            "when targeting a known signal, or the free-form data path "
+            "otherwise."
         ),
     )
 
     def get_target_field(self, obj: RulesetAssertion) -> str:
-        if obj.target_catalog_entry_id:
-            return obj.target_catalog_entry.slug
+        """Normalize the assertion target to a single string for API consumers.
+
+        Checks target_signal_definition (preferred), then falls back to
+        target_data_path (custom free-form paths).
+        """
+        if obj.target_signal_definition_id:
+            return obj.target_signal_definition.contract_key
         return obj.target_data_path or ""
 
     class Meta:
@@ -264,8 +270,8 @@ class WorkflowFullSerializer(WorkflowSlimSerializer):
     Used by GET /api/v1/orgs/{org}/workflows/{slug}/.
 
     Performance note: the view prefetches
-    ``steps__validator__default_ruleset__assertions__target_catalog_entry``
-    and ``steps__ruleset__assertions__target_catalog_entry``
+    ``steps__*__assertions__target_signal_definition`` and
+    ``steps__*__assertions__target_signal_definition``
     so this serializer does not issue additional queries beyond the initial load.
     """
 

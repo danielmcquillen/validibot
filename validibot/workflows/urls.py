@@ -156,6 +156,11 @@ urlpatterns = [
         name="workflow_step_template_variable_edit",
     ),
     path(
+        "<int:pk>/steps/<int:step_id>/signal/<int:signal_id>/",
+        views.WorkflowStepSignalEditView.as_view(),
+        name="workflow_step_signal_edit",
+    ),
+    path(
         "<int:pk>/steps/<int:step_id>/delete/",
         views.WorkflowStepDeleteView.as_view(),
         name="workflow_step_delete",

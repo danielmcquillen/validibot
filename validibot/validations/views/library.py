@@ -1,5 +1,5 @@
 """Validator library browsing: listing, detail, signals, assertions,
-and catalog entry views.
+and signal definition views.
 """
 
 import logging
@@ -21,15 +21,15 @@ from validibot.core.utils import reverse_with_org
 from validibot.users.permissions import PermissionCode
 from validibot.validations.constants import VALIDATION_LIBRARY_LAYOUT_SESSION_KEY
 from validibot.validations.constants import VALIDATION_LIBRARY_TAB_SESSION_KEY
-from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import LibraryLayout
+from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import ValidatorReleaseState
-from validibot.validations.forms import ValidatorCatalogEntryForm
+from validibot.validations.forms import SignalDefinitionForm
 from validibot.validations.forms import ValidatorResourceFileForm
 from validibot.validations.forms import ValidatorRuleForm
 from validibot.validations.models import RulesetAssertion
+from validibot.validations.models import SignalDefinition
 from validibot.validations.models import Validator
-from validibot.validations.models import ValidatorCatalogEntry
 from validibot.validations.models import ValidatorResourceFile
 
 logger = logging.getLogger(__name__)
@@ -147,7 +147,7 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
             Validator.objects.filter(is_enabled=True)
             .select_related("custom_validator", "org")
             .prefetch_related(
-                "catalog_entries",
+                "signal_definitions",
                 "default_ruleset",
                 "default_ruleset__assertions",
             )
@@ -444,15 +444,22 @@ class ValidatorSignalsTabView(ValidatorLibraryMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
-        display = validator.catalog_display
         can_edit = self.can_manage_validators() and not validator.is_system
 
-        signal_create_form = ValidatorCatalogEntryForm(
-            initial={"run_stage": CatalogRunStage.INPUT},
+        all_signals = validator.signal_definitions.all().order_by(
+            "direction",
+            "order",
+            "contract_key",
+        )
+        inputs = [s for s in all_signals if s.direction == SignalDirection.INPUT]
+        outputs = [s for s in all_signals if s.direction == SignalDirection.OUTPUT]
+
+        signal_create_form = SignalDefinitionForm(
+            initial={"direction": SignalDirection.INPUT},
             validator=validator,
         )
         if not validator.has_processor:
-            signal_create_form.fields["run_stage"].widget = forms.HiddenInput()
+            signal_create_form.fields["direction"].widget = forms.HiddenInput()
 
         show_output_tab = bool(validator.has_processor)
         requested_signals_tab = (
@@ -473,25 +480,25 @@ class ValidatorSignalsTabView(ValidatorLibraryMixin, DetailView):
                 "can_manage_validators": self.can_manage_validators(),
                 "can_edit_validator": can_edit,
                 "return_tab": self._resolve_return_tab(validator),
-                "catalog_display": display,
-                "catalog_entries": display.entries,
+                "inputs": inputs,
+                "outputs": outputs,
                 "catalog_tab_prefix": "validator-detail",
                 "show_output_tab": show_output_tab,
                 "active_signals_tab": active_signals_tab,
                 "signal_create_form": signal_create_form,
                 "signal_edit_forms": {
-                    entry.id: {
-                        "form": ValidatorCatalogEntryForm(
-                            instance=entry,
+                    signal.pk: {
+                        "form": SignalDefinitionForm(
+                            instance=signal,
                             validator=validator,
                         ),
                         "title": _(
                             "Edit Input Signal"
-                            if entry.run_stage == CatalogRunStage.INPUT
+                            if signal.direction == SignalDirection.INPUT
                             else "Edit Output Signal"
                         ),
                     }
-                    for entry in validator.catalog_entries.all()
+                    for signal in all_signals
                 },
                 "probe_result": (
                     getattr(validator.fmu_model, "probe_result", None)
@@ -551,7 +558,7 @@ class ValidatorDefaultAssertionsView(ValidatorLibraryMixin, DetailView):
         default_ruleset = validator.default_ruleset
         assertions = (
             default_ruleset.assertions.all()
-            .select_related("target_catalog_entry")
+            .select_related("target_signal_definition")
             .order_by("order", "pk")
             if default_ruleset
             else RulesetAssertion.objects.none()
@@ -603,14 +610,14 @@ class ValidatorAssertionsTabView(ValidatorLibraryMixin, DetailView):
         default_ruleset = validator.default_ruleset
         default_assertions = (
             default_ruleset.assertions.all()
-            .select_related("target_catalog_entry")
+            .select_related("target_signal_definition")
             .order_by("order", "pk")
             if default_ruleset
             else RulesetAssertion.objects.none()
         )
         signal_choices = [
-            (entry.id, f"{entry.slug}")
-            for entry in validator.catalog_entries.order_by("slug").all()
+            (sig.id, sig.contract_key)
+            for sig in validator.signal_definitions.order_by("contract_key")
         ]
         can_edit = self.can_manage_validators() and not validator.is_system
 
@@ -717,8 +724,10 @@ class ValidatorSignalsListView(ValidatorLibraryMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
-        # Get all signals ordered by stage then name
-        signals = list(validator.catalog_entries.all().order_by("run_stage", "slug"))
+        # Get all signals ordered by direction then contract_key
+        signals = list(
+            validator.signal_definitions.all().order_by("direction", "contract_key"),
+        )
         context.update(
             {
                 "signals": signals,
@@ -868,14 +877,14 @@ class ValidatorResourceFilesTabView(ValidatorLibraryMixin, DetailView):
 
 
 class CatalogEntryDetailView(LoginRequiredMixin, View):
-    """Return modal content for a catalog entry detail view."""
+    """Return modal content for a signal definition detail view."""
 
     def get(self, request, entry_pk):
-        entry = get_object_or_404(ValidatorCatalogEntry, pk=entry_pk)
+        signal = get_object_or_404(SignalDefinition, pk=entry_pk)
         return render(
             request,
             "validations/library/partials/signal_detail_modal_content.html",
             {
-                "signal": entry,
+                "signal": signal,
             },
         )

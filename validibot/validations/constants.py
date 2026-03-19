@@ -300,6 +300,24 @@ class CatalogValueType(TextChoices):
     OBJECT = "object", _("Object")
 
 
+class SignalDirection(TextChoices):
+    INPUT = "input", _("Input")
+    OUTPUT = "output", _("Output")
+
+
+class SignalOriginKind(TextChoices):
+    CATALOG = "catalog", _("Catalog")
+    FMU = "fmu", _("FMU")
+    TEMPLATE = "template", _("Template")
+
+
+class BindingSourceScope(TextChoices):
+    SUBMISSION_PAYLOAD = "submission_payload", _("Submission Payload")
+    SUBMISSION_METADATA = "submission_metadata", _("Submission Metadata")
+    UPSTREAM_STEP = "upstream_step", _("Upstream Step")
+    SYSTEM = "system", _("System")
+
+
 class AssertionType(TextChoices):
     BASIC = "basic", _("Basic Assertion")
     CEL_EXPRESSION = "cel_expr", _("CEL expression")

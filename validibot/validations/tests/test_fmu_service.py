@@ -7,7 +7,7 @@ from django.test import TestCase
 
 from validibot.projects.tests.factories import ProjectFactory
 from validibot.users.tests.factories import OrganizationFactory
-from validibot.validations.constants import CatalogRunStage
+from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.fmu import create_fmu_validator
 from validibot.validations.services.fmu import run_fmu_probe
@@ -49,11 +49,15 @@ class FMUServiceTests(TestCase):
         self.assertEqual(validator.validation_type, ValidationType.FMU)
         # Feedthrough FMU declares 4 inputs and 4 outputs in modelDescription.xml.
         self.assertEqual(
-            validator.catalog_entries.filter(run_stage=CatalogRunStage.INPUT).count(),
+            validator.signal_definitions.filter(
+                direction=SignalDirection.INPUT
+            ).count(),
             4,
         )
         self.assertEqual(
-            validator.catalog_entries.filter(run_stage=CatalogRunStage.OUTPUT).count(),
+            validator.signal_definitions.filter(
+                direction=SignalDirection.OUTPUT
+            ).count(),
             4,
         )
         fmu_model = validator.fmu_model
@@ -90,12 +94,16 @@ class FMUServiceTests(TestCase):
         fmu_model.refresh_from_db()
         self.assertTrue(fmu_model.is_approved)
 
-        # Catalog entries should still match (4 inputs + 4 outputs)
+        # Signal definitions should still match (4 inputs + 4 outputs)
         self.assertEqual(
-            validator.catalog_entries.filter(run_stage=CatalogRunStage.INPUT).count(),
+            validator.signal_definitions.filter(
+                direction=SignalDirection.INPUT
+            ).count(),
             4,
         )
         self.assertEqual(
-            validator.catalog_entries.filter(run_stage=CatalogRunStage.OUTPUT).count(),
+            validator.signal_definitions.filter(
+                direction=SignalDirection.OUTPUT
+            ).count(),
             4,
         )

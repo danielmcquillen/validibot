@@ -195,14 +195,15 @@ class ValidationStepProcessor(ABC):
         and passed here via ValidationResult.signals. The processor just persists
         them.
 
-        Signals are stored at: run.summary["steps"][step_run_id]["signals"]
+        Signals are stored at: run.summary["steps"][step_key]["signals"]
+        where step_key is the stable ``WorkflowStep.step_key`` slug.
         """
         if not signals:
             return
 
         summary = self.validation_run.summary or {}
         steps = summary.setdefault("steps", {})
-        step_key = str(self.step_run.id)
+        step_key = self.step_run.workflow_step.step_key or str(self.step_run.id)
         step_data = steps.setdefault(step_key, {})
         step_data["signals"] = signals
 

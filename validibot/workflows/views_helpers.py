@@ -410,7 +410,7 @@ def _validate_and_scan_template(
     """Validate an IDF template and return ``(variable_dicts, warnings)``.
 
     Reads the file, runs the validation pipeline, and converts the scan
-    result into a list of variable dicts ready for ``step.config``.
+    result into a list of variable dicts ready for ``sync_step_template_signals``.
 
     Raises:
         ValidationError: If the template fails validation checks.
@@ -455,17 +455,21 @@ def _validate_and_scan_template(
 def build_energyplus_config(
     form: EnergyPlusStepConfigForm,
     step: WorkflowStep | None = None,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Build the JSON config dict for an EnergyPlus step.
+
+    Returns a ``(config, template_vars)`` tuple.  The ``template_vars``
+    list is passed to ``sync_step_template_signals()`` to create/update
+    ``SignalDefinition`` rows — it is **not** written to the config JSON.
 
     The ``validation_mode`` field determines which config keys are
     populated:
 
     - **direct**: ``idf_checks`` and ``run_simulation`` are stored.
       Template metadata is cleared.
-    - **template**: Template variables, case sensitivity, and display
-      signals are stored.  IDF-check and simulation flags are omitted
-      (the template pipeline always runs the simulation).
+    - **template**: Case sensitivity and display signals are stored.
+      IDF-check and simulation flags are omitted (the template pipeline
+      always runs the simulation).
 
     Resource file references (weather files, templates) are stored
     relationally via ``WorkflowStepResource`` and are synced separately
@@ -474,12 +478,12 @@ def build_energyplus_config(
     Template handling:
 
     - **Template upload**: Validates the IDF, scans for ``$VARIABLE_NAME``
-      placeholders, and populates ``template_variables`` in the config.
+      placeholders, and returns the scanned variables.
       Raises ``ValidationError`` if the file fails validation.
     - **Template removal** (switching to direct mode or explicit remove):
-      Clears ``template_variables`` and resets ``case_sensitive`` to True.
-    - **No change**: Preserves existing ``template_variables`` from the
-      step's current config (if any).
+      Resets ``case_sensitive`` to True and returns an empty variable list.
+    - **No change**: Returns an empty variable list (existing
+      ``SignalDefinition`` rows are left unchanged).
 
     The template *file* itself is persisted by
     ``_sync_energyplus_resources()`` after ``step.save()``.
@@ -502,13 +506,12 @@ def build_energyplus_config(
         # clear any template metadata.
         config["idf_checks"] = form.cleaned_data.get("idf_checks", [])
         config["run_simulation"] = form.cleaned_data.get("run_simulation", False)
-        config["template_variables"] = []
         config["case_sensitive"] = True
         config["display_signals"] = []
         # Signal _sync_energyplus_resources to remove the template file
         # if one exists from a previous template-mode configuration.
         form.cleaned_data["remove_template"] = True
-        return config
+        return config, []
 
     # ── Template mode ─────────────────────────────────────────────
     config["idf_checks"] = []
@@ -517,36 +520,34 @@ def build_energyplus_config(
     remove_template = form.cleaned_data.get("remove_template", False)
     template_file = form.cleaned_data.get("template_file")
 
+    template_vars: list[dict[str, Any]] = []
+
     if remove_template:
         # Author clicked "Remove template" — clear all template metadata.
-        config["template_variables"] = []
         config["case_sensitive"] = True
         config["display_signals"] = []
     elif template_file:
-        # New template uploaded — validate, scan, and populate config.
+        # New template uploaded — validate, scan, and return vars for
+        # _sync_template_signals() to persist as SignalDefinition rows.
         template_vars, template_warnings = _validate_and_scan_template(
             template_file,
             case_sensitive=form.cleaned_data.get("case_sensitive", True),
         )
 
-        config["template_variables"] = template_vars
         config["case_sensitive"] = form.cleaned_data.get("case_sensitive", True)
         config["display_signals"] = []
 
         # Attach warnings to the form so the view can display them.
         form.template_warnings = template_warnings
     elif step:
-        # No upload, no removal — preserve existing template variables
-        # as-is.  Variable annotation editing happens in the dedicated
-        # template variables card on the step detail page (not here).
+        # No upload, no removal — existing SignalDefinition rows are
+        # left unchanged.  Variable annotation editing happens in the
+        # dedicated template variables card on the step detail page.
         existing_config = step.config or {}
-        existing_vars = existing_config.get("template_variables", [])
-        if existing_vars:
-            config["template_variables"] = existing_vars
-            config["case_sensitive"] = form.cleaned_data.get("case_sensitive", True)
-            config["display_signals"] = existing_config.get("display_signals", [])
+        config["case_sensitive"] = form.cleaned_data.get("case_sensitive", True)
+        config["display_signals"] = existing_config.get("display_signals", [])
 
-    return config
+    return config, template_vars
 
 
 def _parse_optional_float(value: str) -> float | None:
@@ -591,19 +592,10 @@ def merge_template_variable_annotations(
 ) -> list[dict[str, Any]]:
     """Merge author annotations from the template variable editor form.
 
-    Takes the existing template variable dicts (from ``step.config``)
-    and merges in the updated annotations from the form's cleaned_data.
-    Variable **names** are immutable (set during IDF scan); all other
-    fields (description, default, units, type, constraints, choices)
-    can be updated by the author.
-
-    Called by the ``WorkflowStepTemplateVariablesView`` when saving
-    annotations from the step detail page's template variables card.
-
-    Args:
-        existing_vars: List of template variable dicts from step config.
-        form_data: The form's ``cleaned_data`` dict containing
-            ``tplvar_{i}_{field_name}`` keys.
+    Takes the existing template variable dicts and merges in the updated
+    annotations from the form's cleaned_data. Variable **names** are
+    immutable (set during IDF scan); all other fields (description,
+    default, units, type, constraints, choices) can be updated.
 
     Returns:
         New list of template variable dicts with merged annotations.
@@ -652,166 +644,81 @@ def merge_template_variable_annotations(
     return merged
 
 
+def save_template_variable_annotations(
+    form: Any,
+) -> None:
+    """Save template variable annotations directly to SignalDefinition rows.
+
+    Reads the form's ``_template_variable_meta`` (which carries
+    ``_signal_pk`` and ``_binding_pk``) and ``cleaned_data`` to update
+    the relational signal model in place.
+
+    Args:
+        form: A ``TemplateVariableAnnotationForm`` instance with
+            ``cleaned_data`` and ``_template_variable_meta`` populated.
+    """
+    from validibot.validations.models import SignalDefinition
+    from validibot.validations.models import StepSignalBinding
+    from validibot.validations.signal_metadata.metadata import TemplateSignalMetadata
+
+    for meta in form._template_variable_meta:
+        prefix = meta["prefix"]
+        signal_pk = meta.get("_signal_pk")
+        binding_pk = meta.get("_binding_pk")
+        if not signal_pk:
+            continue
+
+        variable_type = form.cleaned_data.get(
+            f"{prefix}_variable_type",
+            "text",
+        )
+        metadata = TemplateSignalMetadata(
+            variable_type=variable_type,
+            min_value=_parse_optional_float(
+                form.cleaned_data.get(f"{prefix}_min_value", ""),
+            ),
+            min_exclusive=form.cleaned_data.get(
+                f"{prefix}_min_exclusive",
+                False,
+            ),
+            max_value=_parse_optional_float(
+                form.cleaned_data.get(f"{prefix}_max_value", ""),
+            ),
+            max_exclusive=form.cleaned_data.get(
+                f"{prefix}_max_exclusive",
+                False,
+            ),
+            choices=_parse_choices(
+                form.cleaned_data.get(f"{prefix}_choices", ""),
+            ),
+        ).model_dump()
+
+        SignalDefinition.objects.filter(pk=signal_pk).update(
+            label=form.cleaned_data.get(f"{prefix}_description", ""),
+            unit=form.cleaned_data.get(f"{prefix}_units", ""),
+            metadata=metadata,
+            provider_binding={"variable_type": variable_type},
+        )
+
+        if binding_pk:
+            default_val = form.cleaned_data.get(f"{prefix}_default", "")
+            StepSignalBinding.objects.filter(pk=binding_pk).update(
+                default_value=default_val if default_val else None,
+                is_required=not bool(default_val),
+            )
+
+
 def step_has_template_variables(step: WorkflowStep) -> bool:
     """Condition function for the template variables step editor card.
 
-    Returns True when the step has template variables configured,
+    Returns True when the step has template-origin SignalDefinitions,
     indicating the template variables card should be rendered.
     """
-    return bool((step.config or {}).get("template_variables"))
+    from validibot.validations.constants import SignalOriginKind
 
-
-def build_unified_signals(
-    catalog_display: Any | None,
-    step: WorkflowStep,
-) -> dict[str, Any]:
-    """Build unified input/output signal lists for the step detail card.
-
-    Merges catalog entries (from the validator's config) with template
-    variables (from the step's config) into a single list per stage.
-    This gives the workflow author one consistent view of "what goes in,
-    what comes out" regardless of whether signals come from the catalog
-    or from an uploaded template.
-
-    See ADR-2026-03-10: Unified Input/Output Signals UI.
-
-    Returns a dict with keys:
-        input_signals: List of dicts, each with slug, label, source,
-            required, and either catalog_entry or variable metadata.
-        output_signals: List of dicts, each with slug, label,
-            show_to_user flag, and catalog_entry.
-        has_inputs: Whether any input signals exist.
-        has_outputs: Whether any output signals exist.
-    """
-    step_config = step.config or {}
-    display_signals = step_config.get("display_signals", [])
-    template_vars = step_config.get("template_variables", [])
-
-    # -- Input signals --
-    input_signals: list[dict[str, Any]] = []
-
-    # When template variables exist, they *are* the inputs — the submitter
-    # provides parameter values, not a full file.  Catalog INPUT entries
-    # (e.g. submission metadata fields) are irrelevant in template mode
-    # because the submission shape is entirely defined by the template.
-    if catalog_display and not template_vars:
-        for entry in catalog_display.inputs:
-            default_val = (
-                str(entry.default_value) if entry.default_value is not None else ""
-            )
-            input_signals.append(
-                {
-                    "slug": entry.slug,
-                    "label": entry.label or entry.slug,
-                    "source": "catalog",
-                    "required": entry.is_required,
-                    "default_value": default_val,
-                    "catalog_entry": entry,
-                    "variable_index": None,
-                    "variable": None,
-                },
-            )
-        for entry in catalog_display.input_derivations:
-            input_signals.append(
-                {
-                    "slug": entry.slug,
-                    "label": entry.label or entry.slug,
-                    "source": "catalog",
-                    "required": False,
-                    "default_value": "",
-                    "catalog_entry": entry,
-                    "variable_index": None,
-                    "variable": None,
-                },
-            )
-    for i, var in enumerate(template_vars):
-        default_val = var.get("default", "")
-        input_signals.append(
-            {
-                "slug": var.get("name", ""),
-                "label": var.get("description") or var.get("name", ""),
-                "source": "template",
-                "required": not bool(default_val),
-                "default_value": default_val,
-                "catalog_entry": None,
-                "variable_index": i,
-                "variable": var,
-            },
-        )
-
-    # 3. FMU variables (from step-level FMU upload)
-    fmu_vars = step_config.get("fmu_variables", [])
-    for i, var in enumerate(fmu_vars):
-        causality = var.get("causality", "")
-        if causality == "input":
-            input_signals.append(
-                {
-                    "slug": var.get("name", ""),
-                    "label": (
-                        var.get("label")
-                        or var.get("description")
-                        or var.get("name", "")
-                    ),
-                    "source": "fmu",
-                    "required": True,
-                    "default_value": "",
-                    "catalog_entry": None,
-                    "variable_index": i,
-                    "variable": var,
-                },
-            )
-
-    # -- Output signals --
-    output_signals: list[dict[str, Any]] = []
-
-    if catalog_display:
-        for entry in catalog_display.outputs:
-            show = _is_signal_shown(entry.slug, display_signals)
-            output_signals.append(
-                {
-                    "slug": entry.slug,
-                    "label": entry.label or entry.slug,
-                    "show_to_user": show,
-                    "catalog_entry": entry,
-                },
-            )
-        for entry in catalog_display.output_derivations:
-            show = _is_signal_shown(entry.slug, display_signals)
-            output_signals.append(
-                {
-                    "slug": entry.slug,
-                    "label": entry.label or entry.slug,
-                    "show_to_user": show,
-                    "catalog_entry": entry,
-                },
-            )
-
-    # FMU output variables
-    for i, var in enumerate(fmu_vars):
-        causality = var.get("causality", "")
-        if causality == "output":
-            show = _is_signal_shown(var.get("name", ""), display_signals)
-            output_signals.append(
-                {
-                    "slug": var.get("name", ""),
-                    "label": (
-                        var.get("label")
-                        or var.get("description")
-                        or var.get("name", "")
-                    ),
-                    "show_to_user": show,
-                    "catalog_entry": None,
-                    "variable_index": i,
-                    "variable": var,
-                },
-            )
-
-    return {
-        "input_signals": input_signals,
-        "output_signals": output_signals,
-        "has_inputs": bool(input_signals),
-        "has_outputs": bool(output_signals),
-    }
+    return step.signal_definitions.filter(
+        origin_kind=SignalOriginKind.TEMPLATE,
+    ).exists()
 
 
 def _is_signal_shown(slug: str, display_signals: list[str]) -> bool:
@@ -822,6 +729,132 @@ def _is_signal_shown(slug: str, display_signals: list[str]) -> bool:
     if not display_signals:
         return True
     return slug in display_signals
+
+
+def build_unified_signals_from_definitions(
+    step: WorkflowStep,
+) -> dict[str, Any]:
+    """Build unified input/output signal lists from ``SignalDefinition`` rows.
+
+    Queries the unified ``SignalDefinition`` and ``StepSignalBinding`` models
+    to produce a single list of input and output signals for the step detail
+    card.
+
+    Returns a dict with keys:
+        input_signals: List of signal dicts for inputs.
+        output_signals: List of signal dicts for outputs.
+        has_inputs: Whether any input signals exist.
+        has_outputs: Whether any output signals exist.
+    """
+    from validibot.validations.constants import SignalDirection
+    from validibot.validations.models import SignalDefinition
+    from validibot.validations.models import StepSignalBinding
+
+    step_config = step.config or {}
+    display_signals = step_config.get("display_signals", [])
+
+    # Query step-owned + validator-owned signal definitions.
+    step_sigs = list(
+        SignalDefinition.objects.filter(workflow_step=step).order_by("order", "pk")
+    )
+    validator = step.validator
+    validator_sigs = []
+    if validator:
+        validator_sigs = list(
+            validator.signal_definitions.all().order_by("order", "pk")
+        )
+
+    # Build a binding lookup keyed by signal_definition PK.
+    binding_map: dict[int, StepSignalBinding] = {}
+    for b in StepSignalBinding.objects.filter(
+        workflow_step=step,
+    ).select_related("signal_definition"):
+        binding_map[b.signal_definition_id] = b
+
+    # -- Input signals --
+    input_signals: list[dict[str, Any]] = []
+
+    for sig in step_sigs:
+        if sig.direction != SignalDirection.INPUT:
+            continue
+        binding = binding_map.get(sig.pk)
+        default_val = ""
+        if binding and binding.default_value is not None:
+            default_val = str(binding.default_value)
+        is_required = binding.is_required if binding else True
+        source_path = binding.source_data_path if binding else ""
+        input_signals.append(
+            {
+                "slug": sig.native_name or sig.contract_key,
+                "label": sig.label or sig.native_name or sig.contract_key,
+                "source": sig.origin_kind,
+                "required": is_required,
+                "default_value": default_val,
+                "source_data_path": source_path,
+                "signal_definition": sig,
+                "binding": binding,
+            },
+        )
+
+    # Validator-owned input signals only when no step-owned inputs exist.
+    if not input_signals:
+        for sig in validator_sigs:
+            if sig.direction != SignalDirection.INPUT:
+                continue
+            binding = binding_map.get(sig.pk)
+            default_val = ""
+            if binding and binding.default_value is not None:
+                default_val = str(binding.default_value)
+            is_required = binding.is_required if binding else True
+            source_path = binding.source_data_path if binding else ""
+            input_signals.append(
+                {
+                    "slug": sig.contract_key,
+                    "label": sig.label or sig.contract_key,
+                    "source": sig.origin_kind,
+                    "required": is_required,
+                    "default_value": default_val,
+                    "source_data_path": source_path,
+                    "signal_definition": sig,
+                    "binding": binding,
+                },
+            )
+
+    # -- Output signals --
+    output_signals: list[dict[str, Any]] = []
+
+    for sig in step_sigs:
+        if sig.direction != SignalDirection.OUTPUT:
+            continue
+        show = _is_signal_shown(sig.contract_key, display_signals)
+        output_signals.append(
+            {
+                "slug": sig.native_name or sig.contract_key,
+                "label": sig.label or sig.native_name or sig.contract_key,
+                "show_to_user": show,
+                "signal_definition": sig,
+            },
+        )
+
+    for sig in validator_sigs:
+        if sig.direction != SignalDirection.OUTPUT:
+            continue
+        show = _is_signal_shown(sig.contract_key, display_signals)
+        output_signals.append(
+            {
+                "slug": sig.contract_key,
+                "label": sig.label or sig.contract_key,
+                "show_to_user": show,
+                "signal_definition": sig,
+            },
+        )
+
+    return {
+        "input_signals": input_signals,
+        "output_signals": output_signals,
+        "has_inputs": bool(input_signals),
+        "has_outputs": bool(output_signals),
+    }
 
 
 def _sync_energyplus_resources(
@@ -897,34 +930,36 @@ def _sync_energyplus_resources(
 def build_fmu_config(
     form: FMUValidatorStepConfigForm,
     step: WorkflowStep,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Build step config for an FMU step with a step-level FMU upload.
 
-    Handles FMU upload, introspection, variable extraction, and simulation
-    defaults. Returns the config dict to store on ``step.config``.
+    Returns a ``(config, fmu_variables)`` tuple.  The ``fmu_variables``
+    list is passed to ``sync_step_fmu_signals()`` to create/update
+    ``SignalDefinition`` rows — it is **not** written to the config JSON.
 
-    For library FMU validators (non-system), returns an empty config —
-    the signals come from catalog entries, not step config.
+    For library FMU validators (non-system), returns an empty config
+    and an empty variable list — signals come from the validator's
+    ``SignalDefinition`` rows.
 
     Mirrors ``build_energyplus_config()`` for consistency.
     """
     if not getattr(form, "is_system_validator", False):
         # Library validator — no step-level config needed
-        return {}
+        return {}, []
 
     from validibot.validations.services.fmu import FMUIntrospectionError
     from validibot.validations.services.fmu import introspect_fmu
 
-    # Preserve existing config (variables + simulation) if no new upload
+    # Preserve existing config (simulation) if no new upload
     existing_config = step.config or {}
     fmu_file = form.cleaned_data.get("fmu_file")
     remove_fmu = form.cleaned_data.get("remove_fmu", False)
 
     if remove_fmu:
         # Author is removing the FMU — clear everything
-        return {}
+        return {}, []
 
-    fmu_variables = existing_config.get("fmu_variables", [])
+    fmu_variables: list[dict[str, Any]] = []
 
     if fmu_file:
         # New FMU uploaded — introspect it
@@ -945,7 +980,8 @@ def build_fmu_config(
                 )
             )
 
-        # Convert FMUVariableInfo dataclasses to config dicts
+        # Convert FMUVariableInfo dataclasses to dicts for
+        # _sync_fmu_signals() to persist as SignalDefinition rows.
         fmu_variables = [
             {
                 "name": v.name,
@@ -984,12 +1020,10 @@ def build_fmu_config(
             sim_config[config_key] = form_value
 
     config: dict[str, Any] = {}
-    if fmu_variables:
-        config["fmu_variables"] = fmu_variables
     if any(v is not None for v in sim_config.values()):
         config["fmu_simulation"] = sim_config
 
-    return config
+    return config, fmu_variables
 
 
 def _sync_fmu_resources(
@@ -1043,6 +1077,49 @@ def build_ai_config(form: AiAssistStepConfigForm) -> dict[str, Any]:
     }
 
 
+def _sync_fmu_signals(
+    step: WorkflowStep,
+    fmu_vars: list[dict[str, Any]],
+) -> None:
+    """Sync step-level FMU variables to ``SignalDefinition`` rows.
+
+    Receives the ``fmu_vars`` list produced by ``build_fmu_config()``
+    and syncs it to the relational signal model.  If the list is empty
+    (FMU was removed), clears any existing step-owned FMU signals.
+    """
+    from validibot.validations.services.fmu_signals import clear_step_fmu_signals
+    from validibot.validations.services.fmu_signals import sync_step_fmu_signals
+
+    if fmu_vars:
+        sync_step_fmu_signals(step, fmu_vars)
+    else:
+        clear_step_fmu_signals(step)
+
+
+def _sync_template_signals(
+    step: WorkflowStep,
+    template_vars: list[dict[str, Any]],
+) -> None:
+    """Sync EnergyPlus template variables to ``SignalDefinition`` rows.
+
+    Receives the ``template_vars`` list produced by
+    ``build_energyplus_config()`` and syncs it to the relational signal
+    model.  If the list is empty (template was removed), clears any
+    existing step-owned template signals.
+    """
+    from validibot.validations.services.template_signals import (
+        clear_step_template_signals,
+    )
+    from validibot.validations.services.template_signals import (
+        sync_step_template_signals,
+    )
+
+    if template_vars:
+        sync_step_template_signals(step, template_vars)
+    else:
+        clear_step_template_signals(step)
+
+
 def save_workflow_step(
     workflow: Workflow,
     validator: Validator,
@@ -1070,6 +1147,8 @@ def save_workflow_step(
 
     config: dict[str, Any]
     ruleset: Ruleset | None = None
+    template_vars: list[dict[str, Any]] = []
+    fmu_vars: list[dict[str, Any]] = []
     vtype = validator.validation_type
 
     if vtype == ValidationType.JSON_SCHEMA:
@@ -1077,14 +1156,19 @@ def save_workflow_step(
     elif vtype == ValidationType.XML_SCHEMA:
         config, ruleset = build_xml_schema_config(workflow, form, step)
     elif vtype == ValidationType.ENERGYPLUS:
-        config = build_energyplus_config(form, step)
+        config, template_vars = build_energyplus_config(form, step)
         # File type enforcement: parameterized templates require JSON-only
         # submissions (the submitter sends variable values as a flat JSON
         # object, not an IDF or epJSON file).  Allowing other file types
         # alongside JSON would let users upload IDF files that the launcher
         # would attempt to parse as JSON parameters — causing a confusing
         # error downstream instead of a clear rejection at upload time.
-        if config.get("template_variables"):
+        has_template = bool(template_vars) or (
+            step is not None
+            and step.pk is not None
+            and step_has_template_variables(step)
+        )
+        if has_template:
             allowed = [ft.lower() for ft in (workflow.allowed_file_types or [])]
             if allowed != [SubmissionFileType.JSON.lower()]:
                 raise ValidationError(
@@ -1096,7 +1180,7 @@ def save_workflow_step(
                     )
                 )
     elif vtype == ValidationType.FMU:
-        config = build_fmu_config(form, step)
+        config, fmu_vars = build_fmu_config(form, step)
     elif vtype == ValidationType.AI_ASSIST:
         config = build_ai_config(form)
     else:
@@ -1121,8 +1205,10 @@ def save_workflow_step(
     # after step.save() gives us a PK for new steps.
     if vtype == ValidationType.ENERGYPLUS:
         _sync_energyplus_resources(step, form)
+        _sync_template_signals(step, template_vars)
     elif vtype == ValidationType.FMU and getattr(form, "is_system_validator", False):
         _sync_fmu_resources(step, form)
+        _sync_fmu_signals(step, fmu_vars)
 
     return step
 

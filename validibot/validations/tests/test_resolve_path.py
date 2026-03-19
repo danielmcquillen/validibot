@@ -1,12 +1,15 @@
 """
 Comprehensive tests for data path resolution.
 
-Exercises dotted-path and bracket-notation resolution across both
+Exercises dotted-path and bracket-notation resolution across all
 implementations used in the codebase:
 
-1. BaseValidator._resolve_path (used for CEL context building)
-2. BasicAssertionEvaluator._resolve_path (used for BASIC operator evaluation)
-3. resolve_input_value (used for FMU input binding resolution)
+1. resolve_path (shared function in validations.services.path_resolution)
+2. BaseValidator._resolve_path (thin wrapper, used for CEL context building)
+3. BasicAssertionEvaluator._resolve_path (thin wrapper, BASIC eval)
+All three delegate to the shared resolve_path() function.
+The parametrized fixture runs each test against all three to ensure
+consistent behaviour.
 
 Covers: top-level keys, nested objects, array indexing, mixed paths,
 edge cases, and deeply nested structures.
@@ -15,7 +18,7 @@ edge cases, and deeply nested structures.
 import pytest
 
 from validibot.validations.assertions.evaluators.basic import BasicAssertionEvaluator
-from validibot.validations.services.fmu_bindings import resolve_input_value
+from validibot.validations.services.path_resolution import resolve_path
 from validibot.validations.validators.base.base import BaseValidator
 
 
@@ -29,6 +32,12 @@ class _StubValidator(BaseValidator):
 # ---------------------------------------------------------------------------
 # Fixtures: instantiate resolvers without requiring Django models
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def shared_resolve():
+    """Return the shared resolve_path function directly."""
+    return resolve_path
 
 
 @pytest.fixture
@@ -104,14 +113,21 @@ MIXED_PAYLOAD = {
 
 
 # ===================================================================
-# Tests for BaseValidator._resolve_path and BasicAssertionEvaluator._resolve_path
+# Tests for resolve_path, BaseValidator._resolve_path, and
+# BasicAssertionEvaluator._resolve_path
 # ===================================================================
-# We parametrise over both implementations to ensure consistent behaviour.
+# We parametrise over all three implementations to ensure consistent behaviour.
 
 
-@pytest.fixture(params=["base", "basic"])
-def resolve(request, base_resolve, basic_resolve):
-    """Parametrised fixture: runs each test against both implementations."""
+@pytest.fixture(params=["shared", "base", "basic"])
+def resolve(request, shared_resolve, base_resolve, basic_resolve):
+    """Parametrised fixture: runs each test against all three implementations.
+
+    This ensures the shared resolve_path() function and both thin wrappers
+    produce identical results for every test case.
+    """
+    if request.param == "shared":
+        return shared_resolve
     if request.param == "base":
         return base_resolve
     return basic_resolve
@@ -403,69 +419,57 @@ class TestTypeSafety:
 
 
 # ===================================================================
-# Tests for resolve_input_value (FMU bindings)
+# Chained bracket tests
 # ===================================================================
 
 
-class TestResolveInputValue:
-    """Tests for the FMU binding resolution helper."""
+class TestChainedBrackets:
+    """Tests for chained bracket notation like matrix[0][1].
 
-    def test_top_level_slug(self):
-        payload = {"temperature": 21.3}
-        assert resolve_input_value(payload, data_path="", slug="temperature") == 21.3  # noqa: PLR2004
+    The shared resolve_path() must support repeated bracket segments
+    in a single dotted token, because assertion paths can contain
+    expressions like matrix[0][1] or data[0][2][3].
+    """
 
-    def test_dotted_data_path(self):
-        payload = {"building": {"metadata": {"area": 500.0}}}
-        result = resolve_input_value(
-            payload,
-            data_path="building.metadata.area",
-            slug="area",
-        )
-        assert result == 500.0  # noqa: PLR2004
+    def test_two_dimensional_array(self, resolve):
+        """matrix[0][1] resolves through two array levels."""
+        data = {"matrix": [[1, 2, 3], [4, 5, 6]]}
+        val, found = resolve(data, "matrix[0][1]")
+        assert found is True
+        assert val == 2  # noqa: PLR2004
 
-    def test_data_path_overrides_slug(self):
-        """When data_path is set, slug is ignored."""
-        payload = {"area": 999, "geometry": {"floor_area": 500.0}}
-        result = resolve_input_value(
-            payload,
-            data_path="geometry.floor_area",
-            slug="area",
-        )
-        assert result == 500.0  # noqa: PLR2004
+    def test_three_dimensional_array(self, resolve):
+        """data[0][1][2] resolves through three array levels."""
+        data = {"data": [[[10, 20], [30, 40]], [[50, 60], [70, 80]]]}
+        val, found = resolve(data, "data[1][0][1]")
+        assert found is True
+        assert val == 60  # noqa: PLR2004
 
-    def test_none_data_path_falls_back(self):
-        payload = {"width": 3.5}
-        result = resolve_input_value(payload, data_path=None, slug="width")
-        assert result == 3.5  # noqa: PLR2004
+    def test_chained_brackets_out_of_bounds(self, resolve):
+        """Out-of-bounds on second bracket returns not-found."""
+        data = {"matrix": [[1, 2], [3, 4]]}
+        val, found = resolve(data, "matrix[0][5]")
+        assert found is False
 
-    def test_whitespace_data_path_falls_back(self):
-        payload = {"width": 3.5}
-        result = resolve_input_value(payload, data_path="  ", slug="width")
-        assert result == 3.5  # noqa: PLR2004
+    def test_chained_brackets_on_non_list(self, resolve):
+        """Second bracket on a non-list returns not-found."""
+        data = {"matrix": [[1, 2], "not a list"]}
+        val, found = resolve(data, "matrix[1][0]")
+        assert found is False
 
-    def test_missing_path_returns_none(self):
-        payload = {"temperature": 21}
-        result = resolve_input_value(payload, data_path="no.such.path", slug="x")
-        assert result is None
+    def test_bare_chained_brackets(self, resolve):
+        """[0][1] at root resolves through two levels."""
+        data = [[10, 20], [30, 40]]
+        val, found = resolve(data, "[0][1]")
+        assert found is True
+        assert val == 20  # noqa: PLR2004
 
-    def test_non_dict_payload(self):
-        assert resolve_input_value("not a dict", data_path="x", slug="x") is None
-        assert resolve_input_value(None, data_path="x", slug="x") is None
-        assert resolve_input_value(42, data_path="x", slug="x") is None
-
-    def test_deeply_nested(self):
-        payload = {"a": {"b": {"c": {"d": {"value": 7}}}}}
-        result = resolve_input_value(payload, data_path="a.b.c.d.value", slug="x")
-        assert result == 7  # noqa: PLR2004
-
-    def test_null_intermediate(self):
-        payload = {"a": None}
-        assert resolve_input_value(payload, data_path="a.b", slug="x") is None
-
-    def test_intermediate_value_is_list(self):
-        """resolve_input_value only supports dict traversal, not arrays."""
-        payload = {"items": [{"id": 1}]}
-        assert resolve_input_value(payload, data_path="items.0", slug="x") is None
+    def test_chained_then_dotted(self, resolve):
+        """matrix[0][1].value mixes chained brackets with dotted key."""
+        data = {"matrix": [[{"value": "a"}, {"value": "b"}]]}
+        val, found = resolve(data, "matrix[0][1].value")
+        assert found is True
+        assert val == "b"
 
 
 # ===================================================================

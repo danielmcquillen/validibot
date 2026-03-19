@@ -9,7 +9,7 @@ these helpers:
 1. Filter signals by the author's ``display_signals`` selection (or show
    all when the list is empty — backward-compatible default).
 2. Enrich each signal with human-readable metadata (label, units,
-   precision) from the validator's ``ValidatorCatalogEntry`` records.
+   precision) from the validator's ``SignalDefinition`` records.
 3. Format numeric values with thousands separators and configurable
    decimal precision.
 
@@ -21,7 +21,7 @@ config model lacks that field simply show all signals.
 
 See Also:
     - ``EnergyPlusStepConfig.display_signals`` (``workflows/step_configs.py``)
-    - ``ValidatorCatalogEntry`` (``validations/models.py``)
+    - ``SignalDefinition`` (``validations/models.py``)
     - ``AdvancedValidationProcessor.store_signals()`` (persists signals)
 """
 
@@ -33,8 +33,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 if TYPE_CHECKING:
+    from validibot.validations.models import SignalDefinition
     from validibot.validations.models import ValidationStepRun
-    from validibot.validations.models import ValidatorCatalogEntry
 
 logger = logging.getLogger(__name__)
 
@@ -48,19 +48,19 @@ _DEFAULT_PRECISION = 2
 
 @dataclass
 class DisplaySignal:
-    """A single output signal enriched with catalog metadata for display.
+    """A single output signal enriched with signal definition metadata for display.
 
     Attributes:
-        slug: Machine name matching the catalog entry (e.g.,
+        slug: Machine name matching the signal's contract_key (e.g.,
             ``"site_electricity_kwh"``).
         label: Human-readable label (e.g., ``"Site Electricity"``).
         value: Raw signal value as stored in ``step_run.output``.
         formatted_value: Pre-formatted string for UI display (e.g.,
             ``"12,345.60"``).
         units: Display units (e.g., ``"kWh"``).  Empty string when
-            the catalog entry has no units metadata.
-        description: Longer description from the catalog entry.
-        order: Sort key from the catalog entry's ``order`` field.
+            the signal definition has no unit.
+        description: Longer description from the signal definition.
+        order: Sort key from the signal definition's ``order`` field.
     """
 
     slug: str
@@ -82,8 +82,8 @@ def build_display_signals(step_run: ValidationStepRun) -> list[DisplaySignal]:
         1. Read raw signals from ``step_run.output["signals"]``.
         2. Determine which signals to show using the step config's
            ``display_signals`` list (empty = show all).
-        3. Batch-fetch ``ValidatorCatalogEntry`` records for
-           enrichment (labels, units, precision).
+        3. Batch-fetch ``SignalDefinition`` records for enrichment
+           (labels, units, precision).
         4. Format each value and return an ordered list.
 
     Returns an empty list if the step has no signal data.
@@ -104,14 +104,14 @@ def build_display_signals(step_run: ValidationStepRun) -> list[DisplaySignal]:
     if not visible_slugs:
         return []
 
-    # Batch-fetch catalog metadata.
-    catalog_map = _build_catalog_map(step_run, visible_slugs)
+    # Batch-fetch signal definition metadata.
+    signal_map = _build_signal_map(step_run, visible_slugs)
 
     # Build enriched signals.
     result: list[DisplaySignal] = []
     for slug in visible_slugs:
         value = raw_signals[slug]
-        catalog = catalog_map.get(slug)
+        signal = signal_map.get(slug)
 
         label = slug.replace("_", " ").title()
         units = ""
@@ -119,13 +119,12 @@ def build_display_signals(step_run: ValidationStepRun) -> list[DisplaySignal]:
         description = ""
         order = 999
 
-        if catalog:
-            label = catalog.label or label
-            meta = catalog.metadata or {}
-            units = meta.get("units", "")
-            precision = meta.get("precision")
-            description = catalog.description or ""
-            order = catalog.order
+        if signal:
+            label = signal.label or label
+            units = signal.unit or ""
+            precision = (signal.metadata or {}).get("precision")
+            description = signal.description or ""
+            order = signal.order
 
         formatted = _format_signal_value(value, precision)
         result.append(
@@ -150,9 +149,10 @@ def build_template_params_display(
     """Build display-ready template parameter data for a step run.
 
     Merges ``step_run.output["template_parameters_used"]`` with variable
-    metadata from the step config's ``template_variables`` to produce a
-    list of ``{"name", "label", "value", "units"}`` dicts suitable for
-    the "Parameters Used" section in results.
+    metadata to produce a list of ``{"name", "label", "value", "units"}``
+    dicts suitable for the "Parameters Used" section in results.
+
+    Metadata is sourced from ``SignalDefinition`` rows for the step.
 
     Returns an empty list for non-template runs (no
     ``template_parameters_used`` key in output).
@@ -162,29 +162,10 @@ def build_template_params_display(
     if not params:
         return []
 
-    # Build a lookup of variable metadata from the step config.
     var_meta: dict[str, dict[str, str]] = {}
     workflow_step = getattr(step_run, "workflow_step", None)
     if workflow_step:
-        try:
-            typed_config = workflow_step.typed_config
-            for v in getattr(typed_config, "template_variables", []):
-                key = v.name
-                var_meta[key] = {
-                    "label": v.description or v.name,
-                    "units": v.units,
-                }
-        except (AttributeError, TypeError, KeyError, ValueError):
-            # Expected failures: malformed JSON config, missing attrs,
-            # Pydantic validation errors.  Fall back to raw variable
-            # names.  Infrastructure errors (DatabaseError, etc.) are
-            # intentionally NOT caught — they should propagate.
-            logger.warning(
-                "Could not parse step config for template param display "
-                "on step_run %s — falling back to raw variable names",
-                step_run.id,
-                exc_info=True,
-            )
+        var_meta = _build_template_param_meta(workflow_step)
 
     result: list[dict[str, str]] = []
     for name, value in params.items():
@@ -198,6 +179,29 @@ def build_template_params_display(
             },
         )
     return result
+
+
+def _build_template_param_meta(
+    workflow_step,
+) -> dict[str, dict[str, str]]:
+    """Build a metadata lookup for template parameters.
+
+    Queries ``SignalDefinition`` rows for the step to build a
+    name-to-metadata mapping used by the results display.
+    """
+    from validibot.validations.constants import SignalOriginKind
+
+    # Try SignalDefinition first — the unified source of truth.
+    template_sigs = workflow_step.signal_definitions.filter(
+        origin_kind=SignalOriginKind.TEMPLATE,
+    )
+    meta: dict[str, dict[str, str]] = {}
+    for sig in template_sigs:
+        meta[sig.native_name] = {
+            "label": sig.label or sig.native_name,
+            "units": sig.unit or "",
+        }
+    return meta
 
 
 # ── Internal helpers ─────────────────────────────────────────────────
@@ -231,23 +235,35 @@ def _get_display_signals_filter(step_run: ValidationStepRun) -> list[str]:
         return []
 
 
-def _build_catalog_map(
+def _build_signal_map(
     step_run: ValidationStepRun,
     slugs: list[str],
-) -> dict[str, ValidatorCatalogEntry]:
-    """Batch-fetch ``ValidatorCatalogEntry`` records for the given slugs.
+) -> dict[str, SignalDefinition]:
+    """Batch-fetch ``SignalDefinition`` records for the given slugs.
 
-    Returns a dict mapping slug → catalog entry.  Uses a single queryset
-    filtered by ``slug__in`` for efficiency.
+    Checks both validator-owned signals (library validators) and
+    step-owned signals (step-level FMU uploads) to cover all origin
+    kinds.  Returns a dict mapping contract_key → signal definition.
     """
     workflow_step = getattr(step_run, "workflow_step", None)
     if not workflow_step:
         return {}
+
+    # Step-owned signals (e.g., step-level FMU uploads) take priority.
+    result: dict[str, SignalDefinition] = {}
+    step_signals = workflow_step.signal_definitions.filter(contract_key__in=slugs)
+    for sig in step_signals:
+        result[sig.contract_key] = sig
+
+    # Fill in from validator-owned signals (library validators).
     validator = getattr(workflow_step, "validator", None)
-    if not validator:
-        return {}
-    entries = validator.catalog_entries.filter(slug__in=slugs)
-    return {entry.slug: entry for entry in entries}
+    if validator:
+        remaining = [s for s in slugs if s not in result]
+        if remaining:
+            for sig in validator.signal_definitions.filter(contract_key__in=remaining):
+                result.setdefault(sig.contract_key, sig)
+
+    return result
 
 
 def _format_signal_value(

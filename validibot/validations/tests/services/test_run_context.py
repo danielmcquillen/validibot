@@ -16,7 +16,7 @@ from validibot.validations.validators.basic import BasicValidator
 
 @pytest.mark.django_db
 def test_build_cel_context_exposes_downstream_signals():
-    """CEL context should include signals from prior steps under steps.<id>.signals."""
+    """Signals from prior steps should be exposed under steps.<step_key>.signals."""
     validator = ValidatorFactory(validation_type=ValidationType.BASIC)
     engine = BasicValidator()
 

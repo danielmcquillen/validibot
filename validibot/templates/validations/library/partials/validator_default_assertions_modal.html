@@ -21,9 +21,9 @@
             </div>
             <div class="fw-semibold">{{ assertion.message_template }}</div>
             <pre class="bg-light border rounded p-2 mb-0"><code>{{ assertion.cel_cache }}</code></pre>
-            {% if assertion.target_catalog_entry %}
+            {% if assertion.target_signal_definition %}
               <div class="d-flex flex-wrap gap-1 pt-1">
-                <span class="badge bg-light text-dark border">{{ assertion.target_catalog_entry.slug }}</span>
+                <span class="badge bg-light text-dark border">{{ assertion.target_signal_definition.contract_key }}</span>
               </div>
             {% endif %}
           </div>

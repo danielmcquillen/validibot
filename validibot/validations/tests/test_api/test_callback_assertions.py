@@ -22,7 +22,6 @@ from rest_framework.test import APIClient
 
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
-from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
@@ -30,9 +29,9 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.models import ValidationFinding
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
+from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
-from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
 
@@ -41,7 +40,7 @@ class CallbackAssertionEvaluationTests(TestCase):
     """
     Tests for output-stage assertion evaluation during callback processing.
 
-    Verifies that CEL assertions targeting output-stage catalog entries are
+    Verifies that CEL assertions targeting output-stage signal definitions are
     evaluated after an async validator completes and returns its output envelope.
     """
 
@@ -58,11 +57,11 @@ class CallbackAssertionEvaluationTests(TestCase):
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,
         )
-        self.output_entry = ValidatorCatalogEntryFactory(
+        self.output_sig = SignalDefinitionFactory(
             validator=self.validator,
-            slug="site_eui_kwh_m2",
+            contract_key="site_eui_kwh_m2",
             label="Site EUI (kWh/m²)",
-            run_stage=CatalogRunStage.OUTPUT,
+            direction="output",
         )
 
         # Create ruleset with CEL assertion
@@ -156,8 +155,8 @@ class CallbackAssertionEvaluationTests(TestCase):
         assertion = RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type="cel_expr",
-            target_catalog_entry=self.output_entry,
-            target_data_path="",  # Must be empty when using catalog entry
+            target_signal_definition=self.output_sig,
+            target_data_path="",  # Must be empty when using signal definition
             rhs={"expr": "site_eui_kwh_m2 < 100"},
             success_message="Building meets energy efficiency target!",
         )
@@ -207,8 +206,8 @@ class CallbackAssertionEvaluationTests(TestCase):
         assertion = RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type="cel_expr",
-            target_catalog_entry=self.output_entry,
-            target_data_path="",  # Must be empty when using catalog entry
+            target_signal_definition=self.output_sig,
+            target_data_path="",  # Must be empty when using signal definition
             rhs={"expr": "site_eui_kwh_m2 < 50"},
             message_template="Site EUI is too high!",
         )
@@ -310,8 +309,8 @@ class CallbackAssertionEvaluationTests(TestCase):
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type="cel_expr",
-            target_catalog_entry=self.output_entry,
-            target_data_path="",  # Must be empty when using catalog entry
+            target_signal_definition=self.output_sig,
+            target_data_path="",  # Must be empty when using signal definition
             rhs={"expr": "site_eui_kwh_m2 < 100"},
             success_message="",  # No custom message
         )
@@ -360,8 +359,8 @@ class CallbackAssertionEvaluationTests(TestCase):
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type="cel_expr",
-            target_catalog_entry=self.output_entry,
-            target_data_path="",  # Must be empty when using catalog entry
+            target_signal_definition=self.output_sig,
+            target_data_path="",  # Must be empty when using signal definition
             rhs={"expr": "site_eui_kwh_m2 < 100"},
             success_message="Custom: Building is energy efficient!",
         )
@@ -398,25 +397,25 @@ class CallbackAssertionEvaluationTests(TestCase):
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.services.validation_callback.download_envelope")
-    def test_callback_evaluates_cel_assertion_without_target_catalog_entry(
+    def test_callback_evaluates_cel_assertion_without_target_signal_definition(
         self,
         mock_download,
     ):
         """
-        CEL assertions without target_catalog_entry should still evaluate.
+        CEL assertions without target_signal_definition should still evaluate.
 
         This tests the real-world scenario where the assertion form sets
-        target_catalog_entry=None for CEL expression assertions. The stage
+        target_signal_definition=None for CEL expression assertions. The stage
         should be inferred from which signals the expression references.
         """
-        # Create assertion WITHOUT target_catalog_entry (mimics form behavior)
+        # Create assertion WITHOUT target_signal_definition (mimics form behavior)
         # but referencing an output-stage signal.
         # Note: DB constraint requires target_data_path to be non-empty when
-        # target_catalog_entry is null - the form sets it to the CEL expression.
+        # target_signal_definition is null - the form sets it to the CEL expression.
         assertion = RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type="cel_expr",
-            target_catalog_entry=None,  # Form sets this to None for CEL assertions
+            target_signal_definition=None,  # Form sets this to None for CEL assertions
             # For CEL assertions, the expression is stored as the data path.
             target_data_path="site_eui_kwh_m2 < 100",
             rhs={"expr": "site_eui_kwh_m2 < 100"},
@@ -441,7 +440,7 @@ class CallbackAssertionEvaluationTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        # Success finding should be created even without target_catalog_entry
+        # Success finding should be created even without target_signal_definition
         success_findings = ValidationFinding.objects.filter(
             validation_step_run=self.step_run,
             severity=Severity.SUCCESS,

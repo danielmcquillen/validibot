@@ -19,16 +19,18 @@ from validibot_shared.fmu import FMUVariableMeta
 
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
-from validibot.validations.constants import CatalogEntryType
-from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import FMUProbeStatus
+from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import SignalOriginKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import FMUModel
 from validibot.validations.models import FMUProbeResult
 from validibot.validations.models import FMUVariable
+from validibot.validations.models import SignalDefinition
 from validibot.validations.models import Validator
-from validibot.validations.models import ValidatorCatalogEntry
+from validibot.validations.signal_metadata.metadata import FMUProviderBinding
+from validibot.validations.signal_metadata.metadata import FMUSignalMetadata
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -52,7 +54,7 @@ DISALLOWED_EXTENSIONS = {
 # ---------------------------------------------------------------------------
 # These are plain dataclasses (not Django models) so that introspection
 # results can be consumed by both:
-#   - the library-validator flow (converts to FMUVariable + CatalogEntry rows)
+#   - the library-validator flow (converts to FMUVariable + SignalDefinition rows)
 #   - the step-level flow (converts to step config JSON dicts)
 
 
@@ -188,9 +190,9 @@ def introspect_fmu(payload: bytes, filename: str) -> FMUIntrospectionResult:
 
     Used by both:
     - ``create_fmu_validator()`` (library flow) — results feed into
-      FMUModel + FMUVariable + ValidatorCatalogEntry creation.
+      FMUModel + FMUVariable + SignalDefinition creation.
     - ``build_fmu_config()`` (step-level flow) — results feed into
-      ``step.config["fmu_variables"]`` and ``step.config["fmu_simulation"]``.
+      ``sync_step_fmu_signals()`` and ``step.config["fmu_simulation"]``.
 
     Raises ``FMUIntrospectionError`` on validation failure.
     """
@@ -257,12 +259,13 @@ def _data_type_for_variable(value_type: str) -> str:
     return CatalogValueType.OBJECT
 
 
-def _run_stage_for_causality(causality: str) -> CatalogRunStage | None:
+def _direction_for_causality(causality: str) -> str | None:
+    """Map FMU causality to signal direction, or None for unsupported types."""
     lowered = (causality or "").lower()
     if lowered == "input":
-        return CatalogRunStage.INPUT
+        return SignalDirection.INPUT
     if lowered == "output":
-        return CatalogRunStage.OUTPUT
+        return SignalDirection.OUTPUT
     return None
 
 
@@ -329,7 +332,7 @@ def create_fmu_validator(
 
     Uses the shared ``introspect_fmu()`` layer for validation and metadata
     extraction, then converts the results into Django model instances
-    (FMUModel, FMUVariable, ValidatorCatalogEntry).
+    (FMUModel, FMUVariable, SignalDefinition).
 
     When ``approve_immediately`` is False the FMU will remain unapproved until a
     probe run is completed. ``storage_backend`` can be supplied to stream the
@@ -403,39 +406,44 @@ def _persist_variables(
     validator: Validator,
     variables: Iterable[FMUVariable],
 ) -> None:
-    """Persist FMUVariable model instances and create matching catalog entries."""
+    """Persist FMUVariable model instances and create matching signal definitions."""
     prepared: list[FMUVariable] = []
     for var in variables:
         var.fmu_model = fmu_model
         prepared.append(var)
     FMUVariable.objects.bulk_create(prepared)
-    existing_slugs = set(validator.catalog_entries.values_list("slug", flat=True))
+    existing_keys = set(
+        validator.signal_definitions.values_list("contract_key", flat=True),
+    )
     for var in prepared:
-        run_stage = _run_stage_for_causality(var.causality)
-        if not run_stage:
+        direction = _direction_for_causality(var.causality)
+        if not direction:
             continue
-        base_slug = slugify(var.name, separator="_") or "signal"
-        slug = base_slug
+        base_key = slugify(var.name, separator="_") or "signal"
+        key = base_key
         counter = 2
-        while slug in existing_slugs:
-            slug = f"{base_slug}-{counter}"
+        while key in existing_keys:
+            key = f"{base_key}-{counter}"
             counter += 1
-        existing_slugs.add(slug)
-        entry = ValidatorCatalogEntry.objects.create(
+        existing_keys.add(key)
+        SignalDefinition.objects.get_or_create(
             validator=validator,
-            entry_type=CatalogEntryType.SIGNAL,
-            run_stage=run_stage,
-            slug=slug,
-            label=var.name,
-            target_data_path=var.name,
-            data_type=_data_type_for_variable(var.value_type),
-            metadata={"fmu_value_type": var.value_type, "unit": var.unit},
-            is_required=(run_stage == CatalogRunStage.INPUT),
+            contract_key=key,
+            direction=direction,
+            defaults={
+                "native_name": var.name,
+                "origin_kind": SignalOriginKind.FMU,
+                "data_type": _data_type_for_variable(var.value_type),
+                "provider_binding": FMUProviderBinding(
+                    causality=var.causality,
+                ).model_dump(),
+                "metadata": FMUSignalMetadata(
+                    variability=var.variability,
+                    value_reference=var.value_reference,
+                    value_type=var.value_type,
+                ).model_dump(),
+            },
         )
-        FMUVariable.objects.filter(
-            fmu_model=fmu_model,
-            name=var.name,
-        ).update(catalog_entry=entry)
 
 
 def _read_fmu_bytes(fmu_model: FMUModel) -> bytes:
@@ -581,9 +589,9 @@ def _refresh_variables_from_probe(
     variables: list,
 ) -> None:
     """
-    Update FMU variable rows and refresh catalog entries based on probe output.
+    Update FMU variable rows and refresh signal definitions based on probe output.
 
-    We rebuild variables from the probe response to make sure the catalog stays
+    We rebuild variables from the probe response to make sure the signals stay
     aligned with the latest FMU metadata.
     """
 
@@ -591,8 +599,7 @@ def _refresh_variables_from_probe(
     if validator is None:
         return
     FMUVariable.objects.filter(fmu_model=fmu_model).delete()
-    entries = ValidatorCatalogEntry.objects.filter(validator=validator)
-    entries.delete()
+    SignalDefinition.objects.filter(validator=validator).delete()
     shaped_vars = [
         FMUVariable(
             fmu_model=fmu_model,

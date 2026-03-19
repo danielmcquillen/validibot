@@ -377,11 +377,66 @@ def build_input_envelope(
             if val is not None:
                 sim_kwargs[key] = val
 
-        # Parse the user's submission JSON to get input values for the FMU.
-        # These become fmpy's ``start_values`` — overriding the FMU's
-        # default parameter/input values with the user's scenario.
+        # Resolve FMU input values and output variable names.
+        #
+        # New path: when the step has StepSignalBinding rows (from Phase 3
+        # FMU signal sync), resolve inputs via the binding's source_data_path
+        # against the submission payload. This enables nested path resolution
+        # (e.g., "building.envelope.panel_area") and audit tracing.
+        #
+        # Fallback: when no bindings exist (pre-migration steps or library
+        # validators without step-owned signals), use the legacy approach
+        # of passing the entire submission JSON as flat input_values.
         input_values: dict = {}
-        if run.submission:
+        has_bindings = step.signal_bindings.filter(
+            signal_definition__direction="input",
+        ).exists()
+
+        if has_bindings and current_step_run:
+            from validibot.validations.models import ResolvedInputTrace
+            from validibot.validations.services.path_resolution import (
+                InputSignalResolutionError,
+            )
+            from validibot.validations.services.path_resolution import (
+                resolve_step_input_signals,
+            )
+
+            submission_data: dict = {}
+            if run.submission:
+                try:
+                    content = run.submission.get_content()
+                    if content:
+                        parsed = json.loads(content)
+                        if isinstance(parsed, dict):
+                            submission_data = parsed
+                except (json.JSONDecodeError, Exception):
+                    logger.warning(
+                        "Could not parse submission content as JSON for run %s",
+                        run.id,
+                    )
+
+            # Upstream signals for cross-step resolution.
+            upstream = (run.summary or {}).get("steps", {})
+
+            try:
+                input_values, traces = resolve_step_input_signals(
+                    step,
+                    current_step_run,
+                    submission_data=submission_data,
+                    upstream_signals=upstream,
+                )
+                if traces:
+                    ResolvedInputTrace.objects.bulk_create(traces)
+            except InputSignalResolutionError as exc:
+                # Persist ALL traces (successes + failures) for diagnostics
+                # even when resolution fails. The exception carries the
+                # complete trace list so operators can see exactly which
+                # signals resolved and which didn't.
+                if exc.traces:
+                    ResolvedInputTrace.objects.bulk_create(exc.traces)
+                raise
+        # Legacy fallback: entire submission JSON as flat input_values
+        elif run.submission:
             try:
                 content = run.submission.get_content()
                 if content:
@@ -394,12 +449,18 @@ def build_input_envelope(
                     run.id,
                 )
 
-        # Extract output variable names from the step's FMU config so the
-        # runner knows which outputs to collect after simulation.
-        fmu_variables = (step.config or {}).get("fmu_variables") or []
-        output_variables = [
-            v["name"] for v in fmu_variables if v.get("causality") == "output"
-        ]
+        # Extract output variable names: prefer SignalDefinition rows,
+        # fall back to step config JSON.
+        from validibot.validations.constants import SignalDirection
+        from validibot.validations.constants import SignalOriginKind
+        from validibot.validations.models import SignalDefinition
+
+        output_sigs = SignalDefinition.objects.filter(
+            workflow_step=step,
+            direction=SignalDirection.OUTPUT,
+            origin_kind=SignalOriginKind.FMU,
+        )
+        output_variables = [sig.native_name for sig in output_sigs]
 
         fmu_inputs = FMUInputs(
             input_values=input_values,

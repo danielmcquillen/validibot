@@ -11,12 +11,19 @@ design principle from the Parameterized Templates ADR (Section 7):
 *"All template intelligence lives in Django.  The container stays
 simple — it receives a fully resolved IDF."*
 
+**Signal-binding resolution (Phase 4b):** When the step has
+``StepSignalBinding`` rows for template signals, the resolution engine
+resolves values via ``resolve_input_signal()`` which supports nested
+JSON payloads and ``source_data_path`` expressions. The legacy flat-JSON
+path is used as a fallback for steps without signal bindings.
+
 The preprocessing is invoked by ``EnergyPlusValidator.preprocess_submission()``
 which is called by ``AdvancedValidator.validate()`` before building the
 ``ExecutionRequest``.
 
 See Also:
     - ``validibot.validations.utils.idf_template`` — merge/validate/substitute
+    - ``validibot.validations.services.path_resolution`` — signal resolution engine
     - ``validibot.workflows.step_configs.get_step_config`` — typed config access
     - ``validibot.validations.validators.base.advanced.AdvancedValidator`` — hook
 """
@@ -32,10 +39,9 @@ from typing import Any
 
 from django.core.exceptions import ValidationError
 
+from validibot.validations.utils.idf_template import IDF_UNSAFE_CHARS_PATTERN
+from validibot.validations.utils.idf_template import MergeResult
 from validibot.validations.utils.idf_template import decode_idf_bytes
-from validibot.validations.utils.idf_template import (
-    merge_and_validate_template_parameters,
-)
 from validibot.validations.utils.idf_template import substitute_template_parameters
 from validibot.workflows.step_configs import get_step_config
 
@@ -122,15 +128,17 @@ def preprocess_energyplus_submission(
     # ── 2. Read the template IDF ────────────────────────────────
     template_content = _read_template_content(template_resource)
 
-    # ── 3. Parse and validate the JSON submission ───────────────
-    submitter_params = _parse_submission_params(submission)
-
-    # ── 4. Merge and validate parameters ────────────────────────
+    # ── 3. Parse submission and resolve parameters ────────────────
+    #
+    # Resolve template parameters via StepSignalBinding rows. Every
+    # EnergyPlus template step should have signal bindings created by
+    # sync_step_template_signals(). The bindings support nested JSON
+    # payloads and source_data_path expressions.
     typed_config = get_step_config(step)
 
-    merge_result = merge_and_validate_template_parameters(
-        submitter_params=submitter_params,
-        template_variables=typed_config.template_variables,
+    merge_result = _resolve_via_signal_bindings(
+        step=step,
+        submission=submission,
         case_sensitive=typed_config.case_sensitive,
     )
 
@@ -228,6 +236,8 @@ def _parse_submission_params(submission) -> dict[str, Any]:
         )
 
     # Reject nested objects/arrays — parameters must be flat key-value pairs.
+    # This check only applies to the legacy path; the signal-binding path
+    # allows nesting because source_data_path can navigate nested structures.
     nested_keys = [k for k, v in parsed.items() if isinstance(v, (dict, list))]
     if nested_keys:
         raise ValidationError(
@@ -236,3 +246,227 @@ def _parse_submission_params(submission) -> dict[str, Any]:
         )
 
     return parsed
+
+
+def _parse_submission_data(submission) -> dict[str, Any]:
+    """Parse submission content as a JSON dict, allowing nested structures.
+
+    Unlike ``_parse_submission_params()`` (legacy, flat-only), this parser
+    accepts nested objects and arrays — the signal resolution engine
+    navigates them via ``source_data_path`` expressions.
+
+    Raises:
+        ValidationError: If the content is not valid JSON or not a dict.
+    """
+    raw_content = submission.get_content()
+    try:
+        parsed = json.loads(raw_content)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValidationError(
+            f"Submission content is not valid JSON: {exc}",
+        ) from exc
+
+    if not isinstance(parsed, dict):
+        raise ValidationError(
+            "Template parameters must be a JSON object. "
+            f"Received {type(parsed).__name__} instead."
+        )
+
+    return parsed
+
+
+def _step_has_template_bindings(step) -> bool:
+    """Check whether the step has StepSignalBinding rows for template signals."""
+    from validibot.validations.constants import SignalOriginKind
+
+    return step.signal_bindings.filter(
+        signal_definition__origin_kind=SignalOriginKind.TEMPLATE,
+    ).exists()
+
+
+def _resolve_via_signal_bindings(
+    *,
+    step,
+    submission,
+    case_sensitive: bool = True,
+) -> MergeResult:
+    """Resolve template parameters via StepSignalBinding + validate.
+
+    This is the Phase 4b replacement for the legacy
+    ``merge_and_validate_template_parameters()`` path. It:
+
+    1. Parses the submission as a JSON dict (nesting allowed).
+    2. Queries ``StepSignalBinding`` rows for template signals.
+    3. Resolves each binding via ``resolve_input_signal()``.
+    4. Validates resolved values against constraints stored in
+       ``SignalDefinition.metadata`` (TemplateSignalMetadata).
+    5. Returns a ``MergeResult`` with the merged parameter dict.
+
+    Raises:
+        ValidationError: If required parameters are missing or values
+            fail type/range/safety validation.
+    """
+    from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import SignalOriginKind
+    from validibot.validations.models import StepSignalBinding
+    from validibot.validations.services.path_resolution import resolve_input_signal
+
+    submission_data = _parse_submission_data(submission)
+
+    bindings = list(
+        StepSignalBinding.objects.filter(
+            workflow_step=step,
+            signal_definition__direction=SignalDirection.INPUT,
+            signal_definition__origin_kind=SignalOriginKind.TEMPLATE,
+        )
+        .select_related("signal_definition")
+        .order_by("signal_definition__order")
+    )
+
+    merged: dict[str, str] = {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    # Detect whether any binding uses a nested source_data_path
+    # (contains a dot or bracket). When true, the submission has a
+    # structured layout — top-level keys are containers, not parameter
+    # names — so unrecognized-parameter warnings and case normalization
+    # of the submission data don't apply.
+    uses_nested_paths = any(
+        "." in (b.source_data_path or "") or "[" in (b.source_data_path or "")
+        for b in bindings
+    )
+
+    # Case normalization only applies to flat submissions where
+    # top-level keys ARE the variable names. For nested payloads,
+    # the binding's source_data_path specifies the exact path, and
+    # uppercasing top-level keys would break path resolution.
+    if not case_sensitive and not uses_nested_paths:
+        submission_data = {k.upper(): v for k, v in submission_data.items()}
+
+    # Unrecognized-parameter check: only meaningful for flat payloads
+    # where top-level keys should correspond to template variable names.
+    # For nested payloads, top-level keys like "glazing" are structural
+    # containers, not parameters — warning about them is noise.
+    if not uses_nested_paths:
+        expected_names = {b.signal_definition.native_name for b in bindings}
+        flat_keys = set(submission_data.keys())
+        extra = flat_keys - expected_names
+        if extra:
+            warnings.append(
+                f"Unrecognized parameters (not in template): "
+                f"{', '.join(sorted(extra))}. "
+                f"Expected: {', '.join(sorted(expected_names))}. "
+                f"Check for typos."
+            )
+
+    for binding in bindings:
+        sig = binding.signal_definition
+        name = sig.native_name
+
+        resolved = resolve_input_signal(
+            binding,
+            submission_data=submission_data,
+        )
+
+        if resolved.resolved:
+            value = str(resolved.value)
+        elif binding.is_required:
+            errors.append(
+                f"Required parameter '{name}' is missing and has no "
+                f"default. Description: "
+                f"{sig.label or '(no description)'}."
+            )
+            continue
+        else:
+            # Optional signal, not found, no default — skip
+            continue
+
+        # Validate the resolved value against template constraints
+        # stored in SignalDefinition.metadata (TemplateSignalMetadata).
+        meta = sig.metadata or {}
+        variable_type = meta.get("variable_type", "text")
+
+        if variable_type == "number":
+            _validate_number_from_metadata(name, value, meta, errors)
+        elif variable_type == "choice":
+            choices = meta.get("choices", [])
+            if not choices:
+                errors.append(
+                    f"Parameter '{name}' has type 'choice' but no "
+                    f"allowed values are defined."
+                )
+            elif value not in choices:
+                errors.append(
+                    f"Parameter '{name}' value '{value}' is not a valid "
+                    f"choice. Allowed: {', '.join(choices)}."
+                )
+        elif variable_type == "text":
+            if not value.strip():
+                errors.append(f"Parameter '{name}' cannot be empty.")
+            elif IDF_UNSAFE_CHARS_PATTERN.search(value):
+                errors.append(
+                    f"Parameter '{name}' contains characters that would "
+                    f"corrupt the IDF file (comma, semicolon, !, or "
+                    f"newline). Value: '{value[:50]}'."
+                )
+
+        merged[name] = value
+
+    if errors:
+        all_messages = errors + [f"Note: {w}" for w in warnings]
+        raise ValidationError(all_messages)
+
+    if warnings:
+        logger.warning("Template parameter warnings: %s", "; ".join(warnings))
+
+    return MergeResult(parameters=merged, warnings=warnings)
+
+
+def _validate_number_from_metadata(
+    name: str,
+    value: str,
+    meta: dict[str, Any],
+    errors: list[str],
+) -> None:
+    """Validate a number-type value against TemplateSignalMetadata constraints.
+
+    Mirrors the validation logic in ``idf_template._validate_number()`` but
+    reads constraints from the SignalDefinition metadata dict instead of
+    a TemplateVariable Pydantic object.
+    """
+    if value.strip().lower() in ("autosize", "autocalculate"):
+        return
+
+    try:
+        num = float(value)
+    except (ValueError, TypeError):
+        errors.append(
+            f"Parameter '{name}' must be a number (or "
+            f"'Autosize'/'Autocalculate'), got '{value}'."
+        )
+        return
+
+    min_value = meta.get("min_value")
+    if min_value is not None:
+        min_exclusive = meta.get("min_exclusive", False)
+        if min_exclusive and num <= min_value:
+            errors.append(
+                f"Parameter '{name}' value {num} must be greater than {min_value}."
+            )
+        elif not min_exclusive and num < min_value:
+            errors.append(
+                f"Parameter '{name}' value {num} is below minimum {min_value}."
+            )
+
+    max_value = meta.get("max_value")
+    if max_value is not None:
+        max_exclusive = meta.get("max_exclusive", False)
+        if max_exclusive and num >= max_value:
+            errors.append(
+                f"Parameter '{name}' value {num} must be less than {max_value}."
+            )
+        elif not max_exclusive and num > max_value:
+            errors.append(
+                f"Parameter '{name}' value {num} is above maximum {max_value}."
+            )

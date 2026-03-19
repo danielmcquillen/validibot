@@ -718,11 +718,11 @@ class FMUValidatorStepConfigForm(BaseStepConfigForm):
 
     - **Library validator**: The FMU is already attached to the validator
       via ``validator.fmu_model``.  No upload fields are shown — signals
-      come from the validator's catalog entries.
+      come from the validator's SignalDefinition rows.
 
     - **System FMU validator (step-level upload)**: The author uploads
       an FMU directly in the step form.  The system introspects the FMU
-      and stores discovered variables in ``step.config["fmu_variables"]``
+      and stores discovered variables as ``SignalDefinition`` rows
       and simulation defaults in ``step.config["fmu_simulation"]``.
 
     See ADR-2026-03-12: Step-Level FMU Upload for Workflow Authors.
@@ -1369,7 +1369,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
 # ---------------------------------------------------------------------------
 # Display signals form — used in the modal on the step detail page to
 # select which output signals are shown to users in submission results.
-# Cross-validator: works for any step type with output catalog entries.
+# Cross-validator: works for any step type with output signal definitions.
 # ---------------------------------------------------------------------------
 
 
@@ -1377,7 +1377,7 @@ class DisplaySignalsForm(forms.Form):
     """Form for selecting which output signals appear in submission results.
 
     Rendered inside a modal on the step detail page.  Populates choices
-    from the validator's output catalog entries.  The selection is stored
+    from the validator's output signal definitions.  The selection is stored
     in ``step.config["display_signals"]``.
     """
 
@@ -1388,27 +1388,49 @@ class DisplaySignalsForm(forms.Form):
 
     def __init__(self, *args, step=None, validator=None, **kwargs):
         super().__init__(*args, **kwargs)
-
-        from validibot.validations.constants import CatalogEntryType
-        from validibot.validations.constants import CatalogRunStage
+        self.step = step
+        self.validator = validator
 
         choices: list[tuple[str, str]] = []
+        seen_keys: set[str] = set()
+
+        # Step-owned output signals (FMU outputs, etc.)
+        if step:
+            from validibot.validations.models import SignalDefinition
+
+            step_outputs = SignalDefinition.objects.filter(
+                workflow_step=step,
+                direction="output",
+            ).order_by("order", "pk")
+            for sig in step_outputs:
+                key = sig.contract_key
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    label = sig.label or sig.native_name or sig.contract_key
+                    choices.append((key, label))
+
+        # Validator-owned output signals (library catalog)
         if validator:
-            output_entries = validator.catalog_entries.filter(
-                entry_type=CatalogEntryType.SIGNAL,
-                run_stage=CatalogRunStage.OUTPUT,
-            ).order_by("order", "slug")
-            choices = [
-                (entry.slug, entry.label or entry.slug) for entry in output_entries
-            ]
+            from validibot.validations.models import SignalDefinition
+
+            validator_outputs = SignalDefinition.objects.filter(
+                validator=validator,
+                direction="output",
+            ).order_by("order", "pk")
+            for sig in validator_outputs:
+                key = sig.contract_key
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    label = sig.label or sig.contract_key
+                    choices.append((key, label))
 
         self.fields["display_signals"].choices = choices
 
+        # Pre-select currently displayed signals
         if step:
-            config = step.config or {}
-            selected = config.get("display_signals", [])
-            if selected:
-                self.fields["display_signals"].initial = selected
+            current = (step.config or {}).get("display_signals", [])
+            if current:
+                self.fields["display_signals"].initial = current
 
 
 # ---------------------------------------------------------------------------
@@ -1419,14 +1441,60 @@ class DisplaySignalsForm(forms.Form):
 # ---------------------------------------------------------------------------
 
 
+def _build_template_vars_from_signals(step: Any) -> list[dict[str, Any]]:
+    """Build template variable dicts from step-owned SignalDefinition rows.
+
+    Reads ``SignalDefinition`` rows with ``origin_kind=TEMPLATE`` and their
+    ``StepSignalBinding`` to produce dicts that the template variable
+    annotation form fields consume.
+    """
+    if not step or not step.pk:
+        return []
+
+    from validibot.validations.constants import SignalOriginKind
+    from validibot.validations.models import StepSignalBinding
+
+    bindings = (
+        StepSignalBinding.objects.filter(
+            workflow_step=step,
+            signal_definition__origin_kind=SignalOriginKind.TEMPLATE,
+        )
+        .select_related("signal_definition")
+        .order_by("signal_definition__order", "signal_definition__contract_key")
+    )
+
+    result: list[dict[str, Any]] = []
+    for binding in bindings:
+        sig = binding.signal_definition
+        meta = sig.metadata or {}
+        default_val = binding.default_value
+        result.append(
+            {
+                "name": sig.native_name or sig.contract_key,
+                "description": sig.label or "",
+                "default": str(default_val) if default_val is not None else "",
+                "units": sig.unit or "",
+                "variable_type": meta.get("variable_type", "text"),
+                "min_value": meta.get("min_value"),
+                "min_exclusive": meta.get("min_exclusive", False),
+                "max_value": meta.get("max_value"),
+                "max_exclusive": meta.get("max_exclusive", False),
+                "choices": meta.get("choices", []),
+                # Carry the signal PK so we can map back on save.
+                "_signal_pk": sig.pk,
+                "_binding_pk": binding.pk,
+            }
+        )
+    return result
+
+
 class TemplateVariableAnnotationForm(forms.Form):
     """Per-variable annotation form for EnergyPlus parameterized templates.
 
     Rendered in a dedicated card on the step detail page (not inline in
     the step config form).  Accepts a ``step`` kwarg, reads existing
-    variable metadata from ``step.config["template_variables"]``, and
-    creates 9 dynamic fields per variable with the ``tplvar_{i}_*``
-    naming convention.
+    variable metadata from step-owned ``SignalDefinition`` rows
+    (``origin_kind=TEMPLATE``) and their ``StepSignalBinding`` rows.
 
     The ``template_variable_fields`` property groups bound fields for
     template rendering — the partial iterates over this list to render
@@ -1439,10 +1507,7 @@ class TemplateVariableAnnotationForm(forms.Form):
         super().__init__(*args, **kwargs)
         self._template_variable_meta: list[dict[str, Any]] = []
 
-        template_vars: list[dict[str, Any]] = []
-        if step and step.config:
-            template_vars = step.config.get("template_variables", [])
-
+        template_vars = _build_template_vars_from_signals(step)
         self._create_template_variable_fields(template_vars)
 
     def _create_template_variable_fields(
@@ -1462,6 +1527,8 @@ class TemplateVariableAnnotationForm(forms.Form):
                     "index": i,
                     "name": var.get("name", ""),
                     "prefix": prefix,
+                    "_signal_pk": var.get("_signal_pk"),
+                    "_binding_pk": var.get("_binding_pk"),
                 }
             )
 
@@ -1869,3 +1936,102 @@ class BasicStepConfigForm(BaseStepConfigForm):
     def __init__(self, *args, step=None, **kwargs):
         super().__init__(*args, step=step, **kwargs)
         self.fields.pop("display_schema", None)
+
+
+class SignalBindingEditForm(forms.Form):
+    """Edit form for signal definition and binding fields.
+
+    Supports editing both ``SignalDefinition`` metadata (label, description,
+    unit) and ``StepSignalBinding`` configuration (source_data_path,
+    default_value, is_required). For library-owned signals, definition
+    fields are rendered as read-only; for step-owned signals, all fields
+    are editable.
+
+    See ADR-2026-03-18, Phase 5, Item 28.
+    """
+
+    # Definition fields (read-only for library signals)
+    label = forms.CharField(
+        max_length=255,
+        required=False,
+        label=_("Label"),
+        help_text=_("Human-readable display name for this signal."),
+    )
+    description = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 2}),
+        label=_("Description"),
+    )
+    unit = forms.CharField(
+        max_length=50,
+        required=False,
+        label=_("Unit"),
+        help_text=_("Unit of measurement (e.g., kW, m², °C)."),
+    )
+
+    # Binding fields (always editable when binding exists)
+    source_data_path = forms.CharField(
+        max_length=500,
+        required=False,
+        label=_("Source Path"),
+        help_text=_(
+            "Dotted path into the submission payload "
+            "(e.g., building.floor_area or zones[0].temp)."
+        ),
+    )
+    default_value = forms.CharField(
+        required=False,
+        label=_("Default Value"),
+        help_text=_(
+            "Fallback value when the source path resolves to nothing. "
+            "Leave empty to make the signal required."
+        ),
+    )
+    is_required = forms.BooleanField(
+        required=False,
+        label=_("Required"),
+        help_text=_("If checked, validation fails when this signal is missing."),
+    )
+
+    def __init__(self, *args, signal_definition=None, binding=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.signal_definition = signal_definition
+        self.binding = binding
+
+        # Pre-populate from existing data.
+        if signal_definition and not self.is_bound:
+            self.fields["label"].initial = signal_definition.label
+            self.fields["description"].initial = signal_definition.description
+            self.fields["unit"].initial = signal_definition.unit
+
+        if binding and not self.is_bound:
+            self.fields["source_data_path"].initial = binding.source_data_path
+            if binding.default_value is not None:
+                self.fields["default_value"].initial = str(binding.default_value)
+            self.fields["is_required"].initial = binding.is_required
+
+        # Library-owned signals: definition fields are read-only.
+        if signal_definition and signal_definition.validator_id:
+            for field_name in ("label", "description", "unit"):
+                self.fields[field_name].disabled = True
+
+    def save(self):
+        """Persist changes to the signal definition and/or binding."""
+        sig = self.signal_definition
+        binding = self.binding
+
+        if sig and not sig.validator_id:
+            # Step-owned signal: update definition fields.
+            sig.label = self.cleaned_data.get("label") or ""
+            sig.description = self.cleaned_data.get("description") or ""
+            sig.unit = self.cleaned_data.get("unit") or ""
+            sig.save(update_fields=["label", "description", "unit"])
+
+        if binding:
+            binding.source_data_path = self.cleaned_data.get("source_data_path") or ""
+            default_str = self.cleaned_data.get("default_value", "").strip()
+            binding.default_value = default_str if default_str else None
+            binding.is_required = self.cleaned_data.get("is_required", True)
+            binding.save(
+                update_fields=["source_data_path", "default_value", "is_required"],
+            )

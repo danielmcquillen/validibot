@@ -107,7 +107,7 @@
       {% if active_tab == 'description' %}
         {% include 'validations/library/partials/validator_description_tab.html' %}
       {% elif active_tab == 'signals' %}
-        {% include 'validations/library/partials/validator_signals_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix can_manage_validators=can_manage_validators can_edit_validator=can_edit_validator show_output_tab=show_output_tab active_signals_tab=active_signals_tab %}
+        {% include 'validations/library/partials/validator_signals_card.html' with inputs=inputs outputs=outputs catalog_tab_prefix=catalog_tab_prefix can_manage_validators=can_manage_validators can_edit_validator=can_edit_validator show_output_tab=show_output_tab active_signals_tab=active_signals_tab %}
       {% elif active_tab == 'assertions' %}
         {% if can_edit_validator %}
           <div class="validator-detail-tab-toolbar">
@@ -134,11 +134,11 @@
   </div>
   {# ── Modals (only include what the active tab needs) ── #}
   {% if active_tab == 'signals' %}
-    {% for entry in catalog_display.inputs %}
+    {% for entry in inputs %}
       {% include "validations/library/partials/signal_detail_modal.html" with signal=entry entry_id=entry.id %}
     {% endfor %}
     {% if show_output_tab %}
-      {% for entry in catalog_display.outputs %}
+      {% for entry in outputs %}
         {% include "validations/library/partials/signal_detail_modal.html" with signal=entry entry_id=entry.id %}
       {% endfor %}
     {% endif %}

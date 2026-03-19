@@ -13,10 +13,10 @@ from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
 from validibot.core.utils import reverse_with_org
-from validibot.validations.constants import CatalogRunStage
-from validibot.validations.forms import ValidatorCatalogEntryForm
+from validibot.validations.constants import SignalDirection
+from validibot.validations.forms import SignalDefinitionForm
+from validibot.validations.models import SignalDefinition
 from validibot.validations.models import Validator
-from validibot.validations.models import ValidatorCatalogEntry
 from validibot.validations.views.validators import CustomValidatorManageMixin
 
 logger = logging.getLogger(__name__)
@@ -58,14 +58,16 @@ class ValidatorSignalMixin(CustomValidatorManageMixin):
 
 
 class ValidatorSignalCreateView(ValidatorSignalMixin, FormView):
-    form_class = ValidatorCatalogEntryForm
+    form_class = SignalDefinitionForm
 
     def get(self, request, *args, **kwargs):
         """Handle GET requests to return fresh form content for HTMx modal."""
-        stage = request.GET.get("run_stage") or CatalogRunStage.INPUT
-        form = self.form_class(initial={"run_stage": stage}, validator=self.validator)
+        direction = request.GET.get("direction") or SignalDirection.INPUT
+        form = self.form_class(
+            initial={"direction": direction}, validator=self.validator
+        )
         if not self.validator.has_processor:
-            form.fields["run_stage"].widget = forms.HiddenInput()
+            form.fields["direction"].widget = forms.HiddenInput()
 
         if request.headers.get("HX-Request"):
             return render(
@@ -82,18 +84,18 @@ class ValidatorSignalCreateView(ValidatorSignalMixin, FormView):
         return self._redirect()
 
     def post(self, request, *args, **kwargs):
-        stage = request.POST.get("run_stage") or CatalogRunStage.INPUT
+        direction = request.POST.get("direction") or SignalDirection.INPUT
         form = self.form_class(
             request.POST,
-            initial={"run_stage": stage},
+            initial={"direction": direction},
             validator=self.validator,
         )
         if not self.validator.has_processor:
-            form.fields["run_stage"].widget = forms.HiddenInput()
+            form.fields["direction"].widget = forms.HiddenInput()
         if form.is_valid():
-            entry = form.save(commit=False)
-            entry.validator = self.validator
-            entry.save()
+            signal = form.save(commit=False)
+            signal.validator = self.validator
+            signal.save()
             messages.success(request, _("Signal created."))
             if request.headers.get("HX-Request"):
                 return self._hx_redirect()
@@ -115,15 +117,15 @@ class ValidatorSignalCreateView(ValidatorSignalMixin, FormView):
 
 
 class ValidatorSignalUpdateView(ValidatorSignalMixin, FormView):
-    form_class = ValidatorCatalogEntryForm
+    form_class = SignalDefinitionForm
 
     def post(self, request, *args, **kwargs):
-        entry = get_object_or_404(
-            ValidatorCatalogEntry,
+        signal = get_object_or_404(
+            SignalDefinition,
             pk=self.kwargs.get("entry_pk"),
             validator=self.validator,
         )
-        form = self.form_class(request.POST, instance=entry, validator=self.validator)
+        form = self.form_class(request.POST, instance=signal, validator=self.validator)
         if form.is_valid():
             form.save()
             messages.success(request, _("Signal updated."))
@@ -136,7 +138,7 @@ class ValidatorSignalUpdateView(ValidatorSignalMixin, FormView):
                 "validations/library/partials/modal_signal_edit.html",
                 {
                     "validator": self.validator,
-                    "entry_id": entry.id,
+                    "entry_id": signal.id,
                     "form": form,
                 },
                 status=200,
@@ -147,13 +149,13 @@ class ValidatorSignalUpdateView(ValidatorSignalMixin, FormView):
 
 class ValidatorSignalDeleteView(ValidatorSignalMixin, TemplateView):
     def post(self, request, *args, **kwargs):
-        entry = get_object_or_404(
-            ValidatorCatalogEntry,
+        signal = get_object_or_404(
+            SignalDefinition,
             pk=self.kwargs.get("entry_pk"),
             validator=self.validator,
         )
         try:
-            entry.delete()
+            signal.delete()
             messages.success(request, _("Signal deleted."))
         except ValidationError as exc:
             messages.error(request, " ".join(exc.messages))

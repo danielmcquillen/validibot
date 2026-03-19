@@ -27,10 +27,8 @@ from validibot.users.constants import RoleCode
 from validibot.users.models import User
 from validibot.users.tests.factories import MembershipFactory
 from validibot.users.tests.factories import OrganizationFactory
-from validibot.validations.constants import CatalogRunStage
-from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ValidationType
-from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 
 # Test password for Selenium tests - not a real secret
@@ -134,23 +132,23 @@ def validator_with_signals(test_user_with_org):
         is_system=True,
         has_processor=True,
     )
-    input_signal = ValidatorCatalogEntryFactory(
+    input_signal = SignalDefinitionFactory(
         validator=validator,
-        slug="floor_area_m2",
+        contract_key="floor_area_m2",
         label="Floor Area (m2)",
-        run_stage=CatalogRunStage.INPUT,
-        data_type=CatalogValueType.NUMBER,
+        direction="input",
+        data_type="number",
         description="Total floor area in square meters",
-        target_data_path="inputs.floor_area",
+        native_name="inputs.floor_area",
     )
-    output_signal = ValidatorCatalogEntryFactory(
+    output_signal = SignalDefinitionFactory(
         validator=validator,
-        slug="energy_consumption_kwh",
+        contract_key="energy_consumption_kwh",
         label="Energy Consumption (kWh)",
-        run_stage=CatalogRunStage.OUTPUT,
-        data_type=CatalogValueType.NUMBER,
+        direction="output",
+        data_type="number",
         description="Total energy consumption in kilowatt hours",
-        target_data_path="outputs.energy",
+        native_name="outputs.energy",
     )
     return validator, input_signal, output_signal
 
@@ -435,4 +433,4 @@ class TestSignalDetailModal:
         assert "{#" not in page_source, "Template comment start found in page"
         assert "#}" not in page_source, "Template comment end found in page"
         assert "Context required:" not in page_source, "Docstring content leaked"
-        assert "ValidatorCatalogEntry instance" not in page_source, "Docstring leaked"
+        assert "SignalDefinition instance" not in page_source, "Docstring leaked"

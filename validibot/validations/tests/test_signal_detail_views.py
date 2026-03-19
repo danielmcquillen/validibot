@@ -18,10 +18,8 @@ from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import MembershipFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
-from validibot.validations.constants import CatalogRunStage
-from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ValidationType
-from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 
 
@@ -53,23 +51,23 @@ class TestValidatorSignalsListView:
             has_processor=True,
         )
         # Create some signals
-        input_signal = ValidatorCatalogEntryFactory(
+        input_signal = SignalDefinitionFactory(
             validator=validator,
-            slug="floor_area_m2",
+            contract_key="floor_area_m2",
             label="Floor Area (m2)",
-            run_stage=CatalogRunStage.INPUT,
-            data_type=CatalogValueType.NUMBER,
+            direction="input",
+            data_type="number",
             description="Total floor area in square meters",
-            target_data_path="floor_area",
+            native_name="floor_area",
         )
-        output_signal = ValidatorCatalogEntryFactory(
+        output_signal = SignalDefinitionFactory(
             validator=validator,
-            slug="energy_output",
+            contract_key="energy_output",
             label="Energy Output",
-            run_stage=CatalogRunStage.OUTPUT,
-            data_type=CatalogValueType.TIMESERIES,
+            direction="output",
+            data_type="timeseries",
             description="Energy consumption timeseries",
-            target_data_path="results.energy",
+            native_name="results.energy",
         )
 
         response = client.get(
@@ -87,8 +85,8 @@ class TestValidatorSignalsListView:
         assert validator.name in content
 
         # Check that signals are displayed
-        assert input_signal.slug in content
-        assert output_signal.slug in content
+        assert input_signal.contract_key in content
+        assert output_signal.contract_key in content
         assert input_signal.description in content
         assert output_signal.description in content
 
@@ -211,15 +209,15 @@ class TestValidatorDetailSignalModals:
             is_system=True,
             has_processor=True,
         )
-        signal1 = ValidatorCatalogEntryFactory(
+        signal1 = SignalDefinitionFactory(
             validator=validator,
-            slug="signal_one",
-            run_stage=CatalogRunStage.INPUT,
+            contract_key="signal_one",
+            direction="input",
         )
-        signal2 = ValidatorCatalogEntryFactory(
+        signal2 = SignalDefinitionFactory(
             validator=validator,
-            slug="signal_two",
-            run_stage=CatalogRunStage.OUTPUT,
+            contract_key="signal_two",
+            direction="output",
         )
 
         response = client.get(
@@ -249,10 +247,10 @@ class TestValidatorDetailSignalModals:
             is_system=True,
             has_processor=True,
         )
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=validator,
-            slug="test_signal",
-            run_stage=CatalogRunStage.INPUT,
+            contract_key="test_signal",
+            direction="input",
         )
 
         response = client.get(
@@ -270,7 +268,7 @@ class TestValidatorDetailSignalModals:
         assert "#}" not in content
         # Check that docstring-like content isn't rendered
         assert "Context required:" not in content
-        assert "ValidatorCatalogEntry instance" not in content
+        assert "SignalDefinition instance" not in content
 
     def test_signal_info_buttons_visible_for_author_role(self, client):
         """Test that signal info buttons are visible for AUTHOR role users."""
@@ -281,10 +279,10 @@ class TestValidatorDetailSignalModals:
             slug="info-button-test",
             is_system=True,
         )
-        signal = ValidatorCatalogEntryFactory(
+        signal = SignalDefinitionFactory(
             validator=validator,
-            slug="visible_signal",
-            run_stage=CatalogRunStage.INPUT,
+            contract_key="visible_signal",
+            direction="input",
         )
 
         response = client.get(
@@ -309,10 +307,10 @@ class TestValidatorDetailSignalModals:
             slug="view-all-test",
             is_system=True,
         )
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=validator,
-            slug="some_signal",
-            run_stage=CatalogRunStage.INPUT,
+            contract_key="some_signal",
+            direction="input",
         )
 
         response = client.get(
@@ -336,14 +334,14 @@ class TestSignalDetailContentTemplate:
     def test_signal_detail_content_renders_all_fields(self):
         """Test that signal detail content shows all signal fields."""
         validator = ValidatorFactory(is_system=True)
-        signal = ValidatorCatalogEntryFactory(
+        signal = SignalDefinitionFactory(
             validator=validator,
-            slug="test_signal_slug",
+            contract_key="test_signal_slug",
             label="Test Signal Label",
-            run_stage=CatalogRunStage.INPUT,
-            data_type=CatalogValueType.NUMBER,
+            direction="input",
+            data_type="number",
             description="A description of the test signal",
-            target_data_path="path.to.field",
+            native_name="path.to.field",
         )
 
         template = Template(
@@ -365,12 +363,12 @@ class TestSignalDetailContentTemplate:
     def test_signal_detail_content_handles_empty_optional_fields(self):
         """Test that signal detail gracefully handles empty optional fields."""
         validator = ValidatorFactory(is_system=True)
-        signal = ValidatorCatalogEntryFactory(
+        signal = SignalDefinitionFactory(
             validator=validator,
-            slug="minimal_signal",
+            contract_key="minimal_signal",
             label="",  # Empty label
             description="",  # Empty description
-            target_data_path="",  # Empty target
+            native_name="",  # Empty native name
         )
 
         template = Template(
@@ -394,9 +392,9 @@ class TestSignalDetailModalTemplate:
     def test_modal_has_correct_structure(self):
         """Test that the modal has the correct Bootstrap modal structure."""
         validator = ValidatorFactory(is_system=True)
-        signal = ValidatorCatalogEntryFactory(
+        signal = SignalDefinitionFactory(
             validator=validator,
-            slug="modal_test_signal",
+            contract_key="modal_test_signal",
         )
 
         template = Template(
@@ -426,9 +424,9 @@ class TestSignalDetailModalTemplate:
     def test_modal_no_comment_leakage(self):
         """Test that template comments don't leak into rendered output."""
         validator = ValidatorFactory(is_system=True)
-        signal = ValidatorCatalogEntryFactory(
+        signal = SignalDefinitionFactory(
             validator=validator,
-            slug="no_comment_signal",
+            contract_key="no_comment_signal",
         )
 
         template = Template(

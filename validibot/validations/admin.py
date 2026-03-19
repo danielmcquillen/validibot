@@ -6,7 +6,6 @@ from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.models import Validator
-from validibot.validations.models import ValidatorCatalogEntry
 from validibot.validations.models import ValidatorResourceFile
 
 
@@ -33,7 +32,6 @@ class RulesetAssertionAdmin(admin.ModelAdmin):
         "ruleset",
         "assertion_type",
         "operator",
-        "target_catalog_entry",
         "target_data_path",
         "severity",
         "order",
@@ -42,7 +40,6 @@ class RulesetAssertionAdmin(admin.ModelAdmin):
     list_filter = ("assertion_type", "operator", "severity")
     search_fields = (
         "ruleset__name",
-        "target_catalog_entry__slug",
         "target_data_path",
     )
 
@@ -67,24 +64,6 @@ class ValidatorAdmin(admin.ModelAdmin):
     list_editable = ("is_enabled",)
     search_fields = ("name", "slug", "version", "org__name")
     ordering = ("order",)
-
-
-@admin.register(ValidatorCatalogEntry)
-class ValidatorCatalogEntryAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "validator",
-        "entry_type",
-        "run_stage",
-        "slug",
-        "data_type",
-        "is_required",
-        "order",
-        "created",
-    )
-    list_filter = ("entry_type", "run_stage", "data_type", "is_required")
-    search_fields = ("validator__name", "slug", "label")
-    ordering = ("validator", "entry_type", "run_stage", "order")
 
 
 @admin.register(CustomValidator)

@@ -13,7 +13,7 @@ from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.tests.factories import CustomValidatorFactory
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -38,15 +38,15 @@ class WorkflowStepAssertionsTests(TestCase):
 
     def _make_energyplus_step(self, workflow):
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=validator,
-            slug="floor_area",
-            run_stage=CatalogRunStage.INPUT,
+            contract_key="floor_area",
+            direction="input",
         )
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=validator,
-            slug="facility_electric_demand_w",
-            run_stage=CatalogRunStage.OUTPUT,
+            contract_key="facility_electric_demand_w",
+            direction="output",
         )
         step = WorkflowStepFactory(workflow=workflow, validator=validator)
         if not step.ruleset_id:
@@ -109,9 +109,9 @@ class WorkflowStepAssertionsTests(TestCase):
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         custom_validator = CustomValidatorFactory(org=workflow.org)
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=custom_validator.validator,
-            slug="custom-signal",
+            contract_key="custom-signal",
             label="Custom signal",
         )
         step = WorkflowStepFactory(
@@ -151,26 +151,26 @@ class WorkflowStepAssertionsTests(TestCase):
         _login_as_author(self.client, workflow)
         step = self._make_energyplus_step(workflow)
         assert step.ruleset
-        input_entry = ValidatorCatalogEntryFactory(
+        input_sig = SignalDefinitionFactory(
             validator=step.validator,
-            slug="input-signal",
-            run_stage=CatalogRunStage.INPUT,
+            contract_key="input-signal",
+            direction="input",
         )
-        output_entry = ValidatorCatalogEntryFactory(
+        output_sig = SignalDefinitionFactory(
             validator=step.validator,
-            slug="output-signal",
-            run_stage=CatalogRunStage.OUTPUT,
+            contract_key="output-signal",
+            direction="output",
         )
         RulesetAssertionFactory(
             ruleset=step.ruleset,
             order=10,
-            target_catalog_entry=input_entry,
+            target_signal_definition=input_sig,
             target_data_path="",
         )
         a_output = RulesetAssertionFactory(
             ruleset=step.ruleset,
             order=20,
-            target_catalog_entry=output_entry,
+            target_signal_definition=output_sig,
             target_data_path="",
         )
         move_url = reverse(
@@ -312,9 +312,9 @@ class WorkflowStepAssertionsTests(TestCase):
             validation_type=ValidationType.ENERGYPLUS,
             allow_custom_assertion_targets=True,
         )
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=validator,
-            slug="facility_electric_demand_w",
+            contract_key="facility_electric_demand_w",
         )
         step = WorkflowStepFactory(workflow=workflow, validator=validator)
         create_url = reverse(

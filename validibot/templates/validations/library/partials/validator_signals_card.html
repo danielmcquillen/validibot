@@ -2,7 +2,7 @@
 
 <div class="validator-detail-tab-toolbar">
   <div class="d-flex gap-2">
-    {% if catalog_display.inputs or catalog_display.outputs %}
+    {% if inputs or outputs %}
       <a class="btn btn-sm btn-secondary"
          href="{% org_url 'validations:validator_signals_list' slug=validator.slug %}">
         <i class="bi bi-list-ul me-1"></i>{% trans "View all" %}
@@ -22,21 +22,21 @@
     <thead>
       <tr>
         <th class="text-muted small" data-sortable="true">{% trans "Signal name" %}</th>
-        <th class="text-muted small" data-sortable="true">{% trans "Target path" %}</th>
+        <th class="text-muted small" data-sortable="true">{% trans "Native name" %}</th>
         <th class="text-muted small" data-sortable="true">{% trans "Type" %}</th>
-        <th class="text-muted small" data-sortable="true">{% trans "Stage" %}</th>
+        <th class="text-muted small" data-sortable="true">{% trans "Direction" %}</th>
         <th class="text-muted small text-end">{% trans "Actions" %}</th>
       </tr>
     </thead>
     <tbody>
-      {% if catalog_display.inputs %}
-        {% for entry in catalog_display.inputs %}
+      {% if inputs %}
+        {% for entry in inputs %}
           <tr id="validator-signal-{{ entry.id }}">
-            <td>{{ entry.slug }}</td>
+            <td>{{ entry.contract_key }}</td>
             <td>
               <code class="d-inline-block text-truncate"
                     style="max-width: 220px"
-                    title="{{ entry.target_data_path }}">{{ entry.target_data_path }}</code>
+                    title="{{ entry.native_name }}">{{ entry.native_name }}</code>
             </td>
             <td class="text-muted small">{{ entry.get_data_type_display }}</td>
             <td class="text-muted small">{% trans "Input" %}</td>
@@ -62,7 +62,7 @@
                           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                           hx-target="#validator-signal-{{ entry.id }}"
                           hx-swap="outerHTML"
-                          hx-confirm="{% blocktrans trimmed with name=entry.slug %} Delete signal '{{ name }}'? {% endblocktrans %}">
+                          hx-confirm="{% blocktrans trimmed with name=entry.contract_key %} Delete signal '{{ name }}'? {% endblocktrans %}">
                     <i class="bi bi-trash"></i>
                   </button>
                   {# djlint:on #}
@@ -72,14 +72,14 @@
           </tr>
         {% endfor %}
       {% endif %}
-      {% if show_output_tab and catalog_display.outputs %}
-        {% for entry in catalog_display.outputs %}
+      {% if show_output_tab and outputs %}
+        {% for entry in outputs %}
           <tr id="validator-signal-{{ entry.id }}">
-            <td>{{ entry.slug }}</td>
+            <td>{{ entry.contract_key }}</td>
             <td>
               <code class="d-inline-block text-truncate"
                     style="max-width: 220px"
-                    title="{{ entry.target_data_path }}">{{ entry.target_data_path }}</code>
+                    title="{{ entry.native_name }}">{{ entry.native_name }}</code>
             </td>
             <td class="text-muted small">{{ entry.get_data_type_display }}</td>
             <td class="text-muted small">{% trans "Output" %}</td>
@@ -105,7 +105,7 @@
                           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                           hx-target="#validator-signal-{{ entry.id }}"
                           hx-swap="outerHTML"
-                          hx-confirm="{% blocktrans trimmed with name=entry.slug %}Delete signal '{{ name }}'?{% endblocktrans %}">
+                          hx-confirm="{% blocktrans trimmed with name=entry.contract_key %}Delete signal '{{ name }}'?{% endblocktrans %}">
                     <i class="bi bi-trash"></i>
                   </button>
                   {# djlint:on #}
@@ -115,7 +115,7 @@
           </tr>
         {% endfor %}
       {% endif %}
-      {% if not catalog_display.inputs and not show_output_tab %}
+      {% if not inputs and not show_output_tab %}
         <tr>
           <td colspan="5" class="text-muted small ">
             <div class="my-5 w-100 text-center">
@@ -127,7 +127,7 @@
             </div>
           </td>
         </tr>
-      {% elif not catalog_display.inputs and show_output_tab and not catalog_display.outputs %}
+      {% elif not inputs and show_output_tab and not outputs %}
         <tr>
           <td colspan="5" class="text-muted small my-5">
             <div class="my-5 w-100 text-center">

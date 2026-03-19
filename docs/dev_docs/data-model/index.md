@@ -92,5 +92,6 @@ Dive deeper into each entity:
 - **[Steps](steps.md)** — Step configuration and ordering
 - **[Results](results.md)** — Findings, artifacts, and summaries
 - **[Signals](signals.md)** — Input, output, and derived signals across steps
+- **[Signals Tutorial Example](signals-tutorial-example.md)** — Concrete example of validator-owned signals, step-owned signals, bindings, derivations, and traces
 - **[Users & Roles](users_roles.md)** — Membership and permissions
 - **[Deletions](deletions.md)** — Soft deletes and cascade behavior

@@ -732,11 +732,13 @@ class StepOrchestrator:
         # to calculate totals correctly in resume scenarios.
         stats["assertion_failures"] = assertion_failures
         # Persist any signals for downstream steps in a namespaced structure.
-        # Callers can include a "signals" dict in stats with catalog
-        # slugs/values.
+        # Uses the stable step_key (from WorkflowStep) as the namespace
+        # so cross-step assertions can reference signals by a stable
+        # author-visible identifier rather than an ephemeral step_run UUID.
         if "signals" in stats:
             summary_steps = validation_run.summary.get("steps", {})
-            summary_steps[str(step_run.id)] = {
+            ns_key = step_run.workflow_step.step_key or str(step_run.id)
+            summary_steps[ns_key] = {
                 "signals": stats.get("signals", {}),
             }
             validation_run.summary["steps"] = summary_steps

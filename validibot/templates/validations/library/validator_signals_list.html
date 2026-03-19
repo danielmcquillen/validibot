@@ -34,10 +34,9 @@
               <tr>
                 <th class="text-muted small" data-sortable="true">{% trans "Signal Name" %}</th>
                 <th class="text-muted small" data-sortable="true">{% trans "Label" %}</th>
-                <th class="text-muted small" data-sortable="true">{% trans "Stage" %}</th>
+                <th class="text-muted small" data-sortable="true">{% trans "Direction" %}</th>
                 <th class="text-muted small" data-sortable="true">{% trans "Data Type" %}</th>
-                <th class="text-muted small" data-sortable="true">{% trans "Target Path" %}</th>
-                <th class="text-muted small" data-sortable="true">{% trans "Entry Type" %}</th>
+                <th class="text-muted small" data-sortable="true">{% trans "Native Name" %}</th>
                 <th class="text-muted small">{% trans "Description" %}</th>
               </tr>
             </thead>
@@ -45,7 +44,7 @@
               {% for signal in signals %}
                 <tr>
                   <td>
-                    <strong>{{ signal.slug }}</strong>
+                    <strong>{{ signal.contract_key }}</strong>
                   </td>
                   <td>
                     {% if signal.label %}
@@ -55,19 +54,18 @@
                     {% endif %}
                   </td>
                   <td>
-                    <span class="badge text-bg-secondary">{{ signal.get_run_stage_display }}</span>
+                    <span class="badge text-bg-secondary">{{ signal.get_direction_display }}</span>
                   </td>
                   <td>{{ signal.get_data_type_display }}</td>
                   <td>
-                    {% if signal.target_data_path %}
+                    {% if signal.native_name %}
                       <code class="d-inline-block text-truncate"
                             style="max-width: 250px"
-                            title="{{ signal.target_data_path }}">{{ signal.target_data_path }}</code>
+                            title="{{ signal.native_name }}">{{ signal.native_name }}</code>
                     {% else %}
                       <span class="text-muted">--</span>
                     {% endif %}
                   </td>
-                  <td>{{ signal.get_entry_type_display }}</td>
                   <td>
                     {% if signal.description %}
                       <span class="d-inline-block text-truncate"
@@ -80,7 +78,7 @@
                 </tr>
               {% empty %}
                 <tr>
-                  <td colspan="7" class="text-center py-5 text-muted">
+                  <td colspan="6" class="text-center py-5 text-muted">
                     {% trans "No signals have been defined for this validator." %}
                   </td>
                 </tr>

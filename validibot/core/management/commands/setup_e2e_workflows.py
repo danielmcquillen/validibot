@@ -46,8 +46,8 @@ from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
+from validibot.validations.models import SignalDefinition
 from validibot.validations.models import Validator
-from validibot.validations.models import ValidatorCatalogEntry
 from validibot.validations.models import ValidatorResourceFile
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
@@ -356,26 +356,26 @@ class Command(BaseCommand):
         """Create the two blog-post output assertions.
 
         Assertion 1: ``window_heat_loss_kwh < 800``
-            Targets the ``window_heat_loss_kwh`` catalog entry.
-            (target_catalog_entry is set, target_data_path is empty)
+            Targets the ``window_heat_loss_kwh`` signal definition.
+            (target_signal_definition is set, target_data_path is empty)
 
         Assertion 2: ``cooling_energy_kwh < heating_energy_kwh``
-            A cross-signal comparison with no single catalog entry target.
-            (target_catalog_entry is None, target_data_path is set)
+            A cross-signal comparison with no single signal target.
+            (target_signal_definition is None, target_data_path is set)
         """
         # Assertion 1: window heat loss threshold
-        heat_loss_entry = ValidatorCatalogEntry.objects.filter(
+        heat_loss_signal = SignalDefinition.objects.filter(
             validator=validator,
-            slug="window_heat_loss_kwh",
+            contract_key="window_heat_loss_kwh",
         ).first()
 
-        if heat_loss_entry:
+        if heat_loss_signal:
             RulesetAssertion.objects.create(
                 ruleset=ruleset,
                 order=10,
                 assertion_type=AssertionType.CEL_EXPRESSION,
                 operator=AssertionOperator.CEL_EXPR,
-                target_catalog_entry=heat_loss_entry,
+                target_signal_definition=heat_loss_signal,
                 target_data_path="",
                 rhs={"expr": "window_heat_loss_kwh < 800"},
                 severity=Severity.ERROR,
@@ -387,8 +387,8 @@ class Command(BaseCommand):
         else:
             self.stderr.write(
                 self.style.WARNING(
-                    "Catalog entry 'window_heat_loss_kwh' not found. "
-                    "Run 'manage.py setup_validibot' to sync catalog entries. "
+                    "Signal definition 'window_heat_loss_kwh' not found. "
+                    "Run 'manage.py setup_validibot' to sync signal definitions. "
                     "Skipping heat loss assertion."
                 )
             )
@@ -399,7 +399,6 @@ class Command(BaseCommand):
             order=20,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_catalog_entry=None,
             target_data_path="cooling_energy_kwh",
             rhs={"expr": "cooling_energy_kwh < heating_energy_kwh"},
             severity=Severity.ERROR,

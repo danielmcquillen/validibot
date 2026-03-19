@@ -25,7 +25,6 @@ import logging
 from typing import TYPE_CHECKING
 
 from django.conf import settings
-from validibot_shared.fmu.envelopes import FMUInputEnvelope
 
 from validibot.validations.constants import CloudRunJobStatus
 from validibot.validations.constants import Severity
@@ -39,7 +38,6 @@ from validibot.validations.services.cloud_run.gcs_client import upload_envelope
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope_local
 from validibot.validations.services.cloud_run.gcs_client import upload_file
 from validibot.validations.services.cloud_run.job_client import run_validator_job
-from validibot.validations.services.fmu_bindings import resolve_input_value
 from validibot.validations.validators.base import ValidationIssue
 from validibot.validations.validators.base import ValidationResult
 
@@ -304,16 +302,9 @@ def launch_fmu_validation(
         if already_launched:
             return already_launched
 
-        fmu_model = validator.fmu_model
-        if not fmu_model:
-            msg = "FMU validator is missing an FMU model."
-            raise ValueError(msg)  # noqa: TRY301
-
-        # Determine FMU URI (cloud vs local)
-        fmu_uri = fmu_model.gcs_uri or getattr(fmu_model.file, "path", "")
-        if not fmu_uri:
-            msg = "FMU has no storage URI; upload failed."
-            raise ValueError(msg)  # noqa: TRY301
+        # FMU URI resolution is handled by build_input_envelope(), which
+        # checks for step-level FMU resources first, then falls back to
+        # the library validator's FMU model.
 
         org_id = str(run.org.id)
         run_id = str(run.id)
@@ -331,36 +322,6 @@ def launch_fmu_validation(
             execution_bundle_uri = str(base_dir)
             input_envelope_uri = str(base_dir / "input.json")
 
-        # Resolve inputs based on catalog data paths
-        submission_payload = (
-            submission.get_content() if hasattr(submission, "get_content") else ""
-        )
-        if isinstance(submission_payload, str):
-            import json
-
-            try:
-                submission_payload = json.loads(submission_payload)
-            except (json.JSONDecodeError, TypeError) as exc:
-                logger.warning(
-                    "Could not parse FMU submission as JSON for run %s: %s",
-                    run.id,
-                    exc,
-                )
-                submission_payload = {}
-        input_values: dict[str, object] = {}
-        for entry in validator.catalog_entries.filter(run_stage="INPUT"):
-            slug = entry.slug
-            value = resolve_input_value(
-                submission_payload,
-                data_path=(entry.target_data_path or "").strip(),
-                slug=slug,
-            )
-            if value is None and entry.is_required:
-                msg = f"Missing required input '{slug}' for FMU validator."
-                raise ValueError(msg)  # noqa: TRY301
-            if value is not None:
-                input_values[slug] = value
-
         callback_url = build_validation_callback_url()
 
         # Generate deterministic idempotency key for callback deduplication.
@@ -370,41 +331,19 @@ def launch_fmu_validation(
         # check at step 0 above (checking step_run.output for existing job_name).
         callback_id = f"step-run-{current_step_run.id}"
 
-        # Build envelope
-        envelope = FMUInputEnvelope(
-            run_id=run_id,
-            validator={
-                "id": str(validator.id),
-                "type": validator.validation_type,
-                "version": validator.version,
-            },
-            org={
-                "id": org_id,
-                "name": run.org.name,
-            },
-            workflow={
-                "id": str(run.workflow.id),
-                "step_id": str(step.id),
-                "step_name": step.name,
-            },
-            input_files=[
-                {
-                    "name": "model.fmu",
-                    "mime_type": "application/vnd.fmi.fmu",
-                    "role": "fmu",
-                    "uri": fmu_uri,
-                }
-            ],
-            inputs={
-                "input_values": input_values,
-                "simulation": {},
-                "output_variables": [],
-            },
-            context={
-                "callback_id": callback_id,
-                "callback_url": callback_url,
-                "execution_bundle_uri": execution_bundle_uri,
-            },
+        # Build envelope via the shared builder. This gets signal-aware
+        # input resolution (StepSignalBinding + resolve_path), proper
+        # output_variables extraction from SignalDefinition, and audit
+        # tracing via ResolvedInputTrace.
+        from validibot.validations.services.cloud_run.envelope_builder import (
+            build_input_envelope,
+        )
+
+        envelope = build_input_envelope(
+            run=run,
+            callback_url=callback_url,
+            callback_id=callback_id,
+            execution_bundle_uri=execution_bundle_uri,
         )
 
         # Upload envelope

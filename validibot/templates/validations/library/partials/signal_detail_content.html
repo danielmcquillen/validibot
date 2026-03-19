@@ -4,7 +4,7 @@
   <dl class="row mb-0">
     <dt class="col-sm-4 text-muted">{% trans "Signal Name" %}</dt>
     <dd class="col-sm-8">
-      <strong>{{ signal.slug }}</strong>
+      <strong>{{ signal.contract_key }}</strong>
     </dd>
     {% if signal.label %}
       <dt class="col-sm-4 text-muted">{% trans "Label" %}</dt>
@@ -12,18 +12,18 @@
         {{ signal.label }}
       </dd>
     {% endif %}
-    <dt class="col-sm-4 text-muted">{% trans "Stage" %}</dt>
+    <dt class="col-sm-4 text-muted">{% trans "Direction" %}</dt>
     <dd class="col-sm-8">
-      <span class="badge text-bg-secondary">{{ signal.get_run_stage_display }}</span>
+      <span class="badge text-bg-secondary">{{ signal.get_direction_display }}</span>
     </dd>
     <dt class="col-sm-4 text-muted">{% trans "Data Type" %}</dt>
     <dd class="col-sm-8">
       {{ signal.get_data_type_display }}
     </dd>
-    <dt class="col-sm-4 text-muted">{% trans "Target Path" %}</dt>
+    <dt class="col-sm-4 text-muted">{% trans "Native Name" %}</dt>
     <dd class="col-sm-8">
-      {% if signal.target_data_path %}
-        <code>{{ signal.target_data_path }}</code>
+      {% if signal.native_name %}
+        <code>{{ signal.native_name }}</code>
       {% else %}
         <span class="text-muted">--</span>
       {% endif %}
@@ -34,9 +34,5 @@
         {{ signal.description }}
       </dd>
     {% endif %}
-    <dt class="col-sm-4 text-muted">{% trans "Entry Type" %}</dt>
-    <dd class="col-sm-8">
-      {{ signal.get_entry_type_display }}
-    </dd>
   </dl>
 </div>

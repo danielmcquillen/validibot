@@ -235,28 +235,34 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
     def get_catalog_choices(self):
         if hasattr(self, "_catalog_choice_cache"):
             return self._catalog_choice_cache
+        from validibot.validations.constants import SignalDirection
+
         validator = self.step.validator
         choices: list[tuple[str, str]] = []
-        entries = []
+        signal_defs: list = []
+
         if validator:
-            entries = list(validator.catalog_entries.order_by("order", "slug"))
-            for entry in entries:
-                label = f"{entry.label} ({entry.slug})"
-                choices.append((entry.slug, label))
+            signal_defs = list(
+                validator.signal_definitions.order_by("order", "contract_key")
+            )
+            for sig in signal_defs:
+                label = f"{sig.label} ({sig.contract_key})"
+                choices.append((sig.contract_key, label))
 
-        # Step-level FMU uploads store variables in step config
-        # instead of catalog entries.  Include them as choices so
-        # the assertion form can target FMU variables.
-        fmu_vars = (self.step.config or {}).get("fmu_variables", [])
-        for var in fmu_vars:
-            causality = var.get("causality", "")
-            if causality in ("input", "output"):
-                name = var.get("name", "")
-                label = var.get("label") or name
-                role = _("Input") if causality == "input" else _("Output")
-                choices.append((name, f"{label} · {role}"))
+        # Step-level signal definitions (FMU uploads, templates, etc.)
+        # provide per-step signals not covered by the validator library.
+        step_sigs = list(self.step.signal_definitions.order_by("order", "contract_key"))
+        seen_keys = {sig.contract_key for sig in signal_defs}
+        for sig in step_sigs:
+            if sig.contract_key in seen_keys:
+                continue
+            seen_keys.add(sig.contract_key)
+            label = sig.label or sig.native_name or sig.contract_key
+            role = _("Input") if sig.direction == SignalDirection.INPUT else _("Output")
+            choices.append((sig.contract_key, f"{label} · {role}"))
+            signal_defs.append(sig)
 
-        self._catalog_entries_cache = entries
+        self._catalog_entries_cache = signal_defs
         self._catalog_choice_cache = choices
         return choices
 

@@ -32,12 +32,28 @@ import re
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from validibot.workflows.step_configs import TemplateVariable
+from typing import Protocol
 
 logger = logging.getLogger(__name__)
+
+
+class TemplateVariableLike(Protocol):
+    """Protocol for objects that can be used as template variable metadata.
+
+    Satisfied by both the Pydantic ``TemplateVariable`` model (legacy)
+    and simple objects/dataclasses built from ``SignalDefinition`` metadata.
+    """
+
+    name: str
+    description: str
+    default: str
+    variable_type: str
+    min_value: float | None
+    min_exclusive: bool
+    max_value: float | None
+    max_exclusive: bool
+    choices: list[str]
+
 
 # ---------------------------------------------------------------------------
 # Regex patterns
@@ -719,7 +735,7 @@ def _emit_invalid_dollar_warnings(
 
 def merge_and_validate_template_parameters(
     submitter_params: dict[str, str],
-    template_variables: list[TemplateVariable],
+    template_variables: list[TemplateVariableLike],
     *,
     case_sensitive: bool = True,
 ) -> MergeResult:
@@ -845,7 +861,7 @@ def merge_and_validate_template_parameters(
 
 
 def _validate_number(
-    var: TemplateVariable,
+    var: TemplateVariableLike,
     name: str,
     value: str,
     errors: list[str],

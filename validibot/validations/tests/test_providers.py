@@ -6,16 +6,15 @@ import pytest
 from django.core.management import call_command
 
 from validibot.validations.constants import ValidationType
+from validibot.validations.models import SignalDefinition
 from validibot.validations.models import Validator
-from validibot.validations.models import ValidatorCatalogEntry
-from validibot.validations.validators.energyplus.config import (
-    config as energyplus_config,
-)
 
 
 @pytest.mark.django_db
 def test_sync_validators_creates_energyplus():
-    """The sync command should create the EnergyPlus validator and catalog entries."""
+    """The sync command should create the EnergyPlus validator
+    and signal definitions.
+    """
     # Ensure we start clean
     Validator.objects.filter(slug="energyplus-idf-validator").delete()
 
@@ -27,11 +26,12 @@ def test_sync_validators_creates_energyplus():
     assert validator.has_processor is True
     assert validator.is_system is True
 
-    # Check catalog entries were created
-    slugs = set(validator.catalog_entries.values_list("slug", flat=True))
-    assert "site_electricity_kwh" in slugs
-    assert "heating_energy_kwh" in slugs
-    assert "total_unmet_hours" in slugs  # derivation
+    # Check signal definitions were created
+    keys = set(
+        validator.signal_definitions.values_list("contract_key", flat=True),
+    )
+    assert "site_electricity_kwh" in keys
+    assert "heating_energy_kwh" in keys
 
 
 @pytest.mark.django_db
@@ -40,14 +40,14 @@ def test_sync_validators_is_idempotent():
     Validator.objects.filter(slug="energyplus-idf-validator").delete()
 
     call_command("sync_validators")
-    initial_count = ValidatorCatalogEntry.objects.filter(
+    initial_count = SignalDefinition.objects.filter(
         validator__slug="energyplus-idf-validator",
     ).count()
 
     call_command("sync_validators")
-    final_count = ValidatorCatalogEntry.objects.filter(
+    final_count = SignalDefinition.objects.filter(
         validator__slug="energyplus-idf-validator",
     ).count()
 
     assert initial_count == final_count
-    assert initial_count == len(energyplus_config.catalog_entries)
+    assert initial_count > 0

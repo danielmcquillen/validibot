@@ -2,7 +2,7 @@
 Tests for security headers and hardening measures.
 
 Covers:
-- Content-Security-Policy report-only header is present on responses
+- Content-Security-Policy header is present and contains expected directives
 - Referrer-Policy header is set correctly
 - Permissions-Policy header disables unused browser APIs
 - Download view sanitizes user-supplied filenames
@@ -37,50 +37,56 @@ def authenticated_client(client):
 
 
 # ---------------------------------------------------------------------------
-# CSP report-only header
+# CSP enforcing header
 # ---------------------------------------------------------------------------
 
 
 class TestCSPHeaders:
-    """Verify that Content-Security-Policy-Report-Only header is present.
+    """Verify that the Content-Security-Policy header is present.
 
     django-csp adds this header via middleware. These tests confirm the
     middleware is active and the policy contains expected directives.
+
+    The CSP is in enforcing mode (Content-Security-Policy header, not
+    Content-Security-Policy-Report-Only). Switched from report-only to
+    enforcing on 2026-03-17 after verifying no violations on all pages.
     """
 
+    CSP_HEADER = "Content-Security-Policy"
+
     @pytest.mark.django_db
-    def test_csp_report_only_header_present(self, authenticated_client):
-        """CSP report-only header should be set on authenticated page responses."""
+    def test_csp_header_present(self, authenticated_client):
+        """CSP header should be set on authenticated page responses."""
         response = authenticated_client.get(reverse("home:home"))
-        csp = response.get("Content-Security-Policy-Report-Only", "")
-        assert csp, "CSP report-only header should be present"
+        csp = response.get(self.CSP_HEADER, "")
+        assert csp, "CSP header should be present"
 
     @pytest.mark.django_db
     def test_csp_includes_default_src_self(self, authenticated_client):
         """CSP policy should include default-src 'self'."""
         response = authenticated_client.get(reverse("home:home"))
-        csp = response.get("Content-Security-Policy-Report-Only", "")
+        csp = response.get(self.CSP_HEADER, "")
         assert "default-src 'self'" in csp
 
     @pytest.mark.django_db
     def test_csp_includes_script_src(self, authenticated_client):
         """CSP policy should include script-src 'self'."""
         response = authenticated_client.get(reverse("home:home"))
-        csp = response.get("Content-Security-Policy-Report-Only", "")
+        csp = response.get(self.CSP_HEADER, "")
         assert "script-src 'self'" in csp
 
     @pytest.mark.django_db
     def test_csp_includes_google_fonts(self, authenticated_client):
         """CSP style-src should allow Google Fonts."""
         response = authenticated_client.get(reverse("home:home"))
-        csp = response.get("Content-Security-Policy-Report-Only", "")
+        csp = response.get(self.CSP_HEADER, "")
         assert "fonts.googleapis.com" in csp
 
     @pytest.mark.django_db
     def test_csp_allows_posthog_connect(self, authenticated_client):
         """CSP connect-src should allow PostHog analytics."""
         response = authenticated_client.get(reverse("home:home"))
-        csp = response.get("Content-Security-Policy-Report-Only", "")
+        csp = response.get(self.CSP_HEADER, "")
         assert "us.i.posthog.com" in csp
 
 

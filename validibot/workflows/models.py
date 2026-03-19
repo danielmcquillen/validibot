@@ -762,6 +762,13 @@ class WorkflowStep(TimeStampedModel):
                     | Q(validator__isnull=True, action__isnull=False)
                 ),
             ),
+            # step_key is the stable namespace for cross-step signal
+            # references in CEL and APIs. Must be unique within a workflow.
+            models.UniqueConstraint(
+                fields=["workflow", "step_key"],
+                condition=~Q(step_key=""),
+                name="uq_workflowstep_workflow_step_key",
+            ),
         ]
 
     workflow = models.ForeignKey(
@@ -777,6 +784,21 @@ class WorkflowStep(TimeStampedModel):
         blank=True,
         default="",
     )
+
+    step_key = models.SlugField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text=_(
+            "Stable identifier for this step within the workflow. "
+            "Used to reference output data from this step in "
+            "downstream assertions (e.g., "
+            "steps.simulation.signals.site_eui_kwh_m2). "
+            "Auto-generated from the step name on creation. "
+            "Immutable once set."
+        ),
+    )
+
     description = models.CharField(
         max_length=2000,
         blank=True,
@@ -865,6 +887,50 @@ class WorkflowStep(TimeStampedModel):
         """Return a localized display string for this step's number."""
         step_number = self.step_number
         return _("Step") + f" {step_number}"
+
+    def save(self, *args, **kwargs):
+        """Auto-generate step_key on first save; prevent mutation after.
+
+        The step_key is the stable workflow contract identifier used for
+        cross-step signal references in CEL and APIs. It must not change
+        after creation because assertions and API consumers may reference
+        it. Auto-generated from the step name via slugify() if not set.
+        """
+        from slugify import slugify
+
+        is_new = self._state.adding
+
+        if is_new and not self.step_key and self.name:
+            # Auto-generate from name, ensuring uniqueness within workflow
+            base_key = slugify(self.name, separator="_") or "step"
+            candidate = base_key
+            counter = 2
+            while (
+                WorkflowStep.objects.filter(
+                    workflow=self.workflow,
+                    step_key=candidate,
+                )
+                .exclude(pk=self.pk)
+                .exists()
+            ):
+                candidate = f"{base_key}_{counter}"
+                counter += 1
+            self.step_key = candidate
+
+        if not is_new and self.pk:
+            # Prevent mutation of step_key after initial creation
+            try:
+                existing = WorkflowStep.objects.values_list(
+                    "step_key",
+                    flat=True,
+                ).get(pk=self.pk)
+            except WorkflowStep.DoesNotExist:
+                existing = ""
+
+            if existing and self.step_key != existing:
+                self.step_key = existing
+
+        super().save(*args, **kwargs)
 
     def clean(self):
         super().clean()

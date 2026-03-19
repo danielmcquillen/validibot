@@ -22,8 +22,8 @@
               <td class="fw-semibold">{{ assertion.message_template }}</td>
               <td class="text-muted small">{{ assertion.get_assertion_type_display }}</td>
               <td class="text-muted small">
-                {% if assertion.target_catalog_entry %}
-                  <span class="badge bg-light text-dark border">{{ assertion.target_catalog_entry.slug }}</span>
+                {% if assertion.target_signal_definition %}
+                  <span class="badge bg-light text-dark border">{{ assertion.target_signal_definition.contract_key }}</span>
                 {% else %}
                   <span class="text-muted">--</span>
                 {% endif %}

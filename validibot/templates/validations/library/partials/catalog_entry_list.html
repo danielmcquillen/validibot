@@ -7,27 +7,24 @@
       <li class="list-group-item"
           data-sv-catalog-entry
           data-sv-catalog-label="{{ entry.label|escape }}"
-          data-sv-catalog-slug="{{ entry.slug|escape }}">
+          data-sv-catalog-slug="{{ entry.contract_key|escape }}">
         <div class="d-flex justify-content-between align-items-start gap-2">
-          {% with display_label=entry.label|default:entry.slug %}
+          {% with display_label=entry.label|default:entry.contract_key %}
             <span class="fw-semibold catalog-entry-label"
                   data-original-text="{{ display_label|escape }}">{{ display_label }}</span>
           {% endwith %}
-          <span class="badge text-bg-light text-uppercase">
-            {{ entry.get_entry_type_display }}
-            {% if entry.entry_type == 'signal' %}· {{ entry.get_run_stage_display }}{% endif %}
-          </span>
+          <span class="badge text-bg-light text-uppercase">{{ entry.get_direction_display }}</span>
         </div>
         <dl class="row mb-0 mt-2 ms-2">
           <dt class="col-sm-4">{% trans "Signal name" %}</dt>
           <dd class="col-sm-8">
             <code class="catalog-entry-slug"
-                  data-original-text="{{ entry.slug|escape }}">{{ entry.slug }}</code>
+                  data-original-text="{{ entry.contract_key|escape }}">{{ entry.contract_key }}</code>
           </dd>
-          {% if entry.target_data_path %}
-            <dt class="col-sm-4">{% trans "Target Path" %}</dt>
+          {% if entry.native_name %}
+            <dt class="col-sm-4">{% trans "Native Name" %}</dt>
             <dd class="col-sm-8">
-              <code>{{ entry.target_data_path }}</code>
+              <code>{{ entry.native_name }}</code>
             </dd>
           {% endif %}
           {% if entry.description %}
@@ -41,5 +38,5 @@
     {% endfor %}
   </ul>
 {% else %}
-  <p class="text-muted mb-0">{% trans "No catalog entries registered yet." %}</p>
+  <p class="text-muted mb-0">{% trans "No signals registered yet." %}</p>
 {% endif %}

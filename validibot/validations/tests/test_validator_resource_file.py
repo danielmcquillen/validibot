@@ -449,7 +449,7 @@ class TestStepConfigIntegration:
             "run_simulation": True,
         }
 
-        config = build_energyplus_config(mock_form)
+        config, _template_vars = build_energyplus_config(mock_form)
 
         assert "resource_file_ids" not in config
         assert config["idf_checks"] == ["check_version"]
@@ -466,7 +466,7 @@ class TestStepConfigIntegration:
             "run_simulation": False,
         }
 
-        config = build_energyplus_config(mock_form)
+        config, _template_vars = build_energyplus_config(mock_form)
 
         assert "resource_file_ids" not in config
         assert config["idf_checks"] == []

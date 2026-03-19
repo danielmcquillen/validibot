@@ -17,12 +17,11 @@ from __future__ import annotations
 from django.test import TestCase
 
 from validibot.validations.constants import AssertionType
-from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.forms import RulesetAssertionForm
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.utils import update_custom_validator
 
@@ -31,9 +30,10 @@ class RulesetAssertionFormTests(TestCase):
     """Tests for catalog-entry-backed assertions and CEL identifier validation."""
 
     def _form(self, *, validator, catalog_entries, data: dict, fmu_variables=None):
+        """Build an assertion form with signal definitions."""
         return RulesetAssertionForm(
             data=data,
-            catalog_entries=catalog_entries,
+            catalog_entries=catalog_entries or [],
             validator=validator,
             fmu_variables=fmu_variables,
         )
@@ -48,14 +48,14 @@ class RulesetAssertionFormTests(TestCase):
         )
         validator.refresh_from_db()
         self.assertFalse(validator.allow_custom_assertion_targets)
-        entry = ValidatorCatalogEntryFactory(validator=validator, slug="price")
+        entry = SignalDefinitionFactory(validator=validator, contract_key="price")
         RulesetFactory()
         form = self._form(
             validator=validator,
             catalog_entries=[entry],
             data={
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
-                "target_data_path": entry.slug,
+                "target_data_path": entry.contract_key,
                 "severity": Severity.ERROR,
                 "cel_expression": "price > 0 && rating > 10",
                 "when_expression": "",
@@ -75,13 +75,13 @@ class RulesetAssertionFormTests(TestCase):
         )
         validator.refresh_from_db()
         self.assertTrue(validator.allow_custom_assertion_targets)
-        entry = ValidatorCatalogEntryFactory(validator=validator, slug="price")
+        entry = SignalDefinitionFactory(validator=validator, contract_key="price")
         form = self._form(
             validator=validator,
             catalog_entries=[entry],
             data={
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
-                "target_data_path": entry.slug,
+                "target_data_path": entry.contract_key,
                 "severity": Severity.ERROR,
                 "cel_expression": "price > 0 && rating > 10",
                 "when_expression": "",
@@ -116,10 +116,10 @@ class RulesetAssertionFormTests(TestCase):
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC, is_system=False
         )
-        input_entry = ValidatorCatalogEntryFactory(
+        input_entry = SignalDefinitionFactory(
             validator=validator,
-            slug="temperature",
-            run_stage=CatalogRunStage.INPUT,
+            contract_key="temperature",
+            direction="input",
         )
         form = self._form(
             validator=validator,
@@ -133,21 +133,23 @@ class RulesetAssertionFormTests(TestCase):
             },
         )
         self.assertTrue(form.is_valid())
+        # CEL expressions set target_catalog_entry to None — they declare
+        # their own targets inside the expression text.
         self.assertIsNone(form.cleaned_data["target_catalog_entry"])
 
     def test_output_requires_prefix_on_collision(self):
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC, is_system=False
         )
-        input_entry = ValidatorCatalogEntryFactory(
+        input_entry = SignalDefinitionFactory(
             validator=validator,
-            slug="price",
-            run_stage=CatalogRunStage.INPUT,
+            contract_key="price",
+            direction="input",
         )
-        output_entry = ValidatorCatalogEntryFactory.build(
+        output_entry = SignalDefinitionFactory.build(
             validator=validator,
-            slug="price",
-            run_stage=CatalogRunStage.OUTPUT,
+            contract_key="price",
+            direction="output",
         )
 
         form = self._form(
@@ -175,27 +177,26 @@ class RulesetAssertionFormTests(TestCase):
             },
         )
         self.assertTrue(form_prefixed.is_valid())
+        # CEL expressions set target_catalog_entry to None
         self.assertIsNone(form_prefixed.cleaned_data["target_catalog_entry"])
 
 
 # ==============================================================================
 # FMU variable form validation
 #
-# Step-level FMU uploads store variable metadata (name, causality) in
-# step.config["fmu_variables"] rather than in catalog entries.  The assertion
-# form must accept these variables as valid targets and enforce the ``output.``
-# prefix convention for disambiguation when a name appears as both input and
-# output.
+# Step-level FMU uploads store variable metadata (name, causality) as
+# SignalDefinition rows.  The assertion form must accept these variables
+# as valid targets and enforce the ``output.`` prefix convention for
+# disambiguation when a name appears as both input and output.
 # ==============================================================================
 
 
 class FMUVariableTargetResolutionTests(TestCase):
     """Tests for basic-assertion target resolution with FMU variables.
 
-    FMU variables are passed to the form as ``fmu_variables`` — a list of
-    dicts with ``name`` and ``causality`` keys.  Unlike catalog entries,
-    they don't have database rows; the form stores them as
-    ``target_data_path`` values.
+    FMU variables are provided as step-owned SignalDefinition rows with
+    origin_kind=FMU.  The form reads them from the ``catalog_entries``
+    parameter (which now contains all available signal definitions).
     """
 
     @classmethod
@@ -209,20 +210,44 @@ class FMUVariableTargetResolutionTests(TestCase):
         )
         cls.validator.refresh_from_db()
 
+    def _make_fmu_signals(self, fmu_variables):
+        """Create SignalDefinition objects from fmu_variables dicts."""
+        from validibot.validations.constants import SignalOriginKind
+        from validibot.validations.models import SignalDefinition
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        step = WorkflowStepFactory()
+        sigs = []
+        for var in fmu_variables:
+            name = var["name"]
+            causality = var.get("causality", "input")
+            direction = "input" if causality == "input" else "output"
+            sig = SignalDefinition.objects.create(
+                workflow_step=step,
+                contract_key=name,
+                native_name=name,
+                direction=direction,
+                origin_kind=SignalOriginKind.FMU,
+                data_type="number",
+            )
+            sigs.append(sig)
+        return sigs
+
     def _fmu_form(self, *, data, fmu_variables):
-        """Create a form with FMU variables and no catalog entries."""
+        """Create a form with FMU signal definitions."""
+        sigs = self._make_fmu_signals(fmu_variables)
         return RulesetAssertionForm(
             data=data,
-            catalog_entries=[],
+            catalog_entries=sigs,
             validator=self.validator,
-            fmu_variables=fmu_variables,
         )
 
     def test_bare_fmu_input_accepted(self):
         """A bare name matching only an FMU input variable is accepted.
 
         When there's no collision with an output of the same name, the
-        user can reference the input with its plain name.
+        user can reference the input with its plain name. With the unified
+        signal model, FMU variables resolve to SignalDefinition objects.
         """
         form = self._fmu_form(
             fmu_variables=[
@@ -238,7 +263,12 @@ class FMUVariableTargetResolutionTests(TestCase):
             },
         )
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data["target_data_path_value"], "Q_cooling_max")
+        # FMU signals now resolve to SignalDefinition objects
+        self.assertIsNotNone(form.cleaned_data["resolved_signal"])
+        self.assertEqual(
+            form.cleaned_data["resolved_signal"].contract_key,
+            "Q_cooling_max",
+        )
 
     def test_bare_fmu_output_accepted(self):
         """A bare name matching only an FMU output variable is accepted.
@@ -260,14 +290,17 @@ class FMUVariableTargetResolutionTests(TestCase):
             },
         )
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data["target_data_path_value"], "T_room")
+        self.assertIsNotNone(form.cleaned_data["resolved_signal"])
+        self.assertEqual(
+            form.cleaned_data["resolved_signal"].contract_key,
+            "T_room",
+        )
 
     def test_output_prefix_resolves_fmu_output(self):
-        """``output.T_room`` resolves to the output FMU variable.
+        """``output.T_room`` resolves to the FMU output SignalDefinition.
 
-        The ``output.`` prefix stores the path as ``output.T_room`` so
-        that _resolve_path() navigates the nested ``output`` namespace
-        at evaluation time.
+        The ``output.`` prefix is used for explicit disambiguation.
+        With the unified signal model, this resolves to a SignalDefinition.
         """
         form = self._fmu_form(
             fmu_variables=[
@@ -282,7 +315,11 @@ class FMUVariableTargetResolutionTests(TestCase):
             },
         )
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data["target_data_path_value"], "output.T_room")
+        self.assertIsNotNone(form.cleaned_data["resolved_signal"])
+        self.assertEqual(
+            form.cleaned_data["resolved_signal"].contract_key,
+            "T_room",
+        )
 
     def test_collision_requires_output_prefix(self):
         """A bare name that's both an FMU input and output raises a
@@ -309,8 +346,8 @@ class FMUVariableTargetResolutionTests(TestCase):
         self.assertIn("Both an input and output", str(form.errors))
 
     def test_collision_resolved_with_output_prefix(self):
-        """``output.T_room`` resolves correctly even when the name
-        collides with an input variable.
+        """``output.T_room`` resolves to the output SignalDefinition
+        even when the name collides with an input variable.
         """
         form = self._fmu_form(
             fmu_variables=[
@@ -326,7 +363,11 @@ class FMUVariableTargetResolutionTests(TestCase):
             },
         )
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.cleaned_data["target_data_path_value"], "output.T_room")
+        self.assertIsNotNone(form.cleaned_data["resolved_signal"])
+        self.assertEqual(
+            form.cleaned_data["resolved_signal"].contract_key,
+            "T_room",
+        )
 
 
 class FMUVariableCelIdentifierTests(TestCase):
@@ -349,7 +390,35 @@ class FMUVariableCelIdentifierTests(TestCase):
         )
         cls.validator.refresh_from_db()
 
+    def _make_fmu_signals(self, fmu_variables):
+        """Create SignalDefinition objects from fmu_variables dicts.
+
+        Converts the legacy dict format (name, causality) into
+        step-owned SignalDefinition rows with origin_kind=FMU.
+        """
+        from validibot.validations.constants import SignalOriginKind
+        from validibot.validations.models import SignalDefinition
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        step = WorkflowStepFactory()
+        sigs = []
+        for var in fmu_variables:
+            name = var["name"]
+            causality = var.get("causality", "input")
+            direction = "input" if causality == "input" else "output"
+            sig = SignalDefinition.objects.create(
+                workflow_step=step,
+                contract_key=name,
+                native_name=name,
+                direction=direction,
+                origin_kind=SignalOriginKind.FMU,
+                data_type="number",
+            )
+            sigs.append(sig)
+        return sigs
+
     def _cel_form(self, *, expression, fmu_variables):
+        sigs = self._make_fmu_signals(fmu_variables)
         return RulesetAssertionForm(
             data={
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
@@ -357,9 +426,8 @@ class FMUVariableCelIdentifierTests(TestCase):
                 "cel_expression": expression,
                 "when_expression": "",
             },
-            catalog_entries=[],
+            catalog_entries=sigs,
             validator=self.validator,
-            fmu_variables=fmu_variables,
         )
 
     def test_bare_fmu_names_accepted(self):

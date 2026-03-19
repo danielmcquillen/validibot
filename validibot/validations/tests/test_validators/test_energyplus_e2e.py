@@ -87,6 +87,7 @@ def _make_template_workflow(
     *,
     template_content: str | None = None,
     step_config: dict | None = None,
+    template_variables: list[dict] | None = None,
 ):
     """Create a complete workflow graph for template-mode E2E testing.
 
@@ -97,8 +98,18 @@ def _make_template_workflow(
     - A MODEL_TEMPLATE resource with the template IDF content
     - A WEATHER_FILE resource with dummy weather data (the mock backend
       never runs EnergyPlus, so content doesn't matter)
+    - SignalDefinition + StepSignalBinding rows for template variables
     """
+    from validibot.validations.services.template_signals import (
+        sync_step_template_signals,
+    )
+
     content = template_content or _MINIMAL_TEMPLATE
+    tpl_vars = template_variables or [
+        {"name": "U_FACTOR", "variable_type": "number"},
+        {"name": "SHGC", "variable_type": "number"},
+        {"name": "VISIBLE_TRANSMITTANCE", "variable_type": "number"},
+    ]
 
     org = OrganizationFactory()
     validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
@@ -106,16 +117,9 @@ def _make_template_workflow(
     step = WorkflowStepFactory(
         workflow=workflow,
         validator=validator,
-        config=step_config
-        or {
-            "template_variables": [
-                {"name": "U_FACTOR", "variable_type": "number"},
-                {"name": "SHGC", "variable_type": "number"},
-                {"name": "VISIBLE_TRANSMITTANCE", "variable_type": "number"},
-            ],
-            "case_sensitive": True,
-        },
+        config=step_config or {"case_sensitive": True},
     )
+    sync_step_template_signals(step, tpl_vars)
 
     # Attach the template as a step-owned resource
     WorkflowStepResourceFactory(
@@ -369,18 +373,15 @@ class TestEnergyPlusTemplateE2E:
         mock_get_backend.return_value = _make_mock_backend(capture_request=captured)
 
         org, workflow, step, validator, run, step_run = _make_template_workflow(
-            step_config={
-                "template_variables": [
-                    {"name": "U_FACTOR", "variable_type": "number"},
-                    {"name": "SHGC", "variable_type": "number"},
-                    {
-                        "name": "VISIBLE_TRANSMITTANCE",
-                        "variable_type": "number",
-                        "default": "0.30",
-                    },
-                ],
-                "case_sensitive": True,
-            },
+            template_variables=[
+                {"name": "U_FACTOR", "variable_type": "number"},
+                {"name": "SHGC", "variable_type": "number"},
+                {
+                    "name": "VISIBLE_TRANSMITTANCE",
+                    "variable_type": "number",
+                    "default": "0.30",
+                },
+            ],
         )
         # Only provide U_FACTOR and SHGC — VT has a default
         params = json.dumps({"U_FACTOR": "2.0", "SHGC": "0.25"})
@@ -478,19 +479,16 @@ class TestEnergyPlusTemplateValidation:
         mock_get_backend.return_value = _make_mock_backend(capture_request=captured)
 
         org, workflow, step, validator, run, step_run = _make_template_workflow(
-            step_config={
-                "template_variables": [
-                    {
-                        "name": "U_FACTOR",
-                        "variable_type": "number",
-                        "min_value": 0.1,
-                        "max_value": 7.0,
-                    },
-                    {"name": "SHGC", "variable_type": "number"},
-                    {"name": "VISIBLE_TRANSMITTANCE", "variable_type": "number"},
-                ],
-                "case_sensitive": True,
-            },
+            template_variables=[
+                {
+                    "name": "U_FACTOR",
+                    "variable_type": "number",
+                    "min_value": 0.1,
+                    "max_value": 7.0,
+                },
+                {"name": "SHGC", "variable_type": "number"},
+                {"name": "VISIBLE_TRANSMITTANCE", "variable_type": "number"},
+            ],
         )
         params = json.dumps(
             {

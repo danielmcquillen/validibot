@@ -31,7 +31,7 @@ Each `RulesetAssertion` row stores:
 
 - `assertion_type` — coarse mode (`basic` vs. `cel_expr`).
 - `operator` — normalized comparison operator (only meaningful for `basic` assertions).
-- `target_catalog_entry` / `target_data_path` — FK to a catalog entry or a JSON-style path when the
+- `target_signal_definition` / `target_data_path` — FK to a signal definition or a JSON-style path when the
   validator allows free-form bindings.
 - `severity` — maps to the normalized Finding severity (`error`, `warning`, `info`).
 - `when_expression` — optional CEL guard that determines whether the assertion runs.
@@ -49,9 +49,9 @@ Each `RulesetAssertion` row stores:
 Every assertion targets data in one of two ways — never both, enforced by the
 `ck_ruleset_assertion_target_oneof` database constraint:
 
-1. **Declared signal** (`target_catalog_entry` FK) — references a
-   `ValidatorCatalogEntry` by its slug. The validator author has pre-declared
-   this data point with a name, type, and stage. This is the structured path
+1. **Declared signal** (`target_signal_definition` FK) — references a
+   `SignalDefinition` by its contract key. The validator author has pre-declared
+   this data point with a name, type, and direction. This is the structured path
    that provides dropdowns, type-appropriate operators, and compile-time
    validation.
 

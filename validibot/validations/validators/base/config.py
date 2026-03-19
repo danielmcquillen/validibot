@@ -41,8 +41,8 @@ logger = logging.getLogger(__name__)
 class CatalogEntrySpec(BaseModel):
     """Specification for a single catalog entry (signal or derivation).
 
-    Maps 1:1 to a ``ValidatorCatalogEntry`` row. The sync command uses
-    these specs to create or update catalog entries for a validator.
+    Maps 1:1 to a ``SignalDefinition`` or ``Derivation`` row. The sync
+    command uses these specs to create or update signals for a validator.
     """
 
     model_config = ConfigDict(frozen=True)

@@ -30,6 +30,7 @@ Context:
       <thead>
         <tr>
           <th class="text-muted small" data-sortable="true">{% trans "Slug" %}</th>
+          <th class="text-muted small">{% trans "Default" %}</th>
           <th class="text-muted small text-center">{% trans "Show to User" %}</th>
           <th class="text-muted small text-end"></th>
         </tr>
@@ -44,6 +45,17 @@ Context:
                 <span class="text-muted small">{{ signal.label }}</span>
               {% endif %}
             </td>
+            <td>
+              {% if signal.default_value %}
+                <span class="d-inline-block text-truncate small"
+                      style="max-width: 10rem"
+                      data-bs-toggle="tooltip"
+                      data-bs-placement="top"
+                      title="{{ signal.default_value }}">{{ signal.default_value }}</span>
+              {% else %}
+                <span class="text-muted">--</span>
+              {% endif %}
+            </td>
             <td class="text-center">
               {% if signal.show_to_user %}
                 <i class="bi bi-check-lg text-success"></i>
@@ -51,20 +63,7 @@ Context:
                 <i class="bi bi-x-lg" style="color: #ccc;"></i>
               {% endif %}
             </td>
-            <td class="text-end">
-              {% if signal.catalog_entry %}
-                <button type="button"
-                        class="btn btn-sm btn-outline-secondary"
-                        data-bs-toggle="modal"
-                        data-bs-target="#catalogEntryDetailModal"
-                        hx-get="{% org_url 'validations:catalog_entry_detail' entry_pk=signal.catalog_entry.pk %}"
-                        hx-target="#catalog-entry-detail-modal-content"
-                        hx-trigger="click"
-                        title="{% trans 'View details' %}">
-                  <i class="bi bi-info-circle"></i>
-                </button>
-              {% endif %}
-            </td>
+            <td class="text-end"></td>
           </tr>
         {% endfor %}
       </tbody>

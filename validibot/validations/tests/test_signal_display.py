@@ -7,7 +7,7 @@ This module verifies that ``build_display_signals()`` and
 - Extract raw signals from ``step_run.output["signals"]``
 - Filter signals by the author's ``display_signals`` selection (or show all
   when the list is empty)
-- Enrich each signal with catalog entry metadata (labels, units, precision)
+- Enrich each signal with signal definition metadata (labels, units, precision)
 - Format numeric values with thousands separators and configurable decimal
   precision
 - Handle edge cases (no signals, missing catalog, unknown types)
@@ -21,22 +21,19 @@ both EnergyPlus and non-EnergyPlus validators.
 
 import pytest
 
-from validibot.validations.constants import CatalogEntryType
-from validibot.validations.constants import CatalogRunStage
-from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.signal_display import _format_signal_value
 from validibot.validations.services.signal_display import build_display_signals
 from validibot.validations.services.signal_display import build_template_params_display
+from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
-from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 # These fixtures build the model graph needed by the signal display
 # helpers: Validator → WorkflowStep → ValidationStepRun, with optional
-# catalog entries.  EnergyPlus validators get EnergyPlusStepConfig
+# signal definitions.  EnergyPlus validators get EnergyPlusStepConfig
 # (which has the ``display_signals`` field); other validators use the
 # generic BaseStepConfig (which does not).
 
@@ -54,7 +51,9 @@ def _make_energyplus_step_run(
         display_signals: Author-selected signal slugs.  When None,
             defaults to empty list (show all signals).
         template_variables: Optional list of template variable dicts
-            for the step config.
+            stored in step config as test setup data. In production,
+            these are passed to ``sync_step_template_signals()`` to
+            create ``SignalDefinition`` rows.
 
     Returns:
         A saved ``ValidationStepRun`` instance.
@@ -145,18 +144,18 @@ class TestBuildDisplaySignals:
 
     def test_enriches_with_catalog_metadata(self):
         """Each signal should get its label, units, and description from
-        the matching ``ValidatorCatalogEntry``.  This test creates a
-        catalog entry with specific metadata and verifies enrichment."""
+        the matching ``SignalDefinition``.  This test creates a
+        signal definition with specific metadata and verifies enrichment."""
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=validator,
-            slug="electricity_kwh",
+            contract_key="electricity_kwh",
             label="Site Electricity",
-            entry_type=CatalogEntryType.SIGNAL,
-            run_stage=CatalogRunStage.OUTPUT,
-            data_type=CatalogValueType.NUMBER,
+            direction="output",
+            data_type="number",
             description="Total site electricity consumption.",
-            metadata={"units": "kWh", "precision": 1},
+            unit="kWh",
+            metadata={"precision": 1},
             order=10,
         )
         step = WorkflowStepFactory(validator=validator, config={})
@@ -210,23 +209,21 @@ class TestBuildDisplaySignals:
         assert result[0].formatted_value == "Autosize"
 
     def test_orders_by_catalog_order(self):
-        """Signals should be sorted by their catalog entry's ``order``
+        """Signals should be sorted by their signal definition's ``order``
         field, not by their slug or insertion order in the output dict.
         This lets authors control the display order via catalog config."""
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=validator,
-            slug="beta",
+            contract_key="beta",
             order=20,
-            entry_type=CatalogEntryType.SIGNAL,
-            run_stage=CatalogRunStage.OUTPUT,
+            direction="output",
         )
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=validator,
-            slug="alpha",
+            contract_key="alpha",
             order=10,
-            entry_type=CatalogEntryType.SIGNAL,
-            run_stage=CatalogRunStage.OUTPUT,
+            direction="output",
         )
         step = WorkflowStepFactory(validator=validator, config={})
         sr = ValidationStepRunFactory(
@@ -237,7 +234,7 @@ class TestBuildDisplaySignals:
         assert [s.slug for s in result] == ["alpha", "beta"]
 
     def test_falls_back_to_slug_label_when_no_catalog(self):
-        """When a signal slug has no matching catalog entry, the label
+        """When a signal slug has no matching signal definition, the label
         should be derived from the slug itself by replacing underscores
         with spaces and title-casing."""
         sr = _make_energyplus_step_run(
@@ -282,8 +279,8 @@ class TestBuildDisplaySignals:
 # Tests for the template parameter enrichment function (template-mode
 # only).  Template parameters are submitted by the user and stored in
 # step_run.output["template_parameters_used"] by the launcher.  The
-# display function enriches them with labels/units from the step
-# config's template_variables.
+# display function enriches them with labels/units from the step's
+# SignalDefinition rows.
 
 
 @pytest.mark.django_db
@@ -299,13 +296,31 @@ class TestBuildTemplateParamsDisplay:
 
     def test_returns_params_with_metadata(self):
         """Parameters should be enriched with labels and units from the
-        step config's ``template_variables``.  The ``description`` field
-        on a template variable serves as the human-readable label.
+        step's ``SignalDefinition`` rows.  The ``label`` field on a
+        signal definition serves as the human-readable label.
 
         The launcher stores parameters WITHOUT the ``$`` prefix — keys
         are plain variable names like ``"U_FACTOR"``, not ``"$U_FACTOR"``.
         The display helper must match on plain names.
         """
+        from validibot.validations.services.template_signals import (
+            sync_step_template_signals,
+        )
+
+        template_variables = [
+            {
+                "name": "U_FACTOR",
+                "description": "Window U-Factor",
+                "units": "W/m2-K",
+                "variable_type": "number",
+            },
+            {
+                "name": "COOLING_SETPOINT",
+                "description": "Cooling Setpoint Temperature",
+                "units": "°C",
+                "variable_type": "number",
+            },
+        ]
         sr = _make_energyplus_step_run(
             output={
                 "template_parameters_used": {
@@ -313,21 +328,11 @@ class TestBuildTemplateParamsDisplay:
                     "COOLING_SETPOINT": "24.0",
                 },
             },
-            template_variables=[
-                {
-                    "name": "U_FACTOR",
-                    "description": "Window U-Factor",
-                    "units": "W/m2-K",
-                    "variable_type": "number",
-                },
-                {
-                    "name": "COOLING_SETPOINT",
-                    "description": "Cooling Setpoint Temperature",
-                    "units": "°C",
-                    "variable_type": "number",
-                },
-            ],
         )
+        # Create SignalDefinition rows so the display helper can
+        # look up labels and units.
+        sync_step_template_signals(sr.workflow_step, template_variables)
+
         result = build_template_params_display(sr)
         expected_count = 2
         assert len(result) == expected_count
@@ -342,7 +347,7 @@ class TestBuildTemplateParamsDisplay:
         assert setpoint["units"] == "°C"
 
     def test_falls_back_to_variable_name_as_label(self):
-        """When ``template_variables`` has no description for a variable,
+        """When no SignalDefinition has a description for a variable,
         the raw variable name is used as the label.  This handles runs
         that occurred before the author annotated variables."""
         sr = _make_energyplus_step_run(
@@ -355,6 +360,53 @@ class TestBuildTemplateParamsDisplay:
         assert len(result) == 1
         assert result[0]["label"] == "UNKNOWN_VAR"
         assert result[0]["value"] == "42"
+
+    def test_reads_metadata_from_signal_definitions(self):
+        """When SignalDefinition rows exist for template signals (Phase 4b),
+        build_template_params_display should read labels and units from them
+        instead of step config JSON. This is the new primary metadata path.
+        """
+        from validibot.validations.services.template_signals import (
+            sync_step_template_signals,
+        )
+
+        sr = _make_energyplus_step_run(
+            output={
+                "template_parameters_used": {
+                    "U_FACTOR": "2.0",
+                    "SHGC": "0.4",
+                },
+            },
+            template_variables=[
+                {
+                    "name": "U_FACTOR",
+                    "description": "Window U-Factor",
+                    "units": "W/m2-K",
+                    "variable_type": "number",
+                },
+                {
+                    "name": "SHGC",
+                    "description": "Solar Heat Gain Coefficient",
+                    "units": "",
+                    "variable_type": "number",
+                },
+            ],
+        )
+
+        # Create SignalDefinition rows via the template sync — these
+        # take priority over step config JSON for metadata lookup.
+        step = sr.workflow_step
+        sync_step_template_signals(step, step.config["template_variables"])
+
+        result = build_template_params_display(sr)
+        expected_count = 2
+        assert len(result) == expected_count
+
+        u_factor = next(p for p in result if p["name"] == "U_FACTOR")
+        # Label comes from SignalDefinition.label which is set from
+        # the template variable's description by sync_step_template_signals
+        assert u_factor["label"] == "Window U-Factor"
+        assert u_factor["units"] == "W/m2-K"
 
 
 # ── _format_signal_value ─────────────────────────────────────────────

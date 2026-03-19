@@ -94,7 +94,6 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
         kwargs["catalog_entries"] = getattr(self, "_catalog_entries_cache", [])
         kwargs["validator"] = self.step.validator
         kwargs["target_slug_datalist_id"] = self.get_target_slug_datalist_id()
-        kwargs["fmu_variables"] = (self.step.config or {}).get("fmu_variables", [])
         return kwargs
 
     def get_target_slug_datalist_id(self) -> str:
@@ -145,17 +144,27 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
         return context
 
     def _determine_run_stage_from_form(self, form: RulesetAssertionForm) -> str:
-        entry = form.cleaned_data.get("target_catalog_entry")
-        if entry and getattr(entry, "run_stage", None):
-            return entry.run_stage
+        signal = form.cleaned_data.get("resolved_signal")
+        if signal and getattr(signal, "direction", None):
+            return signal.direction
         return CatalogRunStage.OUTPUT
+
+    def _resolve_signal_definition(self, form: RulesetAssertionForm):
+        """Get the resolved SignalDefinition from the form's cleaned data.
+
+        Returns the SignalDefinition object for signal-backed assertions,
+        or None for custom targets (which use target_data_path instead).
+        """
+        return form.cleaned_data.get("resolved_signal")
 
     def _stage_filter(self, stage: str) -> Q:
         if stage == CatalogRunStage.INPUT:
-            return Q(target_catalog_entry__run_stage=CatalogRunStage.INPUT)
+            return Q(
+                target_signal_definition__direction=CatalogRunStage.INPUT,
+            )
         return Q(
-            Q(target_catalog_entry__run_stage=CatalogRunStage.OUTPUT)
-            | Q(target_catalog_entry__isnull=True),
+            Q(target_signal_definition__direction=CatalogRunStage.OUTPUT)
+            | Q(target_signal_definition__isnull=True),
         )
 
 
@@ -178,12 +187,13 @@ class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
             ]
             or 0
         )
+        signal_def = self._resolve_signal_definition(form)
         assertion = RulesetAssertion.objects.create(
             ruleset=ruleset,
             order=max_order + 10,
             assertion_type=form.cleaned_data["assertion_type"],
             operator=form.cleaned_data["resolved_operator"],
-            target_catalog_entry=form.cleaned_data.get("target_catalog_entry"),
+            target_signal_definition=signal_def,
             target_data_path=form.cleaned_data.get("target_data_path_value") or "",
             severity=form.cleaned_data["severity"],
             when_expression=form.cleaned_data.get("when_expression") or "",
@@ -228,10 +238,11 @@ class WorkflowStepAssertionUpdateView(WorkflowStepAssertionModalBase):
 
     def form_valid(self, form):
         assertion = self._get_assertion()
+        signal_def = self._resolve_signal_definition(form)
         RulesetAssertion.objects.filter(pk=assertion.pk).update(
             assertion_type=form.cleaned_data["assertion_type"],
             operator=form.cleaned_data["resolved_operator"],
-            target_catalog_entry=form.cleaned_data.get("target_catalog_entry"),
+            target_signal_definition=signal_def,
             target_data_path=form.cleaned_data.get("target_data_path_value") or "",
             severity=form.cleaned_data["severity"],
             when_expression=form.cleaned_data.get("when_expression") or "",

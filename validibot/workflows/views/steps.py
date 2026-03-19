@@ -11,6 +11,7 @@ import logging
 from http import HTTPStatus
 
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.db import models
 from django.db import transaction
 from django.http import Http404
@@ -33,12 +34,16 @@ from validibot.core.utils import reverse_with_org
 from validibot.core.view_helpers import hx_trigger_response
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorReleaseState
 from validibot.validations.constants import XMLSchemaType
+from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepSignalBinding
 from validibot.validations.models import Validator
+from validibot.workflows.forms import SignalBindingEditForm
 from validibot.workflows.forms import WorkflowStepTypeForm
 from validibot.workflows.forms import get_config_form_class
 from validibot.workflows.mixins import WorkflowObjectMixin
@@ -804,46 +809,39 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         return breadcrumbs
 
 
-# ── FMU signal-stage helpers ─────────────────────────────────────────
-# Step-level FMU uploads store variable metadata (with causality) in
-# step.config["fmu_variables"] instead of in ValidatorCatalogEntry rows.
+# ── Signal-stage helpers ─────────────────────────────────────────────
 # These helpers let the step detail view detect signal stages and group
-# assertions correctly for such steps.
+# assertions correctly.
 
 
-def _step_has_fmu_signal_stages(step) -> bool:
-    """True when step config FMU variables include both input and output causality."""
-    fmu_vars = (step.config or {}).get("fmu_variables", [])
-    causalities = {v.get("causality", "") for v in fmu_vars}
-    return "input" in causalities and "output" in causalities
+def _step_has_signal_stages(step) -> bool:
+    """True when the step has both input and output signal definitions.
 
-
-def _build_fmu_causality_map(step) -> dict[str, str]:
-    """Build variable-name → causality map from step config FMU variables."""
-    return {
-        v.get("name", ""): v.get("causality", "")
-        for v in (step.config or {}).get("fmu_variables", [])
-    }
-
-
-def _resolve_assertion_stage(
-    assertion,
-    fmu_causality_map: dict[str, str],
-) -> CatalogRunStage:
-    """Resolve assertion run stage, considering FMU variable causality.
-
-    For assertions that target a catalog entry, the entry's ``run_stage``
-    is authoritative.  For free-form ``target_data_path`` assertions that
-    match an FMU variable name, the variable's causality determines the
-    stage.  Everything else defaults to OUTPUT.
+    Checks both step-owned and validator-owned signals, since either
+    source can contribute input/output stages for assertion grouping.
     """
-    if assertion.target_catalog_entry_id and assertion.target_catalog_entry:
-        return CatalogRunStage(assertion.target_catalog_entry.run_stage)
-    if assertion.target_data_path and assertion.target_data_path in fmu_causality_map:
-        causality = fmu_causality_map[assertion.target_data_path]
-        if causality == "input":
-            return CatalogRunStage.INPUT
-    return CatalogRunStage.OUTPUT
+    from validibot.validations.constants import SignalDirection
+
+    directions = set(
+        step.signal_definitions.values_list("direction", flat=True).distinct()
+    )
+    if step.validator:
+        directions.update(
+            step.validator.signal_definitions.values_list(
+                "direction",
+                flat=True,
+            ).distinct()
+        )
+    return SignalDirection.INPUT in directions and SignalDirection.OUTPUT in directions
+
+
+def _resolve_assertion_stage(assertion) -> CatalogRunStage:
+    """Determine which stage bucket an assertion belongs to.
+
+    Delegates to the model's ``resolved_run_stage`` property which checks
+    ``target_signal_definition``, then defaults to OUTPUT.
+    """
+    return assertion.resolved_run_stage
 
 
 class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
@@ -878,8 +876,6 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
         validator = self.step.validator
         ruleset = None
         assertions = []
-        catalog_entries = []
-        catalog_display = validator.catalog_display if validator else None
         allow_assertions = validator and validator.supports_assertions
         if allow_assertions:
             ruleset = self.step.ruleset or ensure_advanced_ruleset(
@@ -888,32 +884,18 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 validator,
             )
             assertions = list(ruleset.assertions.all().order_by("order", "pk"))
-        if validator:
-            catalog_entries = list(
-                validator.catalog_entries.order_by(
-                    "entry_type",
-                    "run_stage",
-                    "order",
-                    "slug",
-                ),
-            )
-        # Group assertions by run stage, considering FMU variable causality
-        # for step-level FMU uploads where there are no catalog entries.
-        fmu_causality_map = _build_fmu_causality_map(self.step)
+        # Group assertions by run stage so input/output sections render
+        # separately in the step detail template.
         grouped_assertions = {
             "input": [],
             "output": [],
         }
         for assertion in assertions:
-            stage = _resolve_assertion_stage(assertion, fmu_causality_map)
+            stage = _resolve_assertion_stage(assertion)
             key = "input" if stage == CatalogRunStage.INPUT else "output"
             grouped_assertions[key].append(assertion)
         uses_signal_stages = bool(
-            validator
-            and (
-                validator.has_signal_stages() or _step_has_fmu_signal_stages(self.step)
-            )
-            and allow_assertions,
+            validator and _step_has_signal_stages(self.step) and allow_assertions,
         )
         default_assertions_count = (
             validator.default_ruleset.assertions.count()
@@ -922,10 +904,11 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
         )
 
         # Build unified input/output signals for the right-column card.
-        # Merges catalog entries with template variables into one view.
-        from validibot.workflows.views_helpers import build_unified_signals
+        from validibot.workflows.views_helpers import (
+            build_unified_signals_from_definitions,
+        )
 
-        unified_signals = build_unified_signals(catalog_display, self.step)
+        unified_signals = build_unified_signals_from_definitions(self.step)
 
         context.update(
             {
@@ -939,8 +922,6 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "can_manage_assertions": self.user_can_manage_workflow()
                 and allow_assertions,
                 "supports_assertions": allow_assertions,
-                "catalog_entries": catalog_entries,
-                "catalog_display": catalog_display,
                 "catalog_tab_prefix": f"workflow-step-{self.step.pk}-catalog",
                 "validator_default_assertions_count": default_assertions_count,
                 "unified_signals": unified_signals,
@@ -1017,35 +998,21 @@ class WorkflowStepTemplateVariablesView(WorkflowObjectMixin, FormView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        validator = self.step.validator
-        catalog_display = validator.catalog_display if validator else None
         step_config = self.step.config or {}
         context.update(
             {
                 "workflow": self.get_workflow(),
                 "step": self.step,
                 "tplvar_form": context.get("form"),
-                "catalog_display": catalog_display,
-                "catalog_tab_prefix": (f"workflow-step-{self.step.pk}-catalog"),
                 "display_signals": step_config.get("display_signals", []),
             },
         )
         return context
 
     def form_valid(self, form):
-        from validibot.workflows.views_helpers import (
-            merge_template_variable_annotations,
-        )
+        from validibot.workflows.views_helpers import save_template_variable_annotations
 
-        existing_vars = (self.step.config or {}).get("template_variables", [])
-        merged = merge_template_variable_annotations(
-            existing_vars,
-            form.cleaned_data,
-        )
-        config = dict(self.step.config or {})
-        config["template_variables"] = merged
-        self.step.config = config
-        self.step.save(update_fields=["config"])
+        save_template_variable_annotations(form)
 
         if self.request.headers.get("HX-Request"):
             # Re-render the card with updated data and a toast trigger
@@ -1152,8 +1119,8 @@ class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
     """HTMx modal endpoint for editing a single template variable's annotations.
 
     Replaces the old "save all at once" template variables form with a
-    per-variable modal pattern.  The variable is identified by its index
-    in the ``step.config["template_variables"]`` list.
+    per-variable modal pattern.  The variable is identified by its
+    ``SignalDefinition`` row.
 
     GET returns the modal form content for the specified variable.
     POST validates and saves annotations for that single variable,
@@ -1173,10 +1140,44 @@ class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
             pk=self.kwargs.get("step_id"),
         )
         self.var_index = int(self.kwargs.get("var_index", 0))
-        template_vars = (self.step.config or {}).get("template_variables", [])
-        if self.var_index < 0 or self.var_index >= len(template_vars):
+
+        # Look up the template signal by index in the same ordering used
+        # by the annotation form and signal display.
+        from validibot.validations.constants import SignalOriginKind
+        from validibot.validations.models import StepSignalBinding
+
+        bindings = list(
+            StepSignalBinding.objects.filter(
+                workflow_step=self.step,
+                signal_definition__origin_kind=SignalOriginKind.TEMPLATE,
+            )
+            .select_related("signal_definition")
+            .order_by(
+                "signal_definition__order",
+                "signal_definition__contract_key",
+            )
+        )
+        if self.var_index < 0 or self.var_index >= len(bindings):
             return HttpResponse(status=HTTPStatus.NOT_FOUND)
-        self.variable = template_vars[self.var_index]
+
+        binding = bindings[self.var_index]
+        sig = binding.signal_definition
+        meta = sig.metadata or {}
+        default_val = binding.default_value
+        self.variable = {
+            "name": sig.native_name or sig.contract_key,
+            "description": sig.label or "",
+            "default": str(default_val) if default_val is not None else "",
+            "units": sig.unit or "",
+            "variable_type": meta.get("variable_type", "text"),
+            "min_value": meta.get("min_value"),
+            "min_exclusive": meta.get("min_exclusive", False),
+            "max_value": meta.get("max_value"),
+            "max_exclusive": meta.get("max_exclusive", False),
+            "choices": meta.get("choices", []),
+        }
+        self._signal_pk = sig.pk
+        self._binding_pk = binding.pk
         return super().dispatch(request, *args, **kwargs)
 
     def get_form(self, form_class=None):
@@ -1200,35 +1201,41 @@ class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
         return context
 
     def form_valid(self, form):
+        from validibot.validations.models import SignalDefinition
+        from validibot.validations.models import StepSignalBinding
+        from validibot.validations.signal_metadata.metadata import (
+            TemplateSignalMetadata,
+        )
         from validibot.workflows.views_helpers import _parse_choices
         from validibot.workflows.views_helpers import _parse_optional_float
 
-        config = dict(self.step.config or {})
-        template_vars = list(config.get("template_variables", []))
-
-        # Update only this variable, preserving the immutable name
-        template_vars[self.var_index] = {
-            "name": self.variable["name"],
-            "description": form.cleaned_data.get("description", ""),
-            "default": form.cleaned_data.get("default", ""),
-            "units": form.cleaned_data.get("units", ""),
-            "variable_type": form.cleaned_data.get("variable_type", "text"),
-            "min_value": _parse_optional_float(
+        variable_type = form.cleaned_data.get("variable_type", "text")
+        metadata = TemplateSignalMetadata(
+            variable_type=variable_type,
+            min_value=_parse_optional_float(
                 form.cleaned_data.get("min_value", ""),
             ),
-            "min_exclusive": form.cleaned_data.get("min_exclusive", False),
-            "max_value": _parse_optional_float(
+            min_exclusive=form.cleaned_data.get("min_exclusive", False),
+            max_value=_parse_optional_float(
                 form.cleaned_data.get("max_value", ""),
             ),
-            "max_exclusive": form.cleaned_data.get("max_exclusive", False),
-            "choices": _parse_choices(
+            max_exclusive=form.cleaned_data.get("max_exclusive", False),
+            choices=_parse_choices(
                 form.cleaned_data.get("choices", ""),
             ),
-        }
+        ).model_dump()
 
-        config["template_variables"] = template_vars
-        self.step.config = config
-        self.step.save(update_fields=["config"])
+        SignalDefinition.objects.filter(pk=self._signal_pk).update(
+            label=form.cleaned_data.get("description", ""),
+            unit=form.cleaned_data.get("units", ""),
+            metadata=metadata,
+            provider_binding={"variable_type": variable_type},
+        )
+        default_val = form.cleaned_data.get("default", "")
+        StepSignalBinding.objects.filter(pk=self._binding_pk).update(
+            default_value=default_val if default_val else None,
+            is_required=not bool(default_val),
+        )
 
         response = HttpResponse(status=HTTPStatus.NO_CONTENT)
         response["HX-Trigger"] = json.dumps(
@@ -1249,6 +1256,110 @@ class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
     def form_invalid(self, form):
         context = self.get_context_data(form=form)
         return render(self.request, self.template_name, context)
+
+
+class WorkflowStepSignalEditView(WorkflowObjectMixin, FormView):
+    """Edit a signal definition and its binding via an HTMx modal.
+
+    Handles both step-owned signals (all fields editable) and library-owned
+    signals (definition fields read-only, binding fields editable).
+
+    The signal must belong to either the current step (step-owned) or the
+    step's validator (library-owned). This prevents editing signals from
+    other steps or workflows.
+
+    Uses WorkflowObjectMixin (not WorkflowStepAssertionsMixin) because signal
+    editing doesn't require assertion support — that mixin would reject steps
+    whose validators don't support assertions, which is unrelated.
+
+    See ADR-2026-03-18, Phase 5, Item 28.
+    """
+
+    template_name = "workflows/partials/signal_edit_modal_content.html"
+    form_class = SignalBindingEditForm
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            raise PermissionDenied
+        # Resolve the step early so _get_signal()/_get_binding() can use it.
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        return super().dispatch(request, *args, **kwargs)
+
+    def _get_signal(self):
+        """Fetch the signal definition, scoped to this step or its validator."""
+        if hasattr(self, "_signal"):
+            return self._signal
+        signal_id = self.kwargs.get("signal_id")
+        # Scope the lookup: signal must belong to this step or its validator.
+        sig = (
+            SignalDefinition.objects.filter(pk=signal_id)
+            .filter(
+                models.Q(workflow_step=self.step)
+                | models.Q(validator=self.step.validator),
+            )
+            .first()
+        )
+        if not sig:
+            raise Http404
+        self._signal = sig
+        return sig
+
+    def _get_binding(self):
+        """Get or create the per-step binding for this signal."""
+        if hasattr(self, "_binding"):
+            return self._binding
+        sig = self._get_signal()
+        self._binding, _ = StepSignalBinding.objects.get_or_create(
+            workflow_step=self.step,
+            signal_definition=sig,
+            defaults={
+                "source_scope": BindingSourceScope.SUBMISSION_PAYLOAD,
+                "source_data_path": sig.native_name or "",
+                "is_required": True,
+            },
+        )
+        return self._binding
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["signal_definition"] = self._get_signal()
+        kwargs["binding"] = self._get_binding()
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        sig = self._get_signal()
+        context.update(
+            {
+                "signal": sig,
+                "binding": self._get_binding(),
+                "is_library_signal": bool(sig.validator_id),
+                "modal_title": sig.label or sig.contract_key,
+            },
+        )
+        return context
+
+    def form_valid(self, form):
+        form.save()
+        return hx_trigger_response(
+            message=_("Signal updated."),
+            close_modal="signalEditModal",
+            extra_payload={"signals-changed": True},
+        )
+
+    def render_to_response(self, context, **response_kwargs):
+        if self.request.headers.get("HX-Request"):
+            return render(
+                self.request,
+                self.template_name,
+                context,
+                status=response_kwargs.get("status", 200),
+            )
+        return super().render_to_response(context, **response_kwargs)
 
 
 class WorkflowStepCreateView(WorkflowStepFormView):

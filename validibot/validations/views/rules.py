@@ -21,8 +21,8 @@ from validibot.validations.constants import AssertionType
 from validibot.validations.constants import Severity
 from validibot.validations.forms import ValidatorRuleForm
 from validibot.validations.models import RulesetAssertion
+from validibot.validations.models import SignalDefinition
 from validibot.validations.models import Validator
-from validibot.validations.models import ValidatorCatalogEntry
 from validibot.validations.views.validators import CustomValidatorManageMixin
 
 logger = logging.getLogger(__name__)
@@ -77,23 +77,23 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
             ),
         )
 
-    def _resolve_selected_entries(
-        self, signals: list[str]
-    ) -> list[ValidatorCatalogEntry]:
+    def _resolve_selected_entries(self, signals: list[str]) -> list[SignalDefinition]:
         ids = [int(pk) for pk in signals or [] if str(pk).isdigit()]
         return list(
-            self.validator.catalog_entries.filter(pk__in=ids).order_by("slug"),
+            self.validator.signal_definitions.filter(pk__in=ids).order_by(
+                "contract_key",
+            ),
         )
 
     def _validate_cel_expression(
-        self, expr: str, available_entries: list[ValidatorCatalogEntry]
-    ) -> list[ValidatorCatalogEntry]:
-        """Validate CEL and return the catalog entries that are referenced.
+        self, expr: str, available_entries: list[SignalDefinition]
+    ) -> list[SignalDefinition]:
+        """Validate CEL and return the signal definitions that are referenced.
 
         The parser is intentionally lightweight: it confirms the expression
         references only known signals while allowing CEL literals, built-ins,
         and lambda variables. Output signals may be referenced as
-        ``output.<slug>``.
+        ``output.<contract_key>``.
         """
         expr = (expr or "").strip()
         if not expr:
@@ -128,25 +128,25 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
             "in",
         }
 
-        slug_map = {entry.slug: entry for entry in available_entries}
-        referenced: set[ValidatorCatalogEntry] = set()
+        key_map = {sig.contract_key: sig for sig in available_entries}
+        referenced: set[SignalDefinition] = set()
         unknown: set[str] = set()
 
-        # Capture explicit output.<slug> references.
+        # Capture explicit output.<contract_key> references.
         for match in re.finditer(r"output\.([A-Za-z_][A-Za-z0-9_]*)", expr):
-            slug = match.group(1)
-            if slug in slug_map:
-                referenced.add(slug_map[slug])
+            key = match.group(1)
+            if key in key_map:
+                referenced.add(key_map[key])
             else:
-                unknown.add(f"output.{slug}")
+                unknown.add(f"output.{key}")
 
         # Capture bare identifiers and allow literals/built-ins/lambda vars.
         for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_]*", expr):
             name = match.group(0)
             if name in reserved_literals or name in cel_builtins:
                 continue
-            if name in slug_map:
-                referenced.add(slug_map[name])
+            if name in key_map:
+                referenced.add(key_map[name])
                 continue
             # Treat single-character names as likely lambda variables.
             if len(name) == 1:
@@ -180,30 +180,30 @@ class ValidatorRuleCreateView(ValidatorRuleMixin, FormView):
         form = self.form_class(
             request.POST,
             signal_choices=[
-                (entry.id, entry.slug)
-                for entry in self.validator.catalog_entries.order_by("slug")
+                (sig.id, sig.contract_key)
+                for sig in self.validator.signal_definitions.order_by("contract_key")
             ],
         )
         if form.is_valid():
-            available_entries = list(
-                self.validator.catalog_entries.order_by("slug"),
+            available_signals = list(
+                self.validator.signal_definitions.order_by("contract_key"),
             )
             cel_expr = form.cleaned_data["cel_expression"]
-            referenced_entries = self._validate_cel_expression(
+            referenced_signals = self._validate_cel_expression(
                 cel_expr,
-                available_entries,
+                available_signals,
             )
-            # Pick the first referenced catalog entry as the assertion target.
+            # Pick the first referenced signal as the assertion target.
             # CEL assertions don't strictly need one, but it's useful for
             # display and deletion-protection.
-            target_entry = referenced_entries[0] if referenced_entries else None
+            target_signal = referenced_signals[0] if referenced_signals else None
             default_ruleset = self.validator.ensure_default_ruleset()
             RulesetAssertion.objects.create(
                 ruleset=default_ruleset,
                 assertion_type=AssertionType.CEL_EXPRESSION,
                 operator="",
-                target_catalog_entry=target_entry,
-                target_data_path="" if target_entry else cel_expr,
+                target_signal_definition=target_signal,
+                target_data_path="" if target_signal else cel_expr,
                 rhs={"expr": cel_expr},
                 severity=Severity.ERROR,
                 order=form.cleaned_data.get("order") or 0,
@@ -241,26 +241,26 @@ class ValidatorRuleUpdateView(ValidatorRuleMixin, FormView):
         form = self.form_class(
             request.POST,
             signal_choices=[
-                (entry.id, entry.slug)
-                for entry in self.validator.catalog_entries.order_by("slug")
+                (sig.id, sig.contract_key)
+                for sig in self.validator.signal_definitions.order_by("contract_key")
             ],
         )
         if form.is_valid():
-            available_entries = list(
-                self.validator.catalog_entries.order_by("slug"),
+            available_signals = list(
+                self.validator.signal_definitions.order_by("contract_key"),
             )
             cel_expr = form.cleaned_data["cel_expression"]
-            referenced_entries = self._validate_cel_expression(
+            referenced_signals = self._validate_cel_expression(
                 cel_expr,
-                available_entries,
+                available_signals,
             )
-            target_entry = referenced_entries[0] if referenced_entries else None
+            target_signal = referenced_signals[0] if referenced_signals else None
             assertion.message_template = form.cleaned_data["name"]
             assertion.rhs = {"expr": cel_expr}
             assertion.cel_cache = cel_expr
             assertion.order = form.cleaned_data.get("order") or 0
-            assertion.target_catalog_entry = target_entry
-            assertion.target_data_path = "" if target_entry else cel_expr
+            assertion.target_signal_definition = target_signal
+            assertion.target_data_path = "" if target_signal else cel_expr
             assertion.save()
             messages.success(request, _("Default assertion updated."))
             if request.headers.get("HX-Request"):
@@ -319,7 +319,7 @@ class ValidatorRuleMoveView(ValidatorRuleMixin, View):
 
         assertions = (
             default_ruleset.assertions.all()
-            .select_related("target_catalog_entry")
+            .select_related("target_signal_definition")
             .order_by("order", "pk")
         )
         if request.headers.get("HX-Request"):

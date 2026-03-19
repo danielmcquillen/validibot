@@ -12,14 +12,16 @@ Key areas covered:
    plain dataclasses that both the library and step-level flows consume.
 
 2. **Step config building** — ``build_fmu_config()`` converts introspection
-   results into step config dicts with ``fmu_variables`` and ``fmu_simulation``.
+   results into step config dicts with ``fmu_simulation`` settings (variable
+   metadata is stored relationally in ``SignalDefinition`` rows).
 
-3. **Unified signals integration** — ``build_unified_signals()`` correctly
-   treats FMU variables as a third signal source (``"fmu"``) alongside
+3. **Unified signals integration** —
+   ``build_unified_signals_from_definitions()`` correctly treats FMU
+   variables as a third signal source (``"fmu"``) alongside
    ``"catalog"`` and ``"template"``.
 
-4. **Step config Pydantic models** — ``FmuStepConfig``, ``FMUVariableConfig``,
-   and ``FMUSimulationConfig`` correctly validate and serialize step config.
+4. **Step config Pydantic models** — ``FmuStepConfig`` and
+   ``FMUSimulationConfig`` correctly validate and serialize step config.
 """
 
 from __future__ import annotations
@@ -36,10 +38,12 @@ from validibot.validations.services.fmu import FMUIntrospectionResult
 from validibot.validations.services.fmu import FMUSimulationDefaults
 from validibot.validations.services.fmu import FMUVariableInfo
 from validibot.validations.services.fmu import introspect_fmu
+from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepSignalBindingFactory
 from validibot.workflows.step_configs import FMUSimulationConfig
 from validibot.workflows.step_configs import FmuStepConfig
-from validibot.workflows.step_configs import FMUVariableConfig
-from validibot.workflows.views_helpers import build_unified_signals
+from validibot.workflows.tests.factories import WorkflowStepFactory
+from validibot.workflows.views_helpers import build_unified_signals_from_definitions
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -82,15 +86,47 @@ def _make_minimal_fmu(
     return buf.getvalue()
 
 
-class _FakeStep:
-    """Minimal stand-in for WorkflowStep in signal-building tests.
+def _create_fmu_input_signal(step, *, contract_key, native_name, label="", **kwargs):
+    """Create a step-owned FMU input SignalDefinition with a binding.
 
-    ``build_unified_signals()`` only reads ``step.config``, so we just
-    need a plain object with a ``config`` attribute.
+    Helper to reduce boilerplate in tests that set up FMU input signals.
+    Returns the created SignalDefinition.
     """
+    sig = SignalDefinitionFactory(
+        workflow_step=step,
+        validator=None,
+        contract_key=contract_key,
+        native_name=native_name,
+        label=label,
+        direction="input",
+        origin_kind="fmu",
+        **kwargs,
+    )
+    StepSignalBindingFactory(
+        workflow_step=step,
+        signal_definition=sig,
+        source_data_path=native_name,
+        is_required=True,
+    )
+    return sig
 
-    def __init__(self, config: dict | None = None):
-        self.config = config
+
+def _create_fmu_output_signal(step, *, contract_key, native_name, label="", **kwargs):
+    """Create a step-owned FMU output SignalDefinition (no binding needed).
+
+    Helper to reduce boilerplate in tests that set up FMU output signals.
+    Returns the created SignalDefinition.
+    """
+    return SignalDefinitionFactory(
+        workflow_step=step,
+        validator=None,
+        contract_key=contract_key,
+        native_name=native_name,
+        label=label,
+        direction="output",
+        origin_kind="fmu",
+        **kwargs,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -236,36 +272,20 @@ class IntrospectFmuTests(TestCase):
 class FmuStepConfigModelTests(TestCase):
     """Tests for the ``FmuStepConfig`` Pydantic model.
 
-    Verifies that step config JSON with ``fmu_variables`` and
-    ``fmu_simulation`` is correctly parsed and validated.
+    Verifies that step config JSON with ``fmu_simulation`` is correctly
+    parsed and validated.  FMU variable metadata is now stored
+    relationally in ``SignalDefinition`` rows, not in the step config.
     """
 
     def test_empty_config_valid(self):
         """An empty config (library validator path) should be valid."""
         config = FmuStepConfig.model_validate({})
-        self.assertEqual(config.fmu_variables, [])
         self.assertIsNone(config.fmu_simulation)
 
-    def test_full_config_roundtrip(self):
-        """A complete config with variables and simulation should
-        roundtrip through Pydantic validation."""
+    def test_simulation_config_roundtrip(self):
+        """A config with simulation settings should roundtrip through
+        Pydantic validation."""
         data = {
-            "fmu_variables": [
-                {
-                    "name": "T_outdoor",
-                    "causality": "input",
-                    "value_type": "Real",
-                    "unit": "K",
-                    "description": "Outdoor temperature",
-                    "label": "Outdoor Temp",
-                },
-                {
-                    "name": "T_room",
-                    "causality": "output",
-                    "value_type": "Real",
-                    "unit": "K",
-                },
-            ],
             "fmu_simulation": {
                 "start_time": 0.0,
                 "stop_time": 3600.0,
@@ -275,19 +295,8 @@ class FmuStepConfigModelTests(TestCase):
         }
         config = FmuStepConfig.model_validate(data)
 
-        self.assertEqual(len(config.fmu_variables), 2)
-        self.assertEqual(config.fmu_variables[0].name, "T_outdoor")
-        self.assertEqual(config.fmu_variables[0].label, "Outdoor Temp")
         self.assertIsNotNone(config.fmu_simulation)
         self.assertEqual(config.fmu_simulation.stop_time, 3600.0)
-
-    def test_variable_config_defaults(self):
-        """FMUVariableConfig should have sensible defaults for optional fields."""
-        var = FMUVariableConfig(name="x", causality="input")
-        self.assertEqual(var.value_type, "Real")
-        self.assertEqual(var.unit, "")
-        self.assertEqual(var.description, "")
-        self.assertEqual(var.label, "")
 
     def test_simulation_config_all_none(self):
         """FMUSimulationConfig with no values should have all None fields."""
@@ -301,38 +310,45 @@ class FmuStepConfigModelTests(TestCase):
         """BaseStepConfig uses ``extra='allow'`` — runtime-injected keys
         (like ``primary_file_uri``) should not cause validation errors."""
         data = {
-            "fmu_variables": [],
             "primary_file_uri": "gs://bucket/some.fmu",
         }
-        config = FmuStepConfig.model_validate(data)
-        self.assertEqual(config.fmu_variables, [])
+        FmuStepConfig.model_validate(data)  # Should not raise
 
 
 # ---------------------------------------------------------------------------
-# build_unified_signals() — FMU source type
+# build_unified_signals_from_definitions() — FMU source type
+#
+# These tests use real database objects (WorkflowStep, SignalDefinition,
+# StepSignalBinding) instead of the old _FakeStep mock. The function
+# queries the DB for step-owned signals and their bindings.
 # ---------------------------------------------------------------------------
 
 
 class UnifiedSignalsFmuTests(TestCase):
-    """Tests for FMU variable integration in ``build_unified_signals()``.
+    """Tests for FMU variable integration in
+    ``build_unified_signals_from_definitions()``.
 
-    Verifies that FMU variables from ``step.config["fmu_variables"]``
-    appear as input/output signals with source ``"fmu"``, alongside
-    the existing ``"catalog"`` and ``"template"`` sources.
+    Verifies that step-owned FMU ``SignalDefinition`` rows appear as
+    input/output signals with source ``"fmu"``, alongside the existing
+    ``"catalog"`` and ``"template"`` sources.
     """
 
     def test_fmu_input_variables_become_input_signals(self):
-        """FMU variables with ``causality="input"`` should appear in
+        """FMU variables with ``direction="input"`` should appear in
         the input signals list with ``source="fmu"``."""
-        step = _FakeStep(
-            config={
-                "fmu_variables": [
-                    {"name": "T_outdoor", "causality": "input", "label": "Outdoor"},
-                    {"name": "Q_equipment", "causality": "input"},
-                ],
-            }
+        step = WorkflowStepFactory()
+        _create_fmu_input_signal(
+            step,
+            contract_key="t_outdoor",
+            native_name="T_outdoor",
+            label="Outdoor",
         )
-        result = build_unified_signals(catalog_display=None, step=step)
+        _create_fmu_input_signal(
+            step,
+            contract_key="q_equipment",
+            native_name="Q_equipment",
+        )
+        result = build_unified_signals_from_definitions(step=step)
 
         self.assertEqual(len(result["input_signals"]), 2)
         self.assertTrue(result["has_inputs"])
@@ -344,21 +360,21 @@ class UnifiedSignalsFmuTests(TestCase):
         self.assertTrue(sig["required"])
 
     def test_fmu_output_variables_become_output_signals(self):
-        """FMU variables with ``causality="output"`` should appear in
+        """FMU variables with ``direction="output"`` should appear in
         the output signals list with ``show_to_user=True`` by default."""
-        step = _FakeStep(
-            config={
-                "fmu_variables": [
-                    {
-                        "name": "T_room",
-                        "causality": "output",
-                        "description": "Room temp",
-                    },
-                    {"name": "Q_cool", "causality": "output"},
-                ],
-            }
+        step = WorkflowStepFactory()
+        _create_fmu_output_signal(
+            step,
+            contract_key="t_room",
+            native_name="T_room",
+            label="Room temp",
         )
-        result = build_unified_signals(catalog_display=None, step=step)
+        _create_fmu_output_signal(
+            step,
+            contract_key="q_cool",
+            native_name="Q_cool",
+        )
+        result = build_unified_signals_from_definitions(step=step)
 
         self.assertEqual(len(result["output_signals"]), 2)
         self.assertTrue(result["has_outputs"])
@@ -369,17 +385,23 @@ class UnifiedSignalsFmuTests(TestCase):
         self.assertTrue(sig["show_to_user"])
 
     def test_parameter_variables_excluded(self):
-        """FMU variables with ``causality="parameter"`` should not appear
-        as either input or output signals — they are internal constants."""
-        step = _FakeStep(
-            config={
-                "fmu_variables": [
-                    {"name": "C_room", "causality": "parameter"},
-                    {"name": "T_outdoor", "causality": "input"},
-                ],
-            }
+        """FMU variables with causality other than input/output should not
+        appear as either input or output signals — they are internal constants.
+
+        In the new model, parameter variables simply aren't created as
+        SignalDefinition rows with direction="input" or "output", so they
+        naturally don't appear. This test confirms no leakage when only
+        an input signal exists alongside other step data."""
+        step = WorkflowStepFactory()
+        # Only create the input signal — no parameter signal definition
+        # would be created in the real flow (parameters are filtered out
+        # during FMU introspection → SignalDefinition creation).
+        _create_fmu_input_signal(
+            step,
+            contract_key="t_outdoor",
+            native_name="T_outdoor",
         )
-        result = build_unified_signals(catalog_display=None, step=step)
+        result = build_unified_signals_from_definitions(step=step)
 
         self.assertEqual(len(result["input_signals"]), 1)
         self.assertEqual(result["input_signals"][0]["slug"], "T_outdoor")
@@ -388,26 +410,32 @@ class UnifiedSignalsFmuTests(TestCase):
     def test_display_signals_filter_fmu_outputs(self):
         """The ``display_signals`` config should control the ``show_to_user``
         flag on FMU output variables, just like it does for catalog outputs."""
-        step = _FakeStep(
-            config={
-                "fmu_variables": [
-                    {"name": "T_room", "causality": "output"},
-                    {"name": "Q_cool", "causality": "output"},
-                ],
-                "display_signals": ["T_room"],
-            }
+        step = WorkflowStepFactory()
+        _create_fmu_output_signal(
+            step,
+            contract_key="t_room",
+            native_name="T_room",
         )
-        result = build_unified_signals(catalog_display=None, step=step)
+        _create_fmu_output_signal(
+            step,
+            contract_key="q_cool",
+            native_name="Q_cool",
+        )
+        # display_signals uses contract_key for matching.
+        step.config = {"display_signals": ["t_room"]}
+        step.save()
+
+        result = build_unified_signals_from_definitions(step=step)
 
         signals_by_slug = {s["slug"]: s for s in result["output_signals"]}
         self.assertTrue(signals_by_slug["T_room"]["show_to_user"])
         self.assertFalse(signals_by_slug["Q_cool"]["show_to_user"])
 
     def test_empty_fmu_variables_no_signals(self):
-        """When ``fmu_variables`` is empty (library validator path),
-        no FMU signals should be added."""
-        step = _FakeStep(config={"fmu_variables": []})
-        result = build_unified_signals(catalog_display=None, step=step)
+        """When no SignalDefinition rows exist for the step (library
+        validator path with no signal definitions), no signals should appear."""
+        step = WorkflowStepFactory()
+        result = build_unified_signals_from_definitions(step=step)
 
         self.assertEqual(len(result["input_signals"]), 0)
         self.assertEqual(len(result["output_signals"]), 0)
@@ -415,20 +443,30 @@ class UnifiedSignalsFmuTests(TestCase):
         self.assertFalse(result["has_outputs"])
 
     def test_label_fallback_chain(self):
-        """Signal label should fall back: label → description → name."""
-        step = _FakeStep(
-            config={
-                "fmu_variables": [
-                    {"name": "var1", "causality": "input", "label": "Custom Label"},
-                    {"name": "var2", "causality": "input", "description": "Desc"},
-                    {"name": "var3", "causality": "input"},
-                ],
-            }
+        """Signal label should fall back: label → native_name → contract_key."""
+        step = WorkflowStepFactory()
+        _create_fmu_input_signal(
+            step,
+            contract_key="var1",
+            native_name="var1",
+            label="Custom Label",
         )
-        result = build_unified_signals(catalog_display=None, step=step)
+        _create_fmu_input_signal(
+            step,
+            contract_key="var2",
+            native_name="var2_native",
+            label="",
+        )
+        _create_fmu_input_signal(
+            step,
+            contract_key="var3",
+            native_name="",
+            label="",
+        )
+        result = build_unified_signals_from_definitions(step=step)
 
         labels = [s["label"] for s in result["input_signals"]]
-        self.assertEqual(labels, ["Custom Label", "Desc", "var3"])
+        self.assertEqual(labels, ["Custom Label", "var2_native", "var3"])
 
 
 # ---------------------------------------------------------------------------
@@ -458,7 +496,7 @@ class ServerRoomCoolingEndToEndTests(TestCase):
 
     These tests verify the full pipeline: introspect a real-world FMU,
     convert the result to step config, then feed through
-    ``build_unified_signals()``. This catches integration issues that
+    ``build_unified_signals_from_definitions()``. This catches integration issues that
     synthetic FMUs (``_make_minimal_fmu``) might miss — for example,
     OpenModelica emits ``causality="unknown"`` for internal/derivative
     variables, which must be filtered out of signals.
@@ -504,22 +542,12 @@ class ServerRoomCoolingEndToEndTests(TestCase):
 
     def test_introspection_to_step_config_roundtrip(self):
         """Introspection results should convert cleanly to step config
-        dicts that ``FmuStepConfig`` can validate. This is the data
-        flow that ``build_fmu_config()`` performs."""
+        dicts that ``FmuStepConfig`` can validate. Variable metadata is
+        now stored in ``SignalDefinition`` rows, so only simulation
+        settings go in the step config."""
         result = introspect_fmu(_server_room_fmu_bytes(), "ServerRoomCooling.fmu")
 
-        # Build config dict the same way build_fmu_config() does.
         config_data = {
-            "fmu_variables": [
-                {
-                    "name": v.name,
-                    "causality": v.causality,
-                    "value_type": v.value_type,
-                    "unit": v.unit,
-                    "description": v.description,
-                }
-                for v in result.variables
-            ],
             "fmu_simulation": {
                 "start_time": result.simulation_defaults.start_time,
                 "stop_time": result.simulation_defaults.stop_time,
@@ -529,27 +557,38 @@ class ServerRoomCoolingEndToEndTests(TestCase):
         }
 
         config = FmuStepConfig.model_validate(config_data)
-        self.assertEqual(len(config.fmu_variables), len(result.variables))
         self.assertEqual(config.fmu_simulation.stop_time, 3600.0)
 
     def test_full_pipeline_introspection_to_signals(self):
-        """Verify the complete pipeline: introspect → step config →
+        """Verify the complete pipeline: introspect → SignalDefinition rows →
         unified signals. The ServerRoomCooling FMU's 4 inputs should
         become 4 input signals and 2 outputs should become 2 output
         signals. Parameters and internal variables must be excluded."""
         result = introspect_fmu(_server_room_fmu_bytes(), "ServerRoomCooling.fmu")
 
-        fmu_vars = [
-            {
-                "name": v.name,
-                "causality": v.causality,
-                "description": v.description,
-            }
-            for v in result.variables
-        ]
+        step = WorkflowStepFactory()
 
-        step = _FakeStep(config={"fmu_variables": fmu_vars})
-        signals = build_unified_signals(catalog_display=None, step=step)
+        # Create SignalDefinition + StepSignalBinding rows for each
+        # input/output variable, mirroring the real FMU upload flow.
+        for var in result.variables:
+            if var.causality == "input":
+                _create_fmu_input_signal(
+                    step,
+                    contract_key=var.name.lower(),
+                    native_name=var.name,
+                    label=var.description,
+                )
+            elif var.causality == "output":
+                _create_fmu_output_signal(
+                    step,
+                    contract_key=var.name.lower(),
+                    native_name=var.name,
+                    label=var.description,
+                )
+            # Parameters and unknown causalities are intentionally skipped —
+            # they are not created as SignalDefinition rows.
+
+        signals = build_unified_signals_from_definitions(step=step)
 
         self.assertEqual(len(signals["input_signals"]), 4)
         self.assertEqual(len(signals["output_signals"]), 2)

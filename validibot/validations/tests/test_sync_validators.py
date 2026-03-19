@@ -10,10 +10,10 @@ from io import StringIO
 from django.core.management import call_command
 from django.test import TestCase
 
-from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import ValidationType
+from validibot.validations.models import Derivation
+from validibot.validations.models import SignalDefinition
 from validibot.validations.models import Validator
-from validibot.validations.models import ValidatorCatalogEntry
 from validibot.validations.validators.base.config import discover_configs
 from validibot.validations.validators.base.config import get_all_configs
 from validibot.validations.validators.base.config import get_config
@@ -62,29 +62,27 @@ class SyncValidatorsCommandTests(TestCase):
         self.assertTrue(validator.supports_assertions)
         self.assertEqual(validator.processor_name, "EnergyPlus™ Simulation")
 
-    def test_command_creates_catalog_entries(self):
-        """Test that catalog entries are created for validators."""
+    def test_command_creates_signal_definitions(self):
+        """Test that signal definitions are created for validators."""
         self.call_command()
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
 
-        # Should have both input and output catalog entries
-        input_entries = ValidatorCatalogEntry.objects.filter(
+        # Should have both input and output signal definitions
+        input_sigs = SignalDefinition.objects.filter(
             validator=validator,
-            entry_type=CatalogEntryType.SIGNAL,
-            run_stage="input",
+            direction="input",
         )
-        output_entries = ValidatorCatalogEntry.objects.filter(
+        output_sigs = SignalDefinition.objects.filter(
             validator=validator,
-            entry_type=CatalogEntryType.SIGNAL,
-            run_stage="output",
+            direction="output",
         )
 
-        self.assertTrue(input_entries.exists(), "Should have input signal entries")
-        self.assertTrue(output_entries.exists(), "Should have output signal entries")
+        self.assertTrue(input_sigs.exists(), "Should have input signal definitions")
+        self.assertTrue(output_sigs.exists(), "Should have output signal definitions")
 
     def test_command_creates_specific_output_signals(self):
-        """Test that specific output signals are created."""
+        """Test that specific output signal definitions are created."""
         self.call_command()
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
@@ -97,33 +95,31 @@ class SyncValidatorsCommandTests(TestCase):
             "floor_area_m2",
         ]
 
-        for slug in expected_signals:
+        for key in expected_signals:
             self.assertTrue(
-                ValidatorCatalogEntry.objects.filter(
+                SignalDefinition.objects.filter(
                     validator=validator,
-                    slug=slug,
+                    contract_key=key,
                 ).exists(),
-                f"Signal {slug} should exist",
+                f"Signal {key} should exist",
             )
 
-    def test_command_creates_derivation_entries(self):
+    def test_command_creates_derivations(self):
         """Test that derivation entries are created."""
         self.call_command()
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
 
-        derivations = ValidatorCatalogEntry.objects.filter(
+        derivations = Derivation.objects.filter(
             validator=validator,
-            entry_type=CatalogEntryType.DERIVATION,
         )
 
         self.assertTrue(derivations.exists(), "Should have derivation entries")
 
         # Check for specific derivation
-        total_unmet = ValidatorCatalogEntry.objects.filter(
+        total_unmet = Derivation.objects.filter(
             validator=validator,
-            slug="total_unmet_hours",
-            entry_type=CatalogEntryType.DERIVATION,
+            contract_key="total_unmet_hours",
         )
         self.assertTrue(
             total_unmet.exists(),
@@ -197,8 +193,8 @@ class SyncValidatorsCommandTests(TestCase):
         # Should report validators created
         self.assertIn("validators created", out.lower())
 
-        # Should report catalog entries created
-        self.assertIn("catalog entries created", out.lower())
+        # Should report signals synced
+        self.assertIn("signals synced", out.lower())
 
 
 class CreateDefaultValidatorsTests(TestCase):

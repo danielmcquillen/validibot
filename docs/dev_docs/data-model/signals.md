@@ -11,6 +11,9 @@ validator execution, and assertion evaluation. Without them, assertions would
 need to hard-code paths into raw payloads. With them, a workflow author writes
 `site_eui_kwh_m2 < 100` and the platform resolves the value automatically.
 
+For a concrete worked example of the new unified signal architecture, see
+[Signals Tutorial Example](signals-tutorial-example.md).
+
 ## Signals vs custom data paths
 
 Assertions in Validibot target data in one of two ways, and understanding this

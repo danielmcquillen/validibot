@@ -48,6 +48,8 @@ EnergyPlus Parameterized Templates ADR.
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 from django.core.exceptions import ValidationError
 
@@ -58,7 +60,30 @@ from validibot.validations.utils.idf_template import (
 from validibot.validations.utils.idf_template import scan_idf_template_variables
 from validibot.validations.utils.idf_template import substitute_template_parameters
 from validibot.validations.utils.idf_template import validate_idf_template
-from validibot.workflows.step_configs import TemplateVariable
+
+
+@dataclasses.dataclass
+class _TemplateVar:
+    """Lightweight test double satisfying the ``TemplateVariableLike`` protocol.
+
+    Replaces the former ``TemplateVariable`` Pydantic model (removed from
+    ``step_configs.py``) for test purposes.  Template variable metadata is
+    now stored relationally in ``SignalDefinition`` rows; this dataclass
+    provides the same shape for the merge/validate/substitute functions
+    that accept ``TemplateVariableLike``.
+    """
+
+    name: str = "U_FACTOR"
+    description: str = ""
+    default: str = ""
+    units: str = ""
+    variable_type: str = "number"
+    min_value: float | None = None
+    min_exclusive: bool = False
+    max_value: float | None = None
+    max_exclusive: bool = False
+    choices: list[str] = dataclasses.field(default_factory=list)
+
 
 # ---------------------------------------------------------------------------
 # Shared IDF text fixtures used across multiple test classes.
@@ -1113,7 +1138,7 @@ WindowMaterial:SimpleGlazingSystem,
 
 class TestValidateScanResultContent:
     """Verify that a successful validation produces correctly populated
-    scan results that can be used to build ``IDFTemplateVariable`` dicts.
+    scan results that can be used to build template variable dicts.
 
     These tests verify the end-to-end data flow from raw IDF bytes
     through validation and scanning to the structured metadata that
@@ -1310,13 +1335,14 @@ def _make_var(
     max_value: float | None = None,
     max_exclusive: bool = False,
     choices: list[str] | None = None,
-) -> TemplateVariable:
-    """Convenience factory for creating TemplateVariable instances in tests.
+) -> _TemplateVar:
+    """Convenience factory for creating template variable test doubles.
 
-    Returns a TemplateVariable with sensible defaults — callers override
-    only the fields relevant to the specific test scenario.
+    Returns a ``_TemplateVar`` dataclass satisfying the
+    ``TemplateVariableLike`` protocol with sensible defaults — callers
+    override only the fields relevant to the specific test scenario.
     """
-    return TemplateVariable(
+    return _TemplateVar(
         name=name,
         description=description,
         default=default,
@@ -1794,20 +1820,13 @@ class TestMergeWarningsAndEdgeCases:
         """An unknown variable_type is an author config error — it should
         produce a clear error listing the allowed types.
 
-        We use model_construct() to bypass Pydantic's Literal validation,
-        simulating a corrupted step config dict.
+        The ``_TemplateVar`` dataclass has no type validation, so a typo
+        in ``variable_type`` reaches the merge function directly — simulating
+        a corrupted step config dict.
         """
-        bad_var = TemplateVariable.model_construct(
+        bad_var = _TemplateVar(
             name="U_FACTOR",
-            description="",
-            default="",
-            units="",
-            variable_type="nubmer",  # typo, bypasses Literal check
-            min_value=None,
-            min_exclusive=False,
-            max_value=None,
-            max_exclusive=False,
-            choices=[],
+            variable_type="nubmer",  # typo — not a valid type
         )
         with pytest.raises(ValidationError) as exc_info:
             merge_and_validate_template_parameters(

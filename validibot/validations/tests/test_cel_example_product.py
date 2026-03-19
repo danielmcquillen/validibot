@@ -7,13 +7,11 @@ from django.test import TestCase
 
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
-from validibot.validations.constants import CatalogEntryType
-from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.basic import BasicValidator
 
@@ -28,24 +26,21 @@ class TestExampleProductWithCEL(TestCase):
             validation_type=ValidationType.BASIC,
             is_system=False,
         )
-        # Catalog entries needed for CEL context resolution.
-        cls.price_entry = ValidatorCatalogEntryFactory(
+        # Signal definitions needed for CEL context resolution.
+        cls.price_entry = SignalDefinitionFactory(
             validator=cls.validator,
-            slug="price",
-            run_stage=CatalogRunStage.INPUT,
-            entry_type=CatalogEntryType.SIGNAL,
+            contract_key="price",
+            direction="input",
         )
-        cls.rating_entry = ValidatorCatalogEntryFactory(
+        cls.rating_entry = SignalDefinitionFactory(
             validator=cls.validator,
-            slug="rating",
-            run_stage=CatalogRunStage.INPUT,
-            entry_type=CatalogEntryType.SIGNAL,
+            contract_key="rating",
+            direction="input",
         )
-        cls.tags_entry = ValidatorCatalogEntryFactory(
+        cls.tags_entry = SignalDefinitionFactory(
             validator=cls.validator,
-            slug="tags",
-            run_stage=CatalogRunStage.INPUT,
-            entry_type=CatalogEntryType.SIGNAL,
+            contract_key="tags",
+            direction="input",
         )
         cls.expression = 'price > 0 && rating >= 90 && "mini" in tags'
         cls.error_message = (
@@ -63,11 +58,12 @@ class TestExampleProductWithCEL(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            # Set target_catalog_entry to an input entry so the assertion
+            # Set target_signal_definition to an input signal so the assertion
             # runs in input stage (resolved_run_stage defaults to OUTPUT
-            # when target_catalog_entry is None).
-            target_catalog_entry=self.price_entry,
-            target_data_path="",  # Required: must be empty when catalog entry is set
+            # when target_signal_definition is None).
+            target_signal_definition=self.price_entry,
+            # Required: must be empty when signal definition is set
+            target_data_path="",
             rhs={"expr": self.expression},
             message_template=self.error_message,
         )
@@ -95,7 +91,7 @@ class TestExampleProductWithCEL(TestCase):
         self.assertEqual(len(issues), 1)
         self.assertIn(self.error_message, issues[0].message)
 
-    def test_missing_catalog_entry_reports_identifier(self):
+    def test_missing_signal_reports_identifier(self):
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,
             is_system=False,
@@ -113,7 +109,7 @@ class TestExampleProductWithCEL(TestCase):
             rhs={"expr": "price > 0"},
         )
         engine = BasicValidator()
-        # Assertions without target_catalog_entry default to OUTPUT stage
+        # Assertions without target_signal_definition default to OUTPUT stage
         result = engine.evaluate_assertions_for_stage(
             ruleset=ruleset,
             validator=validator,

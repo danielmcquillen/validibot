@@ -10,14 +10,13 @@ from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
-from validibot.validations.constants import CatalogEntryType
-from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
+from validibot.validations.tests.factories import DerivationFactory
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.basic import BasicValidator
 
@@ -32,42 +31,35 @@ class CelBasicValidatorTests(TestCase):
             is_system=False,
             org=cls.org,
         )
-        # Catalog entries spanning input/output/derived
-        cls.input_signal = ValidatorCatalogEntryFactory(
+        # Signal definitions spanning input/output/derived
+        cls.input_signal = SignalDefinitionFactory(
             validator=cls.validator,
-            slug="price",
-            run_stage=CatalogRunStage.INPUT,
-            entry_type=CatalogEntryType.SIGNAL,
+            contract_key="price",
+            direction="input",
         )
-        cls.output_signal = ValidatorCatalogEntryFactory(
+        cls.output_signal = SignalDefinitionFactory(
             validator=cls.validator,
-            slug="result.total",
-            run_stage=CatalogRunStage.OUTPUT,
-            entry_type=CatalogEntryType.SIGNAL,
+            contract_key="result.total",
+            direction="output",
         )
-        cls.output_status = ValidatorCatalogEntryFactory(
+        cls.output_status = SignalDefinitionFactory(
             validator=cls.validator,
-            slug="result.status",
-            run_stage=CatalogRunStage.OUTPUT,
-            entry_type=CatalogEntryType.SIGNAL,
+            contract_key="result.status",
+            direction="output",
         )
-        cls.derived_signal = ValidatorCatalogEntryFactory(
+        cls.derived_signal = DerivationFactory(
             validator=cls.validator,
-            slug="metrics.avg",
-            run_stage=CatalogRunStage.INPUT,
-            entry_type=CatalogEntryType.DERIVATION,
+            contract_key="metrics.avg",
         )
-        cls.required_entry = ValidatorCatalogEntryFactory(
+        cls.required_entry = SignalDefinitionFactory(
             validator=cls.validator,
-            slug="required_value",
-            is_required=True,
-            run_stage=CatalogRunStage.INPUT,
+            contract_key="required_value",
+            direction="input",
         )
-        cls.list_signal = ValidatorCatalogEntryFactory(
+        cls.list_signal = SignalDefinitionFactory(
             validator=cls.validator,
-            slug="items",
-            run_stage=CatalogRunStage.INPUT,
-            entry_type=CatalogEntryType.SIGNAL,
+            contract_key="items",
+            direction="input",
         )
         cls.ruleset = RulesetFactory(
             org=cls.org,
@@ -192,11 +184,10 @@ class CelBasicValidatorTests(TestCase):
 
     def test_matches_helper_on_input(self):
         slug = "serial"
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=self.validator,
-            slug=slug,
-            run_stage=CatalogRunStage.INPUT,
-            entry_type=CatalogEntryType.SIGNAL,
+            contract_key=slug,
+            direction="input",
         )
         RulesetAssertionFactory(
             ruleset=self.ruleset,
@@ -213,11 +204,12 @@ class CelBasicValidatorTests(TestCase):
         self.assertEqual(len(result.issues), 0)
 
     def test_output_stage_assertion(self):
+        output_sig = self.output_signal
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_catalog_entry=self.output_signal,
+            target_signal_definition=output_sig,
             target_data_path="",
             rhs={"expr": "result.total == 5"},
         )
@@ -233,11 +225,12 @@ class CelBasicValidatorTests(TestCase):
         self.assertEqual(len(result.issues), 0)
 
     def test_startswith_helper_on_output(self):
+        status_sig = self.output_status
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_catalog_entry=self.output_status,
+            target_signal_definition=status_sig,
             target_data_path="",
             rhs={"expr": 'result.status.startsWith("OK")'},
         )
@@ -251,11 +244,10 @@ class CelBasicValidatorTests(TestCase):
         self.assertEqual(len(result.issues), 0)
 
     def test_simple_string_prefix(self):
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=self.validator,
-            slug="serial",
-            run_stage=CatalogRunStage.INPUT,
-            entry_type=CatalogEntryType.SIGNAL,
+            contract_key="serial",
+            direction="input",
         )
         RulesetAssertionFactory(
             ruleset=self.ruleset,

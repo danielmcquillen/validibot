@@ -34,13 +34,11 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
-from validibot.validations.constants import CatalogEntryType
-from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.base.base import _collect_all_keys
 from validibot.validations.validators.base.base import _is_valid_cel_identifier
@@ -179,11 +177,10 @@ class BasicValidatorXmlAssertionTests(TestCase):
             is_system=False,
             allow_custom_assertion_targets=True,
         )
-        cls.price_entry = ValidatorCatalogEntryFactory(
+        cls.price_entry = SignalDefinitionFactory(
             validator=cls.validator,
-            slug="price",
-            run_stage=CatalogRunStage.INPUT,
-            entry_type=CatalogEntryType.SIGNAL,
+            contract_key="price",
+            direction="input",
         )
 
     def test_cel_assertion_against_xml(self):
@@ -194,11 +191,12 @@ class BasicValidatorXmlAssertionTests(TestCase):
             file_type=SubmissionFileType.XML,
         )
         ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+        price_sig = self.price_entry
         RulesetAssertionFactory(
             ruleset=ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_catalog_entry=self.price_entry,
+            target_signal_definition=price_sig,
             target_data_path="",
             rhs={"expr": "price > 0"},
         )
@@ -256,11 +254,10 @@ class BasicValidatorXmlAssertionTests(TestCase):
             is_system=False,
             allow_custom_assertion_targets=True,
         )
-        entry = ValidatorCatalogEntryFactory(
+        entry = SignalDefinitionFactory(
             validator=validator,
-            slug="building.thermostat.setpoint",
-            run_stage=CatalogRunStage.INPUT,
-            entry_type=CatalogEntryType.SIGNAL,
+            contract_key="building.thermostat.setpoint",
+            direction="input",
         )
 
         ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
@@ -268,7 +265,7 @@ class BasicValidatorXmlAssertionTests(TestCase):
             ruleset=ruleset,
             assertion_type=AssertionType.BASIC,
             operator=AssertionOperator.EQ,
-            target_catalog_entry=entry,
+            target_signal_definition=entry,
             target_data_path="",
             rhs={"value": "72"},
         )
@@ -530,10 +527,10 @@ class CelContextOutputNamespaceTests(TestCase):
         Every output signal should be accessible as ``output.<slug>``
         in CEL expressions.
         """
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=self.validator,
-            slug="temperature",
-            run_stage=CatalogRunStage.OUTPUT,
+            contract_key="temperature",
+            direction="output",
         )
         engine = BasicValidator()
         payload = {"temperature": 296.63}
@@ -553,15 +550,15 @@ class CelContextOutputNamespaceTests(TestCase):
         This matches the convention: bare ``price`` → input value,
         ``output.price`` → output value.
         """
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=self.validator,
-            slug="price",
-            run_stage=CatalogRunStage.INPUT,
+            contract_key="price",
+            direction="input",
         )
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=self.validator,
-            slug="price",
-            run_stage=CatalogRunStage.OUTPUT,
+            contract_key="price",
+            direction="output",
         )
         engine = BasicValidator()
         payload = {"price": 42.0}
@@ -579,10 +576,10 @@ class CelContextOutputNamespaceTests(TestCase):
         """When there are no output catalog entries, the ``output``
         namespace is not created (keeping the context clean).
         """
-        ValidatorCatalogEntryFactory(
+        SignalDefinitionFactory(
             validator=self.validator,
-            slug="weight",
-            run_stage=CatalogRunStage.INPUT,
+            contract_key="weight",
+            direction="input",
         )
         engine = BasicValidator()
         payload = {"weight": 10}
@@ -957,7 +954,7 @@ class ThermXmlCelIntegrationTests(TestCase):
             ruleset=ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_catalog_entry=None,
+            target_signal_definition=None,
             target_data_path="Materials",
             rhs={"expr": expr},
         )
@@ -1115,7 +1112,7 @@ class ThermXmlCelIntegrationTests(TestCase):
             ruleset=ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_catalog_entry=None,
+            target_signal_definition=None,
             target_data_path="Materials",
             rhs={"expr": _CONDUCTIVITY_CEL},
             message_template=failure_msg,

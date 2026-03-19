@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import contextlib
 import uuid
-from dataclasses import dataclass
-from functools import cached_property
 
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
@@ -26,7 +24,7 @@ from validibot.users.models import Organization
 from validibot.users.models import User
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
-from validibot.validations.constants import CatalogEntryType
+from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ComputeTier
@@ -36,6 +34,8 @@ from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
+from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import SignalOriginKind
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunSource
@@ -338,7 +338,7 @@ class RulesetAssertion(TimeStampedModel):
 
     Targeting:
 
-    Every assertion targets either a ``ValidatorCatalogEntry`` (a known,
+    Every assertion targets either a ``SignalDefinition`` (a known,
     typed signal published by the validator) *or* a free-form
     ``target_data_path`` - never both, enforced by the
     ``ck_ruleset_assertion_target_oneof`` check constraint.  The target
@@ -373,13 +373,13 @@ class RulesetAssertion(TimeStampedModel):
         help_text=_("Structured operator used for BASIC assertions."),
     )
 
-    target_catalog_entry = models.ForeignKey(
-        "validations.ValidatorCatalogEntry",
+    target_signal_definition = models.ForeignKey(
+        "validations.SignalDefinition",
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         related_name="ruleset_assertions",
-        help_text=_("Reference to a catalog entry when targeting a known signal."),
+        help_text=_("Reference to a signal definition when targeting a known signal."),
     )
 
     target_data_path = models.CharField(
@@ -447,8 +447,13 @@ class RulesetAssertion(TimeStampedModel):
             models.CheckConstraint(
                 name="ck_ruleset_assertion_target_oneof",
                 condition=(
-                    Q(target_catalog_entry__isnull=False, target_data_path="")
-                    | (Q(target_catalog_entry__isnull=True) & ~Q(target_data_path=""))
+                    Q(
+                        target_signal_definition__isnull=False,
+                        target_data_path="",
+                    )
+                    | Q(
+                        target_signal_definition__isnull=True,
+                    )
                 ),
             ),
         ]
@@ -458,38 +463,37 @@ class RulesetAssertion(TimeStampedModel):
         ]
 
     def __str__(self):
-        target = (
-            self.target_catalog_entry.slug
-            if self.target_catalog_entry_id
-            else self.target_data_path
-        )
+        if self.target_signal_definition_id and self.target_signal_definition:
+            target = self.target_signal_definition.contract_key
+        else:
+            target = self.target_data_path
         return f"{self.ruleset_id}:{self.operator}:{target or '?'}"
 
     @property
     def resolved_run_stage(self) -> CatalogRunStage:
-        if self.target_catalog_entry_id and self.target_catalog_entry:
-            return CatalogRunStage(self.target_catalog_entry.run_stage)
+        if self.target_signal_definition_id and self.target_signal_definition:
+            return CatalogRunStage(self.target_signal_definition.direction)
         return CatalogRunStage.OUTPUT
 
     def clean(self):
         super().clean()
-        catalog_set = bool(self.target_catalog_entry_id)
-        field = (self.target_data_path or "").strip()
-        if catalog_set == bool(field):
+        signal_set = bool(self.target_signal_definition_id)
+        path_set = bool((self.target_data_path or "").strip())
+        if signal_set and path_set:
             raise ValidationError(
                 {
                     "target_data_path": _(
-                        "Provide either a catalog target or a "
-                        "custom path (but not both).",
-                    ),
+                        "Provide either a signal target or a custom path"
+                        " (but not both)."
+                    )
                 },
             )
 
     @property
     def target_display(self) -> str:
-        if self.target_catalog_entry_id and self.target_catalog_entry:
-            label = self.target_catalog_entry.label or self.target_catalog_entry.slug
-            return f"{label} ({self.target_catalog_entry.slug})"
+        if self.target_signal_definition_id and self.target_signal_definition:
+            sig = self.target_signal_definition
+            return f"{sig.label or sig.contract_key} ({sig.contract_key})"
         return self.target_data_path
 
     @property
@@ -560,18 +564,6 @@ class RulesetAssertion(TimeStampedModel):
         if isinstance(value, bool):
             return _("true") if value else _("false")
         return str(value)
-
-
-@dataclass(frozen=True)
-class CatalogDisplay:
-    entries: list[ValidatorCatalogEntry]
-    inputs: list[ValidatorCatalogEntry]
-    outputs: list[ValidatorCatalogEntry]
-    input_derivations: list[ValidatorCatalogEntry]
-    output_derivations: list[ValidatorCatalogEntry]
-    input_total: int
-    output_total: int
-    uses_tabs: bool
 
 
 def _default_validator_file_types() -> list[str]:
@@ -659,8 +651,7 @@ class FMUVariable(TimeStampedModel):
     """
     Parsed variable metadata from modelDescription.xml attached to an FMUModel.
 
-    These rows mirror ScalarVariable definitions so catalog entries can point
-    at stable FMU variable names.
+    These rows mirror ScalarVariable definitions from modelDescription.xml.
     """
 
     fmu_model = models.ForeignKey(
@@ -674,13 +665,6 @@ class FMUVariable(TimeStampedModel):
     value_reference = models.BigIntegerField(default=0)
     value_type = models.CharField(max_length=64)
     unit = models.CharField(max_length=128, blank=True, default="")
-    catalog_entry = models.ForeignKey(
-        "validations.ValidatorCatalogEntry",
-        on_delete=models.SET_NULL,
-        related_name="fmu_variables",
-        null=True,
-        blank=True,
-    )
 
     class Meta:
         indexes = [
@@ -1140,36 +1124,6 @@ class Validator(TimeStampedModel):
     def is_custom(self) -> bool:
         return bool(self.org_id and not self.is_system)
 
-    def catalog_entries_by_type(self) -> dict[str, list[ValidatorCatalogEntry]]:
-        include_derivations = getattr(settings, "ENABLE_DERIVED_SIGNALS", False)
-        grouped: dict[str, list[ValidatorCatalogEntry]] = {
-            CatalogEntryType.SIGNAL: [],
-        }
-        if include_derivations:
-            grouped[CatalogEntryType.DERIVATION] = []
-        for entry in self.catalog_entries.all().order_by("order", "slug"):
-            if (
-                not include_derivations
-                and entry.entry_type == CatalogEntryType.DERIVATION
-            ):
-                continue
-            grouped.setdefault(entry.entry_type, []).append(entry)
-        return grouped
-
-    def catalog_entries_by_stage(self) -> dict[str, list[ValidatorCatalogEntry]]:
-        grouped: dict[str, list[ValidatorCatalogEntry]] = {
-            CatalogRunStage.INPUT: [],
-            CatalogRunStage.OUTPUT: [],
-        }
-        qs = self.catalog_entries.filter(entry_type=CatalogEntryType.SIGNAL).order_by(
-            "run_stage",
-            "order",
-            "slug",
-        )
-        for entry in qs:
-            grouped.setdefault(entry.run_stage, []).append(entry)
-        return grouped
-
     def supports_file_type(self, file_type: str) -> bool:
         normalized = (file_type or "").lower()
         allowed = {value.lower() for value in (self.supported_file_types or [])}
@@ -1203,228 +1157,540 @@ class Validator(TimeStampedModel):
                 labels.append(str(value))
         return labels
 
-    def has_signal_stage(self, stage: CatalogRunStage) -> bool:
-        return self.catalog_entries.filter(
-            entry_type=CatalogEntryType.SIGNAL,
-            run_stage=stage,
-        ).exists()
 
-    def has_signal_stages(self) -> bool:
-        return self.has_signal_stage(CatalogRunStage.INPUT) and self.has_signal_stage(
-            CatalogRunStage.OUTPUT,
-        )
-
-    @cached_property
-    def catalog_display(self) -> CatalogDisplay:
-        include_derivations = getattr(settings, "ENABLE_DERIVED_SIGNALS", False)
-        entries = list(
-            self.catalog_entries.all().order_by(
-                "entry_type",
-                "run_stage",
-                "order",
-                "slug",
-            ),
-        )
-        if not include_derivations:
-            entries = [
-                entry
-                for entry in entries
-                if entry.entry_type == CatalogEntryType.SIGNAL
-            ]
-        inputs = [
-            entry
-            for entry in entries
-            if entry.entry_type == CatalogEntryType.SIGNAL
-            and entry.run_stage == CatalogRunStage.INPUT
-        ]
-        outputs = [
-            entry
-            for entry in entries
-            if entry.entry_type == CatalogEntryType.SIGNAL
-            and entry.run_stage == CatalogRunStage.OUTPUT
-        ]
-        input_derivations: list[ValidatorCatalogEntry] = []
-        output_derivations: list[ValidatorCatalogEntry] = []
-        if include_derivations:
-            input_derivations = [
-                entry
-                for entry in entries
-                if entry.entry_type == CatalogEntryType.DERIVATION
-                and entry.run_stage == CatalogRunStage.INPUT
-            ]
-            output_derivations = [
-                entry
-                for entry in entries
-                if entry.entry_type == CatalogEntryType.DERIVATION
-                and entry.run_stage == CatalogRunStage.OUTPUT
-            ]
-        input_total = len(inputs) + len(input_derivations)
-        output_total = len(outputs) + len(output_derivations)
-        total_entries = len(entries)
-        uses_tabs = bool(inputs and outputs) or total_entries == 0
-        return CatalogDisplay(
-            entries=entries,
-            inputs=inputs,
-            outputs=outputs,
-            input_derivations=input_derivations,
-            output_derivations=output_derivations,
-            input_total=input_total,
-            output_total=output_total,
-            uses_tabs=uses_tabs,
-        )
-
-    def get_catalog_entries(
-        self,
-        *,
-        entry_type: CatalogEntryType | None = None,
-    ) -> models.QuerySet[ValidatorCatalogEntry]:
-        qs = self.catalog_entries.all()
-        if entry_type:
-            qs = qs.filter(entry_type=entry_type)
-        return qs
+# ── Unified Signal Model ────────────────────────────────────────────
+#
+# These four models implement the unified signal architecture described
+# in ADR-2026-03-18. They provide a single relational model for signal
+# metadata that supports contract definition, per-step binding, computed
+# derivations, and runtime audit tracing.
+# ─────────────────────────────────────────────────────────────────────
 
 
-class ValidatorCatalogEntry(TimeStampedModel):
-    """
-    Catalog metadata describing signals, derivations, and other reusable items
-    available to rulesets referencing a validator.
+class SignalDefinition(TimeStampedModel):
+    """The stable data contract for a named signal.
+
+    A SignalDefinition declares that a validator or workflow step expects
+    (input) or produces (output) a named data point with a specific type.
+    It is the "what" — the contract — not the "where" (that is the binding).
+
+    This model unifies signal metadata that was previously scattered across
+    three legacy storage formats (ValidatorCatalogEntry, FMU config
+    JSON, template config JSON) into a single relational table. Every
+    feature that touches
+    signals — the signals UI, CEL context building, FMU envelope assembly,
+    assertion evaluation — works against this one model.
+
+    Key concepts:
+
+    **contract_key vs native_name:** ``contract_key`` is the stable,
+    slug-safe identifier used in CEL expressions, the API, and data path
+    bindings (e.g., ``panel_area``). ``native_name`` preserves the
+    provider's original name verbatim (e.g., an FMU's modelDescription.xml
+    variable name ``Panel.Area_m2`` or an EnergyPlus template variable
+    ``#{heating_setpoint}``). The contract_key is what Validibot uses;
+    the native_name is what the provider uses. They may be identical for
+    simple cases.
+
+    **Ownership (XOR constraint):** Each signal is owned by exactly one of:
+    - A ``Validator`` — shared signal definitions that apply to every step
+      using that validator (library validators).
+    - A ``WorkflowStep`` — per-step signal definitions for step-level FMU
+      uploads, template scans, or author-customized signals.
+
+    **provider_binding:** A JSON column holding validator-type-specific
+    properties that the resolution layer needs but that are not part of the
+    generic signal contract. For FMU signals this includes ``causality``,
+    ``value_reference``, and ``variability``. For EnergyPlus template
+    signals this includes ``variable_type``, ``min``, ``max``, and
+    ``choices``. Typed access is provided by Pydantic accessor models.
+
+    See ADR-2026-03-18 for the full design rationale.
     """
 
-    validator = models.ForeignKey(
-        Validator,
-        on_delete=models.CASCADE,
-        related_name="catalog_entries",
-    )
-
-    entry_type = models.CharField(
-        max_length=32,
-        choices=CatalogEntryType.choices,
-    )
-
-    run_stage = models.CharField(
-        max_length=16,
-        choices=CatalogRunStage.choices,
-        default=CatalogRunStage.INPUT,
-        help_text=_(
-            "Phase of the validator run when this entry is available. "
-            "INPUT is before the validator's processor operates on the data. "
-            "OUTPUT is the data generated by the validator's processor."
-        ),
-    )
-
-    slug = models.SlugField(
+    contract_key = models.SlugField(
         max_length=255,
-        # Keep this as the stable identifier used in rules/CEL;
-        # exposed as "Signal name" in the UI
-        # to reduce confusion with the target path (which can
-        # include dots/brackets and may change).
-        help_text=_(
-            "Unique name for this catalog entry within the validator. "
-            "You use this name in assertions and CEL statements."
+        help_text=(
+            "Stable slug identifier used in CEL expressions, API responses, "
+            "and data path bindings. Must be unique per owner and direction."
         ),
     )
-
+    native_name = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=(
+            "The provider's original name for this signal, preserved "
+            "verbatim (e.g., an FMU variable name or template placeholder)."
+        ),
+    )
     label = models.CharField(
         max_length=255,
         blank=True,
         default="",
-        help_text=_("Human-friendly label shown in editors."),
+        help_text="Human-readable display label for the signal.",
     )
-
-    target_data_path = models.CharField(
-        max_length=255,
-        help_text=_(
-            "Path used to locate this signal in the input or processor output."
-        ),
-    )
-    data_type = models.CharField(
-        max_length=32,
-        choices=CatalogValueType.choices,
-        default=CatalogValueType.NUMBER,
-    )
-
     description = models.TextField(
         blank=True,
         default="",
-        help_text=_(
-            "A short description to help you remember what data this signal represents."
+        help_text="Detailed description of what this signal represents.",
+    )
+    direction = models.CharField(
+        max_length=10,
+        choices=SignalDirection.choices,
+        help_text="Whether this signal is consumed (input) or produced (output).",
+    )
+    data_type = models.CharField(
+        max_length=20,
+        choices=CatalogValueType.choices,
+        default=CatalogValueType.NUMBER,
+        help_text="The data type of the signal value.",
+    )
+    origin_kind = models.CharField(
+        max_length=20,
+        choices=SignalOriginKind.choices,
+        help_text=(
+            "How this signal definition was created: "
+            "from a validator config declaration, "
+            "an FMU probe, or a template scan."
         ),
     )
-
-    binding_config = models.JSONField(
+    validator = models.ForeignKey(
+        "Validator",
+        on_delete=models.CASCADE,
+        related_name="signal_definitions",
+        null=True,
+        blank=True,
+        help_text=(
+            "The validator that owns this signal (for library validators). "
+            "Mutually exclusive with workflow_step."
+        ),
+    )
+    workflow_step = models.ForeignKey(
+        "workflows.WorkflowStep",
+        on_delete=models.CASCADE,
+        related_name="signal_definitions",
+        null=True,
+        blank=True,
+        help_text=(
+            "The workflow step that owns this signal (for step-level FMUs, "
+            "templates, or author-customized signals). "
+            "Mutually exclusive with validator."
+        ),
+    )
+    order = models.PositiveIntegerField(
+        default=0,
+        help_text="Display ordering within the owner's signal list.",
+    )
+    is_hidden = models.BooleanField(
+        default=False,
+        help_text="If True, this signal is hidden from the default signals UI.",
+    )
+    unit = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text="Unit of measurement (e.g., 'kW', 'm2', 'degC').",
+    )
+    provider_binding = models.JSONField(
         default=dict,
         blank=True,
-        help_text=_("Provider-specific binding metadata."),
+        help_text=(
+            "Validator-type-specific properties needed by the resolution "
+            "layer (e.g., FMU causality/value_reference, EnergyPlus "
+            "variable_type/min/max). Typed access via Pydantic models."
+        ),
     )
-
     metadata = models.JSONField(
         default=dict,
         blank=True,
-        help_text=_("Additional UI metadata (example units, tags, etc.)."),
+        help_text="Arbitrary metadata for extensions and integrations.",
     )
 
-    is_required = models.BooleanField(
-        default=False,
-        help_text=_(
-            "Requires the signal to be present in the submission (inputs) "
-            "or processor output (outputs)."
+    class Meta:
+        constraints = [
+            # Exactly one of validator or workflow_step must be set.
+            models.CheckConstraint(
+                condition=(
+                    Q(validator__isnull=False, workflow_step__isnull=True)
+                    | Q(validator__isnull=True, workflow_step__isnull=False)
+                ),
+                name="ck_sigdef_one_owner",
+            ),
+            # Unique (validator, contract_key, direction) for validator-owned.
+            models.UniqueConstraint(
+                fields=["validator", "contract_key", "direction"],
+                condition=Q(validator__isnull=False),
+                name="uq_sigdef_validator_key_dir",
+            ),
+            # Unique (workflow_step, contract_key, direction) for step-owned.
+            models.UniqueConstraint(
+                fields=["workflow_step", "contract_key", "direction"],
+                condition=Q(workflow_step__isnull=False),
+                name="uq_sigdef_step_key_dir",
+            ),
+        ]
+        ordering = ["order", "pk"]
+
+    # ── Typed metadata accessors ─────────────────────────────
+
+    @property
+    def fmu_metadata(self):
+        """Typed access to FMU-specific UI/presentation metadata."""
+        from validibot.validations.signal_metadata.metadata import FMUSignalMetadata
+
+        return FMUSignalMetadata(**(self.metadata or {}))
+
+    @property
+    def fmu_binding(self):
+        """Typed access to FMU-specific provider binding."""
+        from validibot.validations.signal_metadata.metadata import FMUProviderBinding
+
+        return FMUProviderBinding(**(self.provider_binding or {}))
+
+    @property
+    def template_metadata(self):
+        """Typed access to template-specific UI/presentation metadata."""
+        from validibot.validations.signal_metadata.metadata import (
+            TemplateSignalMetadata,
+        )
+
+        return TemplateSignalMetadata(**(self.metadata or {}))
+
+    @property
+    def energyplus_binding(self):
+        """Typed access to EnergyPlus-specific provider binding."""
+        from validibot.validations.signal_metadata.metadata import (
+            EnergyPlusProviderBinding,
+        )
+
+        return EnergyPlusProviderBinding(**(self.provider_binding or {}))
+
+    def __str__(self):
+        owner = self.validator or self.workflow_step
+        return f"{owner}:{self.contract_key} ({self.direction})"
+
+
+class StepSignalBinding(TimeStampedModel):
+    """Per-step wiring that maps a signal definition to a data source.
+
+    While ``SignalDefinition`` declares *what* data a step expects,
+    ``StepSignalBinding`` declares *where* to find it. This is the
+    per-step mapping layer that connects each input signal to a concrete
+    location in the submission payload, submission metadata, an upstream
+    step's output, or a system-provided value.
+
+    This separation allows the same signal definition (e.g., ``panel_area``)
+    to be wired differently in different workflow steps — one step might
+    read it from ``building.envelope.panel_area`` in the submission JSON,
+    while another reads it from an upstream step's output.
+
+    Key fields:
+
+    - ``source_scope``: Where to look for the value (submission payload,
+      submission metadata, upstream step output, or system).
+    - ``source_data_path``: A dotted path expression (e.g.,
+      ``weather.stations[0].solar_irradiance``) into the source scope.
+    - ``default_value``: Fallback value when the source path resolves to
+      nothing and the signal is not required.
+    - ``is_required``: If True, a missing value with no default raises a
+      structured error before validator execution.
+
+    See ADR-2026-03-18 for the full binding and resolution design.
+    """
+
+    workflow_step = models.ForeignKey(
+        "workflows.WorkflowStep",
+        on_delete=models.CASCADE,
+        related_name="signal_bindings",
+        help_text="The workflow step this binding belongs to.",
+    )
+    signal_definition = models.ForeignKey(
+        SignalDefinition,
+        on_delete=models.CASCADE,
+        related_name="bindings",
+        help_text="The signal definition this binding wires up.",
+    )
+    source_scope = models.CharField(
+        max_length=30,
+        choices=BindingSourceScope.choices,
+        default=BindingSourceScope.SUBMISSION_PAYLOAD,
+        help_text=(
+            "The data scope to resolve the signal value from: submission "
+            "payload, submission metadata, upstream step output, or system."
         ),
     )
-
-    # Why have an is_hidden field?
-    # We hide some signals to keep the authoring UI clean and to avoid
-    # exposing internal or potentially confusing data, while still letting
-    # CEL use them when needed.
-    #
-    # Typical cases:
-    # - Provider/internal signals needed for evaluation (e.g., derived metrics,
-    #   instrumentation metadata) that
-    #   authors shouldn't edit/select.
-    # - Signals used to render messages or do bookkeeping (like run IDs, internal flags)
-    #   where showing them would clutter the picker or leak implementation details.
-    # - Back-compat: keep a signal available for rules that reference it without
-    #   encouraging new authors to depend on it.
-    is_hidden = models.BooleanField(
-        default=False,
-        help_text=_(
-            "Hidden signals remain available to bindings but are not shown "
-            "in authoring interfaces.",
+    source_data_path = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=(
+            "Dotted path expression into the source scope "
+            "(e.g., 'building.envelope.panel_area' or 'stations[0].temp')."
         ),
     )
-
     default_value = models.JSONField(
         null=True,
         blank=True,
         default=None,
-        help_text=_("Optional default applied when the signal is hidden."),
+        help_text=(
+            "Fallback value used when the source path resolves to nothing "
+            "and the signal is not marked as required."
+        ),
     )
-
-    order = models.PositiveIntegerField(default=0)
-
-    def delete(self, *args, **kwargs):
-        return super().delete(*args, **kwargs)
-
-    def clean(self):
-        super().clean()
-        if self.entry_type == CatalogEntryType.DERIVATION:
-            self.is_required = False
-        if not self.is_hidden:
-            self.default_value = None
+    is_required = models.BooleanField(
+        default=True,
+        help_text=(
+            "If True, a missing value with no default raises a structured "
+            "error before validator execution begins."
+        ),
+    )
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["validator", "entry_type", "run_stage", "slug"],
-                name="uq_validator_catalog_entry",
+                fields=["workflow_step", "signal_definition"],
+                name="uq_binding_step_signal",
             ),
-        ]
-        ordering = [
-            "order",
-            "slug",
         ]
 
     def __str__(self):
-        return f"{self.validator.slug}:{self.slug}"
+        return (
+            f"{self.workflow_step}:{self.signal_definition.contract_key} "
+            f"← {self.source_scope}:{self.source_data_path}"
+        )
+
+
+class Derivation(TimeStampedModel):
+    """A computed value defined by a CEL expression over signals.
+
+    Derivations are named, typed values that are computed from input
+    signals and other derivations using CEL (Common Expression Language)
+    expressions. They represent a distinct concept from signals: signals
+    are data points that flow in or out of a validator; derivations are
+    intermediate computed values used in assertions and reporting.
+
+    Like ``SignalDefinition``, each derivation is owned by exactly one of
+    a ``Validator`` (shared across all steps using that validator) or a
+    ``WorkflowStep`` (per-step customization). The same XOR ownership
+    constraint applies.
+
+    The ``expression`` field contains a CEL expression that can reference
+    signal contract_keys and other derivation contract_keys by name.
+    The ``data_type`` is limited to scalar types (number, string, boolean)
+    since derivations produce single computed values, not complex objects
+    or timeseries.
+
+    See ADR-2026-03-18 section on derivations for the full design.
+    """
+
+    contract_key = models.SlugField(
+        max_length=255,
+        help_text=(
+            "Stable slug identifier for this derivation, used in CEL "
+            "expressions and API responses."
+        ),
+    )
+    expression = models.TextField(
+        help_text=(
+            "CEL expression that computes this derivation's value. Can "
+            "reference signal contract_keys and other derivation keys."
+        ),
+    )
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text="Detailed description of what this derivation computes.",
+    )
+    label = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Human-readable display label for the derivation.",
+    )
+    data_type = models.CharField(
+        max_length=20,
+        choices=[
+            (CatalogValueType.NUMBER, CatalogValueType.NUMBER.label),
+            (CatalogValueType.STRING, CatalogValueType.STRING.label),
+            (CatalogValueType.BOOLEAN, CatalogValueType.BOOLEAN.label),
+        ],
+        default=CatalogValueType.NUMBER,
+        help_text=(
+            "The data type of the computed value. Limited to scalar types "
+            "(number, string, boolean)."
+        ),
+    )
+    validator = models.ForeignKey(
+        "Validator",
+        on_delete=models.CASCADE,
+        related_name="derivations",
+        null=True,
+        blank=True,
+        help_text=(
+            "The validator that owns this derivation (for library validators). "
+            "Mutually exclusive with workflow_step."
+        ),
+    )
+    workflow_step = models.ForeignKey(
+        "workflows.WorkflowStep",
+        on_delete=models.CASCADE,
+        related_name="derivations",
+        null=True,
+        blank=True,
+        help_text=(
+            "The workflow step that owns this derivation. "
+            "Mutually exclusive with validator."
+        ),
+    )
+    order = models.PositiveIntegerField(
+        default=0,
+        help_text="Display ordering within the owner's derivation list.",
+    )
+    is_hidden = models.BooleanField(
+        default=False,
+        help_text="If True, this derivation is hidden from the default UI.",
+    )
+    unit = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text="Unit of measurement for the computed value.",
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Arbitrary metadata for extensions and integrations.",
+    )
+
+    class Meta:
+        constraints = [
+            # Exactly one of validator or workflow_step must be set.
+            models.CheckConstraint(
+                condition=(
+                    Q(validator__isnull=False, workflow_step__isnull=True)
+                    | Q(validator__isnull=True, workflow_step__isnull=False)
+                ),
+                name="ck_derivation_one_owner",
+            ),
+            # Unique (validator, contract_key) for validator-owned.
+            models.UniqueConstraint(
+                fields=["validator", "contract_key"],
+                condition=Q(validator__isnull=False),
+                name="uq_derivation_validator_key",
+            ),
+            # Unique (workflow_step, contract_key) for step-owned.
+            models.UniqueConstraint(
+                fields=["workflow_step", "contract_key"],
+                condition=Q(workflow_step__isnull=False),
+                name="uq_derivation_step_key",
+            ),
+        ]
+        ordering = ["order", "pk"]
+
+    def __str__(self):
+        owner = self.validator or self.workflow_step
+        return f"{owner}:{self.contract_key}"
+
+
+class ResolvedInputTrace(TimeStampedModel):
+    """Runtime audit record of how an input signal was resolved.
+
+    Each time the resolution engine processes a step run's input signals,
+    it creates one ``ResolvedInputTrace`` per input signal. This provides
+    a complete audit trail of:
+
+    - Which signal was being resolved (``signal_definition`` FK and
+      denormalized ``signal_contract_key``).
+    - Which source scope and data path were used to find the value.
+    - Whether resolution succeeded (``resolved``), fell back to a default
+      (``used_default``), or failed (``error_message``).
+    - A snapshot of the resolved value for debugging and reproducibility.
+
+    The ``signal_contract_key`` is denormalized from the signal definition
+    so that traces remain meaningful even if the signal definition is later
+    deleted (the FK is SET_NULL). This supports long-term auditability
+    without preventing schema evolution.
+
+    The ``upstream_step_key`` is populated when ``source_scope_used`` is
+    ``upstream_step``, recording which step's output was consulted.
+
+    See ADR-2026-03-18 for the full resolution and audit design.
+    """
+
+    step_run = models.ForeignKey(
+        "ValidationStepRun",
+        on_delete=models.CASCADE,
+        related_name="input_traces",
+        help_text="The step run this trace belongs to.",
+    )
+    signal_definition = models.ForeignKey(
+        SignalDefinition,
+        on_delete=models.SET_NULL,
+        null=True,
+        help_text=(
+            "The signal definition that was being resolved. SET_NULL on "
+            "delete so traces survive schema evolution."
+        ),
+    )
+    signal_contract_key = models.CharField(
+        max_length=255,
+        help_text=(
+            "Denormalized contract_key from the signal definition, "
+            "preserved for auditability if the definition is deleted."
+        ),
+    )
+    source_scope_used = models.CharField(
+        max_length=30,
+        help_text=(
+            "The source scope that was actually used to resolve the value "
+            "(may differ from the binding's configured scope if fallback "
+            "logic was applied)."
+        ),
+    )
+    source_data_path_used = models.CharField(
+        max_length=500,
+        help_text=("The data path that was actually used to resolve the value."),
+    )
+    upstream_step_key = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text=(
+            "If source_scope_used is 'upstream_step', the key of the "
+            "upstream step whose output was consulted."
+        ),
+    )
+    resolved = models.BooleanField(
+        help_text="Whether the resolution engine found a value for this signal.",
+    )
+    used_default = models.BooleanField(
+        default=False,
+        help_text=(
+            "Whether the resolved value came from the binding's default_value "
+            "rather than the source data path."
+        ),
+    )
+    value_snapshot = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Snapshot of the resolved value at resolution time, for "
+            "debugging and reproducibility."
+        ),
+    )
+    error_message = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Error message if resolution failed (e.g., required signal "
+            "not found and no default configured)."
+        ),
+    )
+
+    def __str__(self):
+        status = "resolved" if self.resolved else "FAILED"
+        return f"{self.signal_contract_key} → {status}"
 
 
 class CustomValidator(TimeStampedModel):

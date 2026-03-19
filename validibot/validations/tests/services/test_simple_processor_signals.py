@@ -54,8 +54,10 @@ class SimpleProcessorSignalsTests(TestCase):
         run.refresh_from_db()
 
         self.assertEqual(step_run.output.get("signals"), signals)
-        step_key = str(step_run.id)
+        # Signals are namespaced under the stable step_key slug (not
+        # the ephemeral step_run UUID) so cross-step assertions can
+        # reference them by a stable, author-visible identifier.
         self.assertEqual(
-            run.summary.get("steps", {}).get(step_key, {}).get("signals"),
+            run.summary.get("steps", {}).get(step.step_key, {}).get("signals"),
             signals,
         )

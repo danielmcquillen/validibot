@@ -13,21 +13,26 @@ from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorRuleType
 from validibot.validations.models import RulesetAssertion
-from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.utils import create_custom_validator
 
 
 @pytest.mark.django_db
-def test_default_assertion_links_signals_and_prevents_signal_delete():
-    """Default assertions on default_ruleset protect referenced catalog entries."""
+def test_default_assertion_nulls_signal_on_delete():
+    """Deleting a SignalDefinition nulls the FK on referencing assertions (SET_NULL).
+
+    The target_signal_definition FK uses SET_NULL so that deleting a signal
+    does not cascade-delete or block deletion of assertions. After deletion
+    the assertion still exists but its target_signal_definition is None.
+    """
     validator = ValidatorFactory()
-    signal = ValidatorCatalogEntryFactory(validator=validator, slug="foo")
+    signal = SignalDefinitionFactory(validator=validator, contract_key="foo")
     default_ruleset = validator.ensure_default_ruleset()
     RulesetAssertion.objects.create(
         ruleset=default_ruleset,
         assertion_type=AssertionType.CEL_EXPRESSION,
-        target_catalog_entry=signal,
+        target_signal_definition=signal,
         rhs={"expr": "foo > 0"},
         severity=Severity.ERROR,
         order=0,
@@ -35,15 +40,12 @@ def test_default_assertion_links_signals_and_prevents_signal_delete():
         cel_cache="foo > 0",
     )
 
-    # Signal is protected by the assertion reference (PROTECT on FK)
-    from django.db.models import ProtectedError
-
-    with pytest.raises(ProtectedError):
-        signal.delete()
-
-    # After deleting all assertions, the signal can be removed.
-    default_ruleset.assertions.all().delete()
+    # Deleting the signal should succeed (SET_NULL, not PROTECT).
     signal.delete()
+
+    # The assertion still exists but the FK is now None.
+    assertion = default_ruleset.assertions.get(message_template="Sample")
+    assert assertion.target_signal_definition is None
 
 
 @pytest.mark.django_db
@@ -105,7 +107,7 @@ def test_default_assertion_allows_boolean_literal(client):
     session.save()
 
     validator = ValidatorFactory(org=org, is_system=False)
-    ValidatorCatalogEntryFactory(validator=validator, slug="bool_in")
+    SignalDefinitionFactory(validator=validator, contract_key="bool_in")
 
     response = client.post(
         reverse(
@@ -126,8 +128,8 @@ def test_default_assertion_allows_boolean_literal(client):
     default_ruleset = validator.default_ruleset
     assertion = default_ruleset.assertions.get(message_template="Bool check")
     assert assertion.rhs["expr"] == "bool_in == true"
-    assert assertion.target_catalog_entry is not None
-    assert assertion.target_catalog_entry.slug == "bool_in"
+    assert assertion.target_signal_definition is not None
+    assert assertion.target_signal_definition.contract_key == "bool_in"
 
 
 @pytest.mark.django_db

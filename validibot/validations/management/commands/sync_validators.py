@@ -1,5 +1,5 @@
 """
-Management command to sync system validators and their catalog entries.
+Management command to sync system validators and their signal definitions.
 
 Usage:
     python manage.py sync_validators
@@ -7,30 +7,34 @@ Usage:
 All system validators — both built-in single-file validators (Basic, JSON
 Schema, XML Schema, AI Assist) and package-based validators (EnergyPlus,
 FMU, THERM) — declare their metadata via ``ValidatorConfig``. This command
-discovers all configs and ensures the corresponding ``Validator`` and
-``ValidatorCatalogEntry`` rows exist in the database.
+discovers all configs and ensures the corresponding ``Validator``,
+``SignalDefinition``, and ``Derivation`` rows exist in the database.
 
-The catalog entries are required for the step editor UI to show separate
+The signal definitions are required for the step editor UI to show separate
 "Input Assertions" and "Output Assertions" sections.
 """
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from validibot.validations.constants import SignalOriginKind
+from validibot.validations.models import Derivation
+from validibot.validations.models import SignalDefinition
 from validibot.validations.models import Validator
-from validibot.validations.models import ValidatorCatalogEntry
 from validibot.validations.validators.base.config import get_all_configs
 
 
 class Command(BaseCommand):
-    help = "Sync system validators and their catalog entries from config declarations."
+    help = (
+        "Sync system validators and their signal definitions from config declarations."
+    )
 
     def handle(self, *args, **options):
         configs = get_all_configs()
         total_validators_created = 0
         total_validators_updated = 0
-        total_entries_created = 0
-        total_entries_existing = 0
+        total_signals_synced = 0
+        total_derivations_synced = 0
 
         for cfg in configs:
             self.stdout.write(f"Processing {cfg.slug}...")
@@ -38,15 +42,19 @@ class Command(BaseCommand):
             with transaction.atomic():
                 # Build validator field dict from the Pydantic model,
                 # excluding fields that aren't Validator model columns.
+                # This must cover ALL ValidatorConfig fields that don't
+                # map to a Validator DB column — if a new config field
+                # is added, add it here too.
                 validator_data = cfg.model_dump(
                     exclude={
-                        "catalog_entries",
                         "allowed_extensions",
-                        "resource_types",
-                        "icon",
                         "card_image",
-                        "validator_class",
+                        "catalog_entries",
+                        "icon",
+                        "output_envelope_class",
+                        "resource_types",
                         "step_editor_cards",
+                        "validator_class",
                     },
                 )
 
@@ -69,28 +77,48 @@ class Command(BaseCommand):
                     total_validators_updated += 1
                     self.stdout.write(f"  Updated validator: {validator}")
 
-                # Sync catalog entries
+                # Sync signal definitions and derivations from the
+                # validator config's catalog_entries
                 for entry in cfg.catalog_entries:
                     entry_data = entry.model_dump()
                     entry_slug = entry_data.pop("slug")
                     entry_type = entry_data.pop("entry_type")
 
-                    _, entry_created = ValidatorCatalogEntry.objects.get_or_create(
-                        validator=validator,
-                        slug=entry_slug,
-                        entry_type=entry_type,
-                        defaults=entry_data,
-                    )
-
-                    if entry_created:
-                        total_entries_created += 1
-                    else:
-                        total_entries_existing += 1
+                    if entry_type == "derivation":
+                        Derivation.objects.update_or_create(
+                            validator=validator,
+                            contract_key=entry_slug,
+                            defaults={
+                                "expression": entry.binding_config.get(
+                                    "expr",
+                                    "",
+                                ),
+                            },
+                        )
+                        total_derivations_synced += 1
+                    elif entry_type == "signal":
+                        SignalDefinition.objects.update_or_create(
+                            validator=validator,
+                            contract_key=entry_slug,
+                            direction=entry.run_stage,
+                            defaults={
+                                "native_name": entry_slug,
+                                "label": entry.label or "",
+                                "description": entry.description or "",
+                                "data_type": entry.data_type,
+                                "order": entry.order,
+                                "unit": (entry.metadata or {}).get("units", ""),
+                                "origin_kind": SignalOriginKind.CATALOG,
+                                "provider_binding": entry.binding_config,
+                                "metadata": entry.metadata,
+                            },
+                        )
+                        total_signals_synced += 1
 
                 if cfg.catalog_entries:
                     self.stdout.write(
-                        f"  Catalog entries: {total_entries_created} created, "
-                        f"{total_entries_existing} existing",
+                        f"  Signals: {total_signals_synced} synced, "
+                        f"derivations: {total_derivations_synced} synced",
                     )
 
         self.stdout.write("")
@@ -99,6 +127,7 @@ class Command(BaseCommand):
                 f"Sync complete: "
                 f"{total_validators_created} validators created, "
                 f"{total_validators_updated} updated. "
-                f"{total_entries_created} catalog entries created."
+                f"{total_signals_synced} signals synced, "
+                f"{total_derivations_synced} derivations synced."
             ),
         )

@@ -1,0 +1,67 @@
+{% load i18n crispy_forms_tags %}
+
+{% comment %}
+Signal Edit Modal Content
+
+HTMx-loaded content for the signal edit modal. Loaded via GET into
+#signal-edit-modal-content, submitted via POST back to the same URL.
+
+For library-owned signals, definition fields (label, description, unit)
+are rendered as disabled/read-only. Binding fields (source path, default,
+required) are always editable.
+
+Context:
+  form           - SignalBindingEditForm instance
+  signal         - the SignalDefinition
+  binding        - the StepSignalBinding
+  is_library_signal - boolean: True if signal is validator-owned
+  modal_title    - display title for the modal header
+  step           - the WorkflowStep
+  workflow       - the parent Workflow
+{% endcomment %}
+<form method="post"
+      hx-post="{{ request.path }}"
+      hx-target="#signal-edit-modal-content"
+      hx-swap="innerHTML">
+  {% csrf_token %}
+  {% if is_library_signal %}
+    <div class="alert alert-info small mb-3">
+      <i class="bi bi-info-circle"></i>
+      {% trans "This signal is defined by the validator library. Label, description, and unit are read-only." %}
+    </div>
+  {% endif %}
+  <fieldset>
+    <legend class="small text-muted mb-2">{% trans "Signal Definition" %}</legend>
+    <div class="mb-2">
+      <label class="form-label small">{% trans "Contract Key" %}</label>
+      <div>
+        <code class="small">{{ signal.contract_key }}</code>
+      </div>
+    </div>
+    {% if signal.native_name and signal.native_name != signal.contract_key %}
+      <div class="mb-2">
+        <label class="form-label small">{% trans "Native Name" %}</label>
+        <div>
+          <code class="small">{{ signal.native_name }}</code>
+        </div>
+      </div>
+    {% endif %}
+    <div class="row">
+      <div class="col-12 mb-2">{{ form.label|as_crispy_field }}</div>
+      <div class="col-12 mb-2">{{ form.description|as_crispy_field }}</div>
+      <div class="col-6 mb-2">{{ form.unit|as_crispy_field }}</div>
+    </div>
+  </fieldset>
+  <fieldset class="mt-3">
+    <legend class="small text-muted mb-2">{% trans "Data Binding" %}</legend>
+    <div class="row">
+      <div class="col-12 mb-2">{{ form.source_data_path|as_crispy_field }}</div>
+      <div class="col-6 mb-2">{{ form.default_value|as_crispy_field }}</div>
+      <div class="col-6 mb-2 d-flex align-items-end">{{ form.is_required|as_crispy_field }}</div>
+    </div>
+  </fieldset>
+  <div class="d-flex justify-content-end gap-2 mt-3">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+    <button type="submit" class="btn btn-primary">{% trans "Save" %}</button>
+  </div>
+</form>

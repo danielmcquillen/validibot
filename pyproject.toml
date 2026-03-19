@@ -47,13 +47,13 @@ dependencies = [
   "django-model-utils==5.0.0",
   "django-redis==6.0.0",
   "django-storages[google]==1.14.6",
-  "djangorestframework==3.16.1",
+  "djangorestframework==3.17.0",
   "drf-spectacular[sidecar]==0.29.0",
   "fmpy==0.3.28",
   "google-cloud-kms>=3.10.0",
   "google-cloud-tasks>=2.21.0",
   "gunicorn==25.1.0",
-  "hiredis==3.3.0",
+  "hiredis==3.3.1",
   "httpx>=0.28.1",
   "jsonschema==4.26.0",
   "lxml==6.0.2",
@@ -63,7 +63,7 @@ dependencies = [
   "psycopg[c]==3.3.3",
   "pydantic==2.12.5",
   "python-slugify==8.0.4",
-  "sentry-sdk==2.54.0",
+  "sentry-sdk==2.55.0",
   # Task queue: Celery with Redis broker and periodic scheduling.
   # celery[redis] pulls in kombu's redis extra, which caps the redis version.
   # As of kombu 5.6.2 the cap is redis<6.5; kombu main has bumped to <7.1
@@ -73,7 +73,7 @@ dependencies = [
   # See: https://github.com/celery/django-celery-beat/issues/977
   "django-celery-beat",
   "uvicorn-worker==0.4.0",
-  "uvicorn[standard]==0.41.0",
+  "uvicorn[standard]==0.42.0",
   "whitenoise==6.12.0",
   "google-cloud-run>=0.15.0",
   "python-json-logger>=4.0.0",
@@ -282,7 +282,7 @@ django-celery-beat = { git = "https://github.com/celery/django-celery-beat", rev
 [dependency-groups]
 dev = [
   # Testing
-  "coverage==7.13.4",
+  "coverage==7.13.5",
   "django-coverage-plugin==3.2.0",
   "factory-boy==3.3.3",
   "pytest==9.0.2",

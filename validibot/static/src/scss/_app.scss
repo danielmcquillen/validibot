@@ -107,6 +107,17 @@ h6 {
   font-weight: 600;
 }
 
+// Bootstrap 5 applies text-decoration: underline to .btn-link by default.
+// We prefer no underline at rest, underline on hover.
+.btn-link {
+  text-decoration: none;
+
+  &:hover,
+  &:focus {
+    text-decoration: underline;
+  }
+}
+
 .help-tooltip {
   display: inline-flex;
   align-items: center;

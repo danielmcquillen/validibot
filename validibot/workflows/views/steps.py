@@ -1143,12 +1143,14 @@ class WorkflowStepToggleDisplaySignalView(WorkflowObjectMixin, View):
         display_signals = list(config.get("display_signals", []))
 
         from validibot.validations.constants import SignalDirection
-        from validibot.validations.models import SignalDefinition
+
+        owner_filter = models.Q(workflow_step=self.step)
+        if self.step.validator_id:
+            owner_filter |= models.Q(validator=self.step.validator)
 
         all_slugs = list(
             SignalDefinition.objects.filter(
-                models.Q(workflow_step=self.step)
-                | models.Q(validator=self.step.validator),
+                owner_filter,
                 direction=SignalDirection.OUTPUT,
             ).values_list("contract_key", flat=True),
         )

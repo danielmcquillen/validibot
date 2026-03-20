@@ -29,6 +29,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import Validator
 from validibot.validations.tests.factories import CustomValidatorFactory
+from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.tests.factories import WorkflowFactory
@@ -216,6 +217,68 @@ def test_fmu_validator_enabled_for_json_workflow(client):
         rf'value="validator:{fmu_validator.pk}"\s+disabled',
         html,
     )
+
+
+def test_toggle_display_signal_view_round_trips_step_owned_outputs(client):
+    """The inline display-signal toggle should update only the current step.
+
+    Step-owned outputs have ``validator=None``, so the view must not
+    accidentally include output signals from other steps when it expands
+    the implicit "show all" state into an explicit ``display_signals``
+    list.
+    """
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    step = WorkflowStepFactory(
+        workflow=workflow,
+        config={},
+    )
+    SignalDefinitionFactory(
+        workflow_step=step,
+        validator=None,
+        contract_key="t_room",
+        native_name="T_room",
+        direction="output",
+        origin_kind="fmu",
+    )
+    SignalDefinitionFactory(
+        workflow_step=step,
+        validator=None,
+        contract_key="q_cool",
+        native_name="Q_cool",
+        direction="output",
+        origin_kind="fmu",
+    )
+    other_step = WorkflowStepFactory(
+        workflow=workflow,
+    )
+    SignalDefinitionFactory(
+        workflow_step=other_step,
+        validator=None,
+        contract_key="foreign_output",
+        native_name="ForeignOutput",
+        direction="output",
+        origin_kind="fmu",
+    )
+    url = reverse(
+        "workflows:workflow_step_toggle_display_signal",
+        args=[workflow.pk, step.pk, "t_room"],
+    )
+
+    hide_response = client.post(url, HTTP_HX_REQUEST="true")
+
+    assert hide_response.status_code == HTTPStatus.OK
+    step.refresh_from_db()
+    assert set(step.config["display_signals"]) == {"q_cool"}
+    assert "foreign_output" not in step.config["display_signals"]
+    assert "Hidden from results" in hide_response.content.decode()
+
+    show_response = client.post(url, HTTP_HX_REQUEST="true")
+
+    assert show_response.status_code == HTTPStatus.OK
+    step.refresh_from_db()
+    assert step.config["display_signals"] == []
+    assert "Shown in results" in show_response.content.decode()
 
 
 def test_create_view_creates_json_schema_step(client):

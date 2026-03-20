@@ -744,3 +744,295 @@ def test_public_info_view_returns_404_when_disabled(client):
     )
 
     assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+# ── Schema-driven launch integration tests ───────────────────────────
+#
+# These tests exercise the end-to-end view paths introduced by ADR
+# 2026-03-19: form-mode submissions, paste-mode schema enforcement,
+# upload-mode schema enforcement, and the preflight validation endpoint.
+
+
+SIMPLE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "count": {"type": "integer", "minimum": 1},
+    },
+    "required": ["name", "count"],
+}
+
+
+def _schema_workflow_with_step(client, *, schema=None):
+    """Create a JSON-only workflow with an input_schema, a step, and an
+    authenticated executor.  Returns (workflow, user).
+    """
+    wf = WorkflowFactory(
+        allowed_file_types=[SubmissionFileType.JSON],
+        input_schema=schema or SIMPLE_SCHEMA,
+    )
+    WorkflowStepFactory(workflow=wf)
+    user = _force_login_for_workflow(client, wf)
+    grant_role(user, wf.org, RoleCode.EXECUTOR)
+    return wf, user
+
+
+def test_launch_page_renders_form_mode_for_schema_workflow(client):
+    """When a workflow has an input_schema, the launch page should render
+    the structured form mode with a 'Fill form' button and the dynamic
+    input form fields.
+    """
+    wf, _user = _schema_workflow_with_step(client)
+
+    response = client.get(
+        reverse("workflows:workflow_launch", kwargs={"pk": wf.pk}),
+    )
+
+    body = response.content.decode()
+    assert response.status_code == HTTPStatus.OK
+    assert 'data-content-mode="form"' in body
+    assert 'data-default-mode="form"' in body
+    assert 'name="name"' in body  # dynamic form field
+    assert 'name="count"' in body  # dynamic form field
+
+
+def test_launch_form_mode_creates_run(client, monkeypatch):
+    """Submitting via input_mode=form should serialize the form data to
+    JSON, validate it against the schema, and create a submission + run.
+    """
+    wf, _user = _schema_workflow_with_step(client)
+
+    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):
+        run = ValidationRun.objects.create(
+            org=org,
+            workflow=workflow,
+            submission=submission,
+            project=workflow.project,
+            user=request.user,
+            status=ValidationRunStatus.PENDING,
+        )
+        return ValidationRunLaunchResults(
+            validation_run=run,
+            data={"id": str(run.pk), "status": ValidationRunStatus.PENDING},
+            status=HTTPStatus.ACCEPTED,
+        )
+
+    monkeypatch.setattr(
+        "validibot.workflows.views.launch.ValidationRunService.launch",
+        fake_launch,
+    )
+
+    response = client.post(
+        reverse("workflows:workflow_launch", kwargs={"pk": wf.pk}),
+        data={
+            "input_mode": "form",
+            "name": "Alice",
+            "count": "5",
+            "file_type": SubmissionFileType.JSON,
+        },
+    )
+
+    assert response.status_code == HTTPStatus.ACCEPTED
+    assert ValidationRun.objects.filter(workflow=wf).count() == 1
+    submission: Submission = ValidationRun.objects.get(workflow=wf).submission
+    content = json.loads(submission.get_content())
+    assert content["name"] == "Alice"
+    expected_count = 5
+    assert content["count"] == expected_count
+
+
+def test_launch_form_mode_invalid_input_rerenders(client):
+    """Submitting form mode with missing required fields should re-render
+    the launch page with validation errors — not 500 or redirect.
+    """
+    wf, _user = _schema_workflow_with_step(client)
+
+    response = client.post(
+        reverse("workflows:workflow_launch", kwargs={"pk": wf.pk}),
+        data={
+            "input_mode": "form",
+            "file_type": SubmissionFileType.JSON,
+            # name and count are missing
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "This field is required" in body
+
+
+def test_launch_paste_mode_rejects_invalid_json_against_schema(client):
+    """Pasting JSON that doesn't match the workflow's input_schema should
+    show validation errors on the launch page — the schema contract must
+    be enforced for paste mode, not just form mode.
+    """
+    wf, _user = _schema_workflow_with_step(client)
+
+    response = client.post(
+        reverse("workflows:workflow_launch", kwargs={"pk": wf.pk}),
+        data={
+            "input_mode": "paste",
+            "file_type": SubmissionFileType.JSON,
+            "payload": '{"name": "Alice"}',  # missing required 'count'
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "count" in body.lower()
+
+
+def test_launch_paste_mode_rejects_malformed_json(client):
+    """Pasting text that is not valid JSON should produce a clear
+    validation error — not silently pass through to the launch pipeline.
+    """
+    wf, _user = _schema_workflow_with_step(client)
+
+    response = client.post(
+        reverse("workflows:workflow_launch", kwargs={"pk": wf.pk}),
+        data={
+            "input_mode": "paste",
+            "file_type": SubmissionFileType.JSON,
+            "payload": "not-json-at-all",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Invalid JSON" in body
+
+
+def test_launch_upload_mode_rejects_invalid_json_against_schema(client):
+    """Uploading a JSON file that doesn't match the input_schema should
+    be rejected — the schema contract must be enforced for uploads too.
+    """
+    wf, _user = _schema_workflow_with_step(client)
+    upload = SimpleUploadedFile(
+        "bad.json",
+        b'{"wrong_field": 123}',
+        content_type="application/json",
+    )
+
+    response = client.post(
+        reverse("workflows:workflow_launch", kwargs={"pk": wf.pk}),
+        data={
+            "input_mode": "upload",
+            "file_type": SubmissionFileType.JSON,
+            "attachment": upload,
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    # Should mention the missing required fields
+    assert "name" in body.lower()
+    assert "count" in body.lower()
+
+
+def test_validate_input_endpoint_returns_success(client):
+    """The preflight validation endpoint should return a success status
+    when the input conforms to the schema.
+    """
+    wf, _user = _schema_workflow_with_step(client)
+
+    response = client.post(
+        reverse(
+            "workflows:workflow_launch_validate_input",
+            kwargs={"pk": wf.pk},
+        ),
+        data={
+            "input_mode": "form",
+            "name": "Alice",
+            "count": "5",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "validation_success" not in body or "alert-danger" not in body
+
+
+def test_validate_input_endpoint_returns_errors(client):
+    """The preflight validation endpoint should return validation errors
+    when required fields are missing.
+    """
+    wf, _user = _schema_workflow_with_step(client)
+
+    response = client.post(
+        reverse(
+            "workflows:workflow_launch_validate_input",
+            kwargs={"pk": wf.pk},
+        ),
+        data={
+            "input_mode": "form",
+            # name and count missing
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "required" in body.lower() or "This field is required" in body
+
+
+def test_validate_input_endpoint_paste_mode_malformed_json(client):
+    """The preflight endpoint should return a clear error when paste-mode
+    input is not valid JSON.
+    """
+    wf, _user = _schema_workflow_with_step(client)
+
+    response = client.post(
+        reverse(
+            "workflows:workflow_launch_validate_input",
+            kwargs={"pk": wf.pk},
+        ),
+        data={
+            "input_mode": "paste",
+            "payload": "not json",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Invalid JSON" in body
+
+
+def test_validate_input_endpoint_paste_mode_non_object_json(client):
+    """The preflight endpoint should reject JSON that is valid but not
+    an object (e.g. an array or primitive).
+    """
+    wf, _user = _schema_workflow_with_step(client)
+
+    response = client.post(
+        reverse(
+            "workflows:workflow_launch_validate_input",
+            kwargs={"pk": wf.pk},
+        ),
+        data={
+            "input_mode": "paste",
+            "payload": "[1, 2, 3]",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "object" in body.lower()
+
+
+def test_validate_input_endpoint_404_without_schema(client):
+    """The preflight endpoint should return 404 for workflows that do
+    not have an input_schema — there is nothing to validate against.
+    """
+    wf = WorkflowFactory()
+    WorkflowStepFactory(workflow=wf)
+    user = _force_login_for_workflow(client, wf)
+    grant_role(user, wf.org, RoleCode.EXECUTOR)
+
+    response = client.post(
+        reverse(
+            "workflows:workflow_launch_validate_input",
+            kwargs={"pk": wf.pk},
+        ),
+        data={"input_mode": "form"},
+    )
+
+    assert response.status_code == HTTPStatus.NOT_FOUND

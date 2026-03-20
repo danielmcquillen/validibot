@@ -14,6 +14,11 @@ urlpatterns = [
         name="workflow_launch",
     ),
     path(
+        "<int:pk>/launch/validate-input/",
+        views.WorkflowLaunchValidateInputView.as_view(),
+        name="workflow_launch_validate_input",
+    ),
+    path(
         "<int:pk>/launch/run/<uuid:run_id>/",
         views.WorkflowRunDetailView.as_view(),
         name="workflow_run_detail",

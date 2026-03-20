@@ -124,6 +124,77 @@ to launch the workflow.
             </div>
           </div>
         </div>
+        {# ── Input requirements section ──────────────────────────── #}
+        {% if schema_requirement_rows %}
+          <div class="row mt-4">
+            <div class="col-12">
+              <div class="card app-card">
+                <div class="card-header">{% trans "Input requirements" %}</div>
+                <div class="card-body">
+                  <p class="text-muted small mb-3">
+                    {% trans "This workflow accepts structured JSON input with the following fields." %}
+                  </p>
+                  <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                      <thead>
+                        <tr>
+                          <th>{% trans "Field" %}</th>
+                          <th>{% trans "Type" %}</th>
+                          <th>{% trans "Status" %}</th>
+                          <th>{% trans "Constraints" %}</th>
+                          <th>{% trans "Default" %}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for row in schema_requirement_rows %}
+                          <tr>
+                            <td>
+                              <strong>{{ row.name }}</strong>
+                              {% if row.label and row.label != row.name %}
+                                <br />
+                                <small class="text-muted">{{ row.label }}</small>
+                              {% endif %}
+                              {% if row.units %}
+                                <br />
+                                <small class="text-muted">({{ row.units }})</small>
+                              {% endif %}
+                            </td>
+                            <td>
+                              <span class="badge bg-secondary">{{ row.type_label }}</span>
+                            </td>
+                            <td>
+                              {% if row.required %}
+                                <span class="badge bg-danger-subtle text-danger">{% trans "Required" %}</span>
+                              {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary">{% trans "Optional" %}</span>
+                              {% endif %}
+                            </td>
+                            <td>
+                              {% if row.enum_values %}
+                                {% trans "Allowed:" %} {{ row.enum_values|join:", " }}
+                              {% elif row.constraints %}
+                                {{ row.constraints }}
+                              {% else %}
+                                <span class="text-muted">—</span>
+                              {% endif %}
+                            </td>
+                            <td>
+                              {% if row.default is not None %}
+                                <code>{{ row.default }}</code>
+                              {% else %}
+                                <span class="text-muted">—</span>
+                              {% endif %}
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        {% endif %}
       {% endwith %}
     </div>
   </section>

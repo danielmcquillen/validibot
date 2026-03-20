@@ -27,6 +27,7 @@ from validibot.workflows.views.launch import WorkflowLastRunStatusView
 from validibot.workflows.views.launch import WorkflowLaunchCancelView
 from validibot.workflows.views.launch import WorkflowLaunchDetailView
 from validibot.workflows.views.launch import WorkflowLaunchStatusView
+from validibot.workflows.views.launch import WorkflowLaunchValidateInputView
 from validibot.workflows.views.launch import WorkflowRunDetailView
 from validibot.workflows.views.management import MAX_STEP_COUNT
 from validibot.workflows.views.management import WorkflowActivationUpdateView
@@ -85,6 +86,7 @@ __all__ = [
     "WorkflowLaunchCancelView",
     "WorkflowLaunchDetailView",
     "WorkflowLaunchStatusView",
+    "WorkflowLaunchValidateInputView",
     "WorkflowListView",
     "WorkflowPublicInfoUpdateView",
     "WorkflowPublicVisibilityUpdateView",

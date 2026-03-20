@@ -1,0 +1,17 @@
+{% load i18n %}
+
+{# Re-renderable validation status panel for launch-page preflight checks. #}
+{# Returned by the validate-input endpoint as a partial HTML response. #}
+{% if validation_success %}
+  <div class="alert alert-success py-2 mb-3" role="alert">
+    <i class="bi-check-circle me-1"></i>
+    {% trans "Input looks valid." %}
+  </div>
+{% elif validation_errors %}
+  <div class="alert alert-danger py-2 mb-3" role="alert">
+    <strong>{% trans "Input validation errors:" %}</strong>
+    <ul class="mb-0 mt-1">
+      {% for error in validation_errors %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}

@@ -182,11 +182,20 @@ class PublicWorkflowInfoView(DetailView):
                     "-created",
                 )[:5],
             )
+        # Input requirements rows for the public info page
+        schema_requirement_rows = None
+        from validibot.workflows.form_builder import schema_to_requirement_rows
+        from validibot.workflows.schema_builder import workflow_has_input_form
+
+        if workflow_has_input_form(workflow):
+            schema_requirement_rows = schema_to_requirement_rows(workflow.input_schema)
+
         context.update(
             {
                 "steps": steps,
                 "recent_runs": recent_runs,
                 "user_has_access": user_has_access,
+                "schema_requirement_rows": schema_requirement_rows,
                 "breadcrumbs": [
                     {
                         "name": _("All Workflows"),

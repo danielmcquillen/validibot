@@ -31,10 +31,12 @@ from validibot.users.permissions import PermissionCode
 from validibot.workflows.constants import WORKFLOW_LIST_LAYOUT_SESSION_KEY
 from validibot.workflows.constants import WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY
 from validibot.workflows.constants import WorkflowListLayout
+from validibot.workflows.form_builder import schema_to_requirement_rows
 from validibot.workflows.mixins import WorkflowAccessMixin
 from validibot.workflows.mixins import WorkflowFormViewMixin
 from validibot.workflows.mixins import WorkflowObjectMixin
 from validibot.workflows.models import Workflow
+from validibot.workflows.schema_builder import workflow_has_input_form
 from validibot.workflows.serializers import WorkflowFullSerializer
 from validibot.workflows.views_helpers import public_info_card_context
 
@@ -419,6 +421,15 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
         if not self.user_can_manage_workflow():
             raise PermissionDenied
         return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.object
+        if workflow_has_input_form(workflow):
+            context["schema_requirement_rows"] = schema_to_requirement_rows(
+                workflow.input_schema,
+            )
+        return context
 
     def get_breadcrumbs(self):
         workflow = getattr(self, "object", None) or self.get_object()

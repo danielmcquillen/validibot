@@ -235,6 +235,82 @@ class WorkflowForm(forms.ModelForm):
         required=True,
     )
 
+    # ── Input contract authoring fields ──────────────────────────────────
+    # These are non-model fields that drive the authoring UI.  The clean()
+    # method converts the author's input into the canonical JSON Schema
+    # stored on Workflow.input_schema.
+
+    input_schema_mode = forms.ChoiceField(
+        label=_("Input contract mode"),
+        choices=[
+            ("", _("None")),
+            ("json_schema", _("JSON Schema")),
+            ("pydantic", _("Pydantic")),
+        ],
+        required=False,
+        help_text=_(
+            "Choose how to define the input contract.  Both modes produce the "
+            "same canonical JSON Schema stored on the workflow.  "
+            "Select 'None' to remove the input contract."
+        ),
+    )
+
+    input_schema_json = forms.CharField(
+        label=_("JSON Schema"),
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 12,
+                "class": "form-control font-monospace",
+                "placeholder": _(
+                    "{\n"
+                    '  "type": "object",\n'
+                    '  "properties": {\n'
+                    '    "wall_r_value": {\n'
+                    '      "type": "number",\n'
+                    '      "description": "Total wall R-value",\n'
+                    '      "minimum": 0\n'
+                    "    }\n"
+                    "  },\n"
+                    '  "required": ["wall_r_value"]\n'
+                    "}"
+                ),
+            },
+        ),
+        help_text=_(
+            "Paste a JSON Schema document with a flat 'properties' object.  "
+            "Supported types: string, integer, number, boolean.  "
+            "The stored contract is always canonical JSON Schema."
+        ),
+    )
+
+    input_schema_pydantic = forms.CharField(
+        label=_("Pydantic model"),
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 12,
+                "class": "form-control font-monospace",
+                "placeholder": _(
+                    "class SectionJInput(BaseModel):\n"
+                    "    climate_zone: int = Field("
+                    'description="NCC Climate Zone", ge=1, le=8)\n'
+                    "    wall_r_value: float = Field(\n"
+                    '        description="Total wall R-value",\n'
+                    "        gt=0,\n"
+                    '        json_schema_extra={"units": "m²K/W"},\n'
+                    "    )"
+                ),
+            },
+        ),
+        help_text=_(
+            "Paste a single BaseModel class using a restricted Pydantic 2 subset.  "
+            "Supported types: str, int, float, bool, Optional[...], Literal[...].  "
+            "Supported Field() kwargs: description, default, ge, gt, le, lt, "
+            "json_schema_extra.  Methods, validators, and nested models are rejected."
+        ),
+    )
+
     class Meta:
         model = Workflow
         fields = [
@@ -243,6 +319,9 @@ class WorkflowForm(forms.ModelForm):
             "slug",
             "project",
             "allowed_file_types",
+            "input_schema",
+            "input_schema_source_mode",
+            "input_schema_source_text",
             "data_retention",
             "success_message",
             "allow_submission_name",
@@ -284,6 +363,33 @@ class WorkflowForm(forms.ModelForm):
             Field("slug", placeholder=""),
             Field("project"),
             Field("allowed_file_types"),
+            # Input contract authoring section
+            HTML(
+                '<hr class="my-4">'
+                '<h6 class="mb-3">{}</h6>'
+                '<p class="text-muted small mb-3">{}</p>'.format(
+                    _("Input contract"),
+                    _(
+                        "Define a structured input schema for JSON-only workflows.  "
+                        "When set, submitters see a form with labeled fields instead "
+                        "of pasting raw JSON.  Only available when the sole allowed "
+                        "file type is JSON."
+                    ),
+                )
+            ),
+            Field("input_schema_mode"),
+            Div(
+                Field("input_schema_json"),
+                css_id="input-schema-json-wrapper",
+            ),
+            Div(
+                Field("input_schema_pydantic"),
+                css_id="input-schema-pydantic-wrapper",
+            ),
+            # Hidden model fields — populated by clean()
+            Field("input_schema", type="hidden"),
+            Field("input_schema_source_mode", type="hidden"),
+            Field("input_schema_source_text", type="hidden"),
             Field("data_retention"),
             Field("success_message"),
             Field("allow_submission_name"),
@@ -332,6 +438,32 @@ class WorkflowForm(forms.ModelForm):
                 self.instance.get_public_info.content_md or ""
             )
 
+        # ── Input contract: populate authoring fields from stored data ───
+        # The model fields (input_schema, input_schema_source_mode,
+        # input_schema_source_text) are hidden; the non-model authoring
+        # fields drive the UI.
+        self.fields["input_schema"].widget = forms.HiddenInput()
+        self.fields["input_schema_source_mode"].widget = forms.HiddenInput()
+        self.fields["input_schema_source_text"].widget = forms.HiddenInput()
+        self.fields["input_schema"].required = False
+        self.fields["input_schema_source_mode"].required = False
+        self.fields["input_schema_source_text"].required = False
+
+        if self.instance and self.instance.pk and self.instance.input_schema:
+            mode = self.instance.input_schema_source_mode or "json_schema"
+            source_text = self.instance.input_schema_source_text
+            self.fields["input_schema_mode"].initial = mode
+            if mode == "pydantic" and source_text:
+                self.fields["input_schema_pydantic"].initial = source_text
+            else:
+                # Default to showing the canonical JSON Schema
+                import json as _json
+
+                self.fields["input_schema_json"].initial = _json.dumps(
+                    self.instance.input_schema,
+                    indent=2,
+                )
+
     def clean_name(self):
         name = (self.cleaned_data.get("name") or "").strip()
         if not name:
@@ -369,6 +501,91 @@ class WorkflowForm(forms.ModelForm):
         if not deduped:
             raise ValidationError(_("Select at least one file type."))
         return deduped
+
+    def clean(self):
+        """Run the input-contract authoring pipeline.
+
+        If the author provided input contract text in either mode, this
+        method converts it to canonical JSON Schema, validates the supported
+        v1 subset, and writes the result into the hidden model fields.
+        """
+        cleaned = super().clean()
+        mode = cleaned.get("input_schema_mode", "")
+        json_text = (cleaned.get("input_schema_json") or "").strip()
+        pydantic_text = (cleaned.get("input_schema_pydantic") or "").strip()
+        allowed = cleaned.get("allowed_file_types") or []
+
+        # No input contract requested — clear the model fields
+        if not mode:
+            cleaned["input_schema"] = None
+            cleaned["input_schema_source_mode"] = ""
+            cleaned["input_schema_source_text"] = ""
+            return cleaned
+
+        # Input contract only valid for JSON-only workflows
+        if set(allowed) != {SubmissionFileType.JSON}:
+            self.add_error(
+                "input_schema_mode",
+                ValidationError(
+                    _(
+                        "Input contracts are only supported when the sole "
+                        "allowed file type is JSON."
+                    ),
+                    code="not_json_only",
+                ),
+            )
+            return cleaned
+
+        from validibot.workflows.schema_authoring import parse_json_schema_input
+        from validibot.workflows.schema_authoring import parse_pydantic_input
+
+        schema = None
+        source_text = ""
+
+        if mode == "json_schema":
+            if not json_text:
+                self.add_error(
+                    "input_schema_json",
+                    ValidationError(
+                        _(
+                            "Paste a JSON Schema document or select 'None' "
+                            "to remove the input contract."
+                        ),
+                        code="empty_json_schema",
+                    ),
+                )
+                return cleaned
+            try:
+                schema = parse_json_schema_input(json_text)
+            except ValidationError as exc:
+                self.add_error("input_schema_json", exc)
+                return cleaned
+            source_text = json_text
+
+        elif mode == "pydantic":
+            if not pydantic_text:
+                self.add_error(
+                    "input_schema_pydantic",
+                    ValidationError(
+                        _(
+                            "Paste a Pydantic BaseModel class or select 'None' "
+                            "to remove the input contract."
+                        ),
+                        code="empty_pydantic",
+                    ),
+                )
+                return cleaned
+            try:
+                schema = parse_pydantic_input(pydantic_text)
+            except ValidationError as exc:
+                self.add_error("input_schema_pydantic", exc)
+                return cleaned
+            source_text = pydantic_text
+
+        cleaned["input_schema"] = schema
+        cleaned["input_schema_source_mode"] = mode
+        cleaned["input_schema_source_text"] = source_text
+        return cleaned
 
     def _configure_project_field(self):
         project_field = self.fields.get("project")

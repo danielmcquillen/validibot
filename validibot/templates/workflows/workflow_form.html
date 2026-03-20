@@ -50,6 +50,14 @@
             </form>
           </div>
         </div>
+        {% if schema_requirement_rows %}
+          <div class="card shadow-sm app-form-card mt-3">
+            <div class="card-header">
+              <h6 class="mb-0">{% trans "Input requirements preview" %}</h6>
+            </div>
+            <div class="card-body">{% include "workflows/partials/schema_requirements_table.html" %}</div>
+          </div>
+        {% endif %}
       </div>
     </div>
   </div>

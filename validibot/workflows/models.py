@@ -395,6 +395,45 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         ),
     )
 
+    # ── Input contract ───────────────────────────────────────────────────
+    # Author-declared JSON Schema defining the expected submission shape.
+    # When set on a JSON-only workflow, the launch form shows a structured
+    # form as an additional input mode.
+
+    input_schema = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text=_(
+            "JSON Schema defining the expected submission shape. "
+            "When set on a JSON-only workflow, the launch form shows "
+            "a structured form as an additional input mode."
+        ),
+    )
+
+    input_schema_source_mode = models.CharField(
+        max_length=32,
+        choices=[
+            ("json_schema", "JSON Schema"),
+            ("pydantic", "Pydantic"),
+        ],
+        blank=True,
+        default="",
+        help_text=_(
+            "How the workflow author last edited the input contract. "
+            "Authoring metadata only; not part of the runtime contract."
+        ),
+    )
+
+    input_schema_source_text = models.TextField(
+        blank=True,
+        default="",
+        help_text=_(
+            "Original authoring text for the input contract. "
+            "Used to repopulate the workflow settings form."
+        ),
+    )
+
     # Methods
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -428,6 +467,31 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
             if value not in normalized:
                 normalized.append(value)
         self.allowed_file_types = normalized
+
+        # Validate input_schema against the supported v1 subset so that
+        # direct saves outside WorkflowForm cannot persist contracts the
+        # runtime adapters would silently ignore.
+        if self.input_schema:
+            # Input contracts require the workflow to accept only JSON
+            # submissions — other file types have no structured schema.
+            if set(normalized) != {SubmissionFileType.JSON}:
+                raise ValidationError(
+                    {
+                        "input_schema": _(
+                            "Input contracts are only supported when the "
+                            "sole allowed file type is JSON."
+                        ),
+                    },
+                )
+
+            from validibot.workflows.schema_authoring import validate_schema_subset
+
+            try:
+                validate_schema_subset(self.input_schema)
+            except ValidationError as exc:
+                raise ValidationError(
+                    {"input_schema": exc.messages},
+                ) from exc
 
     def save(self, *args, **kwargs):
         # Auto-generate slug BEFORE validation so uniqueness checks work correctly

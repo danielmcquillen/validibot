@@ -230,7 +230,7 @@ def workflow_launch_preferred_mode(context) -> str:
     except Exception:  # pragma: no cover - defensive
         logger.exception("Failed to read workflow launch preference from session.")
         return default_mode
-    if preferred in {"upload", "paste"}:
+    if preferred in {"upload", "paste", "form"}:
         return preferred
     return default_mode
 

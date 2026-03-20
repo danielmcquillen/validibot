@@ -435,6 +435,16 @@ def build_input_envelope(
                 if exc.traces:
                     ResolvedInputTrace.objects.bulk_create(exc.traces)
                 raise
+
+            # Persist the fully-resolved input values (with defaults and
+            # nested-path resolution applied) on step_run.output so that
+            # output-stage assertions see the same values the validator
+            # launch used — not the raw submission JSON.
+            if current_step_run:
+                output = dict(current_step_run.output or {})
+                output["resolved_inputs"] = input_values
+                current_step_run.output = output
+                current_step_run.save(update_fields=["output"])
         # Legacy fallback: entire submission JSON as flat input_values
         elif run.submission:
             try:

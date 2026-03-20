@@ -1210,6 +1210,14 @@ def save_workflow_step(
         _sync_fmu_resources(step, form)
         _sync_fmu_signals(step, fmu_vars)
 
+    # Ensure bindings exist for validator-owned input signals so the
+    # signal resolution engine activates (instead of legacy fallback).
+    from validibot.validations.services.signal_bindings import (
+        ensure_step_signal_bindings,
+    )
+
+    ensure_step_signal_bindings(step)
+
     return step
 
 

@@ -684,3 +684,199 @@ class BuildAssertionPayloadTests(TestCase):
         """
         result = self._build({"T_room": 296.63}, content_json="[1, 2, 3]")
         self.assertEqual(result, {"T_room": 296.63})
+
+    # ── resolved_inputs parameter ────────────────────────────────
+    #
+    # When resolved_inputs is provided, it takes precedence over raw
+    # submission JSON.  This ensures assertions see the same values
+    # (with defaults applied, nested paths resolved) that the
+    # validator launch used.
+
+    def test_resolved_inputs_used_instead_of_raw_submission(self):
+        """When resolved_inputs is provided, it is used for input values
+        rather than parsing the raw submission JSON.
+
+        This is the core fix: a StepSignalBinding may define a default
+        value for an input signal.  If the submission omits that key,
+        resolve_step_input_signals() fills it in.  The assertion payload
+        must see the resolved value, not the raw (missing) one.
+        """
+        signals = {"T_room": 296.63}
+        resolved = {"Q_cooling_max": 6000, "panel_area": 12.5}
+        # Raw submission is missing Q_cooling_max — but resolved_inputs has it.
+        result = _StubAdvancedValidator._build_assertion_payload(
+            signals,
+            run_context=None,
+            resolved_inputs=resolved,
+        )
+        self.assertEqual(result["Q_cooling_max"], 6000)
+        self.assertEqual(result["panel_area"], 12.5)
+        self.assertEqual(result["T_room"], 296.63)
+        self.assertEqual(result["output"]["T_room"], 296.63)
+
+    def test_resolved_inputs_collision_input_keeps_bare_name(self):
+        """When resolved_inputs contains a key that collides with an
+        output signal, the input value keeps the bare name (same
+        convention as the raw-submission path).
+        """
+        signals = {"T_room": 296.63}
+        resolved = {"T_room": 293.15, "T_setpoint": 295}
+        result = _StubAdvancedValidator._build_assertion_payload(
+            signals,
+            run_context=None,
+            resolved_inputs=resolved,
+        )
+        # Bare name keeps the input (resolved) value
+        self.assertEqual(result["T_room"], 293.15)
+        # Output reachable via namespace
+        self.assertEqual(result["output"]["T_room"], 296.63)
+        self.assertEqual(result["T_setpoint"], 295)
+
+    def test_empty_resolved_inputs_falls_back_to_submission(self):
+        """An empty resolved_inputs dict is treated as falsy, so the
+        method falls back to the raw submission JSON.  This preserves
+        backward compatibility for legacy steps without
+        StepSignalBinding rows.
+        """
+        result = self._build(
+            {"T_room": 296.63},
+            content_json='{"Q_cooling_max": 6000}',
+        )
+        # Falls back to submission JSON
+        self.assertEqual(result["Q_cooling_max"], 6000)
+        self.assertEqual(result["T_room"], 296.63)
+
+    def test_none_resolved_inputs_falls_back_to_submission(self):
+        """When resolved_inputs is explicitly None, the method falls
+        back to the raw submission JSON (backward compatibility).
+        """
+        signals = {"T_room": 296.63}
+        run_context = MagicMock()
+        submission = MagicMock()
+        submission.get_content.return_value = '{"Q_cooling_max": 6000}'
+        run_context.validation_run = MagicMock()
+        run_context.validation_run.submission = submission
+        result = _StubAdvancedValidator._build_assertion_payload(
+            signals,
+            run_context,
+            resolved_inputs=None,
+        )
+        self.assertEqual(result["Q_cooling_max"], 6000)
+        self.assertEqual(result["T_room"], 296.63)
+
+
+# ==============================================================================
+# _get_resolved_inputs — step_run lookup
+#
+# The _get_resolved_inputs helper retrieves resolved input values from
+# step_run.output, where the envelope builder stores them after
+# resolve_step_input_signals() runs.  This enables output-stage
+# assertions to see the same values (with defaults, nested paths) that
+# the validator launch used.
+# ==============================================================================
+
+
+class GetResolvedInputsTests(TestCase):
+    """Tests for the _get_resolved_inputs static method.
+
+    This method looks up the ValidationStepRun for the current run/step
+    pair and returns the ``resolved_inputs`` dict stored in
+    ``step_run.output`` by the envelope builder.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = OrganizationFactory()
+        cls.user = UserFactory()
+        cls.project = ProjectFactory(org=cls.org)
+        cls.validator = ValidatorFactory(
+            validation_type=ValidationType.ENERGYPLUS,
+            org=cls.org,
+            is_system=False,
+        )
+        cls.ruleset = RulesetFactory(
+            org=cls.org,
+            ruleset_type=RulesetType.ENERGYPLUS,
+        )
+        cls.step = WorkflowStepFactory(
+            validator=cls.validator,
+            ruleset=cls.ruleset,
+        )
+
+    def test_returns_resolved_inputs_from_step_run(self):
+        """When the step_run has resolved_inputs in its output, they
+        are returned for use in assertion payload building.
+
+        This is the primary path: the envelope builder stored the fully
+        resolved input values (with defaults and nested-path resolution)
+        on step_run.output['resolved_inputs'] during FMU envelope
+        construction.
+        """
+        from validibot.validations.tests.factories import ValidationRunFactory
+        from validibot.validations.tests.factories import ValidationStepRunFactory
+
+        run = ValidationRunFactory(
+            workflow=self.step.workflow,
+            org=self.org,
+        )
+        resolved = {"Q_cooling_max": 6000, "panel_area": 12.5}
+        ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=self.step,
+            output={"resolved_inputs": resolved},
+        )
+        run_context = RunContext(validation_run=run, step=self.step)
+
+        result = _StubAdvancedValidator._get_resolved_inputs(run_context)
+
+        self.assertEqual(result, {"Q_cooling_max": 6000, "panel_area": 12.5})
+
+    def test_returns_none_when_no_step_run(self):
+        """When no step_run exists for the run/step pair, returns None
+        so the caller can fall back to raw submission JSON.
+        """
+        from validibot.validations.tests.factories import ValidationRunFactory
+
+        run = ValidationRunFactory(
+            workflow=self.step.workflow,
+            org=self.org,
+        )
+        run_context = RunContext(validation_run=run, step=self.step)
+
+        result = _StubAdvancedValidator._get_resolved_inputs(run_context)
+
+        self.assertIsNone(result)
+
+    def test_returns_none_when_no_resolved_inputs_key(self):
+        """When step_run.output exists but has no 'resolved_inputs' key
+        (e.g., legacy steps or EnergyPlus preprocessing metadata), returns
+        None for backward compatibility.
+        """
+        from validibot.validations.tests.factories import ValidationRunFactory
+        from validibot.validations.tests.factories import ValidationStepRunFactory
+
+        run = ValidationRunFactory(
+            workflow=self.step.workflow,
+            org=self.org,
+        )
+        ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=self.step,
+            output={"template_parameters_used": {"param1": "value1"}},
+        )
+        run_context = RunContext(validation_run=run, step=self.step)
+
+        result = _StubAdvancedValidator._get_resolved_inputs(run_context)
+
+        self.assertIsNone(result)
+
+    def test_returns_none_when_run_context_is_none(self):
+        """A None run_context returns None (no crash)."""
+        result = _StubAdvancedValidator._get_resolved_inputs(None)
+        self.assertIsNone(result)
+
+    def test_returns_none_when_validation_run_is_none(self):
+        """A run_context with no validation_run returns None."""
+        run_context = RunContext(validation_run=None, step=self.step)
+        result = _StubAdvancedValidator._get_resolved_inputs(run_context)
+        self.assertIsNone(result)

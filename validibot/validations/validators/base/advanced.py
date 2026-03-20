@@ -325,7 +325,15 @@ class AdvancedValidator(BaseValidator):
                 # On name collision, the input keeps the bare name and the
                 # output is available via the ``output.`` prefix — matching
                 # the convention in ``_build_cel_context``.
-                assertion_payload = self._build_assertion_payload(signals, run_context)
+                #
+                # Prefer resolved_inputs (with defaults and nested-path
+                # resolution applied) over raw submission JSON when available.
+                resolved_inputs = self._get_resolved_inputs(run_context)
+                assertion_payload = self._build_assertion_payload(
+                    signals,
+                    run_context,
+                    resolved_inputs=resolved_inputs,
+                )
 
                 assertion_result = self.evaluate_assertions_for_stage(
                     validator=validator,
@@ -375,9 +383,50 @@ class AdvancedValidator(BaseValidator):
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     @staticmethod
+    def _get_resolved_inputs(run_context: RunContext | None) -> dict[str, Any] | None:
+        """Retrieve resolved input values from the step_run, if available.
+
+        The envelope builder stores fully-resolved input values (with
+        defaults applied and nested paths resolved) on
+        ``step_run.output["resolved_inputs"]`` during FMU envelope
+        construction.  This method looks up the active step_run for the
+        current run/step pair and returns those values.
+
+        Returns ``None`` when no step_run exists or no resolved_inputs
+        were stored (e.g., legacy steps without StepSignalBinding rows),
+        allowing the caller to fall back to raw submission JSON.
+        """
+        if not run_context or not run_context.validation_run or not run_context.step:
+            return None
+
+        from validibot.validations.models import ValidationStepRun
+
+        try:
+            step_run = (
+                ValidationStepRun.objects.filter(
+                    validation_run=run_context.validation_run,
+                    workflow_step=run_context.step,
+                )
+                .order_by("-created")
+                .first()
+            )
+        except Exception:
+            logger.debug(
+                "Could not look up step_run for resolved_inputs (run=%s, step=%s)",
+                getattr(run_context.validation_run, "id", "?"),
+                getattr(run_context.step, "id", "?"),
+            )
+            return None
+
+        if step_run and step_run.output:
+            return step_run.output.get("resolved_inputs")
+        return None
+
+    @staticmethod
     def _build_assertion_payload(
         signals: dict[str, Any],
         run_context: RunContext | None,
+        resolved_inputs: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Build a combined payload for output-stage assertion evaluation.
@@ -385,7 +434,14 @@ class AdvancedValidator(BaseValidator):
         Output-stage assertions often compare validator outputs against user
         inputs (e.g., ``Q_cooling_actual <= Q_cooling_max``).  The output
         signals alone don't contain the input values, so we merge in the
-        submission's content when it's parseable as a JSON dict.
+        resolved input values.
+
+        When ``resolved_inputs`` is provided (from ``step_run.output``),
+        those values are used as the input side of the payload.  This
+        ensures assertions see the same values — with defaults applied
+        and nested paths resolved — that the validator launch used.  When
+        not provided, the method falls back to parsing the raw submission
+        JSON for backward compatibility.
 
         **Name collision convention** (matches ``_build_cel_context``):
 
@@ -409,9 +465,26 @@ class AdvancedValidator(BaseValidator):
                 },
             }
 
-        This is a no-op when the submission content isn't JSON (e.g.,
-        EnergyPlus IDF files) — only the output signals are returned.
+        This is a no-op when neither resolved_inputs nor parseable JSON
+        submission content is available (e.g., EnergyPlus IDF files) —
+        only the output signals are returned.
         """
+        # When resolved_inputs are available, use them directly instead
+        # of parsing the raw submission JSON.  This is the preferred path
+        # for FMU/generic validators with StepSignalBinding rows.
+        if resolved_inputs:
+            merged = dict(resolved_inputs)
+            output_ns: dict[str, object] = {}
+            for key, value in signals.items():
+                if key not in merged:
+                    merged[key] = value
+                output_ns[key] = value
+            if output_ns:
+                merged["output"] = output_ns
+            return merged
+
+        # Fallback: parse raw submission JSON (for legacy steps without
+        # StepSignalBinding rows or when resolved_inputs aren't available).
         if not run_context or not run_context.validation_run:
             return dict(signals)
 
@@ -434,7 +507,7 @@ class AdvancedValidator(BaseValidator):
                 # namespace; on collision the input keeps the bare
                 # name and the output is only reachable via
                 # ``output.<name>``.
-                output_ns: dict[str, object] = {}
+                output_ns = {}
                 for key, value in signals.items():
                     if key not in merged:
                         # No collision — bare name resolves to output.

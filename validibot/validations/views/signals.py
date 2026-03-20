@@ -14,6 +14,7 @@ from django.views.generic.edit import FormView
 
 from validibot.core.utils import reverse_with_org
 from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import SignalOriginKind
 from validibot.validations.forms import SignalDefinitionForm
 from validibot.validations.models import SignalDefinition
 from validibot.validations.models import Validator
@@ -95,6 +96,7 @@ class ValidatorSignalCreateView(ValidatorSignalMixin, FormView):
         if form.is_valid():
             signal = form.save(commit=False)
             signal.validator = self.validator
+            signal.origin_kind = SignalOriginKind.CATALOG
             signal.save()
             messages.success(request, _("Signal created."))
             if request.headers.get("HX-Request"):

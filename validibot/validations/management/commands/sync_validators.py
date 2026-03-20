@@ -78,7 +78,10 @@ class Command(BaseCommand):
                     self.stdout.write(f"  Updated validator: {validator}")
 
                 # Sync signal definitions and derivations from the
-                # validator config's catalog_entries
+                # validator config's catalog_entries spec.
+                seen_signal_keys: set[tuple[str, str]] = set()
+                seen_derivation_keys: set[str] = set()
+
                 for entry in cfg.catalog_entries:
                     entry_data = entry.model_dump()
                     entry_slug = entry_data.pop("slug")
@@ -93,8 +96,11 @@ class Command(BaseCommand):
                                     "expr",
                                     "",
                                 ),
+                                "data_type": entry.data_type,
+                                "order": entry.order,
                             },
                         )
+                        seen_derivation_keys.add(entry_slug)
                         total_derivations_synced += 1
                     elif entry_type == "signal":
                         SignalDefinition.objects.update_or_create(
@@ -113,13 +119,51 @@ class Command(BaseCommand):
                                 "metadata": entry.metadata,
                             },
                         )
+                        seen_signal_keys.add((entry_slug, entry.run_stage))
                         total_signals_synced += 1
 
+                # Prune signals/derivations that are no longer declared
+                # in the config (e.g., renamed or removed entries). Only
+                # prune CATALOG-origin signals — step-owned signals
+                # (FMU, template) are managed separately.
                 if cfg.catalog_entries:
+                    pruned_sigs = SignalDefinition.objects.filter(
+                        validator=validator,
+                        origin_kind=SignalOriginKind.CATALOG,
+                    )
+                    for key, direction in seen_signal_keys:
+                        pruned_sigs = pruned_sigs.exclude(
+                            contract_key=key,
+                            direction=direction,
+                        )
+                    pruned_count = pruned_sigs.count()
+                    if pruned_count:
+                        pruned_sigs.delete()
+                        self.stdout.write(
+                            f"  Pruned {pruned_count} stale signal(s)",
+                        )
+
+                    pruned_derivs = Derivation.objects.filter(
+                        validator=validator,
+                    ).exclude(contract_key__in=seen_derivation_keys)
+                    pruned_d_count = pruned_derivs.count()
+                    if pruned_d_count:
+                        pruned_derivs.delete()
+                        self.stdout.write(
+                            f"  Pruned {pruned_d_count} stale derivation(s)",
+                        )
+
                     self.stdout.write(
                         f"  Signals: {total_signals_synced} synced, "
                         f"derivations: {total_derivations_synced} synced",
                     )
+
+                # NOTE: We do NOT call ensure_step_signal_bindings() here for
+                # existing steps using this validator. This command runs on
+                # startup/deploy and iterating all steps would be expensive.
+                # Instead, ensure_step_signal_bindings() handles binding
+                # creation at step creation/update time (in save_workflow_step).
+                # For backfilling existing steps, use a one-off data migration.
 
         self.stdout.write("")
         self.stdout.write(

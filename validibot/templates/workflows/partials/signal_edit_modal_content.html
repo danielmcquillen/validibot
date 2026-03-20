@@ -45,7 +45,7 @@ Context:
            data-bs-toggle="tooltip"
            data-bs-placement="top"
            title="{% trans 'The unique identifier used in CEL assertions and the validation engine to reference this signal.' %}"></i>
-        <label class="form-label small mb-0 text-nowrap">{% trans "Contract Key" %}</label>
+        <label class="form-label small mb-0 text-nowrap">{% trans "Contract Key" %}:</label>
         <code class="small">{{ signal.contract_key }}</code>
       </div>
       {% if signal.native_name and signal.native_name != signal.contract_key %}
@@ -54,7 +54,7 @@ Context:
              data-bs-toggle="tooltip"
              data-bs-placement="top"
              title="{% trans 'The original variable name in the simulation model (e.g., FMU variable name). May differ from the contract key.' %}"></i>
-          <label class="form-label small mb-0 text-nowrap">{% trans "Native Name" %}</label>
+          <label class="form-label small mb-0 text-nowrap">{% trans "Native Name" %}:</label>
           <code class="small">{{ signal.native_name }}</code>
         </div>
       {% endif %}

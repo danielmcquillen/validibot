@@ -1477,7 +1477,7 @@ class TestBuildUnifiedSignals(TestCase):
 
         # First variable: no default → required
         inp0 = result["input_signals"][0]
-        assert inp0["slug"] == "$U_FACTOR"
+        assert inp0["slug"] == "u_factor"
         assert inp0["label"] == "U-Factor"
         assert inp0["source"] == "template"
         assert inp0["required"] is True
@@ -1485,7 +1485,7 @@ class TestBuildUnifiedSignals(TestCase):
         # Second variable: has default → not required; label falls back
         # to native_name when label is empty.
         inp1 = result["input_signals"][1]
-        assert inp1["slug"] == "$SHGC"
+        assert inp1["slug"] == "shgc"
         assert inp1["source"] == "template"
         assert inp1["required"] is False
 
@@ -1592,7 +1592,7 @@ class TestBuildUnifiedSignals(TestCase):
         # Only step-owned template inputs appear — validator inputs excluded
         assert len(result["input_signals"]) == 1
         assert result["input_signals"][0]["source"] == "template"
-        assert result["input_signals"][0]["slug"] == "$U_FACTOR"
+        assert result["input_signals"][0]["slug"] == "u_factor"
         # Output signals from validator still present
         assert result["has_outputs"] is True
         assert result["output_signals"][0]["slug"] == "total-energy"

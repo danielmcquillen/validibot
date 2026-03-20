@@ -1,0 +1,48 @@
+{% load i18n core_tags %}
+
+{% comment %}
+Signal Show Toggle
+
+Inline HTMx toggle for the "Show to User" column in the output signals
+table. Uses a Bootstrap button group with check/X options. The active
+state button is solid; the inactive state button triggers the toggle.
+
+Context:
+  signal_slug  - the signal's contract_key
+  is_shown     - boolean: True if signal is currently visible
+  step         - the WorkflowStep
+  workflow     - the parent Workflow
+{% endcomment %}
+<div class="btn-group btn-group-sm" role="group">
+  {% if is_shown %}
+    <button type="button"
+            class="btn btn-success"
+            disabled
+            title="{% trans 'Shown in results' %}">
+      <i class="bi bi-eye"></i>
+    </button>
+    <button type="button"
+            class="btn btn-outline-secondary"
+            hx-post="{% org_url 'workflows:workflow_step_toggle_display_signal' workflow.pk step.pk signal_slug %}"
+            hx-target="closest .btn-group"
+            hx-swap="outerHTML"
+            title="{% trans 'Hide from results' %}">
+      <i class="bi bi-eye-slash"></i>
+    </button>
+  {% else %}
+    <button type="button"
+            class="btn btn-outline-secondary"
+            hx-post="{% org_url 'workflows:workflow_step_toggle_display_signal' workflow.pk step.pk signal_slug %}"
+            hx-target="closest .btn-group"
+            hx-swap="outerHTML"
+            title="{% trans 'Show in results' %}">
+      <i class="bi bi-eye"></i>
+    </button>
+    <button type="button"
+            class="btn btn-secondary"
+            disabled
+            title="{% trans 'Hidden from results' %}">
+      <i class="bi bi-eye-slash"></i>
+    </button>
+  {% endif %}
+</div>

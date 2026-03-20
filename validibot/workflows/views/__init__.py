@@ -60,6 +60,7 @@ from validibot.workflows.views.steps import WorkflowStepMoveView
 from validibot.workflows.views.steps import WorkflowStepSignalEditView
 from validibot.workflows.views.steps import WorkflowStepTemplateVariableEditView
 from validibot.workflows.views.steps import WorkflowStepTemplateVariablesView
+from validibot.workflows.views.steps import WorkflowStepToggleDisplaySignalView
 from validibot.workflows.views.steps import WorkflowStepUpdateView
 from validibot.workflows.views.steps import WorkflowStepWizardView
 
@@ -104,6 +105,7 @@ __all__ = [
     "WorkflowStepSignalEditView",
     "WorkflowStepTemplateVariableEditView",
     "WorkflowStepTemplateVariablesView",
+    "WorkflowStepToggleDisplaySignalView",
     "WorkflowStepUpdateView",
     "WorkflowStepWizardView",
     "WorkflowUpdateView",

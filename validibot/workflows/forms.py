@@ -1990,7 +1990,10 @@ class SignalBindingEditForm(forms.Form):
     is_required = forms.BooleanField(
         required=False,
         label=_("Required"),
-        help_text=_("If checked, validation fails when this signal is missing."),
+        help_text=_(
+            "If checked, validation fails when this signal is missing. "
+            "Cannot be used together with a default value."
+        ),
     )
 
     def __init__(self, *args, signal_definition=None, binding=None, **kwargs):
@@ -2014,6 +2017,19 @@ class SignalBindingEditForm(forms.Form):
         if signal_definition and signal_definition.validator_id:
             for field_name in ("label", "description", "unit"):
                 self.fields[field_name].disabled = True
+
+    def clean(self):
+        cleaned = super().clean()
+        default_value = (cleaned.get("default_value") or "").strip()
+        is_required = cleaned.get("is_required", False)
+        if default_value and is_required:
+            raise forms.ValidationError(
+                _(
+                    "A signal cannot be both required and have a default "
+                    "value. Either remove the default or uncheck Required."
+                ),
+            )
+        return cleaned
 
     def save(self):
         """Persist changes to the signal definition and/or binding."""

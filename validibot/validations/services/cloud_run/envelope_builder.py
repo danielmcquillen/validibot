@@ -402,6 +402,7 @@ def build_input_envelope(
             )
 
             submission_data: dict = {}
+            submission_metadata: dict = {}
             if run.submission:
                 try:
                     content = run.submission.get_content()
@@ -414,6 +415,10 @@ def build_input_envelope(
                         "Could not parse submission content as JSON for run %s",
                         run.id,
                     )
+                # Submission metadata is a JSONField (always a dict),
+                # needed for signals scoped to SUBMISSION_METADATA
+                # (e.g., EnergyPlus expected_floor_area_m2).
+                submission_metadata = run.submission.metadata or {}
 
             # Upstream signals for cross-step resolution.
             upstream = (run.summary or {}).get("steps", {})
@@ -423,6 +428,7 @@ def build_input_envelope(
                     step,
                     current_step_run,
                     submission_data=submission_data,
+                    submission_metadata=submission_metadata,
                     upstream_signals=upstream,
                 )
                 if traces:

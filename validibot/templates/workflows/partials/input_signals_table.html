@@ -21,9 +21,21 @@ Context:
     <table class="table table-sm align-middle" data-sortable-table>
       <thead>
         <tr>
-          <th class="text-muted small" data-sortable="true">{% trans "Slug" %}</th>
+          <th class="text-muted small" data-sortable="true">
+            {% trans "Slug" %}
+            <i class="bi bi-info-circle"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="{% trans 'The contract key that identifies this signal in CEL assertions and the validation engine.' %}"></i>
+          </th>
           <th class="text-muted small" data-sortable="true">{% trans "Source" %}</th>
-          <th class="text-muted small">{% trans "Source Path" %}</th>
+          <th class="text-muted small">
+            {% trans "Source Path" %}
+            <i class="bi bi-info-circle"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="{% trans 'Dotted path into the submission payload where this signal value is read from (e.g., building.floor_area).' %}"></i>
+          </th>
           <th class="text-muted small">{% trans "Default" %}</th>
           <th class="text-muted small text-center">{% trans "Required" %}</th>
           <th class="text-muted small text-end"></th>

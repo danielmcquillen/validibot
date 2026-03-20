@@ -156,7 +156,7 @@
   </div>
   <script nonce="{{ CSP_NONCE }}">
     document.body.addEventListener('close-modal', (event) => {
-      const targetId = event.detail?.['close-modal'] || 'workflowAssertionModal';
+      const targetId = (typeof event.detail === 'string') ? event.detail : (event.detail?.value || 'workflowAssertionModal');
       const modalEl = document.getElementById(targetId);
       if (!modalEl) {
         return;

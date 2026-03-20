@@ -211,11 +211,15 @@ def resolve_input_signal(
     scope = binding.source_scope
     path = binding.source_data_path
 
+    # ADR-2026-03-18: when source_data_path is empty, fall back to
+    # matching by contract_key as a top-level key in the scoped data.
+    effective_path = path if path else sig.contract_key
+
     result = ResolvedSignal(
         signal_definition=sig,
         binding=binding,
         source_scope_used=scope,
-        source_data_path_used=path,
+        source_data_path_used=effective_path,
     )
 
     # Select the data source for this scope.
@@ -224,16 +228,27 @@ def resolve_input_signal(
     elif scope == BindingSourceScope.SUBMISSION_METADATA:
         source = submission_metadata or {}
     elif scope == BindingSourceScope.UPSTREAM_STEP:
-        # Path format for upstream: the path itself is the variable name
-        # within the upstream step's signals dict. The upstream step_key
-        # is stored in a separate field or parsed from the path prefix.
-        # For now, we use the flat path against the entire upstream dict.
-        source = upstream_signals or {}
+        # Upstream signals are stored at:
+        #   run.summary["steps"][step_key]["signals"][signal_name]
+        # The effective_path should be "step_key.signal_name", which
+        # resolve_path navigates as: upstream[step_key]["signal_name"].
+        # We flatten the nesting by building a dict of
+        #   {step_key: {signal_name: value, ...}} from the raw shape.
+        raw = upstream_signals or {}
+        source = {
+            k: v.get("signals", {}) if isinstance(v, dict) else {}
+            for k, v in raw.items()
+        }
+        # Extract the upstream step_key from the first path segment
+        # (e.g., "simulation.site_eui" → step_key="simulation") for
+        # the audit trace.
+        if "." in effective_path:
+            result.upstream_step_key = effective_path.split(".", 1)[0]
     else:
         # SYSTEM scope — reserved for future use
         source = {}
 
-    value, found = resolve_path(source, path)
+    value, found = resolve_path(source, effective_path)
 
     if found:
         result.value = value

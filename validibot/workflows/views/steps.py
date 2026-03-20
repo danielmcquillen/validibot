@@ -1115,6 +1115,78 @@ class WorkflowStepDisplaySignalsView(WorkflowObjectMixin, FormView):
         return render(self.request, self.template_name, context)
 
 
+class WorkflowStepToggleDisplaySignalView(WorkflowObjectMixin, View):
+    """HTMx endpoint that toggles a single output signal's visibility.
+
+    POST adds or removes the signal slug from the step's
+    ``config["display_signals"]`` list and returns the updated toggle
+    button HTML fragment.
+
+    Semantics: an empty ``display_signals`` list means "show all".
+    Toggling a signal OFF when the list is empty first populates the
+    list with all output slugs, then removes the target slug.
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        return super().dispatch(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        slug = self.kwargs["signal_slug"]
+        config = dict(self.step.config or {})
+        display_signals = list(config.get("display_signals", []))
+
+        from validibot.validations.constants import SignalDirection
+        from validibot.validations.models import SignalDefinition
+
+        all_slugs = list(
+            SignalDefinition.objects.filter(
+                models.Q(workflow_step=self.step)
+                | models.Q(validator=self.step.validator),
+                direction=SignalDirection.OUTPUT,
+            ).values_list("contract_key", flat=True),
+        )
+
+        if not display_signals:
+            # Empty list means "show all". Expand to the explicit list
+            # so we can remove the target slug.
+            display_signals = list(all_slugs)
+
+        if slug in display_signals:
+            display_signals.remove(slug)
+        else:
+            display_signals.append(slug)
+
+        # If the result matches "all shown", normalize back to empty
+        # list to preserve the "show all" semantic.
+        if set(display_signals) == set(all_slugs):
+            display_signals = []
+
+        config["display_signals"] = display_signals
+        self.step.config = config
+        self.step.save(update_fields=["config"])
+
+        is_shown = not display_signals or slug in display_signals
+        return HttpResponse(
+            render_to_string(
+                "workflows/partials/signal_show_toggle.html",
+                {
+                    "signal_slug": slug,
+                    "is_shown": is_shown,
+                    "step": self.step,
+                    "workflow": self.get_workflow(),
+                },
+                request=request,
+            ),
+        )
+
+
 class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
     """HTMx modal endpoint for editing a single template variable's annotations.
 

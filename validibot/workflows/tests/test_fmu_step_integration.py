@@ -354,7 +354,7 @@ class UnifiedSignalsFmuTests(TestCase):
         self.assertTrue(result["has_inputs"])
 
         sig = result["input_signals"][0]
-        self.assertEqual(sig["slug"], "T_outdoor")
+        self.assertEqual(sig["slug"], "t_outdoor")
         self.assertEqual(sig["label"], "Outdoor")
         self.assertEqual(sig["source"], "fmu")
         self.assertTrue(sig["required"])
@@ -380,7 +380,7 @@ class UnifiedSignalsFmuTests(TestCase):
         self.assertTrue(result["has_outputs"])
 
         sig = result["output_signals"][0]
-        self.assertEqual(sig["slug"], "T_room")
+        self.assertEqual(sig["slug"], "t_room")
         self.assertEqual(sig["label"], "Room temp")
         self.assertTrue(sig["show_to_user"])
 
@@ -404,7 +404,7 @@ class UnifiedSignalsFmuTests(TestCase):
         result = build_unified_signals_from_definitions(step=step)
 
         self.assertEqual(len(result["input_signals"]), 1)
-        self.assertEqual(result["input_signals"][0]["slug"], "T_outdoor")
+        self.assertEqual(result["input_signals"][0]["slug"], "t_outdoor")
         self.assertEqual(len(result["output_signals"]), 0)
 
     def test_display_signals_filter_fmu_outputs(self):
@@ -428,8 +428,8 @@ class UnifiedSignalsFmuTests(TestCase):
         result = build_unified_signals_from_definitions(step=step)
 
         signals_by_slug = {s["slug"]: s for s in result["output_signals"]}
-        self.assertTrue(signals_by_slug["T_room"]["show_to_user"])
-        self.assertFalse(signals_by_slug["Q_cool"]["show_to_user"])
+        self.assertTrue(signals_by_slug["t_room"]["show_to_user"])
+        self.assertFalse(signals_by_slug["q_cool"]["show_to_user"])
 
     def test_empty_fmu_variables_no_signals(self):
         """When no SignalDefinition rows exist for the step (library

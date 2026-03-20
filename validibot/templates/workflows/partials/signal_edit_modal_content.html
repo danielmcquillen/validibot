@@ -87,12 +87,27 @@ Context:
   </div>
 </form>
 <script nonce="{{ CSP_NONCE }}">
-  (function() {
-    var el = document.getElementById('signal-edit-modal-content');
-    if (!el) return;
-    var tooltipTriggerList = el.querySelectorAll('[data-bs-toggle="tooltip"]');
-    tooltipTriggerList.forEach(function(t) {
-      new bootstrap.Tooltip(t);
-    });
-  })();
+  {
+    const el = document.getElementById('signal-edit-modal-content');
+    if (el) {
+      el.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(
+        (t) => new bootstrap.Tooltip(t)
+      );
+
+      const defaultInput = el.querySelector('#id_default_value');
+      const requiredInput = el.querySelector('#id_is_required');
+      if (defaultInput && requiredInput) {
+        defaultInput.addEventListener('input', () => {
+          if (defaultInput.value.trim()) {
+            requiredInput.checked = false;
+          }
+        });
+        requiredInput.addEventListener('change', () => {
+          if (requiredInput.checked) {
+            defaultInput.value = '';
+          }
+        });
+      }
+    }
+  }
 </script>

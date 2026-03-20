@@ -4,8 +4,8 @@
 Output Signals Table
 
 Shows all output signals for a workflow step with a "Show to User"
-column indicating which signals appear in submission results.  An Edit
-button opens the display signals modal for configuring visibility.
+column. Each signal has an inline toggle button that adds/removes it
+from the display list via HTMx POST.
 
 Context:
   unified_signals.output_signals  - list of output signal dicts
@@ -13,18 +13,6 @@ Context:
   workflow                        - the parent Workflow
 {% endcomment %}
 {% if unified_signals.output_signals %}
-  <div class="d-flex justify-content-end mb-2">
-    <button type="button"
-            class="btn btn-sm btn-secondary"
-            data-bs-toggle="modal"
-            data-bs-target="#displaySignalsModal"
-            hx-get="{% org_url 'workflows:workflow_step_display_signals' workflow.pk step.pk %}"
-            hx-target="#display-signals-modal-content"
-            hx-trigger="click"
-            title="{% trans 'Edit which output signals are shown to users' %}">
-      <i class="bi bi-pencil me-1"></i>{% trans "Edit" %}
-    </button>
-  </div>
   <div class="table-responsive">
     <table class="table table-sm align-middle" data-sortable-table>
       <thead>
@@ -57,11 +45,7 @@ Context:
               {% endif %}
             </td>
             <td class="text-center">
-              {% if signal.show_to_user %}
-                <i class="bi bi-check-lg text-success"></i>
-              {% else %}
-                <i class="bi bi-x-lg" style="color: #ccc;"></i>
-              {% endif %}
+              {% include "workflows/partials/signal_show_toggle.html" with signal_slug=signal.slug is_shown=signal.show_to_user step=step workflow=workflow %}
             </td>
             <td class="text-end"></td>
           </tr>

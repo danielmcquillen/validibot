@@ -192,6 +192,168 @@ class ResolveInputSignalTests(TestCase):
         self.assertTrue(result.resolved)
         self.assertEqual(result.value, 200.0)
 
+    # ── Blank-path fallback to contract_key ──────────────────────────
+    #
+    # ADR-2026-03-18: when source_data_path is empty, the resolver
+    # should use contract_key as a top-level key in the scoped data,
+    # NOT return the entire scoped dict.
+
+    def test_blank_path_falls_back_to_contract_key(self):
+        """When source_data_path is empty (''), the resolver should look
+        up the signal's contract_key as a top-level key in the scoped
+        data. This is the ADR-defined fallback: 'When empty, falls back
+        to matching by contract_key as a top-level key in the scoped data.'
+        """
+        step = WorkflowStepFactory()
+        sig = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            direction=SignalDirection.INPUT,
+            contract_key="T_outdoor",
+        )
+        binding = StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig,
+            source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
+            source_data_path="",  # blank — should fall back to contract_key
+        )
+        result = resolve_input_signal(
+            binding,
+            submission_data={"T_outdoor": 295.0, "other": 999},
+        )
+        self.assertTrue(result.resolved)
+        self.assertEqual(result.value, 295.0)
+        # Must NOT return the entire dict
+        self.assertNotIsInstance(result.value, dict)
+
+    def test_blank_path_not_found_uses_default(self):
+        """When source_data_path is empty and contract_key is not in the
+        scoped data, the fallback to default_value should still work.
+        """
+        step = WorkflowStepFactory()
+        sig = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            direction=SignalDirection.INPUT,
+            contract_key="missing_signal",
+        )
+        binding = StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig,
+            source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
+            source_data_path="",
+            default_value=42.0,
+            is_required=False,
+        )
+        result = resolve_input_signal(
+            binding,
+            submission_data={"other": 1},
+        )
+        self.assertTrue(result.resolved)
+        self.assertEqual(result.value, 42.0)
+        self.assertTrue(result.used_default)
+
+    # ── Upstream step signal resolution ──────────────────────────────
+    #
+    # Upstream signals are stored at run.summary["steps"][step_key]["signals"].
+    # The path format is "step_key.signal_name" — the resolver flattens
+    # the intermediate "signals" key so this path works naturally.
+
+    def test_upstream_step_signal_resolution(self):
+        """Upstream step signals should resolve via dotted path
+        'step_key.signal_name' against the flattened upstream dict.
+        The raw upstream shape is {step_key: {"signals": {...}}},
+        and the resolver flattens away the intermediate 'signals' key.
+        """
+        binding = self._make_binding(
+            scope=BindingSourceScope.UPSTREAM_STEP,
+            path="simulation.site_eui",
+        )
+        upstream = {
+            "simulation": {
+                "signals": {
+                    "site_eui": 85.3,
+                    "source_eui": 120.0,
+                },
+            },
+        }
+        result = resolve_input_signal(
+            binding,
+            upstream_signals=upstream,
+        )
+        self.assertTrue(result.resolved)
+        self.assertEqual(result.value, 85.3)
+
+    def test_upstream_step_sets_audit_step_key(self):
+        """When resolving from UPSTREAM_STEP scope, the resolver should
+        populate upstream_step_key on the result so audit traces record
+        which upstream step was consulted. The step_key is the first
+        segment of the dotted path (e.g., 'simulation' from
+        'simulation.site_eui').
+        """
+        binding = self._make_binding(
+            scope=BindingSourceScope.UPSTREAM_STEP,
+            path="simulation.site_eui",
+        )
+        upstream = {
+            "simulation": {
+                "signals": {"site_eui": 85.3},
+            },
+        }
+        result = resolve_input_signal(
+            binding,
+            upstream_signals=upstream,
+        )
+        self.assertTrue(result.resolved)
+        self.assertEqual(result.upstream_step_key, "simulation")
+
+    def test_upstream_step_missing_signal_returns_error(self):
+        """When an upstream step exists but the requested signal name
+        is not in its signals dict, the resolver should return an
+        unresolved result with an error message.
+        """
+        binding = self._make_binding(
+            scope=BindingSourceScope.UPSTREAM_STEP,
+            path="simulation.nonexistent",
+            is_required=True,
+        )
+        upstream = {
+            "simulation": {
+                "signals": {"site_eui": 85.3},
+            },
+        }
+        result = resolve_input_signal(
+            binding,
+            upstream_signals=upstream,
+        )
+        self.assertFalse(result.resolved)
+        self.assertIn(
+            binding.signal_definition.contract_key,
+            result.error_message,
+        )
+
+    # ── Metadata-backed EnergyPlus input end-to-end ──────────────────
+    #
+    # EnergyPlus validators declare some inputs as sourced from
+    # submission.metadata (e.g., expected_floor_area_m2). The resolver
+    # must correctly handle SUBMISSION_METADATA scope with a flat key.
+
+    def test_metadata_flat_key_energyplus_style(self):
+        """EnergyPlus metadata-backed inputs use SUBMISSION_METADATA scope
+        with a flat key like 'floor_area_m2'. This simulates the end-to-end
+        path from ensure_step_signal_bindings through resolution.
+        """
+        binding = self._make_binding(
+            scope=BindingSourceScope.SUBMISSION_METADATA,
+            path="floor_area_m2",
+        )
+        result = resolve_input_signal(
+            binding,
+            submission_metadata={"floor_area_m2": 250.0},
+        )
+        self.assertTrue(result.resolved)
+        self.assertEqual(result.value, 250.0)
+
 
 class ResolveStepInputSignalsTests(TestCase):
     """Tests for the batch resolve_step_input_signals() function."""
@@ -271,3 +433,119 @@ class ResolveStepInputSignalsTests(TestCase):
         # Verify they can be bulk_created
         ResolvedInputTrace.objects.bulk_create(traces)
         self.assertEqual(ResolvedInputTrace.objects.count(), 1)
+
+    def test_batch_resolves_metadata_scoped_signals(self):
+        """The batch resolver should pass submission_metadata through to
+        individual signal resolution — critical for EnergyPlus inputs that
+        source values from submission metadata (e.g., expected_floor_area_m2).
+        """
+        step = WorkflowStepFactory()
+        run = ValidationRunFactory(workflow=step.workflow)
+        step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+        )
+
+        sig = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            direction=SignalDirection.INPUT,
+            contract_key="floor_area_m2",
+            native_name="expected_floor_area_m2",
+        )
+        StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig,
+            source_scope=BindingSourceScope.SUBMISSION_METADATA,
+            source_data_path="floor_area_m2",
+        )
+
+        input_values, traces = resolve_step_input_signals(
+            step,
+            step_run,
+            submission_data={},
+            submission_metadata={"floor_area_m2": 250.0},
+        )
+
+        self.assertEqual(input_values, {"expected_floor_area_m2": 250.0})
+        self.assertEqual(len(traces), 1)
+        self.assertTrue(traces[0].resolved)
+
+    def test_batch_resolves_upstream_step_signals(self):
+        """The batch resolver should correctly resolve signals scoped to
+        UPSTREAM_STEP, navigating the 'step_key.signal_name' path against
+        the flattened upstream signals dict.
+        """
+        step = WorkflowStepFactory()
+        run = ValidationRunFactory(workflow=step.workflow)
+        step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+        )
+
+        sig = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            direction=SignalDirection.INPUT,
+            contract_key="upstream_eui",
+            native_name="target_eui",
+        )
+        StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig,
+            source_scope=BindingSourceScope.UPSTREAM_STEP,
+            source_data_path="simulation.site_eui",
+        )
+
+        upstream = {
+            "simulation": {
+                "signals": {"site_eui": 85.3},
+            },
+        }
+
+        input_values, traces = resolve_step_input_signals(
+            step,
+            step_run,
+            submission_data={},
+            upstream_signals=upstream,
+        )
+
+        self.assertEqual(input_values, {"target_eui": 85.3})
+        self.assertEqual(len(traces), 1)
+        self.assertTrue(traces[0].resolved)
+
+    def test_batch_blank_path_uses_contract_key(self):
+        """The batch resolver should use contract_key as the lookup key
+        when source_data_path is empty — matching the ADR blank-path
+        fallback contract.
+        """
+        step = WorkflowStepFactory()
+        run = ValidationRunFactory(workflow=step.workflow)
+        step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+        )
+
+        sig = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            direction=SignalDirection.INPUT,
+            contract_key="T_outdoor",
+            native_name="T_outdoor",
+        )
+        StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig,
+            source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
+            source_data_path="",  # blank — should fall back to contract_key
+        )
+
+        input_values, traces = resolve_step_input_signals(
+            step,
+            step_run,
+            submission_data={"T_outdoor": 295.0},
+        )
+
+        self.assertEqual(input_values, {"T_outdoor": 295.0})
+        self.assertEqual(len(traces), 1)
+        self.assertTrue(traces[0].resolved)

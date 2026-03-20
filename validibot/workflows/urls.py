@@ -151,6 +151,11 @@ urlpatterns = [
         name="workflow_step_display_signals",
     ),
     path(
+        "<int:pk>/steps/<int:step_id>/toggle-display-signal/<str:signal_slug>/",
+        views.WorkflowStepToggleDisplaySignalView.as_view(),
+        name="workflow_step_toggle_display_signal",
+    ),
+    path(
         "<int:pk>/steps/<int:step_id>/template-variable/<int:var_index>/",
         views.WorkflowStepTemplateVariableEditView.as_view(),
         name="workflow_step_template_variable_edit",

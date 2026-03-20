@@ -785,7 +785,7 @@ def build_unified_signals_from_definitions(
         source_path = binding.source_data_path if binding else ""
         input_signals.append(
             {
-                "slug": sig.native_name or sig.contract_key,
+                "slug": sig.contract_key,
                 "label": sig.label or sig.native_name or sig.contract_key,
                 "source": sig.origin_kind,
                 "required": is_required,
@@ -829,7 +829,7 @@ def build_unified_signals_from_definitions(
         show = _is_signal_shown(sig.contract_key, display_signals)
         output_signals.append(
             {
-                "slug": sig.native_name or sig.contract_key,
+                "slug": sig.contract_key,
                 "label": sig.label or sig.native_name or sig.contract_key,
                 "show_to_user": show,
                 "signal_definition": sig,

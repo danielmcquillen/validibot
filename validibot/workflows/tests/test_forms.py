@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -109,6 +110,7 @@ def test_workflow_form_allows_switching_projects_within_org():
 
 
 def test_workflow_form_rejects_project_from_other_org():
+    """Projects from a different org should be rejected on the form."""
     from validibot.submissions.constants import DataRetention
 
     workflow = WorkflowFactory()
@@ -136,7 +138,88 @@ def test_workflow_form_rejects_project_from_other_org():
     assert "project" in form.errors
 
 
+def test_workflow_form_requires_mode_when_schema_text_is_present():
+    """Schema text without an explicit authoring mode should not save silently."""
+    from validibot.submissions.constants import DataRetention
+
+    user, org = create_user_in_org()
+    default_project = ensure_default_project(org)
+
+    form = WorkflowForm(
+        data={
+            "name": "Schema without mode",
+            "slug": "schema-without-mode",
+            "project": str(default_project.pk),
+            "allowed_file_types": [SubmissionFileType.JSON],
+            "input_schema_pydantic": textwrap.dedent(
+                """\
+                class ProductInput(BaseModel):
+                    sku: str = Field(description="Product SKU")
+                """,
+            ),
+            "data_retention": DataRetention.DO_NOT_STORE,
+            "version": "1.0",
+            "is_active": "on",
+        },
+        user=user,
+    )
+
+    assert not form.is_valid()
+    assert "input_schema_mode" in form.errors
+    assert any(
+        "Choose JSON Schema or Pydantic before saving" in error
+        for error in form.errors["input_schema_mode"]
+    )
+
+
+def test_workflow_form_round_trips_pydantic_source_text():
+    """Saved Pydantic authoring text should repopulate on the edit form."""
+    from validibot.submissions.constants import DataRetention
+
+    user, org = create_user_in_org()
+    default_project = ensure_default_project(org)
+    source_text = textwrap.dedent(
+        """\
+        class ProductInput(BaseModel):
+            sku: str = Field(description="Product SKU")
+            price: float = Field(description="Unit price", ge=0, le=20)
+        """,
+    ).strip()
+
+    form = WorkflowForm(
+        data={
+            "name": "Schema round trip",
+            "slug": "schema-round-trip",
+            "project": str(default_project.pk),
+            "allowed_file_types": [SubmissionFileType.JSON],
+            "input_schema_mode": "pydantic",
+            "input_schema_pydantic": source_text,
+            "data_retention": DataRetention.DO_NOT_STORE,
+            "version": "1.0",
+            "is_active": "on",
+        },
+        user=user,
+    )
+
+    assert form.is_valid(), form.errors
+
+    workflow = form.save(commit=False)
+    workflow.org = org
+    workflow.user = user
+    workflow.save()
+    workflow.refresh_from_db()
+
+    assert workflow.input_schema_source_mode == "pydantic"
+    assert workflow.input_schema_source_text == source_text
+
+    reopened_form = WorkflowForm(instance=workflow, user=user)
+
+    assert reopened_form.fields["input_schema_mode"].initial == "pydantic"
+    assert reopened_form.fields["input_schema_pydantic"].initial == source_text
+
+
 def test_workflow_launch_form_accepts_inline_payload():
+    """Inline JSON payloads should still validate through the launch form."""
     workflow = WorkflowFactory()
     workflow.user.set_current_org(workflow.org)
 

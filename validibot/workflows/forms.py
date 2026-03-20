@@ -206,6 +206,13 @@ def parse_policy_rules(raw_text: str) -> list[ParsedPolicyRule]:
 
 
 class WorkflowForm(forms.ModelForm):
+    """Author workflows and their optional structured JSON input contract.
+
+    The form keeps the canonical runtime contract on ``Workflow.input_schema``
+    while preserving the author's preferred editing representation
+    (JSON Schema or restricted Pydantic text) for round-trip editing.
+    """
+
     description_md = forms.CharField(
         label=_("Public info page description (Markdown)"),
         required=False,
@@ -247,6 +254,9 @@ class WorkflowForm(forms.ModelForm):
             ("json_schema", _("JSON Schema")),
             ("pydantic", _("Pydantic")),
         ],
+        widget=forms.RadioSelect(
+            attrs={"class": "form-check-input"},
+        ),
         required=False,
         help_text=_(
             "Choose how to define the input contract.  Both modes produce the "
@@ -352,53 +362,6 @@ class WorkflowForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.helper = FormHelper()
         self.helper.form_tag = False
-        self.helper.layout = Layout(
-            Field("name", placeholder=_("Name your workflow"), autofocus=True),
-            Field(
-                "description",
-                placeholder=_("Brief description of what this workflow validates"),
-                rows=3,
-            ),
-            Field("description_md"),
-            Field("slug", placeholder=""),
-            Field("project"),
-            Field("allowed_file_types"),
-            # Input contract authoring section
-            HTML(
-                '<hr class="my-4">'
-                '<h6 class="mb-3">{}</h6>'
-                '<p class="text-muted small mb-3">{}</p>'.format(
-                    _("Input contract"),
-                    _(
-                        "Define a structured input schema for JSON-only workflows.  "
-                        "When set, submitters see a form with labeled fields instead "
-                        "of pasting raw JSON.  Only available when the sole allowed "
-                        "file type is JSON."
-                    ),
-                )
-            ),
-            Field("input_schema_mode"),
-            Div(
-                Field("input_schema_json"),
-                css_id="input-schema-json-wrapper",
-            ),
-            Div(
-                Field("input_schema_pydantic"),
-                css_id="input-schema-pydantic-wrapper",
-            ),
-            # Hidden model fields — populated by clean()
-            Field("input_schema", type="hidden"),
-            Field("input_schema_source_mode", type="hidden"),
-            Field("input_schema_source_text", type="hidden"),
-            Field("data_retention"),
-            Field("success_message"),
-            Field("allow_submission_name"),
-            Field("allow_submission_meta_data"),
-            Field("allow_submission_short_description"),
-            Field("featured_image"),
-            Field("version", placeholder="e.g. 1.0"),
-            Field("is_active"),
-        )
         self._configure_project_field()
         self.fields["is_active"].label = _("Workflow active")
         self.fields["is_active"].help_text = _(
@@ -448,6 +411,15 @@ class WorkflowForm(forms.ModelForm):
         self.fields["input_schema"].required = False
         self.fields["input_schema_source_mode"].required = False
         self.fields["input_schema_source_text"].required = False
+        self.fields["input_schema_mode"].widget.attrs[
+            "data-input-schema-mode-field"
+        ] = "true"
+        self.fields["input_schema_json"].widget.attrs["data-input-schema-editor"] = (
+            "json_schema"
+        )
+        self.fields["input_schema_pydantic"].widget.attrs[
+            "data-input-schema-editor"
+        ] = "pydantic"
 
         if self.instance and self.instance.pk and self.instance.input_schema:
             mode = self.instance.input_schema_source_mode or "json_schema"
@@ -463,6 +435,146 @@ class WorkflowForm(forms.ModelForm):
                     self.instance.input_schema,
                     indent=2,
                 )
+
+        self.helper.layout = self._build_layout()
+
+    def _build_layout(self) -> Layout:
+        """Build the crispy layout used by the workflow create/edit page."""
+        return Layout(
+            Div(
+                self._section_intro(
+                    _("Workflow basics"),
+                    _(
+                        "Name the workflow, choose its project, and provide the "
+                        "descriptions shown in internal and public UI."
+                    ),
+                ),
+                Field("name", placeholder=_("Name your workflow"), autofocus=True),
+                Field(
+                    "description",
+                    placeholder=_("Brief description of what this workflow validates"),
+                    rows=3,
+                ),
+                Field("description_md"),
+                Field("slug", placeholder=""),
+                Field("project"),
+                css_class="border rounded-3 p-3 mb-4",
+            ),
+            Div(
+                self._section_intro(
+                    _("Submission settings"),
+                    _(
+                        "Define which file types the workflow accepts and how "
+                        "submission metadata should behave."
+                    ),
+                ),
+                Field("allowed_file_types"),
+                Field("data_retention"),
+                Field("success_message"),
+                Field("allow_submission_name"),
+                Field("allow_submission_meta_data"),
+                Field("allow_submission_short_description"),
+                css_class="border rounded-3 p-3 mb-4",
+            ),
+            Div(
+                self._section_intro(
+                    _("Input contract"),
+                    _(
+                        "Define a structured input schema for JSON-only workflows. "
+                        "Choose an authoring mode first, then edit only that "
+                        "representation."
+                    ),
+                ),
+                Field("input_schema_mode"),
+                Div(
+                    HTML(
+                        (
+                            '<div class="alert alert-light small mb-0">'
+                            f"{
+                                _(
+                                    'Choose JSON Schema or Pydantic to start authoring '
+                                    'the input contract.'
+                                )
+                            }"
+                            "</div>"
+                        ),
+                    ),
+                    css_class="mb-3",
+                    data_input_schema_mode_hint="true",
+                ),
+                Div(
+                    HTML(
+                        (
+                            '<div class="mb-3">'
+                            f'<h6 class="mb-1">{_("JSON Schema editor")}</h6>'
+                            f'<p class="text-muted small mb-0">'
+                            f"{
+                                _(
+                                    'Use this when you want to paste or edit the '
+                                    'canonical schema directly.'
+                                )
+                            }"
+                            "</p>"
+                            "</div>"
+                        ),
+                    ),
+                    Field("input_schema_json"),
+                    css_id="input-schema-json-wrapper",
+                    css_class="border rounded-3 p-3 mb-3",
+                    data_input_schema_mode_value="json_schema",
+                ),
+                Div(
+                    HTML(
+                        (
+                            '<div class="mb-3">'
+                            f'<h6 class="mb-1">{_("Pydantic editor")}</h6>'
+                            f'<p class="text-muted small mb-0">'
+                            f"{
+                                _(
+                                    'Use this when you want to author the contract '
+                                    'as a restricted BaseModel class and let '
+                                    'Validibot convert it to canonical JSON Schema.'
+                                )
+                            }"
+                            "</p>"
+                            "</div>"
+                        ),
+                    ),
+                    Field("input_schema_pydantic"),
+                    css_id="input-schema-pydantic-wrapper",
+                    css_class="border rounded-3 p-3 mb-3",
+                    data_input_schema_mode_value="pydantic",
+                ),
+                # Hidden model fields — populated by clean()
+                Field("input_schema", type="hidden"),
+                Field("input_schema_source_mode", type="hidden"),
+                Field("input_schema_source_text", type="hidden"),
+                css_class="border rounded-3 p-3 mb-4",
+                data_input_schema_section="true",
+            ),
+            Div(
+                self._section_intro(
+                    _("Publishing"),
+                    _(
+                        "Control visibility, featured artwork, and the version label "
+                        "shown to your team."
+                    ),
+                ),
+                Field("featured_image"),
+                Field("version", placeholder="e.g. 1.0"),
+                Field("is_active"),
+                css_class="border rounded-3 p-3",
+            ),
+        )
+
+    def _section_intro(self, title: str, body: str) -> HTML:
+        """Render a compact section heading for the crispy form layout."""
+        return HTML(
+            '<div class="mb-3">'
+            f'<h6 class="mb-1">{title}</h6>'
+            f'<p class="text-muted small mb-0">{body}</p>'
+            "</div>",
+        )
 
     def clean_name(self):
         name = (self.cleaned_data.get("name") or "").strip()
@@ -515,8 +627,21 @@ class WorkflowForm(forms.ModelForm):
         pydantic_text = (cleaned.get("input_schema_pydantic") or "").strip()
         allowed = cleaned.get("allowed_file_types") or []
 
-        # No input contract requested — clear the model fields
         if not mode:
+            if json_text or pydantic_text:
+                self.add_error(
+                    "input_schema_mode",
+                    ValidationError(
+                        _(
+                            "Choose JSON Schema or Pydantic before saving an "
+                            "input contract."
+                        ),
+                        code="missing_input_schema_mode",
+                    ),
+                )
+                return cleaned
+
+            # No input contract requested — clear the model fields
             cleaned["input_schema"] = None
             cleaned["input_schema_source_mode"] = ""
             cleaned["input_schema_source_text"] = ""

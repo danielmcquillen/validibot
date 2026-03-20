@@ -13,12 +13,15 @@ their own dedicated sync functions.
 
 from __future__ import annotations
 
+from django.core.management import call_command
 from django.test import TestCase
 
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
+from validibot.validations.models import SignalDefinition
 from validibot.validations.models import StepSignalBinding
+from validibot.validations.models import Validator
 from validibot.validations.services.signal_bindings import ensure_step_signal_bindings
 from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import StepSignalBindingFactory
@@ -81,29 +84,37 @@ class TestEnsureStepSignalBindings(TestCase):
         )
         self.assertEqual(binding_b.source_data_path, "heating_setpoint")
 
-    def test_uses_provider_binding_source_scope(self):
-        """When a signal's provider_binding specifies a source_scope,
-        that value should be used instead of the default SUBMISSION_PAYLOAD.
-        This supports signals that come from metadata or upstream steps.
+    def test_uses_system_validator_config_for_binding_defaults(self):
+        """System-validator library signals should derive binding defaults
+        from the validator config, not from provider_binding JSON.
+
+        EnergyPlus input signals are declared as submission-metadata
+        bindings in the config. New workflow steps must therefore get
+        ``submission_metadata`` scope, the configured metadata key, and
+        the optional/required semantics declared by the config.
         """
-        validator = ValidatorFactory()
-        SignalDefinitionFactory(
-            validator=validator,
-            contract_key="run_id",
-            native_name="run_id",
-            direction=SignalDirection.INPUT,
-            origin_kind=SignalOriginKind.CATALOG,
-            provider_binding={"source_scope": BindingSourceScope.SUBMISSION_METADATA},
-        )
+        call_command("sync_validators")
+        validator = Validator.objects.get(slug="energyplus-idf-validator")
         step = WorkflowStepFactory(validator=validator)
 
         ensure_step_signal_bindings(step)
 
-        binding = StepSignalBinding.objects.get(workflow_step=step)
+        signal = SignalDefinition.objects.get(
+            validator=validator,
+            contract_key="expected_floor_area_m2",
+            direction=SignalDirection.INPUT,
+        )
+        binding = StepSignalBinding.objects.get(
+            workflow_step=step,
+            signal_definition=signal,
+        )
         self.assertEqual(
             binding.source_scope,
             BindingSourceScope.SUBMISSION_METADATA,
         )
+        self.assertEqual(binding.source_data_path, "floor_area_m2")
+        self.assertFalse(binding.is_required)
+        self.assertIsNone(binding.default_value)
 
 
 # ── Filtering: only the right signals get bindings ───────────────────

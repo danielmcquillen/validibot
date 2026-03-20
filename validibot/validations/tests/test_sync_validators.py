@@ -104,6 +104,43 @@ class SyncValidatorsCommandTests(TestCase):
                 f"Signal {key} should exist",
             )
 
+    def test_command_normalizes_energyplus_input_provider_binding(self):
+        """EnergyPlus input signals should not persist submission-source
+        selectors in SignalDefinition.provider_binding.
+
+        The unified signal model stores submission sourcing on
+        StepSignalBinding, so sync_validators must strip legacy
+        ``source``/``path`` keys from provider_binding.
+        """
+        self.call_command()
+
+        validator = Validator.objects.get(slug="energyplus-idf-validator")
+        signal = SignalDefinition.objects.get(
+            validator=validator,
+            contract_key="expected_floor_area_m2",
+            direction="input",
+        )
+
+        self.assertEqual(signal.provider_binding, {})
+
+    def test_command_normalizes_energyplus_output_provider_binding(self):
+        """EnergyPlus output provider binding should store the canonical
+        ``metric_key`` field used by the unified signal model.
+        """
+        self.call_command()
+
+        validator = Validator.objects.get(slug="energyplus-idf-validator")
+        signal = SignalDefinition.objects.get(
+            validator=validator,
+            contract_key="site_eui_kwh_m2",
+            direction="output",
+        )
+
+        self.assertEqual(
+            signal.provider_binding,
+            {"metric_key": "site_eui_kwh_m2"},
+        )
+
     def test_command_creates_derivations(self):
         """Test that derivation entries are created."""
         self.call_command()

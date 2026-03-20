@@ -1338,7 +1338,8 @@ class WorkflowStepSignalEditView(WorkflowObjectMixin, FormView):
                 "signal": sig,
                 "binding": self._get_binding(),
                 "is_library_signal": bool(sig.validator_id),
-                "modal_title": sig.label or sig.contract_key,
+                "modal_title": _("Edit signal: %(name)s")
+                % {"name": sig.label or sig.contract_key},
             },
         )
         return context

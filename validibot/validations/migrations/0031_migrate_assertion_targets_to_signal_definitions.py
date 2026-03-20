@@ -42,7 +42,10 @@ def _populate_target_signal_definition(apps, _schema_editor):
 
         if sig:
             assertion.target_signal_definition = sig
-            assertion.save(update_fields=["target_signal_definition"])
+            assertion.target_catalog_entry = None
+            assertion.save(
+                update_fields=["target_signal_definition", "target_catalog_entry"],
+            )
             migrated += 1
 
     if migrated:

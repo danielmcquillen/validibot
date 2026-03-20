@@ -21,6 +21,9 @@ from validibot.validations.constants import SignalOriginKind
 from validibot.validations.models import Derivation
 from validibot.validations.models import SignalDefinition
 from validibot.validations.models import Validator
+from validibot.validations.services.catalog_entry_normalization import (
+    build_provider_binding_from_mapping,
+)
 from validibot.validations.validators.base.config import get_all_configs
 
 
@@ -103,6 +106,9 @@ class Command(BaseCommand):
                         seen_derivation_keys.add(entry_slug)
                         total_derivations_synced += 1
                     elif entry_type == "signal":
+                        provider_binding = build_provider_binding_from_mapping(
+                            entry.binding_config,
+                        )
                         SignalDefinition.objects.update_or_create(
                             validator=validator,
                             contract_key=entry_slug,
@@ -115,7 +121,7 @@ class Command(BaseCommand):
                                 "order": entry.order,
                                 "unit": (entry.metadata or {}).get("units", ""),
                                 "origin_kind": SignalOriginKind.CATALOG,
-                                "provider_binding": entry.binding_config,
+                                "provider_binding": provider_binding,
                                 "metadata": entry.metadata,
                             },
                         )

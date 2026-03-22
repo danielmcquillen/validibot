@@ -5,7 +5,8 @@ All rights reserved.
 
 Validibot Community Edition is licensed under AGPL-3.0 (below).
 Validibot Pro and Enterprise are licensed under separate commercial
-terms. See COMM-LICENSE.md for details.
+terms. See https://validibot.com/license/ for the current Commercial
+License Agreement.
 
 ---
 
@@ -19,8 +20,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-See LICENSE-AGPL-3.0.txt for complete open source license terms, or the
-Commercial License Agreement for commercial license terms.
+See LICENSE-AGPL-3.0.txt (included with this repository) for the complete
+AGPL-3.0 text, or visit https://validibot.com/license/ for the Commercial
+License Agreement.
 
 ---
 
@@ -70,11 +72,14 @@ You need a Commercial License if you want to:
 - Access Pro features (see https://validibot.com/pricing for details)
 - Access Enterprise features (see https://validibot.com/pricing for details)
 
-**Note on hosted/SaaS use:** The commercial license covers your own internal
-use, including running Validibot as a service for your own organization's users.
-If you want to offer Validibot as a hosted service to third parties (e.g., a
-multi-tenant SaaS for external customers), you need a separate OEM/Embedded
-license. Contact licensing@mcquilleninteractive.com for details.
+**Note on hosted/SaaS use:** If you use Validibot under the AGPL-3.0, you may
+host it as a service for third parties provided you comply with all AGPL
+obligations (including source disclosure). If you purchase a Commercial License
+instead, the standard commercial license covers your own internal use, including
+running Validibot as a service for your own organisation's users. Commercial
+licensees who want to offer Validibot as a hosted service to third parties
+(e.g., a multi-tenant SaaS for external customers) need a separate OEM/Embedded
+License. Contact licensing@mcquilleninteractive.com for details.
 
 **Note**: The Community edition includes ALL validators (including advanced validators
 like EnergyPlus and FMU) and can be used with the CLI anywhere, including CI/CD

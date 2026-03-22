@@ -185,7 +185,7 @@ See [Pricing](https://validibot.com/pricing) for commercial product details. Nee
 | `validibot-shared`      | MIT        | Shared library for integrations |
 | `validibot-pro`         | Commercial | Pro tier features               |
 
-The AGPL-3.0 license requires that if you modify Validibot and provide it as a network service, you must make your modifications available under the same license. For commercial use without this requirement, [contact us](mailto:sales@mcquilleninteractive.com) for a commercial license.
+The AGPL-3.0 license requires that if you modify Validibot and provide it as a network service, you must make your modifications available under the same license. For commercial use without this requirement, [contact us](mailto:licensing@mcquilleninteractive.com) for a commercial license.
 
 ## Documentation
 

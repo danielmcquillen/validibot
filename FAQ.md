@@ -209,8 +209,9 @@ transfer to the new owner and remain valid.
 
 ### What jurisdiction governs the license?
 
-New South Wales, Australia. Disputes are resolved through ACICA arbitration
-in Sydney.
+Victoria, Australia. For Pro licenses, disputes are resolved through the courts
+of Victoria. For Enterprise licenses, disputes are resolved through ACICA
+arbitration in Melbourne.
 
 ### Is there a liability cap?
 

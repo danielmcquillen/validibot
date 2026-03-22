@@ -583,18 +583,29 @@ class UserSignupForm(SignupForm):
     Form that will be rendered on a user sign up section/screen.
     Default fields will be added automatically.
     Check UserSocialSignupForm for accounts created from social.
-    """
 
-    terms_accepted = forms.BooleanField(
-        required=True,
-        label=_("I agree to the Terms of Service and Privacy Policy"),
-        error_messages={
-            "required": _("You must agree to the Terms of Service and Privacy Policy."),
-        },
-    )
+    The terms_accepted checkbox is only required for commercial deployments
+    (cloud, Pro, Enterprise). Community edition users are governed by the
+    AGPL-3.0 license and do not need to accept a Terms of Service at signup.
+    The REQUIRE_TERMS_ACCEPTANCE setting controls this behaviour.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Only require terms acceptance for commercial deployments.
+        # Community edition users are governed by the AGPL-3.0.
+        if getattr(settings, "REQUIRE_TERMS_ACCEPTANCE", False):
+            self.fields["terms_accepted"] = forms.BooleanField(
+                required=True,
+                label=_("I agree to the Terms of Service and Privacy Policy"),
+                error_messages={
+                    "required": _(
+                        "You must agree to the Terms of Service and Privacy Policy."
+                    ),
+                },
+            )
+
         # Only add reCAPTCHA field if keys are configured
         if _recaptcha_enabled():
             from django_recaptcha.fields import ReCaptchaField

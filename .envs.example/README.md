@@ -21,8 +21,8 @@ cp .envs.example/.local/.django .envs/.local/.django
 cp .envs.example/.local/.postgres .envs/.local/.postgres
 
 # Edit the files and replace !!!SET...!!! placeholders with your values
-# Then start Docker Compose:
-docker compose up
+# Then start the local stack:
+just up
 ```
 
 **What runs where:**

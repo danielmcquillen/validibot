@@ -58,7 +58,7 @@ This pattern follows the [cookiecutter-django](https://github.com/cookiecutter/c
 4. Start Docker Compose:
 
     ```bash
-    docker compose up
+    just up
     ```
 
 ### Docker Compose Production

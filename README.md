@@ -101,23 +101,28 @@ See the [API documentation](https://docs.validibot.com/api) for complete referen
 ### Prerequisites
 
 - Docker and Docker Compose (or [Podman](https://podman.io/) for rootless containers)
+- [just](https://just.systems/) command runner
 - 4GB RAM minimum (8GB recommended)
 
-### One-Command Setup
+### Local Evaluation
 
 ```bash
 # Clone the repository
 git clone https://github.com/danielmcquillen/validibot.git
 cd validibot
 
-# Start all services
-docker compose up -d
+# Copy local environment templates
+mkdir -p .envs/.local
+cp .envs.example/.local/.django .envs/.local/.django
+cp .envs.example/.local/.postgres .envs/.local/.postgres
 
-# Create your admin account
-docker compose exec web python manage.py createsuperuser
+# Edit .envs/.local/.django and set SUPERUSER_PASSWORD
+
+# Start the local stack
+just up
 ```
 
-Open http://localhost:8000 and log in with your admin credentials.
+Open http://localhost:8000 and sign in with the admin credentials from `.envs/.local/.django`.
 
 For detailed setup instructions, see the [Installation Guide](https://docs.validibot.com/installation).
 

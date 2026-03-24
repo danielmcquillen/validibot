@@ -89,7 +89,7 @@ This pattern follows the [cookiecutter-django](https://github.com/cookiecutter/c
 
 GCP deployments don't use local `.envs/` files. Instead, secrets are stored in Google Secret Manager and mounted as environment files at runtime.
 
-See [Google Cloud Deployment](../google_cloud/deployment.md) for details.
+Start with [Deploy to GCP](deploy-gcp.md) for the high-level path, then use [Google Cloud Deployment](../google_cloud/deployment.md) for the full Cloud Run runbook.
 
 ## How Environment Files Work
 

@@ -11,7 +11,7 @@ New to the codebase? Start here:
 1. **[Platform Overview](overview/platform_overview.md)** — What Validibot is and the problems it solves
 2. **[How It Works](overview/how_it_works.md)** — Technical walkthrough of the validation lifecycle
 3. **[Quick Reference](quick_reference.md)** — Core concepts and basic usage patterns
-4. **[Docker Setup](docker.md)** — Run Validibot locally with Docker
+4. **[Run Validibot Locally](deployment/deploy-local.md)** — First-time local setup for self-hosting and evaluation
 
 ---
 

@@ -46,8 +46,8 @@ msgid "Slack message"
 msgstr "Slackメッセージ"
 
 #: validibot/actions/constants.py:21
-msgid "Signed certificate"
-msgstr "署名済み証明書"
+msgid "Signed credential"
+msgstr "署名済み資格証明"
 
 #: validibot/actions/forms.py:104 validibot/core/forms.py:18
 #: validibot/templates/workflows/partials/components/public_step_card.html:56
@@ -63,7 +63,7 @@ msgstr "Slackに送信されるメッセージ内容。"
 #: validibot/actions/forms.py:125
 #: validibot/templates/workflows/partials/components/public_step_card.html:63
 #: validibot/templates/workflows/partials/workflow_step_list.html:105
-msgid "Certificate template"
+msgid "Credential template"
 msgstr "証明書テンプレート"
 
 #: validibot/actions/forms.py:128

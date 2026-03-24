@@ -220,7 +220,7 @@ The processor pattern provides clean separation of concerns:
 
 1. **Step metadata is pulled from the database** – the `WorkflowStep` instance supplies the linked `Validator`, optional `Ruleset`, and the JSON `config` column.
 
-2. **Action steps use handlers instead** – when `workflow_step.action` is set, the service uses the `StepHandler` protocol instead of processors. Handlers like `SlackMessageActionHandler` or `SignedCertificateActionHandler` expose strongly typed fields.
+2. **Action steps use handlers instead** – when `workflow_step.action` is set, the service uses the `StepHandler` protocol instead of processors. Handlers like `SlackMessageActionHandler` or `SignedCredentialActionHandler` expose strongly typed fields.
 
 3. **Submission content is materialized once** -- the active `Submission` is hydrated from the `ValidationRun` so every validator works with the same snapshot of data.
 

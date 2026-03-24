@@ -18,4 +18,4 @@ class IntegrationActionType(models.TextChoices):
 class CertificationActionType(models.TextChoices):
     """Supported certification actions that can be attached to a workflow."""
 
-    SIGNED_CERTIFICATE = "SIGNED_CERTIFICATE", _("Signed certificate")
+    SIGNED_CREDENTIAL = "SIGNED_CREDENTIAL", _("Signed credential")

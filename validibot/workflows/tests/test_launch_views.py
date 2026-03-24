@@ -20,6 +20,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from lxml import html as lxml_html
 
+from validibot.actions.constants import ActionCategoryType
+from validibot.actions.constants import CertificationActionType
+from validibot.actions.models import ActionDefinition
+from validibot.actions.models import SignedCredentialAction
 from validibot.submissions.constants import SubmissionFileType
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import UserFactory
@@ -737,6 +741,7 @@ def test_public_info_view_hides_schema_when_not_shared(client):
 
 
 def test_public_info_view_returns_404_when_disabled(client):
+    """Private workflows do not expose their public info page."""
     workflow = WorkflowFactory(make_info_page_public=False)
 
     response = client.get(
@@ -744,6 +749,40 @@ def test_public_info_view_returns_404_when_disabled(client):
     )
 
     assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+def test_public_info_view_renders_signed_credential_summary(client):
+    """Public workflow pages show the renamed credential template field."""
+    workflow = WorkflowFactory(make_info_page_public=True)
+    definition = ActionDefinition.objects.create(
+        slug="certification-signed-credential",
+        name="Signed credential",
+        description="Issue a signed credential for successful validations.",
+        icon="bi-award",
+        action_category=ActionCategoryType.CERTIFICATION,
+        type=CertificationActionType.SIGNED_CREDENTIAL,
+    )
+    action = SignedCredentialAction.objects.create(
+        definition=definition,
+        name="Issue credential",
+        description="Attach a signed credential PDF.",
+    )
+    WorkflowStepFactory(
+        workflow=workflow,
+        validator=None,
+        action=action,
+        name="Issue credential",
+        description="Attach a signed credential PDF.",
+    )
+
+    response = client.get(
+        reverse("workflow_public_info", kwargs={"workflow_uuid": workflow.uuid}),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Credential template" in body
+    assert "default_signed_credential.pdf" in body
 
 
 # ── Schema-driven launch integration tests ───────────────────────────

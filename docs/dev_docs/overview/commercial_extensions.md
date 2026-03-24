@@ -9,15 +9,12 @@ Validibot follows an open-core model. The core application is open source under 
 
 Commercial packages are standard Python packages distributed through a private package index. Installing the package is the license -- there are no runtime license keys.
 
-At startup, the core settings module discovers commercial packages via Python entry points. Each package registers a `validibot.plugins` entry point that imports the package and triggers feature registration. The core application never imports commercial code directly; it only checks whether features have been registered.
+To activate a commercial package, the customer does two things:
 
-```
-# In validibot-pro's pyproject.toml
-[project.entry-points."validibot.plugins"]
-pro = "validibot_pro"
-```
+1. Install the package into the Python environment or Docker image that runs Validibot.
+2. Add the package's Django app to `INSTALLED_APPS`.
 
-The core app discovers these entry points while loading `config/settings/base.py`. For the current Pro and Enterprise packages, customers do **not** need to add `validibot_pro` or `validibot_enterprise` to `INSTALLED_APPS` just to activate the licensed features.
+This is an explicit opt-in. It keeps activation visible in settings and supports commercial packages that ship models, migrations, templates, static files, or other normal Django app behavior.
 
 ## Installing a commercial package
 
@@ -29,7 +26,13 @@ Install the package into the same Python environment that runs Validibot (see yo
 uv pip install --python .venv/bin/python --index <private-index-url> validibot-pro
 ```
 
-Then restart the application. The Pro features will be available immediately.
+Then add the Django app in the settings module for that environment:
+
+```python
+INSTALLED_APPS += ["validibot_pro"]
+```
+
+Restart the application after updating settings.
 
 ### Docker-based self-hosting
 
@@ -46,7 +49,20 @@ VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro
 VALIDIBOT_PRIVATE_INDEX_URL=https://<license-credentials>@pypi.validibot.com/simple/
 ```
 
-For Enterprise, use `validibot-enterprise` instead. After that, rebuild with `just docker-compose bootstrap` on first install or `just docker-compose deploy` for later rebuilds.
+Installing the wheel into the image is only the first step. Add the Django app
+to the settings module used by that deployment before you rebuild:
+
+```python
+INSTALLED_APPS += ["validibot_pro"]
+```
+
+For Enterprise, use `validibot-enterprise` instead and add both Django apps:
+
+```python
+INSTALLED_APPS += ["validibot_pro", "validibot_enterprise"]
+```
+
+After that, rebuild with `just docker-compose bootstrap` on first install or `just docker-compose deploy` for later rebuilds.
 
 ## What you'll see in the codebase
 

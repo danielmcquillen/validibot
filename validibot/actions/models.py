@@ -20,7 +20,7 @@ class ActionDefinition(TimeStampedModel):
 
     Each definition describes a non-validation step the workflow builder can
     attach to a workflow: integrations (e.g. Slack notifications) and
-    certifications (e.g. issuing a certificate). Runtime execution delegates to
+    certifications (e.g. issuing a credential). Runtime execution delegates to
     handlers keyed by ``action_category`` and ``type``.
     """
 
@@ -136,44 +136,44 @@ class SlackMessageAction(Action):
     message = models.TextField()
 
 
-class SignedCertificateAction(Action):
-    """Action that issues a signed certificate attachment.
+class SignedCredentialAction(Action):
+    """Action that issues a signed credential attachment.
 
     Example:
-        SignedCertificateAction(
+        SignedCredentialAction(
             definition=definition,
-            certificate_template="certificate.html",
+            credential_template="credential.html",
         )
     """
 
-    DEFAULT_CERTIFICATE_TEMPLATE = (
+    DEFAULT_CREDENTIAL_TEMPLATE = (
         Path(__file__).resolve().parent
         / "assets"
         / "certificates"
-        / "default_signed_certificate.pdf"
+        / "default_signed_credential.pdf"
     )
 
-    certificate_template = models.FileField(
+    credential_template = models.FileField(
         upload_to="actions/certificates/",
         blank=True,
     )
 
-    def get_certificate_template_path(self) -> str:
+    def get_credential_template_path(self) -> str:
         """Return the on-disk path for the template, falling back to the default."""
 
-        if self.certificate_template:
+        if self.credential_template:
             try:
-                return self.certificate_template.path
+                return self.credential_template.path
             except (ValueError, NotImplementedError):
-                return self.certificate_template.name
-        return str(self.DEFAULT_CERTIFICATE_TEMPLATE)
+                return self.credential_template.name
+        return str(self.DEFAULT_CREDENTIAL_TEMPLATE)
 
-    def get_certificate_template_display_name(self) -> str:
+    def get_credential_template_display_name(self) -> str:
         """Return a human-readable filename for the template."""
 
-        if self.certificate_template and self.certificate_template.name:
-            return Path(self.certificate_template.name).name
-        return self.DEFAULT_CERTIFICATE_TEMPLATE.name
+        if self.credential_template and self.credential_template.name:
+            return Path(self.credential_template.name).name
+        return self.DEFAULT_CREDENTIAL_TEMPLATE.name
 
 
 register_action_model(
@@ -181,6 +181,6 @@ register_action_model(
     SlackMessageAction,
 )
 register_action_model(
-    CertificationActionType.SIGNED_CERTIFICATE,
-    SignedCertificateAction,
+    CertificationActionType.SIGNED_CREDENTIAL,
+    SignedCredentialAction,
 )

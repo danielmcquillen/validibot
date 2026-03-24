@@ -120,6 +120,9 @@ This file is only for Docker build-time variables such as:
 - `VALIDIBOT_PRIVATE_INDEX_URL`
 
 If you are using the Community edition, you can ignore `.build` entirely.
+If you are using Pro or Enterprise, remember that `.build` only installs the
+wheel into the image. You still need to add the corresponding Django app or
+apps to `INSTALLED_APPS` in the settings module for that deployment.
 
 ### DATABASE_URL Construction
 

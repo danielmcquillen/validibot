@@ -142,7 +142,7 @@ mismatches at save time rather than at runtime.
 | FMU | `FmuStepConfig` | (empty) |
 | CUSTOM_VALIDATOR | `CustomValidatorStepConfig` | (empty) |
 | SLACK_MESSAGE | `SlackActionStepConfig` | `message` |
-| SIGNED_CERTIFICATE | `CertificateActionStepConfig` | `certificate_template` |
+| SIGNED_CREDENTIAL | `CredentialActionStepConfig` | `credential_template` |
 
 ### Adding a New Validator Type
 

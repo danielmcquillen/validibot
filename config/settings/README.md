@@ -27,9 +27,10 @@ All services (Django, Postgres, Redis, Celery) run in Docker containers.
 
 If you purchased Pro or Enterprise, copy `.envs.example/.local/.build` to
 `.envs/.local/.build`, set `VALIDIBOT_COMMERCIAL_PACKAGE` and
-`VALIDIBOT_PRIVATE_INDEX_URL`, then run `just build` before `just up`.
-Customers do not need to edit `config/settings/base.py` to activate those
-packages.
+`VALIDIBOT_PRIVATE_INDEX_URL`, add the matching Django app to
+`config/settings/local.py`, then run `just build` before `just up`.
+Customers should not edit `config/settings/base.py` for that; use the
+environment-specific settings module instead.
 
 ## Production Settings
 
@@ -76,12 +77,12 @@ Platform-specific values live in environment files, not in separate settings mod
 ```
 .envs/
 ├── .local/
-│   ├── .build           # optional commercial package build settings
+│   ├── .build           # optional commercial package build settings only
 │   ├── .django
 │   └── .postgres
 └── .production/
     ├── .docker-compose/
-    │   ├── .build       # optional commercial package build settings
+    │   ├── .build       # optional commercial package build settings only
     │   ├── .django          # DEPLOYMENT_TARGET=docker_compose
     │   └── .postgres
     ├── .google-cloud/

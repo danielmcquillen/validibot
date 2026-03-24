@@ -69,7 +69,18 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
    ```
 
    Use `validibot-enterprise` instead if you purchased Enterprise.
-   You do not need to edit `config/settings/base.py`; the core app discovers installed commercial packages automatically.
+   Then add the commercial Django app to `config/settings/production.py`
+   before you build the image:
+
+   ```python
+   INSTALLED_APPS += ["validibot_pro"]
+   ```
+
+   If you purchased Enterprise, add both apps:
+
+   ```python
+   INSTALLED_APPS += ["validibot_pro", "validibot_enterprise"]
+   ```
 
 4. Validate the env files and bootstrap the deployment:
 

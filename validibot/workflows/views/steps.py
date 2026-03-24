@@ -27,7 +27,7 @@ from django.views.generic.edit import FormView
 
 from validibot.actions.constants import ActionCategoryType
 from validibot.actions.models import ActionDefinition
-from validibot.actions.models import SignedCertificateAction
+from validibot.actions.models import SignedCredentialAction
 from validibot.actions.models import SlackMessageAction
 from validibot.actions.registry import get_action_form
 from validibot.core.utils import reverse_with_org
@@ -97,9 +97,9 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
                 if not config and variant:
                     if isinstance(variant, SlackMessageAction):
                         config["message"] = variant.message
-                    elif isinstance(variant, SignedCertificateAction):
-                        config["certificate_template"] = (
-                            variant.get_certificate_template_display_name()
+                    elif isinstance(variant, SignedCredentialAction):
+                        config["credential_template"] = (
+                            variant.get_credential_template_display_name()
                         )
                 step.action_meta = {
                     "category_label": definition.get_action_category_display(),
@@ -108,14 +108,22 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
                     "definition_name": definition.name,
                     "definition_description": definition.description,
                 }
+                credential_template = config.get("credential_template") or config.get(
+                    "certificate_template"
+                )
                 extras = {
                     key: value
                     for key, value in config.items()
-                    if key not in {"message", "certificate_template"}
+                    if key
+                    not in {
+                        "message",
+                        "credential_template",
+                        "certificate_template",
+                    }
                 }
                 step.action_summary = {
                     "message": config.get("message"),
-                    "certificate_template": config.get("certificate_template"),
+                    "credential_template": credential_template,
                     "extras": extras,
                 }
             step.config = config

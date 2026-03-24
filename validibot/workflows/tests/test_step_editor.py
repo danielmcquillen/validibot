@@ -14,7 +14,7 @@ from validibot.actions.constants import ActionCategoryType
 from validibot.actions.constants import CertificationActionType
 from validibot.actions.constants import IntegrationActionType
 from validibot.actions.models import ActionDefinition
-from validibot.actions.models import SignedCertificateAction
+from validibot.actions.models import SignedCredentialAction
 from validibot.actions.models import SlackMessageAction
 from validibot.submissions.constants import SubmissionFileType
 from validibot.users.constants import RoleCode
@@ -61,7 +61,7 @@ def make_action_definition(
         type_value = (
             IntegrationActionType.SLACK_MESSAGE
             if category == ActionCategoryType.INTEGRATION
-            else CertificationActionType.SIGNED_CERTIFICATE
+            else CertificationActionType.SIGNED_CREDENTIAL
         )
     slug = f"{category.lower()}-{type_value.lower()}"
     definition, _ = ActionDefinition.objects.get_or_create(
@@ -430,13 +430,13 @@ def test_create_certificate_action_uses_default_when_missing(client):
 
     step = WorkflowStep.objects.get(workflow=workflow)
     variant = step.action.get_variant()
-    assert isinstance(variant, SignedCertificateAction)
-    assert variant.certificate_template == "" or variant.certificate_template.name == ""
-    assert variant.get_certificate_template_display_name().endswith(
-        "default_signed_certificate.pdf",
+    assert isinstance(variant, SignedCredentialAction)
+    assert variant.credential_template == "" or variant.credential_template.name == ""
+    assert variant.get_credential_template_display_name().endswith(
+        "default_signed_credential.pdf",
     )
-    assert step.config.get("certificate_template").endswith(
-        "default_signed_certificate.pdf",
+    assert step.config.get("credential_template").endswith(
+        "default_signed_credential.pdf",
     )
 
 
@@ -462,16 +462,16 @@ def test_create_certificate_action_step(client, tmp_path):
             data={
                 "name": "Issue certificate",
                 "description": "Provide certificates for passing runs.",
-                "certificate_template": template_file,
+                "credential_template": template_file,
             },
         )
         assert response.status_code == HTTPStatus.FOUND
 
     step = WorkflowStep.objects.get(workflow=workflow)
     variant = step.action.get_variant()
-    assert isinstance(variant, SignedCertificateAction)
-    assert variant.certificate_template.name.endswith("certificate.html")
-    assert step.config.get("certificate_template") == "certificate.html"
+    assert isinstance(variant, SignedCredentialAction)
+    assert variant.credential_template.name.endswith("certificate.html")
+    assert step.config.get("credential_template") == "certificate.html"
 
 
 def test_update_certificate_action_step_allows_existing_template(client, tmp_path):
@@ -489,11 +489,11 @@ def test_update_certificate_action_step_allows_existing_template(client, tmp_pat
     )
 
     with override_settings(MEDIA_ROOT=str(tmp_path)):
-        action = SignedCertificateAction.objects.create(
+        action = SignedCredentialAction.objects.create(
             definition=definition,
             name="Issue certificate",
             description="Existing description",
-            certificate_template=original_template,
+            credential_template=original_template,
         )
         step = WorkflowStep.objects.create(
             workflow=workflow,
@@ -501,7 +501,7 @@ def test_update_certificate_action_step_allows_existing_template(client, tmp_pat
             order=10,
             name="Issue certificate",
             description="Existing description",
-            config={"certificate_template": "original.html"},
+            config={"credential_template": "original.html"},
         )
 
         edit_url = reverse(
@@ -520,7 +520,7 @@ def test_update_certificate_action_step_allows_existing_template(client, tmp_pat
 
         step.refresh_from_db()
         variant = step.action.get_variant()
-        assert variant.certificate_template.name.endswith("original.html")
+        assert variant.credential_template.name.endswith("original.html")
 
 
 def test_create_view_validates_missing_upload(client):
@@ -1002,6 +1002,7 @@ def test_step_list_shows_author_notes_for_authors(client):
 
 
 def test_step_list_renders_action_step(client):
+    """The step list renders Slack action summaries from step config."""
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     definition = make_action_definition(name="Slack integration")
@@ -1030,6 +1031,41 @@ def test_step_list_renders_action_step(client):
     assert "Notify Slack" in html
     assert definition.get_action_category_display() in html
     assert "#alerts" in html
+
+
+def test_step_list_renders_signed_credential_summary(client):
+    """The step list shows the renamed credential template summary field."""
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    definition = make_action_definition(
+        category=ActionCategoryType.CERTIFICATION,
+        name="Signed credential",
+        type_value=CertificationActionType.SIGNED_CREDENTIAL,
+    )
+    action = SignedCredentialAction.objects.create(
+        definition=definition,
+        name="Issue credential",
+        description="Attach a signed credential PDF.",
+    )
+    WorkflowStep.objects.create(
+        workflow=workflow,
+        action=action,
+        order=10,
+        name="Issue credential",
+        description="Attach a signed credential PDF.",
+        config={"credential_template": "credential-template.pdf"},
+    )
+
+    response = client.get(
+        reverse("workflows:workflow_step_list", args=[workflow.pk]),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert "Credential template" in html
+    assert "credential-template.pdf" in html
+    assert "certificate_template" not in html
 
 
 def test_step_list_hides_author_notes_for_non_authors(client):

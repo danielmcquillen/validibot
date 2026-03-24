@@ -18,12 +18,12 @@ DEFAULT_ACTION_DEFINITIONS = [
         "type": IntegrationActionType.SLACK_MESSAGE,
     },
     {
-        "slug": "certification-signed-certificate",
-        "name": "Signed certificate",
-        "description": "Issue a signed certificate for successful validations.",
+        "slug": "certification-signed-credential",
+        "name": "Signed credential",
+        "description": "Issue a signed credential for successful validations.",
         "icon": "bi-award",
         "action_category": ActionCategoryType.CERTIFICATION,
-        "type": CertificationActionType.SIGNED_CERTIFICATE,
+        "type": CertificationActionType.SIGNED_CREDENTIAL,
     },
 ]
 

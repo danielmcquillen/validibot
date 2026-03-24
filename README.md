@@ -124,7 +124,7 @@ just up
 
 Open http://localhost:8000 and sign in with the admin credentials from `.envs/.local/.django`.
 
-If you purchased Pro or Enterprise, copy `.envs.example/.local/.build` to `.envs/.local/.build`, set `VALIDIBOT_COMMERCIAL_PACKAGE` and `VALIDIBOT_PRIVATE_INDEX_URL`, then run `just build` before `just up`.
+If you purchased Pro or Enterprise, copy `.envs.example/.local/.build` to `.envs/.local/.build`, set `VALIDIBOT_COMMERCIAL_PACKAGE` and `VALIDIBOT_PRIVATE_INDEX_URL`, add the matching Django app to `config/settings/local.py`, then run `just build` before `just up`. For Enterprise, add both `validibot_pro` and `validibot_enterprise`.
 
 For the full self-host walkthrough, see [Run Validibot Locally](https://dev.validibot.com/deployment/deploy-local/).
 

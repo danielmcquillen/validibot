@@ -149,35 +149,17 @@ LOCAL_APPS = [
     "validibot.notifications",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
+# Commercial editions are enabled explicitly by adding their Django apps to
+# INSTALLED_APPS in an environment-specific settings module. Installing the wheel
+# is not enough on its own.
+#
+# Example:
+# INSTALLED_APPS += ["validibot_pro"]
+#
+# Enterprise currently depends on Pro feature registration, so Enterprise
+# installs should include both apps:
+# INSTALLED_APPS += ["validibot_pro", "validibot_enterprise"]
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
-
-# COMMERCIAL PLUGINS
-# ------------------------------------------------------------------------------
-# Auto-discover and load commercial plugins (validibot-pro, validibot-enterprise).
-# These packages register their license providers and features when imported.
-# Uses entry points for clean plugin discovery - install the package into the
-# environment or Docker image and the core app will import it automatically.
-try:
-    from importlib.metadata import entry_points
-
-    # Python 3.10+ returns SelectableGroups, 3.9 returns dict
-    eps = entry_points()
-    if hasattr(eps, "select"):
-        # Python 3.10+
-        plugin_eps = eps.select(group="validibot.plugins")
-    else:
-        # Python 3.9
-        plugin_eps = eps.get("validibot.plugins", [])
-
-    for ep in plugin_eps:
-        try:
-            # Loading the entry point imports the package, triggering auto-registration
-            ep.load()
-            logger.info("Loaded Validibot plugin: %s", ep.name)
-        except Exception as e:
-            logger.warning("Failed to load Validibot plugin %s: %s", ep.name, e)
-except Exception as e:
-    logger.debug("Plugin discovery failed (expected if no plugins installed): %s", e)
 
 MARKDOWNIFY = {
     "default": {

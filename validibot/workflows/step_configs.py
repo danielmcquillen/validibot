@@ -271,11 +271,11 @@ class SlackActionStepConfig(BaseStepConfig):
     """Message text to send to the configured Slack channel."""
 
 
-class CertificateActionStepConfig(BaseStepConfig):
-    """Config for signed certificate action steps."""
+class CredentialActionStepConfig(BaseStepConfig):
+    """Config for signed credential action steps."""
 
-    certificate_template: str = ""
-    """Template filename or display name for the certificate."""
+    credential_template: str = ""
+    """Template filename or display name for the credential."""
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +295,7 @@ STEP_CONFIG_MODELS: dict[str, type[BaseStepConfig]] = {
     "CUSTOM_VALIDATOR": CustomValidatorStepConfig,
     # Action types
     "SLACK_MESSAGE": SlackActionStepConfig,
-    "SIGNED_CERTIFICATE": CertificateActionStepConfig,
+    "SIGNED_CREDENTIAL": CredentialActionStepConfig,
 }
 
 

@@ -164,16 +164,16 @@ class SlackMessageActionHandler:
         )
 
 
-class SignedCertificateActionHandler:
+class SignedCredentialActionHandler:
     """
-    Handler for SignedCertificateAction.
+    Handler for SignedCredentialAction.
 
     Not yet implemented. Contributions welcome — see CONTRIBUTING.md.
     """
 
     def execute(self, run_context: RunContext) -> StepResult:
         raise NotImplementedError(
-            "SignedCertificateActionHandler is not yet implemented. "
+            "SignedCredentialActionHandler is not yet implemented. "
             f"Step ID: {run_context.step.id}"
         )
 
@@ -184,6 +184,6 @@ register_action_handler(
     SlackMessageActionHandler,
 )
 register_action_handler(
-    CertificationActionType.SIGNED_CERTIFICATE,
-    SignedCertificateActionHandler,
+    CertificationActionType.SIGNED_CREDENTIAL,
+    SignedCredentialActionHandler,
 )

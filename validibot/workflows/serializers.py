@@ -168,7 +168,7 @@ class WorkflowStepSerializer(serializers.ModelSerializer):
 
     action_type = serializers.SerializerMethodField(
         help_text=(
-            "Action type identifier (e.g. 'SLACK_MESSAGE', 'SIGNED_CERTIFICATE') "
+            "Action type identifier (e.g. 'SLACK_MESSAGE', 'SIGNED_CREDENTIAL') "
             "for action steps, or null for validator steps."
         ),
     )

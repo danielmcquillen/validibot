@@ -31,7 +31,7 @@ ValidationRunService.execute_workflow_steps()
                 │
                 └── StepHandler
                         ├── SlackMessageActionHandler
-                        ├── SignedCertificateActionHandler
+                        ├── SignedCredentialActionHandler
                         └── ...
 ```
 
@@ -109,7 +109,7 @@ For action steps, the service:
 | Handler | Purpose |
 |---------|---------|
 | `SlackMessageActionHandler` | Sends Slack notifications |
-| `SignedCertificateActionHandler` | Generates and attaches certificates |
+| `SignedCredentialActionHandler` | Generates and attaches credentials |
 
 ## Async Validator Completion: Callbacks
 

@@ -9,7 +9,7 @@ from validibot.actions.constants import CertificationActionType
 from validibot.actions.constants import IntegrationActionType
 from validibot.actions.models import Action
 from validibot.actions.models import ActionDefinition
-from validibot.actions.models import SignedCertificateAction
+from validibot.actions.models import SignedCredentialAction
 from validibot.actions.models import SlackMessageAction
 from validibot.actions.registry import register_action_form
 from validibot.workflows.forms import BaseStepConfigForm
@@ -116,13 +116,13 @@ class SlackMessageActionForm(BaseWorkflowActionForm):
         return {"message": action.message}
 
 
-class SignedCertificateActionForm(BaseWorkflowActionForm):
-    """Collect certificate template uploads for certification steps."""
+class SignedCredentialActionForm(BaseWorkflowActionForm):
+    """Collect credential template uploads for certification steps."""
 
-    action_model = SignedCertificateAction
+    action_model = SignedCredentialAction
 
-    certificate_template = forms.FileField(
-        label=_("Certificate template"),
+    credential_template = forms.FileField(
+        label=_("Credential template"),
         required=False,
         help_text=_(
             "Upload a PDF template. Leave empty to use the default template.",
@@ -131,25 +131,25 @@ class SignedCertificateActionForm(BaseWorkflowActionForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self._variant and getattr(self._variant, "certificate_template", None):
-            current_name = self._variant.certificate_template.name
+        if self._variant and getattr(self._variant, "credential_template", None):
+            current_name = self._variant.credential_template.name
             if current_name:
-                self.fields["certificate_template"].help_text = _(
+                self.fields["credential_template"].help_text = _(
                     "Upload a new template to replace '%(name)s'.",
                 ) % {"name": current_name.split("/")[-1]}
 
-    def update_variant(self, action: SignedCertificateAction) -> None:
-        template = self.cleaned_data.get("certificate_template")
+    def update_variant(self, action: SignedCredentialAction) -> None:
+        template = self.cleaned_data.get("credential_template")
         if template:
-            action.certificate_template = template
+            action.credential_template = template
 
-    def build_step_summary(self, action: SignedCertificateAction) -> dict[str, Any]:
+    def build_step_summary(self, action: SignedCredentialAction) -> dict[str, Any]:
         return {
-            "certificate_template": action.get_certificate_template_display_name(),
+            "credential_template": action.get_credential_template_display_name(),
         }
 
 
 register_action_form(IntegrationActionType.SLACK_MESSAGE, SlackMessageActionForm)
 register_action_form(
-    CertificationActionType.SIGNED_CERTIFICATE, SignedCertificateActionForm
+    CertificationActionType.SIGNED_CREDENTIAL, SignedCredentialActionForm
 )

@@ -32,8 +32,6 @@ services:
       - .:/app
       # Shared storage volume for validation files (accessible by validator containers)
       - validibot_local_storage:/app/storage
-      # Docker socket for spawning validator containers
-      - /var/run/docker.sock:/var/run/docker.sock
     env_file:
       - .envs/.local/.django
       - .envs/.local/.postgres
@@ -70,6 +68,11 @@ services:
       web:
         condition: service_healthy
     command: ["celery", "-A", "config", "worker", "--loglevel=info", "--concurrency=1"]
+    volumes:
+      - .:/app
+      - validibot_local_storage:/app/storage
+      # Only the worker needs Docker socket access to spawn validator containers.
+      - /var/run/docker.sock:/var/run/docker.sock
     ports: []
     healthcheck:
       # Celery worker health check - verify process is running

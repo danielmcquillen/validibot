@@ -107,6 +107,8 @@ See [Justfile Guide](justfile-guide.md) for the full command reference.
 
 Built-in validators work as soon as the local stack is running. Advanced validators such as EnergyPlus and FMU run as sibling containers launched by the worker, so you also need the relevant validator images available on the Docker host.
 
+For consistency with the production stack, only the local `worker` service gets Docker socket access. The `web` and `scheduler` containers do not need it.
+
 If you plan to test advanced validators locally, check:
 
 - [Docker Setup](../docker.md)

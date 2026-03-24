@@ -97,9 +97,9 @@ class TestLicense:
         lic = License(edition=Edition.COMMUNITY)
 
         with pytest.raises(LicenseError) as exc_info:
-            lic.require_edition(Edition.PRO, "JUnit output")
+            lic.require_edition(Edition.PRO, "Signed credentials")
 
-        assert "JUnit output" in str(exc_info.value)
+        assert "Signed credentials" in str(exc_info.value)
         assert "Validibot Pro" in str(exc_info.value)
 
     def test_require_edition_pro_for_enterprise(self):
@@ -117,7 +117,7 @@ class TestLicense:
         lic = License(edition=Edition.ENTERPRISE)
 
         # Should not raise
-        lic.require_edition(Edition.PRO, "JUnit output")
+        lic.require_edition(Edition.PRO, "Signed credentials")
         lic.require_edition(Edition.ENTERPRISE, "LDAP integration")
 
     def test_require_edition_default_description(self):
@@ -135,9 +135,9 @@ class TestLicenseError:
 
     def test_license_error_with_description(self):
         """LicenseError should include feature description and upgrade info."""
-        error = LicenseError("JUnit XML output")
+        error = LicenseError("Signed credentials")
 
-        assert "JUnit XML output" in str(error)
+        assert "Signed credentials" in str(error)
         assert "Validibot Pro" in str(error)
         assert "validibot.com/pricing" in str(error)
 

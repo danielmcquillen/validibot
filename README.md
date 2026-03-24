@@ -31,7 +31,7 @@ Validibot is composed of several repositories that work together:
 | Repository                                                                          | Description                                                                                            | License  |
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------- |
 | **[validibot](https://github.com/danielmcquillen/validibot)**                       | Core platform (this repo) — Django web application, REST API, workflow engine, and built-in validators | AGPL-3.0 |
-| **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)**               | Command-line interface for running validations from terminals and CI/CD pipelines                      | MIT      |
+| **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)**               | Command-line interface for running validations from terminals and scripts                              | MIT      |
 | **[validibot-validators](https://github.com/danielmcquillen/validibot-validators)** | Advanced validators (EnergyPlus™, FMU) that run as isolated Docker containers                          | MIT      |
 | **[validibot-shared](https://github.com/danielmcquillen/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators                | MIT      |
 
@@ -77,7 +77,7 @@ Orchestrate multi-step validation pipelines:
 
 - Ordered sequence of validation steps
 - Mix simple and advanced validators
-- Action steps for notifications (Slack, webhooks)
+- Action steps for notifications (Slack)
 - Versioned workflows for safe migrations
 
 ### Full REST API
@@ -124,7 +124,7 @@ just up
 
 Open http://localhost:8000 and sign in with the admin credentials from `.envs/.local/.django`.
 
-If you purchased Pro or Enterprise, copy `.envs.example/.local/.build` to `.envs/.local/.build`, set `VALIDIBOT_COMMERCIAL_PACKAGE` and `VALIDIBOT_PRIVATE_INDEX_URL`, add the matching Django app to `config/settings/local.py`, then run `just build` before `just up`. For Enterprise, add both `validibot_pro` and `validibot_enterprise`.
+If you purchased Pro or Enterprise, copy `.envs.example/.local/.build` to `.envs/.local/.build`, set `VALIDIBOT_COMMERCIAL_PACKAGE` and `VALIDIBOT_PRIVATE_INDEX_URL`, add the matching Django app to `config/settings/base.py`, then run `just build` before `just up`. For Enterprise, add both `validibot_pro` and `validibot_enterprise`.
 
 For the full self-host walkthrough, see [Run Validibot Locally](https://dev.validibot.com/deployment/deploy-local/).
 

@@ -2,7 +2,7 @@
 
 Validibot follows an open-core model. The core application is open source under AGPL-3.0 and includes the full validation system, all built-in validators, workflows, and single-user management. Two optional commercial packages add team and enterprise capabilities:
 
-- **validibot-pro** -- team management, billing, advanced analytics, signed badges
+- **validibot-pro** -- team management, billing, advanced analytics, signed credentials
 - **validibot-enterprise** -- multi-org support, SSO/SAML, LDAP integration (includes all Pro features)
 
 ## How commercial packages plug in
@@ -26,7 +26,7 @@ Install the package into the same Python environment that runs Validibot (see yo
 uv pip install --python .venv/bin/python --index <private-index-url> validibot-pro
 ```
 
-Then add the Django app in the settings module for that environment:
+Then add the Django app in `config/settings/base.py`:
 
 ```python
 INSTALLED_APPS += ["validibot_pro"]
@@ -50,7 +50,7 @@ VALIDIBOT_PRIVATE_INDEX_URL=https://<license-credentials>@pypi.validibot.com/sim
 ```
 
 Installing the wheel into the image is only the first step. Add the Django app
-to the settings module used by that deployment before you rebuild:
+in `config/settings/base.py` before you rebuild:
 
 ```python
 INSTALLED_APPS += ["validibot_pro"]

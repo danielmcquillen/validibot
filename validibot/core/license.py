@@ -4,8 +4,9 @@ License detection and edition gating for Validibot.
 Validibot is available in three editions:
 
 - **Community** (AGPL-3.0): Full validation capabilities, all validators included
-- **Pro** (Commercial): Adds multi-org support, removes AGPL obligations
-- **Enterprise** (Commercial): Adds SSO/LDAP, guest management, source code escrow
+- **Pro** (Commercial): Adds team management, guest access, and signed credentials
+- **Enterprise** (Commercial): Adds multi-org management, SSO/SAML, and
+  enterprise support
 
 This module detects the current edition based on installed packages.
 Commercial editions are provided by separate packages:

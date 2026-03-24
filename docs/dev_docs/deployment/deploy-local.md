@@ -71,7 +71,7 @@ VALIDIBOT_PRIVATE_INDEX_URL=https://<license-credentials>@pypi.validibot.com/sim
 ```
 
 Use `validibot-enterprise` instead of `validibot-pro` if you purchased Enterprise.
-Then add the commercial Django app to `config/settings/local.py` before you
+Then add the commercial Django app to `config/settings/base.py` before you
 start or rebuild the stack:
 
 ```python

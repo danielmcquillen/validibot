@@ -400,28 +400,15 @@ For production workloads, consider using DigitalOcean's managed PostgreSQL inste
 
 ### Use DigitalOcean Spaces for file storage
 
-Spaces provides S3-compatible object storage for uploaded files:
+DigitalOcean Spaces is S3-compatible object storage, but the Validibot S3 data
+storage backend is not implemented yet.
 
-1. **Create a Space:**
-   - Go to **Spaces → Create a Space**
-   - Choose a region and name (e.g., `your-app-storage`)
-   - Enable CDN if desired
+For now, do one of these instead:
 
-2. **Create access keys:**
-   - Go to **API → Spaces Keys → Generate New Key**
+1. Keep the default local storage volume in the Docker Compose deployment.
+2. Use the GCS-backed deployment path if you need object storage today.
 
-3. **Update environment:**
-
-   Add to `.envs/.production/.docker-compose/.django`:
-
-   ```bash
-   DATA_STORAGE_BACKEND=s3
-   STORAGE_BUCKET=your-app-storage
-   AWS_S3_ENDPOINT_URL=https://nyc3.digitaloceanspaces.com
-   AWS_S3_REGION_NAME=nyc3
-   AWS_ACCESS_KEY_ID=your-spaces-key
-   AWS_SECRET_ACCESS_KEY=your-spaces-secret
-   ```
+Do not set `DATA_STORAGE_BACKEND=s3` for a current Validibot deployment.
 
 ### Using advanced validators
 

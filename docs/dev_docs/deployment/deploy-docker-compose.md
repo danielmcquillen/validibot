@@ -69,7 +69,7 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
    ```
 
    Use `validibot-enterprise` instead if you purchased Enterprise.
-   Then add the commercial Django app to `config/settings/production.py`
+   Then add the commercial Django app to `config/settings/base.py`
    before you build the image:
 
    ```python

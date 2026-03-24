@@ -5,8 +5,8 @@ This settings file handles all production deployments. The specific infrastructu
 is determined by the DEPLOYMENT_TARGET environment variable:
 
     - "gcp": Google Cloud Platform (Cloud Run, Cloud Tasks, GCS)
-    - "docker_compose": Docker Compose (Docker socket, Celery, local/S3/GCS)
-    - "aws": Amazon Web Services (future - AWS Batch, SQS, S3)
+    - "docker_compose": Docker Compose (Docker socket, Celery, local/GCS)
+    - "aws": Reserved for future support and not yet implemented
 
 Required environment variables (all targets):
     DJANGO_SECRET_KEY: Secure secret key for Django
@@ -26,8 +26,7 @@ Target-specific requirements:
         (STORAGE_BUCKET optional - uses local filesystem if not set)
 
     AWS:
-        STORAGE_BUCKET: S3 bucket name
-        AWS_S3_REGION_NAME: AWS region
+        Not yet implemented
 """
 
 import logging
@@ -55,10 +54,12 @@ if DEPLOYMENT_TARGET not in VALID_DEPLOYMENT_TARGETS:
         f"DEPLOYMENT_TARGET must be one of {VALID_DEPLOYMENT_TARGETS}, "
         f"got: {DEPLOYMENT_TARGET}"
     )
-# NOTE: AWS is accepted as a deployment target for forward-compatibility but
-# is not yet implemented.  Storage (S3), task dispatch, and execution backends
-# are all stubs that raise NotImplementedError.  See core/storage/s3.py,
-# core/tasks/dispatch/registry.py, and validations/services/execution/registry.py.
+
+if DEPLOYMENT_TARGET == "aws":
+    raise NotImplementedError(
+        "DEPLOYMENT_TARGET='aws' is not implemented yet. "
+        "Use DEPLOYMENT_TARGET='docker_compose' or DEPLOYMENT_TARGET='gcp'."
+    )
 
 # GENERAL
 # ------------------------------------------------------------------------------
@@ -137,8 +138,8 @@ SECURE_CONTENT_TYPE_NOSNIFF = env.bool(
 # Storage configuration varies by deployment target:
 #
 # GCP: Uses GCS bucket (required)
-# Docker Compose: Uses local filesystem by default, or GCS/S3 if configured
-# AWS: Uses S3 bucket (required)
+# Docker Compose: Uses local filesystem by default, or GCS if configured
+# AWS: Not implemented
 #
 # All targets use a single bucket/directory with prefix-based separation:
 #   ├── public/      # Publicly accessible (avatars, workflow images)

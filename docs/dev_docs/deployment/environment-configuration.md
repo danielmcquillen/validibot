@@ -11,9 +11,11 @@ Environment configuration uses a template-based approach:
 ├── README.md               # Quick start guide and variable reference
 ├── .local/
 │   ├── .django             # Django settings for local development
+│   ├── .build              # Optional Docker build settings for Pro/Enterprise
 │   └── .postgres           # Postgres credentials for local development
 └── .production/
     ├── .docker-compose/    # Docker Compose production deployment
+    │   ├── .build          # Optional Docker build settings for Pro/Enterprise
     │   ├── .django
     │   └── .postgres
     ├── .google-cloud/      # Google Cloud Platform deployment
@@ -51,6 +53,8 @@ This pattern follows the [cookiecutter-django](https://github.com/cookiecutter/c
     ```bash
     cp .envs.example/.local/.django .envs/.local/.django
     cp .envs.example/.local/.postgres .envs/.local/.postgres
+    # Optional for Pro/Enterprise
+    cp .envs.example/.local/.build .envs/.local/.build
     ```
 
 3. Edit the files to set real values (especially `SUPERUSER_PASSWORD`).
@@ -74,6 +78,8 @@ This pattern follows the [cookiecutter-django](https://github.com/cookiecutter/c
     ```bash
     cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-compose/.django
     cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
+    # Optional for Pro/Enterprise
+    cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-compose/.build
     ```
 
 3. Edit with your production values (generate a proper secret key, set your domain, etc.).
@@ -93,7 +99,7 @@ Start with [Deploy to GCP](deploy-gcp.md) for the high-level path, then use [Goo
 
 ## How Environment Files Work
 
-### The Two-File Pattern
+### The Runtime Two-File Pattern
 
 Each deployment environment uses two files:
 
@@ -103,6 +109,17 @@ Each deployment environment uses two files:
 | `.django` | Everything else | `DJANGO_SECRET_KEY`, `REDIS_URL`, `SITE_URL` |
 
 This separation keeps database credentials isolated and makes it clear which variables configure which service.
+
+### Optional Docker Build File
+
+Docker-based deployments can also use an optional `.build` file when you need to bake a commercial package into the image.
+
+This file is only for Docker build-time variables such as:
+
+- `VALIDIBOT_COMMERCIAL_PACKAGE`
+- `VALIDIBOT_PRIVATE_INDEX_URL`
+
+If you are using the Community edition, you can ignore `.build` entirely.
 
 ### DATABASE_URL Construction
 

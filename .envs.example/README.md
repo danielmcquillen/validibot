@@ -20,6 +20,9 @@ mkdir -p .envs/.local
 cp .envs.example/.local/.django .envs/.local/.django
 cp .envs.example/.local/.postgres .envs/.local/.postgres
 
+# Optional: if you purchased Pro or Enterprise, copy the build-time package config
+cp .envs.example/.local/.build .envs/.local/.build
+
 # Edit the files and replace !!!SET...!!! placeholders with your values
 # Then start the local stack:
 just up
@@ -41,6 +44,9 @@ mkdir -p .envs/.production/.docker-compose
 # Copy both files
 cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-compose/.django
 cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
+
+# Optional: if you purchased Pro or Enterprise, copy the build-time package config
+cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-compose/.build
 
 # Edit with your production values (especially secrets!)
 # Then validate and bootstrap with:
@@ -91,9 +97,11 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
 ├── README.md
 ├── .local/
 │   ├── .django             # Django settings for local dev
+│   ├── .build              # Optional Docker build settings for Pro/Enterprise
 │   └── .postgres           # Postgres credentials for local dev
 └── .production/
     ├── .docker-compose/
+    │   ├── .build          # Optional Docker build settings for Pro/Enterprise
     │   ├── .django
     │   └── .postgres
     ├── .google-cloud/
@@ -105,9 +113,11 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
 .envs/                      # Your actual secrets (NOT committed - gitignored)
 ├── .local/
 │   ├── .django
+│   ├── .build
 │   └── .postgres
 └── .production/
     ├── .docker-compose/
+    │   ├── .build
     │   ├── .django
     │   └── .postgres
     ├── .google-cloud/
@@ -130,6 +140,15 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
 | `POSTGRES_PASSWORD` | Database password | -                                |
 
 **Note:** `DATABASE_URL` is automatically constructed by the entrypoint script from these variables.
+
+### Docker Build Variables (`.build`)
+
+These variables are optional and only needed when you want Docker to install a commercial package during image build.
+
+| Variable | Description | Example |
+| --- | --- | --- |
+| `VALIDIBOT_COMMERCIAL_PACKAGE` | Commercial package to bake into the image | `validibot-pro` |
+| `VALIDIBOT_PRIVATE_INDEX_URL` | Private package index URL from your license email | `https://user:pass@pypi.validibot.com/simple/` |
 
 ### Django Variables (`.django`)
 

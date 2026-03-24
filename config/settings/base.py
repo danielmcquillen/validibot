@@ -155,7 +155,8 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 # ------------------------------------------------------------------------------
 # Auto-discover and load commercial plugins (validibot-pro, validibot-enterprise).
 # These packages register their license providers and features when imported.
-# Uses entry points for clean plugin discovery - just `pip install validibot-pro`.
+# Uses entry points for clean plugin discovery - install the package into the
+# environment or Docker image and the core app will import it automatically.
 try:
     from importlib.metadata import entry_points
 

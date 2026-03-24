@@ -18,12 +18,16 @@
 #   just shell       # Open Django shell
 #   just down        # Stop containers
 #
+# Optional for Pro/Enterprise:
+#   copy .envs.example/.local/.build to .envs/.local/.build before the first build
+#
 # =============================================================================
 
 # Note: Shell setting is inherited from root justfile
 
 # Docker Compose file for local development
 local_compose := "docker-compose.local.yml"
+local_compose_env_args := `bash -lc 'if [ -f ".envs/.local/.build" ]; then printf -- "--env-file .envs/.local/.build"; fi'`
 
 # =============================================================================
 # Container Lifecycle
@@ -55,19 +59,19 @@ up:
         echo ""
         exit 1
     fi
-    docker compose -f {{local_compose}} up -d
+    docker compose {{local_compose_env_args}} -f {{local_compose}} up -d
 
 # Stop all local Docker containers
 # Containers are stopped but not removed - data persists in volumes
 down:
-    docker compose -f {{local_compose}} down
+    docker compose {{local_compose_env_args}} -f {{local_compose}} down
 
 # Rebuild and start all containers
 # Use this after changing Dockerfile, requirements, or dependencies
 # Usage: just build           # detached (background)
 # Usage: just build --attach  # attached (shows logs, Ctrl+C to stop)
 build *args:
-    docker compose -f {{local_compose}} up {{ if args == "--attach" { "" } else { "-d" } }} --build
+    docker compose {{local_compose_env_args}} -f {{local_compose}} up {{ if args == "--attach" { "" } else { "-d" } }} --build
 
 # Rebuild and start containers, clearing the venv volume
 #
@@ -80,19 +84,19 @@ build *args:
 #        just rebuild --no-cache   # full clean rebuild (slow)
 #        just rebuild worker       # rebuild specific service
 rebuild *args:
-    docker compose -f {{local_compose}} down
+    docker compose {{local_compose_env_args}} -f {{local_compose}} down
     -docker volume rm validibot_validibot_local_venv
-    docker compose -f {{local_compose}} build {{args}}
-    docker compose -f {{local_compose}} up -d
+    docker compose {{local_compose_env_args}} -f {{local_compose}} build {{args}}
+    docker compose {{local_compose_env_args}} -f {{local_compose}} up -d
 
 # Follow logs from all containers (Ctrl+C to exit)
 # Shows interleaved logs from all services
 logs:
-    docker compose -f {{local_compose}} logs -f
+    docker compose {{local_compose_env_args}} -f {{local_compose}} logs -f
 
 # Show status of all containers
 ps:
-    docker compose -f {{local_compose}} ps
+    docker compose {{local_compose_env_args}} -f {{local_compose}} ps
 
 # Restart all containers (stop then start)
 restart: down up
@@ -100,7 +104,7 @@ restart: down up
 # Stop containers and remove volumes (clean slate)
 # WARNING: This deletes all database data! Use for clean slate only.
 clean:
-    docker compose -f {{local_compose}} down -v --remove-orphans
+    docker compose {{local_compose_env_args}} -f {{local_compose}} down -v --remove-orphans
 
 # =============================================================================
 # Django Commands in Container
@@ -113,24 +117,24 @@ _db_url := 'DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POS
 # Open a bash shell in the Django container
 # Useful for running arbitrary commands, debugging, or exploring
 shell:
-    docker compose -f {{local_compose}} exec web bash -c '{{_db_url}} exec bash'
+    docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} exec bash'
 
 # Open a Django shell in the container
 # Usage: just djshell
 djshell:
-    docker compose -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py shell'
+    docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py shell'
 
 # Run Django migrations in the local container
 # Applies any pending database migrations
 migrate:
-    docker compose -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py migrate'
+    docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py migrate'
 
 # Run a Django management command in the container
 # Usage: just manage createsuperuser
 # Usage: just manage "shell_plus --ipython"
 # Usage: just manage seed_weather_files
 manage +command:
-    docker compose -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py {{command}}'
+    docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py {{command}}'
 
 # =============================================================================
 # Testing
@@ -151,7 +155,7 @@ test-integration *args:
     #!/usr/bin/env bash
     set -euo pipefail
     PROJECT="validibot-test"
-    COMPOSE="docker compose -f {{local_compose}} -p $PROJECT"
+    COMPOSE="docker compose {{local_compose_env_args}} -f {{local_compose}} -p $PROJECT"
 
     cleanup() {
         echo "Cleaning up test containers..."
@@ -188,7 +192,7 @@ test-e2e *args:
     # Auto-provision test data if env vars aren't already set
     if [ -z "${FULLSTACK_API_TOKEN:-}" ]; then
         echo "Provisioning test data via management command..."
-        env_output=$(docker compose -f {{local_compose}} exec -T web \
+        env_output=$(docker compose {{local_compose_env_args}} -f {{local_compose}} exec -T web \
             bash -c '{{_db_url}} python manage.py setup_fullstack_test_data --export-env' 2>/dev/null)
         if [ -z "$env_output" ]; then
             echo ""
@@ -226,7 +230,7 @@ test-e2e-energyplus *args:
     # Auto-provision E2E workflow data if env vars aren't already set
     if [ -z "${E2E_ENERGYPLUS_TEMPLATE_WORKFLOW_ID:-}" ]; then
         echo "Provisioning E2E workflow data via management command..."
-        env_output=$(docker compose -f {{local_compose}} exec -T web \
+        env_output=$(docker compose {{local_compose_env_args}} -f {{local_compose}} exec -T web \
             bash -c '{{_db_url}} python manage.py setup_e2e_workflows --export-env' 2>/dev/null)
         if [ -z "$env_output" ]; then
             echo ""
@@ -251,7 +255,11 @@ test-e2e-energyplus *args:
 # Documentation
 # =============================================================================
 
-# Serve developer documentation locally (port 9000)
+# Build developer documentation with Zensical
+docs-build:
+    uv run zensical build -f mkdocs.dev.yml --clean
+
+# Serve developer documentation locally with Zensical (port 9000)
 # For contributors and maintainers
 docs-dev:
     -lsof -ti :9000 | xargs kill 2>/dev/null

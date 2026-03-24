@@ -26,9 +26,10 @@
 # Quick start:
 #   1. Copy .envs.example/.production/.docker-compose/.django to .envs/.production/.docker-compose/.django
 #   2. Copy .envs.example/.production/.docker-compose/.postgres to .envs/.production/.docker-compose/.postgres
-#   3. Edit the environment files with your settings
-#   4. just docker-compose check-env
-#   5. just docker-compose bootstrap
+#   3. Optional: copy .envs.example/.production/.docker-compose/.build for Pro/Enterprise
+#   4. Edit the environment files with your settings
+#   5. just docker-compose check-env
+#   6. just docker-compose bootstrap
 #
 # =============================================================================
 
@@ -49,6 +50,8 @@ compose_project := "validibot"
 # Environment files for the Docker Compose production deployment
 django_env_file := ".envs/.production/.docker-compose/.django"
 postgres_env_file := ".envs/.production/.docker-compose/.postgres"
+build_env_file := ".envs/.production/.docker-compose/.build"
+compose_env_args := `bash -lc 'if [ -f ".envs/.production/.docker-compose/.build" ]; then printf -- "--env-file .envs/.production/.docker-compose/.build"; fi'`
 
 # Git SHA for image tagging
 git_sha := `git rev-parse --short HEAD`
@@ -60,20 +63,20 @@ git_sha := `git rev-parse --short HEAD`
 # Start all services in production mode
 # This brings up web, worker, database, redis, and any other services
 up:
-    docker compose -f {{compose_file}} -p {{compose_project}} up -d
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} up -d
 
 # Stop all services (containers remain, data persists)
 down:
-    docker compose -f {{compose_file}} -p {{compose_project}} down
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} down
 
 # Build images and start services
 # Use this after code changes or dependency updates
 build:
-    docker compose -f {{compose_file}} -p {{compose_project}} up -d --build
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} up -d --build
 
 # Build images without starting (useful for CI/CD)
 build-only:
-    docker compose -f {{compose_file}} -p {{compose_project}} build
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} build
 
 # Wait until the web container accepts management commands
 _wait-web:
@@ -81,7 +84,7 @@ _wait-web:
     set -euo pipefail
     echo "Waiting for web container to become ready..."
     for _ in {1..60}; do
-        if docker compose -f {{compose_file}} -p {{compose_project}} exec -T web true >/dev/null 2>&1; then
+        if docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web true >/dev/null 2>&1; then
             echo "Web container is ready."
             exit 0
         fi
@@ -95,9 +98,9 @@ _wait-web:
 # Builds and starts the stack, applies migrations, seeds default data,
 # and verifies the installation.
 bootstrap: check-env build _wait-web
-    docker compose -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py migrate --noinput
-    docker compose -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py setup_validibot --noinput
-    docker compose -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py check_validibot
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py migrate --noinput
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py setup_validibot --noinput
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py check_validibot
     @echo ""
     @echo "Bootstrap complete!"
     @echo "Next steps:"
@@ -107,16 +110,16 @@ bootstrap: check-env build _wait-web
 
 # Show status of all containers
 status:
-    docker compose -f {{compose_file}} -p {{compose_project}} ps
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} ps
 
 # Follow logs from all services
 logs:
-    docker compose -f {{compose_file}} -p {{compose_project}} logs -f
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} logs -f
 
 # Follow logs from a specific service
 # Usage: just docker-compose logs-service web
 logs-service service:
-    docker compose -f {{compose_file}} -p {{compose_project}} logs -f {{service}}
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} logs -f {{service}}
 
 # Restart all services
 restart: down up
@@ -124,11 +127,11 @@ restart: down up
 # Restart a specific service
 # Usage: just docker-compose restart-service web
 restart-service service:
-    docker compose -f {{compose_file}} -p {{compose_project}} restart {{service}}
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} restart {{service}}
 
 # Stop and remove containers, networks (preserves volumes/data)
 clean:
-    docker compose -f {{compose_file}} -p {{compose_project}} down
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} down
 
 # Stop, remove containers, AND remove volumes
 # WARNING: This deletes all data including the database!
@@ -138,7 +141,7 @@ clean-all:
     echo "WARNING: This will delete ALL data including the database!"
     read -p "Are you sure? Type 'yes' to confirm: " -r
     if [[ "$REPLY" == "yes" ]]; then
-        docker compose -f {{compose_file}} -p {{compose_project}} down -v
+        docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} down -v
         echo "All containers and volumes removed."
     else
         echo "Cancelled."
@@ -155,11 +158,11 @@ deploy: build
     @echo "Deployment complete!"
     @echo ""
     @echo "Services running:"
-    docker compose -f {{compose_file}} -p {{compose_project}} ps
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} ps
 
 # Pull latest images (for pre-built images from a registry)
 pull:
-    docker compose -f {{compose_file}} -p {{compose_project}} pull
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} pull
 
 # Deploy using pre-built images (pull then start)
 deploy-prebuilt: pull up
@@ -171,31 +174,31 @@ deploy-prebuilt: pull up
 
 # Run database migrations
 migrate:
-    docker compose -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py migrate --noinput
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py migrate --noinput
 
 # Run setup_validibot to initialize site and default data
 # Configures site domain, validators, roles, workspaces, etc.
 setup-data:
-    docker compose -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py setup_validibot --noinput
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py setup_validibot --noinput
 
 # Run any Django management command
 # Usage: just docker-compose manage "createsuperuser"
 # Usage: just docker-compose manage "shell"
 # Usage: just docker-compose manage "collectstatic --noinput"
 manage command:
-    docker compose -f {{compose_file}} -p {{compose_project}} exec web python manage.py {{command}}
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec web python manage.py {{command}}
 
 # Open a bash shell in the web container
 shell:
-    docker compose -f {{compose_file}} -p {{compose_project}} exec web bash
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec web bash
 
 # Open Django shell
 shell-django:
-    docker compose -f {{compose_file}} -p {{compose_project}} exec web python manage.py shell
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec web python manage.py shell
 
 # Connect to the PostgreSQL database
 shell-db:
-    docker compose -f {{compose_file}} -p {{compose_project}} exec postgres psql -U validibot_user validibot
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec postgres psql -U validibot_user validibot
 
 # =============================================================================
 # Backup & Restore
@@ -210,7 +213,7 @@ backup-db:
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     BACKUP_FILE="backups/validibot_db_${TIMESTAMP}.sql.gz"
     echo "Creating database backup: $BACKUP_FILE"
-    docker compose -f {{compose_file}} -p {{compose_project}} exec -T postgres \
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T postgres \
         pg_dump -U validibot_user validibot | gzip > "$BACKUP_FILE"
     echo "Backup complete: $BACKUP_FILE"
     ls -lh "$BACKUP_FILE"
@@ -228,7 +231,7 @@ restore-db backup_file:
     read -p "Are you sure? Type 'yes' to confirm: " -r
     if [[ "$REPLY" == "yes" ]]; then
         echo "Restoring from: {{backup_file}}"
-        gunzip -c "{{backup_file}}" | docker compose -f {{compose_file}} -p {{compose_project}} exec -T postgres \
+        gunzip -c "{{backup_file}}" | docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T postgres \
             psql -U validibot_user validibot
         echo "Restore complete!"
     else
@@ -270,7 +273,7 @@ health-check:
     service_status() {
         local service="$1"
         local container_id
-        container_id=$(docker compose -f {{compose_file}} -p {{compose_project}} ps -q "$service" 2>/dev/null || true)
+        container_id=$(docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} ps -q "$service" 2>/dev/null || true)
         if [ -z "$container_id" ]; then
             echo "not running"
             return
@@ -339,7 +342,7 @@ maintenance-on:
     set -euo pipefail
     echo "Entering maintenance mode..."
     echo "Stopping web and worker services..."
-    docker compose -f {{compose_file}} -p {{compose_project}} stop web worker
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} stop web worker
     echo ""
     echo "Maintenance mode enabled."
     echo "Database and Redis are still running for maintenance tasks."
@@ -351,7 +354,7 @@ maintenance-off:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Exiting maintenance mode..."
-    docker compose -f {{compose_file}} -p {{compose_project}} start web worker
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} start web worker
     echo ""
     echo "Services restarted. Maintenance mode disabled."
 
@@ -377,19 +380,19 @@ update:
     git pull --ff-only
     echo ""
     echo "3. Building new images..."
-    docker compose -f {{compose_file}} -p {{compose_project}} build
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} build
     echo ""
     echo "4. Stopping services..."
-    docker compose -f {{compose_file}} -p {{compose_project}} down
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} down
     echo ""
     echo "5. Starting services..."
-    docker compose -f {{compose_file}} -p {{compose_project}} up -d
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} up -d
     echo ""
     echo "6. Running migrations..."
-    docker compose -f {{compose_file}} -p {{compose_project}} exec web python manage.py migrate
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec web python manage.py migrate
     echo ""
     echo "Update complete!"
-    docker compose -f {{compose_file}} -p {{compose_project}} ps
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} ps
 
 # =============================================================================
 # SSL / HTTPS Setup
@@ -435,7 +438,7 @@ update:
 # Scale worker containers
 # Usage: just docker-compose scale-workers 3
 scale-workers count:
-    docker compose -f {{compose_file}} -p {{compose_project}} up -d --scale worker={{count}}
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} up -d --scale worker={{count}}
     @echo "Worker count scaled to {{count}}"
 
 # =============================================================================
@@ -444,21 +447,21 @@ scale-workers count:
 
 # Show resource usage
 resources:
-    docker stats --no-stream $(docker compose -f {{compose_file}} -p {{compose_project}} ps -q)
+    docker stats --no-stream $(docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} ps -q)
 
 # Show container logs with errors only
 errors:
-    docker compose -f {{compose_file}} -p {{compose_project}} logs --tail=100 | grep -i -E "(error|exception|traceback|failed)"
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} logs --tail=100 | grep -i -E "(error|exception|traceback|failed)"
 
 # Show recent container events
 events:
-    docker compose -f {{compose_file}} -p {{compose_project}} events --since 1h
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} events --since 1h
 
 # Inspect a service's configuration
 # Usage: just docker-compose inspect web
 inspect service:
-    docker compose -f {{compose_file}} -p {{compose_project}} config --services | grep -q {{service}} && \
-        docker inspect $(docker compose -f {{compose_file}} -p {{compose_project}} ps -q {{service}}) | jq '.[0]' || \
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} config --services | grep -q {{service}} && \
+        docker inspect $(docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} ps -q {{service}}) | jq '.[0]' || \
         echo "Service not found: {{service}}"
 
 # =============================================================================
@@ -471,6 +474,7 @@ check-env:
     set -euo pipefail
     DJANGO_ENV_FILE="{{django_env_file}}"
     POSTGRES_ENV_FILE="{{postgres_env_file}}"
+    BUILD_ENV_FILE="{{build_env_file}}"
 
     for env_file in "$DJANGO_ENV_FILE" "$POSTGRES_ENV_FILE"; do
         if [ ! -f "$env_file" ]; then
@@ -527,6 +531,33 @@ check-env:
             PLACEHOLDER_MATCHES=$((PLACEHOLDER_MATCHES + 1))
         fi
     done
+
+    if [ -f "$BUILD_ENV_FILE" ]; then
+        echo ""
+        echo "Checking optional Docker build settings..."
+
+        COMMERCIAL_PACKAGE=$(grep -E '^VALIDIBOT_COMMERCIAL_PACKAGE=' "$BUILD_ENV_FILE" | cut -d= -f2- || true)
+        PRIVATE_INDEX_URL=$(grep -E '^VALIDIBOT_PRIVATE_INDEX_URL=' "$BUILD_ENV_FILE" | cut -d= -f2- || true)
+
+        if [ -n "$COMMERCIAL_PACKAGE" ]; then
+            case "$COMMERCIAL_PACKAGE" in
+                validibot-pro|validibot-enterprise)
+                    echo "  OK: VALIDIBOT_COMMERCIAL_PACKAGE=$COMMERCIAL_PACKAGE"
+                    ;;
+                *)
+                    echo "  ERROR: Unsupported VALIDIBOT_COMMERCIAL_PACKAGE=$COMMERCIAL_PACKAGE"
+                    PLACEHOLDER_MATCHES=$((PLACEHOLDER_MATCHES + 1))
+                    ;;
+            esac
+
+            if [ -z "$PRIVATE_INDEX_URL" ]; then
+                echo "  ERROR: VALIDIBOT_PRIVATE_INDEX_URL is required when installing a commercial package"
+                PLACEHOLDER_MATCHES=$((PLACEHOLDER_MATCHES + 1))
+            else
+                echo "  OK: VALIDIBOT_PRIVATE_INDEX_URL is set"
+            fi
+        fi
+    fi
 
     echo ""
     if [ "$MISSING" -gt 0 ] || [ "$PLACEHOLDER_MATCHES" -gt 0 ]; then

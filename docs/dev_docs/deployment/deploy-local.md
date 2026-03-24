@@ -55,6 +55,24 @@ Once the containers are up:
 - Sign in with the admin credentials from `.envs/.local/.django`
 - Use `http://localhost:8025` to inspect locally captured emails
 
+## If you purchased Pro or Enterprise
+
+Local Docker builds can optionally bake a commercial package into the image. Do that before your first `just up`, or run `just build` afterwards to rebuild the stack.
+
+```bash
+cp .envs.example/.local/.build .envs/.local/.build
+```
+
+Then edit `.envs/.local/.build` and set:
+
+```bash
+VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro
+VALIDIBOT_PRIVATE_INDEX_URL=https://<license-credentials>@pypi.validibot.com/simple/
+```
+
+Use `validibot-enterprise` instead of `validibot-pro` if you purchased Enterprise.
+You do not need to edit `config/settings/base.py`; the core app discovers installed commercial packages automatically.
+
 ## Verify the install
 
 Run these checks after the stack starts:

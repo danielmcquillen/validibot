@@ -1,0 +1,13 @@
+# Optional Docker build settings for self-hosted commercial packages.
+# Copy this file to .envs/.production/.docker-compose/.build only if you
+# purchased Pro or Enterprise.
+#
+# Set one of:
+#   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro
+#   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-enterprise
+#
+# The private index URL comes from your license email and typically includes
+# embedded credentials. Keep this file private; it is gitignored.
+
+VALIDIBOT_COMMERCIAL_PACKAGE=
+VALIDIBOT_PRIVATE_INDEX_URL=

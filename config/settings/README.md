@@ -18,12 +18,18 @@ There are exactly four settings files:
 The recommended way to run Validibot locally is with Docker Compose:
 
 ```bash
-docker compose up
+just up
 ```
 
 This uses `DJANGO_SETTINGS_MODULE=config.settings.local` with `USE_DOCKER=yes`.
 
 All services (Django, Postgres, Redis, Celery) run in Docker containers.
+
+If you purchased Pro or Enterprise, copy `.envs.example/.local/.build` to
+`.envs/.local/.build`, set `VALIDIBOT_COMMERCIAL_PACKAGE` and
+`VALIDIBOT_PRIVATE_INDEX_URL`, then run `just build` before `just up`.
+Customers do not need to edit `config/settings/base.py` to activate those
+packages.
 
 ## Production Settings
 
@@ -56,6 +62,7 @@ Platform-specific values live in environment files, not in separate settings mod
 │   └── .postgres
 └── .production/
     ├── .docker-compose/
+    │   ├── .build
     │   ├── .django
     │   └── .postgres
     ├── .google-cloud/
@@ -69,10 +76,12 @@ Platform-specific values live in environment files, not in separate settings mod
 ```
 .envs/
 ├── .local/
+│   ├── .build           # optional commercial package build settings
 │   ├── .django
 │   └── .postgres
 └── .production/
     ├── .docker-compose/
+    │   ├── .build       # optional commercial package build settings
     │   ├── .django          # DEPLOYMENT_TARGET=docker_compose
     │   └── .postgres
     ├── .google-cloud/

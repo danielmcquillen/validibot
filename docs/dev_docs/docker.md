@@ -22,6 +22,8 @@ There is no default `docker-compose.yml` — running `docker compose up` without
    mkdir -p .envs/.local
    cp .envs.example/.local/.django .envs/.local/.django
    cp .envs.example/.local/.postgres .envs/.local/.postgres
+   # Optional for Pro/Enterprise
+   cp .envs.example/.local/.build .envs/.local/.build
    ```
 
 2. Edit the files and replace `!!!SET...!!!` placeholders with your values.
@@ -79,6 +81,8 @@ Use `docker-compose.production.yml` to test production-like behavior locally. Th
    mkdir -p .envs/.production/.docker-compose
    cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-compose/.django
    cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
+   # Optional for Pro/Enterprise
+   cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-compose/.build
    ```
 
 2. Edit the files with production-appropriate values:

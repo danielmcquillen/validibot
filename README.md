@@ -124,7 +124,9 @@ just up
 
 Open http://localhost:8000 and sign in with the admin credentials from `.envs/.local/.django`.
 
-For detailed setup instructions, see the [Installation Guide](https://docs.validibot.com/installation).
+If you purchased Pro or Enterprise, copy `.envs.example/.local/.build` to `.envs/.local/.build`, set `VALIDIBOT_COMMERCIAL_PACKAGE` and `VALIDIBOT_PRIVATE_INDEX_URL`, then run `just build` before `just up`.
+
+For the full self-host walkthrough, see [Run Validibot Locally](https://dev.validibot.com/deployment/deploy-local/).
 
 ## Deployment
 
@@ -142,9 +144,10 @@ Validibot is designed for **deployment on your own infrastructure**. You control
 
 ### Deployment Options
 
-- **Docker Compose**: Recommended for most deployments. See [Docker deployment guide](https://docs.validibot.com/deployment/docker).
-- **Google Cloud Run (GCP)**: For Google Cloud deployments. (Guide coming soon...).
-- **AWS**: (planned...)
+- **Local evaluation**: Start with [Run Validibot Locally](https://dev.validibot.com/deployment/deploy-local/).
+- **Docker Compose**: Recommended for most self-hosted production deployments. See [Deploy with Docker Compose](https://dev.validibot.com/deployment/deploy-docker-compose/).
+- **Google Cloud Run (GCP)**: See [Deploy to GCP](https://dev.validibot.com/deployment/deploy-gcp/).
+- **AWS**: See [Deploy to AWS](https://dev.validibot.com/deployment/deploy-aws/) for the current status and interim guidance.
 - **Kubernetes**: (planned...)
 
 ### Reverse Proxy
@@ -172,7 +175,7 @@ Key security features:
 - **Automatic cleanup**: Orphaned containers are cleaned up via the Ryuk pattern
 - **Non-root processes**: Web and worker containers run as non-root users
 
-See the [Security Guide](https://docs.validibot.com/security) for complete recommendations.
+For the operational security checklist, see [Docker Compose Deployment Responsibility](https://dev.validibot.com/deployment/docker-compose-responsibility/) and the [Go-Live Checklist](https://dev.validibot.com/deployment/go-live-checklist/).
 
 ## Open-Core Licensing
 
@@ -197,7 +200,7 @@ The AGPL-3.0 license requires that if you modify Validibot and provide it as a n
 | Resource                                                      | Description                      |
 | ------------------------------------------------------------- | -------------------------------- |
 | [Getting Started](https://docs.validibot.com/getting-started) | First steps with Validibot       |
-| [Installation Guide](https://docs.validibot.com/installation) | Detailed deployment instructions |
+| [Self-Host Deployment Guide](https://dev.validibot.com/deployment/deploy-local/) | First-time local setup and self-host deployment paths |
 | [User Guide](https://docs.validibot.com/user-guide)           | How to use the platform          |
 | [API Reference](https://docs.validibot.com/api)               | REST API documentation           |
 | [Developer Docs](https://dev.validibot.com/)                  | Contributing and architecture    |

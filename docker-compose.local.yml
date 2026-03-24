@@ -16,6 +16,9 @@ services:
     build:
       context: .
       dockerfile: compose/local/django/Dockerfile
+      args:
+        VALIDIBOT_COMMERCIAL_PACKAGE: ${VALIDIBOT_COMMERCIAL_PACKAGE:-}
+        VALIDIBOT_PRIVATE_INDEX_URL: ${VALIDIBOT_PRIVATE_INDEX_URL:-}
     depends_on:
       postgres:
         condition: service_healthy

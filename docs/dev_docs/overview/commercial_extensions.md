@@ -9,25 +9,44 @@ Validibot follows an open-core model. The core application is open source under 
 
 Commercial packages are standard Python packages distributed through a private package index. Installing the package is the license -- there are no runtime license keys.
 
-At startup, Django discovers commercial packages via Python entry points. Each package registers a `validibot.plugins` entry point that calls `register_feature()` for the features it provides. The core application never imports commercial code directly; it only checks whether features have been registered.
+At startup, the core settings module discovers commercial packages via Python entry points. Each package registers a `validibot.plugins` entry point that imports the package and triggers feature registration. The core application never imports commercial code directly; it only checks whether features have been registered.
 
 ```
 # In validibot-pro's pyproject.toml
 [project.entry-points."validibot.plugins"]
-pro = "validibot_pro.registration"
+pro = "validibot_pro"
 ```
 
-The core app discovers these entry points in its `AppConfig.ready()` method and calls the registration module automatically.
+The core app discovers these entry points while loading `config/settings/base.py`. For the current Pro and Enterprise packages, customers do **not** need to add `validibot_pro` or `validibot_enterprise` to `INSTALLED_APPS` just to activate the licensed features.
 
 ## Installing a commercial package
 
-Add the package from the private index (see your license email for the index URL and credentials):
+### Host-managed Python environment
+
+Install the package into the same Python environment that runs Validibot (see your license email for the index URL and credentials):
 
 ```bash
-uv add validibot-pro --index <private-index-url>
+uv pip install --python .venv/bin/python --index <private-index-url> validibot-pro
 ```
 
 Then restart the application. The Pro features will be available immediately.
+
+### Docker-based self-hosting
+
+For Docker-based installs, bake the package into the image using the optional `.build` file:
+
+```bash
+cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-compose/.build
+```
+
+Then set:
+
+```bash
+VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro
+VALIDIBOT_PRIVATE_INDEX_URL=https://<license-credentials>@pypi.validibot.com/simple/
+```
+
+For Enterprise, use `validibot-enterprise` instead. After that, rebuild with `just docker-compose bootstrap` on first install or `just docker-compose deploy` for later rebuilds.
 
 ## What you'll see in the codebase
 

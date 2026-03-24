@@ -27,6 +27,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_CACHE_DIR=/tmp/uv-cache
 
 ARG APP_HOME=/app
+ARG VALIDIBOT_COMMERCIAL_PACKAGE=""
+ARG VALIDIBOT_PRIVATE_INDEX_URL=""
 WORKDIR ${APP_HOME}
 
 # Build tools — only needed here, not in the final image.
@@ -50,6 +52,16 @@ COPY pyproject.toml uv.lock ${APP_HOME}/
 #   --no-install-project: Don't install validibot itself (it's a Django
 #     project run from the working directory, not a package)
 RUN uv sync --no-dev --no-sources --no-install-project \
+    && if [ -n "${VALIDIBOT_COMMERCIAL_PACKAGE}" ]; then \
+        if [ -z "${VALIDIBOT_PRIVATE_INDEX_URL}" ]; then \
+            echo "VALIDIBOT_PRIVATE_INDEX_URL must be set when VALIDIBOT_COMMERCIAL_PACKAGE is provided." >&2; \
+            exit 1; \
+        fi; \
+        uv pip install \
+            --python ${APP_HOME}/.venv/bin/python \
+            --index "${VALIDIBOT_PRIVATE_INDEX_URL}" \
+            "${VALIDIBOT_COMMERCIAL_PACKAGE}"; \
+    fi \
     && rm -rf /tmp/uv-cache
 
 

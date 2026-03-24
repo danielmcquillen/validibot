@@ -19,14 +19,17 @@ just deploy-with-docs  # Build and deploy
 
 ## 2. Developer Documentation (`docs/dev_docs`)
 
-- **Audience**: Engineers and technical partners working directly with the repository
+- **Audience**: Engineers, technical partners, and self-host operators working directly with the repository
 - **Published to**: https://dev.validibot.com
-- **Content**: Architecture notes, data models, deployment guides, onboarding for contributors
+- **Content**: Architecture notes, data models, self-host deployment guides, onboarding for contributors
+
+Deployment guides in this repo should help self-host customers get Validibot running on infrastructure they control. Daniel-specific `validibot-cloud` and GCP operator workflows belong in `validibot-project`.
 
 ### Local Preview
 
 ```bash
-uv run zensical serve -f mkdocs.dev.yml
+just docs-build
+just docs-dev
 # Opens at http://localhost:9000
 ```
 
@@ -64,7 +67,7 @@ See `validibot-marketing/docs/docs-publishing.md` for full details.
 
 ## Configuration
 
-Zensical reads the existing `mkdocs.yml` config files natively.
+Zensical is the docs tool, but it reads the existing MkDocs-compatible configuration files natively. That is why the config files in this repo still use names like `mkdocs.yml` and `mkdocs.dev.yml`.
 
 | Config | Docs Dir | Build Output | Dev Port |
 |--------|----------|--------------|----------|
@@ -74,7 +77,7 @@ Zensical reads the existing `mkdocs.yml` config files natively.
 The root `mkdocs.yml` inherits from `mkdocs.dev.yml` as a convenience.
 
 ```bash
-# Build dev docs static site (for manual inspection)
+# Build dev docs static site with Zensical (for manual inspection)
 uv run zensical build -f mkdocs.dev.yml --clean
 ```
 

@@ -44,6 +44,12 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
    cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
    ```
 
+   If you purchased Pro or Enterprise, also copy the optional build file:
+
+   ```bash
+   cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-compose/.build
+   ```
+
 3. Edit both files and replace the placeholder values.
 
    Make sure you set:
@@ -54,6 +60,16 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
    - `WORKER_API_KEY`
    - `POSTGRES_PASSWORD`
    - `SUPERUSER_PASSWORD`
+
+   If you are installing a commercial package, edit `.envs/.production/.docker-compose/.build` too:
+
+   ```bash
+   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro
+   VALIDIBOT_PRIVATE_INDEX_URL=https://<license-credentials>@pypi.validibot.com/simple/
+   ```
+
+   Use `validibot-enterprise` instead if you purchased Enterprise.
+   You do not need to edit `config/settings/base.py`; the core app discovers installed commercial packages automatically.
 
 4. Validate the env files and bootstrap the deployment:
 

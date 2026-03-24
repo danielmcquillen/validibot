@@ -275,7 +275,7 @@ Create a Caddyfile:
 mkdir -p compose/production/caddy
 cat > compose/production/caddy/Caddyfile << 'EOF'
 {$DOMAIN:localhost} {
-    reverse_proxy django:5000
+    reverse_proxy web:8000
 
     # Increase timeouts for file uploads
     request_body {
@@ -306,7 +306,7 @@ services:
     networks:
       - validibot_validibot
     depends_on:
-      - django
+      - web
 
 volumes:
   caddy_data:
@@ -323,11 +323,12 @@ EOF
 ### Start the application
 
 ```bash
-# Build and start Validibot services
-docker compose -f docker-compose.production.yml up -d --build
+# Validate env files and bootstrap Validibot
+just docker-compose check-env
+just docker-compose bootstrap
 
 # Wait for services to be healthy
-docker compose -f docker-compose.production.yml ps
+just docker-compose status
 
 # Start Caddy (after the network is created)
 VALIDIBOT_DOMAIN=validibot.example.com docker compose -f docker-compose.caddy.yml up -d
@@ -335,7 +336,7 @@ VALIDIBOT_DOMAIN=validibot.example.com docker compose -f docker-compose.caddy.ym
 
 ### First-run setup
 
-On first startup, the web container automatically runs migrations and `setup_validibot` to configure the site. This includes:
+On first startup, `just docker-compose bootstrap` handles the first-run setup. This includes:
 
 - Database migrations
 - Site domain configuration (from `VALIDIBOT_SITE_DOMAIN` env var)
@@ -346,14 +347,14 @@ On first startup, the web container automatically runs migrations and `setup_val
 You can verify setup completed successfully:
 
 ```bash
-docker compose -f docker-compose.production.yml exec web python manage.py check_validibot
+just docker-compose manage "check_validibot"
 ```
 
 ### Verify the deployment
 
 ```bash
 # Check all containers are running
-docker compose -f docker-compose.production.yml ps
+just docker-compose status
 docker compose -f docker-compose.caddy.yml ps
 
 # Test the health endpoint
@@ -489,17 +490,12 @@ To deploy updates:
 ```bash
 cd ~/validibot
 
-# Pull latest code
+# Pull latest code and apply the standard update flow
 git pull origin main
-
-# Rebuild and restart
-docker compose -f docker-compose.production.yml up -d --build
-
-# Run migrations if needed
-docker compose -f docker-compose.production.yml exec web python manage.py migrate
+just docker-compose update
 
 # Check logs
-docker compose -f docker-compose.production.yml logs -f --tail=100 django
+just docker-compose logs-service web
 ```
 
 ## Troubleshooting
@@ -515,7 +511,7 @@ docker compose -f docker-compose.production.yml logs web
 
 # Common issues:
 # - Database connection failed: Check POSTGRES_* env vars
-# - Permission denied on docker.sock: Ensure user is in docker group
+# - Permission denied on docker.sock: Ensure the worker can access the host Docker socket
 ```
 
 ### SSL certificate errors

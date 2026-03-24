@@ -5,12 +5,12 @@ matching the Cookiecutter Django patterns with Celery + Redis for background tas
 
 ## Compose Files
 
-Validibot has separate compose files for different environments. **You must specify which file to use**:
+Validibot has separate compose files for different environments. If you call Docker Compose directly, **you must specify which file to use**. For day-to-day use, prefer the `just` commands shown below.
 
 | File                            | Purpose                                    | Command                                              |
 | ------------------------------- | ------------------------------------------ | ---------------------------------------------------- |
-| `docker-compose.local.yml`      | Local development (hot reload, runserver)  | `docker compose -f docker-compose.local.yml up`      |
-| `docker-compose.production.yml` | Production-style (gunicorn, no code mount) | `docker compose -f docker-compose.production.yml up` |
+| `docker-compose.local.yml`      | Local development (hot reload, runserver)  | `just up`                                            |
+| `docker-compose.production.yml` | Production-style (gunicorn, no code mount) | `just docker-compose bootstrap`                      |
 
 There is no default `docker-compose.yml` — running `docker compose up` without `-f` will fail.
 
@@ -86,17 +86,19 @@ Use `docker-compose.production.yml` to test production-like behavior locally. Th
    - Set a strong `POSTGRES_PASSWORD`
    - Set `SUPERUSER_PASSWORD` and `SUPERUSER_EMAIL`
 
-3. Build and run:
+3. Validate the env files and bootstrap the stack:
 
    ```bash
-   docker compose -f docker-compose.production.yml up --build
+   just docker-compose check-env
+   just docker-compose bootstrap
    ```
 
-   On first run, the web container automatically:
-   - Applies database migrations
-   - Collects static files
-   - Runs `setup_validibot` to configure site settings, roles, validators, etc.
-   - Creates a superuser if `SUPERUSER_USERNAME` is set in the env file
+   `bootstrap` builds and starts the production-style stack, applies migrations,
+   runs `setup_validibot`, and finishes with `check_validibot`.
+
+   The production `/start` script intentionally does **not** apply migrations on
+   startup. That keeps the web process from racing schema changes and matches the
+   expected self-host flow for customer deployments.
 
 4. Visit http://localhost:8000
 
@@ -115,7 +117,7 @@ If the **Testing** panel hangs, double-check:
 
 The worker container spawns advanced validator containers (EnergyPlus, FMU, etc.) via the Docker socket. This requires:
 
-1. **Docker socket mounted** — Already configured in the compose files
+1. **Docker socket mounted in the worker service** — Already configured in the production compose file
 2. **Correct volume names** — The compose files assume `COMPOSE_PROJECT_NAME=validibot`
 3. **Validator images available** — Must be pre-pulled or accessible from your registry
 
@@ -138,4 +140,4 @@ For private registries, configure Docker credentials on the host before running 
 - `docker-compose.local.yml`: local dev (runserver, code mounted) with web + worker + postgres + mailpit.
 - `docker-compose.production.yml`: production-like (gunicorn, no code mount) with web + worker + postgres.
 - `compose/local/django/entrypoint.sh` and `start.sh`: wait for DB, fix Docker socket permissions, run migrations, first-run setup, start dev server on 8000.
-- `compose/production/django/entrypoint.sh` and `start.sh`: wait for DB, fix Docker socket permissions, run migrations, collectstatic, first-run setup, start Gunicorn on 8000.
+- `compose/production/django/entrypoint.sh` and `start.sh`: wait for DB, fix Docker socket permissions if mounted, collectstatic, skip setup until migrations exist, then start Gunicorn on 8000.

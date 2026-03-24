@@ -78,10 +78,11 @@ This pattern follows the [cookiecutter-django](https://github.com/cookiecutter/c
 
 3. Edit with your production values (generate a proper secret key, set your domain, etc.).
 
-4. Deploy:
+4. Validate the env files and bootstrap the deployment:
 
     ```bash
-    docker compose -f docker-compose.production.yml up -d
+    just docker-compose check-env
+    just docker-compose bootstrap
     ```
 
 ### Google Cloud Platform

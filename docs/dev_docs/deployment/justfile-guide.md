@@ -166,6 +166,7 @@ Commands are prefixed with `docker-compose`:
 just --list docker-compose
 
 # Deployment
+just docker-compose bootstrap    # First-time self-host install
 just docker-compose deploy       # Build and start all services
 just docker-compose update       # Full update with backup
 

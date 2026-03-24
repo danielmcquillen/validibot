@@ -13,7 +13,7 @@ Most self-hosters already have a reverse proxy in their infrastructure (Traefik 
 Make sure Validibot is running and accessible on its default port:
 
 ```bash
-docker compose -f docker-compose.Docker Compose.yml up -d
+just docker-compose bootstrap
 curl http://localhost:8000/health/
 ```
 
@@ -31,7 +31,7 @@ Whichever proxy you choose, ensure:
 Update your Validibot environment variables:
 
 ```bash
-# .envs/.production/.Docker Compose/.django
+# .envs/.production/.docker-compose/.django
 DJANGO_ALLOWED_HOSTS=validibot.example.com
 SITE_URL=https://validibot.example.com
 DJANGO_SECURE_SSL_REDIRECT=False  # Proxy handles TLS
@@ -78,7 +78,7 @@ Add Caddy as a service alongside Validibot. Create `compose/production/caddy/Cad
 
 ```caddyfile
 {$DOMAIN:localhost} {
-    reverse_proxy django:5000
+    reverse_proxy web:8000
 }
 ```
 
@@ -116,7 +116,7 @@ Run both compose files:
 
 ```bash
 # Start Validibot
-docker compose -f docker-compose.Docker Compose.yml up -d
+just docker-compose bootstrap
 
 # Start Caddy (after the validibot network exists)
 VALIDIBOT_DOMAIN=validibot.example.com docker compose -f docker-compose.caddy.yml up -d
@@ -134,8 +134,8 @@ VALIDIBOT_DOMAIN=validibot.example.com docker compose -f docker-compose.caddy.ym
 
 The Docker Compose compose file includes a commented Traefik example. To enable it:
 
-1. Uncomment the Traefik service in `docker-compose.Docker Compose.yml`
-2. Add labels to the Django service
+1. Uncomment the Traefik service in `docker-compose.production.yml`
+2. Add labels to the `web` service
 
 Or create a separate `docker-compose.traefik.yml`:
 
@@ -172,20 +172,20 @@ networks:
     name: validibot_validibot
 ```
 
-Add labels to the Django service in `docker-compose.Docker Compose.yml`:
+Add labels to the `web` service in `docker-compose.production.yml`:
 
 ```yaml
 services:
-  django:
+  web:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.validibot.rule=Host(`validibot.example.com`)"
       - "traefik.http.routers.validibot.entrypoints=websecure"
       - "traefik.http.routers.validibot.tls.certresolver=letsencrypt"
-      - "traefik.http.services.validibot.loadbalancer.server.port=5000"
+      - "traefik.http.services.validibot.loadbalancer.server.port=8000"
     # Remove or comment out the ports mapping
     # ports:
-    #   - "8000:5000"
+    #   - "8000:8000"
 ```
 
 ---
@@ -348,7 +348,7 @@ The proxy can't reach Validibot:
 
 1. Check Validibot is running: `docker compose ps`
 2. Verify the network connection: `docker network inspect validibot_validibot`
-3. Ensure the proxy is targeting the correct service name and port (`django:5000`)
+3. Ensure the proxy is targeting the correct service name and port (`web:8000`)
 
 ### Certificate errors
 

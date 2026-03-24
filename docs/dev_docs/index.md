@@ -63,9 +63,13 @@ The entities that make up Validibot:
 
 Deploy Validibot to production:
 
-- **[Deployment Overview](deployment/overview.md)** — Environments and release workflow
-- **[Google Cloud](google_cloud/deployment.md)** — Deploy to Cloud Run
-- **[Docker Compose](deployment/docker-compose-responsibility.md)** — Docker Compose deployments
+- **[Deployment Overview](deployment/overview.md)** — Choose the right deployment target
+- **[Run Validibot Locally](deployment/deploy-local.md)** — Quickest path to a running app
+- **[Deploy with Docker Compose](deployment/deploy-docker-compose.md)** — Single-host self-hosting
+- **[Deploy to GCP](deployment/deploy-gcp.md)** — Managed cloud deployment on Google Cloud
+- **[Deploy to AWS](deployment/deploy-aws.md)** — Current status and interim guidance
+- **[Google Cloud Run Deep Dive](google_cloud/deployment.md)** — Full Cloud Run runbook
+- **[Docker Compose Responsibility](deployment/docker-compose-responsibility.md)** — Operator responsibilities for self-hosting
 - **[Scheduled Jobs (GCP)](google_cloud/scheduled-jobs.md)** — Cloud Scheduler setup
 - **[Scheduled Tasks (Docker Compose)](how-to/configure-scheduled-tasks.md)** — Celery + Celery Beat
 - **[Go-Live Checklist](deployment/go-live-checklist.md)** — Pre-launch tasks

@@ -125,6 +125,10 @@ nav:
       - Deletions: data-model/deletions.md
   - Deployment:
       - Deployment Overview: deployment/overview.md
+      - Run Validibot Locally: deployment/deploy-local.md
+      - Deploy with Docker Compose: deployment/deploy-docker-compose.md
+      - Deploy to GCP: deployment/deploy-gcp.md
+      - Deploy to AWS: deployment/deploy-aws.md
       - Environment Configuration: deployment/environment-configuration.md
       - Justfile Guide: deployment/justfile-guide.md
       - Docker Compose Responsibility: deployment/docker-compose-responsibility.md

@@ -26,19 +26,32 @@ set -o nounset
 # Collect static assets for serving.
 python manage.py collectstatic --noinput
 
-# Setup tasks only run on the web service (worker skips these to avoid
-# race conditions on fresh databases where migrations may not be complete yet).
+# Setup tasks only run on the web service.
+#
+# Docker Compose bootstraps the schema via `just docker-compose bootstrap`
+# before asking the application to seed default data. GCP applies migrations
+# as a dedicated job before new instances receive traffic.
+#
+# This script therefore only runs setup/sync when the relevant tables already
+# exist. On a brand-new database with no migrations, it emits a clear message
+# and lets the container keep serving so operators can run the bootstrap
+# commands instead of crashing the web process on startup.
 if [ "${APP_ROLE:-web}" = "web" ]; then
-  # First-run setup: Initialize Validibot if this is a fresh installation.
-  # Checks if roles exist (created by setup_validibot) to detect first run.
-  # The command is idempotent, so it's safe to run even if already configured.
-  if ! python manage.py shell -c "from validibot.users.models import Role; exit(0 if Role.objects.exists() else 1)" 2>/dev/null; then
-    echo "First run detected - running initial setup..."
-    python manage.py setup_validibot --noinput
+  if python manage.py shell -c "from django.db import connection; from validibot.users.models import Role; exit(0 if Role._meta.db_table in connection.introspection.table_names() else 1)" >/dev/null 2>&1; then
+    # First-run setup: initialize Validibot if this is a fresh installation.
+    # Checks if roles exist (created by setup_validibot) to detect first run.
+    # The command is idempotent, so it's safe to run even if already configured.
+    if ! python manage.py shell -c "from validibot.users.models import Role; exit(0 if Role.objects.exists() else 1)" >/dev/null 2>&1; then
+      echo "First run detected - running initial setup..."
+      python manage.py setup_validibot --noinput
+    else
+      # Sync system validators on every startup to ensure catalog entries are current.
+      # This is fast (idempotent) and ensures EnergyPlus/FMU/THERM signals are available.
+      python manage.py sync_validators
+    fi
   else
-    # Sync system validators on every startup to ensure catalog entries are current.
-    # This is fast (idempotent) and ensures EnergyPlus/FMU/THERM signals are available.
-    python manage.py sync_validators
+    echo "Database schema not ready yet; skipping setup_validibot and sync_validators."
+    echo "Run 'just docker-compose migrate' and 'just docker-compose setup-data' after the stack starts."
   fi
 fi
 

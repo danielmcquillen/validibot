@@ -43,8 +43,9 @@ cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-c
 cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
 
 # Edit with your production values (especially secrets!)
-# Then start with:
-docker compose -f docker-compose.production.yml up -d
+# Then validate and bootstrap with:
+just docker-compose check-env
+just docker-compose bootstrap
 ```
 
 ### Google Cloud Platform (Cloud Run)

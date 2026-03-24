@@ -1,5 +1,7 @@
 # Google Cloud Deployment
 
+If you are deciding whether GCP is the right target or you want the short version first, start with [Deploy to GCP](../deployment/deploy-gcp.md). This page is the deeper Cloud Run runbook.
+
 This guide covers deploying Validibot to Google Cloud Run with support for multiple environments (dev, staging, prod).
 
 ## Multi-Environment Architecture

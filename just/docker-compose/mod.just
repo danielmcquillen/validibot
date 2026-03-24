@@ -24,11 +24,11 @@
 #   - SSL certificate (Let's Encrypt recommended)
 #
 # Quick start:
-#   1. Copy .envs/.production/.django.example to .envs/.production/.django
-#   2. Edit the environment file with your settings
-#   3. just docker-compose deploy
-#   4. just docker-compose migrate
-#   5. just docker-compose setup-data
+#   1. Copy .envs.example/.production/.docker-compose/.django to .envs/.production/.docker-compose/.django
+#   2. Copy .envs.example/.production/.docker-compose/.postgres to .envs/.production/.docker-compose/.postgres
+#   3. Edit the environment files with your settings
+#   4. just docker-compose check-env
+#   5. just docker-compose bootstrap
 #
 # =============================================================================
 
@@ -45,6 +45,10 @@ compose_file := "docker-compose.production.yml"
 
 # Compose project name (used for container naming)
 compose_project := "validibot"
+
+# Environment files for the Docker Compose production deployment
+django_env_file := ".envs/.production/.docker-compose/.django"
+postgres_env_file := ".envs/.production/.docker-compose/.postgres"
 
 # Git SHA for image tagging
 git_sha := `git rev-parse --short HEAD`
@@ -70,6 +74,36 @@ build:
 # Build images without starting (useful for CI/CD)
 build-only:
     docker compose -f {{compose_file}} -p {{compose_project}} build
+
+# Wait until the web container accepts management commands
+_wait-web:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Waiting for web container to become ready..."
+    for _ in {1..60}; do
+        if docker compose -f {{compose_file}} -p {{compose_project}} exec -T web true >/dev/null 2>&1; then
+            echo "Web container is ready."
+            exit 0
+        fi
+        sleep 2
+    done
+    echo "Web container did not become ready in time."
+    echo "Check logs with: just docker-compose logs-service web"
+    exit 1
+
+# First-time install for self-hosted customers
+# Builds and starts the stack, applies migrations, seeds default data,
+# and verifies the installation.
+bootstrap: check-env build _wait-web
+    docker compose -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py migrate --noinput
+    docker compose -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py setup_validibot --noinput
+    docker compose -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py check_validibot
+    @echo ""
+    @echo "Bootstrap complete!"
+    @echo "Next steps:"
+    @echo "  1. Put Validibot behind your reverse proxy"
+    @echo "  2. Visit your configured SITE_URL"
+    @echo "  3. Sign in with the superuser credentials from {{django_env_file}}"
 
 # Show status of all containers
 status:
@@ -122,10 +156,6 @@ deploy: build
     @echo ""
     @echo "Services running:"
     docker compose -f {{compose_file}} -p {{compose_project}} ps
-    @echo ""
-    @echo "If this is a new deployment, run:"
-    @echo "  just docker-compose migrate      # Apply database migrations"
-    @echo "  just docker-compose setup-data   # Initialize default data"
 
 # Pull latest images (for pre-built images from a registry)
 pull:
@@ -141,12 +171,12 @@ deploy-prebuilt: pull up
 
 # Run database migrations
 migrate:
-    docker compose -f {{compose_file}} -p {{compose_project}} exec web python manage.py migrate
+    docker compose -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py migrate --noinput
 
 # Run setup_validibot to initialize site and default data
 # Configures site domain, validators, roles, workspaces, etc.
 setup-data:
-    docker compose -f {{compose_file}} -p {{compose_project}} exec web python manage.py setup_validibot
+    docker compose -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py setup_validibot --noinput
 
 # Run any Django management command
 # Usage: just docker-compose manage "createsuperuser"
@@ -237,8 +267,19 @@ health-check:
     echo "Checking service health..."
     echo ""
 
+    service_status() {
+        local service="$1"
+        local container_id
+        container_id=$(docker compose -f {{compose_file}} -p {{compose_project}} ps -q "$service" 2>/dev/null || true)
+        if [ -z "$container_id" ]; then
+            echo "not running"
+            return
+        fi
+        docker inspect --format '{{"{{.State.Status}}"}}' "$container_id" 2>/dev/null || echo "unknown"
+    }
+
     # Check web service
-    WEB_STATUS=$(docker compose -f {{compose_file}} -p {{compose_project}} ps web --format json 2>/dev/null | jq -r '.[0].State // "not running"' || echo "not running")
+    WEB_STATUS=$(service_status web)
     if [ "$WEB_STATUS" = "running" ]; then
         echo "Web service:    OK (running)"
     else
@@ -246,7 +287,7 @@ health-check:
     fi
 
     # Check worker service
-    WORKER_STATUS=$(docker compose -f {{compose_file}} -p {{compose_project}} ps worker --format json 2>/dev/null | jq -r '.[0].State // "not running"' || echo "not running")
+    WORKER_STATUS=$(service_status worker)
     if [ "$WORKER_STATUS" = "running" ]; then
         echo "Worker service: OK (running)"
     else
@@ -254,7 +295,7 @@ health-check:
     fi
 
     # Check database
-    DB_STATUS=$(docker compose -f {{compose_file}} -p {{compose_project}} ps postgres --format json 2>/dev/null | jq -r '.[0].State // "not running"' || echo "not running")
+    DB_STATUS=$(service_status postgres)
     if [ "$DB_STATUS" = "running" ]; then
         echo "Database:       OK (running)"
     else
@@ -262,7 +303,7 @@ health-check:
     fi
 
     # Check Redis
-    REDIS_STATUS=$(docker compose -f {{compose_file}} -p {{compose_project}} ps redis --format json 2>/dev/null | jq -r '.[0].State // "not running"' || echo "not running")
+    REDIS_STATUS=$(service_status redis)
     if [ "$REDIS_STATUS" = "running" ]; then
         echo "Redis:          OK (running)"
     else
@@ -428,27 +469,38 @@ inspect service:
 check-env:
     #!/usr/bin/env bash
     set -euo pipefail
-    ENV_FILE=".envs/.production/.django"
+    DJANGO_ENV_FILE="{{django_env_file}}"
+    POSTGRES_ENV_FILE="{{postgres_env_file}}"
 
-    if [ ! -f "$ENV_FILE" ]; then
-        echo "ERROR: Environment file not found: $ENV_FILE"
-        echo ""
-        echo "Create it from the example:"
-        echo "  cp .envs/.production/.django.example $ENV_FILE"
-        echo "  # Then edit with your settings"
-        exit 1
-    fi
+    for env_file in "$DJANGO_ENV_FILE" "$POSTGRES_ENV_FILE"; do
+        if [ ! -f "$env_file" ]; then
+            echo "ERROR: Environment file not found: $env_file"
+            echo ""
+            echo "Create it from the examples:"
+            echo "  cp .envs.example/.production/.docker-compose/.django $DJANGO_ENV_FILE"
+            echo "  cp .envs.example/.production/.docker-compose/.postgres $POSTGRES_ENV_FILE"
+            exit 1
+        fi
+    done
 
-    echo "Checking required environment variables..."
-    REQUIRED_VARS=(
+    echo "Checking required Django environment variables..."
+    REQUIRED_DJANGO_VARS=(
         "DJANGO_SECRET_KEY"
-        "DATABASE_URL"
         "DJANGO_ALLOWED_HOSTS"
+        "SITE_URL"
+        "WORKER_API_KEY"
+    )
+    REQUIRED_POSTGRES_VARS=(
+        "POSTGRES_HOST"
+        "POSTGRES_PORT"
+        "POSTGRES_DB"
+        "POSTGRES_USER"
+        "POSTGRES_PASSWORD"
     )
 
     MISSING=0
-    for var in "${REQUIRED_VARS[@]}"; do
-        if ! grep -q "^$var=" "$ENV_FILE"; then
+    for var in "${REQUIRED_DJANGO_VARS[@]}"; do
+        if ! grep -Eq "^$var=.+" "$DJANGO_ENV_FILE"; then
             echo "  MISSING: $var"
             MISSING=$((MISSING + 1))
         else
@@ -457,12 +509,32 @@ check-env:
     done
 
     echo ""
-    if [ $MISSING -gt 0 ]; then
-        echo "ERROR: $MISSING required variables are missing from $ENV_FILE"
+    echo "Checking required PostgreSQL environment variables..."
+    for var in "${REQUIRED_POSTGRES_VARS[@]}"; do
+        if ! grep -Eq "^$var=.+" "$POSTGRES_ENV_FILE"; then
+            echo "  MISSING: $var"
+            MISSING=$((MISSING + 1))
+        else
+            echo "  OK: $var"
+        fi
+    done
+
+    PLACEHOLDER_MATCHES=0
+    for env_file in "$DJANGO_ENV_FILE" "$POSTGRES_ENV_FILE"; do
+        if grep -Eq 'change-this|!!!CHANGE-THIS|your-secret-key-here' "$env_file"; then
+            echo ""
+            echo "ERROR: Placeholder values still exist in $env_file"
+            PLACEHOLDER_MATCHES=$((PLACEHOLDER_MATCHES + 1))
+        fi
+    done
+
+    echo ""
+    if [ "$MISSING" -gt 0 ] || [ "$PLACEHOLDER_MATCHES" -gt 0 ]; then
+        echo "Environment validation failed."
         exit 1
-    else
-        echo "All required variables present."
     fi
+
+    echo "Environment files look ready."
 
 # Generate a new Django secret key
 generate-secret-key:
@@ -509,6 +581,7 @@ validators-build-all:
 #
 # Common operations:
 #
+#   just docker-compose bootstrap     # First-time install
 #   just docker-compose deploy        # Deploy/update the application
 #   just docker-compose status        # Check if services are running
 #   just docker-compose logs          # View logs
@@ -517,13 +590,11 @@ validators-build-all:
 #
 # First-time setup:
 #
-#   1. cp .envs/.production/.django.example .envs/.production/.django
-#   2. Edit .envs/.production/.django with your settings
-#   3. just docker-compose check-env
-#   4. just docker-compose deploy
-#   5. just docker-compose migrate
-#   6. just docker-compose setup-data
-#   7. just docker-compose manage "createsuperuser"
+#   1. cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-compose/.django
+#   2. cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
+#   3. Edit both files with your settings
+#   4. just docker-compose check-env
+#   5. just docker-compose bootstrap
 #
 # Updating:
 #

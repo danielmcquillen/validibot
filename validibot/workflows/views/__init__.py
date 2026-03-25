@@ -32,6 +32,7 @@ from validibot.workflows.views.launch import WorkflowRunDetailView
 from validibot.workflows.views.management import MAX_STEP_COUNT
 from validibot.workflows.views.management import WorkflowActivationUpdateView
 from validibot.workflows.views.management import WorkflowArchiveView
+from validibot.workflows.views.management import WorkflowBreakGlassDeleteView
 from validibot.workflows.views.management import WorkflowCreateView
 from validibot.workflows.views.management import WorkflowDeleteView
 from validibot.workflows.views.management import WorkflowDetailView
@@ -73,6 +74,7 @@ __all__ = [
     "WorkflowActionStepCreateView",
     "WorkflowActivationUpdateView",
     "WorkflowArchiveView",
+    "WorkflowBreakGlassDeleteView",
     "WorkflowCreateView",
     "WorkflowDeleteView",
     "WorkflowDetailView",

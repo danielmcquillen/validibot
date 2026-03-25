@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 class WorkflowValidationListView(WorkflowAccessMixin, ListView):
     template_name = "validations/workflow_validation_list.html"
     context_object_name = "validations"
+    include_tombstoned_workflows = True
 
     def get_workflow(self):
         if not hasattr(self, "_workflow"):

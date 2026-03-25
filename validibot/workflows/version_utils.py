@@ -107,7 +107,7 @@ def get_latest_workflow(
         The latest workflow, or None if the queryset is empty
     """
     if not include_archived:
-        queryset = queryset.filter(is_archived=False)
+        queryset = queryset.filter(is_archived=False, is_tombstoned=False)
 
     workflows = list(queryset)
     if not workflows:
@@ -147,7 +147,7 @@ def get_latest_workflow_ids(
 
     # Fetch all non-archived workflows in a single query
     workflows = list(
-        queryset.filter(is_archived=False).only(
+        queryset.filter(is_archived=False, is_tombstoned=False).only(
             "id",
             "org_id",
             "slug",

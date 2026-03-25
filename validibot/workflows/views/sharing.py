@@ -126,7 +126,7 @@ class GuestWorkflowListView(LoginRequiredMixin, ListView):
         # Get workflows the user has grants for
         return (
             Workflow.objects.for_user(self.request.user)
-            .filter(is_archived=False, is_active=True)
+            .filter(is_archived=False, is_active=True, is_tombstoned=False)
             .select_related("org", "project")
             .order_by("org__name", "name")
         )

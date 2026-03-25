@@ -51,11 +51,14 @@ class PublicWorkflowListView(ListView):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Workflow.objects.filter(is_active=True)
+        queryset = Workflow.objects.filter(
+            is_active=True,
+            is_tombstoned=False,
+        )
         if user.is_authenticated:
             accessible_ids = (
                 Workflow.objects.for_user(user)
-                .filter(is_active=True)
+                .filter(is_active=True, is_tombstoned=False)
                 .values_list("pk", flat=True)
             )
             queryset = queryset.filter(
@@ -154,7 +157,10 @@ class PublicWorkflowInfoView(DetailView):
 
     def get_queryset(self):
         return (
-            Workflow.objects.filter(make_info_page_public=True)
+            Workflow.objects.filter(
+                make_info_page_public=True,
+                is_tombstoned=False,
+            )
             .select_related("org", "project", "user")
             .prefetch_related(
                 "steps",

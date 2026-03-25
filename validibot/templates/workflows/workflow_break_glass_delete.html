@@ -1,0 +1,82 @@
+{% extends "app_base.html" %}
+
+{% load core_tags crispy_forms_tags i18n %}
+
+{% block title %}
+  {% trans "Break-glass Tombstone Workflow" %} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div class="container-fluid py-4">
+    <div class="row justify-content-center">
+      <div class="col-12 col-xl-8">
+        <div class="card border-danger shadow-sm">
+          <div class="card-header text-bg-danger">
+            <h1 class="h5 mb-0">{% trans "Break-glass tombstone workflow" %}</h1>
+          </div>
+          <div class="card-body">
+            <p class="mb-3">
+              {% blocktrans with name=workflow.name trimmed %}
+                You are about to remove "{{ name }}" from normal product surfaces.
+                This is not an ordinary delete. The workflow row stays in place
+                as a protected tombstone so historical runs and issued
+                credentials keep a stable reference.
+              {% endblocktrans %}
+            </p>
+            <p class="text-muted small mb-3">
+              {% trans "Archive is the normal lifecycle path for used workflows. Use this flow only when an owner must remove a credential-bearing workflow from normal listings, launch flows, and editing surfaces." %}
+            </p>
+            <div class="alert alert-warning" role="alert">
+              <div class="fw-semibold mb-2">{% trans "Impact summary" %}</div>
+              <ul class="mb-2">
+                <li>
+                  {% blocktrans count count=validation_run_count trimmed %}
+                    {{ count }} validation run references this workflow version.
+                  {% plural %}
+                    {{ count }} validation runs reference this workflow version.
+                  {% endblocktrans %}
+                </li>
+                <li>
+                  {% blocktrans count count=issued_credential_count trimmed %}
+                    {{ count }} issued credential depends on those runs.
+                  {% plural %}
+                    {{ count }} issued credentials depend on those runs.
+                  {% endblocktrans %}
+                </li>
+              </ul>
+              <p class="mb-0 small">{{ impact_summary }}</p>
+            </div>
+            <dl class="row small mb-4">
+              <dt class="col-sm-4">{% trans "Workflow UUID" %}</dt>
+              <dd class="col-sm-8 font-monospace text-break">
+                {{ workflow.uuid }}
+              </dd>
+              <dt class="col-sm-4">{% trans "Slug" %}</dt>
+              <dd class="col-sm-8">
+                {{ workflow.slug }}
+              </dd>
+              <dt class="col-sm-4">{% trans "Version" %}</dt>
+              <dd class="col-sm-8">
+                {{ workflow.version|default:_("not set") }}
+              </dd>
+            </dl>
+            <form method="post" novalidate>
+              {% csrf_token %}
+              {{ form|crispy }}
+              <div class="d-flex justify-content-end gap-2 mt-4">
+                <a class="btn btn-secondary"
+                   href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">{% trans "Cancel" %}</a>
+                <button type="submit" class="btn btn-danger">
+                  <i class="bi-exclamation-triangle me-1"></i>
+                  {% trans "Tombstone workflow" %}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

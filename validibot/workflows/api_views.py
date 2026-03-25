@@ -57,7 +57,11 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self) -> QuerySet[Workflow]:
         """Return workflows for the org from the URL."""
-        return Workflow.objects.filter(org=self.get_org(), is_archived=False)
+        return Workflow.objects.filter(
+            org=self.get_org(),
+            is_archived=False,
+            is_tombstoned=False,
+        )
 
     def get_object(self) -> Workflow:
         """
@@ -196,6 +200,7 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
             org=self.get_org(),
             slug=workflow_slug,
             is_archived=False,
+            is_tombstoned=False,
         )
 
     def get_object(self) -> Workflow:

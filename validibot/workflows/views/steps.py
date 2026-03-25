@@ -57,6 +57,17 @@ from validibot.workflows.views_helpers import save_workflow_step
 
 logger = logging.getLogger(__name__)
 
+CREDENTIAL_PLACEMENT_GUIDANCE = _(
+    "Signed credential steps must come after all validation steps and "
+    "blocking actions.",
+)
+CREDENTIAL_PLACEMENT_FOLLOWUP = _(
+    "Advisory actions may appear after the signed credential step.",
+)
+CREDENTIAL_MOVE_GUIDANCE = _(
+    "Move buttons that would break this rule are disabled.",
+)
+
 
 class WorkflowStepListView(WorkflowObjectMixin, View):
     template_name = "workflows/partials/workflow_step_list.html"
@@ -114,6 +125,7 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
                     "extras": extras,
                 }
             step.config = config
+        has_credential_step = _annotate_reorder_controls(steps)
         show_private_notes = self.user_can_manage_workflow()
         context = {
             "workflow": workflow,
@@ -123,6 +135,15 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
             "can_view_workflow": self.user_can_view_workflow(),
             "can_manage_workflow": self.user_can_manage_workflow(),
             "can_launch_workflow": workflow.can_execute(user=request.user),
+            "credential_ordering_guidance": (
+                {
+                    "headline": str(CREDENTIAL_PLACEMENT_GUIDANCE),
+                    "followup": str(CREDENTIAL_PLACEMENT_FOLLOWUP),
+                    "move_note": str(CREDENTIAL_MOVE_GUIDANCE),
+                }
+                if has_credential_step
+                else None
+            ),
         }
         return render(request, self.template_name, context)
 
@@ -795,9 +816,51 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                     and step.validator
                     and step.validator.supports_assertions,
                 ),
+                "credential_step_guidance": self._get_credential_step_guidance(),
             },
         )
         return context
+
+    def _get_credential_step_guidance(self) -> dict[str, str] | None:
+        """Return UI guidance for signed credential action steps."""
+
+        if not self.is_action_step():
+            return None
+        definition = self.get_action_definition()
+        if definition.type != CredentialActionType.SIGNED_CREDENTIAL:
+            return None
+
+        summary = str(
+            _(
+                "When this step is present, the workflow editor keeps it after "
+                "all validation steps and blocking actions."
+            )
+        )
+        if self.mode == "create":
+            status = str(
+                _(
+                    "New steps are added at the end of the workflow. You can "
+                    "still place advisory actions after this one later."
+                )
+            )
+        else:
+            step = self.get_step()
+            workflow = self.get_workflow()
+            step_number = step.step_number_display if step else "?"
+            status = str(
+                _("You are editing %(step)s in a workflow with %(count)s steps.")
+                % {
+                    "step": step_number,
+                    "count": workflow.steps.count(),
+                }
+            )
+
+        return {
+            "headline": str(CREDENTIAL_PLACEMENT_GUIDANCE),
+            "followup": str(CREDENTIAL_PLACEMENT_FOLLOWUP),
+            "status": status,
+            "summary": summary,
+        }
 
     def get_breadcrumbs(self):
         workflow = self.get_workflow()
@@ -1592,3 +1655,60 @@ def _validate_credential_step_order(
             )
 
     return None
+
+
+def _annotate_reorder_controls(steps: list[WorkflowStep]) -> bool:
+    """Add move-button state to step objects for the workflow editor.
+
+    The workflow detail page renders move up/down buttons inline. This helper
+    simulates each move in memory and disables buttons that would violate the
+    signed-credential placement rule, so authors get guidance before they click.
+    """
+
+    has_credential_step = False
+    last_index = len(steps) - 1
+
+    for index, step in enumerate(steps):
+        step.move_up_disabled = index == 0
+        step.move_down_disabled = index == last_index
+        step.move_up_reason = str(_("This step is already first."))
+        step.move_down_reason = str(_("This step is already last."))
+        step.credential_ordering_hint = ""
+
+        if _is_signed_credential_step(step):
+            has_credential_step = True
+            step.credential_ordering_hint = str(
+                _(
+                    "This step must remain after all validation steps and "
+                    "blocking actions."
+                )
+            )
+
+        if index > 0:
+            proposed = list(steps)
+            proposed[index - 1], proposed[index] = proposed[index], proposed[index - 1]
+            placement_error = _validate_credential_step_order(proposed)
+            if placement_error:
+                step.move_up_disabled = True
+                step.move_up_reason = placement_error
+
+        if index < last_index:
+            proposed = list(steps)
+            proposed[index], proposed[index + 1] = proposed[index + 1], proposed[index]
+            placement_error = _validate_credential_step_order(proposed)
+            if placement_error:
+                step.move_down_disabled = True
+                step.move_down_reason = placement_error
+
+    return has_credential_step
+
+
+def _is_signed_credential_step(step: WorkflowStep) -> bool:
+    """Return True when a workflow step is the signed credential action."""
+
+    return bool(
+        step.action_id
+        and step.action
+        and step.action.definition_id
+        and step.action.definition.type == CredentialActionType.SIGNED_CREDENTIAL
+    )

@@ -2,6 +2,13 @@
 
 <div class="workflow-step-list d-flex flex-column gap-0"
      id="workflow-step-list-inner">
+  {% if credential_ordering_guidance %}
+    <div class="alert alert-info mb-4" role="alert">
+      <div class="fw-semibold">{{ credential_ordering_guidance.headline }}</div>
+      <div>{{ credential_ordering_guidance.followup }}</div>
+      <div class="small text-muted mt-1">{{ credential_ordering_guidance.move_note }}</div>
+    </div>
+  {% endif %}
   {% if steps %}
     {% for step in steps %}
       {% with config=step.config %}
@@ -115,6 +122,9 @@
                         {% if not summary.message and not summary.extras %}
                           <p class="text-muted small mb-0">{% trans "No additional configuration" %}</p>
                         {% endif %}
+                        {% if step.credential_ordering_hint %}
+                          <p class="text-muted small mb-0 mt-2">{{ step.credential_ordering_hint }}</p>
+                        {% endif %}
                       {% endwith %}
                     {% endif %}
                   {% endwith %}
@@ -133,7 +143,9 @@
                             hx-target="this"
                             hx-swap="none"
                             hx-vals='{"direction": "up"}'
-                            {% if forloop.first %}disabled{% endif %}>
+                            data-move-direction="up"
+                            title="{{ step.move_up_reason }}"
+                            {% if step.move_up_disabled %}disabled aria-disabled="true"{% endif %}>
                       <i class="bi-arrow-up"></i>
                       <span class="visually-hidden">{% trans "Move up" %}</span>
                     </button>
@@ -142,7 +154,9 @@
                             hx-target="this"
                             hx-swap="none"
                             hx-vals='{"direction": "down"}'
-                            {% if forloop.last %}disabled{% endif %}>
+                            data-move-direction="down"
+                            title="{{ step.move_down_reason }}"
+                            {% if step.move_down_disabled %}disabled aria-disabled="true"{% endif %}>
                       <i class="bi-arrow-down"></i>
                       <span class="visually-hidden">{% trans "Move down" %}</span>
                     </button>

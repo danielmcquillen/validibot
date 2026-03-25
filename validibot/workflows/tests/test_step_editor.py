@@ -433,6 +433,12 @@ def test_create_signed_credential_action_without_extra_config(client):
         assert response.status_code == HTTPStatus.NOT_FOUND
         return
 
+    response = client.get(create_url)
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert "Signed credential steps must come after all validation steps" in html
+    assert "Advisory actions may appear after the signed credential step." in html
+
     response = client.post(
         create_url,
         data={
@@ -990,6 +996,55 @@ def test_step_list_renders_signed_credential_summary(client):
     assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     assert "No additional configuration" in html
+
+
+def test_step_list_disables_invalid_signed_credential_move(client):
+    """The workflow step list disables moves that would violate credential order."""
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ensure_validator(ValidationType.AI_ASSIST, "ai-assist", "AI Assist")
+    WorkflowStep.objects.create(
+        workflow=workflow,
+        validator=validator,
+        order=10,
+        name="Validate first",
+        config={"template": "ai_critic", "mode": "ADVISORY", "cost_cap_cents": 10},
+    )
+    definition = make_action_definition(
+        category=ActionCategoryType.CREDENTIAL,
+        name="Signed credential",
+        type_value=CredentialActionType.SIGNED_CREDENTIAL,
+    )
+    action = Action.objects.create(
+        definition=definition,
+        name="Issue credential",
+        description="Issue a signed credential.",
+    )
+    step = WorkflowStep.objects.create(
+        workflow=workflow,
+        action=action,
+        order=20,
+        name="Issue credential",
+        description="Issue a signed credential.",
+        config={},
+    )
+
+    response = client.get(
+        reverse("workflows:workflow_step_list", args=[workflow.pk]),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert "Move buttons that would break this rule are disabled." in html
+    assert (
+        "This step must remain after all validation steps and blocking actions." in html
+    )
+    assert re.search(
+        rf'data-step-id="{step.id}".*?data-move-direction="up".*?disabled',
+        html,
+        re.S,
+    )
 
 
 def test_step_list_hides_author_notes_for_non_authors(client):

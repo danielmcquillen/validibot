@@ -39,6 +39,8 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
     has guest access to via WorkflowAccessGrant or public workflows.
     """
 
+    include_tombstoned_workflows = False
+
     def get_workflow_queryset(self):
         """
         Get workflows for listing (scoped to current org).
@@ -53,6 +55,8 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
             .prefetch_related("validation_runs")
             .order_by("name", "-version")
         )
+        if not self.include_tombstoned_workflows:
+            queryset = queryset.filter(is_tombstoned=False)
         current_org = None
         if hasattr(user, "get_current_org"):
             current_org = user.get_current_org()
@@ -80,13 +84,18 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
             .select_related("org", "user", "project")
             .prefetch_related("validation_runs")
         )
+        if not self.include_tombstoned_workflows:
+            queryset = queryset.filter(is_tombstoned=False)
         # Also include public workflows (any authenticated user can access)
         # Use union to combine distinct querysets properly
         from django.db.models import Q
 
         public_qs = (
             Workflow.objects.filter(
-                Q(is_public=True) & Q(is_active=True) & Q(is_archived=False)
+                Q(is_public=True)
+                & Q(is_active=True)
+                & Q(is_archived=False)
+                & Q(is_tombstoned=False)
             )
             .select_related("org", "user", "project")
             .distinct()

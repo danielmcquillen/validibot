@@ -36,13 +36,24 @@
               <i class="bi-rocket me-1"></i>{% trans "Launch" %}
             </a>
           {% endif %}
-          <a class="btn btn-light text-dark"
-             data-bs-toggle="tooltip"
-             data-bs-placement="top"
-             title="{% trans "View JSON representation" %}"
-             href="{% url 'workflows:workflow_json' workflow.pk %}">
-            <i class="bi-code-slash"></i>
-          </a>
+          {% if not workflow.is_tombstoned %}
+            <a class="btn btn-light text-dark"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="{% trans "View JSON representation" %}"
+               href="{% url 'workflows:workflow_json' workflow.pk %}">
+              <i class="bi-code-slash"></i>
+            </a>
+          {% endif %}
+          {% if can_view_workflow %}
+            <a class="btn btn-light text-dark"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="{% trans "View Validations" %}"
+               href="{{ related_validations_url }}">
+              <i class="bi-diagram-3"></i>
+            </a>
+          {% endif %}
           {% if can_manage_workflow %}
             <a class="btn btn-light text-dark"
                data-bs-toggle="tooltip"
@@ -51,33 +62,82 @@
                href="{% org_url 'workflows:workflow_sharing' pk=workflow.pk %}">
               <i class="bi-share"></i>
             </a>
-            <a class="btn btn-light text-dark"
-               data-bs-toggle="tooltip"
-               data-bs-placement="top"
-               title="{% trans "View Validations" %}"
-               href="{{ related_validations_url }}">
-              <i class="bi-diagram-3"></i>
-            </a>
-            <a class="btn btn-danger"
-               hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
-               hx-target="body"
-               data-bs-toggle="tooltip"
-               data-bs-placement="top"
-               title="{% trans "Delete this workflow" %}"
-               hx-confirm="{% trans "Delete this workflow?" %}">
-              <i class="bi-trash"></i>
-            </a>
+            {% if workflow_has_runs %}
+              <form method="post"
+                    action="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="btn btn-warning"
+                        data-bs-toggle="tooltip"
+                        data-bs-placement="top"
+                        title="{% trans "Archive workflow" %}">
+                  <i class="bi-archive me-1"></i>{% trans "Archive" %}
+                </button>
+              </form>
+              {% if workflow_has_issued_credentials and can_break_glass_delete_workflow %}
+                <a class="btn btn-outline-danger"
+                   data-bs-toggle="tooltip"
+                   data-bs-placement="top"
+                   title="{% trans "Exceptional delete flow for credential-bearing workflows" %}"
+                   href="{% org_url 'workflows:workflow_break_glass_delete' pk=workflow.pk %}">
+                  <i class="bi-exclamation-triangle me-1"></i>{% trans "Break-glass delete" %}
+                </a>
+              {% endif %}
+            {% else %}
+              <a class="btn btn-danger"
+                 hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
+                 hx-target="body"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="top"
+                 title="{% trans "Delete this workflow" %}"
+                 hx-confirm="{% trans "Delete this workflow?" %}">
+                <i class="bi-trash"></i>
+              </a>
+            {% endif %}
           {% endif %}
         </div>
       </div>
     </div>
+    {% if workflow.is_tombstoned %}
+      <div class="alert alert-warning mb-3" role="alert">
+        <div class="fw-semibold mb-1">{% trans "This workflow has been tombstoned and is now a historical record." %}</div>
+        <p class="mb-2">
+          {% trans "It no longer appears in normal listings, launch flows, or editing screens, but historical runs and signed credentials still point here." %}
+        </p>
+        <div class="small text-muted d-flex flex-column gap-1">
+          {% if workflow.tombstoned_at %}
+            <div>
+              {% blocktrans with when=workflow.tombstoned_at|date:"M j, Y g:i a" %} Tombstoned on {{ when }}. {% endblocktrans %}
+            </div>
+          {% endif %}
+          {% if workflow.tombstoned_by %}
+            <div>{% trans "Tombstoned by" %}: {{ workflow.tombstoned_by.name|default:workflow.tombstoned_by.username }}</div>
+          {% endif %}
+          {% if workflow.tombstone_reason %}
+            <div>{% trans "Reason" %}: {{ workflow.tombstone_reason }}</div>
+          {% endif %}
+          {% if workflow.tombstone_workflow_definition_hash %}
+            <div>
+              {% trans "Workflow definition hash at tombstone time" %}:
+              <code class="text-body-secondary">{{ workflow.tombstone_workflow_definition_hash }}</code>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
     <div class="row workflow-detail-layout flex-grow-1 align-items-stretch">
       <div class="col-12 col-lg-6 col-xxl-8 d-flex flex-column">
         <div class="card app-card" id="workflow-step-editor-card">
           <div class="card-header">
             <div class="card-title">
               <span class="fw-semibold">{% trans "Workflow steps" %}</span>
-              <span class="text-muted small ms-2">{% trans "Design the sequence of validations and actions." %}</span>
+              <span class="text-muted small ms-2">
+                {% if workflow.is_tombstoned %}
+                  {% trans "Historical record of the validation and action sequence." %}
+                {% else %}
+                  {% trans "Design the sequence of validations and actions." %}
+                {% endif %}
+              </span>
             </div>
             <div class="card-header-buttons">
               {% if can_manage_workflow %}
@@ -145,6 +205,8 @@
                     <div class="d-flex flex-row gap-2 align-items-center">
                       {% if workflow.is_active %}
                         <div class="badge text-bg-primary py-2">{% trans "Active" %}</div>
+                      {% elif workflow.is_tombstoned %}
+                        <div class="badge text-bg-danger py-2">{% trans "Tombstoned" %}</div>
                       {% else %}
                         <div class="badge text-bg-dark py-2">{% trans "Inactive" %}</div>
                       {% endif %}
@@ -176,7 +238,11 @@
                     </div>
                   </div>
                   <small class="text-muted mb-2">
-                    {% trans "Inactive workflows stay visible in the catalog but block new validation runs." %}
+                    {% if workflow.is_tombstoned %}
+                      {% trans "Tombstoned workflows remain available only for historical inspection." %}
+                    {% else %}
+                      {% trans "Inactive workflows stay visible in the catalog but block new validation runs." %}
+                    {% endif %}
                   </small>
                 </div>
               </dd>
@@ -211,33 +277,34 @@
             </dl>
           </div>
         </div>
-        {% include "workflows/partials/workflow_public_info_card.html" with workflow=workflow public_info_url=public_info_url can_manage_public_info=can_manage_public_info %}
-        <div class="card app-card mb-3">
-          <div class="card-header">
-            <div class="card-title">{% trans "API access" %}</div>
-          </div>
-          <div class="card-body bg-body-tertiary">
-            <div class="d-flex align-items-center gap-2 mb-3">
-              <div>
-                <div class="fw-semibold mb-0">{% trans "Start this workflow via API" %}</div>
-                <small class="text-muted">{% trans "POST requests launch a validation run for this workflow." %}</small>
-              </div>
+        {% if not workflow.is_tombstoned %}
+          {% include "workflows/partials/workflow_public_info_card.html" with workflow=workflow public_info_url=public_info_url can_manage_public_info=can_manage_public_info %}
+          <div class="card app-card mb-3">
+            <div class="card-header">
+              <div class="card-title">{% trans "API access" %}</div>
             </div>
-            <ul class="list-unstyled small text-muted mb-3">
-              <li>
-                <span class="fw-semibold me-1">{% trans "Endpoint" %}:</span>
-                <code class="text-body-secondary">POST /api/v1/orgs/{{ workflow.org.slug }}/workflows/{{ workflow.slug|default:workflow.pk }}/runs/</code>
-              </li>
-              <li>
-                <span class="fw-semibold me-1">{% trans "Auth" %}:</span>
-                {% blocktrans with org_name=workflow.org.name %}Bearer token with the Executor role in {{ org_name }}.{% endblocktrans %}
-              </li>
-              <li>
-                <span class="fw-semibold me-1">{% trans "Content" %}:</span>
-                {% trans "Send raw content, a JSON envelope, or multipart form-data." %}
-              </li>
-            </ul>
-            <pre class="bg-dark text-white rounded-3 p-3 small mb-2"><code>curl -X POST https://{{ request.get_host|default:"api.validibot.io" }}/api/v1/orgs/{{ workflow.org.slug }}/workflows/{{ workflow.slug|default:workflow.pk }}/runs/ \
+            <div class="card-body bg-body-tertiary">
+              <div class="d-flex align-items-center gap-2 mb-3">
+                <div>
+                  <div class="fw-semibold mb-0">{% trans "Start this workflow via API" %}</div>
+                  <small class="text-muted">{% trans "POST requests launch a validation run for this workflow." %}</small>
+                </div>
+              </div>
+              <ul class="list-unstyled small text-muted mb-3">
+                <li>
+                  <span class="fw-semibold me-1">{% trans "Endpoint" %}:</span>
+                  <code class="text-body-secondary">POST /api/v1/orgs/{{ workflow.org.slug }}/workflows/{{ workflow.slug|default:workflow.pk }}/runs/</code>
+                </li>
+                <li>
+                  <span class="fw-semibold me-1">{% trans "Auth" %}:</span>
+                  {% blocktrans with org_name=workflow.org.name %}Bearer token with the Executor role in {{ org_name }}.{% endblocktrans %}
+                </li>
+                <li>
+                  <span class="fw-semibold me-1">{% trans "Content" %}:</span>
+                  {% trans "Send raw content, a JSON envelope, or multipart form-data." %}
+                </li>
+              </ul>
+              <pre class="bg-dark text-white rounded-3 p-3 small mb-2"><code>curl -X POST https://{{ request.get_host|default:"api.validibot.io" }}/api/v1/orgs/{{ workflow.org.slug }}/workflows/{{ workflow.slug|default:workflow.pk }}/runs/ \
   -H "Authorization: Bearer &lt;token&gt;" \
   -H "Content-Type: application/json" \
   -d '{
@@ -245,11 +312,12 @@
     "content_type": "application/json",
     "filename": "sample.json"
   }'</code></pre>
-            <p class="small text-muted mb-0">
-              {% trans "See the developer guide 'Using a Workflow via the API' for additional payload examples." %}
-            </p>
+              <p class="small text-muted mb-0">
+                {% trans "See the developer guide 'Using a Workflow via the API' for additional payload examples." %}
+              </p>
+            </div>
           </div>
-        </div>
+        {% endif %}
       </div>
     </div>
   </div>

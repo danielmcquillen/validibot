@@ -8,7 +8,7 @@ POST /api/v1/orgs/{org_slug}/workflows/{workflow_identifier}/runs/
 The `workflow_identifier` can be either the workflow's slug (preferred) or its numeric database ID.
 
 Auth: required. User must be a member of the org and have EXECUTOR role.
-Workflow status: the workflow must be **active**. Disabled workflows return HTTP 403 with `{"detail": "This workflow is inactive..."}` and no run is created.
+Workflow status: the workflow must be **active** and not tombstoned. Disabled workflows return HTTP 403 with `{"detail": "This workflow is inactive..."}` and no run is created. Tombstoned workflows are removed from normal API launch surfaces and resolve as not found.
 
 Feature flag: set `ENABLE_API=True` (default) to expose these endpoints. When the flag is `False`, all `/api/v1/` routes return 404.
 

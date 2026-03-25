@@ -174,7 +174,9 @@ class ValidationRunListView(ValidationRunAccessMixin, ListView):
                 "current_sort": self.request.GET.get("sort", "-created"),
                 "status_filter": self.request.GET.get("status", ""),
                 "status_choices": ValidationRunStatus.choices,
-                "workflow_options": Workflow.objects.for_user(self.request.user),
+                "workflow_options": Workflow.objects.for_user(
+                    self.request.user,
+                ).filter(is_tombstoned=False),
                 "query_string": self._get_base_query_string(),
                 "page_size_options": self.page_size_options,
                 "current_page_size": getattr(self, "page_size", self.paginate_by),

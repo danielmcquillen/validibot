@@ -45,12 +45,12 @@ dependencies = [
   "django-markdownify==0.9.6",
   "django-model-utils==5.0.0",
   "django-storages[google]==1.14.6",
-  "djangorestframework==3.17.0",
+  "djangorestframework==3.17.1",
   "drf-spectacular[sidecar]==0.29.0",
-  "fmpy==0.3.28",
+  "fmpy==0.3.29",
   "google-cloud-kms==3.11.0",
   "google-cloud-tasks==2.21.0",
-  "gunicorn==25.1.0",
+  "gunicorn==25.2.0",
   "httpx==0.28.1",
   "jsonschema==4.26.0",
   "lxml==6.0.2",
@@ -60,7 +60,7 @@ dependencies = [
   "psycopg[c]==3.3.3",
   "pydantic==2.12.5",
   "python-slugify==8.0.4",
-  "sentry-sdk==2.55.0",
+  "sentry-sdk==2.56.0",
   # Task queue: Celery with Redis broker and periodic scheduling.
   # celery[redis] pulls in kombu's redis extra, which caps the redis version.
   # As of kombu 5.6.2 the cap is redis<6.5; kombu main has bumped to <7.1
@@ -298,7 +298,7 @@ dev = [
   "django-extensions==4.1",
   "ipdb==0.13.13",
   "watchfiles==1.1.1",
-  "werkzeug[watchdog]==3.1.6",
+  "werkzeug[watchdog]==3.1.7",
   # Documentation
-  "zensical==0.0.28",
+  "zensical==0.0.29",
 ]

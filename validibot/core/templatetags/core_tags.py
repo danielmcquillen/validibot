@@ -282,8 +282,8 @@ def help_button(slug: str, sr_label: str = "") -> dict:
 
     Usage::
 
-        {% help_button "evidence_hash" %}
-        {% help_button "evidence_hash" sr_label="What is the evidence hash?" %}
+        {% help_button "output-hash" %}
+        {% help_button "output-hash" sr_label="What is the output hash?" %}
 
     The button uses HTMX to fetch the help drawer content partial into the
     shared offcanvas container, then shows it via Bootstrap's JS API.

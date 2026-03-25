@@ -10,7 +10,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
 from validibot.actions.constants import ActionCategoryType
-from validibot.actions.constants import CertificationActionType
+from validibot.actions.constants import CredentialActionType
 from validibot.actions.constants import IntegrationActionType
 from validibot.actions.models import Action
 from validibot.actions.models import ActionDefinition
@@ -61,7 +61,7 @@ def make_action_definition(
         type_value = (
             IntegrationActionType.SLACK_MESSAGE
             if category == ActionCategoryType.INTEGRATION
-            else CertificationActionType.SIGNED_CREDENTIAL
+            else CredentialActionType.SIGNED_CREDENTIAL
         )
     slug = f"{category.lower()}-{type_value.lower()}"
     definition, _ = ActionDefinition.objects.get_or_create(
@@ -159,8 +159,8 @@ def test_wizard_lists_action_tabs(client):
         name="Send Slack message",
     )
     certification_def = make_action_definition(
-        category=ActionCategoryType.CERTIFICATION,
-        name="Issue certificate",
+        category=ActionCategoryType.CREDENTIAL,
+        name="Issue signed credential",
     )
 
     url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
@@ -170,11 +170,11 @@ def test_wizard_lists_action_tabs(client):
     assert integration_def.name in html
     assert "Integrations" in html
 
-    if get_action_form(CertificationActionType.SIGNED_CREDENTIAL) is None:
+    if get_action_form(CredentialActionType.SIGNED_CREDENTIAL) is None:
         assert certification_def.name not in html
     else:
         assert certification_def.name in html
-        assert "Certifications" in html
+        assert "Credentials" in html
 
 
 def test_wizard_shows_xml_validator_even_when_incompatible_file_type(client):
@@ -414,13 +414,13 @@ def test_create_view_creates_action_step(client):
     assert step.config.get("message") == "Validation finished successfully."
 
 
-def test_create_certificate_action_uses_default_when_missing(client):
+def test_create_signed_credential_action_without_extra_config(client):
     """Credential step creation depends on the Pro action plugin being loaded."""
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     definition = make_action_definition(
-        category=ActionCategoryType.CERTIFICATION,
-        name="Issue certificate",
+        category=ActionCategoryType.CREDENTIAL,
+        name="Issue signed credential",
     )
 
     create_url = reverse(
@@ -428,7 +428,7 @@ def test_create_certificate_action_uses_default_when_missing(client):
         args=[workflow.pk, definition.pk],
     )
 
-    if get_action_form(CertificationActionType.SIGNED_CREDENTIAL) is None:
+    if get_action_form(CredentialActionType.SIGNED_CREDENTIAL) is None:
         response = client.get(create_url)
         assert response.status_code == HTTPStatus.NOT_FOUND
         return
@@ -436,8 +436,8 @@ def test_create_certificate_action_uses_default_when_missing(client):
     response = client.post(
         create_url,
         data={
-            "name": "Issue certificate",
-            "description": "Provide certificates for passing runs.",
+            "name": "Issue signed credential",
+            "description": "Issue a signed credential for passing runs.",
         },
     )
     assert response.status_code == HTTPStatus.FOUND
@@ -446,10 +446,7 @@ def test_create_certificate_action_uses_default_when_missing(client):
     assert step.action is not None
     assert step.action.definition == definition
     variant = step.action.get_variant()
-    assert hasattr(variant, "get_credential_template_display_name")
-    assert variant.get_credential_template_display_name() == (
-        "default_signed_credential.pdf"
-    )
+    assert variant is not None
 
 
 def test_create_view_validates_missing_upload(client):
@@ -963,26 +960,26 @@ def test_step_list_renders_action_step(client):
 
 
 def test_step_list_renders_signed_credential_summary(client):
-    """The step list shows the renamed credential template summary field."""
+    """The step list falls back to no extra config for signed credentials."""
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     definition = make_action_definition(
-        category=ActionCategoryType.CERTIFICATION,
+        category=ActionCategoryType.CREDENTIAL,
         name="Signed credential",
-        type_value=CertificationActionType.SIGNED_CREDENTIAL,
+        type_value=CredentialActionType.SIGNED_CREDENTIAL,
     )
     action = Action.objects.create(
         definition=definition,
         name="Issue credential",
-        description="Attach a signed credential PDF.",
+        description="Issue a signed credential.",
     )
     WorkflowStep.objects.create(
         workflow=workflow,
         action=action,
         order=10,
         name="Issue credential",
-        description="Attach a signed credential PDF.",
-        config={"credential_template": "credential-template.pdf"},
+        description="Issue a signed credential.",
+        config={},
     )
 
     response = client.get(
@@ -992,9 +989,7 @@ def test_step_list_renders_signed_credential_summary(client):
 
     assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
-    assert "Credential template" in html
-    assert "credential-template.pdf" in html
-    assert "certificate_template" not in html
+    assert "No additional configuration" in html
 
 
 def test_step_list_hides_author_notes_for_non_authors(client):

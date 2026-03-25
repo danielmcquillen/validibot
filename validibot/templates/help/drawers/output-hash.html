@@ -1,27 +1,21 @@
 {% load i18n %}
 
-<h6 class="fw-semibold">{% trans "What is the evidence hash?" %}</h6>
+<h6 class="fw-semibold">{% trans "What is the output hash?" %}</h6>
 <p class="small">
   {% blocktrans trimmed %}
-    The evidence hash is a SHA-256 fingerprint computed when a validation
-    run completes. It covers the key fields of the run record, creating a
-    tamper-evident seal. If any covered field were modified after
-    completion, the hash would no longer match.
+    The output hash is a SHA-256 fingerprint computed when a validation
+    run completes. It covers the stable validation context and the final
+    run outcome, creating a tamper-evident seal. If any covered field
+    were modified after completion, the hash would no longer match.
   {% endblocktrans %}
 </p>
 <h6 class="fw-semibold mt-3">{% trans "Fields included" %}</h6>
 <ul class="small">
   <li>
+    <strong>validation context</strong> — {% trans "The workflow or workflow-hash context used to interpret the run" %}
+  </li>
+  <li>
     <strong>run_id</strong> — {% trans "Unique identifier of the run" %}
-  </li>
-  <li>
-    <strong>content_hash</strong> — {% trans "SHA-256 of the submitted content" %}
-  </li>
-  <li>
-    <strong>user_id</strong> — {% trans "ID of the user who submitted the run" %}
-  </li>
-  <li>
-    <strong>submission_name</strong> — {% trans "Name of the submission (if provided)" %}
   </li>
   <li>
     <strong>status</strong> — {% trans "Final status (e.g. Succeeded, Failed)" %}
@@ -51,10 +45,12 @@
 <h6 class="fw-semibold mt-3">{% trans "How it works" %}</h6>
 <p class="small mb-0">
   {% blocktrans trimmed %}
-    These fields are serialized as canonical JSON (sorted keys, no
-    whitespace), then hashed with SHA-256. The resulting 64-character hex
-    digest is stored on the run record and included in API responses.
-    External systems can recompute the hash from the same fields to verify
-    that the record has not been altered.
+    Validibot serializes the covered fields into a deterministic JSON
+    document, hashes that document with SHA-256, and stores the resulting
+    64-character digest on the run record. Installations with signed
+    credentials enabled use the stricter workflow-centered Layer 3
+    contract from Validibot Pro; community installs fall back to the
+    built-in host contract. In both cases, the digest helps reveal
+    whether the run record was changed after completion.
   {% endblocktrans %}
 </p>

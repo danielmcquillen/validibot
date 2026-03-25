@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name='validationrun',
-            name='evidence_hash',
-            field=models.CharField(blank=True, default='', help_text='SHA-256 hash of the canonical run evidence record, computed at run completion. Covers: content hash, run ID, user, status, timestamps, finding counts, and submission name.', max_length=64),
+            name='output_hash',
+            field=models.CharField(blank=True, default='', help_text='SHA-256 hash of the canonical validation output record, computed at run completion. Covers the stable workflow context and the final run outcome.', max_length=64),
         ),
     ]

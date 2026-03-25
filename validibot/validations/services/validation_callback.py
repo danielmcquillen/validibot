@@ -637,11 +637,9 @@ class ValidationCallbackService:
             validation_run=run,
         )
 
-        from validibot.validations.services.evidence_hash import (
-            safe_stamp_evidence_hash,
-        )
+        from validibot.validations.services.output_hash import safe_stamp_output_hash
 
-        safe_stamp_evidence_hash(run)
+        safe_stamp_output_hash(run)
 
         logger.info(
             "Finalized run %s with status %s",

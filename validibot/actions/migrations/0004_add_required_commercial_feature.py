@@ -4,11 +4,11 @@ from django.db import migrations, models
 
 
 def set_credential_feature_flag(apps, schema_editor):
-    """Backfill the required_feature on the signed credential definition."""
+    """Backfill the required commercial feature on the credential action."""
     ActionDefinition = apps.get_model("actions", "ActionDefinition")
     ActionDefinition.objects.filter(
-        slug="certification-signed-credential",
-    ).update(required_feature="signed_badges")
+        slug="signed-credential",
+    ).update(required_commercial_feature="signed_credentials")
 
 
 class Migration(migrations.Migration):
@@ -20,8 +20,8 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name='actiondefinition',
-            name='required_feature',
-            field=models.CharField(blank=True, default='', help_text="Commercial feature flag required for this action to appear in the step picker (e.g. 'signed_badges'). Leave blank for actions available to all installations.", max_length=64),
+            name='required_commercial_feature',
+            field=models.CharField(blank=True, default='', help_text="Commercial feature flag required for this action to appear in the step picker (e.g. 'signed_credentials'). Leave blank for actions available to all installations.", max_length=64),
         ),
         migrations.RunPython(
             set_credential_feature_flag,

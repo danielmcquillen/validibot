@@ -6,7 +6,7 @@ class ActionCategoryType(models.TextChoices):
     """High-level grouping for non-validation workflow actions."""
 
     INTEGRATION = "INTEGRATION", _("Integration")
-    CERTIFICATION = "CERTIFICATION", _("Certification")
+    CREDENTIAL = "CREDENTIAL", _("Credential")
 
 
 class IntegrationActionType(models.TextChoices):
@@ -15,8 +15,8 @@ class IntegrationActionType(models.TextChoices):
     SLACK_MESSAGE = "SLACK_MESSAGE", _("Slack message")
 
 
-class CertificationActionType(models.TextChoices):
-    """Supported certification actions that can be attached to a workflow."""
+class CredentialActionType(models.TextChoices):
+    """Supported credential-oriented actions that can be attached to a workflow."""
 
     SIGNED_CREDENTIAL = "SIGNED_CREDENTIAL", _("Signed credential")
 

@@ -21,8 +21,7 @@ from django.urls import reverse
 from lxml import html as lxml_html
 
 from validibot.actions.constants import ActionCategoryType
-from validibot.actions.constants import CertificationActionType
-from validibot.actions.models import Action
+from validibot.actions.constants import CredentialActionType
 from validibot.actions.models import ActionDefinition
 from validibot.actions.registry import get_action_model
 from validibot.submissions.constants import SubmissionFileType
@@ -756,26 +755,26 @@ def test_public_info_view_renders_signed_credential_summary(client):
     """Public workflow pages only show credential summaries for loaded plugins."""
     workflow = WorkflowFactory(make_info_page_public=True)
     definition = ActionDefinition.objects.create(
-        slug="certification-signed-credential",
+        slug="signed-credential",
         name="Signed credential",
         description="Issue a signed credential for successful validations.",
         icon="bi-award",
-        action_category=ActionCategoryType.CERTIFICATION,
-        type=CertificationActionType.SIGNED_CREDENTIAL,
+        action_category=ActionCategoryType.CREDENTIAL,
+        type=CredentialActionType.SIGNED_CREDENTIAL,
     )
-    action_model = get_action_model(CertificationActionType.SIGNED_CREDENTIAL)
+    action_model = get_action_model(CredentialActionType.SIGNED_CREDENTIAL)
     action = action_model.objects.create(
         definition=definition,
         name="Issue credential",
-        description="Attach a signed credential PDF.",
+        description="Issue a signed credential.",
     )
     WorkflowStepFactory(
         workflow=workflow,
         validator=None,
         action=action,
         name="Issue credential",
-        description="Attach a signed credential PDF.",
-        config={"credential_template": "default_signed_credential.pdf"},
+        description="Issue a signed credential.",
+        config={},
     )
 
     response = client.get(
@@ -784,11 +783,7 @@ def test_public_info_view_renders_signed_credential_summary(client):
 
     assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
-    if action_model is Action:
-        assert "Credential template" not in body
-    else:
-        assert "Credential template" in body
-        assert "default_signed_credential.pdf" in body
+    assert "Credential template" not in body
 
 
 # ── Schema-driven launch integration tests ───────────────────────────

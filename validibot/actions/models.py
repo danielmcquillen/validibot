@@ -58,13 +58,13 @@ class ActionDefinition(TimeStampedModel):
     )
     is_active = models.BooleanField(default=True)
 
-    required_feature = models.CharField(
+    required_commercial_feature = models.CharField(
         max_length=64,
         blank=True,
         default="",
         help_text=_(
             "Commercial feature flag required for this action to appear "
-            "in the step picker (e.g. 'signed_badges'). Leave blank for "
+            "in the step picker (e.g. 'signed_credentials'). Leave blank for "
             "actions available to all installations."
         ),
     )

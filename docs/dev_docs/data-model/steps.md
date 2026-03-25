@@ -23,7 +23,7 @@ authored workflow. Key relationships:
 - A step must reference **either** a `validator` **or** an `action` (enforced via
   a database check constraint). Validator steps run a validator and produce findings.
   Action steps trigger side effects such as Slack notifications or issuing a
-  certificate; they do not execute assertions.
+  signed credential; they do not execute assertions.
 - `ruleset` is **optional** and only meaningful for validator steps. When present
   it overrides the validator’s default ruleset so this step can enforce stricter
   or looser assertions. When `ruleset` is blank, the validator’s
@@ -43,9 +43,9 @@ authored workflow. Key relationships:
   many workflows with different policies. Rulesets must match the validator’s
   `validation_type` (enforced in `WorkflowStep.clean()`), which keeps JSON steps
   from referencing XML rules, etc.
-- **Actions** (`validibot/validations/models.py` subclasses under
+- **Actions** (`validibot/actions/models.py` subclasses under
   `Action`) represent non-validation steps. They persist their own structured
-  configuration (Slack message body, certificate template, etc.) and are linked
+  configuration (Slack message body and similar action-specific data) and are linked
   from `WorkflowStep.action`.
 
 During execution the runtime inspects the step:
@@ -63,8 +63,8 @@ isolated in the action subsystem.
 
 Action-based workflow steps now persist their configuration on concrete subclasses of
 `Action`. The initial set includes `SlackMessageAction` (stores the Slack message body)
-and `SignedCredentialAction` (stores the uploaded credential template, or uses the
-bundled `default_signed_credential.pdf` when no upload is provided). Each variant
-ships with a dedicated form so authors configure only the fields that matter—no more
-hand-editing JSON blobs. Workflow steps keep a short summary of the action data in
-`WorkflowStep.config` so the UI can render a preview without resolving every file.
+and `SignedCredentialAction` (which currently adds no extra authored fields beyond the
+base action metadata). Each variant ships with a dedicated form so authors configure
+only the fields that matter instead of hand-editing JSON blobs. Workflow steps keep a
+short summary of the action data in `WorkflowStep.config` so the UI can render a
+preview without resolving every related object.

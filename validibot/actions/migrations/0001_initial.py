@@ -30,17 +30,6 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name='SignedCertificateAction',
-            fields=[
-                ('action_ptr', models.OneToOneField(auto_created=True, on_delete=django.db.models.deletion.CASCADE, parent_link=True, primary_key=True, serialize=False, to='actions.action')),
-                ('certificate_template', models.FileField(blank=True, upload_to='actions/certificates/')),
-            ],
-            options={
-                'abstract': False,
-            },
-            bases=('actions.action',),
-        ),
-        migrations.CreateModel(
             name='SlackMessageAction',
             fields=[
                 ('action_ptr', models.OneToOneField(auto_created=True, on_delete=django.db.models.deletion.CASCADE, parent_link=True, primary_key=True, serialize=False, to='actions.action')),
@@ -61,7 +50,7 @@ class Migration(migrations.Migration):
                 ('name', models.CharField(max_length=200)),
                 ('description', models.TextField(blank=True, default='')),
                 ('icon', models.CharField(blank=True, default='', help_text="Bootstrap icon class to render when displaying the action (e.g. 'bi-slack').", max_length=100)),
-                ('action_category', models.CharField(choices=[('INTEGRATION', 'Integration'), ('CERTIFICATION', 'Certification')], max_length=32)),
+                ('action_category', models.CharField(choices=[('INTEGRATION', 'Integration'), ('CREDENTIAL', 'Credential')], max_length=32)),
                 ('type', models.CharField(help_text='Implementation type identifier (e.g. SLACK_MESSAGE).', max_length=64)),
                 ('config_schema', models.JSONField(blank=True, default=dict, help_text='Optional JSON schema describing the configuration for this action.')),
                 ('is_active', models.BooleanField(default=True)),

@@ -100,12 +100,6 @@
                             {{ summary.message|linebreaksbr }}
                           </p>
                         {% endif %}
-                        {% if summary.credential_template %}
-                          <p class="text-muted small mb-2">
-                            <span class="fw-semibold">{% trans "Credential template" %}:</span>
-                            <code class="text-break">{{ summary.credential_template }}</code>
-                          </p>
-                        {% endif %}
                         {% if summary.extras %}
                           <dl class="row small text-muted mb-0">
                             {% for key, value in summary.extras.items %}
@@ -118,7 +112,7 @@
                             {% endfor %}
                           </dl>
                         {% endif %}
-                        {% if not summary.message and not summary.credential_template and not summary.extras %}
+                        {% if not summary.message and not summary.extras %}
                           <p class="text-muted small mb-0">{% trans "No additional configuration" %}</p>
                         {% endif %}
                       {% endwith %}

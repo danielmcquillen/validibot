@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from importlib import import_module
-
 import pytest
-from django.apps import apps as django_apps
 from django.core.management import call_command
 
 from validibot.actions.constants import ActionCategoryType
@@ -15,8 +12,6 @@ from validibot.actions.models import SlackMessageAction
 from validibot.actions.registry import get_action_form
 from validibot.actions.registry import get_action_model
 from validibot.actions.utils import create_default_actions
-from validibot.workflows.models import WorkflowStep
-from validibot.workflows.tests.factories import WorkflowFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -67,51 +62,3 @@ def test_action_registry_resolves_variants():
     )
     assert get_action_model("SIGNED_CREDENTIAL") is Action
     assert get_action_form("SIGNED_CREDENTIAL") is None
-
-
-def test_rename_migration_updates_legacy_step_config():
-    """The rename migration rewrites old action definitions and step config keys."""
-    workflow = WorkflowFactory()
-    definition = ActionDefinition.objects.create(
-        slug="certification-signed-certificate",
-        name="Signed certificate",
-        description="Issue a signed certificate for successful validations.",
-        icon="bi-award",
-        action_category=ActionCategoryType.CERTIFICATION,
-        type="SIGNED_CERTIFICATE",
-    )
-    action = Action.objects.create(
-        definition=definition,
-        name="Legacy credential step",
-        description="",
-    )
-    step = WorkflowStep.objects.create(
-        workflow=workflow,
-        action=action,
-        order=10,
-        name="Legacy credential step",
-        description="",
-        config={
-            "certificate_template": "legacy.pdf",
-            "preserved_key": "keep-this",
-        },
-    )
-
-    migration = import_module(
-        "validibot.actions.migrations.0002_rename_signed_certificate_to_credential",
-    )
-    migration.rename_certificate_to_credential(django_apps, None)
-
-    definition.refresh_from_db()
-    step.refresh_from_db()
-
-    assert definition.type == "SIGNED_CREDENTIAL"
-    assert definition.slug == "certification-signed-credential"
-    assert definition.name == "Signed credential"
-    assert definition.description == (
-        "Issue a signed credential for successful validations."
-    )
-    assert step.config == {
-        "credential_template": "legacy.pdf",
-        "preserved_key": "keep-this",
-    }

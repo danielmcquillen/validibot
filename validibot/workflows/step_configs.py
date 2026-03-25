@@ -274,9 +274,6 @@ class SlackActionStepConfig(BaseStepConfig):
 class CredentialActionStepConfig(BaseStepConfig):
     """Config for signed credential action steps."""
 
-    credential_template: str = ""
-    """Template filename or display name for the credential."""
-
 
 # ---------------------------------------------------------------------------
 # Registry

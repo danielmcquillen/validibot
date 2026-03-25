@@ -113,15 +113,15 @@ are shown in the User Inputs card instead.
         </dd>
       </dl>
     </section>
-    {% if run.evidence_hash %}
+    {% if run.output_hash %}
       <section>
         <dl class="row small mb-0">
           <dt class="col-5 col-lg-4">
-            {% trans "Evidence hash" %}
-            {% help_button "evidence-hash" %}
+            {% trans "Output hash" %}
+            {% help_button "output-hash" %}
           </dt>
           <dd class="col-7 col-lg-8">
-            <span class="font-monospace small text-muted text-break">{{ run.evidence_hash }}</span>
+            <span class="font-monospace small text-muted text-break">{{ run.output_hash }}</span>
           </dd>
         </dl>
       </section>

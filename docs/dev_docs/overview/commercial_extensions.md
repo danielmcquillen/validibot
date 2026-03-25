@@ -80,7 +80,7 @@ As you browse the core codebase, you'll encounter two patterns that reference co
 
 **Feature flags in templates.** Some navigation links and UI elements are wrapped in `{% if feature_team_management %}` or similar checks. These elements are hidden when the corresponding commercial package is not installed.
 
-**Feature guard mixins on views.** Some views include `FeatureRequiredMixin` with a `required_feature` attribute. These views return a 404 when the feature is not registered. This is defense-in-depth alongside the template-level hiding.
+**Feature guard mixins on views.** Some views include `FeatureRequiredMixin` with a `required_commercial_feature` attribute. These views return a 404 when the feature is not registered. This is defense-in-depth alongside the template-level hiding.
 
 Both patterns use the feature registry in `validibot/core/features.py`, which defines `CommercialFeature` -- an enum of all features that commercial packages can activate.
 

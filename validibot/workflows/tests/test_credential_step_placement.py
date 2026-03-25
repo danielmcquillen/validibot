@@ -25,7 +25,7 @@ from django.urls import reverse
 
 from validibot.actions.constants import ActionCategoryType
 from validibot.actions.constants import ActionFailureMode
-from validibot.actions.constants import CertificationActionType
+from validibot.actions.constants import CredentialActionType
 from validibot.actions.constants import IntegrationActionType
 from validibot.actions.models import Action
 from validibot.actions.models import ActionDefinition
@@ -52,14 +52,14 @@ def seed_roles(db):
 def credential_definition():
     """Create a signed credential ActionDefinition for testing."""
     defn, _ = ActionDefinition.objects.get_or_create(
-        slug="certification-signed-credential",
+        slug="signed-credential",
         defaults={
             "name": "Signed credential",
             "description": "Issue a signed credential.",
             "icon": "bi-award",
-            "action_category": ActionCategoryType.CERTIFICATION,
-            "type": CertificationActionType.SIGNED_CREDENTIAL,
-            "required_feature": "signed_badges",
+            "action_category": ActionCategoryType.CREDENTIAL,
+            "type": CredentialActionType.SIGNED_CREDENTIAL,
+            "required_commercial_feature": "signed_credentials",
         },
     )
     return defn
@@ -256,7 +256,7 @@ class TestCredentialStepPlacementValidation:
 
 
 class TestServerSideFeatureGating:
-    """Verify that the step create endpoint enforces required_feature.
+    """Verify that the step create endpoint enforces the commercial gate.
 
     The UI step picker filters out Pro-only actions, but a crafted
     POST or stale browser tab could bypass the picker.  The server

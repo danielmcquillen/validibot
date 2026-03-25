@@ -77,7 +77,7 @@ An action descriptor supplies the information the host app needs:
 
 - slug, name, description, and icon
 - action category and type
-- optional `required_feature`
+- optional `required_commercial_feature`
 - concrete model class
 - form class for the workflow step editor
 - runtime handler class

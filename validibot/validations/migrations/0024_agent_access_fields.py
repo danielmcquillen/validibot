@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('validations', '0023_add_evidence_hash_to_validation_run'),
+        ('validations', '0023_add_output_hash_to_validation_run'),
     ]
 
     operations = [

@@ -41,7 +41,7 @@ class ActionDescriptor:
     model: type[Action]
     form: type[BaseWorkflowActionForm]
     handler: type[Any]
-    required_feature: str = ""
+    required_commercial_feature: str = ""
     provider: str = ""
 
 

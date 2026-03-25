@@ -233,7 +233,7 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             "credential",
             "error",
             "user_friendly_error",
-            "evidence_hash",
+            "output_hash",
         ]
         read_only_fields = fields
 

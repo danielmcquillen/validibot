@@ -21,7 +21,7 @@ def create_default_actions() -> tuple[list[ActionDefinition], list[ActionDefinit
                 "icon": descriptor.icon,
                 "action_category": descriptor.action_category,
                 "type": descriptor.type,
-                "required_feature": descriptor.required_feature,
+                "required_commercial_feature": (descriptor.required_commercial_feature),
             },
         )
         if was_created:

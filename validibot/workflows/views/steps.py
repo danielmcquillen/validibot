@@ -26,7 +26,7 @@ from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
 from validibot.actions.constants import ActionCategoryType
-from validibot.actions.constants import CertificationActionType
+from validibot.actions.constants import CredentialActionType
 from validibot.actions.models import ActionDefinition
 from validibot.actions.models import SlackMessageAction
 from validibot.actions.registry import get_action_form
@@ -97,16 +97,6 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
                 if not config and variant:
                     if isinstance(variant, SlackMessageAction):
                         config["message"] = variant.message
-                    elif (
-                        definition.type == CertificationActionType.SIGNED_CREDENTIAL
-                        and hasattr(
-                            variant,
-                            "get_credential_template_display_name",
-                        )
-                    ):
-                        config["credential_template"] = (
-                            variant.get_credential_template_display_name()
-                        )
                 step.action_meta = {
                     "category_label": definition.get_action_category_display(),
                     "type": definition.type,
@@ -114,22 +104,13 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
                     "definition_name": definition.name,
                     "definition_description": definition.description,
                 }
-                credential_template = config.get("credential_template") or config.get(
-                    "certificate_template"
-                )
                 extras = {
                     key: value
                     for key, value in config.items()
-                    if key
-                    not in {
-                        "message",
-                        "credential_template",
-                        "certificate_template",
-                    }
+                    if key not in {"message"}
                 }
                 step.action_summary = {
                     "message": config.get("message"),
-                    "credential_template": credential_template,
                     "extras": extras,
                 }
             step.config = config
@@ -299,7 +280,8 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
     def _available_action_definitions(self) -> list[ActionDefinition]:
         """Return action definitions the current user can add.
 
-        Filters out definitions whose ``required_feature`` is not enabled
+        Filters out definitions whose ``required_commercial_feature`` is not
+        enabled
         and whose action plugins are not registered in the current
         process.
         """
@@ -314,7 +296,10 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             for d in definitions
             if (
                 get_action_form(d.type) is not None
-                and (not d.required_feature or is_feature_enabled(d.required_feature))
+                and (
+                    not d.required_commercial_feature
+                    or is_feature_enabled(d.required_commercial_feature)
+                )
             )
         ]
 
@@ -419,10 +404,10 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             for defn in action_definitions
             if defn.action_category == ActionCategoryType.INTEGRATION
         ]
-        certification_entries = [
+        credential_entries = [
             self._serialize_action_definition(defn)
             for defn in action_definitions
-            if defn.action_category == ActionCategoryType.CERTIFICATION
+            if defn.action_category == ActionCategoryType.CREDENTIAL
         ]
 
         tabs.append(
@@ -434,13 +419,13 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         )
         tabs.append(
             {
-                "slug": "certifications",
-                "label": str(_("Certifications")),
-                "entries": certification_entries,
+                "slug": "credentials",
+                "label": str(_("Credentials")),
+                "entries": credential_entries,
             },
         )
         options.extend(integration_entries)
-        options.extend(certification_entries)
+        options.extend(credential_entries)
 
         return tabs, options
 
@@ -613,7 +598,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
     def get_action_definition(self) -> ActionDefinition:
         """Look up the ActionDefinition for create or update mode.
 
-        For create mode, also enforces ``required_feature`` gating so
+        For create mode, also enforces ``required_commercial_feature`` gating so
         that Pro-only actions cannot be added to a workflow when the
         required commercial package is not installed.  This is the
         server-side companion to the UI filtering in
@@ -635,7 +620,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 )
                 # Server-side enforcement: reject action types whose
                 # required commercial feature is not enabled.
-                required = self._action_definition.required_feature
+                required = self._action_definition.required_commercial_feature
                 if required:
                     from validibot.core.features import is_feature_enabled
 
@@ -1578,14 +1563,13 @@ def _validate_credential_step_order(
         - ADVISORY action steps may appear after the credential step.
     """
     from validibot.actions.constants import ActionFailureMode
-    from validibot.actions.constants import CertificationActionType
 
     credential_index = None
     for i, step in enumerate(steps):
         if (
             step.action_id
             and step.action.definition_id
-            and step.action.definition.type == CertificationActionType.SIGNED_CREDENTIAL
+            and step.action.definition.type == CredentialActionType.SIGNED_CREDENTIAL
         ):
             credential_index = i
             break

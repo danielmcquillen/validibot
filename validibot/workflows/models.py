@@ -1066,19 +1066,19 @@ class WorkflowStep(TimeStampedModel):
         This method is a no-op for non-credential action steps.
         """
         from validibot.actions.constants import ActionFailureMode
-        from validibot.actions.constants import CertificationActionType
+        from validibot.actions.constants import CredentialActionType
 
         # Only apply to signed credential actions.
         action = self.action
         if not action or not action.definition_id:
             return
-        if action.definition.type != CertificationActionType.SIGNED_CREDENTIAL:
+        if action.definition.type != CredentialActionType.SIGNED_CREDENTIAL:
             return
 
         # Rule 1: At most one credential step per workflow.
         existing_credential_steps = WorkflowStep.objects.filter(
             workflow=self.workflow,
-            action__definition__type=CertificationActionType.SIGNED_CREDENTIAL,
+            action__definition__type=CredentialActionType.SIGNED_CREDENTIAL,
         ).exclude(pk=self.pk)
         if existing_credential_steps.exists():
             raise ValidationError(

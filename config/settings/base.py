@@ -126,7 +126,6 @@ THIRD_PARTY_APPS = [
     "drf_spectacular_sidecar",  # Serves Swagger UI/ReDoc assets locally
     "django_filters",
     "markdownify",
-    "django_cloud_tasks",
     "django_recaptcha",
     "django_celery_beat",  # Periodic task scheduling via database
 ]

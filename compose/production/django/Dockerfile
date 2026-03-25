@@ -51,7 +51,7 @@ COPY pyproject.toml uv.lock ${APP_HOME}/
 #   --no-sources: Skip [tool.uv.sources] overrides (local dev paths)
 #   --no-install-project: Don't install validibot itself (it's a Django
 #     project run from the working directory, not a package)
-RUN uv sync --no-dev --no-sources --no-install-project \
+RUN uv sync --no-dev --no-sources --no-install-project --frozen \
     && if [ -n "${VALIDIBOT_COMMERCIAL_PACKAGE}" ]; then \
         if [ -z "${VALIDIBOT_PRIVATE_INDEX_URL}" ]; then \
             echo "VALIDIBOT_PRIVATE_INDEX_URL must be set when VALIDIBOT_COMMERCIAL_PACKAGE is provided." >&2; \

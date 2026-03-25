@@ -38,28 +38,25 @@ dependencies = [
   "django==6.0.3",
   "django-allauth[mfa]==65.15.0",
   "django-anymail[postmark]==14.0",
-  "django-cloud-tasks>=0.0.4",
   "django-cors-headers==4.9.0",
   "django-crispy-forms==2.6",
   "django-environ==0.13.0",
   "django-filter==25.2",
   "django-markdownify==0.9.6",
   "django-model-utils==5.0.0",
-  "django-redis==6.0.0",
   "django-storages[google]==1.14.6",
   "djangorestframework==3.17.0",
   "drf-spectacular[sidecar]==0.29.0",
   "fmpy==0.3.28",
-  "google-cloud-kms>=3.10.0",
-  "google-cloud-tasks>=2.21.0",
+  "google-cloud-kms==3.11.0",
+  "google-cloud-tasks==2.21.0",
   "gunicorn==25.1.0",
-  "hiredis==3.3.1",
-  "httpx>=0.28.1",
+  "httpx==0.28.1",
   "jsonschema==4.26.0",
   "lxml==6.0.2",
   "markdown2==2.5.5",
   "nh3==0.3.3",
-  "pillow>=12.1.1",
+  "pillow==12.1.1",
   "psycopg[c]==3.3.3",
   "pydantic==2.12.5",
   "python-slugify==8.0.4",
@@ -68,28 +65,27 @@ dependencies = [
   # celery[redis] pulls in kombu's redis extra, which caps the redis version.
   # As of kombu 5.6.2 the cap is redis<6.5; kombu main has bumped to <7.1
   # but hasn't released yet. Don't add a separate redis pin here.
-  "celery[redis]>=5.6.2",
-  # django-celery-beat: Using Git until Django 6.0 support is released
+  "celery[redis]==5.6.2",
+  # django-celery-beat: Pinned to the Git revision below in [tool.uv.sources]
+  # until Django 6.0 support is released upstream.
   # See: https://github.com/celery/django-celery-beat/issues/977
   "django-celery-beat",
   "uvicorn-worker==0.4.0",
   "uvicorn[standard]==0.42.0",
   "whitenoise==6.12.0",
-  "google-cloud-run>=0.15.0",
-  "python-json-logger>=4.0.0",
-  "django-recaptcha>=4.1.0",
+  "google-cloud-run==0.15.0",
+  "python-json-logger==4.0.0",
+  "django-recaptcha==4.1.0",
   # Docker SDK for Docker Compose deployments (runs validator containers locally)
-  "docker>=7.1.0",
+  "docker==7.1.0",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
-  "validibot-shared>=0.2.1",
-  # Geometry operations (THERM polygon validation, etc.)
-  "shapely>=2.0",
-  "django-csp>=4.0",
-  "django-permissions-policy>=4.28.0",
+  "validibot-shared==0.4.0",
+  "django-csp==4.0",
+  "django-permissions-policy==4.28.0",
 ]
 
 [project.optional-dependencies]
-cloud = ["stripe>=8.0.0"]
+cloud = ["stripe==14.4.1"]
 
 [project.urls]
 Homepage = "https://validibot.com"
@@ -304,5 +300,5 @@ dev = [
   "watchfiles==1.1.1",
   "werkzeug[watchdog]==3.1.6",
   # Documentation
-  "zensical>=0.0.23",
+  "zensical==0.0.28",
 ]

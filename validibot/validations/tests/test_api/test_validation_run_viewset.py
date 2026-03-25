@@ -10,7 +10,9 @@ pagination, and field-level filtering via ``ValidationRunFilter``.
 import contextlib
 import logging
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
+from uuid import uuid4
 
 from django.test import TestCase
 from django.urls import reverse
@@ -48,6 +50,14 @@ def runs_list_url(org) -> str:
 def runs_detail_url(org, run) -> str:
     """Return org-scoped runs detail URL (ADR-2026-01-06)."""
     return reverse("api:org-runs-detail", kwargs={"org_slug": org.slug, "pk": run.pk})
+
+
+def runs_credential_download_url(org, run) -> str:
+    """Return the org-scoped credential download URL for a run."""
+    return reverse(
+        "api:org-runs-credential-download",
+        kwargs={"org_slug": org.slug, "pk": run.pk},
+    )
 
 
 class ValidationRunViewSetTestCase(TestCase):
@@ -267,6 +277,7 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(len(response.data["results"]), 1)
 
     def test_detail_includes_step_findings(self):
+        """Detail responses should expose nested step findings for UI and CLI use."""
         self.client.force_authenticate(user=self.user)
         run = ValidationRunFactory(
             submission=self.submission,
@@ -292,6 +303,65 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0]["message"], finding.message)
         self.assertEqual(issues[0]["path"], finding.path)
+
+    @patch("validibot_pro.credentials.models.IssuedCredential.objects.filter")
+    def test_detail_includes_credential_metadata(self, filter_mock):
+        """Detail responses should expose credential download metadata when present."""
+        self.client.force_authenticate(user=self.user)
+        run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            status=ValidationRunStatus.SUCCEEDED,
+        )
+        issued_at = timezone.now()
+        credential = SimpleNamespace(
+            id=uuid4(),
+            media_type="application/vc+jwt",
+            created=issued_at,
+        )
+        filter_mock.return_value.first.return_value = credential
+
+        response = self.client.get(runs_detail_url(self.org, run))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["credential"],
+            {
+                "id": str(credential.id),
+                "media_type": "application/vc+jwt",
+                "issued_at": issued_at.isoformat(),
+                "download_url": (
+                    f"http://testserver{runs_credential_download_url(self.org, run)}"
+                ),
+            },
+        )
+
+    @patch("validibot_pro.credentials.models.IssuedCredential.objects.filter")
+    def test_credential_download_returns_compact_jws(self, filter_mock):
+        """The download action should return the stored compact vc+jwt artifact."""
+        self.client.force_authenticate(user=self.user)
+        run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            status=ValidationRunStatus.SUCCEEDED,
+        )
+        filter_mock.return_value.first.return_value = SimpleNamespace(
+            credential_jws="header.payload.signature",
+        )
+
+        response = self.client.get(runs_credential_download_url(self.org, run))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/vc+jwt")
+        self.assertEqual(
+            response["Content-Disposition"],
+            f'attachment; filename="credential-{run.pk}.jwt"',
+        )
+        self.assertEqual(response.content.decode("utf-8"), "header.payload.signature")
 
     def test_detail_includes_state_and_result_fields(self):
         """Expose stable `state` and `result` fields for CLI/API consumers."""

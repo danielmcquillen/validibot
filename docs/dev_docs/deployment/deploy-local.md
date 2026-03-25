@@ -66,11 +66,14 @@ cp .envs.example/.local/.build .envs/.local/.build
 Then edit `.envs/.local/.build` and set:
 
 ```bash
-VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro
+VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro==<version>
 VALIDIBOT_PRIVATE_INDEX_URL=https://<license-credentials>@pypi.validibot.com/simple/
 ```
 
-Use `validibot-enterprise` instead of `validibot-pro` if you purchased Enterprise.
+Use `validibot-enterprise==<version>` instead of `validibot-pro==<version>` if
+you purchased Enterprise. You can also use a quoted exact wheel URL on
+`pypi.validibot.com` that includes `#sha256=<hash>` instead of a package name
+and version.
 Then add the commercial Django app to `config/settings/base.py` before you
 start or rebuild the stack:
 

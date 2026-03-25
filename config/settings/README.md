@@ -26,7 +26,7 @@ This uses `DJANGO_SETTINGS_MODULE=config.settings.local` with `USE_DOCKER=yes`.
 All services (Django, Postgres, Redis, Celery) run in Docker containers.
 
 If you purchased Pro or Enterprise, copy `.envs.example/.local/.build` to
-`.envs/.local/.build`, set `VALIDIBOT_COMMERCIAL_PACKAGE` and
+`.envs/.local/.build`, set an exact `VALIDIBOT_COMMERCIAL_PACKAGE` and
 `VALIDIBOT_PRIVATE_INDEX_URL`, add the matching Django app to
 `config/settings/local.py`, then run `just build` before `just up`.
 Customers should not edit `config/settings/base.py` for that; use the

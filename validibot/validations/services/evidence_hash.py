@@ -32,6 +32,8 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
+from django.apps import apps
+
 if TYPE_CHECKING:
     from validibot.validations.models import ValidationRun
 
@@ -52,6 +54,10 @@ def compute_evidence_hash(run: ValidationRun) -> str:
     Returns:
         64-character lowercase hex string (SHA-256 digest).
     """
+    delegated = _compute_pro_output_hash(run)
+    if delegated:
+        return delegated
+
     summary = getattr(run, "summary_record", None)
 
     canonical = {
@@ -73,6 +79,36 @@ def compute_evidence_hash(run: ValidationRun) -> str:
 
     payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _compute_pro_output_hash(run: ValidationRun) -> str | None:
+    """Delegate to the Pro output-hash contract when Pro is activated."""
+
+    if not apps.is_installed("validibot_pro"):
+        return None
+
+    try:
+        from validibot_pro.credentials.builders import compute_output_hash
+        from validibot_pro.credentials.builders import compute_workflow_hash
+        from validibot_pro.credentials.workflow_digest import (
+            compute_workflow_definition_hash,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to load Pro output-hash helpers for run %s.",
+            run.id,
+        )
+        return None
+
+    if run.workflow is None or run.submission is None:
+        return None
+
+    workflow_definition_hash = compute_workflow_definition_hash(run.workflow)
+    workflow_hash = compute_workflow_hash(
+        run,
+        workflow_definition_hash=workflow_definition_hash,
+    )
+    return compute_output_hash(run, workflow_hash=workflow_hash)
 
 
 def stamp_evidence_hash(run: ValidationRun) -> str:

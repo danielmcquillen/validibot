@@ -7,8 +7,11 @@ entries from config declarations in each validator package to the database.
 
 from io import StringIO
 
+import pytest
+from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command
 from django.test import TestCase
+from django.test import override_settings
 
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Derivation
@@ -329,6 +332,26 @@ class DiscoverConfigsTests(TestCase):
             self.assertTrue(cfg.icon, f"{cfg.slug} missing icon")
             self.assertTrue(cfg.card_image, f"{cfg.slug} missing card_image")
 
+    def test_discovered_configs_include_provider_metadata(self):
+        """Discovered validator configs should record the provider module."""
+
+        for cfg in discover_configs():
+            self.assertTrue(
+                cfg.provider,
+                f"{cfg.slug} should include a provider module path",
+            )
+
+    @override_settings(
+        VALIDIBOT_ALLOWED_VALIDATOR_PLUGIN_PREFIXES=(
+            "validibot.validations.validators.base",
+        ),
+    )
+    def test_discover_configs_rejects_disallowed_provider_prefixes(self):
+        """Discovery should fail when a validator provider is not allowlisted."""
+
+        with pytest.raises(ImproperlyConfigured):
+            discover_configs()
+
 
 class ConfigRegistryTests(TestCase):
     """Tests for the config registry (populated at Django startup)."""
@@ -406,6 +429,15 @@ class ConfigRegistryTests(TestCase):
         """Registry has exactly 8 configs (one per ValidationType)."""
         configs = get_all_configs()
         self.assertEqual(len(configs), len(ValidationType))
+
+    def test_registry_configs_include_provider_metadata(self):
+        """Registry entries should keep the resolved provider module."""
+
+        for cfg in get_all_configs():
+            self.assertTrue(
+                cfg.provider,
+                f"{cfg.slug} should keep provider metadata in the registry",
+            )
 
 
 class CreateCustomValidatorTests(TestCase):

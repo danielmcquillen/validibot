@@ -8,6 +8,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db import models
 from django.db.models import Prefetch
+from django.http import Http404
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
 from django.utils.translation import gettext_lazy as _
@@ -240,6 +241,25 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
             signal for signals in step_signals.values() for signal in signals
         ]
 
+        # Credential display — fetch the issued credential if Pro is
+        # installed and one was issued for this run.
+        issued_credential = None
+        credential_download_url = None
+        try:
+            from validibot_pro.credentials.models import IssuedCredential
+
+            issued_credential = IssuedCredential.objects.filter(
+                workflow_run=run
+            ).first()
+            if issued_credential:
+                credential_download_url = reverse_with_org(
+                    "validations:credential_download",
+                    request=self.request,
+                    kwargs={"pk": run.pk},
+                )
+        except Exception:
+            logger.debug("Pro credential lookup unavailable", exc_info=True)
+
         context.update(
             {
                 "step_runs": step_runs,
@@ -251,6 +271,8 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
                 "step_params": step_params,
                 "step_template_warnings": step_template_warnings,
                 "submission_content": submission_content,
+                "issued_credential": issued_credential,
+                "credential_download_url": credential_download_url,
             },
         )
         return context
@@ -469,3 +491,46 @@ class GuestValidationRunListView(LoginRequiredMixin, ListView):
         params = self.request.GET.copy()
         params.pop("page", None)
         return params.urlencode()
+
+
+# Credential Download
+# ------------------------------------------------------------------------------
+
+
+class CredentialDownloadView(ValidationRunAccessMixin, DetailView):
+    """Download the compact JWS credential for a validation run.
+
+    Returns the ``application/vc+jwt`` compact JWS string as a
+    downloadable file.  Requires the same access permissions as the
+    run detail page.
+
+    If no credential was issued for this run (no Pro, feature disabled,
+    or the run didn't succeed), returns 404.
+    """
+
+    def get_queryset(self):
+        return self.get_base_queryset()
+
+    def get(self, request, *args, **kwargs):
+        run = self.get_object()
+
+        try:
+            from validibot_pro.credentials.models import IssuedCredential
+
+            credential = IssuedCredential.objects.filter(
+                workflow_run=run,
+            ).first()
+        except Exception:
+            credential = None
+
+        if credential is None:
+            raise Http404(_("No credential issued for this run."))
+
+        response = HttpResponse(
+            credential.credential_jws,
+            content_type="application/vc+jwt",
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="credential-{run.pk}.jwt"'
+        )
+        return response

@@ -185,3 +185,4 @@ workflows/
 - [Step Processor Architecture](step_processor.md) — processor pattern details
 - [Workflow Engine](workflow_engine.md) — higher-level orchestration
 - [Validator Architecture](validator_architecture.md) — execution backends
+- [Plugin Architecture](plugin_architecture.md) — how validators and actions register with the host app

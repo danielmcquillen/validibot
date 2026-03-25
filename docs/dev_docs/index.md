@@ -23,6 +23,7 @@ Understand how the system is built:
 
 - **[Workflow Engine](overview/workflow_engine.md)** — How ValidationRunService orchestrates steps
 - **[Step Processor](overview/step_processor.md)** — The processor pattern for validator execution
+- **[Plugin Architecture](overview/plugin_architecture.md)** — The shared registration and sync model for validators and actions
 - **[Submission Modes](overview/request_modes.md)** — How API payload shapes are detected
 - **[Settings Reference](overview/settings.md)** — Environment variables and feature flags
 - **[Dashboard](dashboard.md)** — Architecture and extension points for the dashboard module

@@ -5,13 +5,9 @@ from typing import Any
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
-from validibot.actions.constants import CertificationActionType
-from validibot.actions.constants import IntegrationActionType
 from validibot.actions.models import Action
 from validibot.actions.models import ActionDefinition
-from validibot.actions.models import SignedCredentialAction
 from validibot.actions.models import SlackMessageAction
-from validibot.actions.registry import register_action_form
 from validibot.workflows.forms import BaseStepConfigForm
 
 
@@ -67,6 +63,10 @@ class BaseWorkflowActionForm(BaseStepConfigForm):
 
     # Persistence ------------------------------------------------------------
 
+    #: Override in subclasses to set a non-default failure mode when
+    #: creating new actions.
+    default_failure_mode: str | None = None
+
     def save_action(
         self,
         definition: ActionDefinition,
@@ -81,11 +81,17 @@ class BaseWorkflowActionForm(BaseStepConfigForm):
         if current_action:
             target = self._get_variant(current_action)
 
+        is_new = target is None
         if target is None:
             target = self.action_model(definition=definition)
         target.definition = definition
         target.name = (self.cleaned_data.get("name") or "").strip() or definition.name
         target.description = (self.cleaned_data.get("description") or "").strip()
+
+        # Apply form-level failure mode default for new actions.
+        if is_new and self.default_failure_mode is not None:
+            target.failure_mode = self.default_failure_mode
+
         self.update_variant(target)
         target.save()
         return target
@@ -114,42 +120,3 @@ class SlackMessageActionForm(BaseWorkflowActionForm):
 
     def build_step_summary(self, action: SlackMessageAction) -> dict[str, Any]:
         return {"message": action.message}
-
-
-class SignedCredentialActionForm(BaseWorkflowActionForm):
-    """Collect credential template uploads for certification steps."""
-
-    action_model = SignedCredentialAction
-
-    credential_template = forms.FileField(
-        label=_("Credential template"),
-        required=False,
-        help_text=_(
-            "Upload a PDF template. Leave empty to use the default template.",
-        ),
-    )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self._variant and getattr(self._variant, "credential_template", None):
-            current_name = self._variant.credential_template.name
-            if current_name:
-                self.fields["credential_template"].help_text = _(
-                    "Upload a new template to replace '%(name)s'.",
-                ) % {"name": current_name.split("/")[-1]}
-
-    def update_variant(self, action: SignedCredentialAction) -> None:
-        template = self.cleaned_data.get("credential_template")
-        if template:
-            action.credential_template = template
-
-    def build_step_summary(self, action: SignedCredentialAction) -> dict[str, Any]:
-        return {
-            "credential_template": action.get_credential_template_display_name(),
-        }
-
-
-register_action_form(IntegrationActionType.SLACK_MESSAGE, SlackMessageActionForm)
-register_action_form(
-    CertificationActionType.SIGNED_CREDENTIAL, SignedCredentialActionForm
-)

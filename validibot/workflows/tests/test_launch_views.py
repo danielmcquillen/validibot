@@ -22,8 +22,9 @@ from lxml import html as lxml_html
 
 from validibot.actions.constants import ActionCategoryType
 from validibot.actions.constants import CertificationActionType
+from validibot.actions.models import Action
 from validibot.actions.models import ActionDefinition
-from validibot.actions.models import SignedCredentialAction
+from validibot.actions.registry import get_action_model
 from validibot.submissions.constants import SubmissionFileType
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import UserFactory
@@ -752,7 +753,7 @@ def test_public_info_view_returns_404_when_disabled(client):
 
 
 def test_public_info_view_renders_signed_credential_summary(client):
-    """Public workflow pages show the renamed credential template field."""
+    """Public workflow pages only show credential summaries for loaded plugins."""
     workflow = WorkflowFactory(make_info_page_public=True)
     definition = ActionDefinition.objects.create(
         slug="certification-signed-credential",
@@ -762,7 +763,8 @@ def test_public_info_view_renders_signed_credential_summary(client):
         action_category=ActionCategoryType.CERTIFICATION,
         type=CertificationActionType.SIGNED_CREDENTIAL,
     )
-    action = SignedCredentialAction.objects.create(
+    action_model = get_action_model(CertificationActionType.SIGNED_CREDENTIAL)
+    action = action_model.objects.create(
         definition=definition,
         name="Issue credential",
         description="Attach a signed credential PDF.",
@@ -773,6 +775,7 @@ def test_public_info_view_renders_signed_credential_summary(client):
         action=action,
         name="Issue credential",
         description="Attach a signed credential PDF.",
+        config={"credential_template": "default_signed_credential.pdf"},
     )
 
     response = client.get(
@@ -781,8 +784,11 @@ def test_public_info_view_renders_signed_credential_summary(client):
 
     assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
-    assert "Credential template" in body
-    assert "default_signed_credential.pdf" in body
+    if action_model is Action:
+        assert "Credential template" not in body
+    else:
+        assert "Credential template" in body
+        assert "default_signed_credential.pdf" in body
 
 
 # ── Schema-driven launch integration tests ───────────────────────────

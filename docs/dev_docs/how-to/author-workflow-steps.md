@@ -21,6 +21,10 @@ Re-enable the workflow from the same panel when you are ready to accept submissi
    - **Integrations** (action definitions such as Slack notifications)
    - **Certifications** (action definitions that issue certificates or badges)
    Each card shows the item name, category, icon, and description.
+   The list is not hard-coded in the modal. Validators and actions are
+   registered at startup and then synced into database definitions that the
+   picker reads. See [Plugin Architecture](../overview/plugin_architecture.md)
+   if you need to trace why a step type does or does not appear.
 3. Select the validator or action you want to use and press **Continue**. The modal closes and you are redirected to the full-screen editor with breadcrumb navigation (`Workflows > <Workflow> > Step …`).
 
 ## 2. Configure the validation

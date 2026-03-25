@@ -212,7 +212,9 @@ class StepOrchestrator:
         step_metrics: list[StepProcessingResult] = []
 
         try:
-            workflow_steps = workflow.steps.all().order_by("order")
+            workflow_steps = workflow.steps.select_related(
+                "action",
+            ).order_by("order")
             # Filter steps for resume execution — resume_from_step is the
             # order of the last *completed* step, so we use __gt to skip it
             # and start from the next one.
@@ -285,6 +287,17 @@ class StepOrchestrator:
                     # Action steps use StepHandler protocol — dispatch
                     # returns a ValidationResult that _record_step_result
                     # converts to StepProcessingResult with persistence.
+                    #
+                    # Failure handling depends on the action's failure_mode:
+                    # BLOCKING — a failed action fails the run (default).
+                    # ADVISORY — the step is marked failed but execution
+                    #            continues and the run may still succeed.
+                    from validibot.actions.constants import ActionFailureMode
+
+                    is_advisory = (
+                        wf_step.action
+                        and wf_step.action.failure_mode == ActionFailureMode.ADVISORY
+                    )
                     try:
                         validation_result: ValidationResult = (
                             self.execute_workflow_step(
@@ -293,8 +306,7 @@ class StepOrchestrator:
                             )
                         )
                     except Exception as exc:
-                        # Same pattern as the validator exception handler
-                        # above: persist failure, keep step_metrics in sync.
+                        # Persist failure and keep step_metrics in sync.
                         self._finalize_step_run(
                             step_run=step_run,
                             status=StepStatus.FAILED,
@@ -311,7 +323,16 @@ class StepOrchestrator:
                                 assertion_total=0,
                             ),
                         )
-                        raise
+                        if is_advisory:
+                            logger.warning(
+                                "Advisory action step %s raised %s — "
+                                "continuing execution.",
+                                wf_step.id,
+                                type(exc).__name__,
+                            )
+                        else:
+                            raise
+                        continue
                     result: StepProcessingResult = self._record_step_result(
                         validation_run=validation_run,
                         step_run=step_run,
@@ -319,9 +340,16 @@ class StepOrchestrator:
                     )
                     step_metrics.append(result)
                     if result.passed is False:
-                        overall_failed = True
-                        failing_step_id = wf_step.id
-                        break
+                        if is_advisory:
+                            logger.info(
+                                "Advisory action step %s returned "
+                                "passed=False — continuing execution.",
+                                wf_step.id,
+                            )
+                        else:
+                            overall_failed = True
+                            failing_step_id = wf_step.id
+                            break
                     if result.passed is None:
                         pending_async = True
                         break

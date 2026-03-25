@@ -25,6 +25,7 @@ from validibot.validations.views.rules import ValidatorRuleListView
 from validibot.validations.views.rules import ValidatorRuleMixin
 from validibot.validations.views.rules import ValidatorRuleMoveView
 from validibot.validations.views.rules import ValidatorRuleUpdateView
+from validibot.validations.views.runs import CredentialDownloadView
 from validibot.validations.views.runs import GuestValidationRunListView
 from validibot.validations.views.runs import ValidationRunAccessMixin
 from validibot.validations.views.runs import ValidationRunDeleteView
@@ -46,6 +47,7 @@ from validibot.validations.views.validators import FMUValidatorCreateView
 
 __all__ = [
     "CatalogEntryDetailView",
+    "CredentialDownloadView",
     "CustomValidatorCreateView",
     "CustomValidatorDeleteView",
     "CustomValidatorManageMixin",

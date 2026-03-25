@@ -1033,6 +1033,12 @@ class WorkflowStep(TimeStampedModel):
         if self.action and self.display_schema:
             self.display_schema = False
 
+        # ── Credential step placement rules ──
+        # Per ADR-2025-11-25: at most one SignedCredentialAction per
+        # workflow, and it must come after all blocking steps.
+        if self.action_id:
+            self._validate_credential_step_placement()
+
         # Validate config against the typed Pydantic model for this step type.
         # This catches typos and type mismatches at save time rather than at
         # runtime during validation execution.
@@ -1047,6 +1053,81 @@ class WorkflowStep(TimeStampedModel):
                 raise ValidationError(
                     {"config": str(exc)},
                 ) from exc
+
+    def _validate_credential_step_placement(self):
+        """Enforce credential step uniqueness and ordering rules.
+
+        Per ADR-2025-11-25 §4:
+            - At most one SignedCredentialAction step per workflow.
+            - The credential step must come after all validator steps
+              and all BLOCKING action steps.
+            - ADVISORY action steps may appear after the credential step.
+
+        This method is a no-op for non-credential action steps.
+        """
+        from validibot.actions.constants import ActionFailureMode
+        from validibot.actions.constants import CertificationActionType
+
+        # Only apply to signed credential actions.
+        action = self.action
+        if not action or not action.definition_id:
+            return
+        if action.definition.type != CertificationActionType.SIGNED_CREDENTIAL:
+            return
+
+        # Rule 1: At most one credential step per workflow.
+        existing_credential_steps = WorkflowStep.objects.filter(
+            workflow=self.workflow,
+            action__definition__type=CertificationActionType.SIGNED_CREDENTIAL,
+        ).exclude(pk=self.pk)
+        if existing_credential_steps.exists():
+            raise ValidationError(
+                {
+                    "action": _(
+                        "A workflow can have at most one signed credential step."
+                    ),
+                },
+            )
+
+        # Rule 2: No validator steps may appear after the credential
+        # step.  The ADR says: "the credential step must come after
+        # all blocking work whose failure would change the meaning of
+        # the claim."  Validators are implicitly blocking.
+        validators_after_us = WorkflowStep.objects.filter(
+            workflow=self.workflow,
+            order__gt=self.order,
+            validator__isnull=False,
+        ).exclude(pk=self.pk)
+
+        if validators_after_us.exists():
+            raise ValidationError(
+                {
+                    "order": _(
+                        "The signed credential step must come after all "
+                        "validation steps. Move it to the end of the "
+                        "workflow, or move the validator steps before it."
+                    ),
+                },
+            )
+
+        # Rule 3: No BLOCKING action steps may appear after the
+        # credential step.  ADVISORY actions after it are fine.
+        blocking_actions_after_us = WorkflowStep.objects.filter(
+            workflow=self.workflow,
+            order__gt=self.order,
+            action__isnull=False,
+            action__failure_mode=ActionFailureMode.BLOCKING,
+        ).exclude(pk=self.pk)
+
+        if blocking_actions_after_us.exists():
+            raise ValidationError(
+                {
+                    "order": _(
+                        "The signed credential step must come after all "
+                        "blocking action steps."
+                    ),
+                },
+            )
 
 
 class WorkflowStepResource(models.Model):

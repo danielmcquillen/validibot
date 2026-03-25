@@ -22,6 +22,7 @@ See Also:
 from __future__ import annotations
 
 import contextlib
+from unittest.mock import patch
 
 import pytest
 
@@ -126,6 +127,47 @@ class TestComputeEvidenceHash:
 
         digest = compute_evidence_hash(run)
         assert len(digest) == SHA256_HEX_LENGTH
+
+    @patch(
+        "validibot.validations.services.evidence_hash.apps.is_installed",
+        return_value=True,
+    )
+    @patch(
+        "validibot_pro.credentials.workflow_digest.compute_workflow_definition_hash",
+        return_value="workflow-definition-hash",
+    )
+    @patch(
+        "validibot_pro.credentials.builders.compute_workflow_hash",
+        return_value="workflow-hash",
+    )
+    @patch(
+        "validibot_pro.credentials.builders.compute_output_hash",
+        return_value="output-hash",
+    )
+    def test_delegates_to_pro_output_hash_when_available(
+        self,
+        output_hash_mock,
+        workflow_hash_mock,
+        definition_hash_mock,
+        installed_mock,
+    ):
+        """When Pro is active, the community helper should reuse the Pro contract."""
+
+        run = ValidationRunFactory()
+
+        digest = compute_evidence_hash(run)
+
+        assert digest == "output-hash"
+        installed_mock.assert_called_once_with("validibot_pro")
+        definition_hash_mock.assert_called_once_with(run.workflow)
+        workflow_hash_mock.assert_called_once_with(
+            run,
+            workflow_definition_hash="workflow-definition-hash",
+        )
+        output_hash_mock.assert_called_once_with(
+            run,
+            workflow_hash="workflow-hash",
+        )
 
 
 # ── stamp_evidence_hash() — persistence ───────────────────────────────

@@ -8,9 +8,9 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    """Seed the default integration and certification action definitions."""
+    """Sync ``ActionDefinition`` rows from registered action descriptors."""
 
-    help = "Create default action definitions (idempotent)."
+    help = "Sync action definitions from registered action plugins (idempotent)."
 
     def handle(self, *args, **options):
         created, skipped = create_default_actions()

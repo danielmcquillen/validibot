@@ -17,7 +17,7 @@ from django.views.generic import DetailView
 from django.views.generic import ListView
 from django.views.generic import UpdateView
 
-from validibot.actions.models import SignedCredentialAction
+from validibot.actions.constants import CertificationActionType
 from validibot.actions.models import SlackMessageAction
 from validibot.core.utils import pretty_json
 from validibot.core.utils import pretty_xml
@@ -245,7 +245,9 @@ class PublicWorkflowInfoView(DetailView):
 
         if isinstance(variant, SlackMessageAction):
             summary["message"] = variant.message
-        elif isinstance(variant, SignedCredentialAction):
+        elif definition.type == CertificationActionType.SIGNED_CREDENTIAL and hasattr(
+            variant, "get_credential_template_display_name"
+        ):
             summary["credential_template"] = (
                 variant.get_credential_template_display_name()
             )

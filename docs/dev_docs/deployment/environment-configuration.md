@@ -116,7 +116,9 @@ Docker-based deployments can also use an optional `.build` file when you need to
 
 This file is only for Docker build-time variables such as:
 
-- `VALIDIBOT_COMMERCIAL_PACKAGE`
+- `VALIDIBOT_COMMERCIAL_PACKAGE` -- must be an exact version like
+  `validibot-pro==0.1.0` or a quoted exact wheel URL on
+  `pypi.validibot.com` that includes `#sha256=<hash>`
 - `VALIDIBOT_PRIVATE_INDEX_URL`
 
 If you are using the Community edition, you can ignore `.build` entirely.

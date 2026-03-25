@@ -29,6 +29,8 @@ import logging
 import pkgutil
 from typing import Any
 
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
@@ -36,6 +38,13 @@ from pydantic import Field
 from validibot.validations.constants import ComputeTier
 
 logger = logging.getLogger(__name__)
+
+
+OFFICIAL_VALIDATOR_PLUGIN_PREFIXES = (
+    "validibot",
+    "validibot_pro",
+    "validibot_enterprise",
+)
 
 
 class CatalogEntrySpec(BaseModel):
@@ -132,6 +141,7 @@ class ValidatorConfig(BaseModel):
     name: str
     description: str = ""
     validation_type: str
+    provider: str = ""
     version: str = "1.0"
     order: int = 0
     has_processor: bool = False
@@ -176,6 +186,61 @@ class ValidatorConfig(BaseModel):
     step_editor_cards: list[StepEditorCardSpec] = Field(default_factory=list)
 
 
+def _get_allowed_validator_plugin_prefixes() -> tuple[str, ...]:
+    """Return the allowlisted module prefixes for validator plugins."""
+
+    configured = getattr(
+        settings,
+        "VALIDIBOT_ALLOWED_VALIDATOR_PLUGIN_PREFIXES",
+        OFFICIAL_VALIDATOR_PLUGIN_PREFIXES,
+    )
+    return tuple(configured)
+
+
+def _provider_is_allowed(provider: str) -> bool:
+    """Check whether a validator provider module is allowlisted."""
+
+    allowed_prefixes = _get_allowed_validator_plugin_prefixes()
+    return any(
+        provider == prefix or provider.startswith(f"{prefix}.")
+        for prefix in allowed_prefixes
+    )
+
+
+def _ensure_allowed_provider(provider: str) -> None:
+    """Reject validator configs from unexpected module namespaces."""
+
+    if not provider:
+        return
+    if _provider_is_allowed(provider):
+        return
+    allowed_prefixes = ", ".join(_get_allowed_validator_plugin_prefixes())
+    raise ImproperlyConfigured(
+        "Validator plugin provider "
+        f"'{provider}' is not allowed. Set "
+        "'VALIDIBOT_ALLOWED_VALIDATOR_PLUGIN_PREFIXES' to include it if this "
+        f"is intentional. Current allowlist: {allowed_prefixes}",
+    )
+
+
+def _infer_config_provider(
+    config: ValidatorConfig,
+    *,
+    fallback_provider: str = "",
+) -> str:
+    """Resolve the provider module name for a validator config."""
+
+    if config.provider:
+        return config.provider
+    if fallback_provider:
+        return fallback_provider
+    if config.validator_class:
+        return config.validator_class.rsplit(".", maxsplit=1)[0]
+    if config.output_envelope_class:
+        return config.output_envelope_class.rsplit(".", maxsplit=1)[0]
+    return ""
+
+
 def discover_configs() -> list[ValidatorConfig]:
     """Scan validator sub-packages for config modules.
 
@@ -208,7 +273,16 @@ def discover_configs() -> list[ValidatorConfig]:
 
         config_attr = getattr(mod, "config", None)
         if isinstance(config_attr, ValidatorConfig):
-            configs.append(config_attr)
+            provider = _infer_config_provider(
+                config_attr,
+                fallback_provider=config_module_name,
+            )
+            _ensure_allowed_provider(provider)
+            configs.append(
+                config_attr.model_copy(
+                    update={"provider": provider},
+                ),
+            )
         else:
             logger.warning(
                 "Module %s exists but has no ValidatorConfig 'config' attribute",
@@ -264,7 +338,20 @@ def populate_registry() -> None:
     from validibot.validations.validators.base.registry import _ENVELOPE_REGISTRY
     from validibot.validations.validators.base.registry import _VALIDATOR_REGISTRY
 
-    all_configs = list(discover_configs()) + list(BUILTIN_CONFIGS)
+    builtin_configs = []
+    for cfg in BUILTIN_CONFIGS:
+        provider = _infer_config_provider(
+            cfg,
+            fallback_provider="validibot.validations.validators.base.builtin_configs",
+        )
+        _ensure_allowed_provider(provider)
+        builtin_configs.append(
+            cfg.model_copy(
+                update={"provider": provider},
+            ),
+        )
+
+    all_configs = list(discover_configs()) + builtin_configs
 
     for cfg in all_configs:
         if cfg.validation_type in _CONFIG_REGISTRY:

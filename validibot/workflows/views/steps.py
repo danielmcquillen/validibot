@@ -26,8 +26,8 @@ from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
 from validibot.actions.constants import ActionCategoryType
+from validibot.actions.constants import CertificationActionType
 from validibot.actions.models import ActionDefinition
-from validibot.actions.models import SignedCredentialAction
 from validibot.actions.models import SlackMessageAction
 from validibot.actions.registry import get_action_form
 from validibot.core.utils import reverse_with_org
@@ -97,7 +97,13 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
                 if not config and variant:
                     if isinstance(variant, SlackMessageAction):
                         config["message"] = variant.message
-                    elif isinstance(variant, SignedCredentialAction):
+                    elif (
+                        definition.type == CertificationActionType.SIGNED_CREDENTIAL
+                        and hasattr(
+                            variant,
+                            "get_credential_template_display_name",
+                        )
+                    ):
                         config["credential_template"] = (
                             variant.get_credential_template_display_name()
                         )
@@ -291,12 +297,26 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         return validators
 
     def _available_action_definitions(self) -> list[ActionDefinition]:
-        return list(
-            ActionDefinition.objects.filter(is_active=True).order_by(
-                "action_category",
-                "name",
-            ),
+        """Return action definitions the current user can add.
+
+        Filters out definitions whose ``required_feature`` is not enabled
+        and whose action plugins are not registered in the current
+        process.
+        """
+        from validibot.core.features import is_feature_enabled
+
+        definitions = ActionDefinition.objects.filter(is_active=True).order_by(
+            "action_category",
+            "name",
         )
+        return [
+            d
+            for d in definitions
+            if (
+                get_action_form(d.type) is not None
+                and (not d.required_feature or is_feature_enabled(d.required_feature))
+            )
+        ]
 
     def _render_select(self, request, workflow: Workflow, form=None, status=200):
         validators = self._available_validators(workflow)
@@ -591,6 +611,15 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         return self._validator
 
     def get_action_definition(self) -> ActionDefinition:
+        """Look up the ActionDefinition for create or update mode.
+
+        For create mode, also enforces ``required_feature`` gating so
+        that Pro-only actions cannot be added to a workflow when the
+        required commercial package is not installed.  This is the
+        server-side companion to the UI filtering in
+        ``_available_action_definitions()`` — both are necessary for
+        defense in depth.
+        """
         if not hasattr(self, "_action_definition"):
             if self.mode == "update":
                 step = self.get_step()
@@ -604,6 +633,16 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                     pk=definition_id,
                     is_active=True,
                 )
+                # Server-side enforcement: reject action types whose
+                # required commercial feature is not enabled.
+                required = self._action_definition.required_feature
+                if required:
+                    from validibot.core.features import is_feature_enabled
+
+                    if not is_feature_enabled(required):
+                        raise Http404
+                if get_action_form(self._action_definition.type) is None:
+                    raise Http404
         return self._action_definition
 
     def is_action_step(self) -> bool:
@@ -1505,9 +1544,67 @@ class WorkflowStepMoveView(WorkflowObjectMixin, View):
             steps[index], steps[index + 1] = steps[index + 1], steps[index]
         else:
             return hx_trigger_response(status_code=204)
+        # Validate credential step placement before persisting the
+        # new order.  The clean() method on WorkflowStep only fires
+        # on full_clean(), but the reorder uses raw .update() for
+        # performance.  We check the proposed order here instead.
+        placement_error = _validate_credential_step_order(steps)
+        if placement_error:
+            return hx_trigger_response(
+                status_code=400,
+                message=placement_error,
+                level="warning",
+            )
+
         with transaction.atomic():
             for pos, item in enumerate(steps, start=1):
                 WorkflowStep.objects.filter(pk=item.pk).update(order=1000 + pos)
             resequence_workflow_steps(workflow)
         message = _("Workflow step order updated.")
         return hx_trigger_response(message, close_modal=None)
+
+
+def _validate_credential_step_order(
+    steps: list[WorkflowStep],
+) -> str | None:
+    """Check proposed step order for credential step placement violations.
+
+    Returns an error message string if the proposed order violates the
+    ADR's placement rules, or ``None`` if the order is valid.
+
+    Rules (per ADR-2025-11-25 §4):
+        - All validator steps must appear before any credential step.
+        - All BLOCKING action steps must appear before any credential step.
+        - ADVISORY action steps may appear after the credential step.
+    """
+    from validibot.actions.constants import ActionFailureMode
+    from validibot.actions.constants import CertificationActionType
+
+    credential_index = None
+    for i, step in enumerate(steps):
+        if (
+            step.action_id
+            and step.action.definition_id
+            and step.action.definition.type == CertificationActionType.SIGNED_CREDENTIAL
+        ):
+            credential_index = i
+            break
+
+    if credential_index is None:
+        return None  # No credential step — no placement rules to check.
+
+    # Check for validators or BLOCKING actions after the credential step.
+    for step in steps[credential_index + 1 :]:
+        if step.validator_id:
+            return str(
+                _("The signed credential step must come after all validation steps.")
+            )
+        if step.action_id and step.action.failure_mode == ActionFailureMode.BLOCKING:
+            return str(
+                _(
+                    "The signed credential step must come after all "
+                    "blocking action steps."
+                )
+            )
+
+    return None

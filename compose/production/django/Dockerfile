@@ -46,22 +46,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy dependency files first for Docker layer caching.
 # Changes to application code won't invalidate the dependency layer.
 COPY pyproject.toml uv.lock ${APP_HOME}/
+COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/install-commercial-package
 
 # Install production dependencies (no dev extras).
 #   --no-sources: Skip [tool.uv.sources] overrides (local dev paths)
 #   --no-install-project: Don't install validibot itself (it's a Django
 #     project run from the working directory, not a package)
 RUN uv sync --no-dev --no-sources --no-install-project --frozen \
-    && if [ -n "${VALIDIBOT_COMMERCIAL_PACKAGE}" ]; then \
-        if [ -z "${VALIDIBOT_PRIVATE_INDEX_URL}" ]; then \
-            echo "VALIDIBOT_PRIVATE_INDEX_URL must be set when VALIDIBOT_COMMERCIAL_PACKAGE is provided." >&2; \
-            exit 1; \
-        fi; \
-        uv pip install \
-            --python ${APP_HOME}/.venv/bin/python \
-            --index "${VALIDIBOT_PRIVATE_INDEX_URL}" \
-            "${VALIDIBOT_COMMERCIAL_PACKAGE}"; \
-    fi \
+    && install-commercial-package ${APP_HOME}/.venv/bin/python \
     && rm -rf /tmp/uv-cache
 
 

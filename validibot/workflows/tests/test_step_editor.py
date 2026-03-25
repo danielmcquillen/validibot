@@ -7,15 +7,15 @@ from http import HTTPStatus
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
 from django.urls import reverse
 
 from validibot.actions.constants import ActionCategoryType
 from validibot.actions.constants import CertificationActionType
 from validibot.actions.constants import IntegrationActionType
+from validibot.actions.models import Action
 from validibot.actions.models import ActionDefinition
-from validibot.actions.models import SignedCredentialAction
 from validibot.actions.models import SlackMessageAction
+from validibot.actions.registry import get_action_form
 from validibot.submissions.constants import SubmissionFileType
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
@@ -151,6 +151,7 @@ def test_wizard_redirects_to_action_create_view(client):
 
 
 def test_wizard_lists_action_tabs(client):
+    """The wizard should only show action tabs backed by registered plugins."""
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     integration_def = make_action_definition(
@@ -167,9 +168,13 @@ def test_wizard_lists_action_tabs(client):
     assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     assert integration_def.name in html
-    assert certification_def.name in html
     assert "Integrations" in html
-    assert "Certifications" in html
+
+    if get_action_form(CertificationActionType.SIGNED_CREDENTIAL) is None:
+        assert certification_def.name not in html
+    else:
+        assert certification_def.name in html
+        assert "Certifications" in html
 
 
 def test_wizard_shows_xml_validator_even_when_incompatible_file_type(client):
@@ -410,6 +415,7 @@ def test_create_view_creates_action_step(client):
 
 
 def test_create_certificate_action_uses_default_when_missing(client):
+    """Credential step creation depends on the Pro action plugin being loaded."""
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     definition = make_action_definition(
@@ -417,7 +423,15 @@ def test_create_certificate_action_uses_default_when_missing(client):
         name="Issue certificate",
     )
 
-    create_url = _select_action(client, workflow, definition)
+    create_url = reverse(
+        "workflows:workflow_step_action_create",
+        args=[workflow.pk, definition.pk],
+    )
+
+    if get_action_form(CertificationActionType.SIGNED_CREDENTIAL) is None:
+        response = client.get(create_url)
+        assert response.status_code == HTTPStatus.NOT_FOUND
+        return
 
     response = client.post(
         create_url,
@@ -429,98 +443,13 @@ def test_create_certificate_action_uses_default_when_missing(client):
     assert response.status_code == HTTPStatus.FOUND
 
     step = WorkflowStep.objects.get(workflow=workflow)
+    assert step.action is not None
+    assert step.action.definition == definition
     variant = step.action.get_variant()
-    assert isinstance(variant, SignedCredentialAction)
-    assert variant.credential_template == "" or variant.credential_template.name == ""
-    assert variant.get_credential_template_display_name().endswith(
-        "default_signed_credential.pdf",
+    assert hasattr(variant, "get_credential_template_display_name")
+    assert variant.get_credential_template_display_name() == (
+        "default_signed_credential.pdf"
     )
-    assert step.config.get("credential_template").endswith(
-        "default_signed_credential.pdf",
-    )
-
-
-def test_create_certificate_action_step(client, tmp_path):
-    workflow = WorkflowFactory()
-    _login_for_workflow(client, workflow)
-    definition = make_action_definition(
-        category=ActionCategoryType.CERTIFICATION,
-        name="Issue certificate",
-    )
-
-    create_url = _select_action(client, workflow, definition)
-
-    template_file = SimpleUploadedFile(
-        "certificate.html",
-        b"<html>Certificate</html>",
-        content_type="text/html",
-    )
-
-    with override_settings(MEDIA_ROOT=str(tmp_path)):
-        response = client.post(
-            create_url,
-            data={
-                "name": "Issue certificate",
-                "description": "Provide certificates for passing runs.",
-                "credential_template": template_file,
-            },
-        )
-        assert response.status_code == HTTPStatus.FOUND
-
-    step = WorkflowStep.objects.get(workflow=workflow)
-    variant = step.action.get_variant()
-    assert isinstance(variant, SignedCredentialAction)
-    assert variant.credential_template.name.endswith("certificate.html")
-    assert step.config.get("credential_template") == "certificate.html"
-
-
-def test_update_certificate_action_step_allows_existing_template(client, tmp_path):
-    workflow = WorkflowFactory()
-    _login_for_workflow(client, workflow)
-    definition = make_action_definition(
-        category=ActionCategoryType.CERTIFICATION,
-        name="Issue certificate",
-    )
-
-    original_template = SimpleUploadedFile(
-        "original.html",
-        b"<html>Original</html>",
-        content_type="text/html",
-    )
-
-    with override_settings(MEDIA_ROOT=str(tmp_path)):
-        action = SignedCredentialAction.objects.create(
-            definition=definition,
-            name="Issue certificate",
-            description="Existing description",
-            credential_template=original_template,
-        )
-        step = WorkflowStep.objects.create(
-            workflow=workflow,
-            action=action,
-            order=10,
-            name="Issue certificate",
-            description="Existing description",
-            config={"credential_template": "original.html"},
-        )
-
-        edit_url = reverse(
-            "workflows:workflow_step_settings",
-            args=[workflow.pk, step.pk],
-        )
-        response = client.post(
-            edit_url,
-            data={
-                "name": "Issue certificate",
-                "description": "Existing description",
-                "notes": "",
-            },
-        )
-        assert response.status_code == HTTPStatus.FOUND
-
-        step.refresh_from_db()
-        variant = step.action.get_variant()
-        assert variant.credential_template.name.endswith("original.html")
 
 
 def test_create_view_validates_missing_upload(client):
@@ -1042,7 +971,7 @@ def test_step_list_renders_signed_credential_summary(client):
         name="Signed credential",
         type_value=CertificationActionType.SIGNED_CREDENTIAL,
     )
-    action = SignedCredentialAction.objects.create(
+    action = Action.objects.create(
         definition=definition,
         name="Issue credential",
         description="Attach a signed credential PDF.",

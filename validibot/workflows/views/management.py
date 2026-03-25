@@ -7,6 +7,7 @@ used across multiple workflow view modules.
 
 import json
 import logging
+from http import HTTPStatus
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
@@ -476,6 +477,41 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
 class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
     template_name = "workflows/partials/workflow_confirm_delete.html"
 
+    def _has_issued_credentials(self, workflow: Workflow) -> bool:
+        """Return True when the workflow has any durable issued credentials."""
+
+        try:
+            from validibot_pro.credentials.models import IssuedCredential
+        except Exception:
+            return False
+
+        return IssuedCredential.objects.filter(
+            workflow_run__workflow=workflow,
+        ).exists()
+
+    def _block_delete_response(self, request, workflow: Workflow):
+        """Return a response when credential-bearing workflows cannot be deleted."""
+
+        messages.error(
+            request,
+            _(
+                "This workflow has issued credentials. Archive it instead "
+                "of deleting it."
+            ),
+        )
+        detail_url = reverse_with_org(
+            "workflows:workflow_detail",
+            request=request,
+            kwargs={"pk": workflow.pk},
+        )
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=HTTPStatus.CONFLICT)
+            response["HX-Redirect"] = detail_url
+            return response
+        if request.method == "DELETE":
+            return HttpResponse(status=HTTPStatus.CONFLICT)
+        return HttpResponseRedirect(detail_url)
+
     def get_success_url(self):
         return reverse_with_org("workflows:workflow_list", request=self.request)
 
@@ -510,6 +546,8 @@ class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
 
     def delete(self, request, *args, **kwargs):
         self.object = self.get_object()
+        if self._has_issued_credentials(self.object):
+            return self._block_delete_response(request, self.object)
         success_url = self.get_success_url()
         self.object.delete()
         messages.success(request, _("Workflow deleted."))

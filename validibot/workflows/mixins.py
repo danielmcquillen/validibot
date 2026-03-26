@@ -18,6 +18,7 @@ from validibot.projects.models import Project
 from validibot.users.models import User
 from validibot.users.permissions import PermissionCode
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.credential_utils import get_signed_credential_display_context
 from validibot.validations.models import Ruleset
 from validibot.validations.models import ValidationRun
 from validibot.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
@@ -326,6 +327,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
 
     run_detail_template_name = "workflows/launch/workflow_run_detail.html"
     run_detail_panel_template_name = "workflows/launch/partials/run_status_card.html"
+    status_area_template_name = "workflows/launch/partials/run_status_card.html"
 
     polling_statuses = {
         ValidationRunStatus.PENDING,
@@ -428,7 +430,19 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             signal for signals in step_signals.values() for signal in signals
         ]
 
-        return {
+        credential_context = {
+            "issued_credential": None,
+            "credential_download_url": None,
+            "credential_download_name": None,
+            "credential_resource_label": None,
+        }
+        if active_run and not run_in_progress:
+            credential_context = get_signed_credential_display_context(
+                request=self.request,
+                run=active_run,
+            )
+
+        context = {
             "active_run": active_run,
             "step_runs": step_runs,
             "findings": findings,
@@ -448,6 +462,8 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "step_params": step_params,
             "step_template_warnings": step_template_warnings,
         }
+        context.update(credential_context)
+        return context
 
     def get_recent_runs(self, workflow: Workflow, limit: int = 5):
         return list(

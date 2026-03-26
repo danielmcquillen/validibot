@@ -13,7 +13,10 @@ import html
 import json
 from http import HTTPStatus
 from pathlib import Path
+from types import ModuleType
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -62,6 +65,24 @@ def _force_login_for_workflow(client, workflow, *, user=None):
     session["active_org_id"] = workflow.org_id
     session.save()
     return user
+
+
+def _fake_pro_modules(credential):
+    """Return a minimal validibot_pro module tree for credential UI tests."""
+
+    pro_module = ModuleType("validibot_pro")
+    credentials_module = ModuleType("validibot_pro.credentials")
+    models_module = ModuleType("validibot_pro.credentials.models")
+    models_module.IssuedCredential = SimpleNamespace(
+        objects=SimpleNamespace(
+            filter=lambda **_kwargs: SimpleNamespace(first=lambda: credential),
+        ),
+    )
+    return {
+        "validibot_pro": pro_module,
+        "validibot_pro.credentials": credentials_module,
+        "validibot_pro.credentials.models": models_module,
+    }
 
 
 def test_launch_page_requires_authentication(client):
@@ -539,6 +560,89 @@ def test_run_detail_page_shows_completion_actions(client):
     body = response.content.decode()
     assert "Launch again" in body
     assert "View full run" in body
+
+
+def test_run_detail_page_shows_signed_credential_card(client):
+    """Completed workflow status pages should render an issued credential card."""
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        status=ValidationRunStatus.SUCCEEDED,
+    )
+    credential = SimpleNamespace(
+        media_type="application/vc+jwt",
+        created=run.created,
+        kid="kid-123456",
+        payload_json={
+            "credentialSubject": {
+                "resourceLabel": "Product 1",
+            },
+        },
+    )
+
+    with patch.dict(
+        "sys.modules",
+        _fake_pro_modules(credential),
+    ):
+        response = client.get(
+            reverse(
+                "workflows:workflow_run_detail",
+                kwargs={"pk": workflow.pk, "run_id": run.pk},
+            ),
+        )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Signed Credential" in body
+    assert "Product 1" in body
+    assert "Download Credential" in body
+
+
+def test_launch_status_partial_shows_signed_credential_card(client):
+    """The status fragment should include the credential card for completed runs."""
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        status=ValidationRunStatus.SUCCEEDED,
+    )
+    credential = SimpleNamespace(
+        media_type="application/vc+jwt",
+        created=run.created,
+        kid="kid-123456",
+        payload_json={
+            "credentialSubject": {
+                "resourceLabel": "Product 1",
+            },
+        },
+    )
+
+    with patch.dict(
+        "sys.modules",
+        _fake_pro_modules(credential),
+    ):
+        response = client.get(
+            reverse(
+                "workflows:workflow_launch_status",
+                kwargs={"pk": workflow.pk, "run_id": run.pk},
+            ),
+        )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Signed Credential" in body
+    assert "Product 1" in body
 
 
 def test_latest_run_view_loads_most_recent_run(client):

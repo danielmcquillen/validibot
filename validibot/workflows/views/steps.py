@@ -863,6 +863,17 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
             "summary": summary,
         }
 
+    def _has_dedicated_step_edit_view(self) -> bool:
+        """Return whether the step has a distinct overview page.
+
+        Action steps use the settings form as their only edit surface.
+        Their ``workflow_step_edit`` route redirects back to the same
+        settings page, so breadcrumbs should not include a self-link for
+        the step number.
+        """
+
+        return not self.is_action_step()
+
     def get_breadcrumbs(self):
         workflow = self.get_workflow()
         breadcrumbs = super().get_breadcrumbs()
@@ -889,19 +900,27 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                     ),
                 },
             )
-            step_url = reverse_with_org(
-                "workflows:workflow_step_edit",
-                request=self.request,
-                kwargs={"pk": workflow.pk, "step_id": step.pk if step else ""},
-            )
-
-            breadcrumbs.append(
-                {
-                    "name": step.step_number_display,
-                    "url": step_url,
-                },
-            )
-            breadcrumbs.append({"name": _("Edit Step Detail"), "url": ""})
+            if self._has_dedicated_step_edit_view():
+                step_url = reverse_with_org(
+                    "workflows:workflow_step_edit",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk, "step_id": step.pk if step else ""},
+                )
+                breadcrumbs.append(
+                    {
+                        "name": step.step_number_display,
+                        "url": step_url,
+                    },
+                )
+                breadcrumbs.append({"name": _("Edit Step Detail"), "url": ""})
+            else:
+                breadcrumbs.append(
+                    {
+                        "name": _("%(step)s: Edit Step Detail")
+                        % {"step": step.step_number_display},
+                        "url": "",
+                    },
+                )
         return breadcrumbs
 
 

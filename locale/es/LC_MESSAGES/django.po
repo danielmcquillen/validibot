@@ -4270,7 +4270,7 @@ msgid "Enable workflow"
 msgstr "Habilitar flujo de trabajo"
 
 #: validibot/templates/workflows/workflow_detail.html:179
-msgid "Inactive workflows stay visible in the catalog but block new validation runs."
+msgid "Inactive workflows stay visible in the list but block new validation runs."
 msgstr "Los flujos de trabajo inactivos permanecen visibles en el catálogo pero bloquean nuevas ejecuciones de validación."
 
 #: validibot/templates/workflows/workflow_detail.html:189

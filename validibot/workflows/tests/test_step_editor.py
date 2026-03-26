@@ -756,6 +756,62 @@ def test_update_view_prefills_action_step(client):
     assert action_variant.message == "Escalate to ops channel."
 
 
+def test_action_step_settings_collapses_self_referential_breadcrumb(client):
+    """Action settings pages should not render a breadcrumb self-link."""
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    definition = make_action_definition(name="Slack alert")
+    action = SlackMessageAction.objects.create(
+        definition=definition,
+        name="Alert ops",
+        description="Existing description",
+        message="Original message",
+    )
+    step = WorkflowStep.objects.create(
+        workflow=workflow,
+        action=action,
+        order=10,
+        name="Alert ops",
+        description="Existing description",
+        notes="Existing notes",
+        config={"message": "Original message"},
+    )
+
+    edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk])
+    response = client.get(edit_url)
+
+    assert response.status_code == HTTPStatus.OK
+    breadcrumbs = response.context["breadcrumbs"]
+    assert [str(crumb["name"]) for crumb in breadcrumbs] == [
+        "Workflows",
+        workflow.name,
+        f"{step.step_number_display}: Edit Step Detail",
+    ]
+    assert breadcrumbs[-1]["url"] == ""
+
+
+def test_validator_step_settings_keeps_step_breadcrumb_link(client):
+    """Validator settings pages should keep the step overview breadcrumb."""
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ensure_validator(ValidationType.AI_ASSIST, "ai-assist", "AI Assist")
+    step = WorkflowStepFactory(workflow=workflow, validator=validator)
+
+    edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk])
+    response = client.get(edit_url)
+
+    assert response.status_code == HTTPStatus.OK
+    breadcrumbs = response.context["breadcrumbs"]
+    assert [str(crumb["name"]) for crumb in breadcrumbs] == [
+        "Workflows",
+        workflow.name,
+        step.step_number_display,
+        "Edit Step Detail",
+    ]
+    assert breadcrumbs[-2]["url"]
+    assert breadcrumbs[-1]["url"] == ""
+
+
 def test_step_form_navigation_links(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)

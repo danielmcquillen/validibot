@@ -8,7 +8,7 @@ use.
 The current policy is:
 
 - prefer ``Submission.name`` as the signed human label
-- otherwise fall back to the original filename
+- otherwise fall back to the original filename, but replace ``.`` with ``_``
 - otherwise use a short digest-based fallback label
 
 The same resolved label is then used for UI display and to build a
@@ -17,13 +17,21 @@ filesystem-friendly download filename.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from django.utils.text import slugify
 
+from validibot.core.utils import reverse_with_org
+
 if TYPE_CHECKING:
+    from django.http import HttpRequest
+
     from validibot.submissions.models import Submission
+    from validibot.validations.models import ValidationRun
+
+logger = logging.getLogger(__name__)
 
 RESOURCE_LABEL_DIGEST_PREFIX_LENGTH = 8
 FILENAME_SEGMENT_MAX_LENGTH = 32
@@ -38,7 +46,9 @@ def resolve_submission_resource_label(submission: Submission) -> str:
 
     The label is intentionally simple and does not inspect the submitted file
     contents. That keeps the rule format-agnostic and avoids leaking extra
-    input data into the credential.
+    input data into the credential. When we fall back to the stored filename,
+    we normalize dots to underscores so extensions do not read like sentence
+    punctuation in the signed label.
     """
 
     explicit_name = (submission.name or "").strip()
@@ -47,7 +57,7 @@ def resolve_submission_resource_label(submission: Submission) -> str:
 
     original_filename = (submission.original_filename or "").strip()
     if original_filename:
-        return original_filename
+        return original_filename.replace(".", "_")
 
     checksum = (submission.checksum_sha256 or "").strip()
     if checksum:
@@ -102,6 +112,52 @@ def build_signed_credential_download_filename(
         parts.append(workflow_segment)
     parts.append(SIGNED_CREDENTIAL_FILENAME_SUFFIX)
     return "__".join(parts) + ".jwt"
+
+
+def get_signed_credential_display_context(
+    *,
+    request: HttpRequest,
+    run: ValidationRun,
+) -> dict[str, object]:
+    """Build template context for the signed-credential sidebar card.
+
+    The Pro credential model is optional in the community app, so the
+    run-detail pages need one guarded lookup path that both the standalone
+    validation view and the workflow launch status view can reuse.
+    """
+
+    issued_credential = None
+    credential_download_url = None
+    credential_download_name = None
+    credential_resource_label = None
+
+    try:
+        from validibot_pro.credentials.models import IssuedCredential
+
+        issued_credential = IssuedCredential.objects.filter(workflow_run=run).first()
+        if issued_credential:
+            credential_resource_label = extract_signed_credential_resource_label(
+                issued_credential.payload_json,
+            )
+            credential_download_name = build_signed_credential_download_filename(
+                resource_label=credential_resource_label,
+                workflow_slug=run.workflow.slug if run.workflow else "",
+                fallback_identifier=str(run.pk),
+            )
+            credential_download_url = reverse_with_org(
+                "validations:credential_download",
+                request=request,
+                kwargs={"pk": run.pk},
+            )
+    except Exception:
+        logger.debug("Pro credential lookup unavailable", exc_info=True)
+
+    return {
+        "issued_credential": issued_credential,
+        "credential_download_url": credential_download_url,
+        "credential_download_name": credential_download_name,
+        "credential_resource_label": credential_resource_label,
+    }
 
 
 def _slug_segment(value: str | None) -> str:

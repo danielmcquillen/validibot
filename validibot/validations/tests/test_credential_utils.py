@@ -31,7 +31,7 @@ class ResolveSubmissionResourceLabelTests(SimpleTestCase):
         self.assertEqual(resolve_submission_resource_label(submission), "Product 1")
 
     def test_falls_back_to_original_filename(self):
-        """The original filename should be used when no display name exists."""
+        """Filename fallbacks should replace dots with underscores."""
         submission = type(
             "SubmissionStub",
             (),
@@ -44,7 +44,24 @@ class ResolveSubmissionResourceLabelTests(SimpleTestCase):
 
         self.assertEqual(
             resolve_submission_resource_label(submission),
-            "product-1.json",
+            "product-1_json",
+        )
+
+    def test_replaces_every_dot_in_filename_fallback(self):
+        """Multiple dot segments should be normalized consistently."""
+        submission = type(
+            "SubmissionStub",
+            (),
+            {
+                "name": "",
+                "original_filename": "model.v1.final.json",
+                "checksum_sha256": "a" * 64,
+            },
+        )()
+
+        self.assertEqual(
+            resolve_submission_resource_label(submission),
+            "model_v1_final_json",
         )
 
     def test_uses_digest_prefix_when_no_name_or_filename_exists(self):

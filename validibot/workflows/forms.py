@@ -768,7 +768,7 @@ class WorkflowLaunchForm(forms.Form):
     filename = forms.CharField(
         label=_("Submission name"),
         required=False,
-        help_text=_("Optional name for reporting."),
+        help_text=_("Optional name for reporting and/or verifiable credentials."),
     )
     file_type = forms.ChoiceField(
         label=_("File type"),

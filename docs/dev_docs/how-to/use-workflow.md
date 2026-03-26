@@ -169,7 +169,7 @@ credentials apart without comparing raw digests.
 The label is resolved in this order:
 
 - the stored submission name, when one exists;
-- otherwise the original filename;
+- otherwise the original filename with `.` replaced by `_`;
 - otherwise a short fallback like `Submission 42065c74`.
 
 The credential download filename is then derived from that signed label and the

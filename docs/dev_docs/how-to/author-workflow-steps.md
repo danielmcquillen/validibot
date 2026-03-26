@@ -66,7 +66,7 @@ The **Step Assertions** panel always shows a **Default assertions** card at the 
 - Actions reuse catalogued definitions (for example, sending a Slack message or issuing a signed credential).
 - Slack integrations prompt for the message that will be posted when the step runs; the text is stored on a dedicated `SlackMessageAction` model.
 - Signed credential steps do not collect any PDF template or presentation settings. The action just records that a successful run should mint a signed verifiable credential.
-- When a signed credential is issued, the payload includes a signed human-facing resource label. Validibot resolves that label from the submission name first, then the original filename, and only falls back to a short digest-based identifier when neither is available.
+- When a signed credential is issued, the payload includes a signed human-facing resource label. Validibot resolves that label from the submission name first, then from the original filename with `.` characters replaced by `_`, and only falls back to a short digest-based identifier when neither is available.
 - The editor explains the placement rule for signed credential steps, and the workflow detail page disables move buttons that would place the step before a validator or blocking action.
 - The editor lets you rename the step, adjust the author notes, and record any action-specific inputs in purpose-built forms instead of the generic JSON payload we used previously.
 - Action steps never expose schemas to end users, but they appear alongside validation steps in the workflow timeline and step navigation.

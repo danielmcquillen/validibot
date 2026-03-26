@@ -16,6 +16,7 @@ run summary sidebar (right column).
     </div>
     <div class="col-12 col-xl-5 order-first order-xl-last mb-3">
       {% include "workflows/results/partials/block_validation_run_summary.html" with run=run %}
+      {% include "workflows/results/partials/block_validation_run_credential.html" with issued_credential=issued_credential credential_download_url=credential_download_url credential_download_name=credential_download_name credential_resource_label=credential_resource_label %}
     </div>
   </div>
 </div>

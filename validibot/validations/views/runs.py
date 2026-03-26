@@ -26,6 +26,7 @@ from validibot.validations.credential_utils import (
 from validibot.validations.credential_utils import (
     extract_signed_credential_resource_label,
 )
+from validibot.validations.credential_utils import get_signed_credential_display_context
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
@@ -249,35 +250,6 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
             signal for signals in step_signals.values() for signal in signals
         ]
 
-        # Credential display — fetch the issued credential if Pro is
-        # installed and one was issued for this run.
-        issued_credential = None
-        credential_download_url = None
-        credential_download_name = None
-        credential_resource_label = None
-        try:
-            from validibot_pro.credentials.models import IssuedCredential
-
-            issued_credential = IssuedCredential.objects.filter(
-                workflow_run=run
-            ).first()
-            if issued_credential:
-                credential_resource_label = extract_signed_credential_resource_label(
-                    issued_credential.payload_json,
-                )
-                credential_download_name = build_signed_credential_download_filename(
-                    resource_label=credential_resource_label,
-                    workflow_slug=run.workflow.slug if run.workflow else "",
-                    fallback_identifier=str(run.pk),
-                )
-                credential_download_url = reverse_with_org(
-                    "validations:credential_download",
-                    request=self.request,
-                    kwargs={"pk": run.pk},
-                )
-        except Exception:
-            logger.debug("Pro credential lookup unavailable", exc_info=True)
-
         context.update(
             {
                 "step_runs": step_runs,
@@ -289,11 +261,13 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
                 "step_params": step_params,
                 "step_template_warnings": step_template_warnings,
                 "submission_content": submission_content,
-                "issued_credential": issued_credential,
-                "credential_download_url": credential_download_url,
-                "credential_download_name": credential_download_name,
-                "credential_resource_label": credential_resource_label,
             },
+        )
+        context.update(
+            get_signed_credential_display_context(
+                request=self.request,
+                run=run,
+            ),
         )
         return context
 

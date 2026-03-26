@@ -49,6 +49,7 @@ services:
     volumes:
       # Persistent storage for files
       - validibot_storage:/app/storage
+      - ./.envs/.production/.docker-compose/keys:/run/validibot-keys:ro
     env_file:
       - .envs/.production/.docker-compose/.django
       - .envs/.production/.docker-compose/.postgres
@@ -84,6 +85,7 @@ services:
     command: ["celery", "-A", "config", "worker", "--loglevel=info", "--concurrency=1"]
     volumes:
       - validibot_storage:/app/storage
+      - ./.envs/.production/.docker-compose/keys:/run/validibot-keys:ro
       # Only the worker needs Docker socket access to spawn validator containers.
       - /var/run/docker.sock:/var/run/docker.sock
     env_file:

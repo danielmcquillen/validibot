@@ -27,6 +27,12 @@ from validibot.core.api.org_scoped import OrgScopedMixin
 from validibot.core.utils import truthy
 from validibot.users.constants import PermissionCode
 from validibot.validations.api.viewsets import ValidationRunFilter
+from validibot.validations.credential_utils import (
+    build_signed_credential_download_filename,
+)
+from validibot.validations.credential_utils import (
+    extract_signed_credential_resource_label,
+)
 from validibot.validations.models import ValidationRun
 from validibot.validations.serializers import ValidationRunSerializer
 
@@ -121,12 +127,18 @@ class OrgScopedRunViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         if credential is None:
             raise Http404("No credential issued for this run.")
 
+        resource_label = extract_signed_credential_resource_label(
+            credential.payload_json,
+        )
+        download_name = build_signed_credential_download_filename(
+            resource_label=resource_label,
+            workflow_slug=run.workflow.slug if run.workflow else "",
+            fallback_identifier=str(run.pk),
+        )
         response = HttpResponse(
             credential.credential_jws,
             content_type="application/vc+jwt",
             status=HTTPStatus.OK,
         )
-        response["Content-Disposition"] = (
-            f'attachment; filename="credential-{run.pk}.jwt"'
-        )
+        response["Content-Disposition"] = f'attachment; filename="{download_name}"'
         return response

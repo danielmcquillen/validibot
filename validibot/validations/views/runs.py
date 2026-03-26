@@ -20,6 +20,12 @@ from validibot.core.mixins import BreadcrumbMixin
 from validibot.core.utils import reverse_with_org
 from validibot.users.permissions import PermissionCode
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.credential_utils import (
+    build_signed_credential_download_filename,
+)
+from validibot.validations.credential_utils import (
+    extract_signed_credential_resource_label,
+)
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
@@ -247,6 +253,8 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
         # installed and one was issued for this run.
         issued_credential = None
         credential_download_url = None
+        credential_download_name = None
+        credential_resource_label = None
         try:
             from validibot_pro.credentials.models import IssuedCredential
 
@@ -254,6 +262,14 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
                 workflow_run=run
             ).first()
             if issued_credential:
+                credential_resource_label = extract_signed_credential_resource_label(
+                    issued_credential.payload_json,
+                )
+                credential_download_name = build_signed_credential_download_filename(
+                    resource_label=credential_resource_label,
+                    workflow_slug=run.workflow.slug if run.workflow else "",
+                    fallback_identifier=str(run.pk),
+                )
                 credential_download_url = reverse_with_org(
                     "validations:credential_download",
                     request=self.request,
@@ -275,6 +291,8 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
                 "submission_content": submission_content,
                 "issued_credential": issued_credential,
                 "credential_download_url": credential_download_url,
+                "credential_download_name": credential_download_name,
+                "credential_resource_label": credential_resource_label,
             },
         )
         return context
@@ -317,8 +335,39 @@ class ValidationRunJsonView(ValidationRunAccessMixin, DetailView):
         from validibot.validations.serializers import ValidationRunSerializer
 
         serializer = ValidationRunSerializer(context["run"])
-        context["json_content"] = json.dumps(serializer.data, indent=2, default=str)
+        context["json_data"] = json.dumps(serializer.data, indent=2, default=str)
         return context
+
+    def get_breadcrumbs(self):
+        """Build the standard breadcrumb trail for the run JSON page."""
+        validation = getattr(self, "object", None) or self.get_object()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Validations"),
+                "url": reverse_with_org(
+                    "validations:validation_list",
+                    request=self.request,
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": _("Run #%(pk)s") % {"pk": validation.pk},
+                "url": reverse_with_org(
+                    "validations:validation_detail",
+                    request=self.request,
+                    kwargs={"pk": validation.pk},
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": _("JSON"),
+                "url": "",
+            },
+        )
+        return breadcrumbs
 
 
 class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
@@ -528,11 +577,17 @@ class CredentialDownloadView(ValidationRunAccessMixin, DetailView):
         if credential is None:
             raise Http404(_("No credential issued for this run."))
 
+        resource_label = extract_signed_credential_resource_label(
+            credential.payload_json,
+        )
+        download_name = build_signed_credential_download_filename(
+            resource_label=resource_label,
+            workflow_slug=run.workflow.slug if run.workflow else "",
+            fallback_identifier=str(run.pk),
+        )
         response = HttpResponse(
             credential.credential_jws,
             content_type="application/vc+jwt",
         )
-        response["Content-Disposition"] = (
-            f'attachment; filename="credential-{run.pk}.jwt"'
-        )
+        response["Content-Disposition"] = f'attachment; filename="{download_name}"'
         return response

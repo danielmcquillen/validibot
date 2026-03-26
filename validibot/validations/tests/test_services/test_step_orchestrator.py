@@ -6,16 +6,32 @@ the _record_step_result normalization precondition.
 
 from __future__ import annotations
 
+import sys
+from collections import Counter
+from types import ModuleType
+from types import SimpleNamespace
+from unittest.mock import Mock
+from unittest.mock import patch
+from uuid import uuid4
+
 import pytest
 from django.utils import timezone
 
+from validibot.actions.constants import ActionCategoryType
+from validibot.actions.constants import ActionFailureMode
+from validibot.actions.constants import CredentialActionType
+from validibot.actions.models import Action
+from validibot.actions.models import ActionDefinition
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
+from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.services.step_orchestrator import StepOrchestrator
+from validibot.validations.services.step_processor.result import StepProcessingResult
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
+from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
 
 # ---------- _start_step_run ----------
@@ -145,3 +161,180 @@ class TestStartStepRun:
             ).count()
             == 1
         )
+
+
+@pytest.mark.django_db
+class TestDeferredSignedCredentialIssuance:
+    """Verify signed credentials are issued after run finalization."""
+
+    def test_signed_credential_issues_after_run_is_succeeded(self):
+        """Credential issuance must happen after the run reaches SUCCEEDED."""
+        orchestrator = StepOrchestrator()
+        run = ValidationRunFactory(status=ValidationRunStatus.PENDING)
+        validator = ValidatorFactory()
+        WorkflowStepFactory(
+            workflow=run.workflow,
+            order=10,
+            validator=validator,
+        )
+        credential_definition = ActionDefinition.objects.create(
+            slug="signed-credential",
+            name="Signed credential",
+            action_category=ActionCategoryType.CREDENTIAL,
+            type=CredentialActionType.SIGNED_CREDENTIAL,
+            is_active=True,
+        )
+        credential_action = Action.objects.create(
+            definition=credential_definition,
+            slug="credential-action",
+            name="Credential action",
+            failure_mode=ActionFailureMode.ADVISORY,
+        )
+        credential_step = WorkflowStepFactory(
+            workflow=run.workflow,
+            order=20,
+            validator=None,
+            action=credential_action,
+        )
+
+        def fake_execute_validator_step(*, validation_run, step_run):
+            finalized = orchestrator._finalize_step_run(
+                step_run=step_run,
+                status=StepStatus.PASSED,
+                stats={},
+                error=None,
+            )
+            return StepProcessingResult(
+                passed=True,
+                step_run=finalized,
+                severity_counts=Counter(),
+                total_findings=0,
+                assertion_failures=0,
+                assertion_total=0,
+            )
+
+        issued = SimpleNamespace(id=uuid4())
+        fake_issue_credential = Mock(return_value=issued)
+        fake_issuance_module = ModuleType("validibot_pro.credentials.issuance")
+        fake_issuance_module.issue_credential = fake_issue_credential
+        fake_issuance_module.CredentialIssuanceError = RuntimeError
+        with (
+            patch.object(
+                orchestrator,
+                "_execute_validator_step",
+                side_effect=fake_execute_validator_step,
+            ),
+            patch.dict(
+                sys.modules,
+                {
+                    "validibot_pro": ModuleType("validibot_pro"),
+                    "validibot_pro.credentials": ModuleType(
+                        "validibot_pro.credentials",
+                    ),
+                    "validibot_pro.credentials.issuance": fake_issuance_module,
+                },
+            ),
+        ):
+            result = orchestrator.execute_workflow_steps(run.id, run.user_id)
+
+        run.refresh_from_db()
+        step_run = ValidationStepRun.objects.get(
+            validation_run=run,
+            workflow_step=credential_step,
+        )
+        assert result.status == ValidationRunStatus.SUCCEEDED
+        assert run.status == ValidationRunStatus.SUCCEEDED
+        fake_issue_credential.assert_called_once_with(step_run)
+        assert step_run.status == StepStatus.PASSED
+        assert step_run.output["credential_issuance"] == "issued"
+        assert step_run.output["credential_id"] == str(issued.id)
+
+    def test_advisory_credential_failure_adds_warning_but_run_succeeds(self):
+        """Advisory credential failures should warn without failing the run."""
+        orchestrator = StepOrchestrator()
+        run = ValidationRunFactory(status=ValidationRunStatus.PENDING)
+        validator = ValidatorFactory()
+        WorkflowStepFactory(
+            workflow=run.workflow,
+            order=10,
+            validator=validator,
+        )
+        credential_definition = ActionDefinition.objects.create(
+            slug="signed-credential-advisory",
+            name="Signed credential",
+            action_category=ActionCategoryType.CREDENTIAL,
+            type=CredentialActionType.SIGNED_CREDENTIAL,
+            is_active=True,
+        )
+        credential_action = Action.objects.create(
+            definition=credential_definition,
+            slug="credential-action-advisory",
+            name="Credential action",
+            failure_mode=ActionFailureMode.ADVISORY,
+        )
+        credential_step = WorkflowStepFactory(
+            workflow=run.workflow,
+            order=20,
+            validator=None,
+            action=credential_action,
+        )
+
+        def fake_execute_validator_step(*, validation_run, step_run):
+            finalized = orchestrator._finalize_step_run(
+                step_run=step_run,
+                status=StepStatus.PASSED,
+                stats={},
+                error=None,
+            )
+            return StepProcessingResult(
+                passed=True,
+                step_run=finalized,
+                severity_counts=Counter(),
+                total_findings=0,
+                assertion_failures=0,
+                assertion_total=0,
+            )
+
+        class FakeCredentialIssuanceError(Exception):
+            """Stub exception matching the Pro issuance service contract."""
+
+        fake_issue_credential = Mock(
+            side_effect=FakeCredentialIssuanceError(
+                "Signing backend is not configured.",
+            ),
+        )
+        fake_issuance_module = ModuleType("validibot_pro.credentials.issuance")
+        fake_issuance_module.issue_credential = fake_issue_credential
+        fake_issuance_module.CredentialIssuanceError = FakeCredentialIssuanceError
+        with (
+            patch.object(
+                orchestrator,
+                "_execute_validator_step",
+                side_effect=fake_execute_validator_step,
+            ),
+            patch.dict(
+                sys.modules,
+                {
+                    "validibot_pro": ModuleType("validibot_pro"),
+                    "validibot_pro.credentials": ModuleType(
+                        "validibot_pro.credentials",
+                    ),
+                    "validibot_pro.credentials.issuance": fake_issuance_module,
+                },
+            ),
+        ):
+            result = orchestrator.execute_workflow_steps(run.id, run.user_id)
+
+        run.refresh_from_db()
+        step_run = ValidationStepRun.objects.get(
+            validation_run=run,
+            workflow_step=credential_step,
+        )
+        finding = ValidationFinding.objects.get(validation_step_run=step_run)
+
+        assert result.status == ValidationRunStatus.SUCCEEDED
+        assert run.status == ValidationRunStatus.SUCCEEDED
+        assert step_run.status == StepStatus.FAILED
+        assert step_run.output["credential_issuance"] == "failed"
+        assert finding.severity == Severity.WARNING
+        assert finding.code == "credential_issuance_failed"

@@ -105,6 +105,7 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
                 definition = step.action.definition
                 variant = step.action.get_variant()
                 step.action_variant = variant
+                step.is_signed_credential_step = _is_signed_credential_step(step)
                 if not config and variant:
                     if isinstance(variant, SlackMessageAction):
                         config["message"] = variant.message

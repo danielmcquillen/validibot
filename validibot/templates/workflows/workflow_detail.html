@@ -12,7 +12,7 @@
   <div id="workflow-detail"
        class="container-fluid d-flex flex-column flex-grow-1">
     <div class="app-content-header-bar row ">
-      <div class="app-content-header col-12 col-lg-8">
+      <div class="app-content-header col-12 col-lg-6">
         <div class="d-flex flex-column gap-2">
           <div class="d-flex flex-wrap align-items-center gap-2">
             <h1 class="app-page-title mb-0 text-truncate">
@@ -24,7 +24,7 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-lg-4 ">
+      <div class="col-12 col-lg-6 ">
         <div class="d-flex flex-wrap gap-2 justify-content-end">
           {# link to launch #}
           {% if can_launch_workflow %}
@@ -64,23 +64,30 @@
             </a>
             {% if workflow_has_runs %}
               <form method="post"
-                    action="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}">
+                    action="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}"
+                    onsubmit="return confirm('{% if workflow.is_archived %}{% trans "Unarchive this workflow?" %}{% else %}{% trans "Are you sure you want to archive this workflow?" %}{% endif %}');">
                 {% csrf_token %}
+                {% if workflow.is_archived %}<input type="hidden" name="unarchive" value="1" />{% endif %}
                 <button type="submit"
-                        class="btn btn-warning"
+                        class="btn btn-light txt-warning"
                         data-bs-toggle="tooltip"
                         data-bs-placement="top"
-                        title="{% trans "Archive workflow" %}">
-                  <i class="bi-archive me-1"></i>{% trans "Archive" %}
+                        title="{% if workflow.is_archived %}{% trans "Unarchive this workflow" %}{% else %}{% trans "Archive workflow" %}{% endif %}"
+                        aria-label="{% if workflow.is_archived %}{% trans "Unarchive this workflow" %}{% else %}{% trans "Archive workflow" %}{% endif %}">
+                  {% if workflow.is_archived %}
+                    <i class="bi-star text-warning"></i>
+                  {% else %}
+                    <i class="bi-archive text-warning"></i>
+                  {% endif %}
                 </button>
               </form>
               {% if workflow_has_issued_credentials and can_break_glass_delete_workflow %}
-                <a class="btn btn-outline-danger"
+                <a class="btn btn-light"
                    data-bs-toggle="tooltip"
                    data-bs-placement="top"
                    title="{% trans "Exceptional delete flow for credential-bearing workflows" %}"
                    href="{% org_url 'workflows:workflow_break_glass_delete' pk=workflow.pk %}">
-                  <i class="bi-exclamation-triangle me-1"></i>{% trans "Break-glass delete" %}
+                  <i class="bi-exclamation-triangle text-danger"></i>
                 </a>
               {% endif %}
             {% else %}
@@ -276,6 +283,23 @@
               </dd>
             </dl>
           </div>
+          {% if workflow.is_archived and not workflow.is_tombstoned and can_manage_workflow %}
+            <div class="card-footer d-flex justify-content-end">
+              <form method="post"
+                    action="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="unarchive" value="1" />
+                <button type="submit"
+                        class="btn btn-sm btn-outline-secondary"
+                        data-bs-toggle="tooltip"
+                        data-bs-placement="top"
+                        title="{% trans "Unarchive workflow" %}"
+                        onclick="return confirm('{% trans "Unarchive this workflow?" %}');">
+                  <i class="bi-arrow-counterclockwise me-1"></i>{% trans "Unarchive" %}
+                </button>
+              </form>
+            </div>
+          {% endif %}
         </div>
         {% if not workflow.is_tombstoned %}
           {% include "workflows/partials/workflow_public_info_card.html" with workflow=workflow public_info_url=public_info_url can_manage_public_info=can_manage_public_info %}

@@ -7,8 +7,21 @@ Displays run metadata: status, submission name, finding counts,
 source, timestamps, and duration. Submission content and metadata
 are shown in the User Inputs card instead.
 {% endcomment %}
-<div class="card validation-info-card">
-  <div class="card-header">{% trans "Run Summary" %}</div>
+<div class="card app-card validation-info-card">
+  <div class="card-header">
+    <div class="card-title">{% trans "Run Summary" %}</div>
+    <div class="card-header-buttons">
+      <a class="btn btn-sm btn-light"
+         href="{% url 'validations:validation_json' run.pk %}"
+         target="_blank"
+         data-bs-toggle="tooltip"
+         data-bs-placement="top"
+         title="{% trans "View JSON" %}"
+         rel="noopener">
+        <i class="bi-code-slash"></i>
+      </a>
+    </div>
+  </div>
   <div class="card-body">
     <section>
       <dl class="row small mb-0">
@@ -88,7 +101,7 @@ are shown in the User Inputs card instead.
           <dt class="col-5 col-lg-4">{% trans "Submitter" %}</dt>
           <dd class="col-7 col-lg-8">
             {{ run.user.username }}
-            {% if run.user.get_full_name %}({{ run.user.get_full_name }}){% endif %}
+            {% if run.user.name and run.user.name != run.user.username %}({{ run.user.name }}){% endif %}
           </dd>
         {% endif %}
         <dt class="col-5 col-lg-4 ">{% trans "Started" %}</dt>
@@ -127,12 +140,6 @@ are shown in the User Inputs card instead.
       </section>
     {% endif %}
     <section>
-      <a class="btn btn-sm btn-outline-secondary w-100"
-         href="{% url 'validations:validation_json' run.pk %}"
-         target="_blank"
-         rel="noopener">
-        <i class="bi-code-slash me-1"></i>{% trans "View JSON" %}
-      </a>
     </section>
   </div>
 </div>

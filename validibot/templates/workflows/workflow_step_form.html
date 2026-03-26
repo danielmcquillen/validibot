@@ -58,17 +58,6 @@
             </div>
           </div>
         {% endif %}
-        {% if credential_step_guidance %}
-          <div class="alert alert-info d-flex gap-2" role="alert">
-            <i class="bi bi-info-circle-fill flex-shrink-0 mt-1"></i>
-            <div>
-              <strong>{{ credential_step_guidance.headline }}</strong>
-              <div>{{ credential_step_guidance.followup }}</div>
-              <div class="small mt-1">{{ credential_step_guidance.summary }}</div>
-              <div class="small text-muted">{{ credential_step_guidance.status }}</div>
-            </div>
-          </div>
-        {% endif %}
         <form method="post"
               enctype="multipart/form-data"
               class="d-flex flex-column gap-4">
@@ -116,6 +105,17 @@
         </form>
       </div>
     </div>
+    {% if credential_step_guidance %}
+      <div class="alert alert-info d-flex gap-2 mt-4" role="alert">
+        <i class="bi bi-info-circle-fill flex-shrink-0 mt-1"></i>
+        <div>
+          <strong>{{ credential_step_guidance.headline }}</strong>
+          <div>{{ credential_step_guidance.followup }}</div>
+          <div class="small mt-1">{{ credential_step_guidance.summary }}</div>
+          <div class="small text-muted">{{ credential_step_guidance.status }}</div>
+        </div>
+      </div>
+    {% endif %}
   </div>
   {% comment %}
     Toggle EnergyPlus validation mode field groups.

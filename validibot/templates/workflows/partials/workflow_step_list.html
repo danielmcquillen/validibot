@@ -25,6 +25,7 @@
                         <span class="badge text-bg-light text-uppercase small">{{ validator.get_validation_type_display }}</span>
                       {% elif action %}
                         <span class="badge text-bg-light text-uppercase small">
+                          {% if step.is_signed_credential_step %}<i class="bi-award me-1"></i>{% endif %}
                           {{ meta.category_label|default:action.definition.get_action_category_display }}
                         </span>
                       {% endif %}
@@ -92,13 +93,7 @@
                       <p class="text-muted small mb-2">
                         <i class="bi {{ meta.icon|default:'bi-gear' }} me-1"></i>
                         {{ meta.definition_name|default:action.definition.name }}
-                        · {{ meta.category_label|default:action.definition.get_action_category_display }}
                       </p>
-                      {% if action.description %}
-                        <p class="text-muted small mb-2">{{ action.description|linebreaksbr }}</p>
-                      {% elif meta.definition_description %}
-                        <p class="text-muted small mb-2">{{ meta.definition_description|linebreaksbr }}</p>
-                      {% endif %}
                       {% with summary=step.action_summary %}
                         {% if summary.message %}
                           <p class="text-muted small mb-2">
@@ -107,7 +102,7 @@
                             {{ summary.message|linebreaksbr }}
                           </p>
                         {% endif %}
-                        {% if summary.extras %}
+                        {% if summary.extras and not step.is_signed_credential_step %}
                           <dl class="row small text-muted mb-0">
                             {% for key, value in summary.extras.items %}
                               <dt class="col-sm-4 text-uppercase">
@@ -118,9 +113,6 @@
                               </dd>
                             {% endfor %}
                           </dl>
-                        {% endif %}
-                        {% if not summary.message and not summary.extras %}
-                          <p class="text-muted small mb-0">{% trans "No additional configuration" %}</p>
                         {% endif %}
                         {% if step.credential_ordering_hint %}
                           <p class="text-muted small mb-0 mt-2">{{ step.credential_ordering_hint }}</p>

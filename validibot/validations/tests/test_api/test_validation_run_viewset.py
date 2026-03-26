@@ -10,6 +10,7 @@ pagination, and field-level filtering via ``ValidationRunFilter``.
 import contextlib
 import logging
 from datetime import timedelta
+from types import ModuleType
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
@@ -40,6 +41,24 @@ from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.workflows.tests.factories import WorkflowFactory
 
 logger = logging.getLogger(__name__)
+
+
+def _fake_pro_modules(credential):
+    """Return a minimal validibot_pro module tree for community API tests."""
+
+    pro_module = ModuleType("validibot_pro")
+    credentials_module = ModuleType("validibot_pro.credentials")
+    models_module = ModuleType("validibot_pro.credentials.models")
+    models_module.IssuedCredential = SimpleNamespace(
+        objects=SimpleNamespace(
+            filter=lambda **_kwargs: SimpleNamespace(first=lambda: credential),
+        ),
+    )
+    return {
+        "validibot_pro": pro_module,
+        "validibot_pro.credentials": credentials_module,
+        "validibot_pro.credentials.models": models_module,
+    }
 
 
 def runs_list_url(org) -> str:
@@ -304,8 +323,7 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(issues[0]["message"], finding.message)
         self.assertEqual(issues[0]["path"], finding.path)
 
-    @patch("validibot_pro.credentials.models.IssuedCredential.objects.filter")
-    def test_detail_includes_credential_metadata(self, filter_mock):
+    def test_detail_includes_credential_metadata(self):
         """Detail responses should expose credential download metadata when present."""
         self.client.force_authenticate(user=self.user)
         run = ValidationRunFactory(
@@ -321,9 +339,8 @@ class ValidationRunViewSetTestCase(TestCase):
             media_type="application/vc+jwt",
             created=issued_at,
         )
-        filter_mock.return_value.first.return_value = credential
-
-        response = self.client.get(runs_detail_url(self.org, run))
+        with patch.dict("sys.modules", _fake_pro_modules(credential)):
+            response = self.client.get(runs_detail_url(self.org, run))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
@@ -338,8 +355,7 @@ class ValidationRunViewSetTestCase(TestCase):
             },
         )
 
-    @patch("validibot_pro.credentials.models.IssuedCredential.objects.filter")
-    def test_credential_download_returns_compact_jws(self, filter_mock):
+    def test_credential_download_returns_compact_jws(self):
         """The download action should return the stored compact vc+jwt artifact."""
         self.client.force_authenticate(user=self.user)
         run = ValidationRunFactory(
@@ -349,17 +365,26 @@ class ValidationRunViewSetTestCase(TestCase):
             project=self.project,
             status=ValidationRunStatus.SUCCEEDED,
         )
-        filter_mock.return_value.first.return_value = SimpleNamespace(
+        credential = SimpleNamespace(
             credential_jws="header.payload.signature",
+            payload_json={
+                "credentialSubject": {
+                    "resourceLabel": "Product 1",
+                },
+            },
         )
 
-        response = self.client.get(runs_credential_download_url(self.org, run))
+        with patch.dict("sys.modules", _fake_pro_modules(credential)):
+            response = self.client.get(runs_credential_download_url(self.org, run))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response["Content-Type"], "application/vc+jwt")
         self.assertEqual(
             response["Content-Disposition"],
-            f'attachment; filename="credential-{run.pk}.jwt"',
+            (
+                "attachment; filename="
+                f'"product-1__{run.workflow.slug}__signed-credential.jwt"'
+            ),
         )
         self.assertEqual(response.content.decode("utf-8"), "header.payload.signature")
 

@@ -160,6 +160,22 @@ available without authentication at `/workflows/<workflow uuid>/info`.
 
 All modes end up identical after ingestion: a Submission plus a queued ValidationRun.
 
+## Submission labels and signed credentials
+
+If a workflow later issues a signed credential, Validibot includes a small
+human-facing `resourceLabel` claim in the signed payload so people can tell
+credentials apart without comparing raw digests.
+
+The label is resolved in this order:
+
+- the stored submission name, when one exists;
+- otherwise the original filename;
+- otherwise a short fallback like `Submission 42065c74`.
+
+The credential download filename is then derived from that signed label and the
+workflow slug. The human-readable label is signed inside the credential, while
+the download filename is just a convenient filesystem-safe wrapper around it.
+
 ## File type expectations
 
 - Every workflow stores an `allowed_file_types` array (JSON, XML, TEXT, YAML, etc.). Authors select these options on the workflow form; the launch UI now renders a dropdown only when there is more than one choice.

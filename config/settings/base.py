@@ -795,6 +795,10 @@ GCS_ENERGYPLUS_JOB_NAME = env("GCS_ENERGYPLUS_JOB_NAME", default="")
 GCS_FMU_JOB_NAME = env("GCS_FMU_JOB_NAME", default="")
 SITE_URL = env("SITE_URL", default="http://localhost:8000")
 WORKER_URL = env("WORKER_URL", default="")
+CREDENTIAL_ISSUER_URL = env("CREDENTIAL_ISSUER_URL", default=SITE_URL)
+SIGNING_KEY_PATH = env("SIGNING_KEY_PATH", default="")
+GCP_KMS_SIGNING_KEY = env("GCP_KMS_SIGNING_KEY", default="")
+SIGNING_ALGORITHM = env("SIGNING_ALGORITHM", default="ES256")
 CLOUD_TASKS_SERVICE_ACCOUNT = env("CLOUD_TASKS_SERVICE_ACCOUNT", default="")
 
 # Shared secret for authenticating requests to worker-only API endpoints.

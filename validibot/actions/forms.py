@@ -23,6 +23,7 @@ class BaseWorkflowActionForm(BaseStepConfigForm):
         self._existing_action = getattr(step, "action", None) if step else None
         super().__init__(*args, step=step, **kwargs)
         self.fields.pop("display_schema", None)
+        self.fields.pop("show_success_messages", None)
 
         if self._existing_action:
             action = self._existing_action

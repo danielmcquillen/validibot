@@ -47,3 +47,24 @@ DJANGO_ACCOUNT_ALLOW_LOGIN=true
 # Lower = more responsive UI but more server requests.
 # Higher = fewer requests but slower feedback.
 WORKFLOW_RUN_POLL_INTERVAL_SECONDS=3
+
+# Signed Credentials (Pro / Enterprise)
+# ------------------------------------------------------------------------------
+# Generate a local P-256 signing key if you want to issue signed credentials:
+#   mkdir -p .envs/.local/keys
+#   openssl ecparam -name prime256v1 -genkey -noout \
+#     -out .envs/.local/keys/credential-signing.pem
+#   chmod 600 .envs/.local/keys/credential-signing.pem
+#
+# The standard local Docker Compose stack mounts .envs/.local/keys into the
+# containers at /run/validibot-keys. The separate local-cloud stack mounts the
+# whole repo at /app, so use /app/.envs/.local/keys/... there instead.
+SIGNING_KEY_PATH=
+# Example:
+# SIGNING_KEY_PATH=/run/validibot-keys/credential-signing.pem
+#
+# Optional explicit issuer URL for credential payloads. Leave empty to reuse
+# SITE_URL when signing is enabled.
+CREDENTIAL_ISSUER_URL=
+# Optional override. ES256 is the only algorithm currently supported.
+SIGNING_ALGORITHM=ES256

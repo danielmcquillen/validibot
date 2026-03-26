@@ -30,6 +30,7 @@ services:
       - validibot
     volumes:
       - .:/app
+      - ./.envs/.local/keys:/run/validibot-keys:ro
       # Shared storage volume for validation files (accessible by validator containers)
       - validibot_local_storage:/app/storage
     env_file:
@@ -70,6 +71,7 @@ services:
     command: ["celery", "-A", "config", "worker", "--loglevel=info", "--concurrency=1"]
     volumes:
       - .:/app
+      - ./.envs/.local/keys:/run/validibot-keys:ro
       - validibot_local_storage:/app/storage
       # Only the worker needs Docker socket access to spawn validator containers.
       - /var/run/docker.sock:/var/run/docker.sock

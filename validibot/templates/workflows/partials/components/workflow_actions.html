@@ -1,6 +1,22 @@
 {% load i18n core_tags %}
 
 <div class="d-flex flex-row flex-wrap gap-2 justify-content-end align-items-center w-100">
+  {% if show_archived_footer_unarchive and workflow.is_archived and workflow.curr_user_can_delete %}
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary me-auto"
+            hx-post="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}"
+            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+            hx-vals='{"unarchive": "1", "layout": "{{ current_layout|default:"" }}", "show_archived": "{{ show_archived|yesno:"1,0" }}"}'
+            hx-target="#workflow-item-wrapper-{{ workflow.pk }}"
+            hx-swap="outerHTML"
+            data-bs-toggle="tooltip"
+            data-bs-placement="top"
+            title="{% trans "Unarchive workflow" %}"
+            aria-label="{% blocktrans with workflow_name=workflow.name trimmed %} Unarchive {{ workflow_name }} {% endblocktrans %}"
+            hx-confirm="{% trans "Unarchive this workflow?" %}">
+      <i class="bi bi-arrow-counterclockwise me-1"></i>{% trans "Unarchive" %}
+    </button>
+  {% endif %}
   {% if workflow.curr_user_can_execute %}
     <a class="btn btn-sm btn-launch me-auto"
        href="{% org_url 'workflows:workflow_launch' pk=workflow.pk %}"

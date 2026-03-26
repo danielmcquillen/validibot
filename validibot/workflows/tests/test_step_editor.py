@@ -438,6 +438,10 @@ def test_create_signed_credential_action_without_extra_config(client):
     html = response.content.decode()
     assert "Signed credential steps must come after all validation steps" in html
     assert "Advisory actions may appear after the signed credential step." in html
+    assert "Show success messages for passed assertions" not in html
+    assert html.index("Step name") < html.index(
+        "Signed credential steps must come after all validation steps",
+    )
 
     response = client.post(
         create_url,
@@ -966,7 +970,7 @@ def test_step_list_renders_action_step(client):
 
 
 def test_step_list_renders_signed_credential_summary(client):
-    """The step list falls back to no extra config for signed credentials."""
+    """Credential steps should render a minimal summary in the step list."""
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     definition = make_action_definition(
@@ -995,7 +999,9 @@ def test_step_list_renders_signed_credential_summary(client):
 
     assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
-    assert "No additional configuration" in html
+    assert "bi-award" in html
+    assert "Signed credential · Credential" not in html
+    assert "No additional configuration" not in html
 
 
 def test_step_list_disables_invalid_signed_credential_move(client):

@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import factory
 from factory.django import DjangoModelFactory
 
@@ -10,7 +12,7 @@ class ProjectFactory(DjangoModelFactory):
         model = Project
 
     name = factory.Sequence(lambda n: f"Test Project {n}")
-    slug = factory.Sequence(lambda n: f"test-project-{n}")
+    slug = factory.LazyFunction(lambda: f"test-project-{uuid4().hex[:12]}")
     org = factory.SubFactory(OrganizationFactory)
     description = factory.Faker("text", max_nb_chars=200)
     is_default = False

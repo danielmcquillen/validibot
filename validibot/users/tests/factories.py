@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from typing import Any
+from uuid import uuid4
 
 import factory
 from factory import Faker
@@ -19,7 +20,7 @@ class OrganizationFactory(DjangoModelFactory):
         model = Organization
 
     name = factory.Sequence(lambda n: f"Test Organization {n}")
-    slug = factory.Sequence(lambda n: f"test-org-{n}")
+    slug = factory.LazyFunction(lambda: f"test-org-{uuid4().hex[:12]}")
 
 
 class UserFactory(DjangoModelFactory[User]):

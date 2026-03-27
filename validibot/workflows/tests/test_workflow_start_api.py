@@ -468,21 +468,22 @@ class TestWorkflowStartAPI:
         )
 
         assert resp.status_code == status.HTTP_201_CREATED, resp.data
+        run_id = resp.data["id"]
 
-        created_event = TrackingEvent.objects.filter(
+        created_event = TrackingEvent.objects.get(
             app_event_type=AppEventType.VALIDATION_RUN_CREATED,
-        ).first()
-        started_event = TrackingEvent.objects.filter(
+            extra_data__validation_run_id=run_id,
+        )
+        started_event = TrackingEvent.objects.get(
             app_event_type=AppEventType.VALIDATION_RUN_STARTED,
-        ).first()
+            extra_data__validation_run_id=run_id,
+        )
 
-        assert created_event is not None
         assert created_event.project_id == project.id
         assert created_event.org_id == org.id
         assert created_event.user_id == user.id
         assert created_event.extra_data.get("workflow_pk") == workflow.pk
 
-        assert started_event is not None
         assert started_event.project_id == project.id
         assert started_event.extra_data.get("status") == ValidationRunStatus.RUNNING
 
@@ -510,10 +511,10 @@ class TestWorkflowStartAPI:
         run = ValidationRun.objects.get(pk=body["id"])
         assert run.project_id == workflow.project_id
 
-        created_event = TrackingEvent.objects.filter(
+        created_event = TrackingEvent.objects.get(
             app_event_type=AppEventType.VALIDATION_RUN_CREATED,
-        ).first()
-        assert created_event is not None
+            extra_data__validation_run_id=body["id"],
+        )
         assert created_event.project_id == workflow.project_id
 
     def test_start_with_raw_body_xml_returns_201(

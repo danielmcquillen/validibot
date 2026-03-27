@@ -367,9 +367,13 @@ class TestProcessPurgeRetriesCommand:
         assert "DRY RUN" in out.getvalue()
 
     def test_does_not_process_future_retries(self):
-        """Command should not process retries scheduled for the future."""
+        """Future retries must remain untouched until their due time arrives.
+
+        The assertion targets the specific retry created in this test instead
+        of assuming the command runs against an otherwise empty retry table.
+        """
         submission = SubmissionFactory(content='{"test": "data"}')
-        PurgeRetry.objects.create(
+        retry = PurgeRetry.objects.create(
             submission=submission,
             next_retry_at=timezone.now() + timedelta(hours=1),
         )
@@ -380,10 +384,17 @@ class TestProcessPurgeRetriesCommand:
         # Submission should not be purged (retry not due yet)
         submission.refresh_from_db()
         assert submission.content_purged_at is None
-        assert "No pending purge retries" in out.getvalue()
+        retry.refresh_from_db()
+        assert retry.attempt_count == 0
+        assert PurgeRetry.objects.filter(id=retry.id).exists()
+        assert str(submission.id) not in out.getvalue()
 
     def test_does_not_process_max_attempts_exceeded(self):
-        """Command should not process retries that exceeded max attempts."""
+        """Retries at max attempts must be left for manual intervention.
+
+        The command may legitimately process other due retries, so this test
+        verifies that the exhausted retry itself is not touched.
+        """
         submission = SubmissionFactory(content='{"test": "data"}')
         retry = PurgeRetry.objects.create(
             submission=submission,
@@ -399,10 +410,10 @@ class TestProcessPurgeRetriesCommand:
         assert submission.content_purged_at is None  # Not purged
 
         # Retry record should still exist (not deleted)
+        retry.refresh_from_db()
+        assert retry.attempt_count == PurgeRetry.MAX_ATTEMPTS
         assert PurgeRetry.objects.filter(id=retry.id).exists()
-
-        # No pending retries message shown (stale ones excluded)
-        assert "No pending purge retries" in out.getvalue()
+        assert str(submission.id) not in out.getvalue()
 
     def test_reports_stale_retries_after_processing(self):
         """Command should report stale retries after processing pending ones."""
@@ -450,6 +461,8 @@ class TestProcessPurgeRetriesCommand:
 
     def test_no_pending_retries(self):
         """Command should report when no pending retries exist."""
+        PurgeRetry.objects.all().delete()
+
         out = StringIO()
         call_command("process_purge_retries", stdout=out)
 

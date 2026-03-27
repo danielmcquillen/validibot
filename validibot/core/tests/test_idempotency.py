@@ -306,11 +306,16 @@ class TestIdempotencyKey:
         user,
         workflow,
     ):
-        """Expired idempotency key allows request to be reprocessed."""
+        """Expired idempotency keys should allow a fresh run to be created.
+
+        The assertion compares against the pre-request baseline so the test
+        remains stable even if fixture setup starts creating additional runs.
+        """
         api_client.force_authenticate(user=user)
         grant_role(user, org, RoleCode.EXECUTOR)
         idempotency_key = str(uuid.uuid4())
         payload = json.dumps({"hello": "world"})
+        initial_run_count = ValidationRun.objects.count()
 
         # First request
         resp1 = api_client.post(
@@ -339,8 +344,7 @@ class TestIdempotencyKey:
         assert "Idempotent-Replayed" not in resp2
         assert resp2.data["id"] != first_run_id
 
-        # Two validation runs should exist
-        assert ValidationRun.objects.count() == 2  # noqa: PLR2004
+        assert ValidationRun.objects.count() == initial_run_count + 2
 
     def test_in_flight_request_returns_409(
         self,

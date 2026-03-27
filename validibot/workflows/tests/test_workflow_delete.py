@@ -1,4 +1,28 @@
-"""Tests for workflow deletion safeguards."""
+"""Tests for workflow deletion and tombstone safeguards.
+
+Workflows that have issued signed credentials must not be silently deleted —
+they act as historical records that external verifiers can reference.
+
+This module tests three layers of deletion protection:
+
+1. **HTMX delete blocking** — ordinary delete requests are refused with
+   HTTP 409 Conflict when credentials exist, redirecting the user to the
+   workflow detail page for context.
+
+2. **Break-glass tombstone flow** — owners may use a separate high-friction
+   delete endpoint that requires UUID confirmation, a written reason, and an
+   explicit acknowledgement of consequences. The workflow is tombstoned
+   (removed from normal surfaces, flagged as inactive) rather than hard-deleted,
+   preserving referential integrity for historical runs and credentials.
+
+3. **Tombstone effects** — tombstoned workflows are hidden from lists and
+   launch flows, but their detail page and validation history remain accessible
+   for audit and historical inspection.
+
+These tests exist because silently removing credential-bearing workflows would
+break the issuer-side explanation story even if the JWS itself remains valid.
+The deletion contract is part of the signed-credential ADR's trust model.
+"""
 
 from __future__ import annotations
 
@@ -124,6 +148,91 @@ def test_break_glass_delete_requires_owner_role(
     assert response.status_code == HTTPStatus.FORBIDDEN
 
 
+def test_break_glass_wrong_uuid_rejected(
+    client,
+    monkeypatch,
+):
+    """The break-glass form must reject a UUID confirmation that doesn't match.
+
+    The form requires the user to type the exact workflow UUID to confirm
+    they understand which specific workflow version they are tombstoning.
+    A wrong UUID (e.g., a copy-paste error) must return the form with an
+    error rather than silently proceeding.
+    """
+    owner = UserFactory()
+    workflow = WorkflowFactory(user=owner)
+    grant_role(owner, workflow.org, RoleCode.OWNER)
+    _login_with_org(client, owner, workflow)
+
+    monkeypatch.setattr(
+        "validibot.workflows.views.management._workflow_has_issued_credentials",
+        lambda _workflow: True,
+    )
+    monkeypatch.setattr(
+        "validibot.workflows.views.management._workflow_issued_credential_count",
+        lambda _workflow: 1,
+    )
+    monkeypatch.setattr(
+        "validibot.workflows.views.management._compute_workflow_definition_hash",
+        lambda _workflow: "abc123",
+    )
+
+    response = client.post(
+        reverse("workflows:workflow_break_glass_delete", args=[workflow.pk]),
+        data={
+            "workflow_uuid_confirmation": "00000000-0000-0000-0000-000000000000",
+            "deletion_reason": "Customer requested historical removal.",
+            "acknowledge_consequences": "on",
+        },
+    )
+
+    workflow.refresh_from_db()
+    assert response.status_code == HTTPStatus.OK  # Form re-rendered with error
+    assert workflow.is_tombstoned is False
+
+
+def test_break_glass_missing_reason_rejected(
+    client,
+    monkeypatch,
+):
+    """The break-glass form must reject a submission with no deletion reason.
+
+    A written reason is required so there is a human-readable audit trail
+    explaining why a credential-bearing workflow was removed from normal
+    product surfaces.  An empty reason field must fail form validation.
+    """
+    owner = UserFactory()
+    workflow = WorkflowFactory(user=owner)
+    grant_role(owner, workflow.org, RoleCode.OWNER)
+    _login_with_org(client, owner, workflow)
+
+    monkeypatch.setattr(
+        "validibot.workflows.views.management._workflow_has_issued_credentials",
+        lambda _workflow: True,
+    )
+    monkeypatch.setattr(
+        "validibot.workflows.views.management._workflow_issued_credential_count",
+        lambda _workflow: 1,
+    )
+    monkeypatch.setattr(
+        "validibot.workflows.views.management._compute_workflow_definition_hash",
+        lambda _workflow: "abc123",
+    )
+
+    response = client.post(
+        reverse("workflows:workflow_break_glass_delete", args=[workflow.pk]),
+        data={
+            "workflow_uuid_confirmation": str(workflow.uuid),
+            "deletion_reason": "",
+            "acknowledge_consequences": "on",
+        },
+    )
+
+    workflow.refresh_from_db()
+    assert response.status_code == HTTPStatus.OK  # Form re-rendered with error
+    assert workflow.is_tombstoned is False
+
+
 def test_tombstoned_workflow_is_hidden_from_list_and_launch(
     client,
 ):
@@ -185,3 +294,44 @@ def test_tombstoned_workflow_detail_and_validation_history_remain_accessible(
     assert "The runs below remain available for historical inspection." in (
         history_response.content.decode()
     )
+
+
+def test_tombstoned_workflow_rejects_new_step_creation(
+    client,
+):
+    """Tombstoned workflows must not accept new steps.
+
+    A tombstoned workflow is a protected historical record.  Allowing
+    further authoring would corrupt the attestation chain by creating
+    a workflow version that never actually ran against the issued
+    credentials.  The step editor must refuse to create steps on
+    tombstoned workflows.
+    """
+    from validibot.validations.tests.factories import ValidatorFactory
+
+    owner = UserFactory()
+    workflow = WorkflowFactory(user=owner)
+    grant_role(owner, workflow.org, RoleCode.OWNER)
+    _login_with_org(client, owner, workflow)
+    workflow.tombstone(
+        deleted_by=owner,
+        reason="Historical cleanup",
+        workflow_definition_hash="deadbeef",
+    )
+
+    validator = ValidatorFactory()
+    create_url = reverse(
+        "workflows:workflow_step_create",
+        args=[workflow.pk, validator.pk],
+    )
+    response = client.post(
+        create_url,
+        data={},
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code in (
+        HTTPStatus.NOT_FOUND,
+        HTTPStatus.FORBIDDEN,
+    )
+    assert workflow.steps.count() == 0

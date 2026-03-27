@@ -674,7 +674,13 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(response.data["status"], ValidationRunStatus.PENDING)
 
     def test_delete_validation_run(self):
-        """Test deleting a validation run."""
+        """DELETE should be rejected without removing the addressed run.
+
+        The viewset does not support run deletion via the API, so the response
+        must be ``405 METHOD NOT ALLOWED`` and the targeted run must remain in
+        the database. The test avoids hard-coding the total row count because
+        shared setup may legitimately create additional runs in the future.
+        """
         self.client.force_authenticate(user=self.user)
 
         run = ValidationRunFactory(
@@ -689,7 +695,7 @@ class ValidationRunViewSetTestCase(TestCase):
         response = self.client.delete(url)
 
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
-        self.assertEqual(ValidationRun.objects.count(), 1)  # Still exists
+        self.assertTrue(ValidationRun.objects.filter(pk=run.pk).exists())
 
     def test_ordering(self):
         """Test that results are ordered by creation date (newest first)."""

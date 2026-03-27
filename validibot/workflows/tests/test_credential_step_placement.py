@@ -27,8 +27,10 @@ from validibot.actions.constants import ActionCategoryType
 from validibot.actions.constants import ActionFailureMode
 from validibot.actions.constants import CredentialActionType
 from validibot.actions.constants import IntegrationActionType
+from validibot.actions.forms import BaseWorkflowActionForm
 from validibot.actions.models import Action
 from validibot.actions.models import ActionDefinition
+from validibot.actions.registry import ACTION_FORM_REGISTRY
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
@@ -40,6 +42,10 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 from validibot.workflows.views.steps import _validate_credential_step_order
 
 pytestmark = pytest.mark.django_db
+
+
+class StubSignedCredentialActionForm(BaseWorkflowActionForm):
+    """Minimal signed-credential form used to isolate feature-gating tests."""
 
 
 @pytest.fixture(autouse=True)
@@ -73,6 +79,16 @@ def workflow_with_owner():
     grant_role(user, org, RoleCode.OWNER)
     workflow = WorkflowFactory(org=org, user=user)
     return workflow, user, org
+
+
+@pytest.fixture
+def registered_signed_credential_form(monkeypatch):
+    """Temporarily register a minimal credential form for gating tests."""
+    monkeypatch.setitem(
+        ACTION_FORM_REGISTRY,
+        CredentialActionType.SIGNED_CREDENTIAL,
+        StubSignedCredentialActionForm,
+    )
 
 
 # ── Placement validation ─────────────────────────────────────────────
@@ -249,6 +265,189 @@ class TestCredentialStepPlacementValidation:
         )
         assert _validate_credential_step_order([step]) is None
 
+    def test_at_most_one_credential_step_enforced_by_model_clean(
+        self, credential_definition
+    ):
+        """Model clean rejects a second credential step in the same workflow.
+
+        The ADR mandates at most one SignedCredentialAction per workflow:
+        having two would be semantically ambiguous (which one is the
+        authoritative attestation?) and architecturally confusing.
+
+        This test verifies the rule is caught by WorkflowStep.full_clean(),
+        which is called by the step editor's form validation before saving.
+        """
+        from django.core.exceptions import ValidationError
+
+        workflow = WorkflowFactory()
+        cred_action_1 = Action.objects.create(
+            definition=credential_definition,
+            slug="test-cred-first",
+            name="First Credential",
+            failure_mode=ActionFailureMode.ADVISORY,
+        )
+        WorkflowStepFactory(
+            workflow=workflow,
+            order=10,
+            action=cred_action_1,
+            validator=None,
+        )
+
+        cred_action_2 = Action.objects.create(
+            definition=credential_definition,
+            slug="test-cred-second",
+            name="Second Credential",
+            failure_mode=ActionFailureMode.ADVISORY,
+        )
+        step2 = WorkflowStepFactory(
+            workflow=workflow,
+            order=20,
+            action=cred_action_2,
+            validator=None,
+        )
+
+        with pytest.raises(ValidationError):
+            step2.full_clean()
+
+
+# ── Reorder endpoint enforcement ─────────────────────────────────────
+# The HTMX step-move endpoint validates placement after computing the
+# proposed new order, because raw .update() bypasses model clean().
+
+
+class TestReorderEndpointEnforcement:
+    """Verify the HTMX move endpoint enforces credential step placement.
+
+    The WorkflowStepMoveView uses raw ``QuerySet.update()`` for
+    performance, which skips Django's model ``clean()`` method.
+    Placement is therefore checked explicitly in the view before
+    the update is committed.
+
+    These tests confirm that the endpoint rejects moves that would
+    produce an invalid order rather than silently persisting them.
+    """
+
+    def test_reorder_endpoint_rejects_move_that_puts_credential_before_validator(
+        self,
+        client,
+        workflow_with_owner,
+        credential_definition,
+    ):
+        """Moving a credential step above a validator step should return 400.
+
+        The credential attests the final outcome of all blocking work, so
+        it must stay below all validator steps.  The move endpoint must
+        catch this before writing to the database.
+        """
+        workflow, user, org = workflow_with_owner
+        client.force_login(user)
+        user.set_current_org(org)
+
+        validator = ValidatorFactory()
+        WorkflowStepFactory(workflow=workflow, order=10, validator=validator)
+
+        cred_action = Action.objects.create(
+            definition=credential_definition,
+            slug="test-cred-reorder",
+            name="Credential",
+            failure_mode=ActionFailureMode.ADVISORY,
+        )
+        cred_step = WorkflowStepFactory(
+            workflow=workflow,
+            order=20,
+            action=cred_action,
+            validator=None,
+        )
+
+        move_url = reverse(
+            "workflows:workflow_step_move",
+            args=[workflow.pk, cred_step.pk],
+        )
+        response = client.post(
+            move_url,
+            data={"direction": "up"},
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == HTTPStatus.BAD_REQUEST
+
+        # The step order must not have changed.
+        cred_step.refresh_from_db()
+        assert cred_step.order == 20  # noqa: PLR2004
+
+    def test_reorder_endpoint_allows_valid_move_within_advisory_zone(
+        self,
+        client,
+        workflow_with_owner,
+        credential_definition,
+    ):
+        """Moving an advisory action above another advisory action is fine.
+
+        Advisory post-credential steps may be freely reordered among
+        themselves without violating placement rules.
+        """
+        workflow, user, org = workflow_with_owner
+        client.force_login(user)
+        user.set_current_org(org)
+
+        cred_action = Action.objects.create(
+            definition=credential_definition,
+            slug="test-cred-valid-move",
+            name="Credential",
+            failure_mode=ActionFailureMode.ADVISORY,
+        )
+        WorkflowStepFactory(
+            workflow=workflow,
+            order=10,
+            action=cred_action,
+            validator=None,
+        )
+
+        slack_defn, _ = ActionDefinition.objects.get_or_create(
+            slug="integration-slack-message-move",
+            defaults={
+                "name": "Slack",
+                "action_category": ActionCategoryType.INTEGRATION,
+                "type": IntegrationActionType.SLACK_MESSAGE,
+            },
+        )
+        slack_action_1 = Action.objects.create(
+            definition=slack_defn,
+            slug="test-slack-move-1",
+            name="Slack A",
+            failure_mode=ActionFailureMode.ADVISORY,
+        )
+        slack_step_1 = WorkflowStepFactory(
+            workflow=workflow,
+            order=20,
+            action=slack_action_1,
+            validator=None,
+        )
+        slack_action_2 = Action.objects.create(
+            definition=slack_defn,
+            slug="test-slack-move-2",
+            name="Slack B",
+            failure_mode=ActionFailureMode.ADVISORY,
+        )
+        WorkflowStepFactory(
+            workflow=workflow,
+            order=30,
+            action=slack_action_2,
+            validator=None,
+        )
+
+        move_url = reverse(
+            "workflows:workflow_step_move",
+            args=[workflow.pk, slack_step_1.pk],
+        )
+        response = client.post(
+            move_url,
+            data={"direction": "down"},
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == HTTPStatus.NO_CONTENT
+
 
 # ── Server-side feature gating ───────────────────────────────────────
 # The create endpoint must reject Pro-only actions when the feature is
@@ -268,6 +467,7 @@ class TestServerSideFeatureGating:
         client,
         workflow_with_owner,
         credential_definition,
+        registered_signed_credential_form,
     ):
         """Attempting to create a credential step without Pro installed
         should return 404, not silently succeed.
@@ -293,6 +493,48 @@ class TestServerSideFeatureGating:
         try:
             response = client.get(url)
             assert response.status_code == HTTPStatus.NOT_FOUND
+        finally:
+            reset_features()
+            for feature in original_features:
+                register_feature(feature)
+
+    def test_create_endpoint_allows_when_feature_enabled(
+        self,
+        client,
+        workflow_with_owner,
+        credential_definition,
+        registered_signed_credential_form,
+    ):
+        """The step create endpoint returns a form when the feature is active.
+
+        This is the positive case for server-side feature gating: when
+        ``signed_credentials`` is registered (as it would be when
+        validibot-pro is installed), the endpoint should render the
+        credential step form rather than returning 404.
+        """
+        from validibot.core.features import get_enabled_features
+        from validibot.core.features import register_feature
+        from validibot.core.features import reset_features
+
+        workflow, user, org = workflow_with_owner
+        client.force_login(user)
+        user.set_current_org(org)
+
+        url = reverse(
+            "workflows:workflow_step_action_create",
+            kwargs={
+                "pk": workflow.pk,
+                "action_definition_id": credential_definition.pk,
+            },
+        )
+
+        original_features = get_enabled_features()
+        reset_features()
+        register_feature("signed_credentials")
+        try:
+            response = client.get(url)
+            assert response.status_code == HTTPStatus.OK
+            assert "Step name" in response.content.decode()
         finally:
             reset_features()
             for feature in original_features:

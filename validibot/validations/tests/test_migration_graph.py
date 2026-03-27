@@ -1,9 +1,8 @@
-from django.db import connection
 from django.db.migrations.loader import MigrationLoader
-from django.test import TestCase
+from django.test import SimpleTestCase
 
 
-class ValidationMigrationGraphTests(TestCase):
+class ValidationMigrationGraphTests(SimpleTestCase):
     """Regression tests for the validation migration graph.
 
     These checks preserve compatibility with deployed databases that already
@@ -13,7 +12,7 @@ class ValidationMigrationGraphTests(TestCase):
 
     def test_agent_access_migration_keeps_original_0023_dependency(self) -> None:
         """``0024_agent_access_fields`` must still depend on the applied 0023."""
-        loader = MigrationLoader(connection, ignore_no_migrations=True)
+        loader = MigrationLoader(None, ignore_no_migrations=True)
         migration = loader.disk_migrations[("validations", "0024_agent_access_fields")]
 
         self.assertIn(
@@ -23,7 +22,7 @@ class ValidationMigrationGraphTests(TestCase):
 
     def test_output_hash_is_a_forward_rename_migration(self) -> None:
         """``output_hash`` must arrive via a new tail migration."""
-        loader = MigrationLoader(connection, ignore_no_migrations=True)
+        loader = MigrationLoader(None, ignore_no_migrations=True)
         migration = loader.disk_migrations[
             ("validations", "0036_rename_evidence_hash_to_output_hash")
         ]

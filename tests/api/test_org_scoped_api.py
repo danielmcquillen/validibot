@@ -44,14 +44,14 @@ class OrgScopedWorkflowAPITestCase(TransactionTestCase):
         self.client = APIClient()
 
         # Create test organization
-        self.org = OrganizationFactory(slug="test-org")
+        self.org = OrganizationFactory()
 
         # Create test user with membership
         self.user = UserFactory(orgs=[self.org])
         grant_role(self.user, self.org, RoleCode.VALIDATION_RESULTS_VIEWER)
 
         # Create another org and user for isolation testing
-        self.other_org = OrganizationFactory(slug="other-org")
+        self.other_org = OrganizationFactory()
         self.other_user = UserFactory(orgs=[self.other_org])
         grant_role(self.other_user, self.other_org, RoleCode.VALIDATION_RESULTS_VIEWER)
 
@@ -179,7 +179,10 @@ class OrgScopedWorkflowAPITestCase(TransactionTestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("url", response.data)
-        self.assertIn("/api/v1/orgs/test-org/workflows/", response.data["url"])
+        self.assertIn(
+            f"/api/v1/orgs/{self.org.slug}/workflows/",
+            response.data["url"],
+        )
 
     def test_cross_org_workflow_not_accessible(self):
         """Users should not access workflows in orgs they're not members of."""
@@ -206,7 +209,7 @@ class WorkflowVersionAPITestCase(TransactionTestCase):
     def setUp(self):
         _ensure_roles()
         self.client = APIClient()
-        self.org = OrganizationFactory(slug="test-org")
+        self.org = OrganizationFactory()
         self.user = UserFactory(orgs=[self.org])
         grant_role(self.user, self.org, RoleCode.VALIDATION_RESULTS_VIEWER)
 

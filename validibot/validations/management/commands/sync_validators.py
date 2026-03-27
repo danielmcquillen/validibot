@@ -55,6 +55,7 @@ class Command(BaseCommand):
                         "catalog_entries",
                         "icon",
                         "output_envelope_class",
+                        "provider",
                         "resource_types",
                         "step_editor_cards",
                         "validator_class",

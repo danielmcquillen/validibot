@@ -38,6 +38,8 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
+from validibot.actions.constants import ActionFailureMode
+from validibot.actions.constants import CredentialActionType
 from validibot.tracking.services import TrackingEventService
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
@@ -46,10 +48,10 @@ from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
-from validibot.validations.services.evidence_hash import safe_stamp_evidence_hash
 from validibot.validations.services.findings_persistence import normalize_issue
 from validibot.validations.services.findings_persistence import persist_findings
 from validibot.validations.services.models import ValidationRunTaskResult
+from validibot.validations.services.output_hash import safe_stamp_output_hash
 from validibot.validations.services.step_processor.result import StepProcessingResult
 from validibot.validations.services.summary_builder import build_run_summary_record
 from validibot.validations.services.summary_builder import extract_assertion_total
@@ -212,7 +214,10 @@ class StepOrchestrator:
         step_metrics: list[StepProcessingResult] = []
 
         try:
-            workflow_steps = workflow.steps.all().order_by("order")
+            workflow_steps = workflow.steps.select_related(
+                "action",
+                "action__definition",
+            ).order_by("order")
             # Filter steps for resume execution — resume_from_step is the
             # order of the last *completed* step, so we use __gt to skip it
             # and start from the next one.
@@ -285,6 +290,21 @@ class StepOrchestrator:
                     # Action steps use StepHandler protocol — dispatch
                     # returns a ValidationResult that _record_step_result
                     # converts to StepProcessingResult with persistence.
+                    #
+                    # Failure handling depends on the action's failure_mode:
+                    # BLOCKING — a failed action fails the run (default).
+                    # ADVISORY — the step is marked failed but execution
+                    #            continues and the run may still succeed.
+                    is_advisory = (
+                        wf_step.action
+                        and wf_step.action.failure_mode == ActionFailureMode.ADVISORY
+                    )
+                    if self._is_signed_credential_step(wf_step):
+                        result = self._record_deferred_signed_credential_step(
+                            step_run=step_run,
+                        )
+                        step_metrics.append(result)
+                        continue
                     try:
                         validation_result: ValidationResult = (
                             self.execute_workflow_step(
@@ -293,8 +313,7 @@ class StepOrchestrator:
                             )
                         )
                     except Exception as exc:
-                        # Same pattern as the validator exception handler
-                        # above: persist failure, keep step_metrics in sync.
+                        # Persist failure and keep step_metrics in sync.
                         self._finalize_step_run(
                             step_run=step_run,
                             status=StepStatus.FAILED,
@@ -311,7 +330,16 @@ class StepOrchestrator:
                                 assertion_total=0,
                             ),
                         )
-                        raise
+                        if is_advisory:
+                            logger.warning(
+                                "Advisory action step %s raised %s — "
+                                "continuing execution.",
+                                wf_step.id,
+                                type(exc).__name__,
+                            )
+                        else:
+                            raise
+                        continue
                     result: StepProcessingResult = self._record_step_result(
                         validation_run=validation_run,
                         step_run=step_run,
@@ -319,9 +347,16 @@ class StepOrchestrator:
                     )
                     step_metrics.append(result)
                     if result.passed is False:
-                        overall_failed = True
-                        failing_step_id = wf_step.id
-                        break
+                        if is_advisory:
+                            logger.info(
+                                "Advisory action step %s returned "
+                                "passed=False — continuing execution.",
+                                wf_step.id,
+                            )
+                        else:
+                            overall_failed = True
+                            failing_step_id = wf_step.id
+                            break
                     if result.passed is None:
                         pending_async = True
                         break
@@ -355,7 +390,7 @@ class StepOrchestrator:
                 validation_run=validation_run,
                 step_metrics=step_metrics,
             )
-            safe_stamp_evidence_hash(validation_run)
+            safe_stamp_output_hash(validation_run)
             from validibot.submissions.models import queue_submission_purge
 
             queue_submission_purge(validation_run.submission)
@@ -378,7 +413,7 @@ class StepOrchestrator:
                 validation_run=validation_run,
                 step_metrics=step_metrics,
             )
-            safe_stamp_evidence_hash(validation_run)
+            safe_stamp_output_hash(validation_run)
             extra_payload = {
                 "step_count": len(step_metrics),
                 "finding_count": (
@@ -436,7 +471,15 @@ class StepOrchestrator:
             validation_run=validation_run,
             step_metrics=step_metrics,
         )
-        safe_stamp_evidence_hash(validation_run)
+        if validation_run.status == ValidationRunStatus.SUCCEEDED:
+            if self._finalize_deferred_signed_credentials(
+                validation_run=validation_run,
+            ):
+                summary_record = build_run_summary_record(
+                    validation_run=validation_run,
+                    step_metrics=step_metrics,
+                )
+        safe_stamp_output_hash(validation_run)
 
         result = ValidationRunTaskResult(
             run_id=validation_run.id,
@@ -584,6 +627,188 @@ class StepOrchestrator:
         )
         return step_run
 
+    def _is_signed_credential_step(self, workflow_step: WorkflowStep) -> bool:
+        """Return True when ``workflow_step`` is the signed credential action."""
+        action = getattr(workflow_step, "action", None)
+        definition = getattr(action, "definition", None)
+        return bool(
+            definition and definition.type == CredentialActionType.SIGNED_CREDENTIAL
+        )
+
+    def _record_deferred_signed_credential_step(
+        self,
+        *,
+        step_run: ValidationStepRun,
+    ) -> StepProcessingResult:
+        """Mark the credential step passed and defer issuance to finalization.
+
+        Signed credentials need the run's final status, timestamps, and summary
+        record to build the canonical output hash. Those values do not exist
+        while the step loop is still in progress, so the actual issuance work
+        is deferred until the run reaches its terminal state.
+        """
+        stats = {"credential_issuance": "deferred"}
+        finalized_step = self._finalize_step_run(
+            step_run=step_run,
+            status=StepStatus.PASSED,
+            stats=stats,
+            error=None,
+        )
+        return StepProcessingResult(
+            passed=True,
+            step_run=finalized_step,
+            severity_counts=Counter(),
+            total_findings=0,
+            assertion_failures=0,
+            assertion_total=0,
+        )
+
+    def _finalize_deferred_signed_credentials(
+        self,
+        *,
+        validation_run: ValidationRun,
+    ) -> bool:
+        """Issue deferred signed credentials after the run has finalized.
+
+        Returns True when the helper changes persisted findings or flips the
+        run status, signaling that the run summary should be rebuilt before the
+        output hash is stamped.
+        """
+        signed_step_runs = list(
+            ValidationStepRun.objects.select_related(
+                "workflow_step",
+                "workflow_step__action",
+                "workflow_step__action__definition",
+            )
+            .filter(
+                validation_run=validation_run,
+                workflow_step__action__definition__type=(
+                    CredentialActionType.SIGNED_CREDENTIAL
+                ),
+            )
+            .order_by("step_order", "pk")
+        )
+        if not signed_step_runs:
+            return False
+
+        try:
+            from validibot_pro.credentials import issuance as credential_issuance
+        except ModuleNotFoundError:
+            logger.exception(
+                "Signed credential steps exist for run %s but validibot_pro "
+                "is not importable during deferred issuance.",
+                validation_run.id,
+            )
+            message = _(
+                "Signed credential support is not installed on this instance.",
+            )
+            summary_needs_rebuild = False
+            for step_run in signed_step_runs:
+                summary_needs_rebuild = (
+                    self._record_deferred_signed_credential_failure(
+                        validation_run=validation_run,
+                        step_run=step_run,
+                        message=message,
+                    )
+                    or summary_needs_rebuild
+                )
+            return summary_needs_rebuild
+
+        summary_needs_rebuild = False
+        for step_run in signed_step_runs:
+            try:
+                credential = credential_issuance.issue_credential(step_run)
+            except credential_issuance.CredentialIssuanceError as exc:
+                logger.warning(
+                    "Deferred credential issuance failed for run %s step %s: %s",
+                    validation_run.id,
+                    step_run.id,
+                    exc,
+                )
+                summary_needs_rebuild = (
+                    self._record_deferred_signed_credential_failure(
+                        validation_run=validation_run,
+                        step_run=step_run,
+                        message=str(exc),
+                    )
+                    or summary_needs_rebuild
+                )
+                continue
+            except Exception as exc:
+                logger.exception(
+                    "Unexpected deferred credential issuance failure for "
+                    "run %s step %s.",
+                    validation_run.id,
+                    step_run.id,
+                )
+                summary_needs_rebuild = (
+                    self._record_deferred_signed_credential_failure(
+                        validation_run=validation_run,
+                        step_run=step_run,
+                        message=str(exc),
+                    )
+                    or summary_needs_rebuild
+                )
+                continue
+
+            stats = dict(step_run.output or {})
+            stats["credential_issuance"] = "issued"
+            stats["credential_id"] = str(credential.id)
+            step_run.output = stats
+            step_run.save(update_fields=["output"])
+
+        return summary_needs_rebuild
+
+    def _record_deferred_signed_credential_failure(
+        self,
+        *,
+        validation_run: ValidationRun,
+        step_run: ValidationStepRun,
+        message: str,
+    ) -> bool:
+        """Persist a deferred issuance failure on the credential step run."""
+        action = getattr(step_run.workflow_step, "action", None)
+        failure_mode = getattr(
+            action,
+            "failure_mode",
+            ActionFailureMode.ADVISORY,
+        )
+        severity = (
+            Severity.WARNING
+            if failure_mode == ActionFailureMode.ADVISORY
+            else Severity.ERROR
+        )
+        persist_findings(
+            validation_run=validation_run,
+            step_run=step_run,
+            issues=[
+                ValidationIssue(
+                    path="",
+                    message=message,
+                    severity=severity,
+                    code="credential_issuance_failed",
+                ),
+            ],
+        )
+        stats = dict(step_run.output or {})
+        stats["credential_issuance"] = "failed"
+        self._finalize_step_run(
+            step_run=step_run,
+            status=StepStatus.FAILED,
+            stats=stats,
+            error=message,
+        )
+
+        if failure_mode == ActionFailureMode.BLOCKING:
+            validation_run.status = ValidationRunStatus.FAILED
+            validation_run.error = _("Signed credential issuance failed.")
+            validation_run.error_category = ValidationRunErrorCategory.RUNTIME_ERROR
+            validation_run.save(
+                update_fields=["status", "error", "error_category"],
+            )
+
+        return True
+
     # ---------- Step dispatch ----------
 
     def execute_workflow_step(
@@ -703,7 +928,7 @@ class StepOrchestrator:
         """
         Persist action step results and build a StepProcessingResult.
 
-        Used only for action steps (Slack, certificates, etc.). Validator
+        Used only for action steps (Slack, signed credential issuance, etc.). Validator
         steps go through _execute_validator_step() where the processor
         handles persistence directly.
 

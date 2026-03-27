@@ -6,6 +6,8 @@ from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
 from validibot.users.tests.utils import ensure_all_roles_exist
+from validibot.validations.tests.factories import SubmissionFactory
+from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.workflows.tests.factories import WorkflowFactory
 
 
@@ -67,6 +69,53 @@ class WorkflowVisibilityTests(TestCase):
         response = client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertIn(workflow.name, response.content.decode())
+
+    def test_detail_archive_button_shows_confirmation_prompt_when_runs_exist(self):
+        """Workflow detail should confirm before archiving a workflow with runs."""
+        client = self.client
+        org = OrganizationFactory()
+        author = UserFactory(orgs=[org])
+        grant_role(author, org, RoleCode.AUTHOR)
+        workflow = WorkflowFactory(org=org, user=author)
+        submission = SubmissionFactory(org=org, user=author, workflow=workflow)
+        ValidationRunFactory(submission=submission)
+
+        _login(client, author, org)
+
+        url = reverse("workflows:workflow_detail", args=[workflow.pk])
+        response = client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Are you sure you want to archive this workflow?",
+        )
+
+    def test_archived_workflow_detail_shows_unarchive_footer_action(self):
+        """
+        Archived workflows should expose unarchive actions in header and detail card.
+        """
+        client = self.client
+        org = OrganizationFactory()
+        author = UserFactory(orgs=[org])
+        grant_role(author, org, RoleCode.AUTHOR)
+        workflow = WorkflowFactory(
+            org=org,
+            user=author,
+            is_archived=True,
+            is_active=False,
+        )
+        submission = SubmissionFactory(org=org, user=author, workflow=workflow)
+        ValidationRunFactory(submission=submission)
+
+        _login(client, author, org)
+
+        url = reverse("workflows:workflow_detail", args=[workflow.pk])
+        response = client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Unarchive workflow")
+        self.assertContains(response, "Unarchive this workflow?")
+        self.assertContains(response, 'title="Unarchive this workflow"')
+        self.assertContains(response, "bi-star")
 
     def test_author_can_edit_own_workflow(self):
         client = self.client

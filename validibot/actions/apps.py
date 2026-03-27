@@ -8,5 +8,11 @@ class ActionsConfig(AppConfig):
     name = "validibot.actions"
 
     def ready(self):
-        # Import forms so action form registrations execute during app setup.
-        from . import forms  # noqa: F401
+        # Import built-in action modules and register their descriptors during
+        # app startup. Commercial apps follow the same pattern from their own
+        # AppConfig.ready() methods.
+        from validibot.actions import forms  # noqa: F401
+        from validibot.actions import handlers  # noqa: F401
+        from validibot.actions.registrations import register_builtin_actions
+
+        register_builtin_actions()

@@ -35,20 +35,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy dependency files first for better caching
 COPY pyproject.toml uv.lock ${APP_HOME}/
+COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/install-commercial-package
 
 # Install dependencies with dev group for local work
 # --no-install-project skips installing validibot itself (it's not a package, just a Django project)
 RUN uv sync --group dev --frozen --no-install-project
-RUN if [ -n "${VALIDIBOT_COMMERCIAL_PACKAGE}" ]; then \
-        if [ -z "${VALIDIBOT_PRIVATE_INDEX_URL}" ]; then \
-            echo "VALIDIBOT_PRIVATE_INDEX_URL must be set when VALIDIBOT_COMMERCIAL_PACKAGE is provided." >&2; \
-            exit 1; \
-        fi; \
-        uv pip install \
-            --python ${APP_HOME}/.venv/bin/python \
-            --index "${VALIDIBOT_PRIVATE_INDEX_URL}" \
-            "${VALIDIBOT_COMMERCIAL_PACKAGE}"; \
-    fi
+RUN install-commercial-package ${APP_HOME}/.venv/bin/python
 
 # Copy the rest of the project
 COPY . ${APP_HOME}/

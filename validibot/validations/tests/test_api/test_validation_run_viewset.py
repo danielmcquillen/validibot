@@ -10,7 +10,10 @@ pagination, and field-level filtering via ``ValidationRunFilter``.
 import contextlib
 import logging
 from datetime import timedelta
+from types import ModuleType
+from types import SimpleNamespace
 from unittest.mock import patch
+from uuid import uuid4
 
 from django.test import TestCase
 from django.urls import reverse
@@ -40,6 +43,24 @@ from validibot.workflows.tests.factories import WorkflowFactory
 logger = logging.getLogger(__name__)
 
 
+def _fake_pro_modules(credential):
+    """Return a minimal validibot_pro module tree for community API tests."""
+
+    pro_module = ModuleType("validibot_pro")
+    credentials_module = ModuleType("validibot_pro.credentials")
+    models_module = ModuleType("validibot_pro.credentials.models")
+    models_module.IssuedCredential = SimpleNamespace(
+        objects=SimpleNamespace(
+            filter=lambda **_kwargs: SimpleNamespace(first=lambda: credential),
+        ),
+    )
+    return {
+        "validibot_pro": pro_module,
+        "validibot_pro.credentials": credentials_module,
+        "validibot_pro.credentials.models": models_module,
+    }
+
+
 def runs_list_url(org) -> str:
     """Return org-scoped runs list URL (ADR-2026-01-06)."""
     return reverse("api:org-runs-list", kwargs={"org_slug": org.slug})
@@ -48,6 +69,14 @@ def runs_list_url(org) -> str:
 def runs_detail_url(org, run) -> str:
     """Return org-scoped runs detail URL (ADR-2026-01-06)."""
     return reverse("api:org-runs-detail", kwargs={"org_slug": org.slug, "pk": run.pk})
+
+
+def runs_credential_download_url(org, run) -> str:
+    """Return the org-scoped credential download URL for a run."""
+    return reverse(
+        "api:org-runs-credential-download",
+        kwargs={"org_slug": org.slug, "pk": run.pk},
+    )
 
 
 class ValidationRunViewSetTestCase(TestCase):
@@ -267,6 +296,7 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(len(response.data["results"]), 1)
 
     def test_detail_includes_step_findings(self):
+        """Detail responses should expose nested step findings for UI and CLI use."""
         self.client.force_authenticate(user=self.user)
         run = ValidationRunFactory(
             submission=self.submission,
@@ -292,6 +322,71 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0]["message"], finding.message)
         self.assertEqual(issues[0]["path"], finding.path)
+
+    def test_detail_includes_credential_metadata(self):
+        """Detail responses should expose credential download metadata when present."""
+        self.client.force_authenticate(user=self.user)
+        run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            status=ValidationRunStatus.SUCCEEDED,
+        )
+        issued_at = timezone.now()
+        credential = SimpleNamespace(
+            id=uuid4(),
+            media_type="application/vc+jwt",
+            created=issued_at,
+        )
+        with patch.dict("sys.modules", _fake_pro_modules(credential)):
+            response = self.client.get(runs_detail_url(self.org, run))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["credential"],
+            {
+                "id": str(credential.id),
+                "media_type": "application/vc+jwt",
+                "issued_at": issued_at.isoformat(),
+                "download_url": (
+                    f"http://testserver{runs_credential_download_url(self.org, run)}"
+                ),
+            },
+        )
+
+    def test_credential_download_returns_compact_jws(self):
+        """The download action should return the stored compact vc+jwt artifact."""
+        self.client.force_authenticate(user=self.user)
+        run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            status=ValidationRunStatus.SUCCEEDED,
+        )
+        credential = SimpleNamespace(
+            credential_jws="header.payload.signature",
+            payload_json={
+                "credentialSubject": {
+                    "resourceLabel": "Product 1",
+                },
+            },
+        )
+
+        with patch.dict("sys.modules", _fake_pro_modules(credential)):
+            response = self.client.get(runs_credential_download_url(self.org, run))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/vc+jwt")
+        self.assertEqual(
+            response["Content-Disposition"],
+            (
+                "attachment; filename="
+                f'"product-1__{run.workflow.slug}__signed-credential.jwt"'
+            ),
+        )
+        self.assertEqual(response.content.decode("utf-8"), "header.payload.signature")
 
     def test_detail_includes_state_and_result_fields(self):
         """Expose stable `state` and `result` fields for CLI/API consumers."""
@@ -579,7 +674,13 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(response.data["status"], ValidationRunStatus.PENDING)
 
     def test_delete_validation_run(self):
-        """Test deleting a validation run."""
+        """DELETE should be rejected without removing the addressed run.
+
+        The viewset does not support run deletion via the API, so the response
+        must be ``405 METHOD NOT ALLOWED`` and the targeted run must remain in
+        the database. The test avoids hard-coding the total row count because
+        shared setup may legitimately create additional runs in the future.
+        """
         self.client.force_authenticate(user=self.user)
 
         run = ValidationRunFactory(
@@ -594,7 +695,7 @@ class ValidationRunViewSetTestCase(TestCase):
         response = self.client.delete(url)
 
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
-        self.assertEqual(ValidationRun.objects.count(), 1)  # Still exists
+        self.assertTrue(ValidationRun.objects.filter(pk=run.pk).exists())
 
     def test_ordering(self):
         """Test that results are ordered by creation date (newest first)."""

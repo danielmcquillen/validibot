@@ -1,0 +1,196 @@
+{% comment %}
+Reusable JSON viewer.
+
+Renders inert JSON data inside a styled line-numbered viewer using the shared
+`.json-viewer` CSS from `_site.scss`. The inline script tokenizes JSON locally,
+so no CDN assets or client-side framework are required.
+
+Context:
+  json_data: pretty-printed JSON string
+{% endcomment %}
+{# Raw JSON data embedded as inert data — never executed by the browser.       #}
+{# |safe suppresses Django's HTML auto-escaping, which would corrupt quotes    #}
+{# into &quot; entities. The script type="application/json" tag is never       #}
+{# executed as JS, so this is safe — the content is only read via textContent. #}
+{# djlint:off #}
+<script id="json-raw-data" type="application/json">{{ json_data|safe }}</script>
+{# djlint:on #}
+<div id="json-viewer-root" class="json-viewer rounded-bottom"></div>
+{% comment %}
+Inline JSON syntax highlighter.
+
+The only HTML injected via innerHTML is produced by the local safeSpan()
+helper, which HTML-escapes every token value before wrapping it in a <span>.
+The raw JSON text is never inserted unescaped.
+{% endcomment %}
+<script nonce="{{ CSP_NONCE }}">
+  (function() {
+    "use strict";
+
+    function tokenise(src) {
+      const tokens = [];
+      let i = 0;
+      while (i < src.length) {
+        const ch = src[i];
+
+        if (/\s/.test(ch)) {
+          let ws = "";
+          while (i < src.length && /\s/.test(src[i])) {
+            ws += src[i++];
+          }
+          tokens.push({
+            type: "ws",
+            value: ws
+          });
+          continue;
+        }
+
+        if (ch === '"') {
+          let s = '"';
+          i++;
+          while (i < src.length) {
+            const c = src[i];
+            s += c;
+            i++;
+            if (c === "\\") {
+              if (i < src.length) {
+                s += src[i++];
+              }
+            } else if (c === '"') {
+              break;
+            }
+          }
+          let j = i;
+          while (j < src.length && /[ \t]/.test(src[j])) {
+            j++;
+          }
+          const type = src[j] === ":" ? "key" : "str";
+          tokens.push({
+            type,
+            value: s
+          });
+          continue;
+        }
+
+        if (ch === "-" || /\d/.test(ch)) {
+          let num = "";
+          while (i < src.length && /[-+\d.eE]/.test(src[i])) {
+            num += src[i++];
+          }
+          tokens.push({
+            type: "num",
+            value: num
+          });
+          continue;
+        }
+
+        if (src.startsWith("true", i)) {
+          tokens.push({
+            type: "bool",
+            value: "true"
+          });
+          i += 4;
+          continue;
+        }
+        if (src.startsWith("false", i)) {
+          tokens.push({
+            type: "bool",
+            value: "false"
+          });
+          i += 5;
+          continue;
+        }
+        if (src.startsWith("null", i)) {
+          tokens.push({
+            type: "null",
+            value: "null"
+          });
+          i += 4;
+          continue;
+        }
+
+        tokens.push({
+          type: "punc",
+          value: ch
+        });
+        i++;
+      }
+      return tokens;
+    }
+
+    function safeSpan(cls, text) {
+      const escaped = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      return '<span class="' + cls + '">' + escaped + "</span>";
+    }
+
+    function tokensToLines(tokens) {
+      const lines = [];
+      let current = "";
+
+      const typeToClass = {
+        key: "jt-key",
+        str: "jt-str",
+        num: "jt-num",
+        bool: "jt-bool",
+        null: "jt-null",
+        punc: "jt-punc"
+      };
+
+      for (const tok of tokens) {
+        if (tok.type === "ws") {
+          const parts = tok.value.split("\n");
+          for (let p = 0; p < parts.length; p++) {
+            current += parts[p];
+            if (p < parts.length - 1) {
+              lines.push(current);
+              current = "";
+            }
+          }
+        } else {
+          current += safeSpan(typeToClass[tok.type] || "jt-punc", tok.value);
+        }
+      }
+      if (current !== "") {
+        lines.push(current);
+      }
+      return lines;
+    }
+
+    function render() {
+      const dataEl = document.getElementById("json-raw-data");
+      const root = document.getElementById("json-viewer-root");
+      if (!dataEl || !root) {
+        return;
+      }
+
+      const raw = dataEl.textContent;
+      const tokens = tokenise(raw);
+      const lines = tokensToLines(tokens);
+
+      const linesDiv = document.createElement("div");
+      linesDiv.className = "json-lines";
+
+      for (const lineHtml of lines) {
+        const row = document.createElement("div");
+        row.className = "json-line";
+
+        const numCell = document.createElement("div");
+        numCell.className = "json-line-num";
+
+        const codeCell = document.createElement("div");
+        codeCell.className = "json-line-code";
+        codeCell.innerHTML = lineHtml || "\u200b";
+
+        row.appendChild(numCell);
+        row.appendChild(codeCell);
+        linesDiv.appendChild(row);
+      }
+
+      root.appendChild(linesDiv);
+    }
+
+    document.addEventListener("DOMContentLoaded", render);
+  })();
+</script>

@@ -8,6 +8,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db import models
 from django.db.models import Prefetch
+from django.http import Http404
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
 from django.utils.translation import gettext_lazy as _
@@ -19,6 +20,13 @@ from validibot.core.mixins import BreadcrumbMixin
 from validibot.core.utils import reverse_with_org
 from validibot.users.permissions import PermissionCode
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.credential_utils import (
+    build_signed_credential_download_filename,
+)
+from validibot.validations.credential_utils import (
+    extract_signed_credential_resource_label,
+)
+from validibot.validations.credential_utils import get_signed_credential_display_context
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
@@ -173,7 +181,9 @@ class ValidationRunListView(ValidationRunAccessMixin, ListView):
                 "current_sort": self.request.GET.get("sort", "-created"),
                 "status_filter": self.request.GET.get("status", ""),
                 "status_choices": ValidationRunStatus.choices,
-                "workflow_options": Workflow.objects.for_user(self.request.user),
+                "workflow_options": Workflow.objects.for_user(
+                    self.request.user,
+                ).filter(is_tombstoned=False),
                 "query_string": self._get_base_query_string(),
                 "page_size_options": self.page_size_options,
                 "current_page_size": getattr(self, "page_size", self.paginate_by),
@@ -253,6 +263,12 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
                 "submission_content": submission_content,
             },
         )
+        context.update(
+            get_signed_credential_display_context(
+                request=self.request,
+                run=run,
+            ),
+        )
         return context
 
     def get_breadcrumbs(self):
@@ -293,8 +309,39 @@ class ValidationRunJsonView(ValidationRunAccessMixin, DetailView):
         from validibot.validations.serializers import ValidationRunSerializer
 
         serializer = ValidationRunSerializer(context["run"])
-        context["json_content"] = json.dumps(serializer.data, indent=2, default=str)
+        context["json_data"] = json.dumps(serializer.data, indent=2, default=str)
         return context
+
+    def get_breadcrumbs(self):
+        """Build the standard breadcrumb trail for the run JSON page."""
+        validation = getattr(self, "object", None) or self.get_object()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Validations"),
+                "url": reverse_with_org(
+                    "validations:validation_list",
+                    request=self.request,
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": _("Run #%(pk)s") % {"pk": validation.pk},
+                "url": reverse_with_org(
+                    "validations:validation_detail",
+                    request=self.request,
+                    kwargs={"pk": validation.pk},
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": _("JSON"),
+                "url": "",
+            },
+        )
+        return breadcrumbs
 
 
 class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
@@ -469,3 +516,52 @@ class GuestValidationRunListView(LoginRequiredMixin, ListView):
         params = self.request.GET.copy()
         params.pop("page", None)
         return params.urlencode()
+
+
+# Credential Download
+# ------------------------------------------------------------------------------
+
+
+class CredentialDownloadView(ValidationRunAccessMixin, DetailView):
+    """Download the compact JWS credential for a validation run.
+
+    Returns the ``application/vc+jwt`` compact JWS string as a
+    downloadable file.  Requires the same access permissions as the
+    run detail page.
+
+    If no credential was issued for this run (no Pro, feature disabled,
+    or the run didn't succeed), returns 404.
+    """
+
+    def get_queryset(self):
+        return self.get_base_queryset()
+
+    def get(self, request, *args, **kwargs):
+        run = self.get_object()
+
+        try:
+            from validibot_pro.credentials.models import IssuedCredential
+
+            credential = IssuedCredential.objects.filter(
+                workflow_run=run,
+            ).first()
+        except Exception:
+            credential = None
+
+        if credential is None:
+            raise Http404(_("No credential issued for this run."))
+
+        resource_label = extract_signed_credential_resource_label(
+            credential.payload_json,
+        )
+        download_name = build_signed_credential_download_filename(
+            resource_label=resource_label,
+            workflow_slug=run.workflow.slug if run.workflow else "",
+            fallback_identifier=str(run.pk),
+        )
+        response = HttpResponse(
+            credential.credential_jws,
+            content_type="application/vc+jwt",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{download_name}"'
+        return response

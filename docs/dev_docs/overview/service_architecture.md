@@ -89,7 +89,7 @@ The worker-side execution orchestrator. Handles:
 - **Result recording**: Persists findings, extracts signals for downstream
   assertions.
 - **Run finalisation**: Sets terminal status, builds summary, logs tracking
-  events, triggers submission purge.
+  events, stamps the run `output_hash`, and triggers submission purge.
 
 ### SummaryBuilder (`summary_builder.py`)
 
@@ -102,6 +102,14 @@ to call in resume scenarios (async callbacks, retries).
 Handles the conversion of raw validation issues into normalised
 `ValidationFinding` database records. Pure functions with no dependencies on
 other service methods.
+
+### Output Hash (`output_hash.py`)
+
+Owns the tamper-evident run digest that is stamped after a run reaches a
+terminal state. Community Validibot provides a built-in fallback contract, and
+commercial packages can register one explicit provider when they need a
+different canonical hash shape. This keeps the host application generic while
+making the active Layer 3 hash contract explicit.
 
 ## Type-Safe Step Config
 
@@ -142,7 +150,7 @@ mismatches at save time rather than at runtime.
 | FMU | `FmuStepConfig` | (empty) |
 | CUSTOM_VALIDATOR | `CustomValidatorStepConfig` | (empty) |
 | SLACK_MESSAGE | `SlackActionStepConfig` | `message` |
-| SIGNED_CREDENTIAL | `CredentialActionStepConfig` | `credential_template` |
+| SIGNED_CREDENTIAL | `CredentialActionStepConfig` | (empty) |
 
 ### Adding a New Validator Type
 
@@ -165,6 +173,7 @@ validations/services/
 ├── step_orchestrator.py       # Worker-side step execution loop
 ├── summary_builder.py         # Run/step summary aggregation
 ├── findings_persistence.py    # Issue normalization and finding creation
+├── output_hash.py             # Run output-hash service + provider registry
 ├── validation_callback.py     # Async validator callback handling
 ├── models.py                  # ValidationRunTaskResult dataclass
 └── step_processor/            # Step processor pattern (see step_processor.md)
@@ -185,3 +194,4 @@ workflows/
 - [Step Processor Architecture](step_processor.md) — processor pattern details
 - [Workflow Engine](workflow_engine.md) — higher-level orchestration
 - [Validator Architecture](validator_architecture.md) — execution backends
+- [Plugin Architecture](plugin_architecture.md) — how validators and actions register with the host app

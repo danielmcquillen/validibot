@@ -7,10 +7,13 @@ used across multiple workflow view modules.
 
 import json
 import logging
+from http import HTTPStatus
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError
+from django.db import DatabaseError
+from django.db import connection
 from django.db import models
 from django.db.models import Count
 from django.http import HttpResponse
@@ -23,15 +26,18 @@ from django.views.generic import ListView
 from django.views.generic import TemplateView
 from django.views.generic.edit import CreateView
 from django.views.generic.edit import DeleteView
+from django.views.generic.edit import FormView
 from django.views.generic.edit import UpdateView
 
 from validibot.core.utils import reverse_with_org
 from validibot.projects.models import Project
+from validibot.users.constants import RoleCode
 from validibot.users.permissions import PermissionCode
 from validibot.workflows.constants import WORKFLOW_LIST_LAYOUT_SESSION_KEY
 from validibot.workflows.constants import WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY
 from validibot.workflows.constants import WorkflowListLayout
 from validibot.workflows.form_builder import schema_to_requirement_rows
+from validibot.workflows.forms import WorkflowBreakGlassDeleteForm
 from validibot.workflows.mixins import WorkflowAccessMixin
 from validibot.workflows.mixins import WorkflowFormViewMixin
 from validibot.workflows.mixins import WorkflowObjectMixin
@@ -43,6 +49,86 @@ from validibot.workflows.views_helpers import public_info_card_context
 logger = logging.getLogger(__name__)
 
 MAX_STEP_COUNT = 50
+BREAK_GLASS_DELETE_MESSAGE = _(
+    "This workflow has issued credentials. Archive it instead, or use the "
+    "break-glass delete flow if an owner must remove it from normal product "
+    "surfaces."
+)
+
+
+def _issued_credential_model():
+    """Return the Pro credential model when available."""
+
+    try:
+        from validibot_pro.credentials.models import IssuedCredential
+    except Exception:
+        return None
+    return IssuedCredential
+
+
+def _workflow_has_issued_credentials(workflow: Workflow) -> bool:
+    """Return True when a workflow has any durable issued credentials."""
+
+    issued_credential_model = _issued_credential_model()
+    if issued_credential_model is None:
+        return False
+    table_name = issued_credential_model._meta.db_table
+    if table_name not in connection.introspection.table_names():
+        return False
+    try:
+        return issued_credential_model.objects.filter(
+            workflow_run__workflow=workflow,
+        ).exists()
+    except DatabaseError:
+        return False
+
+
+def _workflow_issued_credential_count(workflow: Workflow) -> int:
+    """Count durable issued credentials that depend on the workflow."""
+
+    issued_credential_model = _issued_credential_model()
+    if issued_credential_model is None:
+        return 0
+    table_name = issued_credential_model._meta.db_table
+    if table_name not in connection.introspection.table_names():
+        return 0
+    try:
+        return issued_credential_model.objects.filter(
+            workflow_run__workflow=workflow,
+        ).count()
+    except DatabaseError:
+        return 0
+
+
+def _compute_workflow_definition_hash(workflow: Workflow) -> str:
+    """Compute the locked workflow-definition digest when Pro is installed."""
+
+    try:
+        from validibot_pro.credentials.workflow_digest import (
+            compute_workflow_definition_hash,
+        )
+    except Exception:
+        return ""
+    return compute_workflow_definition_hash(workflow)
+
+
+def _can_break_glass_delete_workflow(
+    workflow: Workflow,
+    *,
+    user,
+    membership,
+) -> bool:
+    """Restrict break-glass delete to superusers and org owners."""
+
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False):
+        return True
+    if membership is None or not getattr(membership, "is_active", False):
+        return False
+    if membership.org_id != workflow.org_id:
+        return False
+    return membership.has_role(RoleCode.OWNER)
 
 
 # UIs for authoring and managing workflows...
@@ -230,6 +316,7 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
 class WorkflowDetailView(WorkflowAccessMixin, DetailView):
     template_name = "workflows/workflow_detail.html"
     context_object_name = "workflow"
+    include_tombstoned_workflows = True
 
     def get_queryset(self):
         return (
@@ -261,8 +348,17 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         workflow = context["workflow"]
+        membership = getattr(
+            self.request.user,
+            "membership_for_current_org",
+            lambda: None,
+        )()
+        has_issued_credentials = _workflow_has_issued_credentials(workflow)
         recent_runs = workflow.validation_runs.all().order_by("-created")[:5]
-        can_manage_public_info = self.user_can_manage_workflow()
+        can_manage_workflow = (
+            self.user_can_manage_workflow() and not workflow.is_tombstoned
+        )
+        can_manage_public_info = can_manage_workflow
         public_info_context = public_info_card_context(
             self.request,
             workflow,
@@ -277,13 +373,27 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
                 ),
                 "recent_runs": recent_runs,
                 "max_step_count": MAX_STEP_COUNT,
-                "can_manage_activation": self.user_can_manage_workflow(),
+                "can_manage_activation": can_manage_workflow,
                 "show_private_notes": self.user_can_manage_workflow(),
                 "public_info_url": public_info_context["public_info_url"],
                 "can_manage_public_info": can_manage_public_info,
                 "can_launch_workflow": workflow.can_execute(user=self.request.user),
-                "can_manage_workflow": self.user_can_manage_workflow(),
+                "can_manage_workflow": can_manage_workflow,
                 "can_view_workflow": self.user_can_view_workflow(),
+                "workflow_has_runs": workflow.validation_runs.exists(),
+                "workflow_has_issued_credentials": has_issued_credentials,
+                "issued_credential_count": _workflow_issued_credential_count(
+                    workflow,
+                ),
+                "can_break_glass_delete_workflow": (
+                    has_issued_credentials
+                    and not workflow.is_tombstoned
+                    and _can_break_glass_delete_workflow(
+                        workflow,
+                        user=self.request.user,
+                        membership=membership,
+                    )
+                ),
             },
         )
         return context
@@ -476,6 +586,27 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
 class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
     template_name = "workflows/partials/workflow_confirm_delete.html"
 
+    def _has_issued_credentials(self, workflow: Workflow) -> bool:
+        """Return True when the workflow has any durable issued credentials."""
+        return _workflow_has_issued_credentials(workflow)
+
+    def _block_delete_response(self, request, workflow: Workflow):
+        """Return a response when credential-bearing workflows cannot be deleted."""
+
+        messages.error(request, BREAK_GLASS_DELETE_MESSAGE)
+        detail_url = reverse_with_org(
+            "workflows:workflow_detail",
+            request=request,
+            kwargs={"pk": workflow.pk},
+        )
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=HTTPStatus.CONFLICT)
+            response["HX-Redirect"] = detail_url
+            return response
+        if request.method == "DELETE":
+            return HttpResponse(status=HTTPStatus.CONFLICT)
+        return HttpResponseRedirect(detail_url)
+
     def get_success_url(self):
         return reverse_with_org("workflows:workflow_list", request=self.request)
 
@@ -510,6 +641,8 @@ class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
 
     def delete(self, request, *args, **kwargs):
         self.object = self.get_object()
+        if self._has_issued_credentials(self.object):
+            return self._block_delete_response(request, self.object)
         success_url = self.get_success_url()
         self.object.delete()
         messages.success(request, _("Workflow deleted."))
@@ -524,6 +657,121 @@ class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
         if request.method == "DELETE":
             return HttpResponse(status=204)
         return HttpResponseRedirect(success_url)
+
+
+class WorkflowBreakGlassDeleteView(WorkflowObjectMixin, FormView):
+    """Tombstone a credential-bearing workflow after explicit owner confirmation.
+
+    Break-glass delete is an exceptional lifecycle action. It removes the
+    workflow from normal product surfaces while preserving the underlying row so
+    historical runs and signed credentials retain a stable reference.
+    """
+
+    template_name = "workflows/workflow_break_glass_delete.html"
+    form_class = WorkflowBreakGlassDeleteForm
+
+    def dispatch(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        membership = getattr(
+            request.user,
+            "membership_for_current_org",
+            lambda: None,
+        )()
+        if not _can_break_glass_delete_workflow(
+            workflow,
+            user=request.user,
+            membership=membership,
+        ):
+            raise PermissionDenied
+        if workflow.is_tombstoned:
+            messages.info(
+                request,
+                _("This workflow has already been tombstoned."),
+            )
+            return HttpResponseRedirect(self.get_success_url())
+        if not _workflow_has_issued_credentials(workflow):
+            messages.error(
+                request,
+                _(
+                    "Break-glass delete is only available for workflows with "
+                    "issued credentials."
+                ),
+            )
+            return HttpResponseRedirect(self.get_success_url())
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["workflow"] = self.get_workflow()
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_workflow()
+        context.update(
+            {
+                "workflow": workflow,
+                "validation_run_count": workflow.validation_runs.count(),
+                "issued_credential_count": _workflow_issued_credential_count(
+                    workflow,
+                ),
+                "impact_summary": _(
+                    "Existing signed credentials remain cryptographically "
+                    "valid, but this workflow will disappear from normal "
+                    "listings, launch flows, and editing screens."
+                ),
+            },
+        )
+        return context
+
+    def get_breadcrumbs(self):
+        workflow = self.get_workflow()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Workflows"),
+                "url": reverse_with_org(
+                    "workflows:workflow_list",
+                    request=self.request,
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": workflow.name,
+                "url": reverse_with_org(
+                    "workflows:workflow_detail",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk},
+                ),
+            },
+        )
+        breadcrumbs.append({"name": _("Break-glass delete"), "url": ""})
+        return breadcrumbs
+
+    def get_success_url(self):
+        return reverse_with_org(
+            "workflows:workflow_detail",
+            request=self.request,
+            kwargs={"pk": self.get_workflow().pk},
+        )
+
+    def form_valid(self, form):
+        workflow = self.get_workflow()
+        workflow.tombstone(
+            deleted_by=self.request.user,
+            reason=form.cleaned_data["deletion_reason"],
+            workflow_definition_hash=_compute_workflow_definition_hash(workflow),
+        )
+        messages.warning(
+            self.request,
+            _(
+                "Workflow tombstoned. Historical runs and credentials remain "
+                "available, but the workflow has been removed from normal "
+                "authoring and launch surfaces."
+            ),
+        )
+        return HttpResponseRedirect(self.get_success_url())
 
 
 class WorkflowArchiveView(WorkflowObjectMixin, View):
@@ -678,7 +926,10 @@ class WorkflowArchiveView(WorkflowObjectMixin, View):
                 org,
             )
         workflow.curr_user_can_execute = (
-            workflow.is_active and not workflow.is_archived and can_execute
+            workflow.is_active
+            and not workflow.is_archived
+            and not workflow.is_tombstoned
+            and can_execute
         )
         workflow.curr_user_can_delete = self._can_manage_workflow_actions(
             workflow,

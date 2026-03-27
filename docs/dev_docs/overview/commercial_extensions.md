@@ -5,6 +5,8 @@ Validibot follows an open-core model. The core application is open source under 
 - **validibot-pro** -- team management, billing, advanced analytics, signed credentials
 - **validibot-enterprise** -- multi-org support, SSO/SAML, LDAP integration (includes all Pro features)
 
+If you want the lower-level extension mechanics, read [Plugin Architecture](plugin_architecture.md) alongside this page. That document explains the shared registry and sync pattern used by both validators and actions.
+
 ## How commercial packages plug in
 
 Commercial packages are standard Python packages distributed through a private package index. Installing the package is the license -- there are no runtime license keys.
@@ -23,7 +25,7 @@ This is an explicit opt-in. It keeps activation visible in settings and supports
 Install the package into the same Python environment that runs Validibot (see your license email for the index URL and credentials):
 
 ```bash
-uv pip install --python .venv/bin/python --index <private-index-url> validibot-pro
+uv pip install --python .venv/bin/python --index <private-index-url> validibot-pro==<version>
 ```
 
 Then add the Django app in `config/settings/base.py`:
@@ -45,9 +47,17 @@ cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-co
 Then set:
 
 ```bash
-VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro
+VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro==<version>
 VALIDIBOT_PRIVATE_INDEX_URL=https://<license-credentials>@pypi.validibot.com/simple/
 ```
+
+`VALIDIBOT_COMMERCIAL_PACKAGE` must be an exact package reference. Use either
+an exact version like `validibot-pro==0.1.0` together with
+`VALIDIBOT_PRIVATE_INDEX_URL=https://<license-credentials>@pypi.validibot.com/simple/`,
+or a quoted exact wheel URL on `pypi.validibot.com` such as
+`"https://<license-credentials>@pypi.validibot.com/packages/validibot_pro-0.1.0-py3-none-any.whl#sha256=<hash>"`.
+Floating names like `validibot-pro` are intentionally rejected during Docker
+builds.
 
 Installing the wheel into the image is only the first step. Add the Django app
 in `config/settings/base.py` before you rebuild:
@@ -70,9 +80,21 @@ As you browse the core codebase, you'll encounter two patterns that reference co
 
 **Feature flags in templates.** Some navigation links and UI elements are wrapped in `{% if feature_team_management %}` or similar checks. These elements are hidden when the corresponding commercial package is not installed.
 
-**Feature guard mixins on views.** Some views include `FeatureRequiredMixin` with a `required_feature` attribute. These views return a 404 when the feature is not registered. This is defense-in-depth alongside the template-level hiding.
+**Feature guard mixins on views.** Some views include `FeatureRequiredMixin` with a `required_commercial_feature` attribute. These views return a 404 when the feature is not registered. This is defense-in-depth alongside the template-level hiding.
 
 Both patterns use the feature registry in `validibot/core/features.py`, which defines `CommercialFeature` -- an enum of all features that commercial packages can activate.
+
+## How commercial code plugs into workflows
+
+Commercial packages do not need community code to host every concrete action or view. The shared contracts live in the community repo, but the commercial package can provide the actual implementation.
+
+Today that means:
+
+- community code owns the feature registry, workflow orchestration, and action registry contract
+- `validibot-pro` can register Pro-owned workflow actions from its own `AppConfig.ready()`
+- synced `ActionDefinition` rows make those actions appear in the step picker just like built-in actions
+
+This keeps the open-core boundary cleaner. The community app knows how to host plugins, while Pro and Enterprise packages own the commercial behavior itself.
 
 ## Editions and the license module
 

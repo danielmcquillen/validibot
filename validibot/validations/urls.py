@@ -151,6 +151,11 @@ urlpatterns = [
         name="validation_json",
     ),
     path(
+        "<uuid:pk>/credential/download/",
+        views.CredentialDownloadView.as_view(),
+        name="credential_download",
+    ),
+    path(
         "catalog-entry/<int:entry_pk>/",
         views.CatalogEntryDetailView.as_view(),
         name="catalog_entry_detail",

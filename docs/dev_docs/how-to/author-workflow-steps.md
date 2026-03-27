@@ -19,8 +19,12 @@ Re-enable the workflow from the same panel when you are ready to accept submissi
    - **Validators** (BASIC, JSON Schema, and XML Schema)
    - **Advanced validators** (AI Assist, EnergyPlus, and FMU)
    - **Integrations** (action definitions such as Slack notifications)
-   - **Certifications** (action definitions that issue certificates or badges)
+   - **Credentials** (action definitions such as signed credential issuance)
    Each card shows the item name, category, icon, and description.
+   The list is not hard-coded in the modal. Validators and actions are
+   registered at startup and then synced into database definitions that the
+   picker reads. See [Plugin Architecture](../overview/plugin_architecture.md)
+   if you need to trace why a step type does or does not appear.
 3. Select the validator or action you want to use and press **Continue**. The modal closes and you are redirected to the full-screen editor with breadcrumb navigation (`Workflows > <Workflow> > Step …`).
 
 ## 2. Configure the validation
@@ -58,10 +62,12 @@ The **Step Assertions** panel always shows a **Default assertions** card at the 
 - Define policy rules using the syntax `<path> <operator> <value> | optional message`. Supported operators: `>=`, `>`, `<=`, `<`, `==`, `!=`, `between`, `in`, `not_in`, `nonempty`.
 - Pick advisory vs blocking mode and set a per-run cost cap.
 
-### Actions (Integrations & Certifications)
+### Actions (Integrations & Credentials)
 - Actions reuse catalogued definitions (for example, sending a Slack message or issuing a signed credential).
 - Slack integrations prompt for the message that will be posted when the step runs; the text is stored on a dedicated `SlackMessageAction` model.
-- Certification steps let you upload an optional credential template. If you skip the upload, Validibot falls back to the bundled `default_signed_credential.pdf`. Editing the step keeps the previous upload unless you explicitly provide a replacement.
+- Signed credential steps do not collect any PDF template or presentation settings. The action just records that a successful run should mint a signed verifiable credential.
+- When a signed credential is issued, the payload includes a signed human-facing resource label. Validibot resolves that label from the submission name first, then from the original filename with `.` characters replaced by `_`, and only falls back to a short digest-based identifier when neither is available.
+- The editor explains the placement rule for signed credential steps, and the workflow detail page disables move buttons that would place the step before a validator or blocking action.
 - The editor lets you rename the step, adjust the author notes, and record any action-specific inputs in purpose-built forms instead of the generic JSON payload we used previously.
 - Action steps never expose schemas to end users, but they appear alongside validation steps in the workflow timeline and step navigation.
 

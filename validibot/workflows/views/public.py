@@ -17,7 +17,6 @@ from django.views.generic import DetailView
 from django.views.generic import ListView
 from django.views.generic import UpdateView
 
-from validibot.actions.models import SignedCredentialAction
 from validibot.actions.models import SlackMessageAction
 from validibot.core.utils import pretty_json
 from validibot.core.utils import pretty_xml
@@ -52,11 +51,14 @@ class PublicWorkflowListView(ListView):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Workflow.objects.filter(is_active=True)
+        queryset = Workflow.objects.filter(
+            is_active=True,
+            is_tombstoned=False,
+        )
         if user.is_authenticated:
             accessible_ids = (
                 Workflow.objects.for_user(user)
-                .filter(is_active=True)
+                .filter(is_active=True, is_tombstoned=False)
                 .values_list("pk", flat=True)
             )
             queryset = queryset.filter(
@@ -155,7 +157,10 @@ class PublicWorkflowInfoView(DetailView):
 
     def get_queryset(self):
         return (
-            Workflow.objects.filter(make_info_page_public=True)
+            Workflow.objects.filter(
+                make_info_page_public=True,
+                is_tombstoned=False,
+            )
             .select_related("org", "project", "user")
             .prefetch_related(
                 "steps",
@@ -245,10 +250,6 @@ class PublicWorkflowInfoView(DetailView):
 
         if isinstance(variant, SlackMessageAction):
             summary["message"] = variant.message
-        elif isinstance(variant, SignedCredentialAction):
-            summary["credential_template"] = (
-                variant.get_credential_template_display_name()
-            )
 
         step.public_action_meta = {
             "category_label": definition.get_action_category_display(),

@@ -5,11 +5,8 @@ from typing import TYPE_CHECKING
 
 from django.utils.translation import gettext as _
 
-from validibot.actions.constants import CertificationActionType
-from validibot.actions.constants import IntegrationActionType
 from validibot.actions.protocols import RunContext
 from validibot.actions.protocols import StepResult
-from validibot.actions.registry import register_action_handler
 from validibot.validations.constants import Severity
 from validibot.validations.validators.base import ValidationIssue
 from validibot.validations.validators.base.registry import get as get_validator_class
@@ -162,28 +159,3 @@ class SlackMessageActionHandler:
             "SlackMessageActionHandler is not yet implemented. "
             f"Step ID: {run_context.step.id}"
         )
-
-
-class SignedCredentialActionHandler:
-    """
-    Handler for SignedCredentialAction.
-
-    Not yet implemented. Contributions welcome — see CONTRIBUTING.md.
-    """
-
-    def execute(self, run_context: RunContext) -> StepResult:
-        raise NotImplementedError(
-            "SignedCredentialActionHandler is not yet implemented. "
-            f"Step ID: {run_context.step.id}"
-        )
-
-
-# Register Handlers
-register_action_handler(
-    IntegrationActionType.SLACK_MESSAGE,
-    SlackMessageActionHandler,
-)
-register_action_handler(
-    CertificationActionType.SIGNED_CREDENTIAL,
-    SignedCredentialActionHandler,
-)

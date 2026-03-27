@@ -23,7 +23,22 @@ Projects are the only model that tracks both fields because organisations reshuf
 - Hide inactive projects immediately (`is_active=False`) so workflows stop accepting new runs under that namespace.
 - Keep the row around until `purge_projects` removes it, so that submissions and runs that still reference the project slug in storage paths remain valid.
 
-Workflows and workflow steps, by contrast, are versioned objects. They use `is_active` (to prevent execution) and `is_locked` (to prevent edits) but are never physically deleted -- version history is part of the product. If a workflow needs to be retired entirely, it's marked inactive. If its parent project is deleted, the workflow is detached and continues to exist independently.
+Workflows and workflow steps, by contrast, are versioned objects. They use `is_active` (to prevent execution), `is_locked` (to prevent edits), and now a stronger `is_tombstoned` lifecycle state for exceptional historical-record removal.
+
+For ordinary operations:
+
+- Draft workflows with no historical dependencies can still be deleted.
+- Used workflows should normally be archived instead of deleted.
+- Workflows that have issued signed credentials are protected from ordinary hard delete.
+
+If an organization owner really must remove a credential-bearing workflow from normal product surfaces, Validibot uses a **break-glass tombstone** flow instead of deleting the row. Tombstoning:
+
+- sets `is_tombstoned=True`
+- disables launch and editing
+- removes the workflow from normal lists and public/shareable surfaces
+- preserves the workflow row so historical runs and signed credentials still have a stable target
+
+That means historical workflow pages and run pages can continue to explain what happened, even after the workflow has been deliberately retired from normal use.
 
 ## Retention policy
 

@@ -30,6 +30,14 @@
         </button>
       </div>
     </div>
+    {% if run.workflow.is_tombstoned %}
+      <div class="alert alert-warning" role="alert">
+        <div class="fw-semibold mb-1">{% trans "This run belongs to a tombstoned workflow." %}</div>
+        <p class="mb-0">
+          {% trans "The workflow has been removed from normal launch and editing surfaces, but this historical run and any signed credential remain available for audit." %}
+        </p>
+      </div>
+    {% endif %}
     {% include "workflows/results/partials/block_validation_run_status_alert.html" with run=run %}
     <div class="row">
       <div class="col-12 col-xl-7 mb-3">
@@ -38,6 +46,7 @@
       </div>
       <div class="col-12 col-xl-5 order-first order-xl-last mb-3">
         {% include "workflows/results/partials/block_validation_run_summary.html" with run=run step_runs=step_runs %}
+        {% include "workflows/results/partials/block_validation_run_credential.html" with issued_credential=issued_credential credential_download_url=credential_download_url %}
       </div>
     </div>
   </div>

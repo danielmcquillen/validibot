@@ -41,6 +41,25 @@ The GCP setup is designed around three stages:
 
 Each stage gets its own Cloud Run services, Cloud SQL instance, secrets, and queueing resources.
 
+## Signed credentials on GCP
+
+GCP deployments should use Google Cloud KMS rather than a local PEM file.
+Set the credential-signing key in your stage `.django` env file:
+
+```bash
+GCP_KMS_SIGNING_KEY=projects/your-project/locations/your-region/keyRings/your-app-name-keys/cryptoKeys/credential-signing
+CREDENTIAL_ISSUER_URL=https://validibot.example.com
+```
+
+The Cloud Run service account also needs permission to sign with that key.
+At minimum, grant the runtime service account:
+
+- `roles/cloudkms.viewer`
+- `roles/cloudkms.signerVerifier`
+
+Use a different KMS key per stage so dev, staging, and prod credentials do not
+share the same issuer key material.
+
 ## Typical first-time flow
 
 Most first-time GCP setups follow this order:

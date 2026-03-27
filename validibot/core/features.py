@@ -45,7 +45,7 @@ class CommercialFeature(TextChoices):
     GUEST_MANAGEMENT = "guest_management", _("Guest Management")
     BILLING = "billing", _("Billing")
     ADVANCED_ANALYTICS = "advanced_analytics", _("Advanced Analytics")
-    SIGNED_BADGES = "signed_badges", _("Signed Badges")
+    SIGNED_CREDENTIALS = "signed_credentials", _("Signed Credentials")
 
     # Enterprise features (requires validibot-enterprise)
     MULTI_ORG = "multi_org", _("Multiple Organizations")

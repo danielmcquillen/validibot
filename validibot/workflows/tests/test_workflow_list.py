@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from http import HTTPStatus
 
 import pytest
@@ -192,6 +193,44 @@ def test_unarchive_hx_updates_state(client):
     assert workflow.is_active is True
     html = response.content.decode()
     assert "Active" in html
+
+
+def test_archived_workflow_card_shows_footer_unarchive_button(client):
+    """Archived workflow cards should expose a footer unarchive button in grid view."""
+    user = UserFactory()
+    org = OrganizationFactory(name="Archived Card Org")
+    grant_role(user, org, RoleCode.OWNER)
+    workflow = WorkflowFactory(
+        org=org,
+        user=user,
+        name="Archived Card Workflow",
+        is_active=False,
+        is_archived=True,
+    )
+
+    client.force_login(user)
+    user.set_current_org(org)
+    session = client.session
+    session["active_org_id"] = org.id
+    session.save()
+
+    list_url = reverse("workflows:workflow_list")
+    response = client.get(f"{list_url}?archived=1&layout=grid")
+    assert response.status_code == HTTPStatus.OK
+
+    html = response.content.decode()
+    card_start = html.index(f'id="workflow-card-{workflow.pk}"')
+    card_html = html[card_start : card_start + 4000]
+
+    assert 'class="btn btn-sm btn-outline-secondary me-auto"' in card_html
+    assert re.search(
+        (
+            r'btn btn-sm btn-outline-secondary me-auto".*?'
+            r'<i class="bi bi-arrow-counterclockwise me-1"></i>\s*Unarchive'
+        ),
+        card_html,
+        re.DOTALL,
+    )
 
 
 def test_workflow_archive_button_rendered_when_runs_exist(client):

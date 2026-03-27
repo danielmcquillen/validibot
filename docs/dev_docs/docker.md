@@ -60,6 +60,28 @@ There is no default `docker-compose.yml` — running `docker compose up` without
 
 6. Visit http://localhost:8000
 
+## `local-cloud` troubleshooting note
+
+Most community users only need the standard `just up` stack described above.
+If you see `just local-cloud ...` elsewhere in the repo, that belongs to the
+separate `validibot-cloud` development workflow rather than the normal
+self-hosted community path.
+
+If that `local-cloud` stack fails during startup with a `psycopg_c` error, the
+most common cause is a stale shared virtualenv volume. `validibot-cloud` keeps
+one `.venv` volume shared across containers, and `psycopg[c]` includes a
+compiled extension. After dependency changes or base-image changes, that
+compiled package can drift out of sync with the rest of the persisted
+environment.
+
+Reset the shared virtualenv volume and rebuild the stack:
+
+```bash
+docker compose -f ../validibot-cloud/docker-compose.cloud.yml down --remove-orphans
+docker volume rm validibot_validibot_local_venv
+just local-cloud up --build
+```
+
 ## What's running
 
 - `web`: Django app from `compose/local/django/Dockerfile`, mounted with your local code for hot reload (`runserver` on 8000). Runs migrations and initial setup on startup.

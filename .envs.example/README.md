@@ -147,7 +147,7 @@ These variables are optional and only needed when you want Docker to install a c
 
 | Variable | Description | Example |
 | --- | --- | --- |
-| `VALIDIBOT_COMMERCIAL_PACKAGE` | Commercial package to bake into the image | `validibot-pro` |
+| `VALIDIBOT_COMMERCIAL_PACKAGE` | Exact commercial package reference to bake into the image | `validibot-pro==0.1.0` |
 | `VALIDIBOT_PRIVATE_INDEX_URL` | Private package index URL from your license email | `https://user:pass@pypi.validibot.com/simple/` |
 
 ### Django Variables (`.django`)

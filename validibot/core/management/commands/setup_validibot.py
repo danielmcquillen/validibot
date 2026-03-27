@@ -729,14 +729,14 @@ class Command(BaseCommand):
     # =========================================================================
 
     def _setup_default_actions(self):
-        """Create default actions for workflows."""
+        """Sync workflow action definitions from the registered action plugins."""
         logger.debug("Setting up default actions...")
-        self.stdout.write("  Creating default actions...")
+        self.stdout.write("  Syncing action definitions...")
 
         from validibot.actions.utils import create_default_actions
 
         create_default_actions()
-        self.stdout.write(self.style.SUCCESS("  Default actions configured"))
+        self.stdout.write(self.style.SUCCESS("  Action definitions configured"))
 
     def _setup_local_superuser(self):
         """

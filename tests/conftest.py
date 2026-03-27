@@ -2,11 +2,73 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
+from django.db import connections
 from rest_framework.test import APIClient
 
 BASE_DIR = Path(__file__).resolve().parent
+
+
+def _reset_bad_connections() -> None:
+    """Reset database connections that are in a bad psycopg state.
+
+    This keeps teardown stable for suites that use ``live_server`` and also
+    helps when a local reused test database contains stale optional-app tables.
+    """
+    for conn in connections.all():
+        if hasattr(conn, "connection") and conn.connection is not None:
+            try:
+                is_bad = False
+                if hasattr(conn.connection, "pgconn"):
+                    from psycopg.pq import ConnStatus
+
+                    if conn.connection.pgconn.status == ConnStatus.BAD:
+                        is_bad = True
+
+                if is_bad:
+                    conn.connection = None
+                    conn.closed_in_transaction = False
+                    conn.in_atomic_block = False
+                    conn.savepoint_ids = []
+                    conn.needs_rollback = False
+            except Exception:
+                conn.connection = None
+                conn.closed_in_transaction = False
+                conn.in_atomic_block = False
+                conn.savepoint_ids = []
+                conn.needs_rollback = False
+
+
+_original_flush_handle: dict[str, Any | None] = {"handle": None}
+
+
+def _patched_flush_handle(self, *args, **options):
+    """Reset DB connections and allow CASCADE when flushing test tables."""
+    _reset_bad_connections()
+    options["allow_cascade"] = True
+    original_handle = _original_flush_handle["handle"]
+    if original_handle is None:  # pragma: no cover - defensive
+        raise RuntimeError("Original FlushCommand.handle not set")
+    return original_handle(self, *args, **options)
+
+
+def pytest_configure(config):
+    """Install the global flush patch for the test session."""
+    from django.core.management.commands.flush import Command as FlushCommand
+
+    _original_flush_handle["handle"] = FlushCommand.handle
+    FlushCommand.handle = _patched_flush_handle
+
+
+def pytest_unconfigure(config):
+    """Restore Django's original flush command at session end."""
+    from django.core.management.commands.flush import Command as FlushCommand
+
+    original_handle = _original_flush_handle["handle"]
+    if original_handle is not None:
+        FlushCommand.handle = original_handle
 
 
 def _locate_schema(rel_path: str) -> Path:
@@ -114,3 +176,11 @@ def load_thmx_asset():
 @pytest.fixture
 def api_client() -> APIClient:
     return APIClient()
+
+
+@pytest.fixture(autouse=True)
+def reset_connections_before_test():
+    """Reset any bad DB connections before and after each test."""
+    _reset_bad_connections()
+    yield
+    _reset_bad_connections()

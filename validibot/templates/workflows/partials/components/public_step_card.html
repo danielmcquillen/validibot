@@ -57,12 +57,6 @@
             {{ step.public_action_summary.message|linebreaksbr }}
           </p>
         {% endif %}
-        {% if step.public_action_summary.credential_template %}
-          <p class="text-muted small mt-2 mb-0">
-            <span class="fw-semibold">{% trans "Credential template" %}:</span>
-            <code class="text-break">{{ step.public_action_summary.credential_template }}</code>
-          </p>
-        {% endif %}
       </div>
     {% endif %}
   </div>

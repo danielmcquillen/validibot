@@ -3,8 +3,9 @@
 # purchased Pro or Enterprise.
 #
 # Set one of:
-#   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro
-#   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-enterprise
+#   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro==0.1.0
+#   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-enterprise==0.1.0
+#   VALIDIBOT_COMMERCIAL_PACKAGE="https://YOUR_EMAIL:YOUR_API_KEY@pypi.validibot.com/packages/validibot_pro-0.1.0-py3-none-any.whl#sha256=<hash>"
 #
 # The private index URL comes from your license email and typically includes
 # embedded credentials. Keep this file private; it is gitignored.

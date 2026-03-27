@@ -106,6 +106,11 @@ urlpatterns = [
         name="workflow_delete",
     ),
     path(
+        "<int:pk>/break-glass-delete/",
+        views.WorkflowBreakGlassDeleteView.as_view(),
+        name="workflow_break_glass_delete",
+    ),
+    path(
         "<int:pk>/archive/",
         views.WorkflowArchiveView.as_view(),
         name="workflow_archive",

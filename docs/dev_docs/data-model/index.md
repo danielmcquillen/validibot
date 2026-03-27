@@ -35,7 +35,7 @@ Submission (the data to validate)
 | --------------------- | ------------------------------------------------------------------------------------------------------------ |
 | **Organization**      | Top-level tenant. All resources belong to an organization.                                                   |
 | **Project**           | Namespace within an org. Groups related workflows for organization and reporting.                            |
-| **Workflow**          | Ordered sequence of validation steps. Can be active, inactive, or archived.                                  |
+| **Workflow**          | Ordered sequence of validation steps. Can be active, inactive, archived, or tombstoned for historical-only retention. |
 | **WorkflowStep**      | One step in a workflow. Points to a validator (or action) with optional configuration.                       |
 | **Validator**         | The validation class (JSON Schema, XML Schema, EnergyPlus, etc.). Defines signals and supported file types. |
 | **Ruleset**           | Optional schema or rule file attached to a validator.                                                        |
@@ -68,6 +68,7 @@ Submission (the data to validate)
 - **Inactive** (`is_active=False`) — Visible but doesn't accept runs
 - **Locked** (`is_locked=True`) — Cannot be edited
 - **Archived** (`is_archived=True`) — Hidden by default, preserves history
+- **Tombstoned** (`is_tombstoned=True`) — Removed from normal product surfaces while preserving historical runs and credential references
 
 **Run statuses:**
 

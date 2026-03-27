@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 
 from django.db import models
 from django.utils.text import slugify
@@ -9,7 +8,7 @@ from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 
 from validibot.actions.constants import ActionCategoryType
-from validibot.actions.constants import CertificationActionType
+from validibot.actions.constants import ActionFailureMode
 from validibot.actions.constants import IntegrationActionType
 from validibot.actions.registry import get_action_model
 from validibot.actions.registry import register_action_model
@@ -59,6 +58,17 @@ class ActionDefinition(TimeStampedModel):
     )
     is_active = models.BooleanField(default=True)
 
+    required_commercial_feature = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=_(
+            "Commercial feature flag required for this action to appear "
+            "in the step picker (e.g. 'signed_credentials'). Leave blank for "
+            "actions available to all installations."
+        ),
+    )
+
     class Meta:
         ordering = ["action_category", "name"]
         unique_together = [("action_category", "type")]
@@ -85,6 +95,17 @@ class Action(TimeStampedModel):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, default="")
     config = models.JSONField(default=dict, blank=True)
+
+    failure_mode = models.CharField(
+        max_length=16,
+        choices=ActionFailureMode.choices,
+        default=ActionFailureMode.BLOCKING,
+        help_text=_(
+            "How this action's failure affects the run. "
+            "BLOCKING: run fails. ADVISORY: step is marked failed "
+            "but the run may still succeed."
+        ),
+    )
 
     class Meta:
         ordering = ["name"]
@@ -136,51 +157,7 @@ class SlackMessageAction(Action):
     message = models.TextField()
 
 
-class SignedCredentialAction(Action):
-    """Action that issues a signed credential attachment.
-
-    Example:
-        SignedCredentialAction(
-            definition=definition,
-            credential_template="credential.html",
-        )
-    """
-
-    DEFAULT_CREDENTIAL_TEMPLATE = (
-        Path(__file__).resolve().parent
-        / "assets"
-        / "certificates"
-        / "default_signed_credential.pdf"
-    )
-
-    credential_template = models.FileField(
-        upload_to="actions/certificates/",
-        blank=True,
-    )
-
-    def get_credential_template_path(self) -> str:
-        """Return the on-disk path for the template, falling back to the default."""
-
-        if self.credential_template:
-            try:
-                return self.credential_template.path
-            except (ValueError, NotImplementedError):
-                return self.credential_template.name
-        return str(self.DEFAULT_CREDENTIAL_TEMPLATE)
-
-    def get_credential_template_display_name(self) -> str:
-        """Return a human-readable filename for the template."""
-
-        if self.credential_template and self.credential_template.name:
-            return Path(self.credential_template.name).name
-        return self.DEFAULT_CREDENTIAL_TEMPLATE.name
-
-
 register_action_model(
     IntegrationActionType.SLACK_MESSAGE,
     SlackMessageAction,
-)
-register_action_model(
-    CertificationActionType.SIGNED_CREDENTIAL,
-    SignedCredentialAction,
 )

@@ -122,7 +122,7 @@ Before the processor pattern, validation step logic was scattered across:
 - `StepOrchestrator._record_step_result()` - for sync execution
 - `ValidationCallbackService._process_callback()` - for async callbacks
 
-This led to code duplication, inconsistent behavior, and difficult maintenance. The processor pattern consolidates validator step logic into a single, testable abstraction. `_record_step_result()` now only handles action steps (Slack, certificates, etc.).
+This led to code duplication, inconsistent behavior, and difficult maintenance. The processor pattern consolidates validator step logic into a single, testable abstraction. `_record_step_result()` now only handles action steps (Slack, signed credential issuance, and similar side effects).
 
 ### Processor Class Hierarchy
 

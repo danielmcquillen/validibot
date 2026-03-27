@@ -6,10 +6,12 @@ import json
 from typing import Any
 
 from django.conf import settings
+from django.urls import NoReverseMatch
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.relations import SlugRelatedField
+from rest_framework.reverse import reverse
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
@@ -61,6 +63,8 @@ class ValidationRunSerializer(serializers.ModelSerializer):
     )
 
     steps = serializers.SerializerMethodField()
+
+    credential = serializers.SerializerMethodField()
 
     def get_state(self, obj: ValidationRun) -> str:
         if obj.status == ValidationRunStatus.PENDING:
@@ -163,6 +167,49 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             )
         return payload
 
+    def get_credential(self, obj: ValidationRun) -> dict | None:
+        """Return credential metadata if one was issued for this run.
+
+        Returns None when no credential exists (community-only install,
+        feature disabled, or the run didn't have a credential action).
+        The compact JWS is not inlined — use the download_url instead.
+        """
+        try:
+            from validibot_pro.credentials.models import IssuedCredential
+
+            credential = IssuedCredential.objects.filter(
+                workflow_run=obj,
+            ).first()
+        except Exception:
+            return None
+
+        if credential is None:
+            return None
+
+        request = self.context.get("request")
+        try:
+            download_url = reverse(
+                "api:org-runs-credential-download",
+                kwargs={
+                    "org_slug": obj.org.slug,
+                    "pk": obj.id,
+                },
+                request=request,
+            )
+        except NoReverseMatch:
+            download_url = (
+                f"/api/v1/orgs/{obj.org.slug}/runs/{obj.id}/credential/download/"
+            )
+
+        return {
+            "id": str(credential.id),
+            "media_type": credential.media_type,
+            "issued_at": (
+                credential.created.isoformat() if credential.created else None
+            ),
+            "download_url": download_url,
+        }
+
     class Meta:
         model = ValidationRun
         fields = [
@@ -183,9 +230,10 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             "duration_ms",
             # "summary", # We use "steps" field to dig into summary and get steps.
             "steps",
+            "credential",
             "error",
             "user_friendly_error",
-            "evidence_hash",
+            "output_hash",
         ]
         read_only_fields = fields
 

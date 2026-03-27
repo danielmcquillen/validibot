@@ -64,11 +64,13 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
    If you are installing a commercial package, edit `.envs/.production/.docker-compose/.build` too:
 
    ```bash
-   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro
+   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro==<version>
    VALIDIBOT_PRIVATE_INDEX_URL=https://<license-credentials>@pypi.validibot.com/simple/
    ```
 
-   Use `validibot-enterprise` instead if you purchased Enterprise.
+   Use `validibot-enterprise==<version>` instead if you purchased Enterprise.
+   You can also use a quoted exact wheel URL on `pypi.validibot.com` that
+   includes `#sha256=<hash>` instead of a package name and version.
    Then add the commercial Django app to `config/settings/base.py`
    before you build the image:
 
@@ -96,6 +98,34 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
 - applies migrations
 - runs `setup_validibot`
 - runs `check_validibot`
+
+## Enable signed credentials on Docker Compose
+
+If you purchased Pro or Enterprise and want signed credentials, the simplest
+self-hosted option is the local file signing backend.
+
+Create a private signing key on the host:
+
+```bash
+mkdir -p .envs/.production/.docker-compose/keys
+openssl ecparam -name prime256v1 -genkey -noout \
+  -out .envs/.production/.docker-compose/keys/credential-signing.pem
+chmod 600 .envs/.production/.docker-compose/keys/credential-signing.pem
+```
+
+Then add this to `.envs/.production/.docker-compose/.django`:
+
+```bash
+SIGNING_KEY_PATH=/run/validibot-keys/credential-signing.pem
+CREDENTIAL_ISSUER_URL=https://validibot.example.com
+```
+
+The production compose file mounts `.envs/.production/.docker-compose/keys`
+into the web and worker containers at `/run/validibot-keys`.
+
+If you rotate the key later, existing credentials remain valid only as long as
+their verifying public key is still exposed through the instance JWKS. Plan key
+rotation deliberately.
 
 ## Verify the deployment
 

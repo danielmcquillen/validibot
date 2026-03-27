@@ -21,6 +21,11 @@
         {% trans "Back to workflow" %}
       </a>
     </div>
+    {% if workflow.is_tombstoned %}
+      <div class="alert alert-warning" role="alert">
+        {% trans "This workflow has been tombstoned. The runs below remain available for historical inspection." %}
+      </div>
+    {% endif %}
     <div class="table-responsive shadow-sm rounded">
       <table class="table table-hover align-middle mb-0">
         <thead class="table-light">

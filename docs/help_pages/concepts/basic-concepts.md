@@ -42,7 +42,7 @@ A reusable sequence of validation steps. When you submit data, it runs through e
 
 One action in a workflow. Most steps run a **validator** that checks your data. Steps execute in order from top to bottom.
 
-Some workflows also include **action steps** that do things like send Slack notifications or generate certificates.
+Some workflows also include **action steps** that do things like send Slack notifications or issue signed credentials.
 
 ---
 

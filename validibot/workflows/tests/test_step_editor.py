@@ -7,15 +7,15 @@ from http import HTTPStatus
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
 from django.urls import reverse
 
 from validibot.actions.constants import ActionCategoryType
-from validibot.actions.constants import CertificationActionType
+from validibot.actions.constants import CredentialActionType
 from validibot.actions.constants import IntegrationActionType
+from validibot.actions.models import Action
 from validibot.actions.models import ActionDefinition
-from validibot.actions.models import SignedCredentialAction
 from validibot.actions.models import SlackMessageAction
+from validibot.actions.registry import get_action_form
 from validibot.submissions.constants import SubmissionFileType
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
@@ -61,7 +61,7 @@ def make_action_definition(
         type_value = (
             IntegrationActionType.SLACK_MESSAGE
             if category == ActionCategoryType.INTEGRATION
-            else CertificationActionType.SIGNED_CREDENTIAL
+            else CredentialActionType.SIGNED_CREDENTIAL
         )
     slug = f"{category.lower()}-{type_value.lower()}"
     definition, _ = ActionDefinition.objects.get_or_create(
@@ -151,6 +151,7 @@ def test_wizard_redirects_to_action_create_view(client):
 
 
 def test_wizard_lists_action_tabs(client):
+    """The wizard should only show action tabs backed by registered plugins."""
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     integration_def = make_action_definition(
@@ -158,8 +159,8 @@ def test_wizard_lists_action_tabs(client):
         name="Send Slack message",
     )
     certification_def = make_action_definition(
-        category=ActionCategoryType.CERTIFICATION,
-        name="Issue certificate",
+        category=ActionCategoryType.CREDENTIAL,
+        name="Issue signed credential",
     )
 
     url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
@@ -167,9 +168,13 @@ def test_wizard_lists_action_tabs(client):
     assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     assert integration_def.name in html
-    assert certification_def.name in html
     assert "Integrations" in html
-    assert "Certifications" in html
+
+    if get_action_form(CredentialActionType.SIGNED_CREDENTIAL) is None:
+        assert certification_def.name not in html
+    else:
+        assert certification_def.name in html
+        assert "Credentials" in html
 
 
 def test_wizard_shows_xml_validator_even_when_incompatible_file_type(client):
@@ -409,118 +414,49 @@ def test_create_view_creates_action_step(client):
     assert step.config.get("message") == "Validation finished successfully."
 
 
-def test_create_certificate_action_uses_default_when_missing(client):
+def test_create_signed_credential_action_without_extra_config(client):
+    """Credential step creation depends on the Pro action plugin being loaded."""
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     definition = make_action_definition(
-        category=ActionCategoryType.CERTIFICATION,
-        name="Issue certificate",
+        category=ActionCategoryType.CREDENTIAL,
+        name="Issue signed credential",
     )
 
-    create_url = _select_action(client, workflow, definition)
+    create_url = reverse(
+        "workflows:workflow_step_action_create",
+        args=[workflow.pk, definition.pk],
+    )
+
+    if get_action_form(CredentialActionType.SIGNED_CREDENTIAL) is None:
+        response = client.get(create_url)
+        assert response.status_code == HTTPStatus.NOT_FOUND
+        return
+
+    response = client.get(create_url)
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert "Signed credential steps must come after all validation steps" in html
+    assert "Advisory actions may appear after the signed credential step." in html
+    assert "Show success messages for passed assertions" not in html
+    assert html.index("Step name") < html.index(
+        "Signed credential steps must come after all validation steps",
+    )
 
     response = client.post(
         create_url,
         data={
-            "name": "Issue certificate",
-            "description": "Provide certificates for passing runs.",
+            "name": "Issue signed credential",
+            "description": "Issue a signed credential for passing runs.",
         },
     )
     assert response.status_code == HTTPStatus.FOUND
 
     step = WorkflowStep.objects.get(workflow=workflow)
+    assert step.action is not None
+    assert step.action.definition == definition
     variant = step.action.get_variant()
-    assert isinstance(variant, SignedCredentialAction)
-    assert variant.credential_template == "" or variant.credential_template.name == ""
-    assert variant.get_credential_template_display_name().endswith(
-        "default_signed_credential.pdf",
-    )
-    assert step.config.get("credential_template").endswith(
-        "default_signed_credential.pdf",
-    )
-
-
-def test_create_certificate_action_step(client, tmp_path):
-    workflow = WorkflowFactory()
-    _login_for_workflow(client, workflow)
-    definition = make_action_definition(
-        category=ActionCategoryType.CERTIFICATION,
-        name="Issue certificate",
-    )
-
-    create_url = _select_action(client, workflow, definition)
-
-    template_file = SimpleUploadedFile(
-        "certificate.html",
-        b"<html>Certificate</html>",
-        content_type="text/html",
-    )
-
-    with override_settings(MEDIA_ROOT=str(tmp_path)):
-        response = client.post(
-            create_url,
-            data={
-                "name": "Issue certificate",
-                "description": "Provide certificates for passing runs.",
-                "credential_template": template_file,
-            },
-        )
-        assert response.status_code == HTTPStatus.FOUND
-
-    step = WorkflowStep.objects.get(workflow=workflow)
-    variant = step.action.get_variant()
-    assert isinstance(variant, SignedCredentialAction)
-    assert variant.credential_template.name.endswith("certificate.html")
-    assert step.config.get("credential_template") == "certificate.html"
-
-
-def test_update_certificate_action_step_allows_existing_template(client, tmp_path):
-    workflow = WorkflowFactory()
-    _login_for_workflow(client, workflow)
-    definition = make_action_definition(
-        category=ActionCategoryType.CERTIFICATION,
-        name="Issue certificate",
-    )
-
-    original_template = SimpleUploadedFile(
-        "original.html",
-        b"<html>Original</html>",
-        content_type="text/html",
-    )
-
-    with override_settings(MEDIA_ROOT=str(tmp_path)):
-        action = SignedCredentialAction.objects.create(
-            definition=definition,
-            name="Issue certificate",
-            description="Existing description",
-            credential_template=original_template,
-        )
-        step = WorkflowStep.objects.create(
-            workflow=workflow,
-            action=action,
-            order=10,
-            name="Issue certificate",
-            description="Existing description",
-            config={"credential_template": "original.html"},
-        )
-
-        edit_url = reverse(
-            "workflows:workflow_step_settings",
-            args=[workflow.pk, step.pk],
-        )
-        response = client.post(
-            edit_url,
-            data={
-                "name": "Issue certificate",
-                "description": "Existing description",
-                "notes": "",
-            },
-        )
-        assert response.status_code == HTTPStatus.FOUND
-
-        step.refresh_from_db()
-        variant = step.action.get_variant()
-        assert variant.credential_template.name.endswith("original.html")
+    assert variant is not None
 
 
 def test_create_view_validates_missing_upload(client):
@@ -820,6 +756,62 @@ def test_update_view_prefills_action_step(client):
     assert action_variant.message == "Escalate to ops channel."
 
 
+def test_action_step_settings_collapses_self_referential_breadcrumb(client):
+    """Action settings pages should not render a breadcrumb self-link."""
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    definition = make_action_definition(name="Slack alert")
+    action = SlackMessageAction.objects.create(
+        definition=definition,
+        name="Alert ops",
+        description="Existing description",
+        message="Original message",
+    )
+    step = WorkflowStep.objects.create(
+        workflow=workflow,
+        action=action,
+        order=10,
+        name="Alert ops",
+        description="Existing description",
+        notes="Existing notes",
+        config={"message": "Original message"},
+    )
+
+    edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk])
+    response = client.get(edit_url)
+
+    assert response.status_code == HTTPStatus.OK
+    breadcrumbs = response.context["breadcrumbs"]
+    assert [str(crumb["name"]) for crumb in breadcrumbs] == [
+        "Workflows",
+        workflow.name,
+        f"{step.step_number_display}: Edit Step Detail",
+    ]
+    assert breadcrumbs[-1]["url"] == ""
+
+
+def test_validator_step_settings_keeps_step_breadcrumb_link(client):
+    """Validator settings pages should keep the step overview breadcrumb."""
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ensure_validator(ValidationType.AI_ASSIST, "ai-assist", "AI Assist")
+    step = WorkflowStepFactory(workflow=workflow, validator=validator)
+
+    edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk])
+    response = client.get(edit_url)
+
+    assert response.status_code == HTTPStatus.OK
+    breadcrumbs = response.context["breadcrumbs"]
+    assert [str(crumb["name"]) for crumb in breadcrumbs] == [
+        "Workflows",
+        workflow.name,
+        step.step_number_display,
+        "Edit Step Detail",
+    ]
+    assert breadcrumbs[-2]["url"]
+    assert breadcrumbs[-1]["url"] == ""
+
+
 def test_step_form_navigation_links(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
@@ -1034,26 +1026,26 @@ def test_step_list_renders_action_step(client):
 
 
 def test_step_list_renders_signed_credential_summary(client):
-    """The step list shows the renamed credential template summary field."""
+    """Credential steps should render a minimal summary in the step list."""
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     definition = make_action_definition(
-        category=ActionCategoryType.CERTIFICATION,
+        category=ActionCategoryType.CREDENTIAL,
         name="Signed credential",
-        type_value=CertificationActionType.SIGNED_CREDENTIAL,
+        type_value=CredentialActionType.SIGNED_CREDENTIAL,
     )
-    action = SignedCredentialAction.objects.create(
+    action = Action.objects.create(
         definition=definition,
         name="Issue credential",
-        description="Attach a signed credential PDF.",
+        description="Issue a signed credential.",
     )
     WorkflowStep.objects.create(
         workflow=workflow,
         action=action,
         order=10,
         name="Issue credential",
-        description="Attach a signed credential PDF.",
-        config={"credential_template": "credential-template.pdf"},
+        description="Issue a signed credential.",
+        config={},
     )
 
     response = client.get(
@@ -1063,9 +1055,58 @@ def test_step_list_renders_signed_credential_summary(client):
 
     assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
-    assert "Credential template" in html
-    assert "credential-template.pdf" in html
-    assert "certificate_template" not in html
+    assert "bi-award" in html
+    assert "Signed credential · Credential" not in html
+    assert "No additional configuration" not in html
+
+
+def test_step_list_disables_invalid_signed_credential_move(client):
+    """The workflow step list disables moves that would violate credential order."""
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ensure_validator(ValidationType.AI_ASSIST, "ai-assist", "AI Assist")
+    WorkflowStep.objects.create(
+        workflow=workflow,
+        validator=validator,
+        order=10,
+        name="Validate first",
+        config={"template": "ai_critic", "mode": "ADVISORY", "cost_cap_cents": 10},
+    )
+    definition = make_action_definition(
+        category=ActionCategoryType.CREDENTIAL,
+        name="Signed credential",
+        type_value=CredentialActionType.SIGNED_CREDENTIAL,
+    )
+    action = Action.objects.create(
+        definition=definition,
+        name="Issue credential",
+        description="Issue a signed credential.",
+    )
+    step = WorkflowStep.objects.create(
+        workflow=workflow,
+        action=action,
+        order=20,
+        name="Issue credential",
+        description="Issue a signed credential.",
+        config={},
+    )
+
+    response = client.get(
+        reverse("workflows:workflow_step_list", args=[workflow.pk]),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert "Move buttons that would break this rule are disabled." in html
+    assert (
+        "This step must remain after all validation steps and blocking actions." in html
+    )
+    assert re.search(
+        rf'data-step-id="{step.id}".*?data-move-direction="up".*?disabled',
+        html,
+        re.S,
+    )
 
 
 def test_step_list_hides_author_notes_for_non_authors(client):

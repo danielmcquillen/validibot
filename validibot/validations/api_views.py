@@ -10,19 +10,29 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from http import HTTPStatus
 from typing import TYPE_CHECKING
 
+from django.http import Http404
+from django.http import HttpResponse
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
 from rest_framework import permissions
 from rest_framework import viewsets
+from rest_framework.decorators import action
 
 from validibot.core.api.org_scoped import OrgMembershipPermission
 from validibot.core.api.org_scoped import OrgScopedMixin
 from validibot.core.utils import truthy
 from validibot.users.constants import PermissionCode
 from validibot.validations.api.viewsets import ValidationRunFilter
+from validibot.validations.credential_utils import (
+    build_signed_credential_download_filename,
+)
+from validibot.validations.credential_utils import (
+    extract_signed_credential_resource_label,
+)
 from validibot.validations.models import ValidationRun
 from validibot.validations.serializers import ValidationRunSerializer
 
@@ -93,3 +103,42 @@ class OrgScopedRunViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(created__gte=cutoff)
 
         return qs
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="credential/download",
+        url_name="credential-download",
+    )
+    def credential_download(self, request, org_slug=None, pk=None):
+        """Download the compact JWS credential for a validation run."""
+
+        run = self.get_object()
+
+        try:
+            from validibot_pro.credentials.models import IssuedCredential
+
+            credential = IssuedCredential.objects.filter(
+                workflow_run=run,
+            ).first()
+        except Exception:
+            credential = None
+
+        if credential is None:
+            raise Http404("No credential issued for this run.")
+
+        resource_label = extract_signed_credential_resource_label(
+            credential.payload_json,
+        )
+        download_name = build_signed_credential_download_filename(
+            resource_label=resource_label,
+            workflow_slug=run.workflow.slug if run.workflow else "",
+            fallback_identifier=str(run.pk),
+        )
+        response = HttpResponse(
+            credential.credential_jws,
+            content_type="application/vc+jwt",
+            status=HTTPStatus.OK,
+        )
+        response["Content-Disposition"] = f'attachment; filename="{download_name}"'
+        return response

@@ -82,6 +82,28 @@ DJANGO_ACCOUNT_ALLOW_LOGIN=true
 # ==============================================================================
 SITE_URL=https://validibot.example.com
 
+# SIGNED CREDENTIALS (PRO / ENTERPRISE)
+# ==============================================================================
+# If you enable signed credentials on Docker Compose, create a private key on
+# the host and store it outside version control:
+#
+#   mkdir -p .envs/.production/.docker-compose/keys
+#   openssl ecparam -name prime256v1 -genkey -noout \
+#     -out .envs/.production/.docker-compose/keys/credential-signing.pem
+#   chmod 600 .envs/.production/.docker-compose/keys/credential-signing.pem
+#
+# docker-compose.production.yml mounts that directory into the web and worker
+# containers at /run/validibot-keys.
+SIGNING_KEY_PATH=
+# Example:
+# SIGNING_KEY_PATH=/run/validibot-keys/credential-signing.pem
+#
+# Optional explicit issuer URL for credential payloads. Leave empty to reuse
+# SITE_URL.
+CREDENTIAL_ISSUER_URL=
+# Optional override. ES256 is the only algorithm currently supported.
+SIGNING_ALGORITHM=ES256
+
 # ADMIN
 # ==============================================================================
 # IMPORTANT: Change this to a random URL to prevent automated attacks on /admin/.

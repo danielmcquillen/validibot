@@ -1,58 +1,42 @@
 import logging
 
-from validibot.actions.constants import ActionCategoryType
-from validibot.actions.constants import CertificationActionType
-from validibot.actions.constants import IntegrationActionType
-from validibot.actions.models import Action
 from validibot.actions.models import ActionDefinition
+from validibot.actions.registry import get_action_descriptors
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ACTION_DEFINITIONS = [
-    {
-        "slug": "integration-slack-message",
-        "name": "Slack message",
-        "description": "Send a message to a Slack channel.",
-        "icon": "bi-slack",
-        "action_category": ActionCategoryType.INTEGRATION,
-        "type": IntegrationActionType.SLACK_MESSAGE,
-    },
-    {
-        "slug": "certification-signed-credential",
-        "name": "Signed credential",
-        "description": "Issue a signed credential for successful validations.",
-        "icon": "bi-award",
-        "action_category": ActionCategoryType.CERTIFICATION,
-        "type": CertificationActionType.SIGNED_CREDENTIAL,
-    },
-]
 
+def create_default_actions() -> tuple[list[ActionDefinition], list[ActionDefinition]]:
+    """Sync ``ActionDefinition`` rows from the registered action plugins."""
 
-def create_default_actions() -> tuple[list[Action], list[Action]]:
     created = []
-    skipped = []
+    updated = []
 
-    for definition in DEFAULT_ACTION_DEFINITIONS:
-        obj, was_created = ActionDefinition.objects.get_or_create(
-            slug=definition["slug"],
+    for descriptor in get_action_descriptors():
+        obj, was_created = ActionDefinition.objects.update_or_create(
+            slug=descriptor.slug,
             defaults={
-                "name": definition["name"],
-                "description": definition["description"],
-                "icon": definition["icon"],
-                "action_category": definition["action_category"],
-                "type": definition["type"],
+                "name": descriptor.name,
+                "description": descriptor.description,
+                "icon": descriptor.icon,
+                "action_category": descriptor.action_category,
+                "type": descriptor.type,
+                "required_commercial_feature": (descriptor.required_commercial_feature),
             },
         )
         if was_created:
             created.append(obj)
             logger.info("Created default action definition: %s", obj.slug)
         else:
-            skipped.append(obj)
+            updated.append(obj)
+            logger.info("Updated default action definition: %s", obj.slug)
     if created:
         logger.info(
             f"Created {obj} default action definitions.",
         )
+    elif updated:
+        logger.info("Default action definitions updated from registered plugins.")
     else:
         logger.info("Default action definitions already exist.")
 
-    return created, skipped
+    return created, updated

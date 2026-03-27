@@ -313,7 +313,7 @@ def _admin_memberships_for(user: User) -> list[Membership]:
 class OrganizationListView(
     FeatureRequiredMixin, BreadcrumbMixin, LoginRequiredMixin, TemplateView
 ):
-    required_feature = CommercialFeature.MULTI_ORG
+    required_commercial_feature = CommercialFeature.MULTI_ORG
     template_name = "users/organizations/organization_list.html"
     breadcrumbs = [{"name": _("Organizations"), "url": ""}]
 
@@ -346,7 +346,7 @@ class OrganizationCreateView(
     SuccessMessageMixin,
     CreateView,
 ):
-    required_feature = CommercialFeature.MULTI_ORG
+    required_commercial_feature = CommercialFeature.MULTI_ORG
     model = Organization
     form_class = OrganizationForm
     template_name = "users/organizations/organization_form.html"
@@ -440,7 +440,7 @@ class OrganizationDeleteView(
     SuccessMessageMixin,
     DeleteView,
 ):
-    required_feature = CommercialFeature.MULTI_ORG
+    required_commercial_feature = CommercialFeature.MULTI_ORG
     organization_context_attr = "organization"
     model = Organization
     template_name = "users/organizations/organization_confirm_delete.html"
@@ -562,7 +562,7 @@ class OrganizationDetailView(
 class OrganizationMemberRolesUpdateView(
     FeatureRequiredMixin, OrganizationAdminRequiredMixin, FormView
 ):
-    required_feature = CommercialFeature.MULTI_ORG
+    required_commercial_feature = CommercialFeature.MULTI_ORG
     organization_context_attr = "organization"
     form_class = OrganizationMemberRolesForm
     template_name = "users/organizations/organization_member_form.html"
@@ -623,7 +623,7 @@ class OrganizationMemberRolesUpdateView(
 class OrganizationMemberDeleteView(
     FeatureRequiredMixin, OrganizationAdminRequiredMixin, View
 ):
-    required_feature = CommercialFeature.MULTI_ORG
+    required_commercial_feature = CommercialFeature.MULTI_ORG
     organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):

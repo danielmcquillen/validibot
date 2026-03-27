@@ -1,4 +1,5 @@
 import contextlib
+from uuid import uuid4
 
 import factory
 from factory.django import DjangoModelFactory
@@ -25,7 +26,7 @@ class WorkflowFactory(DjangoModelFactory):
     user = factory.SubFactory(UserFactory)
     name = factory.Sequence(lambda n: f"Test Workflow {n}")
     uuid = factory.Faker("uuid4")
-    slug = factory.Sequence(lambda n: f"test-workflow-{n}")
+    slug = factory.LazyFunction(lambda: f"test-workflow-{uuid4().hex[:12]}")
     project = factory.SubFactory(ProjectFactory, org=factory.SelfAttribute("..org"))
     version = "1"
     is_locked = False

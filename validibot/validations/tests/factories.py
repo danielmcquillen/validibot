@@ -1,4 +1,5 @@
 import json
+from uuid import uuid4
 
 import factory
 from factory.django import DjangoModelFactory
@@ -75,7 +76,7 @@ class ValidatorFactory(DjangoModelFactory):
         model = Validator
         skip_postgeneration_save = True
 
-    slug = factory.Sequence(lambda n: f"test-validator-{n}")
+    slug = factory.LazyFunction(lambda: f"test-validator-{uuid4().hex[:12]}")
     description = factory.Faker("text", max_nb_chars=200)
     name = factory.Sequence(lambda n: f"Test Validator {n}")
     validation_type = ValidationType.JSON_SCHEMA

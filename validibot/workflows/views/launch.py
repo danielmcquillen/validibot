@@ -369,12 +369,9 @@ class WorkflowLaunchStatusView(WorkflowLaunchContextMixin, View):
         run = self.load_run_for_display(workflow=workflow, run_id=run_id)
         if run is None:
             raise Http404
-        context = {"workflow": workflow}
-        context.update(
-            self.build_status_area_context(
-                workflow=workflow,
-                active_run=run,
-            ),
+        context = self.build_run_detail_context(
+            workflow=workflow,
+            run=run,
         )
         return render(
             request,

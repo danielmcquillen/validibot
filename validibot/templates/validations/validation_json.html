@@ -1,54 +1,52 @@
-{% extends "core/base.html" %}
+{% extends "app_base.html" %}
 
-{% load i18n static %}
+{% load i18n %}
 
 {% block title %}
-  {% trans "Validation Run" %} #{{ run.pk }} · JSON · Validibot
+  {% blocktrans with run_id=run.pk %}Validation Run #{{ run_id }} JSON · Validibot{% endblocktrans %}
 {% endblock title %}
-{% block css %}
-  {{ block.super }}
-  <style>
-    body {
-      background: #1e1e1e;
-      color: #d4d4d4;
-      font-family: "SF Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, monospace;
-      font-size: 13px;
-      padding: 1rem;
-      margin: 0;
-    }
-
-    .json-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.5rem 0;
-      margin-bottom: 0.5rem;
-      border-bottom: 1px solid #333;
-      color: #888;
-      font-size: 12px;
-    }
-
-    .json-header a {
-      color: #569cd6;
-      text-decoration: none;
-    }
-
-    .json-header a:hover {
-      text-decoration: underline;
-    }
-
-    pre {
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      margin: 0;
-      line-height: 1.5;
-    }
-  </style>
-{% endblock css %}
-{% block body %}
-  <div class="json-header">
-    <span>{% trans "Validation Run" %} {{ run.pk }} · {{ run.get_status_display }}</span>
-    <a href="{% url 'validations:validation_detail' run.pk %}">{% trans "Back to run detail" %} →</a>
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div class="container-fluid d-flex flex-column flex-grow-1">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 col-lg-8">
+        <div class="app-page-title mb-0">{% trans "Validation Run JSON" %}</div>
+      </div>
+      <div class="col-12 col-lg-4">
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+          <a class="btn btn-secondary btn-sm"
+             href="{% url 'validations:validation_detail' run.pk %}"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             title="{% trans "Back to run detail" %}">
+            <i class="bi-arrow-left me-1"></i>{% trans "Back" %}
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="row flex-grow-1">
+      <div class="col-12">
+        <div class="card app-card mb-3">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="text-muted small ms-2">
+                {% blocktrans with run_id=run.pk status=run.get_status_display %}Full serialized representation of validation run <code>{{ run_id }}</code> with status <strong>{{ status }}</strong>.{% endblocktrans %}
+              </span>
+            </div>
+          </div>
+          <div class="card-body p-0">{% include "app/partial/components/json_viewer.html" with json_data=json_data %}</div>
+        </div>
+      </div>
+    </div>
+    <div class="row mt-2 mb-3">
+      <div class="col-12">
+        <a class="btn btn-secondary"
+           href="{% url 'validations:validation_detail' run.pk %}">
+          <i class="bi-arrow-left me-1"></i>{% trans "Back to run detail" %}
+        </a>
+      </div>
+    </div>
   </div>
-  <pre id="json-output">{{ json_content }}</pre>
-{% endblock body %}
+{% endblock app_content %}

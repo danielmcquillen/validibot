@@ -96,14 +96,17 @@ DJANGO_ACCOUNT_ALLOW_LOGIN=true
 
 # GOOGLE CLOUD KMS (for JWKS / credential signing)
 # ==============================================================================
-# The signing key for validation credentials (JWT badges).
+# The signing key for validation credentials.
 # Each stage has its own key for isolation:
 #   prod:    credential-signing
 #   staging: credential-signing-staging
 #   dev:     credential-signing-dev
 GCP_KMS_SIGNING_KEY="projects/your-project/locations/region/keyRings/your-app-name-keys/cryptoKeys/credential-signing"
-GCP_KMS_JWKS_KEYS="projects/your-project/locations/region/keyRings/your-app-name-keys/cryptoKeys/credential-signing"
-SV_JWKS_ALG="ES256"
+# Optional explicit issuer URL for credential payloads. Leave empty to reuse
+# SITE_URL.
+CREDENTIAL_ISSUER_URL=https://validibot.example.com
+# Optional override. ES256 is the only algorithm currently supported.
+SIGNING_ALGORITHM=ES256
 
 # GITHUB (optional)
 # ==============================================================================

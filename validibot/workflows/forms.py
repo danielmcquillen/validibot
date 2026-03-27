@@ -768,7 +768,7 @@ class WorkflowLaunchForm(forms.Form):
     filename = forms.CharField(
         label=_("Submission name"),
         required=False,
-        help_text=_("Optional name for reporting."),
+        help_text=_("Optional name for reporting and/or verifiable credentials."),
     )
     file_type = forms.ChoiceField(
         label=_("File type"),
@@ -2270,6 +2270,70 @@ class WorkflowPublicInfoForm(forms.ModelForm):
             Field("content_md"),
             Field("make_info_page_public"),
         )
+
+
+class WorkflowBreakGlassDeleteForm(forms.Form):
+    """Collect explicit confirmation before tombstoning a workflow.
+
+    The break-glass flow is intentionally heavier than ordinary archive/delete.
+    The operator must confirm the immutable workflow UUID, record a human
+    reason, and acknowledge the impact on normal product surfaces before the
+    workflow is tombstoned.
+    """
+
+    workflow_uuid_confirmation = forms.CharField(
+        label=_("Type the workflow UUID to continue"),
+        help_text=_(
+            "This confirmation uses the immutable workflow UUID, not the "
+            "workflow name or slug."
+        ),
+    )
+    deletion_reason = forms.CharField(
+        label=_("Reason for break-glass delete"),
+        widget=forms.Textarea(attrs={"rows": 4}),
+        help_text=_(
+            "Explain why the workflow must be removed from normal product surfaces."
+        ),
+    )
+    acknowledge_consequences = forms.BooleanField(
+        label=_(
+            "I understand that this workflow will stop appearing in normal "
+            "lists, launch flows, and editing screens, while historical runs "
+            "and credentials remain valid."
+        ),
+        required=True,
+    )
+
+    def __init__(self, *args, workflow: Workflow, **kwargs):
+        self.workflow = workflow
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            HTML(
+                '<div class="alert alert-warning small mb-3">'
+                + str(
+                    _(
+                        "Break-glass delete is an exceptional workflow "
+                        "lifecycle action for credential-bearing workflows."
+                    ),
+                )
+                + "</div>",
+            ),
+            Field("workflow_uuid_confirmation"),
+            Field("deletion_reason"),
+            Field("acknowledge_consequences"),
+        )
+
+    def clean_workflow_uuid_confirmation(self) -> str:
+        """Require an exact UUID match before allowing tombstoning."""
+        value = (self.cleaned_data.get("workflow_uuid_confirmation") or "").strip()
+        expected = str(self.workflow.uuid)
+        if value != expected:
+            raise ValidationError(
+                _("Enter the exact workflow UUID: %(uuid)s") % {"uuid": expected},
+            )
+        return value
 
 
 class BasicStepConfigForm(BaseStepConfigForm):

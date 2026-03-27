@@ -26,8 +26,8 @@ from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
 from validibot.actions.constants import ActionCategoryType
+from validibot.actions.constants import CredentialActionType
 from validibot.actions.models import ActionDefinition
-from validibot.actions.models import SignedCredentialAction
 from validibot.actions.models import SlackMessageAction
 from validibot.actions.registry import get_action_form
 from validibot.core.utils import reverse_with_org
@@ -56,6 +56,17 @@ from validibot.workflows.views_helpers import save_workflow_action_step
 from validibot.workflows.views_helpers import save_workflow_step
 
 logger = logging.getLogger(__name__)
+
+CREDENTIAL_PLACEMENT_GUIDANCE = _(
+    "Signed credential steps must come after all validation steps and "
+    "blocking actions.",
+)
+CREDENTIAL_PLACEMENT_FOLLOWUP = _(
+    "Advisory actions may appear after the signed credential step.",
+)
+CREDENTIAL_MOVE_GUIDANCE = _(
+    "Move buttons that would break this rule are disabled.",
+)
 
 
 class WorkflowStepListView(WorkflowObjectMixin, View):
@@ -94,13 +105,10 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
                 definition = step.action.definition
                 variant = step.action.get_variant()
                 step.action_variant = variant
+                step.is_signed_credential_step = _is_signed_credential_step(step)
                 if not config and variant:
                     if isinstance(variant, SlackMessageAction):
                         config["message"] = variant.message
-                    elif isinstance(variant, SignedCredentialAction):
-                        config["credential_template"] = (
-                            variant.get_credential_template_display_name()
-                        )
                 step.action_meta = {
                     "category_label": definition.get_action_category_display(),
                     "type": definition.type,
@@ -108,25 +116,17 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
                     "definition_name": definition.name,
                     "definition_description": definition.description,
                 }
-                credential_template = config.get("credential_template") or config.get(
-                    "certificate_template"
-                )
                 extras = {
                     key: value
                     for key, value in config.items()
-                    if key
-                    not in {
-                        "message",
-                        "credential_template",
-                        "certificate_template",
-                    }
+                    if key not in {"message"}
                 }
                 step.action_summary = {
                     "message": config.get("message"),
-                    "credential_template": credential_template,
                     "extras": extras,
                 }
             step.config = config
+        has_credential_step = _annotate_reorder_controls(steps)
         show_private_notes = self.user_can_manage_workflow()
         context = {
             "workflow": workflow,
@@ -136,6 +136,15 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
             "can_view_workflow": self.user_can_view_workflow(),
             "can_manage_workflow": self.user_can_manage_workflow(),
             "can_launch_workflow": workflow.can_execute(user=request.user),
+            "credential_ordering_guidance": (
+                {
+                    "headline": str(CREDENTIAL_PLACEMENT_GUIDANCE),
+                    "followup": str(CREDENTIAL_PLACEMENT_FOLLOWUP),
+                    "move_note": str(CREDENTIAL_MOVE_GUIDANCE),
+                }
+                if has_credential_step
+                else None
+            ),
         }
         return render(request, self.template_name, context)
 
@@ -291,12 +300,30 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         return validators
 
     def _available_action_definitions(self) -> list[ActionDefinition]:
-        return list(
-            ActionDefinition.objects.filter(is_active=True).order_by(
-                "action_category",
-                "name",
-            ),
+        """Return action definitions the current user can add.
+
+        Filters out definitions whose ``required_commercial_feature`` is not
+        enabled
+        and whose action plugins are not registered in the current
+        process.
+        """
+        from validibot.core.features import is_feature_enabled
+
+        definitions = ActionDefinition.objects.filter(is_active=True).order_by(
+            "action_category",
+            "name",
         )
+        return [
+            d
+            for d in definitions
+            if (
+                get_action_form(d.type) is not None
+                and (
+                    not d.required_commercial_feature
+                    or is_feature_enabled(d.required_commercial_feature)
+                )
+            )
+        ]
 
     def _render_select(self, request, workflow: Workflow, form=None, status=200):
         validators = self._available_validators(workflow)
@@ -399,10 +426,10 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             for defn in action_definitions
             if defn.action_category == ActionCategoryType.INTEGRATION
         ]
-        certification_entries = [
+        credential_entries = [
             self._serialize_action_definition(defn)
             for defn in action_definitions
-            if defn.action_category == ActionCategoryType.CERTIFICATION
+            if defn.action_category == ActionCategoryType.CREDENTIAL
         ]
 
         tabs.append(
@@ -414,13 +441,13 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         )
         tabs.append(
             {
-                "slug": "certifications",
-                "label": str(_("Certifications")),
-                "entries": certification_entries,
+                "slug": "credentials",
+                "label": str(_("Credentials")),
+                "entries": credential_entries,
             },
         )
         options.extend(integration_entries)
-        options.extend(certification_entries)
+        options.extend(credential_entries)
 
         return tabs, options
 
@@ -591,6 +618,15 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         return self._validator
 
     def get_action_definition(self) -> ActionDefinition:
+        """Look up the ActionDefinition for create or update mode.
+
+        For create mode, also enforces ``required_commercial_feature`` gating so
+        that Pro-only actions cannot be added to a workflow when the
+        required commercial package is not installed.  This is the
+        server-side companion to the UI filtering in
+        ``_available_action_definitions()`` — both are necessary for
+        defense in depth.
+        """
         if not hasattr(self, "_action_definition"):
             if self.mode == "update":
                 step = self.get_step()
@@ -604,6 +640,16 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                     pk=definition_id,
                     is_active=True,
                 )
+                # Server-side enforcement: reject action types whose
+                # required commercial feature is not enabled.
+                required = self._action_definition.required_commercial_feature
+                if required:
+                    from validibot.core.features import is_feature_enabled
+
+                    if not is_feature_enabled(required):
+                        raise Http404
+                if get_action_form(self._action_definition.type) is None:
+                    raise Http404
         return self._action_definition
 
     def is_action_step(self) -> bool:
@@ -771,9 +817,62 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                     and step.validator
                     and step.validator.supports_assertions,
                 ),
+                "credential_step_guidance": self._get_credential_step_guidance(),
             },
         )
         return context
+
+    def _get_credential_step_guidance(self) -> dict[str, str] | None:
+        """Return UI guidance for signed credential action steps."""
+
+        if not self.is_action_step():
+            return None
+        definition = self.get_action_definition()
+        if definition.type != CredentialActionType.SIGNED_CREDENTIAL:
+            return None
+
+        summary = str(
+            _(
+                "When this step is present, the workflow editor keeps it after "
+                "all validation steps and blocking actions."
+            )
+        )
+        if self.mode == "create":
+            status = str(
+                _(
+                    "New steps are added at the end of the workflow. You can "
+                    "still place advisory actions after this one later."
+                )
+            )
+        else:
+            step = self.get_step()
+            workflow = self.get_workflow()
+            step_number = step.step_number_display if step else "?"
+            status = str(
+                _("You are editing %(step)s in a workflow with %(count)s steps.")
+                % {
+                    "step": step_number,
+                    "count": workflow.steps.count(),
+                }
+            )
+
+        return {
+            "headline": str(CREDENTIAL_PLACEMENT_GUIDANCE),
+            "followup": str(CREDENTIAL_PLACEMENT_FOLLOWUP),
+            "status": status,
+            "summary": summary,
+        }
+
+    def _has_dedicated_step_edit_view(self) -> bool:
+        """Return whether the step has a distinct overview page.
+
+        Action steps use the settings form as their only edit surface.
+        Their ``workflow_step_edit`` route redirects back to the same
+        settings page, so breadcrumbs should not include a self-link for
+        the step number.
+        """
+
+        return not self.is_action_step()
 
     def get_breadcrumbs(self):
         workflow = self.get_workflow()
@@ -801,19 +900,27 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                     ),
                 },
             )
-            step_url = reverse_with_org(
-                "workflows:workflow_step_edit",
-                request=self.request,
-                kwargs={"pk": workflow.pk, "step_id": step.pk if step else ""},
-            )
-
-            breadcrumbs.append(
-                {
-                    "name": step.step_number_display,
-                    "url": step_url,
-                },
-            )
-            breadcrumbs.append({"name": _("Edit Step Detail"), "url": ""})
+            if self._has_dedicated_step_edit_view():
+                step_url = reverse_with_org(
+                    "workflows:workflow_step_edit",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk, "step_id": step.pk if step else ""},
+                )
+                breadcrumbs.append(
+                    {
+                        "name": step.step_number_display,
+                        "url": step_url,
+                    },
+                )
+                breadcrumbs.append({"name": _("Edit Step Detail"), "url": ""})
+            else:
+                breadcrumbs.append(
+                    {
+                        "name": _("%(step)s: Edit Step Detail")
+                        % {"step": step.step_number_display},
+                        "url": "",
+                    },
+                )
         return breadcrumbs
 
 
@@ -1505,9 +1612,123 @@ class WorkflowStepMoveView(WorkflowObjectMixin, View):
             steps[index], steps[index + 1] = steps[index + 1], steps[index]
         else:
             return hx_trigger_response(status_code=204)
+        # Validate credential step placement before persisting the
+        # new order.  The clean() method on WorkflowStep only fires
+        # on full_clean(), but the reorder uses raw .update() for
+        # performance.  We check the proposed order here instead.
+        placement_error = _validate_credential_step_order(steps)
+        if placement_error:
+            return hx_trigger_response(
+                status_code=400,
+                message=placement_error,
+                level="warning",
+            )
+
         with transaction.atomic():
             for pos, item in enumerate(steps, start=1):
                 WorkflowStep.objects.filter(pk=item.pk).update(order=1000 + pos)
             resequence_workflow_steps(workflow)
         message = _("Workflow step order updated.")
         return hx_trigger_response(message, close_modal=None)
+
+
+def _validate_credential_step_order(
+    steps: list[WorkflowStep],
+) -> str | None:
+    """Check proposed step order for credential step placement violations.
+
+    Returns an error message string if the proposed order violates the
+    ADR's placement rules, or ``None`` if the order is valid.
+
+    Rules (per ADR-2025-11-25 §4):
+        - All validator steps must appear before any credential step.
+        - All BLOCKING action steps must appear before any credential step.
+        - ADVISORY action steps may appear after the credential step.
+    """
+    from validibot.actions.constants import ActionFailureMode
+
+    credential_index = None
+    for i, step in enumerate(steps):
+        if (
+            step.action_id
+            and step.action.definition_id
+            and step.action.definition.type == CredentialActionType.SIGNED_CREDENTIAL
+        ):
+            credential_index = i
+            break
+
+    if credential_index is None:
+        return None  # No credential step — no placement rules to check.
+
+    # Check for validators or BLOCKING actions after the credential step.
+    for step in steps[credential_index + 1 :]:
+        if step.validator_id:
+            return str(
+                _("The signed credential step must come after all validation steps.")
+            )
+        if step.action_id and step.action.failure_mode == ActionFailureMode.BLOCKING:
+            return str(
+                _(
+                    "The signed credential step must come after all "
+                    "blocking action steps."
+                )
+            )
+
+    return None
+
+
+def _annotate_reorder_controls(steps: list[WorkflowStep]) -> bool:
+    """Add move-button state to step objects for the workflow editor.
+
+    The workflow detail page renders move up/down buttons inline. This helper
+    simulates each move in memory and disables buttons that would violate the
+    signed-credential placement rule, so authors get guidance before they click.
+    """
+
+    has_credential_step = False
+    last_index = len(steps) - 1
+
+    for index, step in enumerate(steps):
+        step.move_up_disabled = index == 0
+        step.move_down_disabled = index == last_index
+        step.move_up_reason = str(_("This step is already first."))
+        step.move_down_reason = str(_("This step is already last."))
+        step.credential_ordering_hint = ""
+
+        if _is_signed_credential_step(step):
+            has_credential_step = True
+            step.credential_ordering_hint = str(
+                _(
+                    "This step must remain after all validation steps and "
+                    "blocking actions."
+                )
+            )
+
+        if index > 0:
+            proposed = list(steps)
+            proposed[index - 1], proposed[index] = proposed[index], proposed[index - 1]
+            placement_error = _validate_credential_step_order(proposed)
+            if placement_error:
+                step.move_up_disabled = True
+                step.move_up_reason = placement_error
+
+        if index < last_index:
+            proposed = list(steps)
+            proposed[index], proposed[index + 1] = proposed[index + 1], proposed[index]
+            placement_error = _validate_credential_step_order(proposed)
+            if placement_error:
+                step.move_down_disabled = True
+                step.move_down_reason = placement_error
+
+    return has_credential_step
+
+
+def _is_signed_credential_step(step: WorkflowStep) -> bool:
+    """Return True when a workflow step is the signed credential action."""
+
+    return bool(
+        step.action_id
+        and step.action
+        and step.action.definition_id
+        and step.action.definition.type == CredentialActionType.SIGNED_CREDENTIAL
+    )

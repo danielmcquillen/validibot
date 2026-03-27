@@ -66,11 +66,14 @@ cp .envs.example/.local/.build .envs/.local/.build
 Then edit `.envs/.local/.build` and set:
 
 ```bash
-VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro
+VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro==<version>
 VALIDIBOT_PRIVATE_INDEX_URL=https://<license-credentials>@pypi.validibot.com/simple/
 ```
 
-Use `validibot-enterprise` instead of `validibot-pro` if you purchased Enterprise.
+Use `validibot-enterprise==<version>` instead of `validibot-pro==<version>` if
+you purchased Enterprise. You can also use a quoted exact wheel URL on
+`pypi.validibot.com` that includes `#sha256=<hash>` instead of a package name
+and version.
 Then add the commercial Django app to `config/settings/base.py` before you
 start or rebuild the stack:
 
@@ -82,6 +85,46 @@ If you purchased Enterprise, add both apps:
 
 ```python
 INSTALLED_APPS += ["validibot_pro", "validibot_enterprise"]
+```
+
+## Enable signed credentials locally
+
+If you want to test the signed credential action locally, generate a small
+local signing key and point `SIGNING_KEY_PATH` at it.
+
+Create the key on the host:
+
+```bash
+mkdir -p .envs/.local/keys
+openssl ecparam -name prime256v1 -genkey -noout \
+  -out .envs/.local/keys/credential-signing.pem
+chmod 600 .envs/.local/keys/credential-signing.pem
+```
+
+Then add this to `.envs/.local/.django`:
+
+```bash
+SIGNING_KEY_PATH=/run/validibot-keys/credential-signing.pem
+CREDENTIAL_ISSUER_URL=http://localhost:8000
+```
+
+That in-container path works for the standard `just up` stack. If you are
+using the separate `just local-cloud ...` development flow, use this instead:
+
+```bash
+SIGNING_KEY_PATH=/app/.envs/.local/keys/credential-signing.pem
+CREDENTIAL_ISSUER_URL=http://localhost:8000
+```
+
+`local-cloud` mounts the full `validibot` repo at `/app`, so the key is
+available there even though that stack does not currently mount
+`/run/validibot-keys`.
+
+After updating the env file, rebuild or restart the stack:
+
+```bash
+just build
+just up
 ```
 
 ## Verify the install
@@ -128,6 +171,23 @@ If you plan to test advanced validators locally, check:
 ## Important note about `local-cloud`
 
 If you see `just local-cloud ...` elsewhere in the repo, that is for the separate `validibot-cloud` development workflow. It is not the standard self-host path for a customer running Validibot locally.
+
+If you hit a startup error in that separate `local-cloud` flow mentioning
+`psycopg_c`, the usual cause is a stale shared virtualenv volume. That issue is
+specific to `validibot-cloud`, not the standard `just up` stack.
+
+`local-cloud` keeps a shared `.venv` volume for its web and worker containers.
+`psycopg[c]` includes a compiled extension, so after dependency changes or base
+image changes the compiled package can get out of sync with the rest of that
+persisted environment.
+
+Reset the shared virtualenv volume and rebuild:
+
+```bash
+docker compose -f ../validibot-cloud/docker-compose.cloud.yml down --remove-orphans
+docker volume rm validibot_validibot_local_venv
+just local-cloud up --build
+```
 
 ## Where to go next
 

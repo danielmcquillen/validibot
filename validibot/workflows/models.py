@@ -15,6 +15,7 @@ from django.db import transaction
 from django.db.models import Exists
 from django.db.models import OuterRef
 from django.db.models import Q
+from django.utils import timezone
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
@@ -158,6 +159,12 @@ def _default_workflow_file_types() -> list[str]:
 class Workflow(FeaturedImageMixin, TimeStampedModel):
     """
     Reusable, versioned definition of a sequence of validation steps.
+
+    A workflow normally remains editable and launchable until it is archived or
+    disabled. The break-glass delete flow adds a stronger historical-record
+    state, ``is_tombstoned``, which removes the workflow from normal product
+    surfaces while keeping the row available for old runs and signed
+    credentials.
     """
 
     objects = WorkflowManager()
@@ -290,6 +297,37 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         help_text=_(
             "Archived workflows are disabled and hidden unless explicitly shown."
         ),
+    )
+    is_tombstoned = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Tombstoned workflows are removed from normal product surfaces but "
+            "kept for historical run and credential continuity."
+        ),
+    )
+    tombstoned_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_("When the workflow entered the break-glass tombstone state."),
+    )
+    tombstoned_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tombstoned_workflows",
+        help_text=_("The user who initiated the break-glass tombstone flow."),
+    )
+    tombstone_reason = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Human-entered reason recorded during break-glass delete."),
+    )
+    tombstone_workflow_definition_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=_("Workflow definition digest captured at the time of tombstoning."),
     )
 
     make_info_page_public = models.BooleanField(
@@ -548,7 +586,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
         The workflow must also be active for execution to be allowed.
         """
-        if not self.is_active:
+        if not self.is_active or self.is_tombstoned:
             return False
         if not user or not user.is_authenticated:
             return False
@@ -569,10 +607,61 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         Check if the given user can edit this workflow.
         Requires the ``workflow_edit`` permission in the workflow's organization.
         """
-        if not user or not user.is_authenticated:
+        if self.is_tombstoned or not user or not user.is_authenticated:
             return False
 
         return user.has_perm(PermissionCode.WORKFLOW_EDIT.value, self)
+
+    @transaction.atomic
+    def tombstone(
+        self,
+        *,
+        deleted_by: User | None,
+        reason: str,
+        workflow_definition_hash: str = "",
+    ) -> None:
+        """Place the workflow into the break-glass tombstone state.
+
+        Tombstoning is intentionally stronger than ordinary archiving. It
+        removes the workflow from normal listing, launch, sharing, and public
+        surfaces while preserving the row so historical runs and issued
+        credentials still have a stable target.
+        """
+        now = timezone.now()
+        cleaned_reason = (reason or "").strip()
+        self.is_tombstoned = True
+        self.is_archived = True
+        self.is_active = False
+        self.is_public = False
+        self.make_info_page_public = False
+        self.agent_access_enabled = False
+        self.tombstoned_at = now
+        self.tombstoned_by = deleted_by
+        self.tombstone_reason = cleaned_reason
+        self.tombstone_workflow_definition_hash = workflow_definition_hash or ""
+        self.save(
+            update_fields=[
+                "is_tombstoned",
+                "is_archived",
+                "is_active",
+                "is_public",
+                "make_info_page_public",
+                "agent_access_enabled",
+                "tombstoned_at",
+                "tombstoned_by",
+                "tombstone_reason",
+                "tombstone_workflow_definition_hash",
+                "modified",
+            ],
+        )
+        self.access_grants.filter(is_active=True).update(
+            is_active=False,
+            modified=now,
+        )
+        self.invites.filter(status=InviteStatus.PENDING).update(
+            status=InviteStatus.CANCELED,
+            modified=now,
+        )
 
     @property
     def workflow_type(self) -> str:
@@ -1033,6 +1122,12 @@ class WorkflowStep(TimeStampedModel):
         if self.action and self.display_schema:
             self.display_schema = False
 
+        # ── Credential step placement rules ──
+        # Per ADR-2025-11-25: at most one SignedCredentialAction per
+        # workflow, and it must come after all blocking steps.
+        if self.action_id:
+            self._validate_credential_step_placement()
+
         # Validate config against the typed Pydantic model for this step type.
         # This catches typos and type mismatches at save time rather than at
         # runtime during validation execution.
@@ -1047,6 +1142,81 @@ class WorkflowStep(TimeStampedModel):
                 raise ValidationError(
                     {"config": str(exc)},
                 ) from exc
+
+    def _validate_credential_step_placement(self):
+        """Enforce credential step uniqueness and ordering rules.
+
+        Per ADR-2025-11-25 §4:
+            - At most one SignedCredentialAction step per workflow.
+            - The credential step must come after all validator steps
+              and all BLOCKING action steps.
+            - ADVISORY action steps may appear after the credential step.
+
+        This method is a no-op for non-credential action steps.
+        """
+        from validibot.actions.constants import ActionFailureMode
+        from validibot.actions.constants import CredentialActionType
+
+        # Only apply to signed credential actions.
+        action = self.action
+        if not action or not action.definition_id:
+            return
+        if action.definition.type != CredentialActionType.SIGNED_CREDENTIAL:
+            return
+
+        # Rule 1: At most one credential step per workflow.
+        existing_credential_steps = WorkflowStep.objects.filter(
+            workflow=self.workflow,
+            action__definition__type=CredentialActionType.SIGNED_CREDENTIAL,
+        ).exclude(pk=self.pk)
+        if existing_credential_steps.exists():
+            raise ValidationError(
+                {
+                    "action": _(
+                        "A workflow can have at most one signed credential step."
+                    ),
+                },
+            )
+
+        # Rule 2: No validator steps may appear after the credential
+        # step.  The ADR says: "the credential step must come after
+        # all blocking work whose failure would change the meaning of
+        # the claim."  Validators are implicitly blocking.
+        validators_after_us = WorkflowStep.objects.filter(
+            workflow=self.workflow,
+            order__gt=self.order,
+            validator__isnull=False,
+        ).exclude(pk=self.pk)
+
+        if validators_after_us.exists():
+            raise ValidationError(
+                {
+                    "order": _(
+                        "The signed credential step must come after all "
+                        "validation steps. Move it to the end of the "
+                        "workflow, or move the validator steps before it."
+                    ),
+                },
+            )
+
+        # Rule 3: No BLOCKING action steps may appear after the
+        # credential step.  ADVISORY actions after it are fine.
+        blocking_actions_after_us = WorkflowStep.objects.filter(
+            workflow=self.workflow,
+            order__gt=self.order,
+            action__isnull=False,
+            action__failure_mode=ActionFailureMode.BLOCKING,
+        ).exclude(pk=self.pk)
+
+        if blocking_actions_after_us.exists():
+            raise ValidationError(
+                {
+                    "order": _(
+                        "The signed credential step must come after all "
+                        "blocking action steps."
+                    ),
+                },
+            )
 
 
 class WorkflowStepResource(models.Model):
@@ -1620,7 +1790,8 @@ class GuestInvite(TimeStampedModel):
         """
         Get the workflows this invite grants access to.
 
-        For scope=ALL, returns all active, non-archived workflows in the org.
+        For scope=ALL, returns all active, non-archived, non-tombstoned
+        workflows in the org.
         For scope=SELECTED, returns the explicitly selected workflows.
         """
         if self.scope == self.Scope.ALL:
@@ -1628,8 +1799,13 @@ class GuestInvite(TimeStampedModel):
                 org=self.org,
                 is_active=True,
                 is_archived=False,
+                is_tombstoned=False,
             )
-        return self.workflows.filter(is_active=True, is_archived=False)
+        return self.workflows.filter(
+            is_active=True,
+            is_archived=False,
+            is_tombstoned=False,
+        )
 
     @classmethod
     def create_with_expiry(

@@ -86,6 +86,15 @@ if settings.ENABLE_APP:
         ),
     ]
 
+# ── Validibot Pro routes ──────────────────────────────────────────────
+# Pro-owned URLs only exist when the app is activated in INSTALLED_APPS.
+# That keeps community-only deployments from advertising routes whose
+# templates and views live in the commercial package.
+if "validibot_pro" in settings.INSTALLED_APPS:
+    from validibot_pro.urls import pro_urlpatterns
+
+    urlpatterns += pro_urlpatterns
+
 if settings.ACCOUNT_ALLOW_LOGIN:
     urlpatterns.append(path("accounts/", include("allauth.urls")))
 

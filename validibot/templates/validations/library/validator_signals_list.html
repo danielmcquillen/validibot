@@ -32,12 +32,24 @@
           <table class="table table-hover align-middle" data-sortable-table>
             <thead class="table-light">
               <tr>
-                <th class="text-muted small" data-sortable="true">{% trans "Signal Name" %}</th>
-                <th class="text-muted small" data-sortable="true">{% trans "Label" %}</th>
-                <th class="text-muted small" data-sortable="true">{% trans "Direction" %}</th>
-                <th class="text-muted small" data-sortable="true">{% trans "Data Type" %}</th>
-                <th class="text-muted small" data-sortable="true">{% trans "Native Name" %}</th>
-                <th class="text-muted small">{% trans "Description" %}</th>
+                <th class="text-muted small" data-sortable="true">
+                  {% trans "Signal Name" %}
+                </th>
+                <th class="text-muted small" data-sortable="true">
+                  {% trans "Label" %}
+                </th>
+                <th class="text-muted small" data-sortable="true">
+                  {% trans "Direction" %}
+                </th>
+                <th class="text-muted small" data-sortable="true">
+                  {% trans "Data Type" %}
+                </th>
+                <th class="text-muted small" data-sortable="true">
+                  {% trans "Native Name" %}
+                </th>
+                <th class="text-muted small">
+                  {% trans "Description" %}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -56,7 +68,9 @@
                   <td>
                     <span class="badge text-bg-secondary">{{ signal.get_direction_display }}</span>
                   </td>
-                  <td>{{ signal.get_data_type_display }}</td>
+                  <td>
+                    {{ signal.get_data_type_display }}
+                  </td>
                   <td>
                     {% if signal.native_name %}
                       <code class="d-inline-block text-truncate"

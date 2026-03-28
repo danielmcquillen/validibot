@@ -12,7 +12,9 @@ Context variables (passed via ``{% include ... with %}``):
 {% endcomment %}
 {% if run.submission %}
   <div class="card validation-info-card mb-3">
-    <div class="card-header">{% trans "User Inputs" %}</div>
+    <div class="card-header">
+      {% trans "User Inputs" %}
+    </div>
     <div class="card-body">
       {% if run.submission.content and run.submission.is_content_available %}
         <section>
@@ -23,7 +25,9 @@ Context variables (passed via ``{% include ... with %}``):
       {% elif run.submission.input_file and run.submission.is_content_available %}
         <section>
           <dl class="row small mb-0">
-            <dt class="col-sm-4">{% trans "File" %}</dt>
+            <dt class="col-sm-4">
+              {% trans "File" %}
+            </dt>
             <dd class="col-sm-8">
               <span class="font-monospace">{{ run.submission.original_filename }}</span>
               <button type="button"
@@ -42,20 +46,28 @@ Context variables (passed via ``{% include ... with %}``):
         </p>
       {% endif %}
       {% if run.submission.metadata %}
-        <section class="{% if run.submission.content or run.submission.input_file %}mt-3{% endif %}">
-          <h6 class="fw-semibold">{% trans "Metadata" %}</h6>
+        <section class="{% if run.submission.content or run.submission.input_file %}
+                          mt-3
+                        {% endif %}">
+          <h6 class="fw-semibold">
+            {% trans "Metadata" %}
+          </h6>
           <pre class="bg-body-tertiary border rounded p-3 small mb-0">{{ run.submission.metadata|pretty_json }}</pre>
         </section>
       {% endif %}
       {% if run.submission.checksum_sha256 %}
         <section class="mt-3">
           <dl class="row small mb-0">
-            <dt class="col-sm-4">{% trans "Content hash" %}</dt>
+            <dt class="col-sm-4">
+              {% trans "Content hash" %}
+            </dt>
             <dd class="col-sm-8">
               <span class="font-monospace small text-muted">{{ run.submission.checksum_sha256 }}</span>
             </dd>
             {% if run.submission.size_bytes %}
-              <dt class="col-sm-4">{% trans "Size" %}</dt>
+              <dt class="col-sm-4">
+                {% trans "Size" %}
+              </dt>
               <dd class="col-sm-8">
                 <span class="small text-muted">{{ run.submission.size_bytes|filesizeformat }}</span>
               </dd>
@@ -74,11 +86,14 @@ Context variables (passed via ``{% include ... with %}``):
       <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title" id="submissionContentModalLabel">{{ run.submission.original_filename }}</h5>
+            <h5 class="modal-title" id="submissionContentModalLabel">
+              {{ run.submission.original_filename }}
+            </h5>
             <button type="button"
                     class="btn-close"
                     data-bs-dismiss="modal"
-                    aria-label="{% trans 'Close' %}"></button>
+                    aria-label="{% trans 'Close' %}">
+            </button>
           </div>
           <div class="modal-body">
             <pre class="small mb-0">{{ submission_content }}</pre>

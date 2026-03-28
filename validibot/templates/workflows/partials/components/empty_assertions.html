@@ -1,6 +1,8 @@
 {% load i18n core_tags %}
 
-<p class="text-muted mb-2">{% trans "No assertions have been added yet." %}</p>
+<p class="text-muted mb-2">
+  {% trans "No assertions have been added yet." %}
+</p>
 {% if can_manage_assertions %}
   <button class="btn btn-secondary"
           data-bs-toggle="modal"

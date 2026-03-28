@@ -7,7 +7,8 @@
   <button type="button"
           class="btn-close"
           data-bs-dismiss="modal"
-          aria-label="{% trans 'Close' %}"></button>
+          aria-label="{% trans 'Close' %}">
+  </button>
 </div>
 <form method="post"
       action="{% org_url 'workflows:workflow_guest_invite' pk=workflow.pk %}"
@@ -24,7 +25,8 @@
           <button type="button"
                   class="btn-close"
                   data-bs-dismiss="alert"
-                  aria-label="{% trans 'Close' %}"></button>
+                  aria-label="{% trans 'Close' %}">
+          </button>
         </div>
       {% endfor %}
     {% endif %}
@@ -34,7 +36,9 @@
       {% endblocktrans %}
     </p>
     <div class="mb-3">
-      <label for="email" class="form-label">{% trans "Email address" %}</label>
+      <label for="email" class="form-label">
+        {% trans "Email address" %}
+      </label>
       <input type="email"
              class="form-control"
              id="email"
@@ -43,11 +47,15 @@
              placeholder="guest@example.com"
              required
              autofocus />
-      <div class="form-text">{% trans "Enter the email address of the person you want to invite." %}</div>
+      <div class="form-text">
+        {% trans "Enter the email address of the person you want to invite." %}
+      </div>
     </div>
   </div>
   <div class="modal-footer">
-    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+      {% trans "Cancel" %}
+    </button>
     <button type="submit" class="btn btn-secondary">
       <i class="bi-send me-1"></i>{% trans "Send Invitation" %}
     </button>

@@ -42,7 +42,9 @@
               <div class="d-flex align-items-center">
                 <i class="bi-globe text-primary fs-3 me-3"></i>
                 <div>
-                  <p class="mb-0 fw-medium">{% trans "This workflow is public" %}</p>
+                  <p class="mb-0 fw-medium">
+                    {% trans "This workflow is public" %}
+                  </p>
                   <p class="text-muted small mb-0">
                     {% trans "Any authenticated user can launch this workflow. Guest access management is not needed for public workflows." %}
                   </p>
@@ -55,7 +57,9 @@
       <div class="col-12 col-lg-4">
         <div class="card app-card">
           <div class="card-header">
-            <div class="card-title">{% trans "About Sharing" %}</div>
+            <div class="card-title">
+              {% trans "About Sharing" %}
+            </div>
           </div>
           <div class="card-body">
             <dl class="mb-0">
@@ -85,7 +89,8 @@
        tabindex="-1"
        aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content" id="guest-invite-modal-content"></div>
+      <div class="modal-content" id="guest-invite-modal-content">
+      </div>
     </div>
   </div>
 {% endblock modal %}

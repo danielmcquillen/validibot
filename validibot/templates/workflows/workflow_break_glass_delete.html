@@ -14,7 +14,9 @@
       <div class="col-12 col-xl-8">
         <div class="card border-danger shadow-sm">
           <div class="card-header text-bg-danger">
-            <h1 class="h5 mb-0">{% trans "Break-glass tombstone workflow" %}</h1>
+            <h1 class="h5 mb-0">
+              {% trans "Break-glass tombstone workflow" %}
+            </h1>
           </div>
           <div class="card-body">
             <p class="mb-3">
@@ -29,7 +31,9 @@
               {% trans "Archive is the normal lifecycle path for used workflows. Use this flow only when an owner must remove a credential-bearing workflow from normal listings, launch flows, and editing surfaces." %}
             </p>
             <div class="alert alert-warning" role="alert">
-              <div class="fw-semibold mb-2">{% trans "Impact summary" %}</div>
+              <div class="fw-semibold mb-2">
+                {% trans "Impact summary" %}
+              </div>
               <ul class="mb-2">
                 <li>
                   {% blocktrans count count=validation_run_count trimmed %}
@@ -46,18 +50,26 @@
                   {% endblocktrans %}
                 </li>
               </ul>
-              <p class="mb-0 small">{{ impact_summary }}</p>
+              <p class="mb-0 small">
+                {{ impact_summary }}
+              </p>
             </div>
             <dl class="row small mb-4">
-              <dt class="col-sm-4">{% trans "Workflow UUID" %}</dt>
+              <dt class="col-sm-4">
+                {% trans "Workflow UUID" %}
+              </dt>
               <dd class="col-sm-8 font-monospace text-break">
                 {{ workflow.uuid }}
               </dd>
-              <dt class="col-sm-4">{% trans "Slug" %}</dt>
+              <dt class="col-sm-4">
+                {% trans "Slug" %}
+              </dt>
               <dd class="col-sm-8">
                 {{ workflow.slug }}
               </dd>
-              <dt class="col-sm-4">{% trans "Version" %}</dt>
+              <dt class="col-sm-4">
+                {% trans "Version" %}
+              </dt>
               <dd class="col-sm-8">
                 {{ workflow.version|default:_("not set") }}
               </dd>

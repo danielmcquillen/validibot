@@ -10,9 +10,13 @@
   <div id="signout" class="container-fluid entrance-page ">
     <div class="entrance-card-wrapper">
       <div class="card" style="max-width:40rem">
-        <div class="card-header">{% trans "Sign Out" %}</div>
+        <div class="card-header">
+          {% trans "Sign Out" %}
+        </div>
         <div class="card-body contents">
-          <p class="card-text">{% trans 'Are you sure you want to sign out?' %}</p>
+          <p class="card-text">
+            {% trans 'Are you sure you want to sign out?' %}
+          </p>
           <form method="post" action="{% url 'account_logout' %}">
             {% csrf_token %}
             {% if redirect_field_value %}
@@ -20,7 +24,9 @@
                      name="{{ redirect_field_name }}"
                      value="{{ redirect_field_value }}" />
             {% endif %}
-            <button class="btn btn-danger" type="submit">{% trans 'Sign Out' %}</button>
+            <button class="btn btn-danger" type="submit">
+              {% trans 'Sign Out' %}
+            </button>
           </form>
         </div>
       </div>

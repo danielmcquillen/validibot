@@ -25,7 +25,9 @@
     <i class="bi bi-caret-down-fill small"></i>
   </button>
   <div class="dropdown-menu w-100 p-2 shadow-sm">
-    <h6 class="dropdown-header text-uppercase small text-muted">{% trans "Switch workspace to org:" %}</h6>
+    <h6 class="dropdown-header text-uppercase small text-muted">
+      {% trans "Switch workspace to org:" %}
+    </h6>
     {% for membership in org_memberships %}
       <form method="post"
             action="{% url 'users:organization-switch' membership.org_id %}"
@@ -33,8 +35,13 @@
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ request.get_full_path }}" />
         <button type="submit"
-                class="dropdown-item d-flex align-items-center justify-content-between {% if membership.org_id == active_org.id %}active{% endif %}"
-                {% if membership.org_id == active_org.id %}disabled{% endif %}>
+                class="dropdown-item d-flex align-items-center justify-content-between
+                       {% if membership.org_id == active_org.id %}
+                         active
+                       {% endif %}"
+                {% if membership.org_id == active_org.id %}
+                  disabled
+                {% endif %}>
           <span>{{ membership.org.name }}</span>
           {% if membership.is_admin %}
             <span class="badge text-bg-light text-uppercase ms-2">{% trans "Admin" %}</span>
@@ -42,11 +49,14 @@
         </button>
       </form>
     {% empty %}
-      <div class="text-muted small px-2 py-1">{% trans "No organizations available" %}</div>
+      <div class="text-muted small px-2 py-1">
+        {% trans "No organizations available" %}
+      </div>
     {% endfor %}
     {# Multi-org management link - only shown for Enterprise #}
     {% if feature_multi_org %}
-      <div class="dropdown-divider my-2"></div>
+      <div class="dropdown-divider my-2">
+      </div>
       <a class="dropdown-item d-flex align-items-center gap-2"
          href="{% org_url 'users:organization-list' %}">
         <i class="bi bi-people-fill"></i>

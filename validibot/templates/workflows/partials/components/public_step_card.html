@@ -21,7 +21,11 @@
         <span class="badge text-bg-light text-uppercase small">{{ step.public_action_meta.category_label }}</span>
       {% endif %}
     </div>
-    {% if step.description %}<p class="text-muted mb-3">{{ step.description|linebreaksbr }}</p>{% endif %}
+    {% if step.description %}
+      <p class="text-muted mb-3">
+        {{ step.description|linebreaksbr }}
+      </p>
+    {% endif %}
     {% comment %}
                           <div class="text-muted small">
                             <span>{% trans "Validator" %}: {{ step.validator.name }}</span>
@@ -37,7 +41,9 @@
                 data-bs-toggle="collapse"
                 data-bs-target="#schema-detail-{{ step.id }}"
                 aria-expanded="false"
-                aria-controls="schema-detail-{{ step.id }}">{% trans "Show schema" %}</button>
+                aria-controls="schema-detail-{{ step.id }}">
+          {% trans "Show schema" %}
+        </button>
         <div class="collapse mt-3" id="schema-detail-{{ step.id }}">
           <pre class="bg-body-tertiary p-3 rounded overflow-auto">
 <code class="language-{{ step.public_schema.language|default:'text' }}">{{ step.public_schema.content|escape }}</code>
@@ -63,6 +69,7 @@
 </div>
 {% if not forloop.last and steps|length > 1 %}
   <div class="workflow-step-connector" aria-hidden="true">
-    <div class="workflow-step-arrow"></div>
+    <div class="workflow-step-arrow">
+    </div>
   </div>
 {% endif %}

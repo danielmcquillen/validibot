@@ -21,13 +21,19 @@
         <div class="d-flex flex-row gap-3 align-items-center flex-wrap">
           <div class="dashboard-filter d-flex flex-row align-items-center">
             <label class="form-label fw-semibold small mb-0 pe-2"
-                   for="dashboard-time-range">{% trans "Range" %}</label>
+                   for="dashboard-time-range">
+              {% trans "Range" %}
+            </label>
             <select id="dashboard-time-range"
                     class="form-control form-select form-select-sm"
                     data-dashboard-time-range>
               {% for option in time_range_options %}
                 <option value="{{ option.slug }}"
-                        {% if option.slug == time_range.slug %}selected{% endif %}>{{ option.label }}</option>
+                        {% if option.slug == time_range.slug %}
+                          selected
+                        {% endif %}>
+                  {{ option.label }}
+                </option>
               {% endfor %}
             </select>
           </div>

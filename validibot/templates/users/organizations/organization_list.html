@@ -12,7 +12,9 @@
   <div class="container-fluid" id="organization-list">
     <div class="app-content-header-bar row ">
       <div class="app-content-header col-12 col-lg-6 d-flex align-items-start mb-2 mb-lg-0 p-0">
-        <h1 class="app-page-title">{% trans "Organizations" %}</h1>
+        <h1 class="app-page-title">
+          {% trans "Organizations" %}
+        </h1>
       </div>
       <div class="col-12 col-lg-6 d-flex justify-content-end p-0">
         {% comment %}
@@ -31,19 +33,33 @@
             <table class="table table-hover mb-0 align-middle">
               <thead class="table-light">
                 <tr>
-                  <th scope="col">{% trans "Name" %}</th>
-                  <th scope="col" class="d-none d-md-table-cell">{% trans "Slug" %}</th>
-                  <th scope="col" class="d-none d-lg-table-cell">{% trans "Members" %}</th>
-                  <th scope="col" class="text-end">{% trans "Actions" %}</th>
+                  <th scope="col">
+                    {% trans "Name" %}
+                  </th>
+                  <th scope="col" class="d-none d-md-table-cell">
+                    {% trans "Slug" %}
+                  </th>
+                  <th scope="col" class="d-none d-lg-table-cell">
+                    {% trans "Members" %}
+                  </th>
+                  <th scope="col" class="text-end">
+                    {% trans "Actions" %}
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {% for membership in admin_rows %}
                   {% with member_count=membership.member_count %}
                     <tr>
-                      <td class="fw-semibold">{{ membership.org.name }}</td>
-                      <td class="d-none d-md-table-cell text-muted">{{ membership.org.slug }}</td>
-                      <td class="d-none d-lg-table-cell">{{ member_count }}</td>
+                      <td class="fw-semibold">
+                        {{ membership.org.name }}
+                      </td>
+                      <td class="d-none d-md-table-cell text-muted">
+                        {{ membership.org.slug }}
+                      </td>
+                      <td class="d-none d-lg-table-cell">
+                        {{ member_count }}
+                      </td>
                       <td class="text-end">
                         <div class="btn-group" role="group">
                           {% if feature_team_management %}
@@ -52,7 +68,9 @@
                                   class="d-inline">
                               {% csrf_token %}
                               <input type="hidden" name="next" value="{% org_url 'members:member_list' %}" />
-                              <button type="submit" class="btn btn-sm btn-secondary">{% trans "Manage members" %}</button>
+                              <button type="submit" class="btn btn-sm btn-secondary">
+                                {% trans "Manage members" %}
+                              </button>
                             </form>
                           {% endif %}
                           <a class="btn btn-sm btn-secondary"

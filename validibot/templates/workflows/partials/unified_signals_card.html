@@ -27,7 +27,9 @@ Context:
   {% if has_inputs or has_outputs %}
     <div class="card app-card flex-grow-1" data-sv-catalog>
       <div class="card-header">
-        <div class="card-title">{% trans "Inputs and Outputs" %}</div>
+        <div class="card-title">
+          {% trans "Inputs and Outputs" %}
+        </div>
       </div>
       {% if has_inputs and has_outputs %}
         {# -- Two-tab layout -- #}
@@ -60,7 +62,9 @@ Context:
             <div class="tab-pane fade show active p-3 flex-grow-1"
                  id="signals-input-panel"
                  role="tabpanel"
-                 aria-labelledby="signals-input-tab">{% include "workflows/partials/input_signals_table.html" %}</div>
+                 aria-labelledby="signals-input-tab">
+              {% include "workflows/partials/input_signals_table.html" %}
+            </div>
             <div class="tab-pane fade p-3 flex-grow-1"
                  id="signals-output-panel"
                  role="tabpanel"
@@ -71,10 +75,14 @@ Context:
         </div>
       {% elif has_inputs %}
         {# -- Single input tab (no tabs needed) -- #}
-        <div class="card-body flex-grow-1">{% include "workflows/partials/input_signals_table.html" %}</div>
+        <div class="card-body flex-grow-1">
+          {% include "workflows/partials/input_signals_table.html" %}
+        </div>
       {% elif has_outputs %}
         {# -- Single output tab (no tabs needed) -- #}
-        <div class="card-body flex-grow-1">{% include "workflows/partials/output_signals_table.html" %}</div>
+        <div class="card-body flex-grow-1">
+          {% include "workflows/partials/output_signals_table.html" %}
+        </div>
       {% endif %}
     </div>
   {% endif %}

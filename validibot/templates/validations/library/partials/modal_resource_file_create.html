@@ -18,11 +18,14 @@ Expected context:
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content" id="modal-resource-file-create-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="modal-resource-file-create-label">{% trans "Add Resource File" %}</h5>
+        <h5 class="modal-title" id="modal-resource-file-create-label">
+          {% trans "Add Resource File" %}
+        </h5>
         <button type="button"
                 class="btn-close"
                 data-bs-dismiss="modal"
-                aria-label="{% trans 'Close' %}"></button>
+                aria-label="{% trans 'Close' %}">
+        </button>
       </div>
       <form hx-post="{% org_url 'validations:resource_file_create' pk=validator.id %}"
             hx-target="#modal-resource-file-create-content"
@@ -32,13 +35,19 @@ Expected context:
         <div class="modal-body overflow-auto">
           {% csrf_token %}
           {% if modal_form.non_field_errors %}
-            <div class="alert alert-danger">{{ modal_form.non_field_errors }}</div>
+            <div class="alert alert-danger">
+              {{ modal_form.non_field_errors }}
+            </div>
           {% endif %}
           {{ modal_form|crispy }}
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
-          <button type="submit" class="btn btn-secondary">{% trans "Upload" %}</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            {% trans "Cancel" %}
+          </button>
+          <button type="submit" class="btn btn-secondary">
+            {% trans "Upload" %}
+          </button>
         </div>
       </form>
     </div>

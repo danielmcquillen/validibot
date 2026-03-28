@@ -42,8 +42,12 @@
     {% endblock css %}
     {% web_tracker %}
   </head>
-  <body {% if csrf_token %}hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'{% endif %}
-        class="{% block bodyclass %} d-flex flex-column min-vh-100 flex-grow-1 navbar-fixed-offset {% endblock bodyclass %}">
+  <body {% if csrf_token %}
+          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+        {% endif %}
+        class="{% block bodyclass %}
+                 d-flex flex-column min-vh-100 flex-grow-1 navbar-fixed-offset
+               {% endblock bodyclass %}">
     {# Messages section #}
     {% block messages %}
       <section id="messages">
@@ -61,7 +65,10 @@
         {% include "core/partial/top_nav.html" %}
       {% endblock top_nav %}
       {% block main %}
-        <div class="{% block mainclass %} container-fluid {% endblock mainclass %} flex-grow-1 d-flex flex-row w-100 h-100 p-0">
+        <div class="{% block mainclass %}
+                      container-fluid
+                    {% endblock mainclass %}
+                    flex-grow-1 d-flex flex-row w-100 h-100 p-0">
           {# Left sidebar #}
           {% block left_sidebar %}
           {% endblock left_sidebar %}
@@ -70,7 +77,9 @@
             {% block top_bar %}
               {% block breadcrumbs %}
                 <div id="breadcrumbs-wrapper"
-                     class=" {% block breadcrumbs_styles %} {% endblock breadcrumbs_styles %}">
+                     class="
+                            {% block breadcrumbs_styles %}
+                            {% endblock breadcrumbs_styles %}">
                   {% include "core/partial/breadcrumbs.html" %}
                 </div>
               {% endblock breadcrumbs %}
@@ -94,13 +103,17 @@
          id="helpDrawer"
          aria-labelledby="helpDrawerLabel">
       <div class="offcanvas-header">
-        <h5 class="offcanvas-title" id="helpDrawerLabel">{% trans "Help" %}</h5>
+        <h5 class="offcanvas-title" id="helpDrawerLabel">
+          {% trans "Help" %}
+        </h5>
         <button type="button"
                 class="btn-close"
                 data-bs-dismiss="offcanvas"
-                aria-label="{% trans 'Close' %}"></button>
+                aria-label="{% trans 'Close' %}">
+        </button>
       </div>
-      <div class="offcanvas-body" id="helpDrawerBody"></div>
+      <div class="offcanvas-body" id="helpDrawerBody">
+      </div>
     </div>
     {% block inline_javascript %}
       {% comment %}

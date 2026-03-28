@@ -10,11 +10,14 @@
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="schema-requirements-modal-label">{% trans "Input requirements" %}</h5>
+        <h5 class="modal-title" id="schema-requirements-modal-label">
+          {% trans "Input requirements" %}
+        </h5>
         <button type="button"
                 class="btn-close"
                 data-bs-dismiss="modal"
-                aria-label="{% trans 'Close' %}"></button>
+                aria-label="{% trans 'Close' %}">
+        </button>
       </div>
       <div class="modal-body">
         {% if schema_requirement_rows %}
@@ -22,11 +25,21 @@
             <table class="table table-sm align-middle">
               <thead>
                 <tr>
-                  <th>{% trans "Field" %}</th>
-                  <th>{% trans "Type" %}</th>
-                  <th>{% trans "Status" %}</th>
-                  <th>{% trans "Constraints" %}</th>
-                  <th>{% trans "Default" %}</th>
+                  <th>
+                    {% trans "Field" %}
+                  </th>
+                  <th>
+                    {% trans "Type" %}
+                  </th>
+                  <th>
+                    {% trans "Status" %}
+                  </th>
+                  <th>
+                    {% trans "Constraints" %}
+                  </th>
+                  <th>
+                    {% trans "Default" %}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -75,11 +88,15 @@
             </table>
           </div>
         {% else %}
-          <p class="text-muted mb-0">{% trans "No input requirements defined." %}</p>
+          <p class="text-muted mb-0">
+            {% trans "No input requirements defined." %}
+          </p>
         {% endif %}
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Close" %}</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          {% trans "Close" %}
+        </button>
       </div>
     </div>
   </div>

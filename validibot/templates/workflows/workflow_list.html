@@ -31,7 +31,9 @@
       <div class="app-content-header-search col-12 col-lg-5 d-flex flex-row align-items-center mb-2 mb-lg-0">
         <form method="get" class="row w-100">
           <div class="col">
-            <label class="visually-hidden" for="workflow-search">{% trans "Search workflows" %}</label>
+            <label class="visually-hidden" for="workflow-search">
+              {% trans "Search workflows" %}
+            </label>
             <div class="input-group">
               <span class="input-group-text"><i class="bi-search"></i></span>
               <input id="workflow-search"
@@ -43,7 +45,9 @@
             </div>
           </div>
           <div class="col-auto ">
-            <button type="submit" class="btn btn-secondary">{% trans "Search" %}</button>
+            <button type="submit" class="btn btn-secondary">
+              {% trans "Search" %}
+            </button>
           </div>
           {% if search_query %}
             <div class="col">
@@ -84,19 +88,37 @@
         <div class="btn-group me-1"
              role="group"
              aria-label="{% trans 'Toggle layout' %}">
-          <a class="btn {% if current_layout == 'table' %} btn-dark active {% else %} btn-light {% endif %}"
+          <a class="btn
+                    {% if current_layout == 'table' %}
+                      btn-dark active
+                    {% else %}
+                      btn-light
+                    {% endif %}"
              href="{{ layout_urls.table }}"
              data-bs-toggle="tooltip"
              data-bs-placement="top"
-             aria-pressed="{% if current_layout == 'table' %} true {% else %} false {% endif %}"
+             aria-pressed="{% if current_layout == 'table' %}
+                             true
+                           {% else %}
+                             false
+                           {% endif %}"
              title="{% trans 'List view' %}">
             <i class="bi bi-list"></i>
           </a>
-          <a class="btn {% if current_layout == 'grid' %} btn-dark active {% else %} btn-light {% endif %}"
+          <a class="btn
+                    {% if current_layout == 'grid' %}
+                      btn-dark active
+                    {% else %}
+                      btn-light
+                    {% endif %}"
              href="{{ layout_urls.grid }}"
              data-bs-toggle="tooltip"
              data-bs-placement="top"
-             aria-pressed="{% if current_layout == 'grid' %} true {% else %} false {% endif %}"
+             aria-pressed="{% if current_layout == 'grid' %}
+                             true
+                           {% else %}
+                             false
+                           {% endif %}"
              title="{% trans 'Grid view' %}">
             <i class="bi bi-grid-fill"></i>
           </a>
@@ -119,8 +141,12 @@
       <div class="row">
         <div class="col-12 d-flex flex-row justify-content-center align-items-center h-100">
           <div class="text-center p-5 border rounded bg-body-tertiary mt-5">
-            <h2 class="h5">{% trans "No workflows yet" %}</h2>
-            <p class="text-muted">{% trans "Get started by creating your first workflow." %}</p>
+            <h2 class="h5">
+              {% trans "No workflows yet" %}
+            </h2>
+            <p class="text-muted">
+              {% trans "Get started by creating your first workflow." %}
+            </p>
             <a class="btn btn-secondary" href="{{ create_url }}">
               <i class="bi-plus-lg me-1"></i>
               {% trans "Create a workflow" %}

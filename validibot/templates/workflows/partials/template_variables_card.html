@@ -20,7 +20,9 @@ Context:
 {% with tab_prefix=catalog_tab_prefix|default:"step-editor" %}
   <div class="card app-card" id="template-variables-card">
     <div class="card-header">
-      <div class="card-title">{% trans "Inputs and Outputs" %}</div>
+      <div class="card-title">
+        {% trans "Inputs and Outputs" %}
+      </div>
     </div>
     <div class="card-body p-0">
       {# -- Tab navigation -- #}
@@ -54,7 +56,9 @@ Context:
              id="{{ tab_prefix }}-vars-panel"
              role="tabpanel"
              aria-labelledby="{{ tab_prefix }}-vars-tab">
-          <p class="text-muted small mb-3">{% trans "Configure each variable's type, constraints, and default values." %}</p>
+          <p class="text-muted small mb-3">
+            {% trans "Configure each variable's type, constraints, and default values." %}
+          </p>
           <form hx-post="{% org_url 'workflows:workflow_step_template_variables' workflow.pk step.pk %}"
                 hx-target="#template-variables-card"
                 hx-swap="outerHTML"

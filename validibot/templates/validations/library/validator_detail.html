@@ -39,7 +39,9 @@
         <div>
           <strong>{% trans "FMU Probe Status" %}:</strong>
           <span class="badge text-bg-secondary">{{ probe_result.status|default:"PENDING" }}</span>
-          {% if probe_result.last_error %}<span class="ms-2 text-danger">{{ probe_result.last_error }}</span>{% endif %}
+          {% if probe_result.last_error %}
+            <span class="ms-2 text-danger">{{ probe_result.last_error }}</span>
+          {% endif %}
         </div>
         <div class="d-flex gap-2">
           <button class="btn btn-secondary"
@@ -60,7 +62,8 @@
           </button>
         </div>
       </div>
-      <div id="probe-status" class="d-none"></div>
+      <div id="probe-status" class="d-none">
+      </div>
     {% endif %}
     {# ── System validator hero ── #}
     {% if validator.is_system %}
@@ -69,33 +72,47 @@
              style="background-image: url('{% static 'validations/images/validator_cards/'|add:validator.card_image_name %}')">
         </div>
         <div class="validator-hero-content">
-          <div class="validator-hero-title">{{ validator.name }}</div>
+          <div class="validator-hero-title">
+            {{ validator.name }}
+          </div>
         </div>
       </div>
     {% endif %}
     {# ── Tab navigation (link-based) ── #}
     <ul class="nav nav-tabs">
       <li class="nav-item">
-        <a class="nav-link{% if active_tab == 'description' %} active{% endif %}"
+        <a class="nav-link
+                  {% if active_tab == 'description' %}
+                    active
+                  {% endif %}"
            href="{% org_url 'validations:validator_detail' slug=validator.slug %}">
           <i class="bi bi-info-circle me-1"></i>{% trans "Description" %}
         </a>
       </li>
       <li class="nav-item">
-        <a class="nav-link{% if active_tab == 'signals' %} active{% endif %}"
+        <a class="nav-link
+                  {% if active_tab == 'signals' %}
+                    active
+                  {% endif %}"
            href="{% org_url 'validations:validator_signals_tab' slug=validator.slug %}">
           <i class="bi bi-broadcast me-1"></i>{% trans "Signals" %}
         </a>
       </li>
       <li class="nav-item">
-        <a class="nav-link{% if active_tab == 'assertions' %} active{% endif %}"
+        <a class="nav-link
+                  {% if active_tab == 'assertions' %}
+                    active
+                  {% endif %}"
            href="{% org_url 'validations:validator_assertions_tab' slug=validator.slug %}">
           <i class="bi bi-check2-square me-1"></i>{% trans "Default Assertions" %}
         </a>
       </li>
       {% if validator.supports_resource_files %}
         <li class="nav-item">
-          <a class="nav-link{% if active_tab == 'resource_files' %} active{% endif %}"
+          <a class="nav-link
+                    {% if active_tab == 'resource_files' %}
+                      active
+                    {% endif %}"
              href="{% org_url 'validations:validator_resource_files' slug=validator.slug %}">
             <i class="bi bi-file-earmark me-1"></i>{% trans "Resource Files" %}
           </a>

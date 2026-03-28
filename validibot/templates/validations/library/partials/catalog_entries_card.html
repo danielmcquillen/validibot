@@ -2,14 +2,22 @@
 
 <div class="card app-card catalog-entries-card"
      data-sv-catalog
-     data-sv-catalog-mode="{% if flat_mode %} flat {% else %} tabs {% endif %}">
+     data-sv-catalog-mode="{% if flat_mode %}
+                             flat
+                           {% else %}
+                             tabs
+                           {% endif %}">
   <div class="card-header">
-    <div class="card-title">{% trans "Inputs and Outputs" %}</div>
+    <div class="card-title">
+      {% trans "Inputs and Outputs" %}
+    </div>
   </div>
   <div class="card-body">
     {% if not inputs and not outputs %}
       {# Hide the card entirely when no signals exist #}
-      <p class="text-muted mb-0">{% trans "No signals registered yet." %}</p>
+      <p class="text-muted mb-0">
+        {% trans "No signals registered yet." %}
+      </p>
     {% elif flat_mode %}
       {% with prefix=catalog_tab_prefix|default:'catalog' %}
         {% if step and workflow %}
@@ -28,7 +36,9 @@
         {% endif %}
         <div class="catalog-filter mb-3 d-flex flex-row align-items-center">
           <div class="me-2">
-            <label for="{{ prefix }}-flat-filter" class="small">{% trans "Filter:" %}</label>
+            <label for="{{ prefix }}-flat-filter" class="small">
+              {% trans "Filter:" %}
+            </label>
           </div>
           <input type="search"
                  class="form-control form-control-sm"
@@ -42,12 +52,19 @@
             <table class="table table-sm align-middle" data-sortable-table>
               <thead>
                 <tr>
-                  <th class="text-muted small" data-sortable="true">{% trans "Signal Name" %}</th>
-                  <th class="text-muted small" data-sortable="true">{% trans "Direction" %}</th>
+                  <th class="text-muted small" data-sortable="true">
+                    {% trans "Signal Name" %}
+                  </th>
+                  <th class="text-muted small" data-sortable="true">
+                    {% trans "Direction" %}
+                  </th>
                   {% if step %}
-                    <th class="text-muted small text-center">{% trans "Show to User" %}</th>
+                    <th class="text-muted small text-center">
+                      {% trans "Show to User" %}
+                    </th>
                   {% endif %}
-                  <th class="text-muted small text-end"></th>
+                  <th class="text-muted small text-end">
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -58,7 +75,9 @@
                     <td>
                       <code class="small">{{ entry.contract_key }}</code>
                     </td>
-                    <td class="text-muted small" data-sort-value="{{ entry.direction }}">{{ entry.get_direction_display }}</td>
+                    <td class="text-muted small" data-sort-value="{{ entry.direction }}">
+                      {{ entry.get_direction_display }}
+                    </td>
                     {% if step %}
                       <td class="text-center">
                         <span class="text-muted">--</span>
@@ -82,7 +101,9 @@
                     <td>
                       <code class="small">{{ entry.contract_key }}</code>
                     </td>
-                    <td class="text-muted small" data-sort-value="{{ entry.direction }}">{{ entry.get_direction_display }}</td>
+                    <td class="text-muted small" data-sort-value="{{ entry.direction }}">
+                      {{ entry.get_direction_display }}
+                    </td>
                     {% if step %}
                       <td class="text-center">
                         {% if display_signals %}
@@ -109,14 +130,22 @@
                 {% endfor %}
                 {% if not inputs and not outputs %}
                   <tr data-sv-catalog-entry>
-                    <td colspan="{% if step %}4{% else %}3{% endif %}"
-                        class="text-muted small">{% trans "No signals registered yet." %}</td>
+                    <td colspan="{% if step %}
+                                   4
+                                 {% else %}
+                                   3
+                                 {% endif %}"
+                        class="text-muted small">
+                      {% trans "No signals registered yet." %}
+                    </td>
                   </tr>
                 {% endif %}
               </tbody>
             </table>
           </div>
-          <p class="text-muted small d-none" data-sv-catalog-empty>{% trans "No entries match your filter." %}</p>
+          <p class="text-muted small d-none" data-sv-catalog-empty>
+            {% trans "No entries match your filter." %}
+          </p>
         </div>
       {% endwith %}
     {% elif show_output_tab %}
@@ -154,7 +183,9 @@
              data-sv-catalog-panel>
           <div class="catalog-filter mb-3">
             <label for="{{ catalog_tab_prefix|default:'catalog' }}-input-filter"
-                   class="form-label small">{% trans "Filter entries" %}</label>
+                   class="form-label small">
+              {% trans "Filter entries" %}
+            </label>
             <input type="search"
                    class="form-control form-control-sm"
                    id="{{ catalog_tab_prefix|default:'catalog' }}-input-filter"
@@ -165,9 +196,13 @@
           {% if inputs %}
             {% include 'validations/library/partials/catalog_entry_list.html' with entries=inputs %}
           {% else %}
-            <p class="text-muted mb-0">{% trans "No entries." %}</p>
+            <p class="text-muted mb-0">
+              {% trans "No entries." %}
+            </p>
           {% endif %}
-          <p class="text-muted small d-none" data-sv-catalog-empty>{% trans "No entries match your filter." %}</p>
+          <p class="text-muted small d-none" data-sv-catalog-empty>
+            {% trans "No entries match your filter." %}
+          </p>
         </div>
         <div class="tab-pane fade p-3"
              id="{{ catalog_tab_prefix|default:'catalog' }}-output-panel"
@@ -176,7 +211,9 @@
              data-sv-catalog-panel>
           <div class="catalog-filter mb-3">
             <label for="{{ catalog_tab_prefix|default:'catalog' }}-output-filter"
-                   class="form-label small">{% trans "Filter entries" %}</label>
+                   class="form-label small">
+              {% trans "Filter entries" %}
+            </label>
             <input type="search"
                    class="form-control form-control-sm"
                    id="{{ catalog_tab_prefix|default:'catalog' }}-output-filter"
@@ -187,15 +224,21 @@
           {% if outputs %}
             {% include 'validations/library/partials/catalog_entry_list.html' with entries=outputs %}
           {% else %}
-            <p class="text-muted mb-0">{% trans "No entries." %}</p>
+            <p class="text-muted mb-0">
+              {% trans "No entries." %}
+            </p>
           {% endif %}
-          <p class="text-muted small d-none" data-sv-catalog-empty>{% trans "No entries match your filter." %}</p>
+          <p class="text-muted small d-none" data-sv-catalog-empty>
+            {% trans "No entries match your filter." %}
+          </p>
         </div>
       </div>
     {% elif inputs or outputs %}
       {% include 'validations/library/partials/catalog_entry_list.html' with entries=inputs %}
     {% else %}
-      <p class="text-muted mb-0">{% trans "No signals registered yet." %}</p>
+      <p class="text-muted mb-0">
+        {% trans "No signals registered yet." %}
+      </p>
     {% endif %}
   </div>
 </div>

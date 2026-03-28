@@ -24,12 +24,22 @@ Expected context:
     <table class="table table-sm align-middle table-hover">
       <thead>
         <tr>
-          <th class="text-muted small">{% trans "Name" %}</th>
-          <th class="text-muted small">{% trans "Type" %}</th>
-          <th class="text-muted small">{% trans "Scope" %}</th>
-          <th class="text-muted small text-center">{% trans "Default" %}</th>
+          <th class="text-muted small">
+            {% trans "Name" %}
+          </th>
+          <th class="text-muted small">
+            {% trans "Type" %}
+          </th>
+          <th class="text-muted small">
+            {% trans "Scope" %}
+          </th>
+          <th class="text-muted small text-center">
+            {% trans "Default" %}
+          </th>
           {% if can_manage_resource_files %}
-            <th class="text-muted small text-end">{% trans "Actions" %}</th>
+            <th class="text-muted small text-end">
+              {% trans "Actions" %}
+            </th>
           {% endif %}
         </tr>
       </thead>
@@ -45,7 +55,9 @@ Expected context:
                 <small class="text-muted">{{ rf.description|truncatewords:12 }}</small>
               {% endif %}
             </td>
-            <td class="text-muted small">{{ rf.get_resource_type_display }}</td>
+            <td class="text-muted small">
+              {{ rf.get_resource_type_display }}
+            </td>
             <td class="text-muted small">
               {% if rf.is_system %}
                 <span class="badge bg-light text-dark border">{% trans "System" %}</span>
@@ -54,7 +66,9 @@ Expected context:
               {% endif %}
             </td>
             <td class="text-center">
-              {% if rf.is_default %}<i class="bi bi-check-lg text-success"></i>{% endif %}
+              {% if rf.is_default %}
+                <i class="bi bi-check-lg text-success"></i>
+              {% endif %}
             </td>
             {% if can_manage_resource_files %}
               <td class="text-end">
@@ -71,7 +85,9 @@ Expected context:
                     <button class="btn btn-danger"
                             hx-post="{% org_url 'validations:resource_file_delete' pk=validator.pk rf_pk=rf.id %}"
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                            hx-confirm="{% blocktrans trimmed with name=rf.name %}Delete resource file '{{ name }}'?{% endblocktrans %}">
+                            hx-confirm="{% blocktrans trimmed with name=rf.name %}
+                                          Delete resource file '{{ name }}'?
+                                        {% endblocktrans %}">
                       <i class="bi bi-trash"></i>
                     </button>
                     {# djlint:on #}
@@ -86,6 +102,8 @@ Expected context:
   </div>
 {% else %}
   <div class="my-5 w-100 text-center">
-    <p class="text-muted small">{% trans "No resource files for this validator." %}</p>
+    <p class="text-muted small">
+      {% trans "No resource files for this validator." %}
+    </p>
   </div>
 {% endif %}

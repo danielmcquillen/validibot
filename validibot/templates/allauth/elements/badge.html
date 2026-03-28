@@ -1,6 +1,21 @@
 {% load allauth %}
 
-<span class="badge {% if 'success' in attrs.tags %}bg-success{% endif %} {% if 'warning' in attrs.tags %}bg-warning{% endif %} {% if 'secondary' in attrs.tags %}bg-secondary{% endif %} {% if 'danger' in attrs.tags %}bg-danger{% endif %} {% if 'primary' in attrs.tags %}bg-primary{% endif %}">
+<span class="badge
+             {% if 'success' in attrs.tags %}
+               bg-success
+             {% endif %}
+             {% if 'warning' in attrs.tags %}
+               bg-warning
+             {% endif %}
+             {% if 'secondary' in attrs.tags %}
+               bg-secondary
+             {% endif %}
+             {% if 'danger' in attrs.tags %}
+               bg-danger
+             {% endif %}
+             {% if 'primary' in attrs.tags %}
+               bg-primary
+             {% endif %}">
   {% slot %}
 {% endslot %}
 </span>

@@ -54,7 +54,9 @@
               <span class="badge text-bg-secondary ms-2">{{ memberships|length }}</span>
             </div>
           </div>
-          <div class="card-body">{% include "members/partials/member_table.html" %}</div>
+          <div class="card-body">
+            {% include "members/partials/member_table.html" %}
+          </div>
         </div>
       </div>
       <div class="col-12 col-lg-5">
@@ -62,7 +64,9 @@
           <div class="card-header">
             <div class="card-title">
               {% trans "Pending Invitations" %}
-              {% if pending_invites %}<span class="badge text-bg-warning ms-2">{{ pending_invites|length }}</span>{% endif %}
+              {% if pending_invites %}
+                <span class="badge text-bg-warning ms-2">{{ pending_invites|length }}</span>
+              {% endif %}
             </div>
           </div>
           <div class="card-body">
@@ -103,7 +107,9 @@
                 {% endfor %}
               </div>
             {% else %}
-              <p class="text-muted mb-0">{% trans "No pending invitations." %}</p>
+              <p class="text-muted mb-0">
+                {% trans "No pending invitations." %}
+              </p>
             {% endif %}
           </div>
         </div>
@@ -118,7 +124,8 @@
        tabindex="-1"
        aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content" id="member-invite-modal-content"></div>
+      <div class="modal-content" id="member-invite-modal-content">
+      </div>
     </div>
   </div>
 {% endblock modal %}

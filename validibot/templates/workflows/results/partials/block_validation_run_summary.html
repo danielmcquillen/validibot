@@ -9,7 +9,9 @@ are shown in the User Inputs card instead.
 {% endcomment %}
 <div class="card app-card validation-info-card">
   <div class="card-header">
-    <div class="card-title">{% trans "Run Summary" %}</div>
+    <div class="card-title">
+      {% trans "Run Summary" %}
+    </div>
     <div class="card-header-buttons">
       <a class="btn btn-sm btn-light"
          href="{% url 'validations:validation_json' run.pk %}"
@@ -24,7 +26,9 @@ are shown in the User Inputs card instead.
   <div class="card-body">
     <section>
       <dl class="row small mb-0">
-        <dt class="col-5 col-lg-4">{% trans "Status" %}</dt>
+        <dt class="col-5 col-lg-4">
+          {% trans "Status" %}
+        </dt>
         <dd class="col-7 col-lg-8">
           {% if run.status == "SUCCEEDED" %}
             <span class="badge text-bg-success">{{ run.get_status_display }}</span>
@@ -48,13 +52,17 @@ are shown in the User Inputs card instead.
       <section>
         <dl class="row small">
           {% if run.submission and run.submission.name %}
-            <dt class="col-sm-4">{% trans "Submission name" %}</dt>
+            <dt class="col-sm-4">
+              {% trans "Submission name" %}
+            </dt>
             <dd class="col-sm-8">
               {{ run.submission.name }}
             </dd>
           {% endif %}
           {% if run.short_description %}
-            <dt class="col-sm-4">{% trans "Short description" %}</dt>
+            <dt class="col-sm-4">
+              {% trans "Short description" %}
+            </dt>
             <dd class="col-sm-8">
               {{ run.short_description }}
             </dd>
@@ -66,19 +74,27 @@ are shown in the User Inputs card instead.
       {% if summary_record %}
         <section>
           <dl class="row small">
-            <dt class="col-5 col-lg-4">{% trans "Errors" %}</dt>
+            <dt class="col-5 col-lg-4">
+              {% trans "Errors" %}
+            </dt>
             <dd class="col-7 col-lg-8">
               <span class="badge text-bg-danger">{{ summary_record.error_count|default:"0" }}</span>
             </dd>
-            <dt class="col-5 col-lg-4">{% trans "Warnings" %}</dt>
+            <dt class="col-5 col-lg-4">
+              {% trans "Warnings" %}
+            </dt>
             <dd class="col-7 col-lg-8">
               <span class="badge text-bg-warning text-dark">{{ summary_record.warning_count|default:"0" }}</span>
             </dd>
-            <dt class="col-5 col-lg-4">{% trans "Info" %}</dt>
+            <dt class="col-5 col-lg-4">
+              {% trans "Info" %}
+            </dt>
             <dd class="col-7 col-lg-8">
               <span class="badge text-bg-info text-dark">{{ summary_record.info_count|default:"0" }}</span>
             </dd>
-            <dt class="col-5 col-lg-4">{% trans "Total findings" %}</dt>
+            <dt class="col-5 col-lg-4">
+              {% trans "Total findings" %}
+            </dt>
             <dd class="col-7 col-lg-8">
               {{ summary_record.total_findings }}
             </dd>
@@ -88,30 +104,44 @@ are shown in the User Inputs card instead.
     {% endwith %}
     <section>
       <dl class="row small">
-        <dt class="col-5 col-lg-4">{% trans "Source" %}</dt>
+        <dt class="col-5 col-lg-4">
+          {% trans "Source" %}
+        </dt>
         <dd class="col-7 col-lg-8">
           {{ run.get_source_display }}
         </dd>
-        <dt class="col-sm-4">{% trans "Organization" %}</dt>
+        <dt class="col-sm-4">
+          {% trans "Organization" %}
+        </dt>
         <dd class="col-sm-8">
           {{ run.org.name }}
         </dd>
         {% if run.user %}
-          <dt class="col-5 col-lg-4">{% trans "Submitter" %}</dt>
+          <dt class="col-5 col-lg-4">
+            {% trans "Submitter" %}
+          </dt>
           <dd class="col-7 col-lg-8">
             {{ run.user.username }}
-            {% if run.user.name and run.user.name != run.user.username %}({{ run.user.name }}){% endif %}
+            {% if run.user.name and run.user.name != run.user.username %}
+              ({{ run.user.name }})
+            {% endif %}
           </dd>
         {% endif %}
-        <dt class="col-5 col-lg-4 ">{% trans "Started" %}</dt>
+        <dt class="col-5 col-lg-4 ">
+          {% trans "Started" %}
+        </dt>
         <dd class="col-7 col-lg-8">
           {{ run.started_at|date:"M j, Y g:i a"|default:_("Pending") }}
         </dd>
-        <dt class="col-5 col-lg-4">{% trans "Completed" %}</dt>
+        <dt class="col-5 col-lg-4">
+          {% trans "Completed" %}
+        </dt>
         <dd class="col-7 col-lg-8">
           {{ run.ended_at|date:"M j, Y g:i a"|default:_("Pending") }}
         </dd>
-        <dt class="col-5 col-lg-4">{% trans "Duration" %}</dt>
+        <dt class="col-5 col-lg-4">
+          {% trans "Duration" %}
+        </dt>
         <dd class="col-7 col-lg-8">
           {% with duration=run.computed_duration_ms %}
             {% if duration %}

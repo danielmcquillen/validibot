@@ -9,7 +9,9 @@
     Render all form fields except captcha (rendered separately at the end).
   {% endcomment %}
   {% for field in form %}
-    {% if field.name != 'captcha' %}{{ field|as_crispy_field }}{% endif %}
+    {% if field.name != 'captcha' %}
+      {{ field|as_crispy_field }}
+    {% endif %}
   {% endfor %}
   {% comment %}
     reCAPTCHA field - only present if RECAPTCHA_PUBLIC_KEY and RECAPTCHA_PRIVATE_KEY
@@ -18,7 +20,11 @@
   {% if form.captcha %}
     <div class="mb-3">
       {{ form.captcha }}
-      {% if form.captcha.errors %}<div class="text-danger small mt-1">{{ form.captcha.errors.0 }}</div>{% endif %}
+      {% if form.captcha.errors %}
+        <div class="text-danger small mt-1">
+          {{ form.captcha.errors.0 }}
+        </div>
+      {% endif %}
     </div>
   {% endif %}
   {% with redirect_target=redirect_field_value|default:"/app/dashboard/" %}
@@ -31,6 +37,8 @@
        href="{% url 'account_reset_password' %}">{% trans "Forgot Password?" %}</a>
     <button id="sign_in_btn"
             class="primaryAction btn btn-secondary ms-4"
-            type="submit">{% trans "Sign In" %}</button>
+            type="submit">
+      {% trans "Sign In" %}
+    </button>
   </div>
 </form>

@@ -27,7 +27,9 @@
                 Are you sure you want to remove user “{{ username }}” from organization “{{ org }}”?
               {% endblocktrans %}
             </p>
-            <p class="text-muted">{% trans "They will lose access to this organization until invited again." %}</p>
+            <p class="text-muted">
+              {% trans "They will lose access to this organization until invited again." %}
+            </p>
           </div>
           <div class="card-footer d-flex justify-content-between">
             <a class="btn btn-secondary"
@@ -35,7 +37,9 @@
             <form method="post"
                   action="{% org_url 'members:member_delete' member_id=membership.id %}">
               {% csrf_token %}
-              <button type="submit" class="btn btn-danger">{% trans "Yes, remove member" %}</button>
+              <button type="submit" class="btn btn-danger">
+                {% trans "Yes, remove member" %}
+              </button>
             </form>
           </div>
         </div>

@@ -58,7 +58,10 @@
                   <input type="hidden" name="language" value="{{ lang_code }}" />
                   <input type="hidden" name="next" value="{{ request.get_full_path }}" />
                   <button type="submit"
-                          class="dropdown-item {% if lang_code == current_lang %}active{% endif %}">
+                          class="dropdown-item
+                                 {% if lang_code == current_lang %}
+                                   active
+                                 {% endif %}">
                     {{ lang_name }}
                   </button>
                 </form>

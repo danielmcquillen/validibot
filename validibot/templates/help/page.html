@@ -15,7 +15,10 @@
             <div class="mb-3">
               <ul class="nav nav-pills flex-column">
                 <li class="nav-item">
-                  <a class="nav-link {% if index_item.page.id == page.id %}active{% endif %}"
+                  <a class="nav-link
+                            {% if index_item.page.id == page.id %}
+                              active
+                            {% endif %}"
                      href="{{ index_item.page.url }}">{{ index_item.page.title }}</a>
                 </li>
               </ul>
@@ -25,12 +28,17 @@
           {% regroup nav_items by section_label as section_list %}
           {% for group in section_list %}
             <div class="mb-3">
-              <div class="text-uppercase text-muted small mb-1">{{ group.grouper }}</div>
+              <div class="text-uppercase text-muted small mb-1">
+                {{ group.grouper }}
+              </div>
               <ul class="nav nav-pills flex-column">
                 {% for item in group.list %}
                   {% with p=item.page %}
                     <li class="nav-item">
-                      <a class="nav-link {% if p.id == page.id %}active{% endif %}"
+                      <a class="nav-link
+                                {% if p.id == page.id %}
+                                  active
+                                {% endif %}"
                          href="{{ p.url }}">{{ p.title }}</a>
                     </li>
                   {% endwith %}
@@ -48,11 +56,15 @@
                    alt=""
                    class="help-header-icon" />
               <div class="help-speech-bubble">
-                <h1 class="mb-0">{{ page.title }}</h1>
+                <h1 class="mb-0">
+                  {{ page.title }}
+                </h1>
               </div>
             </div>
           </header>
-          <div class="help-body">{{ page.content|markdownify }}</div>
+          <div class="help-body">
+            {{ page.content|markdownify }}
+          </div>
         </article>
       </main>
     </div>

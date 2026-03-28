@@ -4,15 +4,24 @@
 <nav class="settings-nav mb-4">
   <ul class="nav nav-pills gap-2 flex-wrap">
     <li class="nav-item">
-      <a class="nav-link {% if user_settings_nav.profile %}active{% endif %}"
+      <a class="nav-link
+                {% if user_settings_nav.profile %}
+                  active
+                {% endif %}"
          href="{% url 'users:profile' %}">{% trans "Profile" %}</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if user_settings_nav.email %}active{% endif %}"
+      <a class="nav-link
+                {% if user_settings_nav.email %}
+                  active
+                {% endif %}"
          href="{% url 'users:email' %}">{% trans "Email" %}</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link {% if user_settings_nav.api_key %}active{% endif %}"
+      <a class="nav-link
+                {% if user_settings_nav.api_key %}
+                  active
+                {% endif %}"
          href="{% url 'users:api-key' %}">{% trans "API Key" %}</a>
     </li>
   </ul>

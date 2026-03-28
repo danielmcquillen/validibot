@@ -2,7 +2,9 @@
 
 <div class="card app-card">
   <div class="card-header">
-    <div class="card-title">{% trans "Step details" %}</div>
+    <div class="card-title">
+      {% trans "Step details" %}
+    </div>
     <div class="card-header-buttons">
       <a class="btn btn-sm btn-secondary"
          href="{% org_url 'workflows:workflow_step_settings' workflow.pk step.pk %}">
@@ -13,15 +15,21 @@
   </div>
   <div class="card-body">
     <dl class="row small mb-0">
-      <dt class="col-5">{% trans "Name" %}</dt>
+      <dt class="col-5">
+        {% trans "Name" %}
+      </dt>
       <dd class="col-7">
         {{ step.name }}
       </dd>
-      <dt class="col-5">{% trans "Validator" %}</dt>
+      <dt class="col-5">
+        {% trans "Validator" %}
+      </dt>
       <dd class="col-7">
         {{ validator.name }}
       </dd>
-      <dt class="col-5">{% trans "Validation type" %}</dt>
+      <dt class="col-5">
+        {% trans "Validation type" %}
+      </dt>
       <dd class="col-7">
         {% if step.config.validation_mode == "template" %}
           {% trans "Validate values using EnergyPlus template" %}
@@ -31,24 +39,32 @@
           {{ validator.get_validation_type_display }}
         {% endif %}
       </dd>
-      <dt class="col-5">{% trans "Order" %}</dt>
+      <dt class="col-5">
+        {% trans "Order" %}
+      </dt>
       <dd class="col-7">
         {{ step.order }}
       </dd>
       {% if step.step_key %}
-        <dt class="col-5">{% trans "Step Key" %}</dt>
+        <dt class="col-5">
+          {% trans "Step Key" %}
+        </dt>
         <dd class="col-7">
           <code class="small user-select-all">{{ step.step_key }}</code>
         </dd>
       {% endif %}
       {% if step.description %}
-        <dt class="col-5">{% trans "Description" %}</dt>
+        <dt class="col-5">
+          {% trans "Description" %}
+        </dt>
         <dd class="col-7">
           {{ step.description }}
         </dd>
       {% endif %}
       {% if step.notes %}
-        <dt class="col-5">{% trans "Notes" %}</dt>
+        <dt class="col-5">
+          {% trans "Notes" %}
+        </dt>
         <dd class="col-7">
           {{ step.notes }}
         </dd>

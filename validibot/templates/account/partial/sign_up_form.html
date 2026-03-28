@@ -12,7 +12,9 @@
     cloud template override) and captcha (rendered at the end before submit).
   {% endcomment %}
   {% for field in form %}
-    {% if field.name != 'terms_accepted' and field.name != 'captcha' %}{{ field|as_crispy_field }}{% endif %}
+    {% if field.name != 'terms_accepted' and field.name != 'captcha' %}
+      {{ field|as_crispy_field }}
+    {% endif %}
   {% endfor %}
   {% comment %}
     Terms acceptance block. In the community edition this is a no-op because
@@ -24,7 +26,11 @@
     render a generic checkbox. Cloud's template override replaces this entire
     partial with one that includes proper URLs.
   {% endcomment %}
-  {% if form.terms_accepted %}<div class="mb-3">{{ form.terms_accepted|as_crispy_field }}</div>{% endif %}
+  {% if form.terms_accepted %}
+    <div class="mb-3">
+      {{ form.terms_accepted|as_crispy_field }}
+    </div>
+  {% endif %}
   {% comment %}
     reCAPTCHA field - only present if RECAPTCHA_PUBLIC_KEY and RECAPTCHA_PRIVATE_KEY
     are configured in settings. The captcha widget will render its own UI.
@@ -32,7 +38,11 @@
   {% if form.captcha %}
     <div class="mb-3">
       {{ form.captcha }}
-      {% if form.captcha.errors %}<div class="text-danger small mt-1">{{ form.captcha.errors.0 }}</div>{% endif %}
+      {% if form.captcha.errors %}
+        <div class="text-danger small mt-1">
+          {{ form.captcha.errors.0 }}
+        </div>
+      {% endif %}
     </div>
   {% endif %}
   {% if redirect_field_value %}
@@ -40,5 +50,7 @@
            name="{{ redirect_field_name }}"
            value="{{ redirect_field_value }}" />
   {% endif %}
-  <button id="sign_up_btn" class="btn btn-secondary" type="submit">{% trans "Sign Up" %} »</button>
+  <button id="sign_up_btn" class="btn btn-secondary" type="submit">
+    {% trans "Sign Up" %} »
+  </button>
 </form>

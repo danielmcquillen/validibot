@@ -119,7 +119,9 @@
           {% endif %}
         </ul>
         {% if has_builder_access %}
-          <div class="group-label mt-4">Design</div>
+          <div class="group-label mt-4">
+            Design
+          </div>
           <ul class="nav nav-pills flex-column " role="menu">
             <li class="nav-item" role="none">
               <a href="{% org_url 'workflows:workflow_list' %}"
@@ -138,7 +140,9 @@
               </a>
             </li>
           </ul>
-          <div class="group-label mt-4">Analytics</div>
+          <div class="group-label mt-4">
+            Analytics
+          </div>
           <ul class="nav nav-pills flex-column" role="menu">
             <li class="nav-item" role="none">
               <a href="{% org_url 'validations:validation_list' %}"
@@ -171,7 +175,9 @@
         {% endif %}
         <ul class="nav nav-pills flex-column mb-auto" role="menu">
           {% if has_builder_access and is_org_admin %}
-            <div class="group-label mt-4">{% trans "Admin" %}</div>
+            <div class="group-label mt-4">
+              {% trans "Admin" %}
+            </div>
             {# Organization link - for single-org mode (when multi-org is not enabled) #}
             {% if not feature_multi_org and active_org %}
               <li class="nav-item" role="none">
@@ -225,7 +231,9 @@
               {% endif %}
             {% endif %}
           {% endif %}
-          <div class="group-label mt-4">{% trans "Support" %}</div>
+          <div class="group-label mt-4">
+            {% trans "Support" %}
+          </div>
           <li class="nav-item" role="none">
             <a href="{% url 'help:help_index' %}"
                class="nav-link text-white {% active_link 'help' %}"

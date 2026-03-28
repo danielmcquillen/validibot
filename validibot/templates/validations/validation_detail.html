@@ -12,7 +12,9 @@
   <div class="container-fluid" id="validation-detail">
     <div class="app-content-header-bar row">
       <div class="app-content-header col-8">
-        <h1 class="app-page-title">{% trans "Validation Run" %} #{{ run.pk }}</h1>
+        <h1 class="app-page-title">
+          {% trans "Validation Run" %} #{{ run.pk }}
+        </h1>
       </div>
       <div class="col-4 d-flex justify-content-end align-items-center gap-2 app-page-actions">
         <a class="btn btn-secondary"
@@ -32,7 +34,9 @@
     </div>
     {% if run.workflow.is_tombstoned %}
       <div class="alert alert-warning" role="alert">
-        <div class="fw-semibold mb-1">{% trans "This run belongs to a tombstoned workflow." %}</div>
+        <div class="fw-semibold mb-1">
+          {% trans "This run belongs to a tombstoned workflow." %}
+        </div>
         <p class="mb-0">
           {% trans "The workflow has been removed from normal launch and editing surfaces, but this historical run and any signed credential remain available for audit." %}
         </p>

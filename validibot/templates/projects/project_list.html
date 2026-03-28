@@ -31,16 +31,26 @@
             <table class="table align-middle mb-0">
               <thead class="table-light">
                 <tr>
-                  <th scope="col">{% trans "Name" %}</th>
-                  <th scope="col" class="text-center">{% trans "Color" %}</th>
-                  <th scope="col" class="d-none d-md-table-cell">{% trans "Description" %}</th>
-                  <th scope="col" class="text-end">{% trans "Actions" %}</th>
+                  <th scope="col">
+                    {% trans "Name" %}
+                  </th>
+                  <th scope="col" class="text-center">
+                    {% trans "Color" %}
+                  </th>
+                  <th scope="col" class="d-none d-md-table-cell">
+                    {% trans "Description" %}
+                  </th>
+                  <th scope="col" class="text-end">
+                    {% trans "Actions" %}
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {% for project in projects %}
                   <tr id="project-row-{{ project.pk }}"
-                      class="{% if project.is_default %} table-active {% endif %}">
+                      class="{% if project.is_default %}
+                               table-active
+                             {% endif %}">
                     <td class="fw-semibold">
                       {{ project.name }}
                       {% if project.is_default %}
@@ -53,7 +63,9 @@
                             aria-hidden="true"></span>
                       <span class="text-muted small ms-2 project-color-code">{{ project.color }}</span>
                     </td>
-                    <td class="d-none d-md-table-cell text-muted">{{ project.description|default:_("No description") }}</td>
+                    <td class="d-none d-md-table-cell text-muted">
+                      {{ project.description|default:_("No description") }}
+                    </td>
                     <td class="text-end">
                       {% if project.is_default %}
                         <span class="text-muted small">{% trans "Protected" %}</span>
@@ -68,8 +80,12 @@
                                   hx-swap="outerHTML"
                                   hx-confirm="{% trans 'Delete this project?' %}"
                                   data-bs-toggle="tooltip"
-                                  title="{% blocktrans %}Delete project {{ project.name }}{% endblocktrans %}"
-                                  aria-label="{% blocktrans %}Delete project {{ project.name }}{% endblocktrans %}">
+                                  title="{% blocktrans %}
+                                           Delete project {{ project.name }}
+                                         {% endblocktrans %}"
+                                  aria-label="{% blocktrans %}
+                                                Delete project {{ project.name }}
+                                              {% endblocktrans %}">
                             <i class="bi bi-trash"></i>
                           </button>
                         </div>
@@ -81,7 +97,9 @@
             </table>
           </div>
         {% else %}
-          <div class="p-4 text-center text-muted">{% trans "No projects yet." %}</div>
+          <div class="p-4 text-center text-muted">
+            {% trans "No projects yet." %}
+          </div>
         {% endif %}
       </div>
     </div>

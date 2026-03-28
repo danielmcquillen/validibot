@@ -13,8 +13,12 @@
     {% else %}
       <div class="d-flex flex-column justify-content-center align-items-center text-center py-5">
         <i class="bi bi-activity text-muted display-5 mb-3"></i>
-        <p class="mb-1 fw-semibold">No events in {{ time_range.label|lower }}</p>
-        <p class="text-muted small mb-0">Instrument more actions to populate this widget.</p>
+        <p class="mb-1 fw-semibold">
+          No events in {{ time_range.label|lower }}
+        </p>
+        <p class="text-muted small mb-0">
+          Instrument more actions to populate this widget.
+        </p>
       </div>
     {% endif %}
   {% endwith %}

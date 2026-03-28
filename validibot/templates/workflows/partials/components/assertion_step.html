@@ -13,10 +13,16 @@
             <span class="badge text-bg-light text-uppercase">{{ assertion.get_assertion_type_display }}</span>
             <span class="badge text-bg-secondary">{{ assertion.get_severity_display }}</span>
           </div>
-          <h2 class="h6 mb-1">{{ assertion.target_display }}</h2>
-          <p class="text-muted small mb-1">{{ assertion.condition_display }}</p>
+          <h2 class="h6 mb-1">
+            {{ assertion.target_display }}
+          </h2>
+          <p class="text-muted small mb-1">
+            {{ assertion.condition_display }}
+          </p>
           {% if assertion.message_template %}
-            <p class="text-muted small mb-0">{{ assertion.message_template|linebreaksbr }}</p>
+            <p class="text-muted small mb-0">
+              {{ assertion.message_template|linebreaksbr }}
+            </p>
           {% endif %}
         </div>
         {% if can_manage_assertions %}
@@ -39,7 +45,9 @@
                     hx-vals='{"direction": "up"}'
                     hx-target="this"
                     hx-swap="none"
-                    {% if forloop.first %}disabled{% endif %}>
+                    {% if forloop.first %}
+                      disabled
+                    {% endif %}>
               <i class="bi-arrow-up"></i>
               <span class="visually-hidden">{% trans "Move assertion up" %}</span>
             </button>
@@ -49,7 +57,9 @@
                     hx-vals='{"direction": "down"}'
                     hx-target="this"
                     hx-swap="none"
-                    {% if forloop.last %}disabled{% endif %}>
+                    {% if forloop.last %}
+                      disabled
+                    {% endif %}>
               <i class="bi-arrow-down"></i>
               <span class="visually-hidden">{% trans "Move assertion down" %}</span>
             </button>

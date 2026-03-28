@@ -20,7 +20,9 @@ Context variables (passed via ``{% include ... with %}``):
   step_template_warnings — dict mapping step_run.pk → list of warning strings
 {% endcomment %}
 <div class="card validation-info-card">
-  <div class="card-header">{% trans "Outputs" %}</div>
+  <div class="card-header">
+    {% trans "Outputs" %}
+  </div>
   <div class="card-body">
     {% comment %}
     ── Workflow Outputs ───────────────────────────────────────────────
@@ -30,23 +32,37 @@ Context variables (passed via ``{% include ... with %}``):
     {% endcomment %}
     {% if has_signals %}
       <section class="mb-3">
-        <h6 class="fw-semibold mb-2">{% trans "Workflow Outputs" %}</h6>
+        <h6 class="fw-semibold mb-2">
+          {% trans "Workflow Outputs" %}
+        </h6>
         <div class="border border-secondary-subtle rounded p-3"
              style="border-style: dotted !important">
           <table class="table table-sm table-bordered mb-0">
             <thead>
               <tr>
-                <th>{% trans "Metric" %}</th>
-                <th class="text-end">{% trans "Value" %}</th>
-                <th>{% trans "Units" %}</th>
+                <th>
+                  {% trans "Metric" %}
+                </th>
+                <th class="text-end">
+                  {% trans "Value" %}
+                </th>
+                <th>
+                  {% trans "Units" %}
+                </th>
               </tr>
             </thead>
             <tbody>
               {% for signal in all_signals %}
                 <tr>
-                  <td>{{ signal.label }}</td>
-                  <td class="text-end font-monospace">{{ signal.formatted_value }}</td>
-                  <td class="text-muted small">{{ signal.units }}</td>
+                  <td>
+                    {{ signal.label }}
+                  </td>
+                  <td class="text-end font-monospace">
+                    {{ signal.formatted_value }}
+                  </td>
+                  <td class="text-muted small">
+                    {{ signal.units }}
+                  </td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -61,9 +77,14 @@ Context variables (passed via ``{% include ... with %}``):
     container.
     {% endcomment %}
     <section>
-      <h6 class="fw-semibold mb-2">{% trans "Outputs by Step" %}</h6>
+      <h6 class="fw-semibold mb-2">
+        {% trans "Outputs by Step" %}
+      </h6>
       {% for step_run in step_runs %}
-        <div class="border border-secondary-subtle rounded p-3 {% if not forloop.last %}mb-3{% endif %}"
+        <div class="border border-secondary-subtle rounded p-3
+                    {% if not forloop.last %}
+                      mb-3
+                    {% endif %}"
              style="border-style: dotted !important">
           <div class="d-flex align-items-center gap-2 mb-2">
             <span class="badge text-bg-secondary">
@@ -75,10 +96,14 @@ Context variables (passed via ``{% include ... with %}``):
             {% if params %}
               <dl class="row small mb-2">
                 {% for param in params %}
-                  <dt class="col-sm-5">{{ param.label }}</dt>
+                  <dt class="col-sm-5">
+                    {{ param.label }}
+                  </dt>
                   <dd class="col-sm-7">
                     <span class="font-monospace">{{ param.value }}</span>
-                    {% if param.units %}<span class="text-muted ms-1">{{ param.units }}</span>{% endif %}
+                    {% if param.units %}
+                      <span class="text-muted ms-1">{{ param.units }}</span>
+                    {% endif %}
                   </dd>
                 {% endfor %}
               </dl>
@@ -88,7 +113,9 @@ Context variables (passed via ``{% include ... with %}``):
                 <i class="bi-exclamation-triangle me-1"></i>
                 {% for w in warnings %}
                   {{ w }}
-                  {% if not forloop.last %}<br />{% endif %}
+                  {% if not forloop.last %}
+                    <br />
+                  {% endif %}
                 {% endfor %}
               </div>
             {% endif %}
@@ -99,15 +126,23 @@ Context variables (passed via ``{% include ... with %}``):
               <table class="table table-sm table-bordered mb-0">
                 <thead>
                   <tr>
-                    <th>{% trans "Severity" %}</th>
-                    <th>{% trans "Path" %}</th>
-                    <th>{% trans "Message" %}</th>
+                    <th>
+                      {% trans "Severity" %}
+                    </th>
+                    <th>
+                      {% trans "Path" %}
+                    </th>
+                    <th>
+                      {% trans "Message" %}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {% for group in grouped %}
                     <tr>
-                      <td colspan="3" class="fw-semibold">{{ group.grouper }}</td>
+                      <td colspan="3" class="fw-semibold">
+                        {{ group.grouper }}
+                      </td>
                     </tr>
                     {% for finding in group.list %}
                       <tr>
@@ -115,15 +150,21 @@ Context variables (passed via ``{% include ... with %}``):
                           {% finding_badge_class finding as badge_class %}
                           <span class="badge text-uppercase {{ badge_class }}">{{ finding.get_severity_display }}</span>
                         </td>
-                        <td class="align-middle">{{ finding.path|default:"–" }}</td>
-                        <td class="align-middle">{{ finding.message }}</td>
+                        <td class="align-middle">
+                          {{ finding.path|default:"–" }}
+                        </td>
+                        <td class="align-middle">
+                          {{ finding.message }}
+                        </td>
                       </tr>
                     {% endfor %}
                   {% endfor %}
                 </tbody>
               </table>
             {% else %}
-              <p class="text-muted small mb-0">{% trans "No errors, warnings, or info for this step." %}</p>
+              <p class="text-muted small mb-0">
+                {% trans "No errors, warnings, or info for this step." %}
+              </p>
             {% endif %}
           {% endwith %}
         </div>

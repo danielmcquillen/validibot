@@ -16,5 +16,7 @@
   <input type="{{ widget.type }}"
          name="{{ widget.name }}"
          {% include "django/forms/widgets/attrs.html" %}
-         {% if widget.value != None %}value="{{ widget.value }}"{% endif %} />
+         {% if widget.value != None %}
+           value="{{ widget.value }}"
+         {% endif %} />
 </div>

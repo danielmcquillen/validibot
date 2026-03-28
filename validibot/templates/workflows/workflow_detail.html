@@ -65,15 +65,31 @@
             {% if workflow_has_runs %}
               <form method="post"
                     action="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}"
-                    onsubmit="return confirm('{% if workflow.is_archived %}{% trans "Unarchive this workflow?" %}{% else %}{% trans "Are you sure you want to archive this workflow?" %}{% endif %}');">
+                    onsubmit="return confirm('
+                              {% if workflow.is_archived %}
+                                {% trans "Unarchive this workflow?" %}
+                              {% else %}
+                                {% trans "Are you sure you want to archive this workflow?" %}
+                              {% endif %}
+                              ');">
                 {% csrf_token %}
-                {% if workflow.is_archived %}<input type="hidden" name="unarchive" value="1" />{% endif %}
+                {% if workflow.is_archived %}
+                  <input type="hidden" name="unarchive" value="1" />
+                {% endif %}
                 <button type="submit"
                         class="btn btn-light txt-warning"
                         data-bs-toggle="tooltip"
                         data-bs-placement="top"
-                        title="{% if workflow.is_archived %}{% trans "Unarchive this workflow" %}{% else %}{% trans "Archive workflow" %}{% endif %}"
-                        aria-label="{% if workflow.is_archived %}{% trans "Unarchive this workflow" %}{% else %}{% trans "Archive workflow" %}{% endif %}">
+                        title="{% if workflow.is_archived %}
+                                 {% trans "Unarchive this workflow" %}
+                               {% else %}
+                                 {% trans "Archive workflow" %}
+                               {% endif %}"
+                        aria-label="{% if workflow.is_archived %}
+                                      {% trans "Unarchive this workflow" %}
+                                    {% else %}
+                                      {% trans "Archive workflow" %}
+                                    {% endif %}">
                   {% if workflow.is_archived %}
                     <i class="bi-star text-warning"></i>
                   {% else %}
@@ -107,7 +123,9 @@
     </div>
     {% if workflow.is_tombstoned %}
       <div class="alert alert-warning mb-3" role="alert">
-        <div class="fw-semibold mb-1">{% trans "This workflow has been tombstoned and is now a historical record." %}</div>
+        <div class="fw-semibold mb-1">
+          {% trans "This workflow has been tombstoned and is now a historical record." %}
+        </div>
         <p class="mb-2">
           {% trans "It no longer appears in normal listings, launch flows, or editing screens, but historical runs and signed credentials still point here." %}
         </p>
@@ -118,10 +136,14 @@
             </div>
           {% endif %}
           {% if workflow.tombstoned_by %}
-            <div>{% trans "Tombstoned by" %}: {{ workflow.tombstoned_by.name|default:workflow.tombstoned_by.username }}</div>
+            <div>
+              {% trans "Tombstoned by" %}: {{ workflow.tombstoned_by.name|default:workflow.tombstoned_by.username }}
+            </div>
           {% endif %}
           {% if workflow.tombstone_reason %}
-            <div>{% trans "Reason" %}: {{ workflow.tombstone_reason }}</div>
+            <div>
+              {% trans "Reason" %}: {{ workflow.tombstone_reason }}
+            </div>
           {% endif %}
           {% if workflow.tombstone_workflow_definition_hash %}
             <div>
@@ -197,25 +219,37 @@
           {% if workflow.has_featured_image %}
             <img src="{{ workflow.get_featured_image_url }}"
                  class="object-fit-cover w-100 h-100c"
-                 alt="{% blocktrans with name=workflow.name %} Image for workflow {{ name }} {% endblocktrans %}" />
+                 alt="{% blocktrans with name=workflow.name %}
+                        Image for workflow {{ name }}
+                      {% endblocktrans %}" />
           {% endif %}
           <div class="card-body">
             <dl class="row mb-0">
-              <dt class="col-sm-4">{% trans "Name" %}</dt>
+              <dt class="col-sm-4">
+                {% trans "Name" %}
+              </dt>
               <dd class="col-sm-8">
                 {{ workflow.name }}
               </dd>
-              <dt class="col-sm-4">{% trans "Status" %}</dt>
+              <dt class="col-sm-4">
+                {% trans "Status" %}
+              </dt>
               <dd class="col-sm-8">
                 <div class="d-flex flex-column gap-2">
                   <div>
                     <div class="d-flex flex-row gap-2 align-items-center">
                       {% if workflow.is_active %}
-                        <div class="badge text-bg-primary py-2">{% trans "Active" %}</div>
+                        <div class="badge text-bg-primary py-2">
+                          {% trans "Active" %}
+                        </div>
                       {% elif workflow.is_tombstoned %}
-                        <div class="badge text-bg-danger py-2">{% trans "Tombstoned" %}</div>
+                        <div class="badge text-bg-danger py-2">
+                          {% trans "Tombstoned" %}
+                        </div>
                       {% else %}
-                        <div class="badge text-bg-dark py-2">{% trans "Inactive" %}</div>
+                        <div class="badge text-bg-dark py-2">
+                          {% trans "Inactive" %}
+                        </div>
                       {% endif %}
                       {% if can_manage_activation %}
                         <form method="post"
@@ -253,19 +287,27 @@
                   </small>
                 </div>
               </dd>
-              <dt class="col-sm-4">{% trans "Slug" %}</dt>
+              <dt class="col-sm-4">
+                {% trans "Slug" %}
+              </dt>
               <dd class="col-sm-8">
                 {{ workflow.slug }}
               </dd>
-              <dt class="col-sm-4">{% trans "Version" %}</dt>
+              <dt class="col-sm-4">
+                {% trans "Version" %}
+              </dt>
               <dd class="col-sm-8">
                 <span class="text-muted">{{ workflow.version|default:_("not set") }}</span>
               </dd>
-              <dt class="col-sm-4">{% trans "File types" %}</dt>
+              <dt class="col-sm-4">
+                {% trans "File types" %}
+              </dt>
               <dd class="col-sm-8">
                 {{ workflow.allowed_file_type_labels|join:", " }}
               </dd>
-              <dt class="col-sm-4">{% trans "Created" %}</dt>
+              <dt class="col-sm-4">
+                {% trans "Created" %}
+              </dt>
               <dd class="col-sm-8">
                 {{ workflow.created|date:"M j, Y g:i a" }}
               </dd>
@@ -277,7 +319,9 @@
                 {{ workflow.modified|date:"M j, Y g:i a" }}
               </dd>
               {% endcomment %}
-              <dt class="col-sm-4">{% trans "Created by" %}</dt>
+              <dt class="col-sm-4">
+                {% trans "Created by" %}
+              </dt>
               <dd class="col-sm-8">
                 {{ workflow.user.name|default:workflow.user.username }}
               </dd>
@@ -305,12 +349,16 @@
           {% include "workflows/partials/workflow_public_info_card.html" with workflow=workflow public_info_url=public_info_url can_manage_public_info=can_manage_public_info %}
           <div class="card app-card mb-3">
             <div class="card-header">
-              <div class="card-title">{% trans "API access" %}</div>
+              <div class="card-title">
+                {% trans "API access" %}
+              </div>
             </div>
             <div class="card-body bg-body-tertiary">
               <div class="d-flex align-items-center gap-2 mb-3">
                 <div>
-                  <div class="fw-semibold mb-0">{% trans "Start this workflow via API" %}</div>
+                  <div class="fw-semibold mb-0">
+                    {% trans "Start this workflow via API" %}
+                  </div>
                   <small class="text-muted">{% trans "POST requests launch a validation run for this workflow." %}</small>
                 </div>
               </div>
@@ -353,7 +401,8 @@
        tabindex="-1"
        aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl modal-step-selector-dialog">
-      <div class="modal-content" id="workflow-step-modal-content"></div>
+      <div class="modal-content" id="workflow-step-modal-content">
+      </div>
     </div>
   </div>
 {% endblock modal %}

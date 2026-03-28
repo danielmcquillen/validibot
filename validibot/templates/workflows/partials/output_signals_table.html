@@ -17,10 +17,17 @@ Context:
     <table class="table table-sm align-middle" data-sortable-table>
       <thead>
         <tr>
-          <th class="text-muted small" data-sortable="true">{% trans "Slug" %}</th>
-          <th class="text-muted small">{% trans "Default" %}</th>
-          <th class="text-muted small text-center">{% trans "Show to User" %}</th>
-          <th class="text-muted small text-end"></th>
+          <th class="text-muted small" data-sortable="true">
+            {% trans "Slug" %}
+          </th>
+          <th class="text-muted small">
+            {% trans "Default" %}
+          </th>
+          <th class="text-muted small text-center">
+            {% trans "Show to User" %}
+          </th>
+          <th class="text-muted small text-end">
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -47,12 +54,15 @@ Context:
             <td class="text-center">
               {% include "workflows/partials/signal_show_toggle.html" with signal_slug=signal.slug is_shown=signal.show_to_user step=step workflow=workflow %}
             </td>
-            <td class="text-end"></td>
+            <td class="text-end">
+            </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 {% else %}
-  <p class="text-muted mb-0">{% trans "No output signals." %}</p>
+  <p class="text-muted mb-0">
+    {% trans "No output signals." %}
+  </p>
 {% endif %}

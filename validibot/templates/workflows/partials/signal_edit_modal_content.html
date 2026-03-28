@@ -24,11 +24,14 @@ Context:
       hx-target="#signal-edit-modal-content"
       hx-swap="innerHTML">
   <div class="modal-header">
-    <h5 class="modal-title">{{ modal_title|default:_("Edit signal") }}</h5>
+    <h5 class="modal-title">
+      {{ modal_title|default:_("Edit signal") }}
+    </h5>
     <button type="button"
             class="btn-close"
             data-bs-dismiss="modal"
-            aria-label="{% trans 'Close' %}"></button>
+            aria-label="{% trans 'Close' %}">
+    </button>
   </div>
   <div class="modal-body">
     {% csrf_token %}
@@ -39,13 +42,17 @@ Context:
       </div>
     {% endif %}
     <fieldset>
-      <legend class="small text-muted mb-2">{% trans "Signal Definition" %}</legend>
+      <legend class="small text-muted mb-2">
+        {% trans "Signal Definition" %}
+      </legend>
       <div class="mb-2 d-flex align-items-baseline gap-2">
         <i class="bi bi-info-circle text-muted small"
            data-bs-toggle="tooltip"
            data-bs-placement="top"
            title="{% trans 'The unique identifier used in CEL assertions and the validation engine to reference this signal.' %}"></i>
-        <label class="form-label small mb-0 text-nowrap">{% trans "Contract Key" %}:</label>
+        <label class="form-label small mb-0 text-nowrap">
+          {% trans "Contract Key" %}:
+        </label>
         <code class="small">{{ signal.contract_key }}</code>
       </div>
       {% if signal.native_name and signal.native_name != signal.contract_key %}
@@ -54,14 +61,22 @@ Context:
              data-bs-toggle="tooltip"
              data-bs-placement="top"
              title="{% trans 'The original variable name in the simulation model (e.g., FMU variable name). May differ from the contract key.' %}"></i>
-          <label class="form-label small mb-0 text-nowrap">{% trans "Native Name" %}:</label>
+          <label class="form-label small mb-0 text-nowrap">
+            {% trans "Native Name" %}:
+          </label>
           <code class="small">{{ signal.native_name }}</code>
         </div>
       {% endif %}
       <div class="row mt-2">
-        <div class="col-12 mb-2">{{ form.label|as_crispy_field }}</div>
-        <div class="col-12 mb-2">{{ form.description|as_crispy_field }}</div>
-        <div class="col-6 mb-2">{{ form.unit|as_crispy_field }}</div>
+        <div class="col-12 mb-2">
+          {{ form.label|as_crispy_field }}
+        </div>
+        <div class="col-12 mb-2">
+          {{ form.description|as_crispy_field }}
+        </div>
+        <div class="col-6 mb-2">
+          {{ form.unit|as_crispy_field }}
+        </div>
       </div>
     </fieldset>
     <fieldset class="mt-3">
@@ -73,17 +88,27 @@ Context:
            title="{% trans 'Controls how this signal gets its value from the submission payload when a validation runs.' %}"></i>
       </legend>
       <div class="row">
-        <div class="col-12 mb-2">{{ form.source_data_path|as_crispy_field }}</div>
-        <div class="col-12 mb-2">{{ form.default_value|as_crispy_field }}</div>
-        <div class="col-12 mb-2">{{ form.is_required|as_crispy_field }}</div>
+        <div class="col-12 mb-2">
+          {{ form.source_data_path|as_crispy_field }}
+        </div>
+        <div class="col-12 mb-2">
+          {{ form.default_value|as_crispy_field }}
+        </div>
+        <div class="col-12 mb-2">
+          {{ form.is_required|as_crispy_field }}
+        </div>
       </div>
     </fieldset>
   </div>
   <div class="modal-footer">
     <button type="button"
             class="btn btn-outline-secondary"
-            data-bs-dismiss="modal">{% trans "Cancel" %}</button>
-    <button type="submit" class="btn btn-secondary">{% trans "Save" %}</button>
+            data-bs-dismiss="modal">
+      {% trans "Cancel" %}
+    </button>
+    <button type="submit" class="btn btn-secondary">
+      {% trans "Save" %}
+    </button>
   </div>
 </form>
 <script nonce="{{ CSP_NONCE }}">

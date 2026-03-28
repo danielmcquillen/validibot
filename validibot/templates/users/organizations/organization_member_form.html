@@ -14,7 +14,9 @@
       <div class="col-12 col-lg-6">
         <div class="card shadow-sm">
           <div class="card-body">
-            <h1 class="h5 mb-3">{% trans "Edit member roles" %}</h1>
+            <h1 class="h5 mb-3">
+              {% trans "Edit member roles" %}
+            </h1>
             <form method="post" novalidate>
               {% csrf_token %}
               {% if form.non_field_errors %}
@@ -40,11 +42,15 @@
               {% endif %}
               <span class="form-label fw-semibold d-block mb-2">{{ form.fields.roles.label }}</span>
               {% include "users/partials/role_checkbox_list.html" with role_options=form.role_options field_name="roles" %}
-              <p class="form-text small text-muted mt-2">{{ form.fields.roles.help_text }}</p>
+              <p class="form-text small text-muted mt-2">
+                {{ form.fields.roles.help_text }}
+              </p>
               <div class="d-flex justify-content-end gap-2">
                 <a href="{% url 'users:organization-detail' organization.pk %}"
                    class="btn btn-secondary">{% trans "Cancel" %}</a>
-                <button type="submit" class="btn btn-secondary">{% trans "Save" %}</button>
+                <button type="submit" class="btn btn-secondary">
+                  {% trans "Save" %}
+                </button>
               </div>
             </form>
           </div>

@@ -52,7 +52,10 @@
               </div>
             {% endif %}
           </div>
-          <div class="card-body editor-workspace d-flex flex-column flex-grow-1 {% if uses_signal_stages %}has-validator-flow{% endif %}">
+          <div class="card-body editor-workspace d-flex flex-column flex-grow-1
+                      {% if uses_signal_stages %}
+                        has-validator-flow
+                      {% endif %}">
             {% if can_manage_assertions and supports_assertions %}
               {% if validator_default_assertions_count %}
                 {% include 'workflows/partials/components/default_assertions_card.html' with default_assertions_count=validator_default_assertions_count %}
@@ -73,7 +76,9 @@
                 {% endif %}
               {% endif %}
             {% else %}
-              <div class="alert alert-info">{% trans "This validator does not support assertions." %}</div>
+              <div class="alert alert-info">
+                {% trans "This validator does not support assertions." %}
+              </div>
             {% endif %}
           </div>
         </div>
@@ -91,7 +96,8 @@
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content" id="default-assertions-modal-content">
         <div class="modal-body text-center text-muted py-5">
-          <div class="spinner-border" role="status"></div>
+          <div class="spinner-border" role="status">
+          </div>
         </div>
       </div>
     </div>
@@ -103,7 +109,8 @@
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content" id="workflow-assertion-modal-content">
         <div class="modal-body text-center text-muted py-5">
-          <div class="spinner-border" role="status"></div>
+          <div class="spinner-border" role="status">
+          </div>
         </div>
       </div>
     </div>
@@ -115,7 +122,8 @@
     <div class="modal-dialog modal-lg modal-dialog-centered">
       <div class="modal-content" id="catalog-entry-detail-modal-content">
         <div class="modal-body text-center text-muted py-5">
-          <div class="spinner-border" role="status"></div>
+          <div class="spinner-border" role="status">
+          </div>
         </div>
       </div>
     </div>
@@ -127,7 +135,8 @@
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content" id="display-signals-modal-content">
         <div class="modal-body text-center text-muted py-5">
-          <div class="spinner-border" role="status"></div>
+          <div class="spinner-border" role="status">
+          </div>
         </div>
       </div>
     </div>
@@ -139,7 +148,8 @@
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content" id="template-variable-edit-modal-content">
         <div class="modal-body text-center text-muted py-5">
-          <div class="spinner-border" role="status"></div>
+          <div class="spinner-border" role="status">
+          </div>
         </div>
       </div>
     </div>
@@ -151,7 +161,8 @@
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content" id="signal-edit-modal-content">
         <div class="modal-body text-center text-muted py-5">
-          <div class="spinner-border" role="status"></div>
+          <div class="spinner-border" role="status">
+          </div>
         </div>
       </div>
     </div>

@@ -16,19 +16,25 @@
           <span class="badge text-bg-light text-uppercase">{{ entry.get_direction_display }}</span>
         </div>
         <dl class="row mb-0 mt-2 ms-2">
-          <dt class="col-sm-4">{% trans "Signal name" %}</dt>
+          <dt class="col-sm-4">
+            {% trans "Signal name" %}
+          </dt>
           <dd class="col-sm-8">
             <code class="catalog-entry-slug"
                   data-original-text="{{ entry.contract_key|escape }}">{{ entry.contract_key }}</code>
           </dd>
           {% if entry.native_name %}
-            <dt class="col-sm-4">{% trans "Native Name" %}</dt>
+            <dt class="col-sm-4">
+              {% trans "Native Name" %}
+            </dt>
             <dd class="col-sm-8">
               <code>{{ entry.native_name }}</code>
             </dd>
           {% endif %}
           {% if entry.description %}
-            <dt class="col-sm-4">{% trans "Description" %}</dt>
+            <dt class="col-sm-4">
+              {% trans "Description" %}
+            </dt>
             <dd class="col-sm-8">
               {{ entry.description }}
             </dd>
@@ -38,5 +44,7 @@
     {% endfor %}
   </ul>
 {% else %}
-  <p class="text-muted mb-0">{% trans "No signals registered yet." %}</p>
+  <p class="text-muted mb-0">
+    {% trans "No signals registered yet." %}
+  </p>
 {% endif %}

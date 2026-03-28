@@ -60,9 +60,15 @@
               {{ form|crispy }}
               {% if object and object.slug %}
                 <div class="mb-3">
-                  <label class="form-label text-muted">{% trans "Slug" %}</label>
-                  <div class="form-control-plaintext text-muted">{{ object.slug }}</div>
-                  <div class="form-text">{% trans "Used in URLs. Auto-generated from the organization name." %}</div>
+                  <label class="form-label text-muted">
+                    {% trans "Slug" %}
+                  </label>
+                  <div class="form-control-plaintext text-muted">
+                    {{ object.slug }}
+                  </div>
+                  <div class="form-text">
+                    {% trans "Used in URLs. Auto-generated from the organization name." %}
+                  </div>
                 </div>
               {% endif %}
               <div class="d-flex justify-content-end gap-2 mt-3">
@@ -75,7 +81,9 @@
                     <a href="{% url 'users:organization-list' %}" class="btn btn-secondary">{% trans "Cancel" %}</a>
                   {% endif %}
                 {% endif %}
-                <button type="submit" class="btn btn-primary">{% trans "Save" %}</button>
+                <button type="submit" class="btn btn-primary">
+                  {% trans "Save" %}
+                </button>
               </div>
             </form>
           </div>

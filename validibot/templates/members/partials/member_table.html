@@ -15,9 +15,15 @@
           <table class="table align-middle mb-0">
             <thead class="table-light">
               <tr>
-                <th scope="col">{% trans "Member" %}</th>
-                <th scope="col" class="text-center">{% trans "Roles" %}</th>
-                <th scope="col" class="text-end">{% trans "Actions" %}</th>
+                <th scope="col">
+                  {% trans "Member" %}
+                </th>
+                <th scope="col" class="text-center">
+                  {% trans "Roles" %}
+                </th>
+                <th scope="col" class="text-end">
+                  {% trans "Actions" %}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -25,7 +31,9 @@
                 <tr>
                   <td class="fw-semibold">
                     {{ membership.user.name|default:membership.user.username }}
-                    <div class="text-muted small">{{ membership.user.email }}</div>
+                    <div class="text-muted small">
+                      {{ membership.user.email }}
+                    </div>
                   </td>
                   <td class="text-center">
                     {% for role in membership.role_codes %}
@@ -55,8 +63,12 @@
                                 hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
                           <i class="bi bi-trash"
                              data-bs-toggle="tooltip"
-                             title="{% blocktrans %} Remove member {{ membership.user.username }} {% endblocktrans %}"
-                             aria-label="{% blocktrans %} Remove member {{ membership.user.username }} {% endblocktrans %}"></i>
+                             title="{% blocktrans %}
+                                      Remove member {{ membership.user.username }}
+                                    {% endblocktrans %}"
+                             aria-label="{% blocktrans %}
+                                           Remove member {{ membership.user.username }}
+                                         {% endblocktrans %}"></i>
                         </button>
                       {% endif %}
                     </div>
@@ -67,7 +79,9 @@
           </table>
         </div>
       {% else %}
-        <div class="p-4 text-center text-muted">{% trans "No members yet." %}</div>
+        <div class="p-4 text-center text-muted">
+          {% trans "No members yet." %}
+        </div>
       {% endif %}
     </div>
   </div>

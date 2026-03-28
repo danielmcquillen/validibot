@@ -9,13 +9,17 @@
   </div>
   <div class="card-body">
     {% if access_grants %}
-      <p class="text-muted small mb-3">{% trans "People with access to this workflow:" %}</p>
+      <p class="text-muted small mb-3">
+        {% trans "People with access to this workflow:" %}
+      </p>
       <div class="list-group mb-3">
         {% for grant in access_grants %}
           <div class="list-group-item d-flex justify-content-between align-items-center">
             <div>
               <span class="fw-medium">{{ grant.user.email }}</span>
-              {% if grant.user.name %}<span class="text-muted small ms-2">({{ grant.user.name }})</span>{% endif %}
+              {% if grant.user.name %}
+                <span class="text-muted small ms-2">({{ grant.user.name }})</span>
+              {% endif %}
               <br />
               <small class="text-muted">
                 {% trans "Added" %} {{ grant.created|date:"M j, Y" }}
@@ -38,7 +42,9 @@
         {% endfor %}
       </div>
     {% else %}
-      <p class="text-muted mb-3">{% trans "No guests have been granted access to this workflow yet." %}</p>
+      <p class="text-muted mb-3">
+        {% trans "No guests have been granted access to this workflow yet." %}
+      </p>
     {% endif %}
     {# Pending Invitations #}
     {% if pending_invites %}

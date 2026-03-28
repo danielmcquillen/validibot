@@ -11,7 +11,11 @@
   {% endslot %}
   {% if slots.actions %}
     <ul>
-      {% for action in slots.actions %}<li>{{ action }}</li>{% endfor %}
+      {% for action in slots.actions %}
+        <li>
+          {{ action }}
+        </li>
+      {% endfor %}
     </ul>
   {% endif %}
 </div>

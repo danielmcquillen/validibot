@@ -19,7 +19,9 @@ This component renders the top navigation bar for the app.
     </button>
   </div>
   <div id="breadcrumbs-wrapper"
-       class=" {% block breadcrumbs_styles %} {% endblock breadcrumbs_styles %}">
+       class="
+              {% block breadcrumbs_styles %}
+              {% endblock breadcrumbs_styles %}">
     {% include "core/partial/breadcrumbs.html" %}
   </div>
   <div class="app-header-right">
@@ -66,18 +68,29 @@ This component renders the top navigation bar for the app.
           aria-labelledby="app-user-menu">
         <li class="dropdown-header">
           <span class="fw-semibold">{{ request.user.name|default:request.user.username }}</span>
-          {% if request.user.email %}<span class="text-muted">{{ request.user.email }}</span>{% endif %}
+          {% if request.user.email %}
+            <span class="text-muted">{{ request.user.email }}</span>
+          {% endif %}
         </li>
         <li>
-          <a class="dropdown-item {% if user_settings_nav.profile %}active{% endif %}"
+          <a class="dropdown-item
+                    {% if user_settings_nav.profile %}
+                      active
+                    {% endif %}"
              href="{% org_url 'users:profile' %}">{% trans "User Profile" %}</a>
         </li>
         <li>
-          <a class="dropdown-item {% if user_settings_nav.email %}active{% endif %}"
+          <a class="dropdown-item
+                    {% if user_settings_nav.email %}
+                      active
+                    {% endif %}"
              href="{% org_url 'users:email' %}">{% trans "User Email" %}</a>
         </li>
         <li>
-          <a class="dropdown-item {% if user_settings_nav.api_key %}active{% endif %}"
+          <a class="dropdown-item
+                    {% if user_settings_nav.api_key %}
+                      active
+                    {% endif %}"
              href="{% org_url 'users:api-key' %}">{% trans "API Key" %}</a>
         </li>
         <hr class="dropdown-divider" />
@@ -94,7 +107,10 @@ This component renders the top navigation bar for the app.
         {% if is_org_admin and feature_multi_org %}
           <hr class="dropdown-divider" />
           <li>
-            <a class="dropdown-item {% if user_settings_nav.organizations %}active{% endif %}"
+            <a class="dropdown-item
+                      {% if user_settings_nav.organizations %}
+                        active
+                      {% endif %}"
                href="{% org_url 'users:organization-list' %}">{% trans "Manage organizations" %}</a>
           </li>
         {% endif %}

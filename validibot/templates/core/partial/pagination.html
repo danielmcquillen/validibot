@@ -63,20 +63,30 @@
     <form method="get" class="d-flex align-items-center gap-2 ms-auto">
       {% for key, values in request.GET.lists %}
         {% if key != 'page' and key != 'per_page' %}
-          {% for value in values %}<input type="hidden" name="{{ key }}" value="{{ value }}" />{% endfor %}
+          {% for value in values %}
+            <input type="hidden" name="{{ key }}" value="{{ value }}" />
+          {% endfor %}
         {% endif %}
       {% endfor %}
-      <label for="per-page-select" class="form-label mb-0 text-muted small">{% trans "Show" %}</label>
+      <label for="per-page-select" class="form-label mb-0 text-muted small">
+        {% trans "Show" %}
+      </label>
       <select id="per-page-select"
               name="per_page"
               class="form-select form-select-sm"
               onchange="this.form.submit()">
         {% for option in page_size_options %}
           <option value="{{ option }}"
-                  {% if option == current_page_size %}selected{% endif %}>{{ option }}</option>
+                  {% if option == current_page_size %}
+                    selected
+                  {% endif %}>
+            {{ option }}
+          </option>
         {% endfor %}
       </select>
-      <div class="text-muted small me-1 text-nowrap">{% trans "per page" %}</div>
+      <div class="text-muted small me-1 text-nowrap">
+        {% trans "per page" %}
+      </div>
     </form>
   </div>
 </div>

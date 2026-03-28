@@ -1,6 +1,8 @@
 {% load i18n %}
 
-<h6 class="fw-semibold">{% trans "What is the output hash?" %}</h6>
+<h6 class="fw-semibold">
+  {% trans "What is the output hash?" %}
+</h6>
 <p class="small">
   {% blocktrans trimmed %}
     The output hash is a SHA-256 fingerprint computed when a validation
@@ -9,7 +11,9 @@
     were modified after completion, the hash would no longer match.
   {% endblocktrans %}
 </p>
-<h6 class="fw-semibold mt-3">{% trans "Fields included" %}</h6>
+<h6 class="fw-semibold mt-3">
+  {% trans "Fields included" %}
+</h6>
 <ul class="small">
   <li>
     <strong>validation context</strong> — {% trans "The workflow or workflow-hash context used to interpret the run" %}
@@ -42,7 +46,9 @@
     <strong>total_findings</strong> — {% trans "Total finding count" %}
   </li>
 </ul>
-<h6 class="fw-semibold mt-3">{% trans "How it works" %}</h6>
+<h6 class="fw-semibold mt-3">
+  {% trans "How it works" %}
+</h6>
 <p class="small mb-0">
   {% blocktrans trimmed %}
     Validibot serializes the covered fields into a deterministic JSON

@@ -16,14 +16,28 @@ Expected context:
                id="{{ field_name }}_{{ forloop.counter0 }}"
                value="{{ option.value }}"
                data-role-code="{{ option.value }}"
-               data-implied="{% if option.implied %}true{% endif %}"
-               {% if option.checked %}checked{% endif %}
-               {% if option.disabled %}disabled{% endif %} />
+               data-implied="{% if option.implied %}
+                               true
+                             {% endif %}"
+               {% if option.checked %}
+                 checked
+               {% endif %}
+               {% if option.disabled %}
+                 disabled
+               {% endif %} />
         <label class="form-check-label fw-semibold"
-               for="{{ field_name }}_{{ forloop.counter0 }}">{{ option.label }}</label>
-        {% if option.help %}<div class="form-text">{{ option.help }}</div>{% endif %}
+               for="{{ field_name }}_{{ forloop.counter0 }}">
+          {{ option.label }}
+        </label>
+        {% if option.help %}
+          <div class="form-text">
+            {{ option.help }}
+          </div>
+        {% endif %}
         {% if option.implied %}
-          <div class="form-text text-muted">{% trans "Granted automatically by a higher-level role." %}</div>
+          <div class="form-text text-muted">
+            {% trans "Granted automatically by a higher-level role." %}
+          </div>
         {% endif %}
         {% if option.disabled and option.checked %}
           <input type="hidden"

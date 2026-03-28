@@ -11,7 +11,9 @@
       <div class="row mb-4">
         <div class="col-12 col-lg-10 col-xl-8">
           <header>
-            <h1>{% trans "All Workflows" %}</h1>
+            <h1>
+              {% trans "All Workflows" %}
+            </h1>
           </header>
         </div>
       </div>
@@ -23,7 +25,9 @@
             <div class="row g-3 align-items-center">
               <div class="col-12 col-lg-6">
                 <label class="form-label text-muted small text-uppercase mb-1"
-                       for="workflow-search">{% trans "Search workflows" %}</label>
+                       for="workflow-search">
+                  {% trans "Search workflows" %}
+                </label>
                 <div class="input-group">
                   <span class="input-group-text">
                     <i class="bi bi-search"></i>
@@ -48,7 +52,12 @@
                  title="{% trans 'Grid view' %}"
                  aria-label="{% trans 'Workflow layout toggle' %}">
               <a href="{{ layout_urls.grid }}"
-                 class="btn {% if current_layout == 'grid' %} btn-secondary {% else %} btn-secondary {% endif %}">
+                 class="btn
+                        {% if current_layout == 'grid' %}
+                          btn-secondary
+                        {% else %}
+                          btn-secondary
+                        {% endif %}">
                 <i class="bi bi-grid-3x3-gap-fill me-1"></i>
                 {# % trans "Grid" % #}
               </a>
@@ -56,7 +65,12 @@
                  data-bs-toggle="tooltip"
                  data-bs-placement="top"
                  title="{% trans 'List view' %}"
-                 class="btn {% if current_layout == 'list' %} btn-secondary {% else %} btn-secondary {% endif %}">
+                 class="btn
+                        {% if current_layout == 'list' %}
+                          btn-secondary
+                        {% else %}
+                          btn-secondary
+                        {% endif %}">
                 <i class="bi bi-view-list me-1"></i>
                 {#  % trans "List" % #}
               </a>
@@ -141,7 +155,9 @@
                       {% endwith %}
                     </div>
                     <div class="text-muted text-md-end small">
-                      <div>{% trans "Updated" %} {{ workflow.modified|date:"M j, Y" }}</div>
+                      <div>
+                        {% trans "Updated" %} {{ workflow.modified|date:"M j, Y" }}
+                      </div>
                       {% if workflow.make_info_page_public %}
                         <span class="badge text-bg-light mt-2">{% trans "Public" %}</span>
                       {% else %}

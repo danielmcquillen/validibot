@@ -21,25 +21,41 @@
   <table class="table table-sm align-middle table-hover" data-sortable-table>
     <thead>
       <tr>
-        <th class="text-muted small" data-sortable="true">{% trans "Signal name" %}</th>
-        <th class="text-muted small" data-sortable="true">{% trans "Native name" %}</th>
-        <th class="text-muted small" data-sortable="true">{% trans "Type" %}</th>
-        <th class="text-muted small" data-sortable="true">{% trans "Direction" %}</th>
-        <th class="text-muted small text-end">{% trans "Actions" %}</th>
+        <th class="text-muted small" data-sortable="true">
+          {% trans "Signal name" %}
+        </th>
+        <th class="text-muted small" data-sortable="true">
+          {% trans "Native name" %}
+        </th>
+        <th class="text-muted small" data-sortable="true">
+          {% trans "Type" %}
+        </th>
+        <th class="text-muted small" data-sortable="true">
+          {% trans "Direction" %}
+        </th>
+        <th class="text-muted small text-end">
+          {% trans "Actions" %}
+        </th>
       </tr>
     </thead>
     <tbody>
       {% if inputs %}
         {% for entry in inputs %}
           <tr id="validator-signal-{{ entry.id }}">
-            <td>{{ entry.contract_key }}</td>
+            <td>
+              {{ entry.contract_key }}
+            </td>
             <td>
               <code class="d-inline-block text-truncate"
                     style="max-width: 220px"
                     title="{{ entry.native_name }}">{{ entry.native_name }}</code>
             </td>
-            <td class="text-muted small">{{ entry.get_data_type_display }}</td>
-            <td class="text-muted small">{% trans "Input" %}</td>
+            <td class="text-muted small">
+              {{ entry.get_data_type_display }}
+            </td>
+            <td class="text-muted small">
+              {% trans "Input" %}
+            </td>
             <td class="text-end">
               <div class="btn-group btn-group-sm"
                    role="group"
@@ -62,7 +78,9 @@
                           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                           hx-target="#validator-signal-{{ entry.id }}"
                           hx-swap="outerHTML"
-                          hx-confirm="{% blocktrans trimmed with name=entry.contract_key %} Delete signal '{{ name }}'? {% endblocktrans %}">
+                          hx-confirm="{% blocktrans trimmed with name=entry.contract_key %}
+                                        Delete signal '{{ name }}'?
+                                      {% endblocktrans %}">
                     <i class="bi bi-trash"></i>
                   </button>
                   {# djlint:on #}
@@ -75,14 +93,20 @@
       {% if show_output_tab and outputs %}
         {% for entry in outputs %}
           <tr id="validator-signal-{{ entry.id }}">
-            <td>{{ entry.contract_key }}</td>
+            <td>
+              {{ entry.contract_key }}
+            </td>
             <td>
               <code class="d-inline-block text-truncate"
                     style="max-width: 220px"
                     title="{{ entry.native_name }}">{{ entry.native_name }}</code>
             </td>
-            <td class="text-muted small">{{ entry.get_data_type_display }}</td>
-            <td class="text-muted small">{% trans "Output" %}</td>
+            <td class="text-muted small">
+              {{ entry.get_data_type_display }}
+            </td>
+            <td class="text-muted small">
+              {% trans "Output" %}
+            </td>
             <td class="text-end">
               <div class="btn-group btn-group-sm"
                    role="group"
@@ -105,7 +129,9 @@
                           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                           hx-target="#validator-signal-{{ entry.id }}"
                           hx-swap="outerHTML"
-                          hx-confirm="{% blocktrans trimmed with name=entry.contract_key %}Delete signal '{{ name }}'?{% endblocktrans %}">
+                          hx-confirm="{% blocktrans trimmed with name=entry.contract_key %}
+                                        Delete signal '{{ name }}'?
+                                      {% endblocktrans %}">
                     <i class="bi bi-trash"></i>
                   </button>
                   {# djlint:on #}

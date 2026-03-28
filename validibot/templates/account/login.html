@@ -21,7 +21,9 @@
               <div class="row g-0 align-items-stretch">
                 {# ── Left column: sign-in form ── #}
                 <div class="col-12 col-md-6 p-4 p-lg-5">
-                  <h3 class="card-body-header mb-3">{% trans "Sign In" %}</h3>
+                  <h3 class="card-body-header mb-3">
+                    {% trans "Sign In" %}
+                  </h3>
                   {% get_providers as socialaccount_providers %}
                   {% if socialaccount_providers %}
                     <p class="text-muted small">
@@ -33,7 +35,9 @@
                       <ul class="socialaccount_providers">
                         {% include "socialaccount/snippets/provider_list.html" with process="login" %}
                       </ul>
-                      <div class="login-or">{% trans 'or' %}</div>
+                      <div class="login-or">
+                        {% trans 'or' %}
+                      </div>
                     </div>
                     {% include "socialaccount/snippets/login_extra.html" %}
                   {% else %}
@@ -51,8 +55,12 @@
                   <img src="{% static 'images/robot.png' %}"
                        alt="Validibot robot"
                        class="signin-hero-robot mb-4" />
-                  <h2 class="fw-bold text-white mb-2 brand-name">{% trans "Validibot" %}</h2>
-                  <p class="signin-hero-tagline text-center">{% trans "Cloud-enabled data validation engine." %}</p>
+                  <h2 class="fw-bold text-white mb-2 brand-name">
+                    {% trans "Validibot" %}
+                  </h2>
+                  <p class="signin-hero-tagline text-center">
+                    {% trans "Cloud-enabled data validation engine." %}
+                  </p>
                 </div>
               </div>
             </div>

@@ -3,8 +3,12 @@
 {% with row_id=row_id|default:"validator-card-"|add:validator.id %}
   <tr id="{{ row_id }}">
     <td class="align-middle">
-      <div class="fw-semibold">{{ validator.name }}</div>
-      <div class="text-muted small">{{ validator.slug }}</div>
+      <div class="fw-semibold">
+        {{ validator.name }}
+      </div>
+      <div class="text-muted small">
+        {{ validator.slug }}
+      </div>
     </td>
     <td class="align-middle">
       {% if validator.is_system %}
@@ -15,7 +19,9 @@
         </span>
       {% endif %}
     </td>
-    <td class="align-middle text-muted small">{{ validator.short_description|default:_("No description provided.") }}</td>
+    <td class="align-middle text-muted small">
+      {{ validator.short_description|default:_("No description provided.") }}
+    </td>
     <td class="align-middle text-end">
       {% include "validations/library/partials/validator_library_actions.html" with validator=validator can_manage_validators=can_manage_validators target_id=row_id %}
     </td>

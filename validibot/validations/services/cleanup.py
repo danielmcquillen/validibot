@@ -1,0 +1,56 @@
+# Cleanup commands for docker containers
+
+import logging
+import os
+
+logger = logging.getLogger(__name__)
+
+
+def should_run_startup_cleanup() -> bool:
+    """
+    Determine if startup container cleanup should run.
+
+    Only runs in Celery worker processes on Docker Compose deployments.
+    Skips in web servers, management commands, and tests.
+    """
+    from django.conf import settings
+
+    # Only run on Docker Compose deployments
+    deployment_target = getattr(settings, "DEPLOYMENT_TARGET", "")
+    if deployment_target not in ("docker_compose", "local_docker_compose"):
+        return False
+
+    # Check if we're in a Celery worker process
+    # Check for celery in sys.argv (e.g., "celery -A config worker")
+    import sys
+
+    if not any("celery" in arg for arg in sys.argv):
+        return False
+
+    # Skip in Django's autoreload subprocess
+    return os.environ.get("RUN_MAIN") != "true"
+
+
+def run_startup_cleanup() -> None:
+    """
+    Clean up orphaned containers from previous worker runs.
+
+    This runs once at worker startup to remove containers that may
+    have been left behind if the previous worker crashed.
+    """
+    try:
+        from validibot.validations.services.runners.docker import (
+            cleanup_all_managed_containers,
+        )
+
+        logger.info("Running startup cleanup of orphaned containers...")
+        removed, failed = cleanup_all_managed_containers()
+
+        if removed > 0:
+            logger.info("Startup cleanup removed %d orphaned container(s)", removed)
+        if failed > 0:
+            logger.warning("Startup cleanup failed to remove %d container(s)", failed)
+    except ImportError:
+        logger.debug("Docker package not installed, skipping startup cleanup")
+    except Exception:
+        logger.exception("Startup container cleanup failed")

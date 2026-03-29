@@ -1,4 +1,4 @@
-"""Built-in action descriptor registrations for the community app.
+"""Action descriptor registrations for the community app.
 
 This module registers the actions that ship with community Validibot.
 Commercial packages register their own action descriptors from their own
@@ -14,8 +14,8 @@ from validibot.actions.registry import ActionDescriptor
 from validibot.actions.registry import register_action_descriptor
 
 
-def register_builtin_actions() -> None:
-    """Register the built-in community action descriptors."""
+def register_actions() -> None:
+    """Register the community action descriptors."""
 
     register_action_descriptor(
         ActionDescriptor(

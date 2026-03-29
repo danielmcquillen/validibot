@@ -11,15 +11,12 @@ It carries all metadata the host system needs:
 - **Step editor cards** — optional UI extensions (``step_editor_cards``)
   that inject custom cards into the workflow step detail page.
 
-Every validator — whether a sub-package with its own ``config.py`` or a
-single-file built-in — declares a ``ValidatorConfig`` instance.  The
-``populate_registry()`` function, called once from
-``ValidationsConfig.ready()``, discovers all configs and populates both
-the **config registry** (metadata lookups) and the **validator class
-registry** (runtime instantiation).
-
-This replaces the previous two-registry approach where configs and
-classes were registered separately.
+Every validator sub-package declares a ``ValidatorConfig`` instance in
+its ``config.py`` module.  At
+startup, ``register_validators()`` in ``validibot.validations.registrations``
+discovers all configs and calls ``register_validator_config()`` for each,
+populating both the **config registry** (metadata lookups) and the
+**validator class registry** (runtime instantiation).
 """
 
 from __future__ import annotations
@@ -114,11 +111,10 @@ class StepEditorCardSpec(BaseModel):
 class ValidatorConfig(BaseModel):
     """Single source of truth for a system validator.
 
-    Every validator declares a ``ValidatorConfig`` instance — either in a
-    ``config.py`` module inside its sub-package, or in
-    ``builtin_configs.py`` for single-file validators.  At startup,
-    ``populate_registry()`` discovers all configs and populates both the
-    config registry (metadata) and the validator class registry (runtime).
+    Every validator declares a ``ValidatorConfig`` instance in a
+    ``config.py`` module inside its sub-package.  At startup,
+    ``register_validators()`` discovers all configs and registers each
+    via ``register_validator_config()``.
 
     Example::
 
@@ -154,16 +150,21 @@ class ValidatorConfig(BaseModel):
 
     # --- Validator class ---
     # Dotted Python path to the BaseValidator subclass.  Resolved at
-    # startup by ``populate_registry()`` via ``import_string()``.
+    # startup by ``register_validator_config()`` via ``import_string()``.
     validator_class: str = ""
+    # The resolved Python class.  ``None`` in config declarations;
+    # populated at registration time by ``register_validator_config()``.
+    resolved_class: type[Any] | None = None
 
     # --- Output envelope class ---
     # Dotted Python path to the Pydantic model used to deserialize
     # the output.json returned by a container-based validator.  Only
     # relevant for advanced (container) validators — built-in validators
-    # leave this empty.  Resolved at startup alongside ``validator_class``
-    # and stored in ``registry._ENVELOPE_REGISTRY`` for O(1) lookups.
+    # leave this empty.  Resolved at startup alongside ``validator_class``.
     output_envelope_class: str = ""
+    # The resolved envelope Python class.  ``None`` unless the config
+    # declares an ``output_envelope_class`` path.
+    resolved_envelope_class: type[Any] | None = None
 
     # --- File handling ---
     supported_file_types: list[str] = Field(default_factory=list)
@@ -296,99 +297,88 @@ def discover_configs() -> list[ValidatorConfig]:
 # ---------------------------------------------------------------------------
 # Unified Registry
 #
-# Populated once at startup by populate_registry(), keyed by validation_type.
+# Single registry keyed by validation_type, populated at startup by
+# register_validators() in validibot.validations.registrations.
 #
-# Two registries are populated from a single pass over all ValidatorConfig
-# instances:
+# Each ValidatorConfig stored here carries both metadata (slug, catalog
+# entries, etc.) and resolved class references (resolved_class,
+# resolved_envelope_class) set at registration time.
 #
-#   _CONFIG_REGISTRY — ValidatorConfig metadata (slug, catalog entries, etc.)
-#   _VALIDATOR_REGISTRY — validator class references (for runtime instantiation)
-#
-# The validator class registry lives in registry.py but is populated here.
-# Consumers use get_config() / get_all_configs() for metadata lookups and
-# registry.get() for validator class lookups.
+# Consumers use:
+#   get_config() / get_all_configs() — metadata lookups
+#   get_validator_class() — resolved validator class for instantiation
+#   get_output_envelope_class() — resolved envelope class for container output
 # ---------------------------------------------------------------------------
 
 _CONFIG_REGISTRY: dict[str, ValidatorConfig] = {}
 
 
-def populate_registry() -> None:
-    """Discover all configs and populate the config, class, and envelope registries.
+def register_validator_config(config: ValidatorConfig) -> None:
+    """Register a validator config, resolving its class references.
 
-    Called once from ``ValidationsConfig.ready()``.  Pulls configs from:
+    External packages call this from their ``AppConfig.ready()`` to register
+    validators, following the same pattern as ``register_action_descriptor()``
+    for actions.
 
-    1. ``discover_configs()`` — package-based validators with ``config.py``
-    2. ``BUILTIN_CONFIGS`` — single-file built-in validators
+    The provider module is checked against the allowlist before the config
+    becomes visible to the rest of the system. The ``validator_class`` and
+    ``output_envelope_class`` dotted paths are resolved via
+    ``import_string()`` and stored on the config as ``resolved_class`` and
+    ``resolved_envelope_class``.
 
-    For each config, resolves dotted paths via ``import_string()`` and
-    populates:
-
-    - ``registry._VALIDATOR_REGISTRY`` — from ``validator_class``
-    - ``registry._ENVELOPE_REGISTRY`` — from ``output_envelope_class``
-
-    Idempotent: skips if the registry is already populated (handles
-    Django's autoreloader calling ``ready()`` twice).
+    Raises:
+        ImproperlyConfigured: If the provider is not in the allowlist.
+        ValueError: If ``validation_type`` is already registered.
+        ImportError: If ``validator_class`` or ``output_envelope_class``
+            cannot be resolved.
     """
-    if _CONFIG_REGISTRY:
-        return
-
     from django.utils.module_loading import import_string
 
-    from validibot.validations.validators.base.builtin_configs import BUILTIN_CONFIGS
-    from validibot.validations.validators.base.registry import _ENVELOPE_REGISTRY
-    from validibot.validations.validators.base.registry import _VALIDATOR_REGISTRY
+    provider = _infer_config_provider(config)
+    _ensure_allowed_provider(provider)
 
-    builtin_configs = []
-    for cfg in BUILTIN_CONFIGS:
-        provider = _infer_config_provider(
-            cfg,
-            fallback_provider="validibot.validations.validators.base.builtin_configs",
+    cfg = (
+        config if config.provider else config.model_copy(update={"provider": provider})
+    )
+
+    if cfg.validation_type in _CONFIG_REGISTRY:
+        msg = (
+            f"Duplicate config registration for validation_type "
+            f"'{cfg.validation_type}': {cfg.slug} conflicts with "
+            f"{_CONFIG_REGISTRY[cfg.validation_type].slug}"
         )
-        _ensure_allowed_provider(provider)
-        builtin_configs.append(
-            cfg.model_copy(
-                update={"provider": provider},
-            ),
-        )
+        raise ValueError(msg)
 
-    all_configs = list(discover_configs()) + builtin_configs
+    updates: dict[str, Any] = {}
 
-    for cfg in all_configs:
-        if cfg.validation_type in _CONFIG_REGISTRY:
-            msg = (
-                f"Duplicate config registration for validation_type "
-                f"'{cfg.validation_type}': {cfg.slug} conflicts with "
-                f"{_CONFIG_REGISTRY[cfg.validation_type].slug}"
-            )
-            raise ValueError(msg)
-        _CONFIG_REGISTRY[cfg.validation_type] = cfg
+    if cfg.validator_class:
+        try:
+            cls = import_string(cfg.validator_class)
+        except (ImportError, AttributeError) as exc:
+            raise ImportError(
+                f"Cannot import validator class '{cfg.validator_class}' "
+                f"declared in config '{cfg.slug}' "
+                f"(validation_type='{cfg.validation_type}'): {exc}"
+            ) from exc
+        cls.validation_type = cfg.validation_type
+        updates["resolved_class"] = cls
 
-        if cfg.validator_class:
-            # Wrap import_string() with context so a typo in any of the
-            # 7+ validator configs produces an error message that names
-            # the offending config — not just the missing module/attribute.
-            try:
-                cls = import_string(cfg.validator_class)
-            except (ImportError, AttributeError) as exc:
-                raise ImportError(
-                    f"Cannot import validator class '{cfg.validator_class}' "
-                    f"declared in config '{cfg.slug}' "
-                    f"(validation_type='{cfg.validation_type}'): {exc}"
-                ) from exc
-            _VALIDATOR_REGISTRY[cfg.validation_type] = cls
-            cls.validation_type = cfg.validation_type
+    if cfg.output_envelope_class:
+        try:
+            envelope_cls = import_string(cfg.output_envelope_class)
+        except (ImportError, AttributeError) as exc:
+            raise ImportError(
+                f"Cannot import output envelope class "
+                f"'{cfg.output_envelope_class}' declared in config "
+                f"'{cfg.slug}' "
+                f"(validation_type='{cfg.validation_type}'): {exc}"
+            ) from exc
+        updates["resolved_envelope_class"] = envelope_cls
 
-        if cfg.output_envelope_class:
-            try:
-                envelope_cls = import_string(cfg.output_envelope_class)
-            except (ImportError, AttributeError) as exc:
-                raise ImportError(
-                    f"Cannot import output envelope class "
-                    f"'{cfg.output_envelope_class}' declared in config "
-                    f"'{cfg.slug}' "
-                    f"(validation_type='{cfg.validation_type}'): {exc}"
-                ) from exc
-            _ENVELOPE_REGISTRY[cfg.validation_type] = envelope_cls
+    if updates:
+        cfg = cfg.model_copy(update=updates)
+
+    _CONFIG_REGISTRY[cfg.validation_type] = cfg
 
 
 def get_config(validation_type: str) -> ValidatorConfig | None:
@@ -405,3 +395,28 @@ def get_all_configs() -> list[ValidatorConfig]:
     configs = list(_CONFIG_REGISTRY.values())
     configs.sort(key=lambda c: (c.order, c.name))
     return configs
+
+
+def get_validator_class(vtype: str) -> type[Any]:
+    """Retrieve the resolved validator class for a given validation type.
+
+    Raises ``KeyError`` if not registered or no class was resolved.
+    """
+    key = getattr(vtype, "value", None) or str(vtype)
+    cfg = _CONFIG_REGISTRY.get(str(key))
+    if cfg is None or cfg.resolved_class is None:
+        raise KeyError(key)
+    return cfg.resolved_class
+
+
+def get_output_envelope_class(vtype: str) -> type[Any] | None:
+    """Retrieve the resolved output envelope class for a validation type.
+
+    Returns ``None`` if no envelope class is registered (e.g. built-in
+    validators that don't use container envelopes).
+    """
+    key = getattr(vtype, "value", None) or str(vtype)
+    cfg = _CONFIG_REGISTRY.get(str(key))
+    if cfg is None:
+        return None
+    return cfg.resolved_envelope_class

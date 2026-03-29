@@ -160,7 +160,7 @@ mismatches at save time rather than at runtime.
 3. Register it in the `STEP_CONFIG_MODELS` dict.
 4. Create the validator class implementing `BaseValidator`.
 5. Create a `ValidatorConfig` with `validator_class` pointing to your class
-   (in `config.py` for package-based validators, or `builtin_configs.py` for single-file).
+   (in the validator's `config.py` module).
 6. Add `catalog_entries` to define the validator's input/output signals.
    These appear automatically in the unified "Inputs and Outputs" card on the step detail page.
 7. Run `python manage.py sync_validators` to sync to the database.

@@ -100,7 +100,7 @@ def test_execute_fails_gracefully_when_validator_missing():
 
     # Simulate missing validator by making the registry raise KeyError
     with patch(
-        "validibot.validations.validators.base.registry.get",
+        "validibot.validations.validators.base.config.get_validator_class",
         side_effect=KeyError("CUSTOM_VALIDATOR"),
     ):
         service = ValidationRunService()

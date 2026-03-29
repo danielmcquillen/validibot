@@ -69,9 +69,7 @@ class ValidationStepProcessor(ABC):
 
     def _get_validator(self):
         """Get the validator instance from the registry."""
-        from validibot.validations.validators.base.registry import (
-            get as get_validator_class,
-        )
+        from validibot.validations.validators.base.config import get_validator_class
 
         validator_cls = get_validator_class(self.validator.validation_type)
         return validator_cls()

@@ -13,7 +13,8 @@ This package provides the foundation that all validators build on:
   by all validators.
 - **ValidatorConfig**: Single source of truth for validator metadata,
   class binding, and step editor UI extensions.
-- **get**: Registry lookup for mapping ValidationType to validator classes.
+- **get_validator_class**: Registry lookup for mapping ValidationType to
+  validator classes.
 
 External callers should import from this package rather than reaching into
 individual modules::
@@ -39,8 +40,9 @@ from validibot.validations.validators.base.config import ValidatorConfig
 from validibot.validations.validators.base.config import discover_configs
 from validibot.validations.validators.base.config import get_all_configs
 from validibot.validations.validators.base.config import get_config
-from validibot.validations.validators.base.config import populate_registry
-from validibot.validations.validators.base.registry import get
+from validibot.validations.validators.base.config import get_output_envelope_class
+from validibot.validations.validators.base.config import get_validator_class
+from validibot.validations.validators.base.config import register_validator_config
 from validibot.validations.validators.base.simple import SimpleValidator
 
 __all__ = [
@@ -55,8 +57,9 @@ __all__ = [
     "ValidationResult",
     "ValidatorConfig",
     "discover_configs",
-    "get",
     "get_all_configs",
     "get_config",
-    "populate_registry",
+    "get_output_envelope_class",
+    "get_validator_class",
+    "register_validator_config",
 ]

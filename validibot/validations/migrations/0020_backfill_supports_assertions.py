@@ -16,7 +16,7 @@ from django.db import migrations
 
 # Validation types that support step-level assertions.
 # Matches the ``supports_assertions=True`` declarations in
-# ``builtin_configs.py`` and the per-package ``config.py`` files.
+# the per-package ``config.py`` files.
 _ASSERTION_CAPABLE_TYPES = [
     "BASIC",
     "ENERGYPLUS",

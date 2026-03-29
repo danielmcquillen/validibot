@@ -45,7 +45,9 @@ from validibot.validations.services.execution.base import ExecutionResponse
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
-from validibot.validations.validators.base.registry import get as get_validator
+from validibot.validations.validators.base.config import (
+    get_validator_class as get_validator,
+)
 from validibot.workflows.models import WorkflowStepResource
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory

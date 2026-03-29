@@ -402,10 +402,12 @@ class DockerComposeExecutionBackend(ExecutionBackend):
 
             # Look up the output envelope class from the registry using the
             # validator type embedded in the envelope JSON.
-            from validibot.validations.validators.base import registry
+            from validibot.validations.validators.base.config import (
+                get_output_envelope_class,
+            )
 
             validator_type = output_dict.get("validator", {}).get("type", "").upper()
-            envelope_class = registry.get_output_envelope_class(validator_type)
+            envelope_class = get_output_envelope_class(validator_type)
 
             if envelope_class is None:
                 # Fall back to the generic base envelope for unknown types.

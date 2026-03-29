@@ -47,7 +47,7 @@ Community validators are loaded in two ways:
 - **package-based validators** live under `validibot.validations.validators.<name>` and expose a `config.py`
 - **single-file built-ins** are declared in the built-in config list and loaded alongside the package-based validators
 
-At startup, `ValidationsConfig.ready()` calls `populate_registry()`. That function discovers every `ValidatorConfig`, resolves the dotted class paths, and fills the in-memory registries used by the runtime.
+At startup, `ValidationsConfig.ready()` calls `register_validators()`, which discovers every `ValidatorConfig`, resolves the dotted class paths, and fills the in-memory registries used by the runtime.
 
 After startup, `sync_validators` turns those Python declarations into database rows:
 

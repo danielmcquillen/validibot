@@ -9,7 +9,7 @@ from validibot.actions.protocols import RunContext
 from validibot.actions.protocols import StepResult
 from validibot.validations.constants import Severity
 from validibot.validations.validators.base import ValidationIssue
-from validibot.validations.validators.base.registry import get as get_validator_class
+from validibot.validations.validators.base.config import get_validator_class
 
 if TYPE_CHECKING:
     from validibot.validations.validators.base import BaseValidator

@@ -142,7 +142,7 @@ validator is declared in one place:
   rows and their catalog entries in the database.
 - **Validator class binding** — `validator_class` is a dotted Python path to the `BaseValidator`
   subclass (e.g., `"validibot.validations.validators.energyplus.validator.EnergyPlusValidator"`).
-  At startup, `populate_registry()` resolves this path and stores the class in the runtime
+  At startup, `register_validators()` resolves this path and stores the class in the runtime
   registry so the engine can instantiate validators without storing Python paths in the database.
 - **File handling** — `supported_file_types`, `supported_data_formats`, `allowed_extensions`,
   and `resource_types` declare what files the validator accepts.
@@ -161,18 +161,15 @@ Validators that are full sub-packages (EnergyPlus, FMU, etc.) declare their conf
 `validibot/validations/validators/energyplus/config.py` and exports a module-level `config`
 attribute.
 
-Simpler validators that are single Python files (Basic, JSON Schema, XML Schema, AI Assist,
-Custom) don't have their own packages. Their configs are collected in
-`validibot/validations/validators/base/builtin_configs.py` as a `BUILTIN_CONFIGS` list.
+Every validator is a sub-package under `validations/validators/` with its own `config.py`
+declaring a `ValidatorConfig` instance.
 
 ### Discovery and registry population
 
-At startup, `populate_registry()` runs inside `ValidationsConfig.ready()` and does a single
-pass over all validator configs. It pulls from two sources:
-
-1. `discover_configs()` — walks the `validations/validators/` directory, imports any sub-package
-   that has a `config.py` with a `ValidatorConfig` instance.
-2. `BUILTIN_CONFIGS` — the list of single-file validators from `builtin_configs.py`.
+At startup, `register_validators()` runs inside `ValidationsConfig.ready()` and does a single
+pass over all validator configs. It calls `discover_configs()`, which walks the
+`validations/validators/` directory and imports any sub-package that has a `config.py` with a
+`ValidatorConfig` instance.
 
 For each config, two registries are populated:
 
@@ -301,7 +298,7 @@ edit each variable's annotations (label, default, type, constraints) via a per-v
 
 ## Validator lifecycle
 
-1. **Discovery** — `populate_registry()` runs inside `ValidationsConfig.ready()` at application
+1. **Discovery** — `register_validators()` runs inside `ValidationsConfig.ready()` at application
    startup. It calls `discover_configs()` to find package-based validators (those with a
    `config.py` module) and loads `BUILTIN_CONFIGS` for single-file validators. Both the config
    registry and the validator class registry are populated in a single pass.
@@ -321,7 +318,7 @@ edit each variable's annotations (label, default, type, constraints) via a per-v
    validators inject custom UI (like EnergyPlus's "Template Variables" card) without modifying
    the core step detail view.
 
-5. **Execution** — the runtime calls `registry.get(validation_type)` to retrieve the validator
+5. **Execution** — the runtime calls `get_validator_class(validation_type)` to retrieve the validator
    class, instantiates it, and runs validation. The provider optionally instruments the uploaded
    artifact, binds helper closures, and the validator evaluates derivations followed by
    assertions. Findings are emitted with references back to the validator and catalog snapshot

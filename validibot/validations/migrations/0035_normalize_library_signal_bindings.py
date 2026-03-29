@@ -101,10 +101,9 @@ def _normalize_provider_binding(mapping):
 
 def _catalog_config_map():
     """Build a validator-slug keyed map of catalog entry config specs."""
-    from validibot.validations.validators.base.builtin_configs import BUILTIN_CONFIGS
     from validibot.validations.validators.base.config import discover_configs
 
-    configs = list(discover_configs()) + list(BUILTIN_CONFIGS)
+    configs = list(discover_configs())
     config_map = {}
     for cfg in configs:
         entries = {}

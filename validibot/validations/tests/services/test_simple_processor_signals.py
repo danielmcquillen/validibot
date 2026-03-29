@@ -44,7 +44,7 @@ class SimpleProcessorSignalsTests(TestCase):
             return FakeValidator
 
         with patch(
-            "validibot.validations.validators.base.registry.get",
+            "validibot.validations.validators.base.config.get_validator_class",
             side_effect=fake_get_validator,
         ):
             processor = SimpleValidationProcessor(run, step_run)

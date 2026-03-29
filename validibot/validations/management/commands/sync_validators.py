@@ -56,6 +56,8 @@ class Command(BaseCommand):
                         "icon",
                         "output_envelope_class",
                         "provider",
+                        "resolved_class",
+                        "resolved_envelope_class",
                         "resource_types",
                         "step_editor_cards",
                         "validator_class",

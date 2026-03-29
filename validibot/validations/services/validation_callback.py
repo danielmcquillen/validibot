@@ -418,9 +418,11 @@ class ValidationCallbackService:
             _CallbackProcessingError: On download failure, missing envelope
                 class, or validator/run ID mismatch.
         """
-        from validibot.validations.validators.base import registry
+        from validibot.validations.validators.base.config import (
+            get_output_envelope_class,
+        )
 
-        envelope_class = registry.get_output_envelope_class(
+        envelope_class = get_output_envelope_class(
             validator.validation_type,
         )
         if not envelope_class:

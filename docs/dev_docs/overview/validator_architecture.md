@@ -428,21 +428,9 @@ config = ValidatorConfig(
 )
 ```
 
-**For single-file validators**, add to `builtin_configs.py`:
-
-```python
-# validibot/validations/validators/base/builtin_configs.py
-ValidatorConfig(
-    slug="my-simple-validator",
-    name="My Simple Validator",
-    validation_type="MY_SIMPLE",
-    validator_class="validibot.validations.validators.my_simple.MySimpleValidator",
-)
-```
-
 Then add your `ValidationType` to the enum and run `python manage.py sync_validators`
 to sync to the database. The validator class is automatically resolved at startup by
-`populate_registry()`.
+`register_validators()`.
 
 ## Django-Side Orchestration (`AdvancedValidator`)
 

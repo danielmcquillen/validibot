@@ -146,9 +146,14 @@ processor.complete_from_callback(output_envelope)
    - Implement `validate()` method
    - For container-based validators, implement `post_execute_validate()` too
 
-2. **Register the validator** in `validibot/validations/validators/base/registry.py`:
+2. **Register the validator** by adding a `config.py` to your validator sub-package:
    ```python
-   register(ValidationType.MY_VALIDATOR, MyValidator)
+   # validations/validators/my_validator/config.py
+   config = ValidatorConfig(
+       validation_type="MY_VALIDATOR",
+       validator_class="validibot.validations.validators.my_validator.validator.MyValidator",
+       ...
+   )
    ```
 
 3. **Update processor factory** (if needed) in `step_processor/factory.py`:

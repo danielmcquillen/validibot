@@ -20,7 +20,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.services.execution.registry import clear_backend_cache
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
-from validibot.validations.validators.base.registry import get
+from validibot.validations.validators.base.config import get_validator_class
 from validibot.validations.validators.custom.validator import CustomValidator
 
 pytestmark = pytest.mark.django_db
@@ -28,7 +28,7 @@ pytestmark = pytest.mark.django_db
 
 def test_custom_validator_is_registered():
     """CustomValidator should be retrievable from the registry."""
-    cls = get(ValidationType.CUSTOM_VALIDATOR)
+    cls = get_validator_class(ValidationType.CUSTOM_VALIDATOR)
     assert cls is CustomValidator
 
 

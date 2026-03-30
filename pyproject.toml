@@ -86,7 +86,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cloud = ["stripe==14.4.1"]
+cloud = ["stripe==15.0.0"]
 
 [project.urls]
 Homepage = "https://validibot.com"

@@ -180,7 +180,7 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             credential = IssuedCredential.objects.filter(
                 workflow_run=obj,
             ).first()
-        except Exception:
+        except ImportError:
             return None
 
         if credential is None:
@@ -209,6 +209,13 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             ),
             "download_url": download_url,
         }
+
+    def to_representation(self, instance):
+        """Omit ``credential`` for workflows without a credential step."""
+        data = super().to_representation(instance)
+        if not instance.workflow.has_signed_credential_action:
+            data.pop("credential", None)
+        return data
 
     class Meta:
         model = ValidationRun

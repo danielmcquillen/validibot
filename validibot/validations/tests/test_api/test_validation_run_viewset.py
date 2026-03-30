@@ -23,6 +23,10 @@ from rest_framework.test import APIClient
 from rest_framework.test import APIRequestFactory
 from rest_framework.test import force_authenticate
 
+from validibot.actions.constants import ActionCategoryType
+from validibot.actions.constants import CredentialActionType
+from validibot.actions.models import Action
+from validibot.actions.models import ActionDefinition
 from validibot.projects.tests.factories import ProjectFactory
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.constants import RoleCode
@@ -38,6 +42,7 @@ from validibot.validations.models import ValidationRun
 from validibot.validations.tests.factories import ValidationFindingFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
+from validibot.workflows.models import WorkflowStep
 from validibot.workflows.tests.factories import WorkflowFactory
 
 logger = logging.getLogger(__name__)
@@ -59,6 +64,35 @@ def _fake_pro_modules(credential):
         "validibot_pro.credentials": credentials_module,
         "validibot_pro.credentials.models": models_module,
     }
+
+
+def _add_signed_credential_step(workflow):
+    """Attach a signed-credential action step to the given workflow."""
+    definition, _ = ActionDefinition.objects.get_or_create(
+        slug="signed-credential",
+        defaults={
+            "name": "Signed credential",
+            "description": "Issue a signed credential.",
+            "icon": "bi-award",
+            "action_category": ActionCategoryType.CREDENTIAL,
+            "type": CredentialActionType.SIGNED_CREDENTIAL,
+            "required_commercial_feature": "signed_credentials",
+        },
+    )
+    action = Action.objects.create(
+        definition=definition,
+        name="Signed credential",
+        description="Issue a signed credential.",
+    )
+    return WorkflowStep.objects.create(
+        workflow=workflow,
+        order=10,
+        action=action,
+        name="Credential step",
+        description="",
+        notes="",
+        config={},
+    )
 
 
 def runs_list_url(org) -> str:
@@ -326,6 +360,7 @@ class ValidationRunViewSetTestCase(TestCase):
     def test_detail_includes_credential_metadata(self):
         """Detail responses should expose credential download metadata when present."""
         self.client.force_authenticate(user=self.user)
+        _add_signed_credential_step(self.workflow)
         run = ValidationRunFactory(
             submission=self.submission,
             workflow=self.workflow,
@@ -354,6 +389,31 @@ class ValidationRunViewSetTestCase(TestCase):
                 ),
             },
         )
+
+    def test_detail_omits_credential_field_without_signed_credential_action(self):
+        """
+        Detail responses should omit credential metadata when the workflow
+        has no credential step.
+        """
+        self.client.force_authenticate(user=self.user)
+        run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            status=ValidationRunStatus.SUCCEEDED,
+        )
+        credential = SimpleNamespace(
+            id=uuid4(),
+            media_type="application/vc+jwt",
+            created=timezone.now(),
+        )
+
+        with patch.dict("sys.modules", _fake_pro_modules(credential)):
+            response = self.client.get(runs_detail_url(self.org, run))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("credential", response.data)
 
     def test_credential_download_returns_compact_jws(self):
         """The download action should return the stored compact vc+jwt artifact."""

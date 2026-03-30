@@ -824,6 +824,15 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         return str(max_major + 1)
 
     @property
+    def has_signed_credential_action(self) -> bool:
+        """Whether any step in this workflow issues a signed credential."""
+        from validibot.actions.constants import CredentialActionType
+
+        return self.steps.filter(
+            action__definition__type=CredentialActionType.SIGNED_CREDENTIAL,
+        ).exists()
+
+    @property
     def is_advanced(self) -> bool:
         """
         Check if this workflow uses any advanced (high-compute) validators.

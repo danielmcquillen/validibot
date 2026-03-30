@@ -336,6 +336,13 @@ class BaseValidator(ABC):
                 "direction",
             )
         )
+
+        # Step-bound input signals are the authoritative mapping for nested
+        # submission structures. This keeps simple validators aligned with the
+        # same StepSignalBinding resolution model that advanced validators use.
+        if stage == "input":
+            context.update(self._resolve_bound_input_context(payload))
+
         # Nested namespace for output signals.  CEL parses ``output.slug``
         # as member access (variable ``output``, field ``slug``), so output
         # signals must live inside a dict—not as flat dotted keys.
@@ -437,6 +444,70 @@ class BaseValidator(ABC):
                     matches = _collect_matches(payload, ident)
                     if len(matches) == 1 and ident not in context:
                         context[ident] = matches[0]
+        return context
+
+    def _resolve_bound_input_context(self, payload: Any) -> dict[str, Any]:
+        """Resolve input signals wired to the current workflow step.
+
+        CEL expressions on simple validators can reference signal contract keys
+        like ``emissivity`` even when the submission stores the value at a
+        nested path such as ``ownedMember[0].ownedAttribute[1].defaultValue``.
+        When a workflow step defines ``StepSignalBinding`` rows, resolve those
+        bindings first and inject the resulting values into the CEL context.
+
+        Missing bound inputs are surfaced as ``None`` so assertions can still
+        use null checks instead of crashing on undefined identifiers.
+        """
+        step = getattr(getattr(self, "run_context", None), "step", None)
+        if step is None:
+            return {}
+
+        from validibot.validations.constants import SignalDirection
+        from validibot.validations.models import StepSignalBinding
+        from validibot.validations.services.path_resolution import resolve_input_signal
+
+        submission = getattr(
+            getattr(self, "run_context", None),
+            "validation_run",
+            None,
+        )
+        submission = getattr(submission, "submission", None)
+        submission_metadata = getattr(submission, "metadata", None) or {}
+        upstream_signals = (
+            getattr(
+                getattr(self, "run_context", None),
+                "downstream_signals",
+                None,
+            )
+            or {}
+        )
+
+        bindings = (
+            StepSignalBinding.objects.filter(
+                workflow_step=step,
+                signal_definition__direction=SignalDirection.INPUT,
+            )
+            .select_related("signal_definition")
+            .order_by("signal_definition__order", "signal_definition__pk")
+        )
+
+        if not bindings.exists():
+            return {}
+
+        submission_data = payload if isinstance(payload, (dict, list)) else {}
+
+        context: dict[str, Any] = {}
+        for binding in bindings:
+            resolved = resolve_input_signal(
+                binding,
+                submission_data=submission_data,
+                submission_metadata=submission_metadata,
+                upstream_signals=upstream_signals,
+            )
+            context[binding.signal_definition.contract_key] = (
+                resolved.value if resolved.resolved else None
+            )
+
         return context
 
     def _issue_from_assertion(

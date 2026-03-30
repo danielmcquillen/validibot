@@ -73,6 +73,49 @@ Use **bracket notation** with a zero-based index to access array elements.
 | `north-temp` | `results[0].temp` | `21.3` |
 | `south-zone` | `results[1].zone` | `"South"` |
 
+### Filter expressions
+
+When your data uses arrays of named objects (common in SysML v2, FHIR, and similar schemas), you can use **filter expressions** to find elements by a field value instead of by array position.
+
+Given this JSON:
+
+```json
+{
+  "ownedMember": [
+    {
+      "name": "RadiatorPanel",
+      "ownedAttribute": [
+        { "name": "panelArea", "defaultValue": 2.0 },
+        { "name": "emissivity", "defaultValue": 0.85 }
+      ]
+    },
+    {
+      "name": "ThermalEnvironment",
+      "ownedAttribute": [
+        { "name": "solarIrradiance", "defaultValue": 1361.0 }
+      ]
+    }
+  ]
+}
+```
+
+| Signal slug | Data path | Value |
+|-------------|-----------|-------|
+| `emissivity` | `ownedMember[?@.name=='RadiatorPanel'].ownedAttribute[?@.name=='emissivity'].defaultValue` | `0.85` |
+| `solar-irradiance` | `ownedMember[?@.name=='ThermalEnvironment'].ownedAttribute[?@.name=='solarIrradiance'].defaultValue` | `1361.0` |
+
+The syntax `[?@.field=='value']` means "find the array element where `field` equals `value`". You can chain filters and mix them with dot notation and bracket indices.
+
+Filter expressions follow the [RFC 9535 JSONPath](https://datatracker.ietf.org/doc/html/rfc9535) standard, with the following restrictions for security:
+
+- **No recursive descent** (`..`) -- paths must be explicit.
+- **No wildcards** (`[*]`, `.*`) -- select specific elements.
+- **No slice notation** (`[0:5]`) -- use explicit indices.
+- **No function calls** -- only comparisons (`==`, `!=`, `<`, `>`, `<=`, `>=`).
+- **Maximum 4 filter segments** per path.
+
+If a filter matches multiple elements, the first match is used.
+
 ---
 
 ## XML Data Paths

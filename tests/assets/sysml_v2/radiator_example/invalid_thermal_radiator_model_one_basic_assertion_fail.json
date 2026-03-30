@@ -6,7 +6,7 @@
   "@type": "sysml:Package",
   "@id": "pkg-thermal-radiator-subsystem",
   "name": "ThermalRadiatorSubsystem",
-  "description": "CEL FAIL: Passes JSON Schema (correct structure, correct fmuReference) but has four domain violations caught by CEL assertions: negative emissivity (-0.5), negative mass (-1.0 kg), one-ended interface, and a dangling requirement reference (req-nonexistent).",
+  "description": "BASIC ASSERTION FAIL (single): Passes JSON Schema but has one domain violation caught by basic assertions: negative emissivity (-0.5).",
   "ownedMember": [
     {
       "@type": "sysml:PartDefinition",
@@ -46,9 +46,9 @@
           "@id": "attr-mass",
           "name": "mass",
           "attributeType": "kerml:Real",
-          "defaultValue": -1.0,
+          "defaultValue": 3.6,
           "unit": "kg",
-          "description": "ERROR: Negative mass is physically impossible"
+          "description": "Panel mass including mounting hardware"
         }
       ],
       "ownedPort": [
@@ -83,12 +83,17 @@
       "@type": "sysml:InterfaceDefinition",
       "@id": "iface-thermal-coupling",
       "name": "ThermalCoupling",
-      "description": "ERROR: This interface has only ONE end instead of the required two.",
+      "description": "Thermal coupling interface between environment and radiator panel.",
       "end": [
         {
           "@type": "sysml:InterfaceEnd",
           "partRef": "def-thermal-environment",
           "portRef": null
+        },
+        {
+          "@type": "sysml:InterfaceEnd",
+          "partRef": "def-radiator-panel",
+          "portRef": "port-thermal-in"
         }
       ]
     },
@@ -102,9 +107,9 @@
     {
       "@type": "sysml:SatisfyRequirementUsage",
       "@id": "satisfy-thermal-range",
-      "satisfiedRequirement": "req-nonexistent",
+      "satisfiedRequirement": "req-thermal-range",
       "satisfyingPart": "def-radiator-panel",
-      "description": "ERROR: References a requirement ID that doesn't exist in this model."
+      "description": "Links the radiator panel to the operating temperature range requirement."
     },
     {
       "@type": "sysml:AnalysisCaseDefinition",

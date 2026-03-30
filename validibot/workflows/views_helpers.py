@@ -170,10 +170,21 @@ def resequence_workflow_steps(workflow: Workflow) -> None:
     for index, step in enumerate(ordered, start=1):
         desired = index * 10
         if step.order != desired:
-            step.order = desired
             changed = True
-    if changed:
-        WorkflowStep.objects.bulk_update(ordered, ["order"])
+            break
+    if not changed:
+        return
+    # Two-pass update to avoid unique-constraint violations on
+    # (workflow_id, order).  PostgreSQL checks constraints per row
+    # during a CASE-based bulk_update, so moving order 11→20 can
+    # collide with a row that still holds order 20.  Pass 1 pushes
+    # everything to a high temporary range; pass 2 sets final values.
+    for index, step in enumerate(ordered, start=1):
+        step.order = 10_000 + index
+    WorkflowStep.objects.bulk_update(ordered, ["order"])
+    for index, step in enumerate(ordered, start=1):
+        step.order = index * 10
+    WorkflowStep.objects.bulk_update(ordered, ["order"])
 
 
 def ensure_ruleset(
@@ -1120,12 +1131,44 @@ def _sync_template_signals(
         clear_step_template_signals(step)
 
 
+def _compute_insert_order(
+    workflow: Workflow,
+    insert_after_step: int | None,
+) -> int:
+    """Determine the order value for a newly created step.
+
+    Uses a high temporary value that avoids unique-constraint collisions.
+    The caller must call ``resequence_workflow_steps()`` after saving to
+    normalise the order values back to clean multiples of 10.
+
+    If ``insert_after_step`` is given (the PK of an existing step), the
+    new step is placed immediately after it by using target_order + 1.
+    Since real orders are multiples of 10, this slots it between the
+    target and the next step.  Resequence then normalises everything.
+    """
+    max_order = (
+        workflow.steps.aggregate(max_order=models.Max("order"))["max_order"] or 0
+    )
+    if insert_after_step is not None:
+        resequence_workflow_steps(workflow)
+        target = (
+            workflow.steps.filter(pk=insert_after_step)
+            .values_list("order", flat=True)
+            .first()
+        )
+        if target is not None:
+            return target + 1
+    # Append at end — use a value guaranteed to be above all existing steps.
+    return max_order + 10
+
+
 def save_workflow_step(
     workflow: Workflow,
     validator: Validator,
     form: forms.Form,
     *,
     step: WorkflowStep | None = None,
+    insert_after_step: int | None = None,
 ) -> WorkflowStep:
     """
     Persist a workflow step using the supplied form data and validator.
@@ -1196,8 +1239,7 @@ def save_workflow_step(
     step.config = config
 
     if is_new:
-        max_order = workflow.steps.aggregate(max_order=models.Max("order"))["max_order"]
-        step.order = (max_order or 0) + 10
+        step.order = _compute_insert_order(workflow, insert_after_step)
 
     step.save()
 
@@ -1227,6 +1269,7 @@ def save_workflow_action_step(
     form: forms.Form,
     *,
     step: WorkflowStep | None = None,
+    insert_after_step: int | None = None,
 ) -> WorkflowStep:
     """Persist a workflow step that references an action definition."""
 
@@ -1256,8 +1299,7 @@ def save_workflow_action_step(
     step.config = summary
 
     if is_new:
-        max_order = workflow.steps.aggregate(max_order=models.Max("order"))["max_order"]
-        step.order = (max_order or 0) + 10
+        step.order = _compute_insert_order(workflow, insert_after_step)
 
     step.save()
     return step

@@ -81,6 +81,34 @@ Now you can write assertions like `floor_area > 0` or `floor_area < 50000`, and 
 
 If the value you need is a top-level key in the data and its name matches your signal slug, the data path can simply be the slug itself. For example, if your data looks like `{"temperature": 21.3}` and your signal is named `temperature`, the data path is just `temperature`.
 
+### When values live in arrays of named objects
+
+Some data formats (like SysML v2, FHIR, or CDA) use arrays where each element identifies itself with a `name` field rather than being a dict key. For example:
+
+```json
+{
+  "ownedAttribute": [
+    {"name": "emissivity", "defaultValue": 0.85},
+    {"name": "mass", "defaultValue": 3.6}
+  ]
+}
+```
+
+Here, `emissivity` isn't a key you can reach with `ownedAttribute.emissivity`. Instead, use a **filter expression** in the data path to find the right element:
+
+- **Signal name**: `emissivity`
+- **Data path**: `ownedAttribute[?@.name=='emissivity'].defaultValue`
+
+The `[?@.name=='emissivity']` part means "find the array element where `name` equals `emissivity`." You can chain filters for deeply nested structures:
+
+```
+ownedMember[?@.name=='RadiatorPanel'].ownedAttribute[?@.name=='emissivity'].defaultValue
+```
+
+Once the signal is wired up, you write assertions exactly the same way -- `emissivity > 0.0 && emissivity <= 1.0`. Validibot resolves the signal through the filter expression and makes the value available by its signal name.
+
+For full details on filter expression syntax and restrictions, see the [Data Paths](/app/help/validators/data-paths/) guide.
+
 For full details on data path syntax (dot notation, bracket notation for arrays, XML paths), see the [Data Paths](/app/help/validators/data-paths/) guide.
 
 ---

@@ -586,3 +586,447 @@ class TestRealisticScenarios:
         val, found = resolve(payload, "reviews[1].score")
         assert found is True
         assert val == 4  # noqa: PLR2004
+
+
+# ===================================================================
+# JSONPath filter expression tests
+# ===================================================================
+#
+# These test the [?@.field=='value'] filter syntax added via the
+# restricted python-jsonpath integration.  All tests run through the
+# same parametrised ``resolve`` fixture so all three implementations
+# are covered.
+
+# Shared test data for filter tests.
+
+NAMED_ELEMENT_PAYLOAD = {
+    "ownedMember": [
+        {
+            "name": "RadiatorPanel",
+            "type": "PartDefinition",
+            "ownedAttribute": [
+                {"name": "panelArea", "defaultValue": 2.0},
+                {"name": "emissivity", "defaultValue": 0.85},
+                {"name": "mass", "defaultValue": 3.6},
+            ],
+        },
+        {
+            "name": "ThermalEnvironment",
+            "type": "PartDefinition",
+            "ownedAttribute": [
+                {"name": "solarIrradiance", "defaultValue": 1361.0},
+            ],
+        },
+    ],
+}
+
+
+class TestFilterExpressions:
+    """JSONPath filter expressions that should resolve successfully.
+
+    Filter expressions let users locate array elements by a field value
+    rather than by position.  This is essential for schemas like SysML v2
+    where attribute names are values, not dict keys.
+    """
+
+    def test_single_filter_string_equality(self, resolve):
+        """Basic filter: find element by string field value."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[?@.name=='RadiatorPanel'].type",
+        )
+        assert found is True
+        assert val == "PartDefinition"
+
+    def test_chained_filters(self, resolve):
+        """Two chained filters: the motivating SysML v2 use case."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            (
+                "ownedMember[?@.name=='RadiatorPanel']"
+                ".ownedAttribute[?@.name=='emissivity']"
+                ".defaultValue"
+            ),
+        )
+        assert found is True
+        assert val == 0.85  # noqa: PLR2004
+
+    def test_filter_numeric_equality(self, resolve):
+        """Filter matching on a numeric value."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            (
+                "ownedMember[?@.name=='RadiatorPanel']"
+                ".ownedAttribute[?@.defaultValue==2.0]"
+                ".name"
+            ),
+        )
+        assert found is True
+        assert val == "panelArea"
+
+    def test_filter_returns_object(self, resolve):
+        """Filter without further traversal returns the matched dict."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[?@.name=='ThermalEnvironment']",
+        )
+        assert found is True
+        assert isinstance(val, dict)
+        assert val["name"] == "ThermalEnvironment"
+
+    def test_filter_first_match_wins(self, resolve):
+        """When multiple elements match, the first is returned."""
+        data = {
+            "items": [
+                {"type": "sensor", "id": "first"},
+                {"type": "sensor", "id": "second"},
+            ],
+        }
+        val, found = resolve(data, "items[?@.type=='sensor'].id")
+        assert found is True
+        assert val == "first"
+
+    def test_dot_navigation_before_and_after_filter(self, resolve):
+        """Dot-notation segments can appear before and after a filter."""
+        data = {
+            "building": {
+                "floors": [
+                    {"name": "Ground", "area": 150.0},
+                    {"name": "First", "area": 200.0},
+                ],
+            },
+        }
+        val, found = resolve(
+            data,
+            "building.floors[?@.name=='First'].area",
+        )
+        assert found is True
+        assert val == 200.0  # noqa: PLR2004
+
+    def test_positional_index_before_filter(self, resolve):
+        """A bracket index can precede a filter expression."""
+        data = {
+            "buildings": [
+                {
+                    "floors": [
+                        {"name": "Ground", "area": 100.0},
+                        {"name": "First", "area": 200.0},
+                    ],
+                },
+            ],
+        }
+        val, found = resolve(
+            data,
+            "buildings[0].floors[?@.name=='First'].area",
+        )
+        assert found is True
+        assert val == 200.0  # noqa: PLR2004
+
+    def test_filter_on_boolean(self, resolve):
+        """Filter matching on a boolean value."""
+        data = {"items": [{"active": True, "id": 1}, {"active": False, "id": 2}]}
+        val, found = resolve(data, "items[?@.active==true].id")
+        assert found is True
+        assert val == 1
+
+    def test_filter_not_equal(self, resolve):
+        """Filter using != comparison."""
+        data = {
+            "items": [
+                {"status": "draft", "id": 1},
+                {"status": "published", "id": 2},
+            ],
+        }
+        val, found = resolve(data, "items[?@.status!='draft'].id")
+        assert found is True
+        assert val == 2  # noqa: PLR2004
+
+
+class TestFilterExpressionNotFound:
+    """Filter expressions that are valid but match nothing.
+
+    These should return ``(None, False)`` — the standard not-found
+    result — without raising exceptions.
+    """
+
+    def test_filter_matches_nothing(self, resolve):
+        """No element satisfies the filter predicate."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[?@.name=='NonExistent'].type",
+        )
+        assert found is False
+        assert val is None
+
+    def test_filter_on_empty_array(self, resolve):
+        """Filter against an empty list returns not-found."""
+        val, found = resolve(
+            {"items": []},
+            "items[?@.name=='x'].value",
+        )
+        assert found is False
+        assert val is None
+
+    def test_filter_matches_but_leaf_missing(self, resolve):
+        """Filter matches an element but the subsequent key doesn't exist."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[?@.name=='RadiatorPanel'].nonExistentField",
+        )
+        assert found is False
+        assert val is None
+
+    def test_filter_on_missing_parent_key(self, resolve):
+        """The key before the filter doesn't exist in the data."""
+        val, found = resolve(
+            {"other": 1},
+            "missing[?@.name=='x'].value",
+        )
+        assert found is False
+        assert val is None
+
+
+class TestFilterExpressionBlocked:
+    """Patterns that our security policy blocks before the library runs.
+
+    Each blocked pattern should silently return ``(None, False)`` and
+    log a warning — never raise an exception to callers.
+    """
+
+    def test_recursive_descent_blocked(self, resolve):
+        """Recursive descent ('..') is blocked to prevent full-tree traversal."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[?@.name=='RadiatorPanel']..defaultValue",
+        )
+        assert found is False
+        assert val is None
+
+    def test_wildcard_bracket_blocked(self, resolve):
+        """Wildcard [*] is blocked to prevent unbounded result sets."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[*].name",
+        )
+        assert found is False
+        assert val is None
+
+    def test_wildcard_dot_blocked(self, resolve):
+        """Wildcard .* is blocked to prevent unbounded result sets."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[?@.name=='RadiatorPanel'].*",
+        )
+        assert found is False
+        assert val is None
+
+    def test_slice_blocked(self, resolve):
+        """Slice notation is blocked to prevent large array selections."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[0:2][?@.name=='RadiatorPanel'].type",
+        )
+        assert found is False
+        assert val is None
+
+    def test_excess_filter_segments_blocked(self, resolve):
+        """More than MAX_JSONPATH_FILTER_SEGMENTS filters are blocked."""
+        # 5 filters exceeds the limit of 4.
+        path = "a[?@.x=='1'].b[?@.y=='2'].c[?@.z=='3'].d[?@.w=='4'].e[?@.v=='5']"
+        val, found = resolve({"a": []}, path)
+        assert found is False
+        assert val is None
+
+    def test_four_filters_allowed(self, resolve):
+        """Exactly MAX_JSONPATH_FILTER_SEGMENTS (4) filters are allowed."""
+        # 4 filters at the limit — should not be blocked by the cap.
+        # (Will return not-found because the data doesn't match, but
+        # the important thing is it doesn't get blocked by policy.)
+        path = "a[?@.x=='1'].b[?@.y=='2'].c[?@.z=='3'].d[?@.w=='4'].value"
+        # We just verify it doesn't get blocked — not-found is fine.
+        val, found = resolve({"a": []}, path)
+        assert found is False
+        assert val is None
+
+
+class TestFilterExpressionMalformed:
+    """Malformed filter expressions should return not-found, not crash.
+
+    The library raises parse errors for invalid syntax.  Our wrapper
+    catches these and returns ``(None, False)``.
+    """
+
+    def test_unclosed_filter_bracket(self, resolve):
+        """Missing closing bracket in filter expression."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[?@.name=='x'",
+        )
+        assert found is False
+        assert val is None
+
+    def test_empty_filter(self, resolve):
+        """Empty filter predicate."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[?].name",
+        )
+        assert found is False
+        assert val is None
+
+    def test_invalid_filter_syntax(self, resolve):
+        """Garbage inside filter brackets."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[?!!!].name",
+        )
+        assert found is False
+        assert val is None
+
+
+class TestFilterExpressionMalicious:
+    """Inputs designed to exploit the JSONPath library.
+
+    These verify that our defense-in-depth layers (pre-validation +
+    cleared function extensions) neutralize attack attempts.
+    """
+
+    def test_function_call_in_filter_blocked(self, resolve):
+        """Function calls are blocked because we cleared function_extensions.
+
+        The ``match()`` and ``search()`` functions accept regex patterns
+        which could be ReDoS vectors.  Clearing the extension dict means
+        the library raises JSONPathNameError for any function call.
+        """
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[?match(@.name, '.*')].type",
+        )
+        assert found is False
+        assert val is None
+
+    def test_search_function_blocked(self, resolve):
+        """The search() function (regex) is also blocked."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[?search(@.name, 'Rad')].type",
+        )
+        assert found is False
+        assert val is None
+
+    def test_length_function_blocked(self, resolve):
+        """Even length() is blocked — we allow no functions at all."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[?length(@.name) > 5].type",
+        )
+        assert found is False
+        assert val is None
+
+    def test_deeply_nested_recursive_descent(self, resolve):
+        """Recursive descent combined with filter — double-blocked."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "..[?@.name=='emissivity'].defaultValue",
+        )
+        assert found is False
+        assert val is None
+
+    def test_wildcard_chaining(self, resolve):
+        """Chained wildcards that could cause combinatorial explosion."""
+        val, found = resolve(
+            NAMED_ELEMENT_PAYLOAD,
+            "ownedMember[*].ownedAttribute[*].defaultValue",
+        )
+        assert found is False
+        assert val is None
+
+
+class TestFilterExpressionSysMLv2:
+    """Integration tests against the actual SysML v2 radiator model.
+
+    These load the real test asset and resolve the exact paths that
+    the SysML v2 workflow needs for signal bindings.
+    """
+
+    @pytest.fixture
+    def radiator_payload(self):
+        """Load the valid thermal radiator model test asset."""
+        import json
+        from pathlib import Path
+
+        asset = (
+            Path(__file__).resolve().parents[3]
+            / "tests"
+            / "assets"
+            / "sysml_v2"
+            / "radiator_example"
+            / "thermal_radiator_model.json"
+        )
+        with asset.open() as f:
+            return json.load(f)
+
+    def test_resolve_emissivity(self, resolve, radiator_payload):
+        """Resolve emissivity from the radiator panel attributes."""
+        val, found = resolve(
+            radiator_payload,
+            (
+                "ownedMember[?@.name=='RadiatorPanel']"
+                ".ownedAttribute[?@.name=='emissivity']"
+                ".defaultValue"
+            ),
+        )
+        assert found is True
+        assert val == 0.85  # noqa: PLR2004
+
+    def test_resolve_panel_area(self, resolve, radiator_payload):
+        """Resolve panelArea from the radiator panel attributes."""
+        val, found = resolve(
+            radiator_payload,
+            (
+                "ownedMember[?@.name=='RadiatorPanel']"
+                ".ownedAttribute[?@.name=='panelArea']"
+                ".defaultValue"
+            ),
+        )
+        assert found is True
+        assert val == 2.0  # noqa: PLR2004
+
+    def test_resolve_mass(self, resolve, radiator_payload):
+        """Resolve mass from the radiator panel attributes."""
+        val, found = resolve(
+            radiator_payload,
+            (
+                "ownedMember[?@.name=='RadiatorPanel']"
+                ".ownedAttribute[?@.name=='mass']"
+                ".defaultValue"
+            ),
+        )
+        assert found is True
+        assert val == 3.6  # noqa: PLR2004
+
+    def test_resolve_solar_irradiance(self, resolve, radiator_payload):
+        """Resolve solarIrradiance from the thermal environment."""
+        val, found = resolve(
+            radiator_payload,
+            (
+                "ownedMember[?@.name=='ThermalEnvironment']"
+                ".ownedAttribute[?@.name=='solarIrradiance']"
+                ".defaultValue"
+            ),
+        )
+        assert found is True
+        assert val == 1361.0  # noqa: PLR2004
+
+    def test_resolve_nonexistent_attribute(self, resolve, radiator_payload):
+        """A valid-looking SysML path for an attribute that doesn't exist."""
+        val, found = resolve(
+            radiator_payload,
+            (
+                "ownedMember[?@.name=='RadiatorPanel']"
+                ".ownedAttribute[?@.name=='conductivity']"
+                ".defaultValue"
+            ),
+        )
+        assert found is False
+        assert val is None

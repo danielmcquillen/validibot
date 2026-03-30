@@ -387,7 +387,9 @@ class RulesetAssertion(TimeStampedModel):
         blank=True,
         default="",
         help_text=_(
-            "Custom JSON-style path for validators that allow free-form targets.",
+            "Custom JSON-style path for validators that allow free-form "
+            "targets. Supports dot notation, [index], and filter "
+            "expressions (e.g., items[?@.name=='x'].value).",
         ),
     )
 
@@ -1425,8 +1427,10 @@ class StepSignalBinding(TimeStampedModel):
         blank=True,
         default="",
         help_text=(
-            "Dotted path expression into the source scope "
-            "(e.g., 'building.envelope.panel_area' or 'stations[0].temp')."
+            "Path expression into the source scope. Supports dot "
+            "notation (e.g., 'building.panel_area'), [index] for "
+            "arrays, and filter expressions for named elements "
+            "(e.g., 'items[?@.name==\"x\"].value')."
         ),
     )
     default_value = models.JSONField(

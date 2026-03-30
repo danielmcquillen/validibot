@@ -159,6 +159,23 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             return HttpResponse(status=400)
         return super().dispatch(request, *args, **kwargs)
 
+    def _get_insert_after_step(self, request) -> int | None:
+        """Extract and validate the insert_after_step parameter.
+
+        This is the PK of the step to insert after. Using the step ID
+        (rather than order value) is robust against concurrent
+        resequencing operations.
+        """
+        raw = request.GET.get("insert_after_step") or request.POST.get(
+            "insert_after_step"
+        )
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (ValueError, TypeError):
+            return None
+
     def get(self, request, *args, **kwargs):
         workflow = self.get_workflow()
         step = self._get_step()
@@ -187,6 +204,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         workflow = self.get_workflow()
         step = self._get_step()
         stage = request.POST.get("stage", "select")
+        insert_after_step = self._get_insert_after_step(request)
 
         if stage != "select":
             if step is not None:
@@ -256,6 +274,8 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                         "action_definition_id": definition.pk,
                     },
                 )
+            if insert_after_step is not None:
+                create_url += f"?insert_after_step={insert_after_step}"
             response = HttpResponse(status=204)
             response["HX-Redirect"] = create_url
             response["HX-Trigger"] = json.dumps(
@@ -353,6 +373,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             "step": None,
             "limit_reached": False,
             "selected_value": str(selected_value) if selected_value else None,
+            "insert_after_step": self._get_insert_after_step(request),
         }
         return render(request, self.template_select, context, status=status)
 
@@ -680,8 +701,21 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
             kwargs["validator"] = self.get_validator()
         return kwargs
 
+    def _get_insert_after_step(self) -> int | None:
+        """Read the insert_after_step query param for mid-list insertion."""
+        raw = self.request.GET.get("insert_after_step")
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (ValueError, TypeError):
+            return None
+
     def form_valid(self, form):
         workflow = self.get_workflow()
+        insert_after_step = (
+            self._get_insert_after_step() if self.mode == "create" else None
+        )
         if self.is_action_step():
             definition = self.get_action_definition()
             saved_step = save_workflow_action_step(
@@ -689,6 +723,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 definition,
                 form,
                 step=self.get_step(),
+                insert_after_step=insert_after_step,
             )
         else:
             validator = self.get_validator()
@@ -711,6 +746,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 validator,
                 form,
                 step=self.get_step(),
+                insert_after_step=insert_after_step,
             )
         resequence_workflow_steps(workflow)
         self.saved_step = saved_step

@@ -247,6 +247,18 @@
             <div class="workflow-step-connector" aria-hidden="true">
               <div class="workflow-step-arrow">
               </div>
+              {% if can_manage_workflow and steps|length < max_step_count %}
+                <button class="workflow-step-add-inline"
+                        type="button"
+                        data-bs-toggle="modal"
+                        data-bs-target="#workflowStepModal"
+                        hx-get="{% url 'workflows:workflow_step_wizard' workflow.pk %}?insert_after_step={{ step.id }}"
+                        hx-target="#workflow-step-modal-content"
+                        hx-swap="innerHTML"
+                        title="{% trans 'Insert step here' %}">
+                  <i class="bi-plus"></i>
+                </button>
+              {% endif %}
             </div>
           {% elif steps|length < max_step_count %}
             {% if can_manage_workflow %}

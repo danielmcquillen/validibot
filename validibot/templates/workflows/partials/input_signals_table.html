@@ -36,7 +36,7 @@ Context:
             <i class="bi bi-info-circle"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
-               title="{% trans 'Dotted path into the submission payload where this signal value is read from (e.g., building.floor_area).' %}"></i>
+               title="{% trans 'Path into the submission payload. Supports dot notation (e.g., building.floor_area), [index] for arrays, and filter expressions (e.g., items[?@.name==x].value).' %}"></i>
           </th>
           <th class="text-muted small">
             {% trans "Default" %}

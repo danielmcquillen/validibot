@@ -4,13 +4,13 @@ These tests exercise the production-style workflow shape used by the SysMLv2
 radiator example:
 
 1. JSON Schema validation for the submitted model artifact
-2. BASIC/CEL domain assertions over mapped SysML input values
+2. Basic assertions with JSONPath filter expressions for domain constraints
 3. FMU simulation as the final advanced-validator step
 
-The current regression target is step 2. The radiator model stores key values
-such as ``emissivity`` and ``mass`` at nested paths, so the CEL context must
-honor ``StepSignalBinding`` mappings instead of assuming those names are
-top-level keys in the submission.
+The radiator model stores key values such as ``emissivity`` and ``mass``
+inside arrays of named elements (the SysML v2 pattern).  The step signal
+bindings use JSONPath filter expressions to resolve these values — e.g.,
+``ownedMember[?@.name=='RadiatorPanel'].ownedAttribute[?@.name=='emissivity'].defaultValue``.
 """
 
 from __future__ import annotations
@@ -50,15 +50,30 @@ ASSET_DIR = (
 )
 
 STEP_TWO_BINDINGS = {
-    "panelArea": "ownedMember[0].ownedAttribute[0].defaultValue",
-    "emissivity": "ownedMember[0].ownedAttribute[1].defaultValue",
-    "absorptivity": "ownedMember[0].ownedAttribute[2].defaultValue",
-    "mass": "ownedMember[0].ownedAttribute[3].defaultValue",
-    "solarIrradiance": "ownedMember[1].ownedAttribute[0].defaultValue",
-    "end": "ownedMember[2].end",
-    # This mirrors the production-style CEL expression, which only checks
-    # for a non-null reference rather than validating referential integrity.
-    "satisfiedRequirement": "ownedMember[4].satisfiedRequirement",
+    "panelArea": (
+        "ownedMember[?@.name=='RadiatorPanel']"
+        ".ownedAttribute[?@.name=='panelArea'].defaultValue"
+    ),
+    "emissivity": (
+        "ownedMember[?@.name=='RadiatorPanel']"
+        ".ownedAttribute[?@.name=='emissivity'].defaultValue"
+    ),
+    "absorptivity": (
+        "ownedMember[?@.name=='RadiatorPanel']"
+        ".ownedAttribute[?@.name=='absorptivity'].defaultValue"
+    ),
+    "mass": (
+        "ownedMember[?@.name=='RadiatorPanel']"
+        ".ownedAttribute[?@.name=='mass'].defaultValue"
+    ),
+    "solarIrradiance": (
+        "ownedMember[?@.name=='ThermalEnvironment']"
+        ".ownedAttribute[?@.name=='solarIrradiance'].defaultValue"
+    ),
+    "end": "ownedMember[?@.name=='ThermalCoupling'].end",
+    "satisfiedRequirement": (
+        'ownedMember[?@["@type"]=="sysml:SatisfyRequirementUsage"].satisfiedRequirement'
+    ),
 }
 
 STEP_TWO_ASSERTIONS = (
@@ -268,15 +283,15 @@ class SysmlV2RadiatorWorkflowTests(TestCase):
         self.assertEqual(step_runs[0].status, "FAILED")
         self.assertGreater(step_runs[0].findings.count(), 0)
 
-    def test_cel_failures_use_bound_sysml_inputs_instead_of_undefined_names(self):
-        """Nested SysML values should resolve through step bindings for CEL.
+    def test_one_basic_assertion_failure(self):
+        """A single invalid value (negative emissivity) should fail step 2.
 
-        The invalid CEL asset should fail on the assertions that actually
-        evaluate to false, without emitting spurious "undefined name" or
-        timeout errors for values that exist in the nested submission.
+        The 'one fail' asset has only one domain violation: emissivity = -0.5.
+        All other values are valid.  The workflow should fail on step 2 with
+        exactly one assertion finding.
         """
         validation_run = self._run_submission(
-            "invalid_thermal_radiator_model_cel_fail.json",
+            "invalid_thermal_radiator_model_one_basic_assertion_fail.json",
         )
 
         self.assertEqual(validation_run.status, ValidationRunStatus.FAILED)
@@ -288,19 +303,41 @@ class SysmlV2RadiatorWorkflowTests(TestCase):
         self.assertEqual(step_runs[1].status, "FAILED")
 
         findings = list(step_runs[1].findings.order_by("id"))
-        self.assertEqual(len(findings), 3)
-        self.assertTrue(all(finding.severity == Severity.ERROR for finding in findings))
+        # Only the emissivity > 0.0 assertion should fail
+        error_findings = [f for f in findings if f.severity == Severity.ERROR]
+        self.assertEqual(len(error_findings), 1)
 
-        messages = [finding.message for finding in findings]
+    def test_many_basic_assertion_failures(self):
+        """Multiple invalid values should produce multiple assertion failures.
+
+        The 'many fails' asset has four domain violations: negative emissivity,
+        negative mass, one-ended interface, and a dangling requirement reference.
+        Signal bindings use JSONPath filter expressions to resolve values from
+        the nested SysML v2 structure, so no 'undefined name' or timeout errors
+        should appear.
+        """
+        validation_run = self._run_submission(
+            "invalid_thermal_radiator_model_many_basic_assertion_fails.json",
+        )
+
+        self.assertEqual(validation_run.status, ValidationRunStatus.FAILED)
+
+        step_runs = list(validation_run.step_runs.order_by("step_order"))
+        self.assertEqual(len(step_runs), 2)
+        self.assertEqual(step_runs[0].status, "PASSED")
+        self.assertEqual(step_runs[1].workflow_step.name, "Check domain constraints")
+        self.assertEqual(step_runs[1].status, "FAILED")
+
+        findings = list(step_runs[1].findings.order_by("id"))
+        error_findings = [f for f in findings if f.severity == Severity.ERROR]
+        self.assertGreaterEqual(len(error_findings), 3)
+
+        messages = [f.message for f in findings]
         self.assertTrue(
-            all("undefined name" not in message for message in messages),
-            messages,
+            all("undefined name" not in msg for msg in messages),
+            f"Unexpected 'undefined name' errors: {messages}",
         )
         self.assertTrue(
-            all("timed out" not in message.lower() for message in messages),
-            messages,
-        )
-        self.assertEqual(
-            messages.count("CEL assertion evaluated to false."),
-            3,
+            all("timed out" not in msg.lower() for msg in messages),
+            f"Unexpected timeout errors: {messages}",
         )

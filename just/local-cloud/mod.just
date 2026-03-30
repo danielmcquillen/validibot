@@ -21,9 +21,20 @@ cloud_compose := "../validibot-cloud/docker-compose.cloud.yml"
 _db_url := 'DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"'
 
 # Start cloud containers locally
+#
+# When --build is passed, the venv volume is removed first so that
+# `uv sync` installs dependencies from the updated lockfile.
+# Without this, the persisted volume can serve a stale venv that
+# is missing newly added packages.
 [no-cd]
 up *args:
-    docker compose -f {{cloud_compose}} up -d {{args}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args="{{args}}"
+    if [[ "$args" == *"--build"* ]]; then
+        docker volume rm validibot_validibot_local_venv 2>/dev/null || true
+    fi
+    docker compose -f "{{cloud_compose}}" up -d $args
 
 # Rebuild and start containers, clearing the venv volume
 #

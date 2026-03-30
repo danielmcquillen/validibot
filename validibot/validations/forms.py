@@ -504,8 +504,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             if self.no_signal_choices:
                 target_path_field.label = _("Target Path")
                 target_path_field.help_text = _(
-                    "Use dot notation for nested objects and [index] for lists, e.g. "
-                    "`payload.results[0].value`"
+                    "Use dot notation for nested objects, [index] for arrays, "
+                    "or filter expressions for named elements "
+                    "(e.g., items[?@.name=='x'].value)."
                 )
             else:
                 target_path_field.label = _("Target Signal or Path")
@@ -513,8 +514,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                     "Use `output.<name>` to "
                     "disambiguate output signals when an input signal shares "
                     "the same name. "
-                    "Use dot notation for nested objects and [index] for lists, e.g. "
-                    "`payload.results[0].value`.",
+                    "Use dot notation for nested objects, [index] for arrays, "
+                    "or filter expressions for named elements "
+                    "(e.g., items[?@.name=='x'].value).",
                 )
         else:
             target_path_field.label = _("Target Signal")
@@ -791,12 +793,14 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                         ),
                     },
                 )
-            if not CUSTOM_ASSERTION_TARGET_PATTERN.match(value):
+            if not self._is_valid_target_path(value):
                 raise ValidationError(
                     {
                         "target_data_path": _(
                             "Custom targets must use dot notation with optional "
-                            "numeric indexes, e.g. `data.results[0].value`.",
+                            "numeric indexes (e.g. `data.results[0].value`) or "
+                            "JSONPath filter expressions "
+                            "(e.g. `items[?@.name=='x'].value`).",
                         ),
                     },
                 )
@@ -813,6 +817,21 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 )
             }
         )
+
+    @staticmethod
+    def _is_valid_target_path(value: str) -> bool:
+        """Accept traditional dot/bracket paths or JSONPath filter expressions."""
+        if "[?" not in value:
+            return bool(CUSTOM_ASSERTION_TARGET_PATTERN.match(value))
+        try:
+            from validibot.validations.services._jsonpath_env import (
+                validate_jsonpath_syntax,
+            )
+
+            validate_jsonpath_syntax(value)
+        except ValueError:
+            return False
+        return True
 
     def _validator_allows_custom_targets(self) -> bool:
         return bool(getattr(self.validator, "allow_custom_assertion_targets", False))

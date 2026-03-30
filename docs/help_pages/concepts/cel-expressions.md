@@ -82,6 +82,29 @@ This is because XML distinguishes between child elements (`<Conductivity>160</Co
 
 If an XML element name contains characters that aren't valid identifiers (hyphens, dots, etc.), access it via bracket notation on `payload`: `payload["THERM-XML"].Materials`.
 
+### Working with named-element data (SysML v2, FHIR, etc.)
+
+Some data formats store values in arrays of named objects rather than as simple key-value pairs. For example, a SysML v2 model might look like:
+
+```json
+{
+  "ownedAttribute": [
+    {"name": "emissivity", "defaultValue": 0.85},
+    {"name": "mass", "defaultValue": 3.6}
+  ]
+}
+```
+
+You can't reference `emissivity` directly in a CEL expression because it's a **value**, not a key. The solution is to use **signal bindings** with filter expressions in the data path:
+
+1. Create a signal named `emissivity`
+2. Set its data path to `ownedAttribute[?@.name=='emissivity'].defaultValue`
+3. Write your CEL assertion as `emissivity > 0.0 && emissivity <= 1.0`
+
+Validibot resolves the filter expression to find the right array element, then makes the value available under the signal name. Your CEL assertions stay clean and readable -- the complexity of navigating the data structure is handled by the data path, not the expression.
+
+See the [Signals](/app/help/validators/signals/) guide for a worked example, and the [Data Paths](/app/help/validators/data-paths/) guide for filter expression syntax.
+
 ### Tips
 
 - Expressions run against the submission payload or validator-provided metadata.

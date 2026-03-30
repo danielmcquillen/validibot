@@ -77,6 +77,12 @@ def resolve_path(data: Any, path: str | None) -> tuple[Any, bool]:
     if not path:
         return data, True
 
+    # Delegate filter expressions to the restricted JSONPath environment.
+    if "[?" in str(path):
+        from validibot.validations.services._jsonpath_env import resolve_jsonpath
+
+        return resolve_jsonpath(data, str(path))
+
     current = data
     tokens = str(path).split(".")
 

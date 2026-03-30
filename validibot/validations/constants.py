@@ -472,3 +472,9 @@ CEL_MAX_CONTEXT_SYMBOLS = 200
 
 # Regex evaluation timeout (milliseconds). Prevents ReDoS from pathological patterns.
 REGEX_EVAL_TIMEOUT_MS = getattr(django_settings, "REGEX_EVAL_TIMEOUT_MS", 1000)
+
+# Maximum number of JSONPath filter segments ([?...]) allowed in a single
+# path expression. Each filter iterates an array, so chaining N filters on
+# nested arrays has O(n^N) worst-case complexity. The motivating use case
+# (SysML v2 named-element resolution) typically uses 1-2 filters.
+MAX_JSONPATH_FILTER_SEGMENTS = 4

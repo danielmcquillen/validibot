@@ -1900,6 +1900,9 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
         --max-retries 0 \
         --task-timeout 3600 \
         --execution-environment gen2 \
+        --network default \
+        --subnet default \
+        --vpc-egress all-traffic \
         --set-env-vars VALIDATOR_VERSION={{git_sha}},VALIDIBOT_STAGE={{stage}} \
         --labels validator={{name}},version={{git_sha}},stage={{stage}} \
         --project {{gcp_project}}

@@ -259,7 +259,22 @@ def resolve_input_signal(
     if found:
         result.value = value
         result.resolved = True
+        logger.debug(
+            "Signal '%s' resolved to %r via path '%s' (scope=%s)",
+            sig.contract_key,
+            value,
+            effective_path,
+            scope,
+        )
         return result
+
+    logger.warning(
+        "Signal '%s' could not be resolved from %s at path '%s'. "
+        "Check that the data path matches the submission structure.",
+        sig.contract_key,
+        scope,
+        effective_path,
+    )
 
     # Path didn't resolve — try default value.
     if binding.default_value is not None:

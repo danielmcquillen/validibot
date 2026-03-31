@@ -269,6 +269,11 @@ class GCPExecutionBackend(ExecutionBackend):
             ruleset = Ruleset.objects.filter(id=ruleset_id).first()
 
         # Launch via existing code
+        logger.info(
+            "Launching FMU Cloud Run Job for run %s (validator=%s)",
+            request.run_id,
+            request.validator.slug if request.validator else "unknown",
+        )
         result = launch_fmu_validation(
             run=request.run,
             validator=request.validator,
@@ -279,8 +284,22 @@ class GCPExecutionBackend(ExecutionBackend):
 
         # Convert ValidationResult to ExecutionResponse
         stats = result.stats or {}
+        execution_id = stats.get("execution_name", "")
+        if not execution_id:
+            logger.error(
+                "FMU launch returned empty execution_id for run %s. "
+                "Stats: %s. The Cloud Run Job may not have been created.",
+                request.run_id,
+                stats,
+            )
+        else:
+            logger.info(
+                "FMU Cloud Run Job dispatched for run %s: execution_id=%s",
+                request.run_id,
+                execution_id,
+            )
         return ExecutionResponse(
-            execution_id=stats.get("execution_name", ""),
+            execution_id=execution_id,
             is_complete=False,  # Async - waiting for callback
             input_uri=stats.get("input_uri"),
             output_uri=stats.get("result_uri"),

@@ -114,7 +114,11 @@ class WorkflowVisibilityTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Unarchive workflow")
         self.assertContains(response, "Unarchive this workflow?")
-        self.assertContains(response, 'title="Unarchive this workflow"')
+        # Template whitespace in title attribute
+        self.assertRegex(
+            response.content.decode(),
+            r'title="\s*Unarchive this workflow\s*"',
+        )
         self.assertContains(response, "bi-star")
 
     def test_author_can_edit_own_workflow(self):

@@ -69,13 +69,11 @@ Context:
             </td>
             <td>
               {% if signal.source_data_path %}
-                <span class="d-inline-block text-truncate small text-muted"
-                      style="max-width: 12rem"
+                <code class="d-inline-block text-truncate small text-muted"
+                      style="max-width: 8rem"
                       data-bs-toggle="tooltip"
                       data-bs-placement="top"
-                      title="{{ signal.source_data_path }}">
-                  <code>{{ signal.source_data_path }}</code>
-                </span>
+                      title="{{ signal.source_data_path }}">{{ signal.source_data_path }}</code>
               {% else %}
                 <span class="text-muted">--</span>
               {% endif %}

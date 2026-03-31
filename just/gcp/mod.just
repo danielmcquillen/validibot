@@ -1168,6 +1168,7 @@ init-stage stage: _require-gcp-config
         "roles/run.invoker"
         "roles/cloudtasks.enqueuer"
         "roles/cloudtasks.viewer"
+        "projects/{{gcp_project}}/roles/${APP_NAME//-/_}_job_runner"
     )
     for role in "${ROLES[@]}"; do
         # Check if binding already exists

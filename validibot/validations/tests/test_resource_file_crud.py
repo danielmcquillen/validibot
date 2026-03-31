@@ -621,10 +621,10 @@ class TestTabbedValidatorDetail:
         response = client.get(url)
         assert response.status_code == HTTPStatus.OK
         html = response.content.decode()
-        # Description tab should be active (template whitespace between classes)
+        # Description tab should be active (template adds whitespace/newlines)
         import re
 
-        assert re.search(r'class="nav-link\s+active"', html)
+        assert re.search(r'class="nav-link\s+active\s*"', html)
         assert "Description" in html
 
     def test_signals_tab_loads(self, client):

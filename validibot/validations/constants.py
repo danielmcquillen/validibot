@@ -465,8 +465,10 @@ def get_resource_types_for_validator(validation_type: str) -> list[str]:
 
 
 # CEL evaluation limits (adjust as needed)
-# Timeout can be overridden via settings.CEL_MAX_EVAL_TIMEOUT_MS for tests
-CEL_MAX_EVAL_TIMEOUT_MS = getattr(django_settings, "CEL_MAX_EVAL_TIMEOUT_MS", 100)
+# Timeout can be overridden via settings.CEL_MAX_EVAL_TIMEOUT_MS for tests.
+# Default 500ms accounts for first-evaluation compilation overhead and
+# large output contexts (e.g., FMU simulation results with many variables).
+CEL_MAX_EVAL_TIMEOUT_MS = getattr(django_settings, "CEL_MAX_EVAL_TIMEOUT_MS", 500)
 CEL_MAX_EXPRESSION_CHARS = 2000
 CEL_MAX_CONTEXT_SYMBOLS = 200
 

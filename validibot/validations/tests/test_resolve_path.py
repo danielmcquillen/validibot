@@ -961,7 +961,7 @@ class TestFilterExpressionSysMLv2:
             / "assets"
             / "sysml_v2"
             / "radiator_example"
-            / "thermal_radiator_model.json"
+            / "valid_thermal_radiator_model.json"
         )
         with asset.open() as f:
             return json.load(f)

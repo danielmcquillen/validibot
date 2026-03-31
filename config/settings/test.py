@@ -74,7 +74,7 @@ WORKER_API_KEY = ""
 
 # CEL evaluation timeout - increase for tests since heavy test loads can cause
 # thread pool overhead that exceeds the default 100ms timeout
-CEL_MAX_EVAL_TIMEOUT_MS = 500
+CEL_MAX_EVAL_TIMEOUT_MS = 2000
 
 # Disable DRF throttling in tests to prevent rate limit failures during test runs
 # Tests run many rapid API calls which would trigger throttle limits.

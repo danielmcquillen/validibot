@@ -75,14 +75,14 @@ dependencies = [
   "uvicorn[standard]==0.42.0",
   "whitenoise==6.12.0",
   "google-cloud-run==0.16.0",
-  "python-json-logger==4.0.0",
+  "python-json-logger==4.1.0",
   "django-recaptcha==4.1.0",
   # Docker SDK for Docker Compose deployments (runs validator containers locally)
   "docker==7.1.0",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   "validibot-shared==0.4.0",
   "django-csp==4.0",
-  "django-permissions-policy==4.28.0",
+  "django-permissions-policy==4.29.0",
 ]
 
 [project.optional-dependencies]
@@ -304,5 +304,5 @@ dev = [
   "watchfiles==1.1.1",
   "werkzeug[watchdog]==3.1.7",
   # Documentation
-  "zensical==0.0.29",
+  "zensical==0.0.30",
 ]

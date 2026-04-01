@@ -5,14 +5,26 @@ The BasicValidator is the simplest validator type: it parses JSON or XML
 submissions and evaluates BASIC/CEL assertions against the parsed data.
 No external processor or container is involved — everything runs in-process.
 
+The CEL context uses four namespaces:
+
+- ``p`` / ``payload`` — raw submission data
+- ``s`` / ``signals`` — author-defined signals (resolved from signal definitions)
+- ``output`` — this step's validator output signals
+- ``steps.<key>.output.<name>`` — upstream step outputs
+
+Raw payload keys are **never** promoted to top-level CEL variables.
+Authors access data via ``p.key`` and signals via ``s.name``.
+
 These tests cover:
 
 - **File type gating**: only JSON and XML are accepted; text/binary are rejected
   with a clear error before any parsing is attempted.
 - **Parse error handling**: malformed JSON/XML produces actionable error messages.
-- **CEL context building**: payload keys are promoted to top-level CEL variables,
-  but keys that aren't valid CEL identifiers (hyphens, ``@``-prefixes, ``#text``)
-  are skipped to prevent ``ValueError`` from cel-python.
+- **CEL context building**: payload data is accessible under ``p.`` / ``payload.``,
+  signal definitions populate ``s.`` / ``signals.``, and output signals go
+  into the ``output`` namespace.  Keys that aren't valid CEL identifiers
+  (hyphens, ``@``-prefixes, ``#text``) are naturally contained inside their
+  namespace dicts rather than promoted to the root.
 - **End-to-end XML with hyphenated elements**: full ``validate()`` calls with
   XML documents whose element names contain hyphens (e.g., ``<THERM-XML>``).
 - **CEL error messages**: error formatting produces context-appropriate guidance
@@ -40,7 +52,6 @@ from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
-from validibot.validations.validators.base.base import _collect_all_keys
 from validibot.validations.validators.base.base import _is_valid_cel_identifier
 from validibot.validations.validators.basic import BasicValidator
 
@@ -184,7 +195,12 @@ class BasicValidatorXmlAssertionTests(TestCase):
         )
 
     def test_cel_assertion_against_xml(self):
-        """CEL expression evaluates against XML-derived dict."""
+        """CEL expression evaluates against XML-derived dict.
+
+        With the namespaced context, the signal definition for ``price``
+        is resolved into the ``s`` (signals) namespace, so the CEL
+        expression uses ``s.price > 0``.
+        """
         xml_content = "<product><price>25.99</price><name>Widget</name></product>"
         SubmissionFactory(
             content=xml_content,
@@ -198,7 +214,7 @@ class BasicValidatorXmlAssertionTests(TestCase):
             operator=AssertionOperator.CEL_EXPR,
             target_signal_definition=price_sig,
             target_data_path="",
-            rhs={"expr": "price > 0"},
+            rhs={"expr": "p.product.price > 0"},
         )
 
         engine = BasicValidator()
@@ -210,10 +226,8 @@ class BasicValidatorXmlAssertionTests(TestCase):
             payload=payload_dict,
             stage="input",
         )
-        # price resolves via catalog entry slug against the payload;
-        # with allow_custom_assertion_targets, top-level keys are exposed.
-        # CEL expression "price > 0" should work because the catalog entry
-        # slug "price" maps to the value at that path.
+        # price accessed via p.product.price (payload namespace).
+        # Validator inputs are NOT in the s namespace.
         # Note: XML values are strings, so comparison depends on CEL coercion.
         # This test verifies the pipeline works end-to-end.
         self.assertIsNotNone(result)
@@ -293,11 +307,12 @@ class IsValidCelIdentifierTests(SimpleTestCase):
     raises ``ValueError`` at evaluation time if a context dict contains a key
     that violates this rule.
 
-    XML-to-dict conversion can produce keys that are perfectly valid XML names
-    but invalid CEL identifiers — for example hyphenated element names like
-    ``THERM-XML``, ``@``-prefixed attribute names, and ``#text`` mixed-content
-    keys.  The helper function is used by ``_build_cel_context()`` to filter
-    these out before they reach the CEL engine.
+    The helper is used for signal name validation — ensuring signal contract
+    keys are valid CEL identifiers before they are placed in the ``s`` /
+    ``signals`` namespace.  XML-to-dict conversion can produce keys that are
+    valid XML but invalid CEL identifiers (hyphens, ``@``-prefixes, ``#text``);
+    these are safely contained inside the ``p`` / ``payload`` namespace dict
+    and accessed via bracket notation (e.g., ``p["THERM-XML"]``).
     """
 
     def test_simple_names_are_valid(self):
@@ -350,44 +365,71 @@ class IsValidCelIdentifierTests(SimpleTestCase):
 
 
 # ---------------------------------------------------------------------------
-# CEL context building with invalid-identifier payload keys
+# CEL context building — namespaced structure
+# ---------------------------------------------------------------------------
+# The CEL context uses four namespaces: p/payload (raw data), s/signals
+# (author-defined signals), output (this step's outputs), and steps
+# (upstream step outputs).  Payload keys are never promoted to top-level
+# CEL variables — they are accessed via p.key or payload.key.
 # ---------------------------------------------------------------------------
 
 
-class CelContextInvalidKeyTests(TestCase):
+class CelContextNamespaceTests(TestCase):
     """
-    Verify that ``_build_cel_context()`` gracefully handles payload dict keys
-    that are not valid CEL identifiers.
+    Verify that ``_build_cel_context()`` builds the correct namespaced
+    structure and that payload keys are contained within the ``p`` /
+    ``payload`` namespace.
 
-    When ``allow_custom_assertion_targets`` is True, the context builder
-    promotes payload keys to top-level CEL variables so users can write
-    expressions like ``Materials.Material.all(...)`` instead of
-    ``payload.Materials.Material.all(...)``.
+    The context has fixed root keys: ``p``, ``payload``, ``s``, ``signals``,
+    and conditionally ``output`` and ``steps``.  Raw payload keys are
+    **never** promoted to top-level CEL variables — they live under
+    ``p`` and ``payload`` (which are aliases for the same dict).
 
-    However, XML documents commonly use element names that are valid XML
-    but invalid CEL identifiers — hyphens (``THERM-XML``), ``@``-prefixed
-    attribute keys (``@Name``), and ``#text`` mixed-content markers.
-    Promoting these would cause cel-python to raise ``ValueError: Invalid
-    name ...`` before any expression is evaluated.
-
-    The fix: skip keys that fail ``_is_valid_cel_identifier()`` during
-    promotion.  The data is still accessible via bracket notation on the
-    ``payload`` variable (e.g., ``payload["THERM-XML"]``).
+    XML documents commonly use element names that are valid XML but
+    invalid CEL identifiers (hyphens, ``@``-prefixed attribute keys,
+    ``#text``).  Because these are nested inside the ``p`` / ``payload``
+    dict (not promoted to the root), they no longer cause ``ValueError``
+    from cel-python.  They are accessible via bracket notation:
+    ``p["THERM-XML"]``.
 
     Uses real Django model instances via FactoryBoy so the
-    ``catalog_entries.all().only().filter()`` ORM path is exercised naturally.
+    ``signal_definitions.all().only()`` ORM path is exercised naturally.
     """
 
     @classmethod
     def setUpTestData(cls):
-        # BASIC validators automatically get allow_custom_assertion_targets=True,
-        # which is the default for most tests in this class.
         cls.validator = ValidatorFactory(validation_type=ValidationType.BASIC)
 
-    def test_hyphenated_root_key_not_promoted(self):
-        """A hyphenated root key like ``THERM-XML`` (from xml_to_dict) must NOT
-        be added as a top-level CEL variable — cel-python would raise
-        ``ValueError``.  It should still be accessible under ``payload``.
+    def test_payload_under_p_namespace(self):
+        """Payload data is accessible under ``p`` and ``payload``, not
+        as bare top-level CEL variables.
+        """
+        engine = BasicValidator()
+        payload = {"price": 10, "name": "Widget"}
+        context = engine._build_cel_context(payload, self.validator)
+
+        # Payload accessible under p and payload (aliases)
+        self.assertEqual(context["p"]["price"], 10)
+        self.assertEqual(context["payload"]["price"], 10)
+        self.assertEqual(context["p"]["name"], "Widget")
+        # Bare keys are NOT at the root
+        self.assertNotIn("price", context)
+        self.assertNotIn("name", context)
+
+    def test_p_and_payload_are_same_object(self):
+        """``p`` and ``payload`` are aliases pointing to the same dict,
+        not copies — mutations to one are visible in the other.
+        """
+        engine = BasicValidator()
+        payload = {"value": 42}
+        context = engine._build_cel_context(payload, self.validator)
+
+        self.assertIs(context["p"], context["payload"])
+
+    def test_hyphenated_keys_accessible_under_p(self):
+        """A hyphenated root key like ``THERM-XML`` (from xml_to_dict) is
+        accessible under ``p["THERM-XML"]`` but never at the root level
+        (where it would cause a cel-python ``ValueError``).
         """
         engine = BasicValidator()
         payload = {"THERM-XML": {"Materials": {"Material": []}}}
@@ -395,52 +437,26 @@ class CelContextInvalidKeyTests(TestCase):
 
         self.assertNotIn("THERM-XML", context)
         self.assertEqual(
-            context["payload"]["THERM-XML"]["Materials"]["Material"],
+            context["p"]["THERM-XML"]["Materials"]["Material"],
             [],
         )
 
-    def test_children_of_invalid_root_key_are_promoted(self):
-        """When the root element has an invalid identifier name (e.g.
-        ``THERM-XML``), its valid-identifier children should still be
-        promoted via the deep key collection.  This allows CEL
-        expressions like ``Materials.Material.all(...)`` to work even
-        when the root tag is inaccessible as a top-level variable.
+    def test_at_prefixed_keys_accessible_under_p(self):
+        """``@``-prefixed keys from XML attribute conversion are contained
+        inside the ``p`` namespace and never appear at the root.
         """
         engine = BasicValidator()
-        payload = {
-            "THERM-XML": {
-                "Materials": {"Material": [{"Conductivity": "0.5"}]},
-                "Units": "SI",
-            },
-        }
+        payload = {"root": {"child": {"@id": "42", "value": "hello"}}}
         context = engine._build_cel_context(payload, self.validator)
 
-        self.assertNotIn("THERM-XML", context)
-        # Valid children promoted via deep key collection
-        self.assertIn("Materials", context)
-        self.assertEqual(
-            context["Materials"],
-            {"Material": [{"Conductivity": "0.5"}]},
-        )
-        self.assertIn("Units", context)
-        self.assertEqual(context["Units"], "SI")
+        self.assertNotIn("@id", context)
+        self.assertNotIn("root", context)
+        self.assertEqual(context["p"]["root"]["child"]["@id"], "42")
 
-    def test_valid_keys_still_promoted(self):
-        """Valid identifier keys from the payload should be promoted to
-        top-level context variables as before.
-        """
-        engine = BasicValidator()
-        payload = {"price": 10, "name": "Widget"}
-        context = engine._build_cel_context(payload, self.validator)
-
-        self.assertIn("price", context)
-        self.assertEqual(context["price"], 10)
-        self.assertIn("name", context)
-        self.assertEqual(context["name"], "Widget")
-
-    def test_mixed_valid_and_invalid_keys(self):
-        """Only valid-identifier keys are promoted; invalid ones are silently
-        skipped.  Both remain accessible under ``payload``.
+    def test_context_root_keys_are_fixed(self):
+        """The context root should only contain the fixed namespace keys
+        (p, payload, s, signals), plus conditionally output and steps.
+        Payload keys are never at the root regardless of their names.
         """
         engine = BasicValidator()
         payload = {
@@ -449,59 +465,55 @@ class CelContextInvalidKeyTests(TestCase):
         }
         context = engine._build_cel_context(payload, self.validator)
 
-        # "Materials" is valid → promoted
-        self.assertIn("Materials", context)
-        # "THERM-XML" is invalid → not promoted
-        self.assertNotIn("THERM-XML", context)
-        # Both still in payload
-        self.assertIn("THERM-XML", context["payload"])
-        self.assertIn("Materials", context["payload"])
+        # Root keys are only the fixed namespaces (always present)
+        expected_root_keys = {"p", "payload", "s", "signal", "o", "output", "steps"}
+        self.assertEqual(set(context.keys()), expected_root_keys)
+        # Both payload keys are accessible under p
+        self.assertIn("THERM-XML", context["p"])
+        self.assertIn("Materials", context["p"])
 
-    def test_at_prefixed_keys_not_promoted_via_collect(self):
-        """The partial-path-match collector should not surface @-prefixed
-        attribute keys (from xml_to_dict) as top-level variables.
+    def test_validator_inputs_not_in_signals_namespace(self):
+        """Validator input signal definitions do NOT appear in the ``s``
+        namespace.  Per the ADR, validator inputs feed the validator
+        (FMU/EnergyPlus parameters), not CEL expressions.  Authors
+        access payload data via ``p.key`` and signals via ``s.name``
+        (from workflow-level signal mappings or promoted outputs).
         """
+        validator = ValidatorFactory(validation_type=ValidationType.BASIC)
+        SignalDefinitionFactory(
+            validator=validator,
+            contract_key="temperature",
+            direction="input",
+        )
         engine = BasicValidator()
-        # xml_to_dict produces @-prefixed keys for XML attributes
-        payload = {"root": {"child": {"@id": "42", "value": "hello"}}}
-        context = engine._build_cel_context(payload, self.validator)
-
-        # @id should NOT appear as a top-level variable
-        self.assertNotIn("@id", context)
-        # "root" and "child" should be promoted (valid identifiers)
-        self.assertIn("root", context)
-
-    def test_disabled_custom_targets_skips_promotion(self):
-        """When ``allow_custom_assertion_targets`` is False, payload keys are
-        never promoted — so invalid keys are irrelevant.
-
-        Uses a JSON_SCHEMA validator (not BASIC) because BASIC validators
-        always have ``allow_custom_assertion_targets=True`` by design.
-        """
-        engine = BasicValidator()
-        payload = {"THERM-XML": {"Units": "SI"}, "Materials": []}
-        validator = ValidatorFactory(allow_custom_assertion_targets=False)
+        payload = {"temperature": 22.5}
         context = engine._build_cel_context(payload, validator)
 
-        # Only "payload" should be a top-level key
-        self.assertIn("payload", context)
-        self.assertNotIn("THERM-XML", context)
-        self.assertNotIn("Materials", context)
+        # Validator input NOT in s namespace
+        self.assertNotIn("temperature", context["s"])
+        # But payload data IS accessible via p namespace
+        self.assertEqual(context["p"]["temperature"], 22.5)
+
+    def test_s_and_signal_are_same_object(self):
+        """``s`` and ``signal`` are aliases pointing to the same dict."""
+        engine = BasicValidator()
+        payload = {"value": 1}
+        context = engine._build_cel_context(payload, self.validator)
+
+        self.assertIs(context["s"], context["signal"])
 
 
 # ---------------------------------------------------------------------------
 # CEL context output namespace
 #
-# Output catalog entries are stored in a nested ``output`` dict so that
-# CEL member access (``output.slug``) resolves correctly.  Previously
-# these were stored as flat dotted keys (``"output.slug"``), which
-# CEL couldn't resolve because it parses ``output.slug`` as member
-# access, not a single identifier.
+# Output signal definitions are stored in a nested ``output`` dict so that
+# CEL member access (``output.slug``) resolves correctly.  The context
+# structure ensures output values don't collide with payload or signal data.
 # ---------------------------------------------------------------------------
 
 
 class CelContextOutputNamespaceTests(TestCase):
-    """Verify that output catalog entries are exposed in a nested
+    """Verify that output signal definitions are exposed in a nested
     ``output`` namespace in the CEL context.
 
     The nested dict structure is critical because:
@@ -522,10 +534,12 @@ class CelContextOutputNamespaceTests(TestCase):
         )
 
     def test_output_entries_in_nested_namespace(self):
-        """Output catalog entries appear under ``context["output"]``.
+        """Output signal definitions appear under ``context["output"]``.
 
         Every output signal should be accessible as ``output.<slug>``
-        in CEL expressions.
+        in CEL expressions.  The same value is also in ``p.temperature``
+        (as raw payload data) but the output namespace provides a
+        dedicated access path for assertions about outputs.
         """
         SignalDefinitionFactory(
             validator=self.validator,
@@ -540,15 +554,15 @@ class CelContextOutputNamespaceTests(TestCase):
         self.assertIn("output", context)
         self.assertIsInstance(context["output"], dict)
         self.assertEqual(context["output"]["temperature"], 296.63)
-        # Bare name also available (no collision)
-        self.assertEqual(context["temperature"], 296.63)
+        # Also accessible under the payload namespace
+        self.assertEqual(context["p"]["temperature"], 296.63)
 
-    def test_collision_input_keeps_bare_name_output_in_namespace(self):
-        """When an input and output share the same slug, the input
-        keeps the bare name and the output goes in the namespace.
+    def test_input_and_output_same_key(self):
+        """When an input and output signal share the same contract key,
+        the output appears in the output namespace but the input does
+        NOT appear in s (validator inputs are not signals).
 
-        This matches the convention: bare ``price`` → input value,
-        ``output.price`` → output value.
+        ``p.price`` → payload access, ``output.price`` → output value.
         """
         SignalDefinitionFactory(
             validator=self.validator,
@@ -564,17 +578,17 @@ class CelContextOutputNamespaceTests(TestCase):
         payload = {"price": 42.0}
         context = engine._build_cel_context(payload, self.validator)
 
-        # Bare name keeps the input value (INPUT entry is processed
-        # first and writes to context["price"]; the OUTPUT entry sees
-        # the collision and writes only to the namespace).
-        self.assertIn("price", context)
-        # Output available via namespace
+        # Validator input NOT in s namespace
+        self.assertNotIn("price", context["s"])
+        # Output in the output namespace
         self.assertIn("output", context)
         self.assertEqual(context["output"]["price"], 42.0)
+        # Bare "price" is NOT at the root
+        self.assertNotIn("price", context)
 
-    def test_no_output_entries_no_namespace(self):
-        """When there are no output catalog entries, the ``output``
-        namespace is not created (keeping the context clean).
+    def test_no_output_entries_output_is_empty_dict(self):
+        """When there are no output signal definitions, the ``output``
+        namespace is an empty dict (always present for consistency).
         """
         SignalDefinitionFactory(
             validator=self.validator,
@@ -585,8 +599,13 @@ class CelContextOutputNamespaceTests(TestCase):
         payload = {"weight": 10}
         context = engine._build_cel_context(payload, self.validator)
 
-        self.assertNotIn("output", context)
-        self.assertEqual(context["weight"], 10)
+        self.assertIn("output", context)
+        self.assertEqual(context["output"], {})
+        self.assertIs(context["o"], context["output"])
+        # Validator input NOT in s namespace (per ADR)
+        self.assertNotIn("weight", context["s"])
+        # But payload data IS accessible via p
+        self.assertEqual(context["p"]["weight"], 10)
 
 
 class BasicValidatorHyphenatedXmlEndToEndTests(TestCase):
@@ -594,9 +613,10 @@ class BasicValidatorHyphenatedXmlEndToEndTests(TestCase):
     contain hyphens, confirming the full pipeline doesn't crash.
 
     Hyphenated element names are common in real-world XML formats (e.g.,
-    THERM's ``<THERM-XML>`` root element). Before the CEL identifier fix,
-    these caused ``ValueError: Invalid name THERM-XML`` when the key was
-    promoted to a top-level CEL variable.
+    THERM's ``<THERM-XML>`` root element).  With the namespaced context,
+    these keys live inside the ``p`` / ``payload`` dict and are never
+    at the CEL root level, so they cannot cause ``ValueError`` from
+    cel-python.
 
     Uses real Django model instances via FactoryBoy to exercise the full
     ORM path through ``catalog_entries`` and ``assertions`` querysets.
@@ -613,11 +633,8 @@ class BasicValidatorHyphenatedXmlEndToEndTests(TestCase):
         """A full ``validate()`` call with a hyphenated root element like
         ``<THERM-XML>`` should complete without raising ``ValueError``.
 
-        Before the fix, this would crash with::
-
-            ValueError: Invalid name THERM-XML
-
-        because the root key was promoted to a top-level CEL variable.
+        With the namespaced context, ``THERM-XML`` is safely inside the
+        ``p`` dict and never appears as a CEL root variable.
         """
         submission = SubmissionFactory(
             file_type=SubmissionFileType.XML,
@@ -636,8 +653,8 @@ class BasicValidatorHyphenatedXmlEndToEndTests(TestCase):
         """Hyphenated child element names should also not crash the pipeline.
 
         Even when nested inside a valid root element, hyphenated children
-        (e.g., ``<energy-rating>``) must be silently skipped during CEL
-        context promotion.
+        (e.g., ``<energy-rating>``) are safely contained inside the
+        ``p`` namespace dict.
         """
         submission = SubmissionFactory(
             file_type=SubmissionFileType.XML,
@@ -657,8 +674,8 @@ class BasicValidatorHyphenatedXmlEndToEndTests(TestCase):
         """XML attributes (converted to ``@``-prefixed keys by xml_to_dict)
         should not crash CEL context building.
 
-        The ``@``-prefix makes these invalid CEL identifiers, so they
-        must be filtered out during key promotion.
+        The ``@``-prefix makes these invalid CEL identifiers, but they
+        are safely contained inside the ``p`` namespace dict.
         """
         submission = SubmissionFactory(
             file_type=SubmissionFileType.XML,
@@ -668,71 +685,6 @@ class BasicValidatorHyphenatedXmlEndToEndTests(TestCase):
         result = engine.validate(self.validator, submission, self.ruleset)
 
         self.assertTrue(result.passed)
-
-
-# ---------------------------------------------------------------------------
-# _collect_all_keys helper
-# ---------------------------------------------------------------------------
-
-
-class CollectAllKeysTests(SimpleTestCase):
-    """Unit tests for _collect_all_keys().
-
-    This helper recursively collects every dict key in a nested
-    structure.  It is used by _build_cel_context() to discover
-    candidate identifiers from the entire payload tree, so that
-    valid-identifier keys nested under invalid-identifier parents
-    (e.g. ``Materials`` inside ``THERM-XML``) can still be promoted.
-    """
-
-    def test_flat_dict(self):
-        """Keys from a flat dict are collected."""
-        data = {"a": 1, "b": 2}
-        self.assertEqual(_collect_all_keys(data), {"a", "b"})
-
-    def test_nested_dict(self):
-        """Keys at all nesting levels are collected."""
-        data = {"root": {"child": {"leaf": "val"}}}
-        self.assertEqual(
-            _collect_all_keys(data),
-            {"root", "child", "leaf"},
-        )
-
-    def test_list_of_dicts(self):
-        """Keys inside dicts within lists are collected."""
-        data = [{"a": 1}, {"b": 2}]
-        self.assertEqual(_collect_all_keys(data), {"a", "b"})
-
-    def test_mixed_nested_structure(self):
-        """Keys collected from complex nested dicts and lists."""
-        data = {
-            "THERM-XML": {
-                "Materials": {
-                    "Material": [
-                        {"@Name": "Wood", "Conductivity": "0.5"},
-                    ],
-                },
-            },
-        }
-        expected = {
-            "THERM-XML",
-            "Materials",
-            "Material",
-            "@Name",
-            "Conductivity",
-        }
-        self.assertEqual(_collect_all_keys(data), expected)
-
-    def test_non_dict_non_list_returns_empty(self):
-        """Non-container types return an empty set."""
-        self.assertEqual(_collect_all_keys("string"), set())
-        self.assertEqual(_collect_all_keys(42), set())
-        self.assertEqual(_collect_all_keys(None), set())
-
-    def test_empty_structures(self):
-        """Empty dict and list return empty sets."""
-        self.assertEqual(_collect_all_keys({}), set())
-        self.assertEqual(_collect_all_keys([]), set())
 
 
 # ---------------------------------------------------------------------------
@@ -921,9 +873,13 @@ _ZERO_CONDUCTIVITY_XML = (
     "</THERM-XML>"
 )
 
-# The correct CEL expression: bracket notation for @-prefixed XML attrs.
+# The correct CEL expression: uses p. namespace prefix to access payload
+# data.  THERM XML has a hyphenated root element (``THERM-XML``) so we
+# use bracket notation to navigate into it, then dot notation for the
+# valid-identifier children.  @-prefixed XML attribute keys also use
+# bracket notation.
 _CONDUCTIVITY_CEL = (
-    "Materials.Material.all(m, "
+    'p["THERM-XML"].Materials.Material.all(m, '
     'double(m["@Conductivity"]) > 0.0 '
     '&& double(m["@Conductivity"]) <= 500.0)'
 )
@@ -933,10 +889,11 @@ class ThermXmlCelIntegrationTests(TestCase):
     """Integration tests: BasicValidator + THERM XML + CEL assertions.
 
     These tests validate the full pipeline:
-    1. XML is parsed by xml_to_dict (attributes → @-prefixed keys)
-    2. _build_cel_context promotes "Materials" from under "THERM-XML"
-    3. CEL expression using bracket notation accesses @-prefixed attrs
-    4. Assertion pass/fail is reported correctly
+    1. XML is parsed by xml_to_dict (attributes -> @-prefixed keys)
+    2. _build_cel_context places the entire payload under ``p`` / ``payload``
+    3. CEL expressions access payload data via ``p.Materials.Material.all(...)``
+    4. Bracket notation accesses @-prefixed XML attribute keys
+    5. Assertion pass/fail is reported correctly
     """
 
     @classmethod
@@ -1006,7 +963,9 @@ class ThermXmlCelIntegrationTests(TestCase):
 
     def test_dot_at_syntax_gives_helpful_error(self):
         """m.@Conductivity (invalid CEL) produces actionable error."""
-        bad_expr = "Materials.Material.all(m, double(m.@Conductivity) > 0.0)"
+        bad_expr = (
+            'p["THERM-XML"].Materials.Material.all(m, double(m.@Conductivity) > 0.0)'
+        )
         submission = SubmissionFactory(
             content=_VALID_THERM_XML,
             file_type=SubmissionFileType.XML,
@@ -1022,7 +981,9 @@ class ThermXmlCelIntegrationTests(TestCase):
 
     def test_missing_at_prefix_gives_helpful_error(self):
         """m.Conductivity (no @) fails because the dict key is @Conductivity."""
-        no_at_expr = "Materials.Material.all(m, double(m.Conductivity) > 0.0)"
+        no_at_expr = (
+            'p["THERM-XML"].Materials.Material.all(m, double(m.Conductivity) > 0.0)'
+        )
         submission = SubmissionFactory(
             content=_VALID_THERM_XML,
             file_type=SubmissionFileType.XML,
@@ -1038,7 +999,7 @@ class ThermXmlCelIntegrationTests(TestCase):
 
     def test_name_attribute_accessible_via_bracket(self):
         """@Name attribute is accessible via bracket notation."""
-        name_expr = 'Materials.Material.all(m, m["@Name"] != "")'
+        name_expr = 'p["THERM-XML"].Materials.Material.all(m, m["@Name"] != "")'
         submission = SubmissionFactory(
             content=_VALID_THERM_XML,
             file_type=SubmissionFileType.XML,
@@ -1050,9 +1011,14 @@ class ThermXmlCelIntegrationTests(TestCase):
 
         self.assertTrue(result.passed)
 
-    def test_units_element_accessible_as_top_level(self):
-        """Child element 'Units' is promoted to top-level CEL context."""
-        units_expr = 'Units == "SI"'
+    def test_units_element_accessible_via_payload_namespace(self):
+        """Child element 'Units' is accessible via the ``p`` namespace.
+
+        Since ``Units`` is nested under the ``THERM-XML`` root element
+        (which has a hyphenated name), we use bracket notation for the
+        root and dot notation for the child.
+        """
+        units_expr = 'p["THERM-XML"].Units == "SI"'
         submission = SubmissionFactory(
             content=_VALID_THERM_XML,
             file_type=SubmissionFileType.XML,

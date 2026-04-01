@@ -71,36 +71,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # CEL requires top-level context variable names to be valid identifiers.
-# Keys that don't match (e.g., hyphenated XML tags like "THERM-XML",
-# @-prefixed XML attribute names, #text mixed-content keys) are skipped
-# when promoting payload keys to the CEL context.  The data is still
-# accessible via bracket notation on the ``payload`` variable
-# (e.g., ``payload["THERM-XML"]``).
+# Used for signal name validation at save time.
 _CEL_IDENT_RE = re.compile(r"^[_a-zA-Z][_a-zA-Z0-9]*$")
 
 
 def _is_valid_cel_identifier(name: str) -> bool:
-    """Check whether *name* is a valid CEL top-level variable name."""
+    """Check whether *name* is a valid CEL identifier (signal name)."""
     return bool(_CEL_IDENT_RE.match(name))
-
-
-def _collect_all_keys(data: Any) -> set[str]:
-    """Collect every dict key in a nested structure (dicts and lists).
-
-    Used to discover all candidate identifiers in an XML-derived
-    payload tree, so that keys nested under invalid-identifier parents
-    (e.g., ``Materials`` inside ``THERM-XML``) can still be promoted
-    to the CEL context when they appear exactly once.
-    """
-    keys: set[str] = set()
-    if isinstance(data, dict):
-        for k, v in data.items():
-            keys.add(k)
-            keys.update(_collect_all_keys(v))
-    elif isinstance(data, list):
-        for item in data:
-            keys.update(_collect_all_keys(item))
-    return keys
 
 
 @dataclass
@@ -312,67 +289,76 @@ class BaseValidator(ABC):
         stage: str = "input",
     ) -> dict[str, Any]:
         """
-        Build a context mapping signal contract keys to values resolved from payload.
+        Build the namespaced CEL context for assertion evaluation.
 
-        Reads from ``SignalDefinition`` (the unified signal model) to determine
-        which payload keys to expose as CEL variables.
+        The context has four namespaces (plus two aliases):
 
-        Include the raw payload so expressions can reference it directly if needed.
-        If run_context includes downstream signals from earlier steps, expose them
-        under a namespaced ``steps`` key to support cross-step assertions.
+        - ``p`` / ``payload`` — raw submission data (or validator output
+          payload for output-stage assertions). Always present.
+        - ``s`` / ``signals`` — author-defined signals from workflow-level
+          signal mapping and promoted validator outputs. Populated from
+          ``RunContext.workflow_signals`` and step-bound input signal
+          bindings.
+        - ``output`` — this step's declared output signals (from
+          ``SignalDefinition`` with ``direction="output"``).
+        - ``steps`` — validator outputs from completed upstream steps,
+          accessible as ``steps.<step_key>.output.<name>``.
 
-        For output-stage assertions, all payload dict keys are automatically
-        exposed as top-level CEL variables. Output payloads come from validator
-        execution (e.g. FMU simulation, EnergyPlus results) and their keys ARE
-        the signals — there's no reason to gate them behind signal definitions.
-
-        For input-stage assertions, only signal-mapped keys are exposed unless
-        ``allow_custom_assertion_targets`` is set on the validator.
+        Raw payload keys are **never promoted** to top-level CEL
+        variables. Authors access raw data via ``p.key`` (or
+        ``payload.key``) and signals via ``s.name`` (or
+        ``signals.name``).
         """
-        context: dict[str, Any] = {"payload": payload}
-        signals = list(
-            validator.signal_definitions.all().only(
-                "contract_key",
-                "direction",
-            )
+        # ── Signals namespace (s / signals) ──────────────────────────
+        signals_dict: dict[str, Any] = {}
+
+        # 1. Workflow-level signals from RunContext (resolved at run start
+        # from WorkflowSignalMapping rows against submission data).
+        wf_signals = getattr(
+            getattr(self, "run_context", None),
+            "workflow_signals",
+            None,
         )
+        if isinstance(wf_signals, dict):
+            signals_dict.update(wf_signals)
 
-        # Step-bound input signals are the authoritative mapping for nested
-        # submission structures. This keeps simple validators aligned with the
-        # same StepSignalBinding resolution model that advanced validators use.
-        if stage == "input":
-            context.update(self._resolve_bound_input_context(payload))
+        # NOTE: Step-bound input signals (StepSignalBinding rows) are NOT
+        # injected into the s.* namespace.  Per the ADR, validator inputs
+        # feed the validator (FMU/EnergyPlus parameters), not CEL
+        # expressions.  The s.* namespace only contains:
+        # - Workflow-level signals (from WorkflowSignalMapping)
+        # - Promoted validator outputs (from SignalDefinition.signal_name)
+        #
+        # Authors reference payload data via p.key and signals via s.name.
+        # Step-bound input resolution (_resolve_bound_input_context) is
+        # still used by the validator's internal parameter binding, but
+        # those values are NOT exposed in CEL.
 
-        # Nested namespace for output signals.  CEL parses ``output.slug``
-        # as member access (variable ``output``, field ``slug``), so output
-        # signals must live inside a dict—not as flat dotted keys.
-        output_ns: dict[str, Any] = {}
-        for sig in signals:
-            value, found = self._resolve_path(payload, sig.contract_key)
-            if found:
-                if (
-                    sig.direction == SignalDirection.OUTPUT
-                    and sig.contract_key in context
-                ):
-                    # Preserve existing input mapping; expose output via
-                    # nested ``output`` namespace for disambiguation.
-                    output_ns.setdefault(sig.contract_key, value)
-                else:
-                    context[sig.contract_key] = value
-                if sig.direction == SignalDirection.OUTPUT:
-                    output_ns.setdefault(sig.contract_key, value)
-            else:
-                # Every declared signal is available as a CEL variable,
-                # defaulting to None when not found in the payload. This
-                # lets CEL expressions check for missing values (e.g.,
-                # ``signal_name == null``) without causing undefined
-                # variable errors.
-                context[sig.contract_key] = None
-        if output_ns:
-            context["output"] = output_ns
+        # ── Output namespace (o / output) ────────────────────────────
+        # For output-stage assertions, the payload IS the validator
+        # output (e.g., FMU results). The full output dict is placed
+        # under ``output`` so authors access values via ``output.key``
+        # or ``o.key``.
+        #
+        # For input-stage, declared output signals are resolved from
+        # the payload so ``output.name`` is available even during input
+        # assertions (e.g., for cross-direction comparisons).
+        output_dict: dict[str, Any] = {}
+        if stage == "output" and isinstance(payload, dict):
+            output_dict = payload
+        else:
+            # Input stage: resolve declared output signals
+            for sig in validator.signal_definitions.filter(
+                direction=SignalDirection.OUTPUT,
+            ).only("contract_key"):
+                value, found = self._resolve_path(payload, sig.contract_key)
+                output_dict[sig.contract_key] = value if found else None
 
-        # Surface downstream signals for CEL expressions
-        # (e.g., steps.<id>.signals.<slug>).
+        # NOTE: Declared input signal definitions are NOT injected into
+        # the s.* namespace.  They are validator inputs, not author-
+        # defined signals.  See ADR-2026-03-31 terminology section.
+
+        # ── Steps namespace (downstream step outputs) ────────────────
         steps_context: dict[str, Any] = {}
         run_summary = getattr(
             getattr(self, "run_context", None),
@@ -388,63 +374,77 @@ class BaseValidator(ABC):
         )
         if isinstance(downstream_override, dict) and downstream_override:
             steps_context = downstream_override
+
+        # ── Promoted output signals ──────────────────────────────────
+        # Validator outputs with a non-empty signal_name are promoted
+        # to the s namespace.  Reconstructed from completed step outputs
+        # in the run summary + promotion definitions on SignalDefinition.
         if steps_context:
-            context["steps"] = steps_context
+            self._inject_promoted_outputs(signals_dict, steps_context)
 
-        def _collect_matches(data: Any, key: str) -> list[Any]:
-            matches: list[Any] = []
-            if isinstance(data, dict):
-                for k, v in data.items():
-                    if k == key:
-                        matches.append(v)
-                    matches.extend(_collect_matches(v, key))
-            elif isinstance(data, list):
-                for item in data:
-                    matches.extend(_collect_matches(item, key))
-            return matches
-
-        # Expose payload keys as top-level CEL variables when appropriate.
-        #
-        # Two cases trigger this:
-        # 1. Output stage on a processor-backed validator — the output
-        #    payload comes from container execution (FMU simulation,
-        #    EnergyPlus, etc.) and its keys ARE the output signals.
-        #    These should always be available as CEL variables regardless
-        #    of whether they appear in the catalog.
-        # 2. allow_custom_assertion_targets — the validator explicitly
-        #    permits assertion targets outside the catalog (e.g. Basic
-        #    validators, XML validators with arbitrary paths).
-        has_processor = getattr(validator, "has_processor", False)
-        expose_payload_keys = (stage == "output" and has_processor) or getattr(
-            validator, "allow_custom_assertion_targets", False
-        )
-        if expose_payload_keys:
-            if isinstance(payload, dict):
-                for k, v in payload.items():
-                    # Skip keys that aren't valid CEL identifiers (e.g.,
-                    # hyphenated XML tags like "THERM-XML", @-prefixed
-                    # attributes, #text).  cel-python raises ValueError when
-                    # invalid names appear as top-level activation variables.
-                    # The data remains accessible via payload["THERM-XML"].
-                    if _is_valid_cel_identifier(k):
-                        context.setdefault(k, v)
-            # Support lightweight partial path matches: if a valid CEL
-            # identifier appears as a dict key exactly once anywhere in
-            # the payload tree, expose it as a top-level context variable.
-            # This is essential for XML payloads where the root element
-            # name (e.g. "THERM-XML") is an invalid CEL identifier, so
-            # its children (e.g. "Materials") wouldn't otherwise be
-            # reachable without bracket notation.
-            identifiers = set(context.keys())
-            if isinstance(payload, (dict, list)):
-                for key in _collect_all_keys(payload):
-                    if _is_valid_cel_identifier(key):
-                        identifiers.add(key)
-                for ident in identifiers:
-                    matches = _collect_matches(payload, ident)
-                    if len(matches) == 1 and ident not in context:
-                        context[ident] = matches[0]
+        # ── Assemble the context ─────────────────────────────────────
+        # All namespace roots are always present (even if empty) so CEL
+        # expressions can reference them without undefined-variable
+        # errors.
+        context: dict[str, Any] = {
+            "p": payload,
+            "payload": payload,
+            "s": signals_dict,
+            "signal": signals_dict,
+            "o": output_dict,
+            "output": output_dict,
+            "steps": steps_context if steps_context else {},
+        }
         return context
+
+    def _inject_promoted_outputs(
+        self,
+        signals_dict: dict[str, Any],
+        steps_context: dict[str, Any],
+    ) -> None:
+        """Inject promoted validator outputs into the signals namespace.
+
+        Scans ``SignalDefinition`` rows with non-empty ``signal_name``
+        across all steps in the current workflow, then looks up each
+        output's value from the completed step outputs in the run
+        summary.  If a value is found, it is injected into
+        ``signals_dict`` under the promoted signal name.
+
+        This runs on every step (not just once at run start) because
+        promoted outputs are only available after the producing step
+        completes.
+        """
+        step = getattr(getattr(self, "run_context", None), "step", None)
+        if not step:
+            return
+        workflow = getattr(step, "workflow", None)
+        if not workflow:
+            return
+
+        from validibot.validations.models import SignalDefinition
+
+        promoted = (
+            SignalDefinition.objects.filter(
+                workflow_step__workflow=workflow,
+                direction=SignalDirection.OUTPUT,
+            )
+            .exclude(signal_name="")
+            .only("signal_name", "contract_key", "workflow_step__step_key")
+            .select_related("workflow_step")
+        )
+
+        for sig in promoted:
+            step_key = getattr(sig.workflow_step, "step_key", None)
+            if not step_key or step_key not in steps_context:
+                continue
+            step_outputs = steps_context.get(step_key, {})
+            # Handle both {"output": {...}} and flat dict formats
+            if isinstance(step_outputs, dict) and "output" in step_outputs:
+                outputs = step_outputs["output"]
+            else:
+                outputs = step_outputs
+            if isinstance(outputs, dict) and sig.contract_key in outputs:
+                signals_dict[sig.signal_name] = outputs[sig.contract_key]
 
     def _resolve_bound_input_context(self, payload: Any) -> dict[str, Any]:
         """Resolve input signals wired to the current workflow step.

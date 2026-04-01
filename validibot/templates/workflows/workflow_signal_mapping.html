@@ -1,0 +1,86 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Signals" %} · {{ workflow.name }} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div class="container-fluid d-flex flex-column flex-grow-1">
+    {# ── Header bar ─────────────────────────────────────────────── #}
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 col-lg-6">
+        <div class="d-flex flex-column gap-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h1 class="app-page-title mb-0 text-truncate">
+              <i class="bi bi-signpost-split me-2"></i>{% trans "Signals" %}
+            </h1>
+            <span class="text-muted">
+              {{ workflow.name }}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+          <a class="btn btn-light text-dark"
+             href="{% url 'workflows:workflow_detail' workflow.pk %}">
+            <i class="bi bi-arrow-left me-1"></i>{% trans "Back to Workflow" %}
+          </a>
+          {% if can_manage_workflow %}
+            <button type="button"
+                    class="btn btn-secondary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#signalMappingModal"
+                    hx-get="{% url 'workflows:workflow_signal_mapping_create' workflow.pk %}"
+                    hx-target="#signal-mapping-modal-content"
+                    hx-trigger="click">
+              <i class="bi bi-plus me-1"></i>{% trans "Add Signal" %}
+            </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {# ── Two-column layout ──────────────────────────────────────── #}
+    <div class="row mt-3 flex-grow-1">
+      <div class="col-12 col-xl-8 d-flex flex-column gap-4 pb-3">
+        <div class="card shadow-sm">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">
+              {% trans "Signal Mappings" %}
+            </h6>
+            <span class="badge bg-secondary">{{ mappings|length }}</span>
+          </div>
+          <div class="card-body p-0"
+               id="signal-mappings-container"
+               hx-get="{% url 'workflows:workflow_signal_mapping' workflow.pk %}"
+               hx-trigger="signals-changed from:body"
+               hx-target="this"
+               hx-swap="innerHTML">
+            {% include "workflows/partials/signal_mapping_table.html" %}
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-xl-4 d-flex flex-column gap-4 pb-3">
+        {% include "workflows/partials/sample_data_card.html" %}
+      </div>
+    </div>
+  </div>
+  {# ── Modal shell ──────────────────────────────────────────────── #}
+  <div class="modal fade"
+       id="signalMappingModal"
+       tabindex="-1"
+       aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content" id="signal-mapping-modal-content">
+        <div class="modal-body text-center text-muted py-5">
+          <div class="spinner-border" role="status">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

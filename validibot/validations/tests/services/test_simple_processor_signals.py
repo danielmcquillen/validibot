@@ -54,10 +54,11 @@ class SimpleProcessorSignalsTests(TestCase):
         run.refresh_from_db()
 
         self.assertEqual(step_run.output.get("signals"), signals)
-        # Signals are namespaced under the stable step_key slug (not
-        # the ephemeral step_run UUID) so cross-step assertions can
-        # reference them by a stable, author-visible identifier.
+        # Validator outputs are namespaced under the stable step_key
+        # slug (not the ephemeral step_run UUID) and stored under the
+        # "output" key so downstream CEL expressions can reference
+        # them via steps.<step_key>.output.<name>.
         self.assertEqual(
-            run.summary.get("steps", {}).get(step.step_key, {}).get("signals"),
+            run.summary.get("steps", {}).get(step.step_key, {}).get("output"),
             signals,
         )

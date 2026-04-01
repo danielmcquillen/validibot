@@ -236,7 +236,9 @@ class WorkflowStepAssertionsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("Add assertion", response.content.decode())
 
-    def test_cel_expression_requires_known_signal(self):
+    def test_cel_expression_requires_namespace_prefix(self):
+        """Bare identifiers (without a namespace prefix like s. or p.)
+        should be rejected by the CEL expression validator."""
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         step = self._make_energyplus_step(workflow)
@@ -256,7 +258,7 @@ class WorkflowStepAssertionsTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn("Unknown signal(s) referenced", body)
+        self.assertIn("Bare identifiers are not allowed", body)
 
     def test_custom_validator_assertion_create_allows_custom_target(self):
         """Verify assertions can use custom target fields when validator allows."""

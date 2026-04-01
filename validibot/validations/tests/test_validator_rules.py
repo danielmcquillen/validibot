@@ -118,7 +118,7 @@ def test_default_assertion_allows_boolean_literal(client):
             "name": "Bool check",
             "description": "",
             "rule_type": ValidatorRuleType.CEL_EXPRESSION,
-            "cel_expression": "bool_in == true",
+            "cel_expression": "s.bool_in == true",
             "order": 0,
         },
         HTTP_HX_REQUEST="true",
@@ -127,7 +127,7 @@ def test_default_assertion_allows_boolean_literal(client):
     assert response.status_code == HTTPStatus.NO_CONTENT
     default_ruleset = validator.default_ruleset
     assertion = default_ruleset.assertions.get(message_template="Bool check")
-    assert assertion.rhs["expr"] == "bool_in == true"
+    assert assertion.rhs["expr"] == "s.bool_in == true"
     assert assertion.target_signal_definition is not None
     assert assertion.target_signal_definition.contract_key == "bool_in"
 

@@ -45,6 +45,15 @@
               <i class="bi-code-slash"></i>
             </a>
           {% endif %}
+          {% if can_manage_workflow %}
+            <a class="btn btn-light text-dark"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="{% trans "Configure workflow-level signals (s.name)" %}"
+               href="{% url 'workflows:workflow_signal_mapping' workflow.pk %}">
+              <i class="bi-signpost-split"></i> {% trans "Signals" %}
+            </a>
+          {% endif %}
           {% if can_view_workflow %}
             <a class="btn btn-light text-dark"
                data-bs-toggle="tooltip"

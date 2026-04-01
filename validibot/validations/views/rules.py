@@ -90,10 +90,12 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
     ) -> list[SignalDefinition]:
         """Validate CEL and return the signal definitions that are referenced.
 
-        The parser is intentionally lightweight: it confirms the expression
-        references only known signals while allowing CEL literals, built-ins,
-        and lambda variables. Output signals may be referenced as
-        ``output.<contract_key>``.
+        The parser enforces the namespaced convention: all data references
+        must use a namespace prefix (``p.``, ``s.``, ``output.``, ``steps.``).
+        Bare identifiers are rejected.
+
+        Output signals may be referenced as ``output.<contract_key>`` or
+        ``o.<contract_key>``.
         """
         expr = (expr or "").strip()
         if not expr:
@@ -101,7 +103,8 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
         if not self._delimiters_balanced(expr):
             raise ValidationError(_("Parentheses and brackets must be balanced."))
 
-        reserved_literals = {"true", "false", "null", "payload", "output"}
+        reserved_literals = {"true", "false", "null"}
+        namespace_roots = {"p", "payload", "s", "signal", "o", "output", "steps"}
         cel_builtins = {
             "has",
             "exists",
@@ -126,37 +129,51 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
             "duration",
             "matches",
             "in",
+            "is_int",
+            "percentile",
+            "mean",
+            "sum",
+            "max",
+            "min",
         }
 
         key_map = {sig.contract_key: sig for sig in available_entries}
         referenced: set[SignalDefinition] = set()
         unknown: set[str] = set()
 
-        # Capture explicit output.<contract_key> references.
-        for match in re.finditer(r"output\.([A-Za-z_][A-Za-z0-9_]*)", expr):
-            key = match.group(1)
-            if key in key_map:
-                referenced.add(key_map[key])
-            else:
-                unknown.add(f"output.{key}")
-
-        # Capture bare identifiers and allow literals/built-ins/lambda vars.
-        for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_]*", expr):
+        # Strip string literals (including escaped quotes) so identifiers
+        # inside quotes are not treated as bare identifiers.
+        stripped = re.sub(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'', "", expr)
+        # Match namespaced references and track which signals are used.
+        for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\.]*", stripped):
             name = match.group(0)
             if name in reserved_literals or name in cel_builtins:
                 continue
-            if name in key_map:
-                referenced.add(key_map[name])
-                continue
-            # Treat single-character names as likely lambda variables.
             if len(name) == 1:
+                continue
+            root = name.split(".")[0]
+            if root in namespace_roots:
+                # Track referenced signal definitions for output.*
+                if (root in ("output", "o") and "." in name) or (
+                    root == "s" and "." in name
+                ):
+                    key = name.split(".", 1)[1]
+                    if key in key_map:
+                        referenced.add(key_map[key])
                 continue
             unknown.add(name)
 
         if unknown:
             raise ValidationError(
-                _("Unknown signal(s) referenced: %(names)s")
-                % {"names": ", ".join(sorted(unknown))}
+                _(
+                    "Bare identifiers are not allowed. Use p.%(first)s "
+                    "for payload data or s.%(first)s for signals. "
+                    "Unknown: %(names)s"
+                )
+                % {
+                    "first": sorted(unknown)[0],
+                    "names": ", ".join(sorted(unknown)),
+                }
             )
         return list(referenced)
 

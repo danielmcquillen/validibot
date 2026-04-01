@@ -3,26 +3,79 @@
 {% comment %}
 Unified Signals Card — "Inputs and Outputs"
 
-Standard card for the step detail page's right column.  Shows all input
-and output signals for a workflow step in a consistent two-tab layout,
-regardless of validator type.
+Standard card for the step detail page's right column.  Shows:
+1. Available Signals — workflow-level signals (s.name) and promoted outputs
+2. Validator Inputs — parameters the validator needs to run
+3. Validator Outputs — results the validator produces
 
-Input signals come from two sources:
-  - Catalog entries (INPUT stage) — defined by the validator author
-  - Template variables — extracted from an uploaded template file
-
-Output signals come from catalog entries (OUTPUT stage) with a
-"Show to User" column controlled by the display_signals config.
-
-See ADR-2026-03-10: Unified Input/Output Signals UI.
+See ADR-2026-03-10 and ADR-2026-03-31.
 
 Context:
-  unified_signals  - dict from build_unified_signals() with keys:
-                     input_signals, output_signals, has_inputs, has_outputs
-  step             - the WorkflowStep
-  workflow         - the parent Workflow
-  display_signals  - list of selected output signal slugs (from step.config)
+  unified_signals    - dict with keys: input_signals, output_signals,
+                       has_inputs, has_outputs
+  available_signals  - list of workflow-level signal mappings (name, source_path)
+  upstream_outputs   - list of upstream step output paths
+  step               - the WorkflowStep
+  workflow           - the parent Workflow
 {% endcomment %}
+
+{# -- Available Signals card (workflow-level signals) -- #}
+{% if available_signals or upstream_outputs %}
+  <div class="card app-card mb-3">
+    <div class="card-header">
+      <div class="d-flex justify-content-between align-items-center">
+        <div class="card-title mb-0">
+          {% trans "Available Data" %}
+        </div>
+        <a href="{% url 'workflows:workflow_signal_mapping' workflow.pk %}"
+           class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-sliders"></i> {% trans "Edit Signals" %}
+        </a>
+      </div>
+    </div>
+    <div class="card-body p-3">
+      {% if available_signals %}
+        <h6 class="text-muted small mb-2">
+          {% trans "Signals" %} <code class="small">s.name</code>
+        </h6>
+        <table class="table table-sm table-borderless mb-2">
+          <tbody>
+            {% for sig in available_signals %}
+              <tr>
+                <td>
+                  <code class="small">s.{{ sig.name }}</code>
+                </td>
+                <td class="text-muted small">
+                  {{ sig.source_path }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+      {% if upstream_outputs %}
+        <h6 class="text-muted small mb-2">
+          {% trans "Upstream Step Outputs" %}
+        </h6>
+        {% for step_info in upstream_outputs %}
+          <div class="mb-1">
+            <span class="badge text-bg-light">{{ step_info.step_name }}</span>
+          </div>
+          {% for path in step_info.outputs %}
+            <code class="small d-block ms-2 mb-1">{{ path }}</code>
+          {% endfor %}
+        {% endfor %}
+      {% endif %}
+      {% if not available_signals and not upstream_outputs %}
+        <p class="text-muted small mb-0">
+          {% trans "No signals defined. Configure signals on the workflow's Signals page, or use p.key to reference raw submission data directly." %}
+        </p>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+{# -- Validator Inputs / Outputs card -- #}
 {% with has_inputs=unified_signals.has_inputs has_outputs=unified_signals.has_outputs %}
   {% if has_inputs or has_outputs %}
     <div class="card app-card flex-grow-1" data-sv-catalog>
@@ -43,7 +96,7 @@ Context:
                     role="tab"
                     aria-controls="signals-input-panel"
                     aria-selected="true">
-              <span class="fw-semibold">{% trans "Input Signals" %}</span>
+              <span class="fw-semibold">{% trans "Validator Inputs" %}</span>
               <span class="badge text-bg-light ms-1">{{ unified_signals.input_signals|length }}</span>
             </button>
             <button class="nav-link"
@@ -54,7 +107,7 @@ Context:
                     role="tab"
                     aria-controls="signals-output-panel"
                     aria-selected="false">
-              <span class="fw-semibold">{% trans "Output Signals" %}</span>
+              <span class="fw-semibold">{% trans "Validator Outputs" %}</span>
               <span class="badge text-bg-light ms-1">{{ unified_signals.output_signals|length }}</span>
             </button>
           </div>

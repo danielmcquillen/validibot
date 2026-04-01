@@ -844,6 +844,7 @@ def build_unified_signals_from_definitions(
                 "label": sig.label or sig.native_name or sig.contract_key,
                 "show_to_user": show,
                 "signal_definition": sig,
+                "signal_name": sig.signal_name or "",
             },
         )
 
@@ -857,6 +858,7 @@ def build_unified_signals_from_definitions(
                 "label": sig.label or sig.contract_key,
                 "show_to_user": show,
                 "signal_definition": sig,
+                "signal_name": sig.signal_name or "",
             },
         )
 

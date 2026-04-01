@@ -1,0 +1,33 @@
+{% load i18n %}
+
+<div class="card shadow-sm">
+  <div class="card-header">
+    <h6 class="mb-0">
+      <i class="bi bi-lightning me-1"></i>{% trans "Paste Sample Data" %}
+    </h6>
+  </div>
+  <div class="card-body">
+    <p class="text-muted small mb-2">
+      {% trans "Paste JSON or XML from a sample submission to auto-discover candidate signals." %}
+    </p>
+    <form hx-post="{% url 'workflows:workflow_signal_mapping_sample_data' pk=workflow.pk %}"
+          hx-target="#sample-data-results"
+          hx-swap="innerHTML"
+          hx-indicator="#sample-data-indicator"
+          hx-disabled-elt="find button[type='submit']">
+      {% csrf_token %}
+      <textarea name="sample_data"
+                class="form-control font-monospace"
+                rows="8"
+                placeholder='{% trans "Paste JSON or XML here..." %}'></textarea>
+      <button type="submit" class="btn btn-secondary btn-sm mt-2">
+        <i class="bi bi-search me-1"></i>{% trans "Parse" %}
+      </button>
+      <span id="sample-data-indicator" class="htmx-indicator ms-2">
+        <span class="spinner-border spinner-border-sm" role="status"></span>
+      </span>
+    </form>
+    <div id="sample-data-results" class="mt-3">
+    </div>
+  </div>
+</div>

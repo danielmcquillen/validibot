@@ -1,6 +1,8 @@
 # Data Paths
 
-When you define a signal for a validator, the **data path** tells Validibot where to find that value in your data. Think of it as an address pointing to a specific piece of information inside a JSON object or XML document.
+When you define a signal in the workflow's signal mapping, the **data path** tells Validibot where to find that value in the submission payload. Think of it as an address pointing to a specific piece of information inside a JSON object or XML document.
+
+Data paths navigate the raw payload data (the `p.` namespace). When you write a CEL assertion against a signal, you reference the signal as `s.name` -- Validibot follows the data path behind the scenes to resolve the actual value from the payload.
 
 If your signal's slug already matches a top-level key in the data, the data path can be the same as the slug. For nested values, you use dot notation (JSON) or slash notation (XML) to drill down.
 
@@ -178,5 +180,6 @@ Use `@` to access XML attributes.
 - **Slug vs data path**: If your signal slug matches a top-level key in the data, you can use the slug as the data path. For nested data, the data path will differ from the slug.
 - **Whitespace**: Don't include spaces in data paths. `dimensions.width` is correct, `dimensions . width` is not.
 - **Special characters**: If a JSON key contains dots or brackets, wrap it in quotes: `["my.field"]`.
+- **In CEL expressions**: Data paths define where a signal's value lives in the payload. Once mapped, you reference the signal as `s.name` in your CEL expressions. You can also access payload data directly using `p.key` (e.g., `p.dimensions.width`).
 
 For more on writing rules against your signals, see the [CEL Expressions](/app/help/concepts/cel-expressions/) guide.

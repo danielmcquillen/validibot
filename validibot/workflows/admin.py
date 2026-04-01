@@ -1,8 +1,16 @@
 from django.contrib import admin
 
 from validibot.workflows.models import Workflow
+from validibot.workflows.models import WorkflowSignalMapping
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.models import WorkflowStepResource
+
+
+class WorkflowSignalMappingInline(admin.TabularInline):
+    model = WorkflowSignalMapping
+    extra = 0
+    fields = ("name", "source_path", "default_value", "on_missing", "position")
+    ordering = ("position",)
 
 
 @admin.register(Workflow)
@@ -28,6 +36,7 @@ class WorkflowAdmin(admin.ModelAdmin):
         "slug",
     )
     ordering = ("name",)
+    inlines = [WorkflowSignalMappingInline]
 
 
 class WorkflowStepResourceInline(admin.TabularInline):

@@ -209,8 +209,133 @@ register_action_handler(MyActionType.CUSTOM, MyCustomHandler)
 └─────────────────────────┘     └─────────────────────────┘
 ```
 
+## Signal Flow Through Workflow Execution
+
+Signals flow through a workflow execution in a defined sequence. Understanding
+this sequence is essential for debugging assertion failures and for writing
+cross-step assertions.
+
+### Phase 1: Workflow-level signals resolved before steps run
+
+Before any step executes, `StepOrchestrator._resolve_workflow_signals()` reads
+the workflow's `WorkflowSignalMapping` rows and resolves each source path
+against the submission data. The result is a dict of `{name: value}` pairs
+stored in `RunContext.workflow_signals`.
+
+If any mapping with `on_missing="error"` fails to resolve and has no default
+value, a `SignalResolutionError` is raised and the run fails before any step
+is attempted.
+
+The resolved signals are available in the `s` (signal) namespace for all
+steps in the workflow. For example, a mapping `name="target_eui"`,
+`source_path="metadata.target_eui_kwh_m2"` becomes accessible as
+`s.target_eui` in every step's CEL expressions.
+
+### Phase 2: Signals available in the `s` namespace for all steps
+
+When `_build_cel_context()` runs for each step, the `s` / `signal` namespace
+is populated from three sources (in priority order):
+
+1. **Workflow-level signals** from `RunContext.workflow_signals` (highest
+   priority -- these represent the author's explicit domain vocabulary)
+2. **Promoted validator outputs** injected by `_inject_promoted_outputs()`
+   from `SignalDefinition` rows with non-empty `signal_name`
+3. **Step-bound input signals** resolved from `StepSignalBinding` rows
+   (only during input-stage assertion evaluation)
+
+The `p` / `payload` namespace contains the raw submission data. The `o` /
+`output` namespace contains this step's declared output signals (populated
+from the validator output during output-stage assertion evaluation).
+
+### Phase 3: Promoted outputs reconstructed before each step
+
+`_inject_promoted_outputs()` runs inside `_build_cel_context()` for each step
+(not once per run). It queries `SignalDefinition` rows across all steps in the
+workflow that have a non-empty `signal_name` and `direction=OUTPUT`. For each,
+it looks up the producing step's output values in the run summary.
+
+This means promoted outputs from step N are available as `s.<signal_name>` in
+step N+1, N+2, and so on -- but not in step N itself (the producing step
+accesses its own output via `o.<contract_key>`).
+
+### Phase 4: Cross-step output access via `steps`
+
+After each step completes, `store_signals()` persists its output dict at
+`run.summary["steps"][step_key]["output"]`. Before the next step runs,
+`_extract_downstream_signals()` reads the summary and builds the `steps`
+namespace:
+
+```json
+{
+  "steps": {
+    "envelope_check": {
+      "output": {
+        "floor_area_m2": 10000.0,
+        "wall_r_value": 18.0
+      }
+    },
+    "energyplus_sim": {
+      "output": {
+        "site_eui_kwh_m2": 75.2,
+        "site_electricity_kwh": 12345.0
+      }
+    }
+  }
+}
+```
+
+Downstream steps can access any prior step's output via the full path:
+`steps.envelope_check.output.floor_area_m2`. This is available alongside
+promoted outputs -- the `steps` namespace provides the raw access path while
+`s.<signal_name>` provides the author-friendly alias.
+
+### Signal flow diagram
+
+```
+                    Submission data arrives
+                            |
+                            v
+              resolve_workflow_signals()
+              (WorkflowSignalMapping rows)
+                            |
+                            v
+                  RunContext.workflow_signals
+                  = {"target_eui": 95, ...}
+                            |
+            +---------------+---------------+
+            |               |               |
+            v               v               v
+         Step 1          Step 2          Step 3
+            |               |               |
+     _build_cel_context  _build_cel_context  _build_cel_context
+            |               |               |
+     s: workflow sigs   s: workflow sigs   s: workflow sigs
+        + step inputs      + step inputs      + step inputs
+                            + promoted from 1  + promoted from 1,2
+     o: step 1 output   o: step 2 output   o: step 3 output
+     steps: {}           steps: {step1}     steps: {step1, step2}
+     p: raw payload      p: raw payload     p: raw payload
+            |               |               |
+     store_signals()     store_signals()    store_signals()
+     summary.steps.      summary.steps.     summary.steps.
+       step1.output        step2.output       step3.output
+```
+
+### Key implementation files
+
+| File | Responsibility |
+|------|----------------|
+| `validations/services/signal_resolution.py` | `resolve_workflow_signals()` -- pre-step resolution |
+| `validations/services/step_orchestrator.py` | `_resolve_workflow_signals()` and `_extract_downstream_signals()` |
+| `validations/validators/base/base.py` | `_build_cel_context()` and `_inject_promoted_outputs()` |
+| `validations/services/step_processor/base.py` | `store_signals()` -- persist outputs to run summary |
+| `actions/protocols.py` | `RunContext` dataclass with `workflow_signals` and `downstream_signals` |
+
+For the full signal model reference, see [Signals](../data-model/signals.md).
+
 ## Related Documentation
 
 - [Validation Step Processor Architecture](step_processor.md) - Deep dive into processor pattern
 - [Validator Architecture](validator_architecture.md) - Execution backends and deployment
 - [How Validibot Works](how_it_works.md) - End-to-end system overview
+- [Signals](../data-model/signals.md) - Signal models, CEL namespaces, and resolution

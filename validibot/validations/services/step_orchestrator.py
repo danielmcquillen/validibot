@@ -841,10 +841,21 @@ class StepOrchestrator:
         from validibot.actions.registry import get_action_handler
 
         signals = self._extract_downstream_signals(validation_run)
+
+        # Resolve workflow-level signal mappings.  These are author-
+        # defined named values (s.<name>) resolved from submission data
+        # before each step.  The resolution result is cached on the
+        # validation_run to avoid re-resolving on every step.
+        workflow_signals = self._resolve_workflow_signals(
+            validation_run,
+            step,
+        )
+
         context = RunContext(
             validation_run=validation_run,
             step=step,
             downstream_signals=signals,
+            workflow_signals=workflow_signals,
         )
 
         # 2. Resolve Handler
@@ -934,7 +945,7 @@ class StepOrchestrator:
 
         After a handler returns, this method:
         1. Persists issues as ValidationFinding rows.
-        2. Extracts any "signals" from stats and stores them in run.summary
+        2. Extracts any validator outputs from stats and stores them in run.summary
            for downstream assertions to access.
         3. For sync results (passed=True/False): finalizes the step_run.
         4. For async results (passed=None): keeps step_run as RUNNING.
@@ -956,15 +967,16 @@ class StepOrchestrator:
         # step_run.output. This is needed for build_run_summary_record()
         # to calculate totals correctly in resume scenarios.
         stats["assertion_failures"] = assertion_failures
-        # Persist any signals for downstream steps in a namespaced structure.
-        # Uses the stable step_key (from WorkflowStep) as the namespace
-        # so cross-step assertions can reference signals by a stable
-        # author-visible identifier rather than an ephemeral step_run UUID.
+        # Persist validator outputs for downstream steps in a namespaced
+        # structure.  Uses the stable step_key (from WorkflowStep) as the
+        # namespace so cross-step CEL expressions can reference outputs by
+        # a stable author-visible identifier (``steps.<key>.output.<name>``)
+        # rather than an ephemeral step_run UUID.
         if "signals" in stats:
             summary_steps = validation_run.summary.get("steps", {})
             ns_key = step_run.workflow_step.step_key or str(step_run.id)
             summary_steps[ns_key] = {
-                "signals": stats.get("signals", {}),
+                "output": stats.get("signals", {}),
             }
             validation_run.summary["steps"] = summary_steps
             validation_run.save(update_fields=["summary"])
@@ -1022,20 +1034,71 @@ class StepOrchestrator:
 
     # ---------- Helpers ----------
 
+    def _resolve_workflow_signals(
+        self,
+        validation_run: ValidationRun | None,
+        step: WorkflowStep | None,
+    ) -> dict[str, Any]:
+        """Resolve workflow-level signal mappings for the CEL s namespace.
+
+        Reads ``WorkflowSignalMapping`` rows from the step's workflow and
+        resolves them against the submission data.  The result is the
+        ``s`` / ``signal`` namespace dict injected into the CEL context.
+
+        If no mappings exist, returns an empty dict (no-op).
+        If a required mapping fails, raises ``SignalResolutionError``
+        which the caller should surface as a run-level failure.
+        """
+        if not step or not validation_run:
+            return {}
+
+        workflow = getattr(step, "workflow", None)
+        workflow_pk = getattr(workflow, "pk", None)
+        if not workflow or not isinstance(workflow_pk, int):
+            return {}
+
+        # Check if any mappings exist before doing the work
+        from validibot.workflows.models import WorkflowSignalMapping
+
+        if not WorkflowSignalMapping.objects.filter(workflow=workflow).exists():
+            return {}
+
+        # Get submission data for resolution
+        submission = getattr(validation_run, "submission", None)
+        if not submission:
+            return {}
+
+        import json
+
+        try:
+            raw_content = submission.get_content()
+            submission_data = json.loads(raw_content) if raw_content else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+        from validibot.validations.services.signal_resolution import (
+            resolve_workflow_signals,
+        )
+
+        result = resolve_workflow_signals(workflow, submission_data)
+        return result.signals
+
     def _extract_downstream_signals(
         self,
         validation_run: ValidationRun | None,
     ) -> dict[str, Any]:
         """
-        Collect signals from completed steps for cross-step assertions.
+        Collect validator outputs from completed steps for cross-step CEL.
 
-        When a validator emits output signals (e.g., EnergyPlus outputs like
-        zone_temp), they're stored in
-        validation_run.summary["steps"][step_id]["signals"]. This method
-        extracts them into a structure that assertions can query.
+        When a validator emits outputs (e.g., EnergyPlus zone_temp), they
+        are stored in ``validation_run.summary["steps"][step_key]["output"]``.
+        This method extracts them into the ``steps`` namespace structure
+        that downstream CEL expressions access via
+        ``steps.<step_key>.output.<name>``.
 
         Returns:
-            Dict mapping step_run_id to {"signals": {...}} for each prior step.
+            Dict mapping step_key to ``{"output": {...}}`` for each
+            completed step that produced outputs.
         """
         if not validation_run:
             return {}
@@ -1045,13 +1108,13 @@ class StepOrchestrator:
         steps = summary.get("steps", {}) or {}
         if not isinstance(steps, dict):
             return {}
-        scoped_signals: dict[str, Any] = {}
+        scoped: dict[str, Any] = {}
         for key, value in steps.items():
             if isinstance(value, dict):
-                scoped_signals[str(key)] = {
-                    "signals": value.get("signals", {}) or {},
+                scoped[str(key)] = {
+                    "output": value.get("output", {}) or {},
                 }
-        return scoped_signals
+        return scoped
 
     def _resolve_run_actor(
         self,

@@ -7,9 +7,16 @@ the validator's declared catalog) and step-level FMU variables (discovered
 from the FMU model metadata).  Both sources participate in target resolution
 for basic assertions and identifier validation for CEL expressions.
 
-The ``output.`` prefix convention lets users disambiguate output signals
-from input signals that share the same name.  These tests verify that the
-form enforces this convention correctly.
+CEL expressions use a namespaced identifier convention:
+
+- ``p.key`` / ``payload.key`` — raw submission data
+- ``s.name`` / ``signals.name`` — author-defined signals
+- ``output.name`` — this step's validator outputs
+- ``steps.key.output.name`` — upstream step outputs
+
+Bare identifiers (not prefixed with a namespace) are rejected unless they
+are CEL builtins, literals, or single-letter loop variables.  These tests
+verify that the form enforces this convention correctly.
 """
 
 from __future__ import annotations
@@ -38,7 +45,15 @@ class RulesetAssertionFormTests(TestCase):
             fmu_variables=fmu_variables,
         )
 
-    def test_cel_disallows_unknown_identifiers_when_custom_targets_disabled(self):
+    def test_cel_disallows_bare_identifiers_when_custom_targets_disabled(self):
+        """Bare (un-namespaced) identifiers are rejected when custom targets
+        are disabled.
+
+        The validator requires all CEL identifiers to use namespace prefixes
+        (``s.``, ``p.``, ``output.``, etc.).  ``rating`` here is bare and
+        unknown, so the form should reject it with the "Bare identifiers
+        are not allowed" error message.
+        """
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,
             is_system=False,
@@ -57,15 +72,21 @@ class RulesetAssertionFormTests(TestCase):
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
                 "target_data_path": entry.contract_key,
                 "severity": Severity.ERROR,
-                "cel_expression": "price > 0 && rating > 10",
+                "cel_expression": "s.price > 0 && rating > 10",
                 "when_expression": "",
             },
         )
         self.assertFalse(form._validator_allows_custom_targets())
         self.assertFalse(form.is_valid())
-        self.assertIn("Unknown signal(s) referenced", str(form.errors))
+        self.assertIn("Bare identifiers are not allowed", str(form.errors))
 
-    def test_cel_allows_unknown_identifiers_when_custom_targets_enabled(self):
+    def test_cel_allows_namespaced_identifiers_when_custom_targets_enabled(self):
+        """Namespaced identifiers are accepted when custom targets are enabled.
+
+        When ``allow_custom_assertion_targets=True``, any properly namespaced
+        expression (using ``p.``, ``s.``, ``output.``, etc.) is accepted
+        without checking whether the signals actually exist in the catalog.
+        """
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,
             is_system=False,
@@ -83,7 +104,7 @@ class RulesetAssertionFormTests(TestCase):
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
                 "target_data_path": entry.contract_key,
                 "severity": Severity.ERROR,
-                "cel_expression": "price > 0 && rating > 10",
+                "cel_expression": "p.price > 0 && s.rating > 10",
                 "when_expression": "",
             },
         )
@@ -128,7 +149,7 @@ class RulesetAssertionFormTests(TestCase):
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
                 "target_data_path": "temperature",
                 "severity": Severity.ERROR,
-                "cel_expression": "temperature > 0",
+                "cel_expression": "s.temperature > 0",
                 "when_expression": "",
             },
         )
@@ -159,7 +180,7 @@ class RulesetAssertionFormTests(TestCase):
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
                 "target_data_path": "price",
                 "severity": Severity.ERROR,
-                "cel_expression": "price > 0",
+                "cel_expression": "s.price > 0",
                 "when_expression": "",
             },
         )
@@ -374,9 +395,9 @@ class FMUVariableCelIdentifierTests(TestCase):
     """Tests for CEL identifier validation with FMU variables.
 
     When ``allow_custom_assertion_targets`` is False, the form validates
-    that all identifiers in a CEL expression correspond to known signals.
-    FMU variable names (both bare and ``output.``-prefixed) must be
-    recognised as valid identifiers.
+    that all identifiers in a CEL expression use namespace prefixes.
+    FMU variable names must be referenced with the ``s.`` (signals) or
+    ``output.`` prefix; bare identifiers are rejected.
     """
 
     @classmethod
@@ -430,18 +451,19 @@ class FMUVariableCelIdentifierTests(TestCase):
             validator=self.validator,
         )
 
-    def test_bare_fmu_names_accepted(self):
-        """Bare FMU variable names are valid CEL identifiers.
+    def test_namespaced_fmu_names_accepted(self):
+        """Namespace-prefixed FMU variable names are valid CEL identifiers.
 
-        Both input and output variable names should be accepted without
-        requiring the ``output.`` prefix when there's no ambiguity.
+        FMU variable names must use the ``s.`` prefix for signals.
+        Both input and output variable names should be accepted when
+        properly namespaced.
         """
         form = self._cel_form(
             fmu_variables=[
                 {"name": "Q_cooling_max", "causality": "input"},
                 {"name": "T_room", "causality": "output"},
             ],
-            expression="T_room < Q_cooling_max",
+            expression="s.T_room < s.Q_cooling_max",
         )
         self.assertTrue(form.is_valid(), form.errors)
 
@@ -459,50 +481,51 @@ class FMUVariableCelIdentifierTests(TestCase):
         )
         self.assertTrue(form.is_valid(), form.errors)
 
-    def test_unknown_identifier_rejected(self):
-        """Identifiers not matching any FMU variable are rejected.
+    def test_bare_identifier_rejected(self):
+        """Bare (un-namespaced) identifiers are rejected.
 
-        This ensures users get clear feedback when they misspell a
-        variable name or reference a signal that doesn't exist.
+        Even when a bare identifier matches a known FMU variable name,
+        the form requires namespace prefixes.  This ensures users get
+        clear feedback directing them to use ``s.`` or ``p.`` prefixes.
         """
         form = self._cel_form(
             fmu_variables=[
                 {"name": "T_room", "causality": "output"},
             ],
-            expression="T_room < unknown_var",
+            expression="s.T_room < unknown_var",
         )
         self.assertFalse(form.is_valid())
-        self.assertIn("Unknown signal(s) referenced", str(form.errors))
+        self.assertIn("Bare identifiers are not allowed", str(form.errors))
 
-    def test_mixed_bare_and_prefixed_identifiers(self):
-        """CEL expressions can mix bare input names with prefixed outputs.
+    def test_mixed_signal_and_output_prefixed_identifiers(self):
+        """CEL expressions can use ``s.`` for signals and ``output.`` for outputs.
 
         This is the typical pattern for assertions that compare an output
         signal against a user-provided input value, e.g.,
-        ``Q_cooling_actual < Q_cooling_max * 0.85``.
+        ``s.Q_cooling_actual < s.Q_cooling_max * 0.85``.
         """
         form = self._cel_form(
             fmu_variables=[
                 {"name": "Q_cooling_max", "causality": "input"},
                 {"name": "Q_cooling_actual", "causality": "output"},
             ],
-            expression="Q_cooling_actual < Q_cooling_max",
+            expression="s.Q_cooling_actual < s.Q_cooling_max",
         )
         self.assertTrue(form.is_valid(), form.errors)
 
-    def test_output_prefix_for_invalid_output_rejected(self):
-        """``output.Q_cooling_max`` is rejected when Q_cooling_max is
-        only an input variable.
+    def test_bare_fmu_name_rejected(self):
+        """A bare FMU variable name (without namespace prefix) is rejected.
 
-        The ``output.`` prefix namespace only contains output signals.
-        Using it on an input-only variable is a user error.
+        Even though ``Q_cooling_max`` is a known FMU input variable, the
+        CEL namespace convention requires it to be referenced as ``s.Q_cooling_max``.
+        Bare multi-character identifiers that aren't CEL builtins are rejected.
         """
         form = self._cel_form(
             fmu_variables=[
                 {"name": "Q_cooling_max", "causality": "input"},
                 {"name": "T_room", "causality": "output"},
             ],
-            expression="output.Q_cooling_max > 0",
+            expression="Q_cooling_max > 0",
         )
         self.assertFalse(form.is_valid())
-        self.assertIn("Unknown signal(s) referenced", str(form.errors))
+        self.assertIn("Bare identifiers are not allowed", str(form.errors))

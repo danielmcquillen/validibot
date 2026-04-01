@@ -1,3 +1,17 @@
+"""Tests for CEL expression evaluation in the BasicValidator.
+
+Covers input-signal, output-signal, derived-signal, and literal CEL
+expressions, including helper functions (size, matches, startsWith),
+when-guard skipping, invalid-expression error reporting, dotted-slug
+resolution, and missing-signal null handling.
+
+CEL expressions reference signals via the ``s`` (signals) namespace
+(e.g. ``p.price < 10``).  Raw payload data that is not backed by a
+signal definition would use the ``p`` (payload) namespace instead.
+The ``output`` and ``steps`` namespaces are available for validator
+outputs and upstream step outputs respectively.
+"""
+
 from __future__ import annotations
 
 import json
@@ -78,7 +92,7 @@ class CelBasicValidatorTests(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            rhs={"expr": "price < 10"},
+            rhs={"expr": "p.price < 10"},
         )
         submission = self._submission({"price": 5})
         engine = BasicValidator()
@@ -93,7 +107,7 @@ class CelBasicValidatorTests(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            rhs={"expr": "size(items) == 2"},
+            rhs={"expr": "size(p.items) == 2"},
         )
         submission = self._submission({"items": [{"sku": "A"}, {"sku": "B"}]})
         engine = BasicValidator()
@@ -108,7 +122,7 @@ class CelBasicValidatorTests(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            rhs={"expr": "price < 10"},
+            rhs={"expr": "p.price < 10"},
             severity=Severity.ERROR,
         )
         submission = self._submission({"price": 25})
@@ -125,8 +139,8 @@ class CelBasicValidatorTests(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            rhs={"expr": "price < 10"},
-            when_expression="price > 100",
+            rhs={"expr": "p.price < 10"},
+            when_expression="p.price > 100",
         )
         submission = self._submission({"price": 20})
         engine = BasicValidator()
@@ -141,7 +155,7 @@ class CelBasicValidatorTests(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            rhs={"expr": "price < "},  # invalid CEL
+            rhs={"expr": "p.price < "},  # invalid CEL
         )
         submission = self._submission({"price": 5})
         engine = BasicValidator()
@@ -153,11 +167,15 @@ class CelBasicValidatorTests(TestCase):
         self.assertIn("CEL evaluation failed", result.issues[0].message)
 
     def test_dotted_slug_resolution(self):
+        """Dotted path access on the payload namespace should resolve
+        nested values correctly. ``p.metrics.avg`` navigates into the
+        raw payload dict via CEL's native dot-access on MapType.
+        """
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            rhs={"expr": "metrics.avg == 3"},
+            rhs={"expr": "p.metrics.avg == 3"},
         )
         submission = self._submission({"metrics": {"avg": 3}})
         engine = BasicValidator()
@@ -167,20 +185,27 @@ class CelBasicValidatorTests(TestCase):
         self.assertTrue(result.passed)
         self.assertEqual(len(result.issues), 0)
 
-    def test_missing_required_signal_sets_none(self):
+    def test_missing_payload_key_produces_evaluation_error(self):
+        """Accessing a missing payload key via ``p.missing_key`` produces
+        a CEL evaluation error (field not found).  Under the namespaced
+        design, there is no implicit None injection for missing keys —
+        the author must either define a signal with ``on_missing=null``
+        or guard with ``has(p.missing_key)``.
+        """
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            rhs={"expr": "required_value == null"},
+            rhs={"expr": "p.required_value == null"},
         )
         submission = self._submission({"price": 5})
         engine = BasicValidator()
 
         result = engine.validate(self.validator, submission, self.ruleset)
 
-        self.assertTrue(result.passed)
-        self.assertEqual(len(result.issues), 0)
+        self.assertFalse(result.passed)
+        self.assertEqual(len(result.issues), 1)
+        self.assertIn("CEL evaluation failed", result.issues[0].message)
 
     def test_matches_helper_on_input(self):
         slug = "serial"
@@ -193,7 +218,7 @@ class CelBasicValidatorTests(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            rhs={"expr": 'serial.matches("ITEM-[0-9]+")'},
+            rhs={"expr": 'p.serial.matches("ITEM-[0-9]+")'},
         )
         submission = self._submission({"serial": "ITEM-123"})
         engine = BasicValidator()
@@ -211,7 +236,7 @@ class CelBasicValidatorTests(TestCase):
             operator=AssertionOperator.CEL_EXPR,
             target_signal_definition=output_sig,
             target_data_path="",
-            rhs={"expr": "result.total == 5"},
+            rhs={"expr": "output.result.total == 5"},
         )
         self._submission({"price": 1})
         engine = BasicValidator()
@@ -232,7 +257,7 @@ class CelBasicValidatorTests(TestCase):
             operator=AssertionOperator.CEL_EXPR,
             target_signal_definition=status_sig,
             target_data_path="",
-            rhs={"expr": 'result.status.startsWith("OK")'},
+            rhs={"expr": 'output.result.status.startsWith("OK")'},
         )
         engine = BasicValidator()
         result = engine.evaluate_assertions_for_stage(
@@ -253,7 +278,7 @@ class CelBasicValidatorTests(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            rhs={"expr": 'serial.startsWith("ITEM-")'},
+            rhs={"expr": 'p.serial.startsWith("ITEM-")'},
         )
         submission = self._submission({"serial": "ITEM-1234"})
         engine = BasicValidator()
@@ -281,7 +306,7 @@ class CelBasicValidatorTests(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            rhs={"expr": "items[0]['sku'] == 'A'"},
+            rhs={"expr": "p.items[0]['sku'] == 'A'"},
         )
         submission = self._submission({"items": [{"sku": "A"}, {"sku": "B"}]})
         engine = BasicValidator()

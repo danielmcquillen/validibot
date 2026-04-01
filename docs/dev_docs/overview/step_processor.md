@@ -491,11 +491,12 @@ Signals are metrics extracted from validation outputs that can be used by downst
 }
 ```
 
-A downstream step can then reference these signals in its assertions:
+A downstream step can then reference these outputs in its assertions
+using the ``steps`` namespace:
 
 ```cel
-# In a subsequent step's output-stage assertion
-upstream["energyplus_step"].signals.site_eui_kwh_m2 < 100
+# In a subsequent step's assertion, access the upstream step's output
+steps.energyplus_step.output.site_eui_kwh_m2 < 100
 ```
 
 ### Signal Flow

@@ -54,7 +54,7 @@ class TestCelAssertion:
             ruleset=ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            rhs={"expr": 'price > 0 && rating >= 90 && "mini" in tags'},
+            rhs={"expr": 'p.price > 0 && p.rating >= 90 && "mini" in p.tags'},
         )
 
         workflow = WorkflowFactory(org=org, user=user, is_active=True)
@@ -70,9 +70,11 @@ class TestCelAssertion:
         engine = BasicValidator()
         assert validator.allow_custom_assertion_targets is True
         context = engine._build_cel_context(payload_data, validator)
-        assert context["price"] == payload_data["price"]
-        assert context["rating"] == payload_data["rating"]
-        assert context["tags"] == payload_data["tags"]
+        # Under the namespaced CEL design, raw payload data is always
+        # accessed via the p.* namespace — never as bare top-level keys.
+        assert context["p"]["price"] == payload_data["price"]
+        assert context["p"]["rating"] == payload_data["rating"]
+        assert context["p"]["tags"] == payload_data["tags"]
 
         result = engine.evaluate_assertions_for_stage(
             ruleset=ruleset,

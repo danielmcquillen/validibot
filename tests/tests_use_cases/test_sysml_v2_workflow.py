@@ -4,13 +4,15 @@ These tests exercise the production-style workflow shape used by the SysMLv2
 radiator example:
 
 1. JSON Schema validation for the submitted model artifact
-2. Basic assertions with JSONPath filter expressions for domain constraints
+2. Basic assertions with CEL expressions referencing workflow-level signals
 3. FMU simulation as the final advanced-validator step
 
 The radiator model stores key values such as ``emissivity`` and ``mass``
-inside arrays of named elements (the SysML v2 pattern).  The step signal
-bindings use JSONPath filter expressions to resolve these values — e.g.,
-``ownedMember[?@.name=='RadiatorPanel'].ownedAttribute[?@.name=='emissivity'].defaultValue``.
+inside arrays of named elements (the SysML v2 pattern).  Workflow-level
+signal mappings (``WorkflowSignalMapping``) use JSONPath filter expressions
+to resolve these values into the ``s.*`` CEL namespace — e.g., a mapping
+with source_path ``ownedMember[?@.name=='RadiatorPanel']...defaultValue``
+and name ``emissivity`` makes ``s.emissivity`` available in CEL.
 """
 
 from __future__ import annotations
@@ -31,17 +33,14 @@ from validibot.validations.constants import AssertionType
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
-from validibot.validations.constants import SignalDirection
-from validibot.validations.constants import SignalOriginKind
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import ValidationRun
 from validibot.validations.services.validation_run import ValidationRunService
-from validibot.validations.tests.factories import SignalDefinitionFactory
-from validibot.validations.tests.factories import StepSignalBindingFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.workflows.models import WorkflowSignalMapping
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
 
@@ -77,13 +76,13 @@ STEP_TWO_BINDINGS = {
 }
 
 STEP_TWO_ASSERTIONS = (
-    ("emissivity", "emissivity > 0.0 && emissivity <= 1.0"),
-    ("absorptivity", "absorptivity >= 0.0 && absorptivity <= 1.0"),
-    ("panelArea", "panelArea > 0.0"),
-    ("mass", "mass > 0.0"),
-    ("solarIrradiance", "solarIrradiance >= 0.0"),
-    ("end", "size(end) == 2"),
-    ("satisfiedRequirement", "satisfiedRequirement != null"),
+    ("emissivity", "s.emissivity > 0.0 && s.emissivity <= 1.0"),
+    ("absorptivity", "s.absorptivity >= 0.0 && s.absorptivity <= 1.0"),
+    ("panelArea", "s.panelArea > 0.0"),
+    ("mass", "s.mass > 0.0"),
+    ("solarIrradiance", "s.solarIrradiance >= 0.0"),
+    ("end", "size(s.end) == 2"),
+    ("satisfiedRequirement", "s.satisfiedRequirement != null"),
 )
 
 
@@ -165,7 +164,7 @@ class SysmlV2RadiatorWorkflowTests(TestCase):
             ruleset_type=RulesetType.BASIC,
             version="1.0",
         )
-        step = WorkflowStepFactory(
+        WorkflowStepFactory(
             workflow=workflow,
             validator=validator,
             ruleset=ruleset,
@@ -174,31 +173,25 @@ class SysmlV2RadiatorWorkflowTests(TestCase):
             config={},
         )
 
-        signals: dict[str, object] = {}
-        for contract_key, source_data_path in STEP_TWO_BINDINGS.items():
-            signal = SignalDefinitionFactory(
-                workflow_step=step,
-                validator=None,
-                contract_key=contract_key,
-                native_name=contract_key,
-                direction=SignalDirection.INPUT,
-                origin_kind=SignalOriginKind.CATALOG,
+        # Under the namespaced CEL design, values for CEL expressions come
+        # from workflow-level signal mappings (the s.* namespace), not from
+        # step-bound input bindings.  Create WorkflowSignalMapping rows so
+        # the resolution service populates s.emissivity, s.mass, etc.
+        for position, (name, source_path) in enumerate(STEP_TWO_BINDINGS.items()):
+            WorkflowSignalMapping.objects.create(
+                workflow=workflow,
+                name=name,
+                source_path=source_path,
+                on_missing="null",
+                position=position,
             )
-            StepSignalBindingFactory(
-                workflow_step=step,
-                signal_definition=signal,
-                source_data_path=source_data_path,
-                is_required=False,
-            )
-            signals[contract_key] = signal
 
-        for order, (target_key, expression) in enumerate(STEP_TWO_ASSERTIONS, start=1):
+        for order, (_target_key, expression) in enumerate(STEP_TWO_ASSERTIONS, start=1):
             RulesetAssertion.objects.create(
                 ruleset=ruleset,
                 order=order * 10,
                 assertion_type=AssertionType.CEL_EXPRESSION,
                 operator=AssertionOperator.CEL_EXPR,
-                target_signal_definition=signals[target_key],
                 target_data_path="",
                 severity=Severity.ERROR,
                 rhs={"expr": expression},

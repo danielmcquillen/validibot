@@ -23,6 +23,9 @@ Context:
           <th class="text-muted small">
             {% trans "Default" %}
           </th>
+          <th class="text-muted small">
+            {% trans "Signal" %}
+          </th>
           <th class="text-muted small text-center">
             {% trans "Show to User" %}
           </th>
@@ -51,10 +54,55 @@ Context:
                 <span class="text-muted">--</span>
               {% endif %}
             </td>
+            <td>
+              {% if signal.signal_name %}
+                <span class="badge bg-primary-subtle text-primary">
+                  s.{{ signal.signal_name }}
+                </span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
             <td class="text-center">
               {% include "workflows/partials/signal_show_toggle.html" with signal_slug=signal.slug is_shown=signal.show_to_user step=step workflow=workflow %}
             </td>
             <td class="text-end">
+              {% if can_manage_workflow %}
+                {% if signal.signal_name %}
+                  <form class="d-inline"
+                        hx-post="{% url 'workflows:workflow_step_promote_output' workflow.pk step.pk signal.signal_definition.pk %}"
+                        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                        hx-swap="none"
+                        hx-disabled-elt="find button">
+                    <input type="hidden" name="signal_name" value="" />
+                    <button type="submit"
+                            class="btn btn-sm btn-outline-secondary"
+                            title="{% trans 'Remove signal promotion' %}">
+                      <i class="bi bi-x-lg"></i>
+                    </button>
+                  </form>
+                {% else %}
+                  <form class="d-inline"
+                        hx-post="{% url 'workflows:workflow_step_promote_output' workflow.pk step.pk signal.signal_definition.pk %}"
+                        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                        hx-swap="none"
+                        hx-disabled-elt="find button">
+                    <div class="input-group input-group-sm" style="max-width: 10rem">
+                      <input type="text"
+                             name="signal_name"
+                             class="form-control form-control-sm"
+                             placeholder="{% trans 'Signal name' %}"
+                             pattern="[a-zA-Z_][a-zA-Z0-9_]*"
+                             required />
+                      <button type="submit"
+                              class="btn btn-outline-primary btn-sm"
+                              title="{% trans 'Promote to s.name' %}">
+                        <i class="bi bi-arrow-up-right"></i>
+                      </button>
+                    </div>
+                  </form>
+                {% endif %}
+              {% endif %}
             </td>
           </tr>
         {% endfor %}
@@ -63,6 +111,6 @@ Context:
   </div>
 {% else %}
   <p class="text-muted mb-0">
-    {% trans "No output signals." %}
+    {% trans "No validator outputs." %}
   </p>
 {% endif %}

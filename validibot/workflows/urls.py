@@ -1,6 +1,7 @@
 from django.urls import path
 
 from validibot.workflows import views
+from validibot.workflows.views import signal_mapping
 
 app_name = "workflows"
 
@@ -204,6 +205,43 @@ urlpatterns = [
         "<int:pk>/steps/<int:step_id>/assertions/<int:assertion_id>/move/",
         views.WorkflowStepAssertionMoveView.as_view(),
         name="workflow_step_assertion_move",
+    ),
+    # Signal mapping — editor page + CRUD
+    path(
+        "<int:pk>/signals/",
+        signal_mapping.WorkflowSignalMappingView.as_view(),
+        name="workflow_signal_mapping",
+    ),
+    path(
+        "<int:pk>/signals/new/",
+        signal_mapping.WorkflowSignalMappingCreateView.as_view(),
+        name="workflow_signal_mapping_create",
+    ),
+    path(
+        "<int:pk>/signals/<int:mapping_id>/edit/",
+        signal_mapping.WorkflowSignalMappingEditView.as_view(),
+        name="workflow_signal_mapping_edit",
+    ),
+    path(
+        "<int:pk>/signals/<int:mapping_id>/delete/",
+        signal_mapping.WorkflowSignalMappingDeleteView.as_view(),
+        name="workflow_signal_mapping_delete",
+    ),
+    path(
+        "<int:pk>/signals/<int:mapping_id>/move/",
+        signal_mapping.WorkflowSignalMappingMoveView.as_view(),
+        name="workflow_signal_mapping_move",
+    ),
+    path(
+        "<int:pk>/signals/sample-data/",
+        signal_mapping.WorkflowSignalMappingSampleDataView.as_view(),
+        name="workflow_signal_mapping_sample_data",
+    ),
+    # Output promotion — toggle signal_name on a SignalDefinition
+    path(
+        "<int:pk>/steps/<int:step_id>/signals/<int:signal_id>/promote/",
+        signal_mapping.WorkflowStepPromoteOutputView.as_view(),
+        name="workflow_step_promote_output",
     ),
     path(
         "<int:pk>/validations/",

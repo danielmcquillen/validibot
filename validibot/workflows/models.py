@@ -1970,3 +1970,111 @@ class GuestInvite(TimeStampedModel):
     def is_pending(self) -> bool:
         """Check if invite is still pending and not expired."""
         return self.status == InviteStatus.PENDING and not self.is_expired
+
+
+class WorkflowSignalMapping(TimeStampedModel):
+    """A named signal defined at the workflow level.
+
+    Each row maps a signal name (the author's domain vocabulary) to a
+    source path in the submission data.  Resolved once before any step
+    runs.  Available in CEL expressions as ``s.<name>`` (or
+    ``signal.<name>``).
+
+    The ``on_missing`` field controls what happens when the source path
+    cannot be resolved against the submission data:
+
+    - ``error`` (default): the validation run fails immediately with a
+      clear message before any step is attempted.
+    - ``null``: the signal is injected as ``null`` and the author must
+      guard with ``s.name != null`` in CEL expressions.  Accessing a
+      null signal without a guard produces a fail-fast evaluation error
+      with a message explaining how to fix it.
+    """
+
+    workflow = models.ForeignKey(
+        "Workflow",
+        on_delete=models.CASCADE,
+        related_name="signal_mappings",
+    )
+    name = models.CharField(
+        max_length=100,
+        help_text="Signal name.  Valid CEL identifier.  Used as s.<name>.",
+    )
+    source_path = models.CharField(
+        max_length=500,
+        help_text="Data path resolved against the submission payload.",
+    )
+    default_value = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Fallback value when the source path resolves to nothing.",
+    )
+    on_missing = models.CharField(
+        max_length=10,
+        choices=[("error", "Fail the run"), ("null", "Inject null")],
+        default="error",
+    )
+    data_type = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Expected type: number, string, boolean.  Empty = infer.",
+    )
+    position = models.PositiveIntegerField(
+        default=0,
+        help_text="Display order in the signal mapping editor.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow", "name"],
+                name="unique_signal_name_per_workflow",
+            ),
+        ]
+        ordering = ["position"]
+
+    def clean(self) -> None:
+        """Validate signal name is a valid CEL identifier, not reserved,
+        and unique across both workflow mappings and promoted outputs.
+        """
+        from validibot.validations.services.signal_resolution import (
+            validate_signal_name,
+        )
+        from validibot.validations.services.signal_resolution import (
+            validate_signal_name_unique,
+        )
+
+        errors: dict[str, list[str]] = {}
+
+        # Validate name is valid CEL identifier + not reserved
+        name_errors = validate_signal_name(self.name)
+        if name_errors:
+            errors["name"] = name_errors
+
+        # Cross-table uniqueness check (only if we have a workflow)
+        if self.workflow_id:
+            unique_errors = validate_signal_name_unique(
+                workflow_id=self.workflow_id,
+                name=self.name,
+                exclude_mapping_id=self.pk,
+            )
+            if unique_errors:
+                errors.setdefault("name", []).extend(unique_errors)
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        """Run full model validation on every save.
+
+        Django's ``Model.save()`` does NOT call ``clean()`` by default,
+        so ORM-level creates (``objects.create()``) would bypass the
+        reserved-name and cross-table uniqueness checks.  This override
+        ensures those guards always fire.
+        """
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"s.{self.name} → {self.source_path}"

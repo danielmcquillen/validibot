@@ -253,17 +253,17 @@ class ResolveInputSignalTests(TestCase):
         self.assertEqual(result.value, 42.0)
         self.assertTrue(result.used_default)
 
-    # ── Upstream step signal resolution ──────────────────────────────
+    # ── Upstream step output resolution ──────────────────────────────
     #
-    # Upstream signals are stored at run.summary["steps"][step_key]["signals"].
-    # The path format is "step_key.signal_name" — the resolver flattens
-    # the intermediate "signals" key so this path works naturally.
+    # Upstream outputs are stored at run.summary["steps"][step_key]["output"].
+    # The path format is "step_key.output_name" — the resolver flattens
+    # the intermediate "output" key so this path works naturally.
 
     def test_upstream_step_signal_resolution(self):
-        """Upstream step signals should resolve via dotted path
-        'step_key.signal_name' against the flattened upstream dict.
-        The raw upstream shape is {step_key: {"signals": {...}}},
-        and the resolver flattens away the intermediate 'signals' key.
+        """Upstream step outputs should resolve via dotted path
+        'step_key.output_name' against the flattened upstream dict.
+        The raw upstream shape is {step_key: {"output": {...}}},
+        and the resolver flattens away the intermediate 'output' key.
         """
         binding = self._make_binding(
             scope=BindingSourceScope.UPSTREAM_STEP,
@@ -271,7 +271,7 @@ class ResolveInputSignalTests(TestCase):
         )
         upstream = {
             "simulation": {
-                "signals": {
+                "output": {
                     "site_eui": 85.3,
                     "source_eui": 120.0,
                 },
@@ -297,7 +297,7 @@ class ResolveInputSignalTests(TestCase):
         )
         upstream = {
             "simulation": {
-                "signals": {"site_eui": 85.3},
+                "output": {"site_eui": 85.3},
             },
         }
         result = resolve_input_signal(
@@ -308,8 +308,8 @@ class ResolveInputSignalTests(TestCase):
         self.assertEqual(result.upstream_step_key, "simulation")
 
     def test_upstream_step_missing_signal_returns_error(self):
-        """When an upstream step exists but the requested signal name
-        is not in its signals dict, the resolver should return an
+        """When an upstream step exists but the requested output name
+        is not in its output dict, the resolver should return an
         unresolved result with an error message.
         """
         binding = self._make_binding(
@@ -319,7 +319,7 @@ class ResolveInputSignalTests(TestCase):
         )
         upstream = {
             "simulation": {
-                "signals": {"site_eui": 85.3},
+                "output": {"site_eui": 85.3},
             },
         }
         result = resolve_input_signal(
@@ -499,7 +499,7 @@ class ResolveStepInputSignalsTests(TestCase):
 
         upstream = {
             "simulation": {
-                "signals": {"site_eui": 85.3},
+                "output": {"site_eui": 85.3},
             },
         }
 

@@ -1,60 +1,78 @@
-# Signals
+# Signals, Inputs, and Outputs
 
-Signals are named values that flow through a validation run. They connect the data in your submission to the rules you write, so you never have to hard-code paths into raw payloads. Instead of writing a rule that says "check the value at `results.annual_energy.site_eui_kwh_m2`," you define a signal called `site_eui_kwh_m2` and then write `site_eui_kwh_m2 < 100`.
-
----
-
-## What is a signal?
-
-A signal is a named piece of data that a validator either **consumes** (input) or **produces** (output). Every signal has a few key properties:
-
-| Property | What it does |
-|----------|-------------|
-| **Name (slug)** | The identifier you use in assertions and CEL expressions, like `floor_area` or `site_eui_kwh_m2`. |
-| **Data path** | Where to find the value in the actual data. For example, `building_metadata.geometry.total_floor_area_m2`. |
-| **Stage** | Whether the signal is an **input** (available before the validator runs) or an **output** (produced by the validator). |
-| **Data type** | The kind of value: Number, String, Boolean, Timeseries, or Object. |
-| **Required** | Whether the signal must be present. Missing required signals are flagged as errors. |
+Validibot organizes data into three distinct concepts: **signals**, **validator inputs**, and **validator outputs**. Understanding the difference between them is key to writing clear workflows and assertions.
 
 ---
 
-## Input vs output signals
+## Signals
 
-### Input signals
+A signal is an author-defined named value. You create signals to give meaningful names to the data your workflow cares about, so that your assertions can reference `s.floor_area` instead of a raw path like `p.building_metadata.geometry.total_floor_area_m2`.
 
-Input signals represent values that are available **before** the validator runs. They typically come from metadata that the submitter provides when they launch a validation, or from fields in the submission data itself.
+There are two ways to create signals:
 
-For example, an EnergyPlus™ validator might define these input signals:
+**Signal mapping** -- On the workflow-level page, you define a signal by giving it a name and a data path. This maps a raw submission value to a clean, reusable name. For example, you might map the signal `floor_area` to the data path `building_metadata.geometry.total_floor_area_m2`.
+
+**Output promotion** -- When a validator produces an output, you can promote it to a signal so that downstream steps (and assertions) can reference it by a stable name. If an EnergyPlus step produces `output.site_eui_kwh_m2`, you can promote that to a signal called `site_eui` so downstream steps reference it as `s.site_eui`.
+
+Once a signal exists, you reference it in CEL expressions as `s.name` (or the long form `signal.name`). Signals are the primary way you should reference data in assertions -- they keep your expressions readable and insulate them from changes to the underlying data structure.
+
+---
+
+## Validator Inputs
+
+Validator inputs are what a validator needs in order to run. They are not the same thing as signals -- they are the validator's own requirements.
+
+Each validator defines its own set of inputs. For example, an EnergyPlus validator might need these inputs:
 
 - `expected_floor_area_m2` -- the floor area the submitter says the building should have
 - `target_eui_kwh_m2` -- the energy use intensity target for compliance
 - `max_unmet_hours` -- the maximum allowable unmet comfort hours
 
-You can write assertions against input signals to catch problems early, even before the validator runs. For instance, `expected_floor_area_m2 > 0` ensures the submitter provided a valid floor area.
+When you add a validator to a workflow step, you bind its inputs to signals or data paths. The binding tells Validibot where to find each value the validator requires. You might bind the validator's `expected_floor_area_m2` input to the signal `s.floor_area`, or directly to a payload path like `p.metadata.floor_area`.
 
-### Output signals
+The distinction matters: the validator defines what it needs (inputs), and you decide where those values come from (signals or payload paths). This separation means you can reuse the same validator across different workflows, binding its inputs to different data each time.
 
-Output signals represent values the validator **produces** during execution. For advanced validators like EnergyPlus™ or FMU, these come from the simulation results. For built-in validators, outputs can be populated directly from the submission data.
+---
 
-EnergyPlus™ output signals include things like:
+## Validator Outputs
+
+Validator outputs are the values a validator produces after it runs. For advanced validators like EnergyPlus or FMU, these come from simulation results. For built-in validators, outputs can be populated directly from the submission data.
+
+Within the current step's assertions, you reference outputs as `output.name` (or the short form `o.name`). For example, after an EnergyPlus simulation runs, you might write an assertion like `output.site_eui_kwh_m2 < 150`.
+
+From a downstream step, you reference another step's outputs using the `steps.` namespace: `steps.energy_check.output.site_eui_kwh_m2`.
+
+EnergyPlus output examples include things like:
 
 - `site_electricity_kwh` -- total electricity consumption
 - `site_eui_kwh_m2` -- energy use intensity per square meter
 - `floor_area_m2` -- the simulated floor area
-- `window_heat_gain_kwh` / `window_heat_loss_kwh` / `window_transmitted_solar_kwh` -- window envelope metrics
 - `unmet_heating_hours` / `unmet_cooling_hours` -- comfort metrics
 
-**Not every signal will be populated for every model.** EnergyPlus only produces a value when the IDF is configured to generate it. Whole-building metrics like electricity consumption are usually available, but window envelope metrics require the corresponding `Output:Variable` objects in the IDF, and end-use breakdowns depend on which systems the model includes. If you select a display signal that the model doesn't produce, Validibot will report it as a "Value not found" error so you know to either add the output declaration to your IDF or remove the signal from your selection.
+Not every output will be populated for every model. EnergyPlus only produces a value when the IDF is configured to generate it. If you reference an output that the model doesn't produce, Validibot will report it as a "Value not found" error.
 
-Output signals are what you typically write assertions against. A rule like `site_eui_kwh_m2 < target_eui_kwh_m2` compares an output signal against an input signal.
+**Promoting outputs to signals.** If you want downstream steps to reference a validator output by a stable name, promote it to a signal. This makes the value available as `s.name` throughout the rest of the workflow, rather than requiring downstream steps to know which step produced it.
 
 ---
 
-## How the data path connects signals to data
+## The data namespace reference
 
-The **data path** is the bridge between a signal's name and the actual value in your data. The signal name (`floor_area`) is what you use in assertions. The data path (`building_metadata.geometry.total_floor_area_m2`) tells Validibot where to find that value.
+Here is a quick reference for how to access data in CEL expressions:
 
-### Example
+| Short form | Long form | What it accesses |
+|------------|-----------|------------------|
+| `p.key` | `payload.key` | Raw submission data |
+| `s.name` | `signal.name` | Author-defined signals (from signal mapping or promoted outputs) |
+| `output.name` | `o.name` | This step's validator outputs |
+| `steps.step_key.output.name` | | Upstream step outputs |
+
+---
+
+## How signal mapping works
+
+Signal mapping happens at the workflow level. When you edit a workflow, you'll see a section where you can define signals. Each signal has a name and a data path.
+
+### Setting up a signal
 
 Suppose your submission includes this JSON:
 
@@ -70,16 +88,16 @@ Suppose your submission includes this JSON:
 }
 ```
 
-You want to create a signal called `floor_area` that points to the floor area value. You'd configure:
+You want a signal called `floor_area` that points to the floor area value. You'd configure:
 
 - **Signal name**: `floor_area`
 - **Data path**: `building_metadata.geometry.total_floor_area_m2`
 
-Now you can write assertions like `floor_area > 0` or `floor_area < 50000`, and Validibot automatically resolves `floor_area` to the value `5000.0` by following the data path.
+Now you can write assertions like `s.floor_area > 0` or `s.floor_area < 50000`, and Validibot automatically resolves `s.floor_area` to the value `5000.0` by following the data path.
 
-### When the data path matches the slug
+### When the data path is simple
 
-If the value you need is a top-level key in the data and its name matches your signal slug, the data path can simply be the slug itself. For example, if your data looks like `{"temperature": 21.3}` and your signal is named `temperature`, the data path is just `temperature`.
+If the value you need is a top-level key in the data and its name matches your signal, the data path can simply be the key name. For example, if your data looks like `{"temperature": 21.3}` and your signal is named `temperature`, the data path is just `temperature`.
 
 ### When values live in arrays of named objects
 
@@ -105,50 +123,53 @@ The `[?@.name=='emissivity']` part means "find the array element where `name` eq
 ownedMember[?@.name=='RadiatorPanel'].ownedAttribute[?@.name=='emissivity'].defaultValue
 ```
 
-Once the signal is wired up, you write assertions exactly the same way -- `emissivity > 0.0 && emissivity <= 1.0`. Validibot resolves the signal through the filter expression and makes the value available by its signal name.
+Once the signal is wired up, you write assertions exactly the same way -- `s.emissivity > 0.0 && s.emissivity <= 1.0`. Validibot resolves the signal through the filter expression and makes the value available by its signal name.
 
-For full details on filter expression syntax and restrictions, see the [Data Paths](/app/help/validators/data-paths/) guide.
-
-For full details on data path syntax (dot notation, bracket notation for arrays, XML paths), see the [Data Paths](/app/help/validators/data-paths/) guide.
+For full details on data path syntax (dot notation, bracket notation, filter expressions, XML paths), see the [Data Paths](/app/help/validators/data-paths/) guide.
 
 ---
 
 ## Putting it all together
 
-Here is a typical workflow for setting up signals and writing assertions:
+Here is a typical workflow for setting up signals, binding inputs, and writing assertions.
 
 ### 1. Define your signals
 
-Look at the data your validator works with and decide what values you want to check. Create a signal for each one, choosing a clear slug and setting the data path to where the value lives.
+Look at the data your workflow receives and decide which values you'll need across steps. Create a signal for each one in the workflow's signal mapping, setting the data path to where the value lives.
 
-### 2. Set data paths
+### 2. Bind validator inputs
 
-For each signal, set the data path to the location in the data. Use dot notation for nested JSON (e.g., `results.energy.total_kwh`).
+For each workflow step, bind the validator's inputs to your signals or directly to payload paths. This tells the validator where to find the data it needs.
 
 ### 3. Write assertions
 
-Use signal names in your assertion expressions. You can compare signals against fixed values (`site_eui_kwh_m2 < 100`), against each other (`floor_area_m2 == expected_floor_area_m2`), or use CEL functions for more advanced checks.
+Use signal names and output names in your assertions. You can compare signals against fixed values (`s.site_eui_kwh_m2 < 100`), compare outputs against signals (`output.floor_area_m2 == s.expected_floor_area`), or use CEL functions for more advanced checks.
 
 ### Example walkthrough
 
-Say you're validating a building energy model. You define:
+Say you're validating a building energy model.
 
-| Signal name | Stage | Data path | Data type |
-|------------|-------|-----------|-----------|
-| `expected_floor_area_m2` | Input | `metadata.floor_area` | Number |
-| `site_eui_kwh_m2` | Output | `results.site_eui_kwh_m2` | Number |
-| `floor_area_m2` | Output | `results.floor_area_m2` | Number |
+First, you define signals in the workflow's signal mapping:
 
-Then you write assertions:
+| Signal name | Data path |
+|------------|-----------|
+| `expected_floor_area` | `metadata.floor_area` |
+| `target_eui` | `metadata.target_eui_kwh_m2` |
 
-- `expected_floor_area_m2 > 0` -- validates that the submitter provided a floor area (runs before the simulation)
-- `site_eui_kwh_m2 < 150` -- checks that the simulated EUI is within range (runs after the simulation)
-- `floor_area_m2 == expected_floor_area_m2` -- verifies the simulation used the correct floor area
+Then, in your EnergyPlus step, the validator produces outputs like `site_eui_kwh_m2` and `floor_area_m2`.
+
+Now you write assertions:
+
+- `s.expected_floor_area > 0` -- validates that the submitter provided a floor area
+- `output.site_eui_kwh_m2 < s.target_eui` -- checks that the simulated EUI is within the target
+- `output.floor_area_m2 == s.expected_floor_area` -- verifies the simulation used the correct floor area
+
+If you promote `output.site_eui_kwh_m2` to a signal called `actual_eui`, downstream steps can reference it as `s.actual_eui` without needing to know which step produced it.
 
 ---
 
 ## Related guides
 
-- [Data Paths](/app/help/validators/data-paths/) -- full syntax reference for JSON dot notation, bracket notation, and XML paths
-- [CEL Expressions](/app/help/concepts/cel-expressions/) -- how to write assertion expressions using signal values
-- [Validators Overview](/app/help/validators/validators-overview/) -- how validators define and use signals
+- [Data Paths](/app/help/validators/data-paths/) -- full syntax reference for JSON dot notation, bracket notation, filter expressions, and XML paths
+- [CEL Expressions](/app/help/concepts/cel-expressions/) -- how to write assertion expressions, including the full namespace reference
+- [Validators Overview](/app/help/validators/validators-overview/) -- how validators define and use inputs and outputs

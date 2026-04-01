@@ -5,24 +5,24 @@
     <strong>{% trans 'CEL Hints' %}</strong>
   </p>
   <p>
-    When creating a CEL expression you can either use the name of the target signals or the data path path directly.
+    CEL expressions reference data using namespace prefixes.
   </p>
   <p>
-    Some validators only support one style or the other.
-  </p>
-  <p>
-    Generic examples of CEL expressions:
+    Examples:
   </p>
   <ul class="mb-2 ps-3">
     <li>
-      <code class="target-signal-name">price</code> &gt; 0
+      <code class="target-signal-name">s.price</code> &gt; 0
     </li>
     <li>
-      <code class="target-signal-name">thermostat[3].setpoint</code> &lt; 78
+      <code class="target-signal-name">p.thermostat[3].setpoint</code> &lt; 78
     </li>
   </ul>
   <p class="mb-1">
-    <strong>{% trans 'XML tip:' %}</strong> {% trans 'Numeric values need casting:' %} <code>double(<span class="target-signal-name">price</span>) &gt; 0</code>
+    <strong>{% trans 'Namespace prefixes:' %}</strong> {% trans 'Use' %} <code>p.</code> {% trans 'for payload (raw submission data) and' %} <code>s.</code> {% trans 'for signals (author-defined named values).' %}
+  </p>
+  <p class="mb-1">
+    <strong>{% trans 'XML tip:' %}</strong> {% trans 'Numeric values need casting:' %} <code>double(<span class="target-signal-name">s.price</span>) &gt; 0</code>
   </p>
   <p class="mb-1">
     <strong>{% trans 'XML attributes:' %}</strong> {% trans 'Use the @ prefix with bracket notation:' %} <code>m["@Conductivity"]</code>

@@ -234,15 +234,15 @@ def resolve_input_signal(
     elif scope == BindingSourceScope.SUBMISSION_METADATA:
         source = submission_metadata or {}
     elif scope == BindingSourceScope.UPSTREAM_STEP:
-        # Upstream signals are stored at:
-        #   run.summary["steps"][step_key]["signals"][signal_name]
-        # The effective_path should be "step_key.signal_name", which
-        # resolve_path navigates as: upstream[step_key]["signal_name"].
+        # Upstream outputs are stored at:
+        #   run.summary["steps"][step_key]["output"][name]
+        # The effective_path should be "step_key.name", which
+        # resolve_path navigates as: upstream[step_key]["name"].
         # We flatten the nesting by building a dict of
-        #   {step_key: {signal_name: value, ...}} from the raw shape.
+        #   {step_key: {name: value, ...}} from the raw shape.
         raw = upstream_signals or {}
         source = {
-            k: v.get("signals", {}) if isinstance(v, dict) else {}
+            k: v.get("output", {}) if isinstance(v, dict) else {}
             for k, v in raw.items()
         }
         # Extract the upstream step_key from the first path segment

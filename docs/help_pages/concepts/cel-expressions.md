@@ -9,15 +9,33 @@ Whenever you add an assertion to your workflow step, you can base it on a CEL ex
 When the user submits data, each assertion runs. If the assertion has a CEL, and the CEL evaluates to false, the error message you provided in the
 assertion will be added to the messages returned to the user.
 
+## Data Namespaces
+
+Every CEL expression runs in a context where your data is organized into clear namespaces. Each namespace gives you access to a different category of data, and you reference values using a short prefix.
+
+| Short form | Long form | What it accesses |
+|------------|-----------|------------------|
+| `p.key` | `payload.key` | Raw submission data -- the JSON or XML the submitter sent |
+| `s.name` | `signal.name` | Author-defined signals -- values you've named via signal mapping or promoted outputs |
+| `output.name` | `o.name` | This step's validator outputs -- values produced by the current validator |
+| `steps.step_key.output.name` | | Upstream step outputs -- outputs from a previously completed workflow step |
+
+The `p.` namespace gives you direct access to whatever the submitter sent. If the submission payload contains `{"price": 20.00}`, you reference it as `p.price`.
+
+The `s.` namespace gives you access to signals -- named values that you define at the workflow level. Signals abstract away the raw data structure, so your assertions stay readable even when the underlying data paths are complex. You create signals through signal mapping (on the workflow page) or by promoting a validator's outputs.
+
+The `output.` namespace gives you the results produced by the current step's validator. For example, after an EnergyPlus simulation runs, `output.site_eui_kwh_m2` contains the simulated energy use intensity.
+
+The `steps.` namespace lets you reference outputs from earlier workflow steps. If step "schema_check" produced an output called "record_count", you'd access it as `steps.schema_check.output.record_count`.
+
 **What data can you reference?**
 
-In Validibot, there are two types of data 'names' you can reference in a CEL expression. These names let you reference
-the data you want to validate:
+The names available in a CEL expression depend on what's been defined for the current workflow step:
 
-- **Signals**: a signal name defined by the current validator. These are the names the validator expects to be present in the data.
-- **Data paths**: direct paths to input or output data (json notation), if direct data paths are supported by the current validator.
-
-Therefore, the names available for a CEL expression are determined by the signals defined for the validator you've selected and whether the validator allows direct data paths.
+- **Signals** (`s.name`): named values defined by the workflow author through signal mapping or output promotion.
+- **Payload paths** (`p.key`): direct paths into the raw submission data, if the current validator supports direct data paths.
+- **Outputs** (`output.name`): values produced by the current step's validator.
+- **Upstream outputs** (`steps.key.output.name`): outputs from earlier workflow steps.
 
 **Why not just use JSON or XML Schemas?**
 
@@ -34,49 +52,49 @@ Here are some examples of CEL expressions below. The example names are highlight
 
 ### Core operators
 
-- **Equality/inequality**: <code><span class="target-signal-name">a</span></code> `==` <code><span class="target-signal-name">b</span></code>, <code><span class="target-signal-name">a</span></code> `!=` <code><span class="target-signal-name">b</span></code>
-- **Comparisons**: <code><span class="target-signal-name">price</span></code> ` > 0`, <code><span class="target-signal-name">score</span></code> `>= 90`, <code><span class="target-signal-name">cost</span></code> `< 1000`
-- **Boolean checks**: <code><span class="target-signal-name">flag_active</span> == true</code>, <code><span class="target-signal-name">is_valid</span> != false</code>
+- **Equality/inequality**: <code><span class="target-signal-name">s.a</span></code> `==` <code><span class="target-signal-name">s.b</span></code>, <code><span class="target-signal-name">s.a</span></code> `!=` <code><span class="target-signal-name">s.b</span></code>
+- **Comparisons**: <code><span class="target-signal-name">p.price</span></code> ` > 0`, <code><span class="target-signal-name">p.score</span></code> `>= 90`, <code><span class="target-signal-name">p.cost</span></code> `< 1000`
+- **Boolean checks**: <code><span class="target-signal-name">p.flag_active</span> == true</code>, <code><span class="target-signal-name">p.is_valid</span> != false</code>
 - **Logical**: `cond1 && cond2`, `cond1 || cond2`, `!cond`
-- **Membership**: <code><span class="target-signal-name">country</span></code> `in ['US', 'CA']`, <code><span class="target-signal-name">role</span></code> `not in ['guest']`
-- **Null/empty checks**: <code><span class="target-signal-name">some_field</span></code> ` == null`, `size(`<code><span class="target-signal-name">some_items</span></code>`) == 0`
-- **String contains/starts/ends**: <code><span class="target-signal-name">my_text</span></code>`.contains('error')`, <code><span class="target-signal-name">my_text</span></code>`.startsWith('ID-')`, <code><span class="target-signal-name">my_text</span></code>`.endsWith('.json')`
-- **Regex**: <code><span class="target-signal-name">my_text</span></code>`.matches('^ID-[0-9]+$')`
-- **Length**: `size(` <code><span class="target-signal-name">my_text</span></code>`) <= 140`, `size(` <code><span class="target-signal-name">my_text</span></code>`) > 0`
-- **Numeric tolerance**: `abs(` <code><span class="target-signal-name">my_measured_value</span></code>`-` <code><span class="target-signal-name">my_actual_value</span></code>`) < 0.01`
+- **Membership**: <code><span class="target-signal-name">p.country</span></code> `in ['US', 'CA']`, <code><span class="target-signal-name">p.role</span></code> `not in ['guest']`
+- **Null/empty checks**: <code><span class="target-signal-name">p.some_field</span></code> ` == null`, `size(`<code><span class="target-signal-name">p.some_items</span></code>`) == 0`
+- **String contains/starts/ends**: <code><span class="target-signal-name">p.my_text</span></code>`.contains('error')`, <code><span class="target-signal-name">p.my_text</span></code>`.startsWith('ID-')`, <code><span class="target-signal-name">p.my_text</span></code>`.endsWith('.json')`
+- **Regex**: <code><span class="target-signal-name">p.my_text</span></code>`.matches('^ID-[0-9]+$')`
+- **Length**: `size(` <code><span class="target-signal-name">p.my_text</span></code>`) <= 140`, `size(` <code><span class="target-signal-name">p.my_text</span></code>`) > 0`
+- **Numeric tolerance**: `abs(` <code><span class="target-signal-name">s.my_measured_value</span></code>`-` <code><span class="target-signal-name">s.my_actual_value</span></code>`) < 0.01`
 
 ### Collections
 
-- **Any/All**: <code><span class="target-signal-name">my_items</span></code>`.exists(i, i.status == 'ok')`, <code><span class="target-signal-name">my_items</span></code>`.all(i, i.score >= 80)`
-- **Contains element**: `['value_A', 'value_B'].exists(f, f == ` <code><span class="target-signal-name">my_value</span></code>`)`
+- **Any/All**: <code><span class="target-signal-name">p.my_items</span></code>`.exists(i, i.status == 'ok')`, <code><span class="target-signal-name">p.my_items</span></code>`.all(i, i.score >= 80)`
+- **Contains element**: `['value_A', 'value_B'].exists(f, f == ` <code><span class="target-signal-name">p.my_value</span></code>`)`
 - **Subset/superset**: `expected.all(e, e in provided)`
 
 ### Dates and numbers
 
-- **Comparing timestamps**: <code><span class="target-signal-name">my_time_value</span></code> `< timestamp('2024-12-31T23:59:59Z')`
-- **Between**: <code><span class="target-signal-name">my_value</span></code> `> 10 && ` <code><span class="target-signal-name">my_value</span></code> `< 20`
+- **Comparing timestamps**: <code><span class="target-signal-name">p.my_time_value</span></code> `< timestamp('2024-12-31T23:59:59Z')`
+- **Between**: <code><span class="target-signal-name">p.my_value</span></code> `> 10 && ` <code><span class="target-signal-name">p.my_value</span></code> `< 20`
 
 ### Examples
 
-- Require a positive input signal: <code><span class="target-signal-name">price</span></code> ` > 0`
-- Require a boolean input to be true: <code><span class="target-signal-name">my_bool_in</span></code> ` == true`
-- Ensure an output signal exists: <code><span class="target-signal-name">my_value_objects_list</span></code> `.exists(o, o.`<code><span class="target-signal-name">some_value</span></code>` != null)`
-- Guard tolerance on an output: `abs(` <code><span class="target-signal-name">my_sensor_reading</span></code> ` - 120.0) < 0.05`
-- Limit an input description length: `size(` <code><span class="target-signal-name">my_description</span></code>`) <= 500`
+- Require a positive payload value: <code><span class="target-signal-name">p.price</span></code> ` > 0`
+- Require a boolean payload value to be true: <code><span class="target-signal-name">p.my_bool_in</span></code> ` == true`
+- Ensure an output list contains a value: <code><span class="target-signal-name">output.my_value_objects_list</span></code> `.exists(o, o.`<code><span class="target-signal-name">some_value</span></code>` != null)`
+- Guard tolerance on an output: `abs(` <code><span class="target-signal-name">output.my_sensor_reading</span></code> ` - 120.0) < 0.05`
+- Limit a payload description length: `size(` <code><span class="target-signal-name">p.my_description</span></code>`) <= 500`
 
 ### Working with XML data
 
 When your submission is XML, all element text values arrive in CEL as **strings** — even when they look numeric in the document. This is standard XML behaviour (XML has no native number type). To compare numerically, wrap the value with `double()` or `int()`:
 
-- **Numeric comparison**: `double(`<code><span class="target-signal-name">price</span></code>`) > 0` rather than <code><span class="target-signal-name">price</span></code> `> 0`
-- **Integer check**: `int(`<code><span class="target-signal-name">count</span></code>`) >= 1`
-- **Collection with cast**: <code><span class="target-signal-name">items</span></code>`.all(i, double(i.value) > 0.0)`
-- **String comparisons work directly**: <code><span class="target-signal-name">status</span></code> `== "active"` (no cast needed)
+- **Numeric comparison**: `double(`<code><span class="target-signal-name">p.price</span></code>`) > 0` rather than <code><span class="target-signal-name">p.price</span></code> `> 0`
+- **Integer check**: `int(`<code><span class="target-signal-name">p.count</span></code>`) >= 1`
+- **Collection with cast**: <code><span class="target-signal-name">p.items</span></code>`.all(i, double(i.value) > 0.0)`
+- **String comparisons work directly**: <code><span class="target-signal-name">p.status</span></code> `== "active"` (no cast needed)
 
 **XML attributes** (like `<Material Conductivity="160.0">`) become `@`-prefixed keys in the data — `@Conductivity`, not `Conductivity`. Use bracket notation to access them:
 
-- **Access an attribute**: <code><span class="target-signal-name">Materials</span>.Material.all(m, double(m["@Conductivity"]) > 0.0)</code>
-- **String attribute**: <code><span class="target-signal-name">Materials</span>.Material.all(m, m["@Name"] != "")</code>
+- **Access an attribute**: <code><span class="target-signal-name">p.Materials</span>.Material.all(m, double(m["@Conductivity"]) > 0.0)</code>
+- **String attribute**: <code><span class="target-signal-name">p.Materials</span>.Material.all(m, m["@Name"] != "")</code>
 
 This is because XML distinguishes between child elements (`<Conductivity>160</Conductivity>`) and attributes (`Conductivity="160"`). The `@` prefix preserves that distinction so your expressions are unambiguous.
 
@@ -95,11 +113,11 @@ Some data formats store values in arrays of named objects rather than as simple 
 }
 ```
 
-You can't reference `emissivity` directly in a CEL expression because it's a **value**, not a key. The solution is to use **signal bindings** with filter expressions in the data path:
+You can't reference `emissivity` directly in a CEL expression because it's a **value**, not a key. The solution is to use **signal mapping** with filter expressions in the data path:
 
-1. Create a signal named `emissivity`
+1. Create a signal named `emissivity` in the workflow's signal mapping
 2. Set its data path to `ownedAttribute[?@.name=='emissivity'].defaultValue`
-3. Write your CEL assertion as `emissivity > 0.0 && emissivity <= 1.0`
+3. Write your CEL assertion as `s.emissivity > 0.0 && s.emissivity <= 1.0`
 
 Validibot resolves the filter expression to find the right array element, then makes the value available under the signal name. Your CEL assertions stay clean and readable -- the complexity of navigating the data structure is handled by the data path, not the expression.
 
@@ -107,10 +125,10 @@ See the [Signals](/app/help/validators/signals/) guide for a worked example, and
 
 ### Tips
 
-- Expressions run against the submission payload or validator-provided metadata.
-- Keep them deterministic—no network or external state.
+- Expressions run against the submission payload, signals, and validator outputs.
+- Keep them deterministic -- no network or external state.
 - Use step assertions to tighten a workflow; default assertions always run for the validator.
-- Target names (the signal you point at) appear as `<name>` or `output.<name>`. In the UI we color the target portion to help you distinguish it from the rest of the expression.
+- Use the namespace prefix (`p.`, `s.`, `output.`) to make it clear where your data comes from. In the UI we color the target portion to help you distinguish it from the rest of the expression.
 
 For more syntax details, visit the CEL specification at <https://github.com/google/cel-spec>.
 
@@ -122,21 +140,21 @@ The following CEL statements are supported in Validibot
 
 | Syntax name                     | Description                                                  | Example                                                                               |
 | ------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- | --- | ---------------- |
-| Equality / inequality           | Compare two values for equality or difference.               | `my_status == "ready"`, `my_status != "ok"`                                           |
-| Comparisons                     | Numerical comparisons with greater/less operators.           | `price > 0`, `score >= 90`, `cost < 1000`                                             |
-| Arithmetic                      | Basic math operators over numbers.                           | `(kwh_total - kwh_baseline) / kwh_baseline < 0.1`                                     |
+| Equality / inequality           | Compare two values for equality or difference.               | `p.my_status == "ready"`, `p.my_status != "ok"`                                           |
+| Comparisons                     | Numerical comparisons with greater/less operators.           | `p.price > 0`, `p.score >= 90`, `p.cost < 1000`                                             |
+| Arithmetic                      | Basic math operators over numbers.                           | `(output.kwh_total - s.kwh_baseline) / s.kwh_baseline < 0.1`                                     |
 | Logical                         | Combine boolean expressions.                                 | `cond1 && cond2`, `cond1                                                              |     | cond2`, `!cond1` |
-| Membership                      | Test whether a value is inside a list.                       | `my_status in ["draft", "approved"]`, `!(my_status in ["archived"])`                  |
-| Null / empty checks             | Detect missing or empty values.                              | `my_field == null`, `size(my_items) == 0`                                             |
-| JSON-style path access          | Traverse objects and arrays with dot and `[index]` notation. | `payload.device[0].id == "abc123"`                                                    |
-| Length / size                   | Count characters or list elements.                           | `size(my_text) <= 140`, `size(my_items) > 0`                                          |
-| String contains / starts / ends | String search helpers from CEL stdlib.                       | `my_text.contains("error")`, `my_text.startsWith("ID-")`, `my_text.endsWith(".json")` |
-| Regex match                     | Match strings with a regular expression.                     | `my_text.matches("^ID-[0-9]+$")`                                                      |
-| Collections (exists / all)      | Quantify over list elements.                                 | `my_items.exists(i, i.status == "ok")`, `my_items.all(i, i.score >= 80)`              |
-| Subset / superset check         | Verify one list is contained in another.                     | `expected.all(e, e in provided)`                                                      |
-| Ternary conditional             | Choose a value based on a condition.                         | `is_valid ? "pass" : "fail"`                                                          |
-| Timestamp comparison            | Compare datetimes via CEL `timestamp()`.                     | `event_time < timestamp("2024-12-31T23:59:59Z")`                                      |
-| Range / between                 | Combine comparisons to enforce bounds.                       | `my_value > 10 && my_value < 20`                                                      |
+| Membership                      | Test whether a value is inside a list.                       | `p.my_status in ["draft", "approved"]`, `!(p.my_status in ["archived"])`                  |
+| Null / empty checks             | Detect missing or empty values.                              | `p.my_field == null`, `size(p.my_items) == 0`                                             |
+| JSON-style path access          | Traverse objects and arrays with dot and `[index]` notation. | `p.device[0].id == "abc123"`                                                    |
+| Length / size                   | Count characters or list elements.                           | `size(p.my_text) <= 140`, `size(p.my_items) > 0`                                          |
+| String contains / starts / ends | String search helpers from CEL stdlib.                       | `p.my_text.contains("error")`, `p.my_text.startsWith("ID-")`, `p.my_text.endsWith(".json")` |
+| Regex match                     | Match strings with a regular expression.                     | `p.my_text.matches("^ID-[0-9]+$")`                                                      |
+| Collections (exists / all)      | Quantify over list elements.                                 | `p.my_items.exists(i, i.status == "ok")`, `p.my_items.all(i, i.score >= 80)`              |
+| Subset / superset check         | Verify one list is contained in another.                     | `s.expected.all(e, e in s.provided)`                                                      |
+| Ternary conditional             | Choose a value based on a condition.                         | `p.is_valid ? "pass" : "fail"`                                                          |
+| Timestamp comparison            | Compare datetimes via CEL `timestamp()`.                     | `p.event_time < timestamp("2024-12-31T23:59:59Z")`                                      |
+| Range / between                 | Combine comparisons to enforce bounds.                       | `p.my_value > 10 && p.my_value < 20`                                                      |
 
 #### Validibot Helpers
 

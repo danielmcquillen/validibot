@@ -1308,6 +1308,17 @@ class SignalDefinition(TimeStampedModel):
         blank=True,
         help_text="Arbitrary metadata for extensions and integrations.",
     )
+    signal_name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text=(
+            "Optional signal name for output promotion. When set on an "
+            "output-direction SignalDefinition, the output value is "
+            "promoted to the s (signal) namespace in CEL expressions "
+            "as s.<signal_name>. Must be a valid CEL identifier."
+        ),
+    )
 
     class Meta:
         constraints = [

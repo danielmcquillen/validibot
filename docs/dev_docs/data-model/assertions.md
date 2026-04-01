@@ -53,12 +53,15 @@ Every assertion targets data in one of two ways — never both, enforced by the
    `SignalDefinition` by its contract key. The validator author has pre-declared
    this data point with a name, type, and direction. This is the structured path
    that provides dropdowns, type-appropriate operators, and compile-time
-   validation.
+   validation. In CEL expressions, declared signals are accessed via the `s`
+   (signal) namespace for inputs (e.g., `s.expected_floor_area`) or the `o`
+   (output) namespace for outputs (e.g., `o.site_eui_kwh_m2`).
 
 2. **Custom data path** (`target_data_path` string) — a free-form
-   dot-notation path like `building.thermostat.setpoint` or
-   `payload.results[0].value`. Used when the validator doesn't declare signals
-   or when the author needs to reference data beyond the declared contract.
+   dot-notation path like `p.building.thermostat.setpoint` or
+   `p.results[0].value`, referencing raw submission data via the `p` (payload)
+   namespace. Used when the validator doesn't declare signals or when the author
+   needs to reference data beyond the declared contract.
 
 Which mode is available depends on the validator's `allow_custom_assertion_targets`
 flag. See [Signals — Signals vs custom data paths](signals.md#signals-vs-custom-data-paths)
@@ -78,7 +81,7 @@ on the validator's `default_ruleset`.
 
 Default assertions are always evaluated -- the validator merges them with any
 step-level assertions before running the evaluation loop. This means validator
-authors can encode domain knowledge (e.g., "site EUI must be positive") that
+authors can encode domain knowledge (e.g., `o.site_eui_kwh_m2 > 0`) that
 workflow authors cannot accidentally skip.
 
 ## Relationship to validators and rulesets
@@ -101,9 +104,26 @@ selection on maps is supported** because context values are converted to CEL nat
 (`celpy.json_to_cel()`) before evaluation. This matches the behavior of Google's reference
 implementation (`cel-go`).
 
+### CEL namespace convention
+
+All CEL expressions use explicit namespaces to avoid ambiguity. The four top-level
+namespaces (each with a short alias) are:
+
+| Namespace | Alias | Contents | Example |
+|-----------|-------|----------|---------|
+| `payload` | `p` | Raw submission or output data | `p.building.floor_area` |
+| `signal` | `s` | Workflow signals + promoted outputs + step inputs | `s.target_eui` |
+| `output` | `o` | This step's output signals | `o.site_eui_kwh_m2` |
+| `steps` | — | Cross-step outputs | `steps.step_a.output.value` |
+
+Raw payload keys are never promoted to bare top-level CEL variables. Authors
+access raw data via `p.key`, signals via `s.name`, and outputs via `o.name`.
+See [Signals — The CEL context structure](signals.md#the-cel-context-structure) for
+full details.
+
 For XML data, element attributes are stored with an `@` prefix (e.g., `@Conductivity`). Because
-`@` is not valid in CEL identifiers, bracket notation is required: `m["@Conductivity"]` rather
-than `m.@Conductivity`. The CEL evaluator detects common mistakes (dot-notation with `@`, missing
+`@` is not valid in CEL identifiers, bracket notation is required: `p.m["@Conductivity"]` rather
+than `p.m.@Conductivity`. The CEL evaluator detects common mistakes (dot-notation with `@`, missing
 `@` prefix) and returns actionable error messages guiding users to the correct syntax.
 
 ## CEL helpers and allowlists
@@ -156,7 +176,7 @@ There are two ways to enable success messages:
 
 2. **Step-level toggle**: Enable `show_success_messages` on a WorkflowStep. When this is true,
    all passed assertions in that step emit success findings. If an assertion has no custom
-   `success_message`, a default message is generated (e.g., "Assertion passed: site_eui < 100").
+   `success_message`, a default message is generated (e.g., "Assertion passed: o.site_eui_kwh_m2 < 100").
 
 Success messages are useful for:
 

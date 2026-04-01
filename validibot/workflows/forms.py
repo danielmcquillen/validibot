@@ -10,9 +10,11 @@ from typing import Any
 
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import HTML
+from crispy_forms.layout import Column
 from crispy_forms.layout import Div
 from crispy_forms.layout import Field
 from crispy_forms.layout import Layout
+from crispy_forms.layout import Row
 from django import forms
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
@@ -24,6 +26,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowPublicInfo
+from validibot.workflows.models import WorkflowSignalMapping
 
 if TYPE_CHECKING:
     from validibot.users.models import User
@@ -2459,3 +2462,171 @@ class SignalBindingEditForm(forms.Form):
             binding.save(
                 update_fields=["source_data_path", "default_value", "is_required"],
             )
+
+
+# ── Workflow Signal Mapping ───────────────────────────────────────────
+# Form for the add/edit modal in the signal mapping editor page.
+# Each mapping defines a named signal (s.<name>) that resolves a data
+# path in the submission payload before any validation step runs.
+
+ON_MISSING_CHOICES = (
+    ("error", _("Error — fail the run")),
+    ("null", _("Null — inject null")),
+)
+
+DATA_TYPE_CHOICES = (
+    ("", _("Auto (infer from data)")),
+    ("number", _("Number")),
+    ("string", _("String")),
+    ("boolean", _("Boolean")),
+    ("object", _("Object")),
+    ("array", _("Array")),
+)
+
+
+class WorkflowSignalMappingForm(forms.Form):
+    """Form for creating and editing workflow-level signal mappings.
+
+    Signal mappings define author-named signals (``s.<name>``) that
+    extract values from submission data paths.  This form handles
+    validation of the signal name (must be a valid CEL identifier, not
+    a reserved namespace, and unique within the workflow) and the
+    optional default value (must be valid JSON if provided).
+    """
+
+    name = forms.CharField(
+        max_length=100,
+        label=_("Signal name"),
+        help_text=_("Used in CEL expressions as s.name."),
+    )
+    source_path = forms.CharField(
+        max_length=500,
+        label=_("Source path"),
+        help_text=_(
+            "Data path in the submission payload (e.g. materials[0].emissivity)."
+        ),
+    )
+    on_missing = forms.ChoiceField(
+        choices=ON_MISSING_CHOICES,
+        initial="error",
+        label=_("On missing"),
+        help_text=_("What happens when the source path cannot be resolved."),
+    )
+    default_value = forms.CharField(
+        required=False,
+        label=_("Default value"),
+        help_text=_('Fallback value as JSON (e.g. 0, "none", null).'),
+    )
+    data_type = forms.ChoiceField(
+        choices=DATA_TYPE_CHOICES,
+        required=False,
+        initial="",
+        label=_("Data type"),
+        help_text=_("Expected type. Leave as Auto to infer from data."),
+    )
+
+    def __init__(
+        self,
+        *args,
+        workflow: Workflow | None = None,
+        exclude_mapping_id: int | None = None,
+        **kwargs,
+    ):
+        self.workflow = workflow
+        self.exclude_mapping_id = exclude_mapping_id
+        super().__init__(*args, **kwargs)
+
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            Row(
+                Column("name", css_class="col-12 col-lg-6"),
+                Column("data_type", css_class="col-12 col-lg-6"),
+            ),
+            "source_path",
+            Row(
+                Column("on_missing", css_class="col-12 col-lg-6"),
+                Column("default_value", css_class="col-12 col-lg-6"),
+            ),
+        )
+
+    def clean_name(self) -> str:
+        """Validate signal name: CEL identifier, not reserved, unique."""
+        from validibot.validations.services.signal_resolution import (
+            validate_signal_name,
+        )
+        from validibot.validations.services.signal_resolution import (
+            validate_signal_name_unique,
+        )
+
+        name = self.cleaned_data["name"].strip()
+
+        errors = validate_signal_name(name)
+        if errors:
+            raise ValidationError(errors)
+
+        if self.workflow:
+            unique_errors = validate_signal_name_unique(
+                workflow_id=self.workflow.pk,
+                name=name,
+                exclude_mapping_id=self.exclude_mapping_id,
+            )
+            if unique_errors:
+                raise ValidationError(unique_errors)
+
+        return name
+
+    def clean_default_value(self) -> str:
+        """Validate that default_value is valid JSON if provided."""
+        raw = self.cleaned_data.get("default_value", "").strip()
+        if not raw:
+            return ""
+        try:
+            json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValidationError(
+                _('Default value must be valid JSON (e.g. 42, "hello", null).'),
+            ) from exc
+        return raw
+
+    def save_mapping(
+        self,
+        workflow: Workflow,
+        *,
+        instance: WorkflowSignalMapping | None = None,
+    ) -> WorkflowSignalMapping:
+        """Create or update a WorkflowSignalMapping from cleaned data.
+
+        When creating, auto-assigns the next position value so the new
+        mapping appears at the end of the list.
+        """
+        default_str = self.cleaned_data["default_value"]
+        default_value = json.loads(default_str) if default_str else None
+
+        if instance:
+            instance.name = self.cleaned_data["name"]
+            instance.source_path = self.cleaned_data["source_path"]
+            instance.on_missing = self.cleaned_data["on_missing"]
+            instance.default_value = default_value
+            instance.data_type = self.cleaned_data["data_type"]
+            instance.save()
+            return instance
+
+        # New mapping: assign position after the last existing mapping
+        last_position = (
+            WorkflowSignalMapping.objects.filter(workflow=workflow)
+            .order_by("-position")
+            .values_list("position", flat=True)
+            .first()
+        )
+        next_position = (last_position or 0) + 10
+
+        return WorkflowSignalMapping.objects.create(
+            workflow=workflow,
+            name=self.cleaned_data["name"],
+            source_path=self.cleaned_data["source_path"],
+            on_missing=self.cleaned_data["on_missing"],
+            default_value=default_value,
+            data_type=self.cleaned_data["data_type"],
+            position=next_position,
+        )

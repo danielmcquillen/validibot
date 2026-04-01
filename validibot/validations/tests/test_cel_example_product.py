@@ -42,7 +42,7 @@ class TestExampleProductWithCEL(TestCase):
             contract_key="tags",
             direction="input",
         )
-        cls.expression = 'price > 0 && rating >= 90 && "mini" in tags'
+        cls.expression = 'p.price > 0 && p.rating >= 90 && "mini" in p.tags'
         cls.error_message = (
             " Your prices has to be greater than 0 AND rating greater "
             'than 90 AND "mini" '
@@ -91,25 +91,24 @@ class TestExampleProductWithCEL(TestCase):
         self.assertEqual(len(issues), 1)
         self.assertIn(self.error_message, issues[0].message)
 
-    def test_missing_signal_reports_identifier(self):
+    def test_missing_signal_reports_evaluation_error(self):
+        """Accessing a signal that doesn't exist in the s namespace
+        produces a CEL evaluation error. The s namespace is only
+        populated by workflow-level signal mappings and promoted
+        outputs, not by validator input signal definitions.
+        """
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,
             is_system=False,
-            allow_custom_assertion_targets=False,
         )
-        validator.allow_custom_assertion_targets = False
-        validator.save(update_fields=["allow_custom_assertion_targets"])
-        validator.refresh_from_db()
-        self.assertFalse(validator.allow_custom_assertion_targets)
         ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
         RulesetAssertionFactory(
             ruleset=ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            rhs={"expr": "price > 0"},
+            rhs={"expr": "s.nonexistent_signal > 0"},
         )
         engine = BasicValidator()
-        # Assertions without target_signal_definition default to OUTPUT stage
         result = engine.evaluate_assertions_for_stage(
             ruleset=ruleset,
             validator=validator,
@@ -117,7 +116,9 @@ class TestExampleProductWithCEL(TestCase):
             stage="output",
         )
         self.assertEqual(len(result.issues), 1)
-        self.assertIn("undefined name 'price'", result.issues[0].message)
+        # s.nonexistent_signal triggers a CEL field-not-found error
+        # because no workflow signal with that name exists.
+        self.assertIn("CEL evaluation failed", result.issues[0].message)
 
     def test_rating_must_be_high_enough(self):
         payload = {**self.payload, "rating": 80}

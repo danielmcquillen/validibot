@@ -27,13 +27,21 @@ class RunContext:
     Attributes:
         validation_run: The ValidationRun model instance being executed.
         step: The WorkflowStep model instance being processed.
-        downstream_signals: Signals from previous workflow steps, keyed by step slug.
-            Used for CEL cross-step assertions.
+        downstream_signals: Validator outputs from previous workflow steps,
+            keyed by step slug. Each entry is ``{"output": {...}}``.
+            Used for CEL cross-step assertions via
+            ``steps.<step_key>.output.<name>``.
+        workflow_signals: Author-defined signals resolved from the
+            workflow-level signal mapping configuration. Populated once
+            at run start from ``WorkflowSignalMapping`` rows resolved
+            against the submission data. Available in CEL expressions
+            via ``s.<name>`` (or ``signals.<name>``).
     """
 
     validation_run: ValidationRun | None = None
     step: WorkflowStep | None = None
     downstream_signals: dict[str, Any] = field(default_factory=dict)
+    workflow_signals: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

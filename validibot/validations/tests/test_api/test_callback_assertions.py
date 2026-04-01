@@ -157,7 +157,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             assertion_type="cel_expr",
             target_signal_definition=self.output_sig,
             target_data_path="",  # Must be empty when using signal definition
-            rhs={"expr": "site_eui_kwh_m2 < 100"},
+            rhs={"expr": "output.site_eui_kwh_m2 < 100"},
             success_message="Building meets energy efficiency target!",
         )
 
@@ -208,7 +208,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             assertion_type="cel_expr",
             target_signal_definition=self.output_sig,
             target_data_path="",  # Must be empty when using signal definition
-            rhs={"expr": "site_eui_kwh_m2 < 50"},
+            rhs={"expr": "output.site_eui_kwh_m2 < 50"},
             message_template="Site EUI is too high!",
         )
 
@@ -311,7 +311,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             assertion_type="cel_expr",
             target_signal_definition=self.output_sig,
             target_data_path="",  # Must be empty when using signal definition
-            rhs={"expr": "site_eui_kwh_m2 < 100"},
+            rhs={"expr": "output.site_eui_kwh_m2 < 100"},
             success_message="",  # No custom message
         )
 
@@ -361,7 +361,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             assertion_type="cel_expr",
             target_signal_definition=self.output_sig,
             target_data_path="",  # Must be empty when using signal definition
-            rhs={"expr": "site_eui_kwh_m2 < 100"},
+            rhs={"expr": "output.site_eui_kwh_m2 < 100"},
             success_message="Custom: Building is energy efficient!",
         )
 
@@ -417,8 +417,8 @@ class CallbackAssertionEvaluationTests(TestCase):
             assertion_type="cel_expr",
             target_signal_definition=None,  # Form sets this to None for CEL assertions
             # For CEL assertions, the expression is stored as the data path.
-            target_data_path="site_eui_kwh_m2 < 100",
-            rhs={"expr": "site_eui_kwh_m2 < 100"},
+            target_data_path="output.site_eui_kwh_m2 < 100",
+            rhs={"expr": "output.site_eui_kwh_m2 < 100"},
             success_message="Building meets energy efficiency target!",
         )
 

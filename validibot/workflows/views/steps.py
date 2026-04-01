@@ -1061,6 +1061,80 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
 
         unified_signals = build_unified_signals_from_definitions(self.step)
 
+        # Workflow-level signal mappings — shown as "Available Signals"
+        # on every step editor so authors know what s.name values exist.
+        from validibot.workflows.models import WorkflowSignalMapping
+
+        available_signals = list(
+            WorkflowSignalMapping.objects.filter(
+                workflow=workflow,
+            )
+            .order_by("position")
+            .values("name", "source_path"),
+        )
+
+        # Promoted outputs from upstream steps — these also appear
+        # in the s.* namespace, so authors need to see them alongside
+        # workflow-level mappings.
+        from validibot.validations.models import SignalDefinition
+
+        promoted_outputs = list(
+            SignalDefinition.objects.filter(
+                workflow_step__workflow=workflow,
+                workflow_step__order__lt=self.step.order,
+            )
+            .exclude(signal_name="")
+            .values_list("signal_name", "contract_key")
+        )
+        for signal_name, contract_key in promoted_outputs:
+            available_signals.append(
+                {
+                    "name": signal_name,
+                    "source_path": f"(promoted from {contract_key})",
+                }
+            )
+
+        # Upstream step outputs — shown so authors know what
+        # steps.<key>.output.<name> paths are available.
+        from validibot.workflows.models import WorkflowStep
+
+        upstream_outputs = []
+        for ws in (
+            WorkflowStep.objects.filter(
+                workflow=workflow,
+                order__lt=self.step.order,
+            )
+            .exclude(pk=self.step.pk)
+            .order_by("order")
+        ):
+            from validibot.validations.constants import SignalDirection
+            from validibot.validations.models import SignalDefinition
+
+            outputs = list(
+                SignalDefinition.objects.filter(
+                    workflow_step=ws,
+                    direction=SignalDirection.OUTPUT,
+                )
+                .union(
+                    SignalDefinition.objects.filter(
+                        validator=ws.validator,
+                        direction=SignalDirection.OUTPUT,
+                    )
+                )
+                .values_list("contract_key", flat=True),
+            )
+            if outputs:
+                step_key = ws.step_key or str(ws.pk)
+                upstream_outputs.append(
+                    {
+                        "step_name": ws.name,
+                        "step_key": step_key,
+                        "outputs": [
+                            f"steps.{step_key}.output.{name}" for name in outputs
+                        ],
+                    },
+                )
+
         context.update(
             {
                 "workflow": workflow,
@@ -1076,6 +1150,8 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "catalog_tab_prefix": f"workflow-step-{self.step.pk}-catalog",
                 "validator_default_assertions_count": default_assertions_count,
                 "unified_signals": unified_signals,
+                "available_signals": available_signals,
+                "upstream_outputs": upstream_outputs,
             },
         )
         return context

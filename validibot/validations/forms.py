@@ -611,8 +611,11 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             )
         else:
             expression = self._clean_cel_expression()
-            if not self._validator_allows_custom_targets():
-                self._validate_cel_identifiers(expression)
+            # Always enforce namespace prefixes (p., s., output., steps.)
+            # regardless of allow_custom_assertion_targets. The runtime
+            # no longer promotes bare payload keys, so bare identifiers
+            # would fail at evaluation time.
+            self._validate_cel_identifiers(expression)
             cleaned["rhs_payload"] = {"expr": expression}
             cleaned["options_payload"] = {}
             cleaned["resolved_operator"] = AssertionOperator.CEL_EXPR
@@ -630,7 +633,21 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         ]
 
     def _validate_cel_identifiers(self, expression: str) -> None:
-        reserved_literals = {"true", "false", "null", "payload", "output"}
+        """Validate that CEL identifiers use the namespaced convention.
+
+        All data references must use a namespace prefix:
+        - ``p.key`` / ``payload.key`` — raw submission data
+        - ``s.name`` / ``signals.name`` — author-defined signals
+        - ``output.name`` — this step's validator outputs
+        - ``steps.key.output.name`` — upstream step outputs
+
+        Bare identifiers are only allowed for CEL literals (``true``,
+        ``false``, ``null``), CEL built-in functions, and single-letter
+        variables used as loop vars in quantifier expressions.
+        """
+        reserved_literals = {"true", "false", "null"}
+        # The namespace root names that are valid bare identifiers
+        namespace_roots = {"p", "payload", "s", "signal", "o", "output", "steps"}
         cel_builtins = {
             "has",
             "exists",
@@ -656,29 +673,50 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             "matches",
             "in",
         }
-        allowed = set(self.catalog_slugs)
-        allowed.update(f"output.{slug}" for slug in self.outputs_by_slug)
-        # Step-level FMU variable names are also valid CEL identifiers.
-        # Both bare names and the ``output.<name>`` form are accepted —
-        # bare names resolve to the input when there's a collision, and
-        # the ``output.`` prefix explicitly targets the output signal.
-        allowed.update(self.fmu_input_names)
-        allowed.update(self.fmu_output_names)
-        allowed.update(f"output.{name}" for name in self.fmu_output_names)
+        # Validibot-specific helper functions
+        custom_helpers = {
+            "has",
+            "is_int",
+            "percentile",
+            "mean",
+            "sum",
+            "max",
+            "min",
+            "abs",
+            "round",
+            "duration",
+        }
+        cel_builtins.update(custom_helpers)
+
         unknown = set()
-        for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\\.]*", expression):
+        # Strip string literals (including escaped quotes) so identifiers
+        # inside quotes are not treated as bare identifiers.
+        stripped = re.sub(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'', "", expression)
+        for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\\.]*", stripped):
             name = match.group(0)
             if name in reserved_literals or name in cel_builtins:
                 continue
+            # Single-letter identifiers are allowed (loop variables in
+            # quantifier expressions like exists(x, items, x > 0))
             if len(name) == 1:
                 continue
-            if name not in allowed:
-                unknown.add(name)
+            # Namespace-prefixed references are always valid
+            root = name.split(".")[0]
+            if root in namespace_roots:
+                continue
+            unknown.add(name)
         if unknown:
             raise ValidationError(
                 {
-                    "cel_expression": _("Unknown signal(s) referenced: %(names)s")
-                    % {"names": ", ".join(sorted(unknown))}
+                    "cel_expression": _(
+                        "Bare identifiers are not allowed. Use p.%(first)s "
+                        "for payload data or s.%(first)s for signals. "
+                        "Unknown: %(names)s"
+                    )
+                    % {
+                        "first": sorted(unknown)[0],
+                        "names": ", ".join(sorted(unknown)),
+                    },
                 }
             )
 
@@ -1032,17 +1070,23 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                     ),
                 },
             )
-        if not self._validator_allows_custom_targets():
-            unknown = self._find_unknown_cel_slugs(expression)
-            if unknown:
-                raise ValidationError(
-                    {
-                        "cel_expression": _(
-                            "Unknown signal(s) referenced: %(names)s",
-                        )
-                        % {"names": ", ".join(sorted(unknown))},
+        # Always enforce namespace prefixes — bare identifiers fail at
+        # runtime since payload keys are no longer promoted.
+        unknown = self._find_unknown_cel_slugs(expression)
+        if unknown:
+            raise ValidationError(
+                {
+                    "cel_expression": _(
+                        "Bare identifiers are not allowed. Use p.%(first)s "
+                        "for payload data or s.%(first)s for signals. "
+                        "Unknown: %(names)s"
+                    )
+                    % {
+                        "first": sorted(unknown)[0],
+                        "names": ", ".join(sorted(unknown)),
                     },
-                )
+                },
+            )
         return expression
 
     def _delimiters_balanced(self, expression: str) -> bool:
@@ -1057,22 +1101,74 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         return not stack
 
     def _find_unknown_cel_slugs(self, expression: str) -> set[str]:
-        allowed = set(self.catalog_slugs) | {"payload"}
-        target = (self.cleaned_data.get("target_data_path") or "").strip()
-        if target:
-            allowed.add(target)
-        if self._validator_allows_custom_targets():
-            return set()
-        # Step-level FMU variable names are valid CEL identifiers.
-        # Both bare names and ``output.<name>`` forms are accepted.
-        allowed.update(self.fmu_input_names)
-        allowed.update(self.fmu_output_names)
-        allowed.update(f"output.{name}" for name in self.fmu_output_names)
+        """Find identifiers not using the namespaced convention.
+
+        Under the four-namespace CEL design, all data access must use
+        a namespace prefix (``p.``, ``s.``, ``output.``, ``steps.``).
+        This method returns bare identifiers that aren't CEL builtins,
+        reserved literals, or single-letter loop variables.
+        """
+        reserved = {
+            "true",
+            "false",
+            "null",
+            "p",
+            "payload",
+            "s",
+            "signal",
+            "o",
+            "output",
+            "steps",
+        }
+        cel_builtins = {
+            "has",
+            "exists",
+            "exists_one",
+            "all",
+            "map",
+            "filter",
+            "size",
+            "contains",
+            "startsWith",
+            "endsWith",
+            "type",
+            "int",
+            "double",
+            "string",
+            "bool",
+            "abs",
+            "ceil",
+            "floor",
+            "round",
+            "timestamp",
+            "duration",
+            "matches",
+            "in",
+            "is_int",
+            "percentile",
+            "mean",
+            "sum",
+            "max",
+            "min",
+        }
+        # Strip string literals (including escaped quotes) so identifiers
+        # inside quotes are not treated as bare identifiers.
+        stripped = re.sub(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'', "", expression)
         identifiers = {
             match.group(0)
-            for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\.]*", expression)
+            for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\.]*", stripped)
         }
-        return {ident for ident in identifiers if ident not in allowed}
+        unknown = set()
+        for ident in identifiers:
+            if ident in reserved or ident in cel_builtins:
+                continue
+            if len(ident) == 1:
+                continue
+            root = ident.split(".")[0]
+            if root in {"p", "payload", "s", "signal", "o", "output", "steps"}:
+                continue
+            unknown.add(ident)
+        return unknown
 
     def _build_cel_preview(
         self,

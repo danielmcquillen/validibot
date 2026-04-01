@@ -1,0 +1,127 @@
+{% load i18n %}
+
+{% if mappings %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>
+            {% trans "Signal" %}
+          </th>
+          <th>
+            {% trans "Source Path" %}
+          </th>
+          <th>
+            {% trans "On Missing" %}
+          </th>
+          <th>
+            {% trans "Default" %}
+          </th>
+          {% if can_manage_workflow %}
+            <th class="text-end">
+              {% trans "Actions" %}
+            </th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in mappings %}
+          <tr>
+            <td>
+              <code>s.{{ m.name }}</code>
+            </td>
+            <td>
+              <code class="text-muted">{{ m.source_path }}</code>
+            </td>
+            <td>
+              {% if m.on_missing == "error" %}
+                <span class="badge bg-danger-subtle text-danger">{% trans "Error" %}</span>
+              {% else %}
+                <span class="badge bg-secondary-subtle text-secondary">{% trans "Null" %}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if m.default_value is not None %}
+                <code class="text-muted">{{ m.default_value }}</code>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            {% if can_manage_workflow %}
+              <td class="text-end">
+                <div class="btn-group btn-group-sm" role="group">
+                  <button type="button"
+                          class="btn btn-outline-secondary"
+                          data-bs-toggle="modal"
+                          data-bs-target="#signalMappingModal"
+                          hx-get="{% url 'workflows:workflow_signal_mapping_edit' workflow.pk m.pk %}"
+                          hx-target="#signal-mapping-modal-content"
+                          hx-trigger="click"
+                          title="{% trans 'Edit' %}">
+                    <i class="bi bi-pencil-square"></i>
+                  </button>
+                  <button type="button"
+                          class="btn btn-outline-secondary"
+                          hx-post="{% url 'workflows:workflow_signal_mapping_move' workflow.pk m.pk %}"
+                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                          hx-vals='{"direction": "up"}'
+                          hx-swap="none"
+                          hx-disabled-elt="this"
+                          title="{% trans 'Move up' %}"
+                          {% if forloop.first %}
+                            disabled
+                          {% endif %}>
+                    <i class="bi bi-arrow-up"></i>
+                  </button>
+                  <button type="button"
+                          class="btn btn-outline-secondary"
+                          hx-post="{% url 'workflows:workflow_signal_mapping_move' workflow.pk m.pk %}"
+                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                          hx-vals='{"direction": "down"}'
+                          hx-swap="none"
+                          hx-disabled-elt="this"
+                          title="{% trans 'Move down' %}"
+                          {% if forloop.last %}
+                            disabled
+                          {% endif %}>
+                    <i class="bi bi-arrow-down"></i>
+                  </button>
+                  <button type="button"
+                          class="btn btn-outline-danger"
+                          hx-post="{% url 'workflows:workflow_signal_mapping_delete' workflow.pk m.pk %}"
+                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                          hx-confirm="{% trans 'Delete this signal mapping?' %}"
+                          hx-swap="none"
+                          hx-disabled-elt="this"
+                          title="{% trans 'Delete' %}">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
+              </td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="text-center py-5">
+    <p class="text-muted mb-2">
+      {% trans "No signals have been defined yet." %}
+    </p>
+    <p class="text-muted small mb-3">
+      {% trans "Signals let you name data paths from the submission payload and reference them as s.name in CEL expressions." %}
+    </p>
+    {% if can_manage_workflow %}
+      <button type="button"
+              class="btn btn-secondary"
+              data-bs-toggle="modal"
+              data-bs-target="#signalMappingModal"
+              hx-get="{% url 'workflows:workflow_signal_mapping_create' workflow.pk %}"
+              hx-target="#signal-mapping-modal-content"
+              hx-trigger="click">
+        <i class="bi bi-plus me-1"></i>{% trans "Create the first signal" %}
+      </button>
+    {% endif %}
+  </div>
+{% endif %}

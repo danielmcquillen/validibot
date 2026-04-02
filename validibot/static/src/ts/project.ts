@@ -338,6 +338,29 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
+// Global close-modal handler: when an HTMx response includes a
+// "close-modal" trigger, hide the Bootstrap modal with that ID.
+// This replaces the per-page inline <script> listeners that were
+// previously duplicated across workflow_detail, member_list, etc.
+document.body.addEventListener('close-modal', (event: Event) => {
+    const detail = (event as CustomEvent).detail;
+    const targetId =
+        (typeof detail === 'string' && detail) ||
+        detail?.value ||
+        detail?.['close-modal'] ||
+        null;
+    if (!targetId) {
+        return;
+    }
+    const modalEl = document.getElementById(targetId);
+    if (!modalEl) {
+        return;
+    }
+    const modal = bootstrap.Modal.getInstance(modalEl) ||
+        new bootstrap.Modal(modalEl);
+    modal.hide();
+});
+
 // Show the shared help drawer after HTMX swaps content into it.
 // Also auto-show modals that have data-show-modal-on-swap (replaces inline
 // hx-on handlers which are blocked by Content Security Policy).

@@ -10,6 +10,7 @@
 @use "app/validation_results";
 @use "app/help";
 @use "app/htmx";
+@use "app/resizable_columns";
 @use "app/marketing"; // marketing within app.
 
 h1,

@@ -23,7 +23,7 @@ Context:
 {% if available_signals or upstream_outputs %}
   <div class="card app-card mb-3">
     <div class="card-header">
-      <div class="d-flex justify-content-between align-items-center">
+      <div class="d-flex justify-content-between align-items-center w-100">
         <div class="card-title mb-0">
           {% trans "Available Data" %}
         </div>
@@ -36,22 +36,34 @@ Context:
     <div class="card-body p-3">
       {% if available_signals %}
         <h6 class="text-muted small mb-2">
-          {% trans "Signals" %} <code class="small">s.name</code>
+          {% trans "Signals" %}
         </h6>
-        <table class="table table-sm table-borderless mb-2">
-          <tbody>
-            {% for sig in available_signals %}
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered mb-2">
+            <thead>
               <tr>
-                <td>
-                  <code class="small">s.{{ sig.name }}</code>
-                </td>
-                <td class="text-muted small">
-                  {{ sig.source_path }}
-                </td>
+                <th class="text-muted small">
+                  {% trans "Signal" %}
+                </th>
+                <th class="text-muted small">
+                  {% trans "Source" %}
+                </th>
               </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {% for sig in available_signals %}
+                <tr>
+                  <td>
+                    <code class="small text-nowrap">s.{{ sig.name }}</code>
+                  </td>
+                  <td class="text-muted small text-nowrap">
+                    {{ sig.source_path }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       {% endif %}
       {% if upstream_outputs %}
         <h6 class="text-muted small mb-2">

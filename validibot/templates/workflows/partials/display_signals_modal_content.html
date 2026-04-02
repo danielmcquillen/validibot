@@ -1,7 +1,7 @@
 {% load i18n core_tags %}
 
 {% comment %}
-Modal content for editing which output signals are shown to users.
+Modal content for editing which validator outputs are shown to users.
 
 Loaded via HTMx into the displaySignalsModal on the step detail page.
 POST submits the form via HTMx and triggers a page reload on success.
@@ -17,7 +17,7 @@ Context:
   {% csrf_token %}
   <div class="modal-header">
     <h5 class="modal-title">
-      {% trans "Output Signals to Display" %}
+      {% trans "Validator Outputs to Display" %}
     </h5>
     <button type="button"
             class="btn-close"
@@ -27,7 +27,7 @@ Context:
   </div>
   <div class="modal-body">
     <p class="text-muted small mb-3">
-      {% trans "Select which output signals appear in submission results shown to the user. If none are selected, all signals are shown." %}
+      {% trans "Select which validator outputs appear in submission results shown to the user. If none are selected, all outputs are shown." %}
     </p>
     {% if form.display_signals.field.choices %}
       <div class="list-group list-group-flush">
@@ -40,17 +40,17 @@ Context:
       </div>
     {% else %}
       <p class="text-muted">
-        {% trans "No output signals available for this validator." %}
+        {% trans "No validator outputs available for this step." %}
       </p>
     {% endif %}
   </div>
   <div class="modal-footer">
     <button type="button"
-            class="btn btn-outline-secondary"
+            class="btn btn-light action-button"
             data-bs-dismiss="modal">
       {% trans "Cancel" %}
     </button>
-    <button type="submit" class="btn btn-secondary">
+    <button type="submit" class="btn btn-primary action-button">
       {% trans "Save" %}
     </button>
   </div>

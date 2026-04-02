@@ -1,0 +1,80 @@
+// ── Resizable two-column layout ─────────────────────────────────
+// A thin vertical drag handle sits between two flex panels.
+// On narrow viewports the layout stacks and the handle hides.
+
+[data-resizable-columns] {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+
+  // On small screens, stack vertically and hide the handle.
+  @media (max-width: 991.98px) {
+    flex-direction: column;
+
+    .resizable-panel {
+      flex-basis: auto !important;
+      min-width: 0 !important;
+    }
+
+    .resizable-handle {
+      display: none;
+    }
+  }
+}
+
+.resizable-panel {
+  overflow: auto;
+}
+
+// ── Drag handle ─────────────────────────────────────────────────
+// Visible: a 1px border-colored line.
+// Hit area: 9px wide (4px padding each side + 1px line) so it's
+// easy to grab without being visually heavy.
+
+.resizable-handle {
+  flex-shrink: 0;
+  width: 9px;
+  cursor: col-resize;
+  position: relative;
+  // Keep the gap between panels clean
+  margin: 0;
+  align-self: stretch;
+
+  // The visible line (1px, centered)
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 4px;
+    width: 1px;
+    background: var(--bs-border-color, #dee2e6);
+    transition: background 0.15s, width 0.15s;
+  }
+
+  &:hover::after {
+    background: var(--bs-primary, #0d6efd);
+    width: 3px;
+    left: 3px;
+    border-radius: 2px;
+  }
+}
+
+// While dragging, prevent text selection and show resize cursor
+// everywhere so it doesn't flicker.
+.resizable-dragging {
+  user-select: none;
+  cursor: col-resize;
+
+  // Force cursor on all children during drag
+  * {
+    cursor: col-resize !important;
+  }
+
+  .resizable-handle::after {
+    background: var(--bs-primary, #0d6efd);
+    width: 3px;
+    left: 3px;
+    border-radius: 2px;
+  }
+}

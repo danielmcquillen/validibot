@@ -16,6 +16,81 @@ There are two ways to create signals:
 
 Once a signal exists, you reference it in CEL expressions as `s.name` (or the long form `signal.name`). Signals are the primary way you should reference data in assertions -- they keep your expressions readable and insulate them from changes to the underlying data structure.
 
+Remember that in CEL expressions you always use `p.` (or `payload.`) to reference raw submission data and `s.` (or `signal.`) to reference a signal. So `p.price` reads the `price` field directly from the submission payload, while `s.price` reads a signal you've defined called `price`. The prefix makes it clear where the value comes from.
+
+### Why signals matter -- a before-and-after example
+
+To see why signals are worth the effort, consider a realistic building energy submission. The data arrives as a deeply nested JSON payload because it follows an industry schema:
+
+```json
+{
+  "project": {
+    "id": "PRJ-2024-0142",
+    "building": {
+      "geometry": {
+        "gross_floor_area_m2": 4800.0,
+        "conditioned_floor_area_m2": 4200.0,
+        "num_stories_above_grade": 3
+      },
+      "envelope": {
+        "walls": [
+          { "id": "wall-north", "u_value_w_m2k": 0.27, "area_m2": 540.0 },
+          { "id": "wall-south", "u_value_w_m2k": 0.27, "area_m2": 380.0 }
+        ],
+        "roof": { "u_value_w_m2k": 0.18, "area_m2": 1600.0 }
+      }
+    },
+    "compliance": {
+      "targets": {
+        "max_site_eui_kwh_m2": 120.0,
+        "max_unmet_hours": 300,
+        "min_renewable_fraction": 0.15
+      }
+    }
+  }
+}
+```
+
+**Without signals**, your CEL assertions reference the raw paths directly:
+
+```
+p.project.building.geometry.gross_floor_area_m2 > 0
+```
+```
+output.site_eui_kwh_m2 < p.project.compliance.targets.max_site_eui_kwh_m2
+```
+```
+output.unmet_hours < p.project.compliance.targets.max_unmet_hours
+```
+```
+p.project.building.envelope.walls.all(w,
+    w.u_value_w_m2k <= 0.35)
+```
+
+These work, but they're fragile. If the submitter's schema changes `compliance.targets` to `compliance.performance_targets`, every assertion that references it breaks. They're also hard to read -- the business intent ("is the EUI within the target?") is buried under path navigation.
+
+**With signals**, you define the mapping once and write clean assertions:
+
+| Signal name | Data path |
+|------------|-----------|
+| `floor_area` | `project.building.geometry.gross_floor_area_m2` |
+| `target_eui` | `project.compliance.targets.max_site_eui_kwh_m2` |
+| `max_unmet_hours` | `project.compliance.targets.max_unmet_hours` |
+
+Now your assertions become:
+
+```
+s.floor_area > 0
+```
+```
+output.site_eui_kwh_m2 < s.target_eui
+```
+```
+output.unmet_hours < s.max_unmet_hours
+```
+
+The business logic is immediately clear. If the data structure changes, you update the data path in the signal mapping -- the assertions stay exactly the same. If you add a second workflow that validates the same data with different rules, it can reuse the same signal names.
+
 ---
 
 ## Validator Inputs
@@ -94,6 +169,10 @@ You want a signal called `floor_area` that points to the floor area value. You'd
 - **Data path**: `building_metadata.geometry.total_floor_area_m2`
 
 Now you can write assertions like `s.floor_area > 0` or `s.floor_area < 50000`, and Validibot automatically resolves `s.floor_area` to the value `5000.0` by following the data path.
+
+### When are signals resolved?
+
+Signals are resolved **once**, at the very start of a validation run, before any workflow step executes. Validibot walks through each signal mapping, follows the data path into the submission payload, and stores the resolved value. From that point on, every CEL expression that references `s.floor_area` reads from that pre-resolved value -- it does not re-traverse the payload each time. This means signal values are consistent across all steps in a run, and the resolution cost is paid only once.
 
 ### When the data path is simple
 

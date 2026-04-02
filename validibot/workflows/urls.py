@@ -233,6 +233,11 @@ urlpatterns = [
         name="workflow_signal_mapping_move",
     ),
     path(
+        "<int:pk>/signals/bulk-add/",
+        signal_mapping.WorkflowSignalMappingBulkAddView.as_view(),
+        name="workflow_signal_mapping_bulk_add",
+    ),
+    path(
         "<int:pk>/signals/sample-data/",
         signal_mapping.WorkflowSignalMappingSampleDataView.as_view(),
         name="workflow_signal_mapping_sample_data",

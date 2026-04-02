@@ -30,8 +30,10 @@
         </div>
       </div>
     </div>
-    <div class="row assertion-step-builder-layout flex-grow-1 align-items-stretch">
-      <div class="col-12 col-lg-6 col-xxl-8 d-flex flex-column">
+    <div class="assertion-step-builder-layout flex-grow-1 align-items-stretch"
+         data-resizable-columns
+         data-resizable-key="step-detail">
+      <div class="resizable-panel d-flex flex-column">
         <div id="assertions-editor-card" class="card app-card">
           <div class="card-header">
             <div>
@@ -83,7 +85,7 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-xl-4 d-flex flex-column gap-4 pb-3">
+      <div class="resizable-panel d-flex flex-column gap-4 pb-3">
         {% include 'workflows/partials/components/step_details_card.html' %}
         {% include 'workflows/partials/unified_signals_card.html' %}
       </div>

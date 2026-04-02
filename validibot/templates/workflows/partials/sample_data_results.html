@@ -5,27 +5,89 @@
     {{ error }}
   </div>
 {% elif candidates %}
-  <p class="text-muted small mb-2">
-    {{ candidates|length }} {% trans "candidate signal" %}{{ candidates|pluralize }} {% trans "found" %}:
-  </p>
-  <div class="list-group list-group-flush">
-    {% for c in candidates %}
-      <div class="list-group-item d-flex justify-content-between align-items-center px-0">
-        <div class="min-w-0">
-          <code>{{ c.path }}</code>
-          <span class="text-muted ms-2 small text-truncate">{{ c.value }}</span>
-        </div>
-        <button type="button"
-                class="btn btn-outline-primary btn-sm flex-shrink-0 ms-2"
-                data-bs-toggle="modal"
-                data-bs-target="#signalMappingModal"
-                hx-get="{% url 'workflows:workflow_signal_mapping_create' pk=workflow.pk %}?prefill_name={{ c.suggested_name|urlencode }}&prefill_path={{ c.path|urlencode }}"
-                hx-target="#signal-mapping-modal-content"
-                hx-trigger="click">
-          <i class="bi bi-plus me-1"></i>{% trans "Add" %}
-        </button>
-      </div>
-    {% endfor %}
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <p class="text-muted small mb-0">
+      {{ candidates|length }} {% trans "candidate signal" %}{{ candidates|pluralize }} {% trans "found" %}:
+    </p>
+    <button type="button"
+            class="btn btn-primary btn-sm"
+            id="bulk-add-btn"
+            style="display: none"
+            data-bulk-add-url="{% url 'workflows:workflow_signal_mapping_bulk_add' pk=workflow.pk %}">
+      {% trans "Bulk Add" %}
+    </button>
+  </div>
+  <div class="table-responsive overflow-auto flex-grow-1">
+    <table class="table table-sm align-middle mb-0" id="sample-data-table">
+      <thead class="sticky-top bg-white">
+        <tr>
+          <th class="text-center" style="width: 2rem;">
+            <input type="checkbox"
+                   class="form-check-input"
+                   id="select-all-candidates"
+                   title="{% trans 'Select all' %}" />
+          </th>
+          <th class="text-muted small">
+            {% trans "Signal Name" %}
+          </th>
+          <th class="text-muted small">
+            {% trans "Data Path" %}
+          </th>
+          <th class="text-muted small">
+            {% if from_schema %}
+              {% trans "Type" %}
+            {% else %}
+              {% trans "Sample Value" %}
+            {% endif %}
+          </th>
+          <th class="text-muted small">
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in candidates %}
+          <tr data-candidate-name="{{ c.suggested_name }}"
+              data-candidate-path="{{ c.path }}"
+              {% if c.already_added %}
+                data-already-added="true"
+              {% endif %}>
+            <td class="text-center">
+              {% if c.already_added %}
+                <input type="checkbox" class="form-check-input" disabled />
+              {% else %}
+                <input type="checkbox" class="form-check-input candidate-checkbox" />
+              {% endif %}
+            </td>
+            <td>
+              <code class="small">{{ c.suggested_name }}</code>
+            </td>
+            <td>
+              <code class="small text-muted">{{ c.path }}</code>
+            </td>
+            <td class="text-muted small text-truncate" style="max-width: 120px;">
+              {{ c.value }}
+            </td>
+            <td class="text-end">
+              {% if c.already_added %}
+                <span class="btn btn-sm btn-outline-secondary disabled">
+                  <i class="bi bi-check-lg me-1"></i>{% trans "Added" %}
+                </span>
+              {% else %}
+                <button type="button"
+                        class="btn btn-outline-primary btn-sm"
+                        data-bs-toggle="modal"
+                        data-bs-target="#signalMappingModal"
+                        hx-get="{% url 'workflows:workflow_signal_mapping_create' pk=workflow.pk %}?prefill_name={{ c.suggested_name|urlencode }}&prefill_path={{ c.path|urlencode }}"
+                        hx-target="#signal-mapping-modal-content"
+                        hx-trigger="click">
+                  <i class="bi bi-plus me-1"></i>{% trans "Add" %}
+                </button>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 {% else %}
   <p class="text-muted small mb-0">

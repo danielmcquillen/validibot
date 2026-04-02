@@ -3,15 +3,15 @@
 {% comment %}
 Signals tab content — shared partial for the "Signals" tab.
 
-Shows output signals with a "Show to User" column.
-An Edit button opens a modal to toggle which output signals appear
+Shows validator outputs with a "Show to User" column.
+An Edit button opens a modal to toggle which validator outputs appear
 in submission results.
 
 Context:
   outputs            - list of output SignalDefinition objects
   step               - the WorkflowStep
   workflow           - the parent Workflow
-  display_signals    - list of selected output signal contract_keys (from step.config)
+  display_signals    - list of selected output contract_keys (from step.config)
 {% endcomment %}
 {% if outputs %}
   <div class="d-flex justify-content-end mb-2">
@@ -22,7 +22,7 @@ Context:
             hx-get="{% org_url 'workflows:workflow_step_display_signals' workflow.pk step.pk %}"
             hx-target="#display-signals-modal-content"
             hx-trigger="click"
-            title="{% trans 'Edit which output signals are shown to users' %}">
+            title="{% trans 'Edit which validator outputs are shown to users' %}">
       <i class="bi bi-pencil me-1"></i>{% trans "Edit" %}
     </button>
   </div>
@@ -70,6 +70,6 @@ Context:
   </div>
 {% else %}
   <p class="text-muted mb-0">
-    {% trans "No signals registered yet." %}
+    {% trans "No validator outputs registered yet." %}
   </p>
 {% endif %}

@@ -38,9 +38,12 @@ from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
 from validibot.users.tests.utils import ensure_all_roles_exist
+from validibot.validations.constants import AssertionType
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import ValidationType
+from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import SignalDefinition
+from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.models import WorkflowSignalMapping
 from validibot.workflows.tests.factories import WorkflowFactory
@@ -729,6 +732,154 @@ class TestSignalMappingDeleteView(TestCase):
             WorkflowSignalMapping.objects.filter(pk=mapping.pk).exists(),
         )
 
+    def test_delete_blocked_when_signal_referenced_in_cel_assertion(self):
+        """Deleting a signal that is used in a CEL assertion must be
+        blocked with an error message listing the referencing assertions.
+
+        If we allowed deletion, the CEL expression would reference a
+        non-existent signal, causing runtime evaluation failures on
+        every validation run.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        mapping = WorkflowSignalMapping.objects.create(
+            workflow=workflow,
+            name="target_eui",
+            source_path="targets.max_eui",
+        )
+
+        # Create a step with an assertion that references s.target_eui
+        validator = ValidatorFactory(
+            org=workflow.org,
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        step = WorkflowStepFactory(
+            workflow=workflow,
+            validator=validator,
+            order=10,
+        )
+        ruleset = RulesetFactory(org=workflow.org)
+        step.ruleset = ruleset
+        step.save()
+        RulesetAssertion.objects.create(
+            ruleset=ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            rhs={"expr": "s.target_eui < 120"},
+            order=0,
+        )
+
+        url = reverse(
+            "workflows:workflow_signal_mapping_delete",
+            kwargs={"pk": workflow.pk, "mapping_id": mapping.pk},
+        )
+
+        response = self.client.post(url)
+
+        # Must NOT be deleted
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            WorkflowSignalMapping.objects.filter(pk=mapping.pk).exists(),
+        )
+        trigger = json.loads(response["HX-Trigger"])
+        self.assertIn("target_eui", trigger["toast"]["message"])
+
+    def test_delete_blocked_when_signal_referenced_in_when_expression(self):
+        """A signal used in a guard condition (when_expression) must
+        also block deletion.
+
+        Guard conditions gate when an assertion runs — a broken
+        reference would cause the guard evaluation to fail.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        mapping = WorkflowSignalMapping.objects.create(
+            workflow=workflow,
+            name="has_cooling",
+            source_path="systems.cooling.present",
+        )
+
+        validator = ValidatorFactory(
+            org=workflow.org,
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        step = WorkflowStepFactory(
+            workflow=workflow,
+            validator=validator,
+            order=10,
+        )
+        ruleset = RulesetFactory(org=workflow.org)
+        step.ruleset = ruleset
+        step.save()
+        RulesetAssertion.objects.create(
+            ruleset=ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            rhs={"expr": "output.cop > 3.0"},
+            when_expression="s.has_cooling == true",
+            order=0,
+        )
+
+        url = reverse(
+            "workflows:workflow_signal_mapping_delete",
+            kwargs={"pk": workflow.pk, "mapping_id": mapping.pk},
+        )
+
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            WorkflowSignalMapping.objects.filter(pk=mapping.pk).exists(),
+        )
+
+    def test_delete_allowed_when_signal_not_referenced(self):
+        """A signal that is NOT referenced in any assertion must be
+        deletable normally.
+
+        This ensures the safety check doesn't over-block: signals
+        with no references should still be removable.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        mapping = WorkflowSignalMapping.objects.create(
+            workflow=workflow,
+            name="unused_signal",
+            source_path="some.path",
+        )
+
+        # Create a step with an assertion that does NOT reference this signal
+        validator = ValidatorFactory(
+            org=workflow.org,
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        step = WorkflowStepFactory(
+            workflow=workflow,
+            validator=validator,
+            order=10,
+        )
+        ruleset = RulesetFactory(org=workflow.org)
+        step.ruleset = ruleset
+        step.save()
+        RulesetAssertion.objects.create(
+            ruleset=ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            rhs={"expr": "s.other_signal > 0"},
+            order=0,
+        )
+
+        url = reverse(
+            "workflows:workflow_signal_mapping_delete",
+            kwargs={"pk": workflow.pk, "mapping_id": mapping.pk},
+        )
+
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(
+            WorkflowSignalMapping.objects.filter(pk=mapping.pk).exists(),
+        )
+
 
 # ── Move signal mapping ──────────────────────────────────────────────
 # The move view swaps position values with the adjacent mapping.
@@ -1057,6 +1208,1016 @@ class TestSignalMappingSampleDataView(TestCase):
             "workflows/partials/sample_data_results.html",
         )
         self.assertContains(response, "temperature")
+
+
+# ── Bulk add signal mappings ─────────────────────────────────────────
+# The bulk add endpoint creates multiple signal mappings in one
+# request from checked candidates in the sample data results table.
+
+
+class TestSignalMappingBulkAddView(TestCase):
+    """Tests for the WorkflowSignalMappingBulkAddView POST endpoint.
+
+    The bulk add view accepts a JSON array of {name, source_path} pairs
+    and creates WorkflowSignalMapping rows for each valid entry.  Invalid
+    entries are collected and reported.  This powers the "Bulk Add
+    Selected" button in the sample data results table.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        ensure_all_roles_exist()
+
+    def _bulk_add_url(self, workflow):
+        return reverse(
+            "workflows:workflow_signal_mapping_bulk_add",
+            kwargs={"pk": workflow.pk},
+        )
+
+    def test_bulk_add_creates_multiple_mappings(self):
+        """POST with a valid JSON array of candidates must create one
+        WorkflowSignalMapping per entry and return signals-changed.
+
+        This is the happy path for bulk-adding signals from the sample
+        data table.  All entries are valid CEL identifiers and unique.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+
+        candidates = [
+            {"name": "temperature", "source_path": "sensors.temp"},
+            {"name": "humidity", "source_path": "sensors.humidity"},
+            {"name": "pressure", "source_path": "sensors.pressure"},
+        ]
+
+        response = self.client.post(
+            self._bulk_add_url(workflow),
+            json.dumps(candidates),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertIn("signals-changed", response["HX-Trigger"])
+        self.assertEqual(
+            WorkflowSignalMapping.objects.filter(workflow=workflow).count(),
+            3,
+        )
+        names = set(
+            WorkflowSignalMapping.objects.filter(
+                workflow=workflow,
+            ).values_list("name", flat=True),
+        )
+        self.assertEqual(names, {"temperature", "humidity", "pressure"})
+
+    def test_bulk_add_assigns_sequential_positions(self):
+        """Bulk-added mappings must get incrementing positions so they
+        appear in order in the signal table.
+
+        If positions collide, the mapping table display order becomes
+        non-deterministic.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        # Pre-existing mapping at position 10
+        WorkflowSignalMapping.objects.create(
+            workflow=workflow,
+            name="existing",
+            source_path="a.b",
+            position=10,
+        )
+
+        candidates = [
+            {"name": "alpha", "source_path": "x.alpha"},
+            {"name": "beta", "source_path": "x.beta"},
+        ]
+        self.client.post(
+            self._bulk_add_url(workflow),
+            json.dumps(candidates),
+            content_type="application/json",
+        )
+
+        positions = list(
+            WorkflowSignalMapping.objects.filter(
+                workflow=workflow,
+            )
+            .order_by("position")
+            .values_list("position", flat=True),
+        )
+        # existing=10, alpha=20, beta=30
+        self.assertEqual(positions, [10, 20, 30])
+
+    def test_bulk_add_rejects_invalid_names(self):
+        """POST with invalid CEL identifiers must return 400 with error
+        details when no valid candidates remain.
+
+        This ensures that malformed signal names from user-edited data
+        do not create broken mappings that would fail at CEL parse time.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+
+        candidates = [
+            {"name": "123bad", "source_path": "a.b"},
+            {"name": "payload", "source_path": "c.d"},
+        ]
+
+        response = self.client.post(
+            self._bulk_add_url(workflow),
+            json.dumps(candidates),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.content)
+        self.assertEqual(data["created"], 0)
+        self.assertEqual(len(data["errors"]), 2)
+        self.assertEqual(
+            WorkflowSignalMapping.objects.filter(workflow=workflow).count(),
+            0,
+        )
+
+    def test_bulk_add_partial_success(self):
+        """When some candidates are valid and some invalid, the valid
+        ones must be created and errors reported for the rest.
+
+        The response includes both a created count and an errors array
+        so the frontend can report which signals were skipped and why.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+
+        candidates = [
+            {"name": "good_one", "source_path": "a.b"},
+            {"name": "123bad", "source_path": "c.d"},
+            {"name": "good_two", "source_path": "e.f"},
+        ]
+
+        response = self.client.post(
+            self._bulk_add_url(workflow),
+            json.dumps(candidates),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["created"], 2)
+        self.assertEqual(len(data["errors"]), 1)
+        self.assertIn("signals-changed", response["HX-Trigger"])
+        self.assertEqual(
+            WorkflowSignalMapping.objects.filter(workflow=workflow).count(),
+            2,
+        )
+
+    def test_bulk_add_rejects_duplicates_within_batch(self):
+        """If the same name appears twice in a single bulk request,
+        the second occurrence must be rejected as a duplicate.
+
+        This prevents creating two mappings with the same name which
+        would violate the unique (workflow, name) constraint.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+
+        candidates = [
+            {"name": "temperature", "source_path": "a.b"},
+            {"name": "temperature", "source_path": "c.d"},
+        ]
+
+        response = self.client.post(
+            self._bulk_add_url(workflow),
+            json.dumps(candidates),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["created"], 1)
+        self.assertEqual(len(data["errors"]), 1)
+        self.assertIn("Duplicate", data["errors"][0]["error"])
+
+    def test_bulk_add_rejects_names_already_in_workflow(self):
+        """Names that already exist as mappings in the workflow must
+        be rejected to prevent uniqueness constraint violations.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        WorkflowSignalMapping.objects.create(
+            workflow=workflow,
+            name="existing",
+            source_path="old.path",
+        )
+
+        candidates = [
+            {"name": "existing", "source_path": "new.path"},
+            {"name": "fresh", "source_path": "another.path"},
+        ]
+
+        response = self.client.post(
+            self._bulk_add_url(workflow),
+            json.dumps(candidates),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertEqual(data["created"], 1)
+        self.assertEqual(len(data["errors"]), 1)
+
+    def test_bulk_add_empty_array_returns_400(self):
+        """POST with an empty array must return 400.
+
+        The frontend disables the button when no checkboxes are checked,
+        but a direct API call could still send an empty array.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+
+        response = self.client.post(
+            self._bulk_add_url(workflow),
+            json.dumps([]),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_bulk_add_invalid_json_returns_400(self):
+        """POST with non-JSON body must return 400.
+
+        This guards against malformed requests from buggy clients.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+
+        response = self.client.post(
+            self._bulk_add_url(workflow),
+            "not json {{{",
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_bulk_add_requires_manage_permission(self):
+        """An executor must not be able to bulk-add signal mappings.
+
+        Bulk add is a workflow authoring action, same as single-add.
+        """
+        workflow = WorkflowFactory()
+        executor = UserFactory()
+        grant_role(executor, workflow.org, RoleCode.EXECUTOR)
+        executor.set_current_org(workflow.org)
+        self.client.force_login(executor)
+        session = self.client.session
+        session["active_org_id"] = workflow.org_id
+        session.save()
+
+        candidates = [
+            {"name": "temperature", "source_path": "sensors.temp"},
+        ]
+
+        response = self.client.post(
+            self._bulk_add_url(workflow),
+            json.dumps(candidates),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            WorkflowSignalMapping.objects.filter(workflow=workflow).count(),
+            0,
+        )
+
+    def test_bulk_add_uses_default_on_missing_error(self):
+        """Bulk-added mappings must default to on_missing='error'.
+
+        The bulk add endpoint skips the full form and uses safe defaults.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+
+        candidates = [
+            {"name": "temp", "source_path": "sensors.temp"},
+        ]
+        self.client.post(
+            self._bulk_add_url(workflow),
+            json.dumps(candidates),
+            content_type="application/json",
+        )
+
+        mapping = WorkflowSignalMapping.objects.get(workflow=workflow)
+        self.assertEqual(mapping.on_missing, "error")
+        self.assertEqual(mapping.data_type, "")
+        self.assertIsNone(mapping.default_value)
+
+    def test_bulk_add_via_form_data(self):
+        """POST with candidates as a form field (the HTMx path) must
+        create mappings identically to the JSON body path.
+
+        The frontend uses htmx.ajax() which sends form-encoded data.
+        The view accepts the candidates JSON string from either
+        request.POST['candidates'] or the raw request body.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+
+        candidates = [
+            {"name": "temperature", "source_path": "sensors.temp"},
+            {"name": "humidity", "source_path": "sensors.humidity"},
+        ]
+
+        response = self.client.post(
+            self._bulk_add_url(workflow),
+            {"candidates": json.dumps(candidates)},
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertIn("signals-changed", response["HX-Trigger"])
+        self.assertEqual(
+            WorkflowSignalMapping.objects.filter(workflow=workflow).count(),
+            2,
+        )
+
+
+# ── Sample data already-added detection ──────────────────────────────
+# When re-parsing sample data, candidates whose source_path already
+# matches an existing mapping should be flagged as already_added.
+
+
+class TestSampleDataAlreadyAdded(TestCase):
+    """Tests for the already_added flag on sample data candidates.
+
+    When a user re-parses sample data after adding some signals, the
+    results table should show 'Added' (disabled) for paths that match
+    existing mappings, rather than offering a _2-suffixed duplicate.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        ensure_all_roles_exist()
+
+    def test_existing_path_marked_as_already_added(self):
+        """Candidates whose source_path matches an existing mapping
+        must have already_added=True in the response.
+
+        This prevents the confusing UX where re-parsing offers
+        'width_2' when 'width' with path 'dimensions.width' is
+        already mapped.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        WorkflowSignalMapping.objects.create(
+            workflow=workflow,
+            name="width",
+            source_path="dimensions.width",
+        )
+        url = reverse(
+            "workflows:workflow_signal_mapping_sample_data",
+            kwargs={"pk": workflow.pk},
+        )
+
+        sample = json.dumps(
+            {
+                "dimensions": {"width": 3.5, "height": 1.2},
+            }
+        )
+        response = self.client.post(url, {"sample_data": sample})
+
+        data = json.loads(response.content)
+        candidates_by_path = {c["path"]: c for c in data["candidates"]}
+
+        # width is already mapped — should be flagged
+        self.assertTrue(candidates_by_path["dimensions.width"]["already_added"])
+        # height is not mapped — should not be flagged
+        self.assertFalse(candidates_by_path["dimensions.height"]["already_added"])
+
+    def test_existing_path_not_reduplicated(self):
+        """An already-added candidate must keep its original suggested
+        name (not get a _2 suffix) because the Add button will be
+        disabled anyway.
+
+        The old behaviour was to suffix 'width' → 'width_2' because
+        the name collided with an existing mapping. But since we now
+        show 'Added' instead, the name collision is informational only.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        WorkflowSignalMapping.objects.create(
+            workflow=workflow,
+            name="rating",
+            source_path="rating",
+        )
+        url = reverse(
+            "workflows:workflow_signal_mapping_sample_data",
+            kwargs={"pk": workflow.pk},
+        )
+
+        sample = json.dumps({"rating": 95})
+        response = self.client.post(url, {"sample_data": sample})
+
+        data = json.loads(response.content)
+        self.assertEqual(len(data["candidates"]), 1)
+        candidate = data["candidates"][0]
+        self.assertTrue(candidate["already_added"])
+        # The name should still get the suffix from dedup logic,
+        # but the important thing is already_added is True
+        # and the UI will show "Added" instead of "Add"
+
+    def test_htmx_response_shows_added_badge(self):
+        """The HTMx HTML partial must render a disabled 'Added' badge
+        for already-added candidates instead of the '+ Add' button.
+
+        This verifies the template-level rendering, not just the data.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        WorkflowSignalMapping.objects.create(
+            workflow=workflow,
+            name="width",
+            source_path="dimensions.width",
+        )
+        url = reverse(
+            "workflows:workflow_signal_mapping_sample_data",
+            kwargs={"pk": workflow.pk},
+        )
+
+        sample = json.dumps({"dimensions": {"width": 3.5, "height": 1.2}})
+        response = self.client.post(
+            url,
+            {"sample_data": sample},
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        # The already-added row should show "Added" text
+        self.assertIn("Added", content)
+        # The not-yet-added row should still have an Add button
+        self.assertIn("btn-outline-primary", content)
+
+    def test_htmx_response_has_checkbox_structure(self):
+        """The HTMx HTML partial must include checkbox inputs for
+        candidate selection and a bulk add button.
+
+        These are structural requirements for the new sample data
+        table UI with select-all and bulk add functionality.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_signal_mapping_sample_data",
+            kwargs={"pk": workflow.pk},
+        )
+
+        sample = json.dumps({"temperature": 22.5, "humidity": 45})
+        response = self.client.post(
+            url,
+            {"sample_data": sample},
+            headers={"hx-request": "true"},
+        )
+
+        content = response.content.decode()
+        self.assertIn("select-all-candidates", content)
+        self.assertIn("candidate-checkbox", content)
+        self.assertIn("bulk-add-btn", content)
+
+    def test_already_added_checkbox_is_disabled(self):
+        """Already-added candidates must have a disabled checkbox so
+        they cannot be selected for bulk add.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        WorkflowSignalMapping.objects.create(
+            workflow=workflow,
+            name="temperature",
+            source_path="temperature",
+        )
+        url = reverse(
+            "workflows:workflow_signal_mapping_sample_data",
+            kwargs={"pk": workflow.pk},
+        )
+
+        sample = json.dumps({"temperature": 22.5, "humidity": 45})
+        response = self.client.post(
+            url,
+            {"sample_data": sample},
+            headers={"hx-request": "true"},
+        )
+
+        content = response.content.decode()
+        # The response must have data-already-added attribute on the row
+        self.assertIn('data-already-added="true"', content)
+
+
+# ── JSON Schema sample data ────────────────────────────────────────────
+# When the pasted JSON is a JSON Schema (has $schema or looks like one),
+# the view extracts signal candidate paths from the schema's property
+# structure instead of treating schema keywords as data values.
+
+
+class TestSampleDataJsonSchema(TestCase):
+    """Tests for JSON Schema detection and signal path extraction.
+
+    When a user pastes a JSON Schema instead of raw sample data, the
+    sample data view should detect the schema and extract property paths
+    as signal candidates, with type information in the value column
+    instead of actual data values.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        ensure_all_roles_exist()
+
+    def _post_sample(self, workflow, sample_text):
+        """POST sample data as JSON API request and return parsed body."""
+        url = reverse(
+            "workflows:workflow_signal_mapping_sample_data",
+            kwargs={"pk": workflow.pk},
+        )
+        response = self.client.post(url, {"sample_data": sample_text})
+        self.assertEqual(response.status_code, 200)
+        return json.loads(response.content)
+
+    def test_schema_with_dollar_schema_detected(self):
+        """A JSON object with $schema key should be treated as a schema,
+        not as raw data with $schema as a data field.
+
+        Without schema detection, $schema, type, properties, etc. would
+        appear as leaf data values, which is useless for signal mapping.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        schema = json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "price": {"type": "number"},
+                    "name": {"type": "string"},
+                },
+            },
+        )
+        body = self._post_sample(workflow, schema)
+
+        paths = {c["path"] for c in body["candidates"]}
+        self.assertIn("price", paths)
+        self.assertIn("name", paths)
+        # Schema keywords should NOT appear as candidates
+        self.assertNotIn("$schema", paths)
+        self.assertNotIn("type", paths)
+
+    def test_schema_heuristic_without_dollar_schema(self):
+        """A schema without $schema but with type/properties structure
+        should still be detected via heuristic.
+
+        Many real-world schemas omit the $schema field, so the heuristic
+        (type: object + properties with schema-like values) must catch them.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        schema = json.dumps(
+            {
+                "type": "object",
+                "properties": {
+                    "temperature": {"type": "number"},
+                    "unit": {"type": "string"},
+                },
+            },
+        )
+        body = self._post_sample(workflow, schema)
+
+        paths = {c["path"] for c in body["candidates"]}
+        self.assertIn("temperature", paths)
+        self.assertIn("unit", paths)
+
+    def test_raw_data_not_misidentified_as_schema(self):
+        """A JSON object that coincidentally has 'type' and 'properties'
+        keys but contains actual data must NOT be treated as a schema.
+
+        This guards against false positives: real data can have fields
+        named 'type' or 'properties' without being a JSON Schema.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        data = json.dumps(
+            {
+                "type": "building",
+                "properties": {"name": "Tower A", "floors": 12},
+            },
+        )
+        body = self._post_sample(workflow, data)
+
+        paths = {c["path"] for c in body["candidates"]}
+        # Raw data — leaf values should be extracted
+        self.assertIn("type", paths)
+        self.assertIn("properties.name", paths)
+        self.assertIn("properties.floors", paths)
+
+    def test_flat_schema_extracts_leaf_properties(self):
+        """A simple flat schema should produce one candidate per property.
+
+        Each candidate should have a path matching the property name, a
+        type-based value display, and a sanitized suggested name.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        schema = json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "sku": {"type": "string"},
+                    "price": {"type": "number"},
+                    "rating": {"type": "integer"},
+                    "in_stock": {"type": "boolean"},
+                },
+            },
+        )
+        body = self._post_sample(workflow, schema)
+
+        candidates = {c["path"]: c for c in body["candidates"]}
+        self.assertEqual(candidates["sku"]["value"], "string")
+        self.assertEqual(candidates["price"]["value"], "number")
+        self.assertEqual(candidates["rating"]["value"], "integer")
+        self.assertEqual(candidates["in_stock"]["value"], "boolean")
+
+    def test_nested_object_recurses(self):
+        """Properties inside nested objects should produce dot-notation paths.
+
+        A property like dimensions.width should appear when dimensions is
+        type: object with its own properties.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        schema = json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "dimensions": {
+                        "type": "object",
+                        "properties": {
+                            "width": {"type": "number"},
+                            "height": {"type": "number"},
+                        },
+                    },
+                },
+            },
+        )
+        body = self._post_sample(workflow, schema)
+
+        paths = {c["path"] for c in body["candidates"]}
+        self.assertIn("dimensions.width", paths)
+        self.assertIn("dimensions.height", paths)
+        # The parent object itself should NOT be a candidate
+        self.assertNotIn("dimensions", paths)
+
+    def test_array_of_objects_uses_bracket_notation(self):
+        """Array items with type: object should produce paths with [0] index.
+
+        This matches the convention used for raw data arrays, so signal
+        data paths from schemas are consistent with sample data paths.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        schema = json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "value": {"type": "number"},
+                            },
+                        },
+                    },
+                },
+            },
+        )
+        body = self._post_sample(workflow, schema)
+
+        paths = {c["path"] for c in body["candidates"]}
+        self.assertIn("items[0].name", paths)
+        self.assertIn("items[0].value", paths)
+
+    def test_array_of_scalars_single_candidate(self):
+        """An array of scalars (e.g. tags: array of strings) should produce
+        a single candidate for the array, not per-element candidates.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        schema = json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+            },
+        )
+        body = self._post_sample(workflow, schema)
+
+        paths = [c["path"] for c in body["candidates"]]
+        self.assertEqual(paths, ["tags"])
+        self.assertEqual(
+            body["candidates"][0]["value"],
+            "array of strings",
+        )
+
+    def test_allof_then_branches_extracted(self):
+        """Properties declared inside allOf/if/then branches should be
+        extracted as candidates.
+
+        This is critical for schemas like SysML v2 where different
+        member types declare their properties via conditional branches.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        schema = json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                },
+                "allOf": [
+                    {
+                        "if": {
+                            "properties": {
+                                "kind": {"const": "sensor"},
+                            },
+                        },
+                        "then": {
+                            "properties": {
+                                "reading": {"type": "number"},
+                                "unit": {"type": "string"},
+                            },
+                        },
+                    },
+                ],
+            },
+        )
+        body = self._post_sample(workflow, schema)
+
+        paths = {c["path"] for c in body["candidates"]}
+        self.assertIn("name", paths)
+        self.assertIn("reading", paths)
+        self.assertIn("unit", paths)
+        # The 'kind' from the if-branch discriminator should not appear
+        # (it's inside the if condition, not then)
+
+    def test_discriminator_fields_skipped(self):
+        """Properties starting with @ that have only const/enum should be
+        filtered as structural discriminators.
+
+        In SysML v2 and JSON-LD schemas, @type and @id are metadata
+        fields that define what kind of object something is, not data
+        values worth mapping to signals.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        schema = json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "@type": {"const": "sysml:Package"},
+                    "@id": {"type": "string"},
+                    "name": {"type": "string"},
+                },
+            },
+        )
+        body = self._post_sample(workflow, schema)
+
+        paths = {c["path"] for c in body["candidates"]}
+        self.assertNotIn("@type", paths)
+        self.assertNotIn("@id", paths)
+        self.assertIn("name", paths)
+
+    def test_const_and_enum_display(self):
+        """Properties with const or enum should display the constraint
+        value in the value column rather than the type.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        schema = json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "version": {"const": "2.0"},
+                    "status": {
+                        "enum": ["draft", "active", "archived"],
+                    },
+                },
+            },
+        )
+        body = self._post_sample(workflow, schema)
+
+        candidates = {c["path"]: c for c in body["candidates"]}
+        self.assertEqual(candidates["version"]["value"], "const: 2.0")
+        self.assertEqual(
+            candidates["status"]["value"],
+            "enum: [draft, active, archived]",
+        )
+
+    def test_dedup_paths_across_branches(self):
+        """When multiple allOf/then branches declare the same path, only
+        the first occurrence should be kept.
+
+        This prevents duplicate candidates when a property appears in
+        multiple conditional branches of the schema.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        schema = json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "allOf": [
+                    {"properties": {"name": {"type": "string"}}},
+                    {"properties": {"name": {"type": "string"}}},
+                ],
+            },
+        )
+        body = self._post_sample(workflow, schema)
+
+        name_paths = [c for c in body["candidates"] if c["path"] == "name"]
+        self.assertEqual(len(name_paths), 1)
+
+    def test_thermal_radiator_schema(self):
+        """The SysML v2 thermal radiator schema should produce meaningful
+        signal candidates from its conditional branches.
+
+        This is the real-world use case that motivated this feature:
+        users have a JSON Schema for their SysML model and want to
+        extract signal paths without needing raw sample data.
+        """
+        import pathlib
+
+        schema_path = (
+            pathlib.Path(__file__).resolve().parents[3]
+            / "tests"
+            / "assets"
+            / "sysml_v2"
+            / "radiator_example"
+            / "thermal_radiator_schema.json"
+        )
+        schema_text = schema_path.read_text()
+
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+
+        body = self._post_sample(workflow, schema_text)
+
+        paths = {c["path"] for c in body["candidates"]}
+        # Top-level properties (minus @type/@id discriminators)
+        self.assertIn("name", paths)
+        # From PartDefinition then branch
+        self.assertIn(
+            "ownedMember[0].ownedAttribute[0].name",
+            paths,
+        )
+        self.assertIn(
+            "ownedMember[0].ownedAttribute[0].defaultValue",
+            paths,
+        )
+        self.assertIn(
+            "ownedMember[0].ownedAttribute[0].unit",
+            paths,
+        )
+        # @type should be filtered as discriminator
+        self.assertNotIn("@type", paths)
+
+    def test_htmx_schema_shows_type_column_header(self):
+        """When sample data is a schema, the HTMx partial should render
+        'Type' as the column header instead of 'Sample Value'.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_signal_mapping_sample_data",
+            kwargs={"pk": workflow.pk},
+        )
+        schema = json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {"price": {"type": "number"}},
+            },
+        )
+
+        response = self.client.post(
+            url,
+            {"sample_data": schema},
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("Type", content)
+        self.assertNotIn("Sample Value", content)
+
+    def test_nullable_type_array_handled(self):
+        """A type specified as an array (e.g. ["string", "null"]) should
+        resolve to the non-null type for display purposes.
+
+        This is common in schemas that allow nullable fields.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        schema = json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "middle_name": {"type": ["string", "null"]},
+                },
+            },
+        )
+        body = self._post_sample(workflow, schema)
+
+        candidates = {c["path"]: c for c in body["candidates"]}
+        self.assertEqual(candidates["middle_name"]["value"], "string")
+
+
+# ── Create modal close on success ─────────────────────────────────────
+# The create view must include close-modal in the HX-Trigger header
+# so the modal auto-dismisses after a successful save.
+
+
+class TestSignalMappingCreateModalClose(TestCase):
+    """Tests verifying that the create view's success response includes
+    the close-modal event needed for the modal to auto-dismiss.
+
+    Without the close-modal trigger, the modal stays open after saving
+    and the user has to manually click Cancel or the X button, which
+    is confusing after a successful operation.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        ensure_all_roles_exist()
+
+    def test_create_success_includes_close_modal(self):
+        """A successful create POST must return HX-Trigger with
+        close-modal set to 'signalMappingModal'.
+
+        This triggers the global close-modal event listener to
+        programmatically dismiss the Bootstrap modal.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_signal_mapping_create",
+            kwargs={"pk": workflow.pk},
+        )
+
+        response = self.client.post(
+            url,
+            {
+                "name": "temperature",
+                "source_path": "sensors.temp",
+                "on_missing": "error",
+                "default_value": "",
+                "data_type": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 204)
+        trigger = json.loads(response["HX-Trigger"])
+        self.assertEqual(trigger["close-modal"], "signalMappingModal")
+
+    def test_create_validation_error_does_not_close_modal(self):
+        """A failed create POST (validation error) must NOT include
+        close-modal, so the modal stays open showing the errors.
+
+        If we closed the modal on validation error, the user would
+        lose their form input and never see the error message.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_signal_mapping_create",
+            kwargs={"pk": workflow.pk},
+        )
+
+        response = self.client.post(
+            url,
+            {
+                "name": "123invalid",
+                "source_path": "sensors.temp",
+                "on_missing": "error",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("HX-Trigger", response)
 
 
 # ── Output promotion ──────────────────────────────────────────────────

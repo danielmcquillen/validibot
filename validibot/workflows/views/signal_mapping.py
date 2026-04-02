@@ -39,6 +39,7 @@ from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic.edit import FormView
@@ -51,6 +52,42 @@ from validibot.workflows.models import WorkflowSignalMapping
 logger = logging.getLogger(__name__)
 
 MAX_FORMATTED_VALUE_LENGTH = 50
+MAX_ENUM_PREVIEW_ITEMS = 5
+
+# JSON Schema keywords used to detect whether pasted JSON is a schema
+# rather than raw sample data.
+_SCHEMA_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "type",
+        "const",
+        "enum",
+        "items",
+        "properties",
+        "$ref",
+        "allOf",
+        "anyOf",
+        "oneOf",
+        "if",
+        "then",
+        "else",
+        "required",
+        "pattern",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "minLength",
+        "maxLength",
+        "minItems",
+        "maxItems",
+        "additionalProperties",
+        "$defs",
+        "definitions",
+        "format",
+    }
+)
+
+_MAX_SCHEMA_DEPTH = 20
 
 
 class WorkflowSignalMappingView(WorkflowObjectMixin, View):
@@ -81,6 +118,21 @@ class WorkflowSignalMappingView(WorkflowObjectMixin, View):
             "workflow": workflow,
             "mappings": mappings,
             "can_manage_workflow": self.user_can_manage_workflow(),
+            "page_help_slug": "signal-mapping",
+            "breadcrumbs": [
+                {
+                    "name": _("Workflows"),
+                    "url": reverse("workflows:workflow_list"),
+                },
+                {
+                    "name": workflow.name,
+                    "url": reverse(
+                        "workflows:workflow_detail",
+                        kwargs={"pk": workflow.pk},
+                    ),
+                },
+                {"name": _("Signals"), "url": ""},
+            ],
         }
 
         # HTMx partial refresh — return just the table partial
@@ -260,8 +312,77 @@ class WorkflowSignalMappingEditView(WorkflowObjectMixin, FormView):
         )
 
 
+def _find_signal_references(workflow, signal_name: str) -> list[str]:
+    """Find assertions in this workflow that reference a signal by name.
+
+    Searches CEL expressions (``rhs["expr"]``), cached CEL previews
+    (``cel_cache``), and guard conditions (``when_expression``) for
+    the patterns ``s.<name>`` or ``signal.<name>``.
+
+    Returns a list of human-readable descriptions of where the signal
+    is referenced (e.g. "Step 1: My Step — assertion 'Check EUI'").
+    """
+    from validibot.validations.models import RulesetAssertion
+
+    # Match s.name or signal.name as a whole word
+    pattern = re.compile(
+        rf"\b(?:s|signal)\.{re.escape(signal_name)}\b",
+    )
+
+    # Collect all step-level ruleset IDs for this workflow
+    steps = workflow.steps.select_related("ruleset", "validator").all()
+    ruleset_to_step: dict[int, Any] = {}
+    for step in steps:
+        if step.ruleset_id:
+            ruleset_to_step[step.ruleset_id] = step
+        if step.validator_id and hasattr(step.validator, "default_ruleset"):
+            default_rs = step.validator.default_ruleset
+            if default_rs:
+                ruleset_to_step.setdefault(default_rs.pk, step)
+
+    if not ruleset_to_step:
+        return []
+
+    assertions = RulesetAssertion.objects.filter(
+        ruleset_id__in=ruleset_to_step.keys(),
+    )
+
+    references: list[str] = []
+    for assertion in assertions:
+        texts_to_check = []
+
+        # CEL expression assertions store the expression in rhs["expr"]
+        if isinstance(assertion.rhs, dict) and assertion.rhs.get("expr"):
+            texts_to_check.append(assertion.rhs["expr"])
+
+        # Basic assertions have a cached CEL preview
+        if assertion.cel_cache:
+            texts_to_check.append(assertion.cel_cache)
+
+        # Guard conditions
+        if assertion.when_expression:
+            texts_to_check.append(assertion.when_expression)
+
+        for text in texts_to_check:
+            if pattern.search(text):
+                step = ruleset_to_step.get(assertion.ruleset_id)
+                step_label = (
+                    f"Step {step.step_number}: {step.name}" if step else "Unknown step"
+                )
+                assertion_label = str(assertion)
+                references.append(f'{step_label} — "{assertion_label}"')
+                break  # One match per assertion is enough
+
+    return references
+
+
 class WorkflowSignalMappingDeleteView(WorkflowObjectMixin, View):
-    """Delete a signal mapping."""
+    """Delete a signal mapping.
+
+    Before deleting, checks whether the signal is referenced in any
+    CEL assertion within the workflow.  If it is, the delete is blocked
+    and the user is told which assertions reference it.
+    """
 
     def post(self, request, *args, **kwargs):
         if not self.user_can_manage_workflow():
@@ -272,6 +393,24 @@ class WorkflowSignalMappingDeleteView(WorkflowObjectMixin, View):
             pk=self.kwargs.get("mapping_id"),
             workflow=workflow,
         )
+
+        # Check for references in CEL assertions
+        references = _find_signal_references(workflow, mapping.name)
+        if references:
+            ref_list = "; ".join(references)
+            error_msg = _(
+                "Cannot delete signal '%(name)s' — it is referenced in: "
+                "%(refs)s. Remove the references first."
+            ) % {"name": mapping.name, "refs": ref_list}
+            return hx_trigger_response(
+                message=str(error_msg),
+                level="error",
+                status_code=200,
+                close_modal=None,
+                extra_payload={"signals-changed": False},
+                include_steps_changed=False,
+            )
+
         mapping.delete()
         messages.success(request, _("Signal removed."))
         return hx_trigger_response(
@@ -339,17 +478,155 @@ class WorkflowSignalMappingMoveView(WorkflowObjectMixin, View):
         )
 
 
+class WorkflowSignalMappingBulkAddView(WorkflowObjectMixin, View):
+    """POST: Bulk-create signal mappings from sample data candidates.
+
+    Accepts a JSON array of ``{name, source_path}`` pairs (the checked
+    rows from the sample data results table) and creates one
+    ``WorkflowSignalMapping`` per entry using default values for
+    ``on_missing`` ("error") and ``data_type`` ("").
+
+    Each candidate is validated individually: names must be valid CEL
+    identifiers, not reserved, and unique within the workflow.  Invalid
+    candidates are collected and reported back.  Valid candidates are
+    created in a single atomic transaction so the operation is
+    all-or-nothing for the valid subset.
+
+    Returns an HTMx response with ``signals-changed`` on success, or
+    a JSON error payload describing which candidates failed.
+    """
+
+    def post(self, request, pk):
+        workflow = self.get_workflow()
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+
+        # Accept candidates as a JSON string in POST form data or
+        # as the raw JSON request body (for API consumers).
+        raw = request.POST.get("candidates", "") or request.body.decode()
+        try:
+            candidates = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return HttpResponse(
+                json.dumps({"error": "Invalid JSON."}),
+                content_type="application/json",
+                status=HTTPStatus.BAD_REQUEST,
+            )
+
+        if not isinstance(candidates, list) or not candidates:
+            return HttpResponse(
+                json.dumps({"error": "Expected a non-empty JSON array."}),
+                content_type="application/json",
+                status=HTTPStatus.BAD_REQUEST,
+            )
+
+        from validibot.validations.services.signal_resolution import (
+            validate_signal_name,
+        )
+        from validibot.validations.services.signal_resolution import (
+            validate_signal_name_unique,
+        )
+
+        errors: list[dict[str, Any]] = []
+        valid: list[dict[str, str]] = []
+        seen_names: set[str] = set()
+
+        for candidate in candidates:
+            name = (candidate.get("name") or "").strip()
+            source_path = (candidate.get("source_path") or "").strip()
+
+            if not name or not source_path:
+                errors.append(
+                    {"name": name, "error": "Name and source_path are required."},
+                )
+                continue
+
+            name_errors = validate_signal_name(name)
+            if name_errors:
+                errors.append({"name": name, "error": " ".join(name_errors)})
+                continue
+
+            if name in seen_names:
+                errors.append(
+                    {"name": name, "error": f"Duplicate name '{name}' in this batch."},
+                )
+                continue
+
+            unique_errors = validate_signal_name_unique(
+                workflow_id=workflow.pk,
+                name=name,
+            )
+            if unique_errors:
+                errors.append({"name": name, "error": " ".join(unique_errors)})
+                continue
+
+            seen_names.add(name)
+            valid.append({"name": name, "source_path": source_path})
+
+        if errors and not valid:
+            return HttpResponse(
+                json.dumps({"errors": errors, "created": 0}),
+                content_type="application/json",
+                status=HTTPStatus.BAD_REQUEST,
+            )
+
+        # Determine starting position
+        last_position = (
+            WorkflowSignalMapping.objects.filter(workflow=workflow)
+            .order_by("-position")
+            .values_list("position", flat=True)
+            .first()
+        ) or 0
+
+        with transaction.atomic():
+            for i, entry in enumerate(valid):
+                WorkflowSignalMapping.objects.create(
+                    workflow=workflow,
+                    name=entry["name"],
+                    source_path=entry["source_path"],
+                    on_missing="error",
+                    data_type="",
+                    position=last_position + (i + 1) * 10,
+                )
+
+        if errors:
+            # Partial success: some created, some failed
+            response = HttpResponse(
+                json.dumps(
+                    {
+                        "created": len(valid),
+                        "errors": errors,
+                    }
+                ),
+                content_type="application/json",
+                status=HTTPStatus.OK,
+            )
+            response["HX-Trigger"] = json.dumps({"signals-changed": True})
+            return response
+
+        return hx_trigger_response(
+            message=_("%(count)d signal(s) added.") % {"count": len(valid)},
+            close_modal=None,
+            extra_payload={"signals-changed": True},
+            include_steps_changed=False,
+        )
+
+
 # ── Sample data endpoint ─────────────────────────────────────────────
 # Accepts pasted JSON/XML, traverses the structure, and returns
 # candidate signal mappings.
 
 
 class WorkflowSignalMappingSampleDataView(WorkflowObjectMixin, View):
-    """POST: Parse sample JSON/XML data and return candidate signals.
+    """POST: Parse sample JSON/XML/Schema data and return candidate signals.
 
-    Accepts pasted sample data, traverses the structure to find all
-    leaf values, and returns a list of candidate signal mappings with
-    suggested names derived from the leaf key.
+    Accepts pasted sample data (raw JSON, XML, or a JSON Schema),
+    traverses the structure to find all leaf values or schema properties,
+    and returns a list of candidate signal mappings with suggested names.
+
+    When the pasted JSON looks like a JSON Schema (has ``$schema`` key or
+    matches a heuristic), property paths are extracted from the schema
+    structure instead of treating schema keywords as data values.
 
     Returns an HTML partial for HTMx requests, or JSON for API
     backward compatibility.
@@ -387,20 +664,34 @@ class WorkflowSignalMappingSampleDataView(WorkflowObjectMixin, View):
                     status=400,
                 )
 
-        # Get existing signal names to avoid duplicates
-        existing_names = set(
-            WorkflowSignalMapping.objects.filter(
-                workflow=workflow,
-            ).values_list("name", flat=True),
+        # Get existing mappings to detect already-added candidates
+        existing_mappings = WorkflowSignalMapping.objects.filter(
+            workflow=workflow,
         )
+        existing_paths = {m.source_path for m in existing_mappings}
+        existing_names = {m.name for m in existing_mappings}
 
-        # Traverse and collect leaf paths
+        # Traverse and collect leaf paths (or schema property paths)
         candidates: list[dict[str, Any]] = []
-        self._collect_leaves(data, "", candidates)
+        from_schema = isinstance(data, dict) and self._looks_like_json_schema(data)
+        if from_schema:
+            self._collect_schema_paths(data, "", candidates)
+        else:
+            self._collect_leaves(data, "", candidates)
 
-        # Deduplicate suggested names
+        # Mark already-added candidates and deduplicate suggested names.
+        # Already-added candidates keep their original suggested name
+        # (they show "Added" and can't be re-added, so uniqueness
+        # doesn't matter for them).  Only new candidates participate
+        # in dedup so they get usable, non-colliding names.
         name_counts: dict[str, int] = {}
         for candidate in candidates:
+            if candidate["path"] in existing_paths:
+                candidate["already_added"] = True
+                # Skip dedup — name is display-only for added rows
+                continue
+
+            candidate["already_added"] = False
             suggested = candidate["suggested_name"]
             if suggested in name_counts or suggested in existing_names:
                 name_counts.setdefault(suggested, 1)
@@ -409,7 +700,12 @@ class WorkflowSignalMappingSampleDataView(WorkflowObjectMixin, View):
             else:
                 name_counts[suggested] = 0
 
-        return self._respond(request, workflow, candidates=candidates)
+        return self._respond(
+            request,
+            workflow,
+            candidates=candidates,
+            from_schema=from_schema,
+        )
 
     def _respond(
         self,
@@ -419,6 +715,7 @@ class WorkflowSignalMappingSampleDataView(WorkflowObjectMixin, View):
         candidates: list[dict[str, Any]] | None = None,
         error: str | None = None,
         status: int = 200,
+        from_schema: bool = False,
     ) -> HttpResponse:
         """Return HTML partial for HTMx, or JSON for API compat.
 
@@ -435,6 +732,7 @@ class WorkflowSignalMappingSampleDataView(WorkflowObjectMixin, View):
                     "candidates": candidates or [],
                     "error": str(error) if error else None,
                     "workflow": workflow,
+                    "from_schema": from_schema,
                 },
             )
         # JSON fallback for API consumers and existing tests
@@ -455,12 +753,19 @@ class WorkflowSignalMappingSampleDataView(WorkflowObjectMixin, View):
         prefix: str,
         results: list[dict],
     ) -> None:
-        """Recursively collect leaf values with their full paths."""
+        """Recursively collect leaf values with their full paths.
+
+        Arrays of scalar values (strings, numbers, booleans) are treated
+        as a single signal using the array's key as the name. Arrays of
+        objects are recursed into so their nested fields become candidates.
+        """
         if isinstance(data, dict):
             for key, value in data.items():
                 path = f"{prefix}.{key}" if prefix else key
-                if isinstance(value, (dict, list)):
+                if isinstance(value, dict):
                     self._collect_leaves(value, path, results)
+                elif isinstance(value, list):
+                    self._collect_list(value, key, path, results)
                 else:
                     suggested = self._sanitize_name(key, len(results))
                     results.append(
@@ -471,7 +776,35 @@ class WorkflowSignalMappingSampleDataView(WorkflowObjectMixin, View):
                         }
                     )
         elif isinstance(data, list):
-            for i, item in enumerate(data):
+            self._collect_list(data, prefix, prefix, results)
+
+    def _collect_list(
+        self,
+        items: list,
+        key: str,
+        prefix: str,
+        results: list[dict],
+    ) -> None:
+        """Handle a list during leaf collection.
+
+        If the list contains only scalars, emit a single candidate for
+        the whole array (e.g. ``tags`` -> ``["gadgets", "mini"]``).
+        If it contains dicts/lists, recurse into each element.
+        """
+        has_complex = any(isinstance(item, (dict, list)) for item in items)
+        if not has_complex:
+            # Scalar array — one signal for the whole array
+            suggested = self._sanitize_name(key, len(results))
+            results.append(
+                {
+                    "path": prefix,
+                    "value": self._format_value(items),
+                    "suggested_name": suggested,
+                }
+            )
+        else:
+            # Array of objects/arrays — recurse into each element
+            for i, item in enumerate(items):
                 path = f"{prefix}[{i}]"
                 if isinstance(item, (dict, list)):
                     self._collect_leaves(item, path, results)
@@ -510,6 +843,220 @@ class WorkflowSignalMappingSampleDataView(WorkflowObjectMixin, View):
             if len(s) > MAX_FORMATTED_VALUE_LENGTH
             else s
         )
+
+    # ── JSON Schema support ─────────────────────────────────────────
+
+    @staticmethod
+    def _looks_like_json_schema(data: dict) -> bool:
+        """Return True if *data* appears to be a JSON Schema definition.
+
+        Detection uses two strategies:
+
+        1. **Definitive**: the ``$schema`` key is present.
+        2. **Heuristic**: the top-level object has ``type: "object"``
+           and a ``properties`` dict where at least half the property
+           values contain recognized JSON Schema keywords.
+        """
+        if "$schema" in data:
+            return True
+        if data.get("type") != "object" or not isinstance(
+            data.get("properties"),
+            dict,
+        ):
+            return False
+        props = data["properties"]
+        if not props:
+            return False
+        schema_like = sum(
+            1
+            for v in props.values()
+            if isinstance(v, dict) and v.keys() & _SCHEMA_KEYWORDS
+        )
+        return schema_like >= len(props) / 2
+
+    def _collect_schema_paths(
+        self,
+        schema: dict,
+        prefix: str,
+        results: list[dict],
+        *,
+        _visited: set[str] | None = None,
+        _depth: int = 0,
+    ) -> None:
+        """Recursively extract signal candidate paths from a JSON Schema.
+
+        Walks ``properties``, ``items``, ``allOf``/``anyOf``/``oneOf``,
+        and ``if``/``then``/``else`` branches to build the same candidate
+        dicts that ``_collect_leaves`` produces from raw data.
+
+        The ``value`` field shows type information (e.g. ``"string"``,
+        ``"number"``) instead of a sample value.
+
+        A ``_visited`` set prevents duplicates when the same path is
+        declared in multiple composition branches.  Recursion is capped
+        at ``_MAX_SCHEMA_DEPTH`` to guard against pathological schemas.
+        """
+        if _depth > _MAX_SCHEMA_DEPTH:
+            return
+        if _visited is None:
+            _visited = set()
+
+        # Walk declared properties
+        for key, prop_schema in schema.get("properties", {}).items():
+            if not isinstance(prop_schema, dict):
+                continue
+            path = f"{prefix}.{key}" if prefix else key
+
+            if self._is_schema_discriminator(key, prop_schema):
+                continue
+
+            prop_type = self._resolve_schema_type(prop_schema)
+
+            if prop_type == "object":
+                self._collect_schema_paths(
+                    prop_schema,
+                    path,
+                    results,
+                    _visited=_visited,
+                    _depth=_depth + 1,
+                )
+            elif prop_type == "array":
+                items_schema = prop_schema.get("items")
+                if isinstance(items_schema, dict):
+                    items_type = self._resolve_schema_type(items_schema)
+                    if items_type == "object" or "properties" in items_schema:
+                        self._collect_schema_paths(
+                            items_schema,
+                            f"{path}[0]",
+                            results,
+                            _visited=_visited,
+                            _depth=_depth + 1,
+                        )
+                    # Array of scalars — one signal for the whole array
+                    elif path not in _visited:
+                        _visited.add(path)
+                        results.append(
+                            {
+                                "path": path,
+                                "value": self._schema_type_display(
+                                    prop_schema,
+                                ),
+                                "suggested_name": self._sanitize_name(
+                                    key,
+                                    len(results),
+                                ),
+                            },
+                        )
+                # Array without items schema — treat as single signal
+                elif path not in _visited:
+                    _visited.add(path)
+                    results.append(
+                        {
+                            "path": path,
+                            "value": self._schema_type_display(prop_schema),
+                            "suggested_name": self._sanitize_name(
+                                key,
+                                len(results),
+                            ),
+                        },
+                    )
+            # Leaf scalar property
+            elif path not in _visited:
+                _visited.add(path)
+                results.append(
+                    {
+                        "path": path,
+                        "value": self._schema_type_display(prop_schema),
+                        "suggested_name": self._sanitize_name(
+                            key,
+                            len(results),
+                        ),
+                    },
+                )
+
+        # Walk schema composition keywords (allOf, anyOf, oneOf)
+        for keyword in ("allOf", "anyOf", "oneOf"):
+            for sub_schema in schema.get(keyword, []):
+                if isinstance(sub_schema, dict):
+                    self._collect_schema_paths(
+                        sub_schema,
+                        prefix,
+                        results,
+                        _visited=_visited,
+                        _depth=_depth + 1,
+                    )
+
+        # Walk conditional branches — ``then`` and ``else`` contain
+        # properties that apply when the ``if`` condition matches.
+        # The ``if`` branch itself is typically a discriminator.
+        for keyword in ("then", "else"):
+            sub = schema.get(keyword)
+            if isinstance(sub, dict):
+                self._collect_schema_paths(
+                    sub,
+                    prefix,
+                    results,
+                    _visited=_visited,
+                    _depth=_depth + 1,
+                )
+
+    @staticmethod
+    def _is_schema_discriminator(key: str, prop_schema: dict) -> bool:
+        """Return True if a schema property is a structural discriminator.
+
+        Properties whose key starts with ``@`` (JSON-LD convention for
+        metadata like ``@type``, ``@id``) and whose definition contains
+        only ``const``, ``enum``, or a bare ``type`` are discriminators
+        that don't carry data values worth mapping to signals.
+        """
+        if not key.startswith("@"):
+            return False
+        meaningful_keys = set(prop_schema.keys()) - {
+            "description",
+            "title",
+        }
+        return meaningful_keys <= {"const", "enum", "type"}
+
+    @staticmethod
+    def _resolve_schema_type(prop_schema: dict) -> str:
+        """Return the effective type string for a schema property.
+
+        Handles the case where ``type`` is an array
+        (e.g. ``["string", "null"]``) by picking the first non-null type.
+        """
+        prop_type = prop_schema.get("type", "")
+        if isinstance(prop_type, list):
+            return next((t for t in prop_type if t != "null"), prop_type[0])
+        return prop_type
+
+    @staticmethod
+    def _schema_type_display(prop_schema: dict) -> str:
+        """Format schema type info for the value column display.
+
+        Shows the type, or ``const``/``enum`` constraints when present.
+        """
+        if "const" in prop_schema:
+            val = str(prop_schema["const"])
+            if len(val) > MAX_FORMATTED_VALUE_LENGTH:
+                val = val[:MAX_FORMATTED_VALUE_LENGTH] + "..."
+            return f"const: {val}"
+        if "enum" in prop_schema:
+            enum_vals = prop_schema["enum"]
+            enum_str = ", ".join(str(v) for v in enum_vals[:MAX_ENUM_PREVIEW_ITEMS])
+            suffix = ", ..." if len(enum_vals) > MAX_ENUM_PREVIEW_ITEMS else ""
+            return f"enum: [{enum_str}{suffix}]"
+
+        prop_type = prop_schema.get("type", "any")
+        if isinstance(prop_type, list):
+            prop_type = next(
+                (t for t in prop_type if t != "null"),
+                prop_type[0],
+            )
+        if prop_type == "array":
+            items = prop_schema.get("items", {})
+            items_type = items.get("type", "any") if isinstance(items, dict) else "any"
+            return f"array of {items_type}s"
+        return str(prop_type)
 
 
 # ── Output promotion ─────────────────────────────────────────────────

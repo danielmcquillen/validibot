@@ -1,0 +1,120 @@
+{% load i18n %}
+
+<h6 class="fw-semibold">
+  {% trans "What are signals?" %}
+</h6>
+<p class="small">
+  {% blocktrans trimmed %}
+    Signals give meaningful names to values buried in your submission data.
+    Instead of writing assertions against raw paths like
+    <code>p.project.compliance.targets.max_site_eui_kwh_m2</code>, you
+    define a signal called <code>target_eui</code> and write
+    <code>s.target_eui</code> in your CEL expressions.
+  {% endblocktrans %}
+</p>
+
+<h6 class="fw-semibold mt-3">
+  {% trans "How it works" %}
+</h6>
+<p class="small">
+  {% blocktrans trimmed %}
+    Each signal has a <strong>name</strong> (a valid identifier like
+    <code>floor_area</code>) and a <strong>data path</strong> that points
+    to where the value lives in the submission payload. Validibot resolves
+    the path when a validation run starts and makes the value available as
+    <code>s.&lt;name&gt;</code> in every step's CEL assertions.
+  {% endblocktrans %}
+</p>
+
+<h6 class="fw-semibold mt-3">
+  {% trans "Quick example" %}
+</h6>
+<p class="small mb-1">
+  {% blocktrans trimmed %}
+    Given submission data like:
+  {% endblocktrans %}
+</p>
+<pre class="small bg-light rounded p-2 mb-2"><code>{
+  "building": {
+    "geometry": { "floor_area_m2": 4800.0 }
+  },
+  "targets": { "max_eui": 120.0 }
+}</code></pre>
+<p class="small mb-1">
+  {% blocktrans trimmed %}
+    You would create two signals:
+  {% endblocktrans %}
+</p>
+<table class="table table-sm small mb-2">
+  <thead>
+    <tr>
+      <th>
+        {% trans "Name" %}
+      </th>
+      <th>
+        {% trans "Data path" %}
+      </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <code>floor_area</code>
+      </td>
+      <td>
+        <code>building.geometry.floor_area_m2</code>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code>target_eui</code>
+      </td>
+      <td>
+        <code>targets.max_eui</code>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p class="small">
+  {% blocktrans trimmed %}
+    Then in your assertions: <code>s.floor_area &gt; 0</code> or
+    <code>output.site_eui &lt; s.target_eui</code>.
+  {% endblocktrans %}
+</p>
+
+<h6 class="fw-semibold mt-3">
+  {% trans "Tips" %}
+</h6>
+<ul class="small mb-0">
+  <li>
+    {% blocktrans trimmed %}
+      Use <strong>Sample Data</strong> on the right to paste real submission
+      JSON or XML. Validibot will detect available paths you can map.
+    {% endblocktrans %}
+  </li>
+  <li>
+    {% blocktrans trimmed %}
+      Signal names must be valid identifiers: letters, numbers, and
+      underscores only, starting with a letter or underscore.
+    {% endblocktrans %}
+  </li>
+  <li>
+    {% blocktrans trimmed %}
+      For arrays of named objects, use a filter expression in the data path:
+      <code>items[?@.name=='emissivity'].value</code>.
+    {% endblocktrans %}
+  </li>
+  <li>
+    {% blocktrans trimmed %}
+      Set <strong>On missing</strong> to control what happens when a path
+      can't be resolved: <em>Error</em> stops the run, <em>Null</em>
+      injects null (guard with <code>s.name != null</code> in CEL).
+    {% endblocktrans %}
+  </li>
+  <li>
+    {% blocktrans trimmed %}
+      Signals are resolved <strong>once</strong> at the start of a
+      validation run and stay consistent across all steps.
+    {% endblocktrans %}
+  </li>
+</ul>

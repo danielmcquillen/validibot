@@ -1,24 +1,26 @@
-{% load i18n %}
+{% load i18n core_tags %}
 
 {% if mappings %}
   <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
+    <table class="table table-hover align-middle mb-0"
+           data-sortable-table
+           style="min-width: 580px">
       <thead>
         <tr>
-          <th>
+          <th data-sortable="true" class="text-nowrap">
             {% trans "Signal" %}
           </th>
-          <th>
+          <th data-sortable="true" class="text-nowrap">
             {% trans "Source Path" %}
           </th>
-          <th>
+          <th data-sortable="true" class="text-nowrap">
             {% trans "On Missing" %}
           </th>
-          <th>
+          <th data-sortable="true" class="text-nowrap">
             {% trans "Default" %}
           </th>
           {% if can_manage_workflow %}
-            <th class="text-end">
+            <th class="text-end text-nowrap">
               {% trans "Actions" %}
             </th>
           {% endif %}
@@ -27,7 +29,7 @@
       <tbody>
         {% for m in mappings %}
           <tr>
-            <td>
+            <td class="text-nowrap">
               <code>s.{{ m.name }}</code>
             </td>
             <td>
@@ -108,6 +110,7 @@
   <div class="text-center py-5">
     <p class="text-muted mb-2">
       {% trans "No signals have been defined yet." %}
+      {% help_button "signal-mapping" sr_label="Learn about signals" %}
     </p>
     <p class="text-muted small mb-3">
       {% trans "Signals let you name data paths from the submission payload and reference them as s.name in CEL expressions." %}

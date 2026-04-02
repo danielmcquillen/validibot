@@ -25,6 +25,22 @@ This component renders the top navigation bar for the app.
     {% include "core/partial/breadcrumbs.html" %}
   </div>
   <div class="app-header-right">
+    {% if page_help_slug %}
+      <div class="me-2">
+        <button type="button"
+                class="btn btn-light text-dark"
+                data-help-drawer-trigger
+                hx-get="{% url 'core:help_drawer' slug=page_help_slug %}"
+                hx-target="#helpDrawerBody"
+                hx-swap="innerHTML"
+                data-bs-toggle="tooltip"
+                data-bs-placement="bottom"
+                title="{% trans 'Help for this page' %}"
+                aria-label="{% trans 'Help for this page' %}">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
+    {% endif %}
     <div class="me-3">
       <a href="{% url 'notifications:notification-list' %}"
          class="btn btn-light text-dark position-relative notification-bell-btn"

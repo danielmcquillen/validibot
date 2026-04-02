@@ -53,7 +53,13 @@ Context:
         <label class="form-label small mb-0 text-nowrap">
           {% trans "Contract Key" %}:
         </label>
-        <code class="small">{{ signal.contract_key }}</code>
+        {% spaceless %}
+          <code class="small">
+            {% if signal.direction == "output" %}
+              o.
+            {% endif %}
+          {{ signal.contract_key }}</code>
+        {% endspaceless %}
       </div>
       {% if signal.native_name and signal.native_name != signal.contract_key %}
         <div class="mb-2 d-flex align-items-baseline gap-2">
@@ -80,16 +86,18 @@ Context:
       </div>
     </fieldset>
     <fieldset class="mt-3">
-      <legend class="small text-muted mb-2">
-        {% trans "Data Binding" %}
-        <i class="bi bi-info-circle text-muted"
-           data-bs-toggle="tooltip"
-           data-bs-placement="top"
-           title="{% trans 'Controls how this signal gets its value from the submission payload when a validation runs.' %}"></i>
-      </legend>
+
       <div class="row">
         <div class="col-12 mb-2">
           {{ form.source_data_path|as_crispy_field }}
+          {% if source_path_suggestions %}
+            <datalist id="source-path-suggestions">
+              {% for s in source_path_suggestions %}
+                <option value="{{ s.value }}" label="{{ s.label }}">
+                </option>
+              {% endfor %}
+            </datalist>
+          {% endif %}
         </div>
         <div class="col-12 mb-2">
           {{ form.default_value|as_crispy_field }}
@@ -118,6 +126,13 @@ Context:
       el.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(
         (t) => new bootstrap.Tooltip(t)
       );
+
+      // Wire source path datalist if present.
+      const sourceInput = el.querySelector('#id_source_data_path');
+      const datalist = el.querySelector('#source-path-suggestions');
+      if (sourceInput && datalist) {
+        sourceInput.setAttribute('list', 'source-path-suggestions');
+      }
 
       const defaultInput = el.querySelector('#id_default_value');
       const requiredInput = el.querySelector('#id_is_required');

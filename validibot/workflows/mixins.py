@@ -256,20 +256,39 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
                 validator.signal_definitions.order_by("order", "contract_key")
             )
             for sig in signal_defs:
-                label = f"{sig.label} ({sig.contract_key})"
-                choices.append((sig.contract_key, label))
+                # Outputs get o. prefix (used in CEL as o.name).
+                # Inputs have no namespace prefix — they are the
+                # validator's own parameters, not CEL-accessible names.
+                if sig.direction == SignalDirection.OUTPUT:
+                    value = f"o.{sig.contract_key}"
+                else:
+                    value = sig.contract_key
+                role = (
+                    _("Output")
+                    if sig.direction == SignalDirection.OUTPUT
+                    else _("Input")
+                )
+                choices.append(
+                    (value, f"{sig.label or sig.contract_key} · {role}"),
+                )
 
         # Step-level signal definitions (FMU uploads, templates, etc.)
         # provide per-step signals not covered by the validator library.
         step_sigs = list(self.step.signal_definitions.order_by("order", "contract_key"))
-        seen_keys = {sig.contract_key for sig in signal_defs}
+        seen = {(sig.contract_key, sig.direction) for sig in signal_defs}
         for sig in step_sigs:
-            if sig.contract_key in seen_keys:
+            if (sig.contract_key, sig.direction) in seen:
                 continue
-            seen_keys.add(sig.contract_key)
-            label = sig.label or sig.native_name or sig.contract_key
-            role = _("Input") if sig.direction == SignalDirection.INPUT else _("Output")
-            choices.append((sig.contract_key, f"{label} · {role}"))
+            seen.add((sig.contract_key, sig.direction))
+            if sig.direction == SignalDirection.OUTPUT:
+                value = f"o.{sig.contract_key}"
+            else:
+                value = sig.contract_key
+            role = (
+                _("Output") if sig.direction == SignalDirection.OUTPUT else _("Input")
+            )
+            display_name = sig.label or sig.native_name or sig.contract_key
+            choices.append((value, f"{display_name} · {role}"))
             signal_defs.append(sig)
 
         self._catalog_entries_cache = signal_defs

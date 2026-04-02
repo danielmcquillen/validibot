@@ -7,6 +7,9 @@ Shows all validator outputs for a workflow step with a "Show to User"
 column. Each output has an inline toggle button that adds/removes it
 from the display list via HTMx POST.
 
+The "Promoted As" column shows whether the output has been promoted
+to the signal namespace (s.name) for use in downstream steps.
+
 Context:
   unified_signals.output_signals  - list of output signal dicts
   step                            - the WorkflowStep
@@ -21,10 +24,7 @@ Context:
             {% trans "Slug" %}
           </th>
           <th class="text-muted small">
-            {% trans "Default" %}
-          </th>
-          <th class="text-muted small">
-            {% trans "Signal" %}
+            {% trans "Copy to Signal" %}
           </th>
           <th class="text-muted small text-center">
             {% trans "Show to User" %}
@@ -37,21 +37,10 @@ Context:
         {% for signal in unified_signals.output_signals %}
           <tr>
             <td>
-              <code class="small">{{ signal.slug }}</code>
+              <code class="small">o.{{ signal.slug }}</code>
               {% if signal.label and signal.label != signal.slug %}
                 <br />
                 <span class="text-muted small">{{ signal.label }}</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if signal.default_value %}
-                <span class="d-inline-block text-truncate small"
-                      style="max-width: 10rem"
-                      data-bs-toggle="tooltip"
-                      data-bs-placement="top"
-                      title="{{ signal.default_value }}">{{ signal.default_value }}</span>
-              {% else %}
-                <span class="text-muted">--</span>
               {% endif %}
             </td>
             <td>

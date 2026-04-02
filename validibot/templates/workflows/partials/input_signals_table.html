@@ -3,13 +3,11 @@
 {% comment %}
 Validator Inputs Table
 
-Shows all validator inputs for a workflow step: signal definitions and
-template variables.  Each row shows the input name, source badge,
-required indicator, and action buttons.
+Shows all validator inputs for a workflow step.  Each row shows the
+input name, source path, default value, required indicator, and an
+edit button.
 
-Signal-definition-source signals get an Edit button that opens the
-signal edit modal.  Template-source signals get an Edit button that
-opens the template variable edit modal.
+An alert bar warns when required inputs have no source path mapped.
 
 Context:
   unified_signals.input_signals  - list of input signal dicts
@@ -17,6 +15,12 @@ Context:
   workflow                       - the parent Workflow
 {% endcomment %}
 {% if unified_signals.input_signals %}
+  {% if unified_signals.has_unmapped_required %}
+    <div class="alert alert-warning small mb-2">
+      <i class="bi bi-exclamation-triangle me-1"></i>
+      {% trans "Some required inputs have no source path. Map each required input to a payload path or signal before running the workflow." %}
+    </div>
+  {% endif %}
   <div class="table-responsive">
     <table class="table table-sm align-middle" data-sortable-table>
       <thead>
@@ -28,15 +32,12 @@ Context:
                data-bs-placement="top"
                title="{% trans 'The contract key that identifies this signal in CEL assertions and the validation engine.' %}"></i>
           </th>
-          <th class="text-muted small" data-sortable="true">
-            {% trans "Source" %}
-          </th>
           <th class="text-muted small">
             {% trans "Source Path" %}
             <i class="bi bi-info-circle"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
-               title="{% trans 'Path into the submission payload. Supports dot notation (e.g., building.floor_area), [index] for arrays, and filter expressions (e.g., items[?@.name==x].value).' %}"></i>
+               title="{% trans 'A payload path (e.g., building.floor_area) or signal reference (e.g., s.floor_area) that provides the value for this input.' %}"></i>
           </th>
           <th class="text-muted small">
             {% trans "Default" %}
@@ -50,7 +51,9 @@ Context:
       </thead>
       <tbody>
         {% for signal in unified_signals.input_signals %}
-          <tr>
+          <tr {% if signal.required and not signal.source_data_path %}
+                class="table-warning"
+              {% endif %}>
             <td>
               <code class="small">{{ signal.slug }}</code>
               {% if signal.label and signal.label != signal.slug %}
@@ -58,24 +61,11 @@ Context:
                 <span class="text-muted small">{{ signal.label }}</span>
               {% endif %}
             </td>
-            <td class="text-muted small">
-              {% if signal.source == "template" %}
-                {% trans "Template" %}
-              {% elif signal.source == "fmu" %}
-                {% trans "FMU" %}
-              {% else %}
-                {% trans "Catalog" %}
-              {% endif %}
-            </td>
             <td>
               {% if signal.source_data_path %}
-                <code class="d-inline-block text-truncate small text-muted"
-                      style="max-width: 8rem"
-                      data-bs-toggle="tooltip"
-                      data-bs-placement="top"
-                      title="{{ signal.source_data_path }}">{{ signal.source_data_path }}</code>
+                <code class="small text-muted" style="word-break: break-all;">{{ signal.source_data_path }}</code>
               {% else %}
-                <span class="text-muted">--</span>
+                <span class="text-muted small">{% trans "Not mapped" %}</span>
               {% endif %}
             </td>
             <td>

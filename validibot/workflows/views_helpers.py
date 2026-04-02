@@ -862,11 +862,16 @@ def build_unified_signals_from_definitions(
             },
         )
 
+    has_unmapped_required = any(
+        s["required"] and not s["source_data_path"] for s in input_signals
+    )
+
     return {
         "input_signals": input_signals,
         "output_signals": output_signals,
         "has_inputs": bool(input_signals),
         "has_outputs": bool(output_signals),
+        "has_unmapped_required": has_unmapped_required,
     }
 
 

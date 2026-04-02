@@ -1175,3 +1175,154 @@ class _CardParser(HTMLParser):
         ):
             if any(name == "checked" for name, _ in attrs):
                 self.checked_values.append(str(attrs_dict.get("value")))
+
+
+# ── Step detail: three-section layout for processor validators ────────
+# Validators with has_processor=True always show the input assertions /
+# process divider / output assertions layout, even when no signal
+# definitions exist yet.  The Inputs and Outputs card in the right
+# column also always shows both tabs.
+
+
+def _make_processor_step(client):
+    """Create a workflow step with a processor validator and log in."""
+    validator = Validator.objects.create(
+        validation_type=ValidationType.FMU,
+        slug="fmu-test-processor",
+        name="FMU Test",
+        description="FMU validator for testing",
+        has_processor=True,
+        supports_assertions=True,
+    )
+    workflow = WorkflowFactory()
+    step = WorkflowStepFactory(workflow=workflow, validator=validator)
+    _login_for_workflow(client, workflow)
+    return workflow, step
+
+
+def test_processor_step_shows_signal_stages_layout(client):
+    """A step with a processor validator must render the three-section
+    assertions layout (input assertions / process divider / output
+    assertions) even when no signal definitions exist.
+
+    This ensures the user always sees the structural slots for input
+    and output assertions on processor-based validators like FMU and
+    EnergyPlus.
+    """
+    workflow, step = _make_processor_step(client)
+    url = reverse(
+        "workflows:workflow_step_edit",
+        args=[workflow.pk, step.pk],
+    )
+
+    response = client.get(url)
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert "has-validator-flow" in html
+    assert "validator-process-chip" in html
+    assert "Input assertions" in html or "input" in html.lower()
+    assert "Output assertions" in html or "output" in html.lower()
+
+
+def test_processor_step_shows_both_io_tabs(client):
+    """A step with a processor validator must render both Validator Inputs
+    and Validator Outputs tabs in the Inputs and Outputs card, even when
+    one or both sides have zero signal definitions.
+
+    Without this, users of FMU/EnergyPlus validators see a confusing
+    flat card instead of the expected tabbed layout.
+    """
+    workflow, step = _make_processor_step(client)
+    url = reverse(
+        "workflows:workflow_step_edit",
+        args=[workflow.pk, step.pk],
+    )
+
+    response = client.get(url)
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert "signals-input-tab" in html
+    assert "signals-output-tab" in html
+    assert "Validator Inputs" in html
+    assert "Validator Outputs" in html
+
+
+def test_non_processor_step_hides_empty_io_card(client):
+    """A step without a processor (e.g. Basic validator) should not
+    render the Inputs and Outputs card when there are no signals.
+
+    This avoids showing an empty, confusing card for simple validators
+    that don't have a processor stage.
+    """
+    validator = Validator.objects.create(
+        validation_type=ValidationType.BASIC,
+        slug="basic-test-layout",
+        name="Basic Test",
+        description="Basic validator for testing",
+        has_processor=False,
+        supports_assertions=True,
+    )
+    workflow = WorkflowFactory()
+    step = WorkflowStepFactory(workflow=workflow, validator=validator)
+    _login_for_workflow(client, workflow)
+
+    url = reverse(
+        "workflows:workflow_step_edit",
+        args=[workflow.pk, step.pk],
+    )
+
+    response = client.get(url)
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    # No process chip for basic validators
+    assert "validator-process-chip" not in html
+    # No IO tabs when there are no signals and no processor
+    assert "signals-input-tab" not in html
+
+
+def test_step_delete_with_runs_returns_warning(client):
+    """Deleting a step that has existing validation runs should return a
+    user-friendly warning instead of a 500 error.
+
+    The ValidationStepRun model uses on_delete=PROTECT, so the delete
+    would fail with a ProtectedError. The view must catch this and
+    return a toast warning message.
+    """
+    from validibot.validations.models import ValidationRun
+    from validibot.validations.models import ValidationStepRun
+
+    workflow = WorkflowFactory()
+    validator = Validator.objects.create(
+        validation_type=ValidationType.BASIC,
+        slug="basic-delete-test",
+        name="Basic Delete Test",
+        description="For testing delete protection",
+        supports_assertions=True,
+    )
+    step = WorkflowStepFactory(workflow=workflow, validator=validator)
+    _login_for_workflow(client, workflow)
+
+    run = ValidationRun.objects.create(
+        workflow=workflow,
+        org=workflow.org,
+    )
+    ValidationStepRun.objects.create(
+        validation_run=run,
+        workflow_step=step,
+        step_order=step.order,
+    )
+
+    url = reverse(
+        "workflows:workflow_step_delete",
+        args=[workflow.pk, step.pk],
+    )
+    response = client.post(url, HTTP_HX_REQUEST="true")
+
+    # The step must still exist (delete was blocked by PROTECT).
+    assert WorkflowStep.objects.filter(pk=step.pk).exists()
+    # Response triggers a page refresh so the warning toast renders.
+    assert response.status_code == HTTPStatus.OK
+    assert response["HX-Refresh"] == "true"

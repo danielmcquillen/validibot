@@ -512,7 +512,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 target_path_field.label = _("Target Signal or Path")
                 target_path_field.help_text = _(
                     "Use `output.<name>` to "
-                    "disambiguate output signals when an input signal shares "
+                    "disambiguate when an input signal shares "
                     "the same name. "
                     "Use dot notation for nested objects, [index] for arrays, "
                     "or filter expressions for named elements "
@@ -522,7 +522,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             target_path_field.label = _("Target Signal")
             target_path_field.help_text = _(
                 "Use `output.<name>` to "
-                "disambiguate output signals when an input shares the same name.",
+                "disambiguate when an input shares the same name.",
             )
         target_attrs = target_path_field.widget.attrs
         target_attrs.update(
@@ -741,11 +741,20 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             return
 
         if value:
-            # Explicit output prefix wins.
+            # Strip namespace prefixes that users may type or that the
+            # datalist inserts.  An explicit output prefix (``o.`` or
+            # ``output.``) forces resolution against outputs only.
             explicit_output = False
-            if value.startswith("output."):
+            if value.startswith("o."):
                 explicit_output = True
-                value = value.replace("output.", "", 1)
+                value = value[2:]
+            elif value.startswith("output."):
+                explicit_output = True
+                value = value[7:]
+            elif value.startswith("s."):
+                value = value[2:]
+            elif value.startswith("signal."):
+                value = value[7:]
 
             if explicit_output and value in self.outputs_by_slug:
                 self.cleaned_data["resolved_signal"] = self.outputs_by_slug[value]

@@ -72,7 +72,7 @@ def ensure_step_signal_bindings(step: WorkflowStep) -> int:
         if sig.pk in existing_signal_ids:
             continue
 
-        fallback_path = sig.native_name or sig.contract_key
+        fallback_path = ""
         entry = catalog_entries.get((sig.contract_key, sig.direction))
         if entry:
             defaults = build_step_binding_defaults_from_mapping(

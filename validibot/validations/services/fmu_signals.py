@@ -129,15 +129,15 @@ def sync_step_fmu_signals(
         )
 
         # Upsert StepSignalBinding for input signals.
-        # The source_data_path matches the FMU variable name in the
-        # flat submission JSON (the current convention).
+        # Leave source_data_path empty — the user must map each input
+        # to the correct payload path or signal for their data format.
         if direction == SignalDirection.INPUT:
             StepSignalBinding.objects.update_or_create(
                 workflow_step=step,
                 signal_definition=sig,
                 defaults={
                     "source_scope": BindingSourceScope.SUBMISSION_PAYLOAD,
-                    "source_data_path": name,
+                    "source_data_path": "",
                     "is_required": True,
                 },
             )

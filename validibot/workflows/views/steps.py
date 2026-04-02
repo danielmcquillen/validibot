@@ -966,24 +966,16 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
 
 
 def _step_has_signal_stages(step) -> bool:
-    """True when the step has both input and output signal definitions.
+    """True when the step's validator has a processor (input → process → output).
 
-    Checks both step-owned and validator-owned signals, since either
-    source can contribute input/output stages for assertion grouping.
+    This checks the validator's *capability* (``has_processor``), not whether
+    signal definitions actually exist yet.  A validator with a processor
+    always shows the three-section layout (input assertions, process divider,
+    output assertions) even when no signals have been defined yet, so the
+    user sees the structural slots where signals will appear.
     """
-    from validibot.validations.constants import SignalDirection
-
-    directions = set(
-        step.signal_definitions.values_list("direction", flat=True).distinct()
-    )
-    if step.validator:
-        directions.update(
-            step.validator.signal_definitions.values_list(
-                "direction",
-                flat=True,
-            ).distinct()
-        )
-    return SignalDirection.INPUT in directions and SignalDirection.OUTPUT in directions
+    validator = getattr(step, "validator", None)
+    return bool(validator and validator.has_processor)
 
 
 def _resolve_assertion_stage(assertion) -> CatalogRunStage:
@@ -1634,24 +1626,46 @@ class WorkflowStepSignalEditView(WorkflowObjectMixin, FormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         sig = self._get_signal()
+        from validibot.validations.constants import SignalDirection
+
+        is_input = sig.direction == SignalDirection.INPUT
+        title_prefix = _("Edit input") if is_input else _("Edit output")
         context.update(
             {
                 "signal": sig,
                 "binding": self._get_binding(),
                 "is_library_signal": bool(sig.validator_id),
-                "modal_title": _("Edit signal: %(name)s")
-                % {"name": sig.label or sig.contract_key},
+                "modal_title": f"{title_prefix}: {sig.label or sig.contract_key}",
             },
         )
+
+        # Build source path suggestions for the datalist: workflow-level
+        # signals (s.name) so the user can easily bind an input to a signal.
+        if is_input:
+            from validibot.workflows.models import WorkflowSignalMapping
+
+            workflow = self.get_workflow()
+            signal_suggestions = [
+                {
+                    "value": f"s.{m['name']}",
+                    "label": m["source_path"],
+                }
+                for m in WorkflowSignalMapping.objects.filter(
+                    workflow=workflow,
+                )
+                .order_by("position")
+                .values("name", "source_path")
+            ]
+            context["source_path_suggestions"] = signal_suggestions
+
         return context
 
     def form_valid(self, form):
         form.save()
-        return hx_trigger_response(
-            message=_("Signal updated."),
-            close_modal="signalEditModal",
-            extra_payload={"signals-changed": True},
-        )
+        messages.success(self.request, _("Signal updated."))
+        response = HttpResponse(status=200)
+        response["HX-Refresh"] = "true"
+        return response
 
     def render_to_response(self, context, **response_kwargs):
         if self.request.headers.get("HX-Request"):
@@ -1692,7 +1706,19 @@ class WorkflowStepDeleteView(WorkflowObjectMixin, View):
             workflow=workflow,
             pk=self.kwargs.get("step_id"),
         )
-        step.delete()
+        try:
+            step.delete()
+        except models.ProtectedError:
+            messages.warning(
+                request,
+                _(
+                    "This step cannot be deleted because it has "
+                    "existing validation runs. Remove the runs first."
+                ),
+            )
+            response = HttpResponse(status=200)
+            response["HX-Refresh"] = "true"
+            return response
         resequence_workflow_steps(workflow)
         message = _("Workflow step removed.")
         return hx_trigger_response(message, close_modal=None)

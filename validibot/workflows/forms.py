@@ -2384,10 +2384,9 @@ class SignalBindingEditForm(forms.Form):
         required=False,
         label=_("Source Path"),
         help_text=_(
-            "Path into the submission payload. Use dot notation for "
-            "nested objects (e.g., building.floor_area), [index] for "
-            "arrays (e.g., zones[0].temp), or filter expressions for "
-            "named elements (e.g., items[?@.name=='x'].value)."
+            "A payload path (e.g., building.floor_area) or a signal "
+            "reference (e.g., s.floor_area) that provides the value "
+            "for this input."
         ),
     )
     default_value = forms.CharField(

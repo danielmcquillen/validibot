@@ -327,9 +327,11 @@ deploy stage: _require-gcp-config (_require-not-maintenance stage) build push (_
 deploy-worker stage: _require-gcp-config (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-worker stage)
 
 # Deploy both web and worker to a stage (single build+push, single migrate).
+# Also creates/updates Cloud Scheduler jobs (idempotent) so that scheduled
+# tasks like trial lifecycle emails are always in sync with the deployed code.
 # Usage: just gcp deploy-all dev | just gcp deploy-all prod
 [arg('stage', pattern='dev|staging|prod')]
-deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-web stage) (_deploy-worker stage)
+deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-web stage) (_deploy-worker stage) (scheduler-setup stage)
     @echo ""
     @echo "All services deployed to {{stage}}"
     @echo ""
@@ -1513,7 +1515,7 @@ init-stage stage: _require-gcp-config
     echo "  2. Upload secrets:      just gcp secrets {{stage}}"
     echo "  3. Deploy web service:  just gcp deploy {{stage}}  (runs migrations automatically)"
     echo "  4. Seed data:           just gcp setup-data {{stage}}"
-    echo "  5. Set up scheduler:    just gcp scheduler-setup {{stage}}  (optional)"
+    echo "  5. Set up scheduler:    just gcp scheduler-setup {{stage}}  (also runs as part of deploy-all)"
     echo "  6. Deploy validators:   just gcp validators-deploy-all {{stage}}  (optional)"
     echo ""
 

@@ -10,6 +10,7 @@ class WorkflowLaunchController {
   private modeInput?: HTMLInputElement | null;
   private fileInput?: HTMLInputElement | null;
   private fileLabel?: HTMLElement | null;
+  private fileNameSpan?: HTMLElement | null;
   private dropzone?: HTMLElement | null;
   private browseButtons: NodeListOf<HTMLElement> | null = null;
   private validateInputUrl?: string | null;
@@ -32,6 +33,7 @@ class WorkflowLaunchController {
     this.modeInput = this.form.querySelector<HTMLInputElement>('[data-input-mode-field]');
     this.fileInput = this.form.querySelector<HTMLInputElement>('[data-dropzone-input]');
     this.fileLabel = this.form.querySelector<HTMLElement>('[data-dropzone-file]');
+    this.fileNameSpan = this.form.querySelector<HTMLElement>('[data-dropzone-file-name]');
     this.dropzone = this.form.querySelector<HTMLElement>('[data-dropzone]');
     this.browseButtons = this.form.querySelectorAll<HTMLElement>('[data-dropzone-browse]');
     this.validateInputUrl = this.form.getAttribute('data-validate-input-url');
@@ -61,9 +63,9 @@ class WorkflowLaunchController {
     this.pasteButton?.classList.toggle('active', isPaste);
     this.formButton?.classList.toggle('active', isForm);
 
-    this.uploadButton?.setAttribute('aria-pressed', String(isUpload));
-    this.pasteButton?.setAttribute('aria-pressed', String(isPaste));
-    this.formButton?.setAttribute('aria-pressed', String(isForm));
+    this.uploadButton?.setAttribute('aria-selected', String(isUpload));
+    this.pasteButton?.setAttribute('aria-selected', String(isPaste));
+    this.formButton?.setAttribute('aria-selected', String(isForm));
 
     this.uploadSection?.classList.toggle('d-none', !isUpload);
     this.pasteSection?.classList.toggle('d-none', !isPaste);
@@ -99,7 +101,12 @@ class WorkflowLaunchController {
       });
     });
 
-    this.dropzone?.addEventListener('click', () => this.fileInput!.click());
+    this.dropzone?.addEventListener('click', (event) => {
+      if (this.fileLabel?.contains(event.target as Node)) {
+        return;
+      }
+      this.fileInput!.click();
+    });
     this.dropzone?.addEventListener('dragover', (event) => {
       event.preventDefault();
       this.dropzone?.classList.add('is-dragover');
@@ -114,12 +121,16 @@ class WorkflowLaunchController {
   }
 
   private renderSelectedFile(): void {
-    if (!this.fileInput || !this.fileLabel) {
+    if (!this.fileInput || !this.fileLabel || !this.fileNameSpan) {
       return;
     }
-    const emptyLabel = this.fileLabel.dataset.emptyLabel || '';
     const selected = this.fileInput.files && this.fileInput.files[0];
-    this.fileLabel.textContent = selected ? selected.name : emptyLabel;
+    if (selected) {
+      this.fileNameSpan.textContent = selected.name;
+      this.fileLabel.classList.remove('d-none');
+    } else {
+      this.fileLabel.classList.add('d-none');
+    }
   }
 
   private bindPreflightCheck(): void {

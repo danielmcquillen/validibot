@@ -1141,6 +1141,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "supports_assertions": allow_assertions,
                 "catalog_tab_prefix": f"workflow-step-{self.step.pk}-catalog",
                 "validator_default_assertions_count": default_assertions_count,
+                "can_manage_workflow": self.user_can_manage_workflow(),
                 "unified_signals": unified_signals,
                 "available_signals": available_signals,
                 "upstream_outputs": upstream_outputs,
@@ -1676,6 +1677,86 @@ class WorkflowStepSignalEditView(WorkflowObjectMixin, FormView):
                 status=response_kwargs.get("status", 200),
             )
         return super().render_to_response(context, **response_kwargs)
+
+
+class WorkflowStepSignalAutoLinkView(WorkflowObjectMixin, View):
+    """POST: auto-link an input signal to a matching workflow-level signal.
+
+    Looks for a ``WorkflowSignalMapping`` whose ``name`` matches the
+    signal definition's ``contract_key``.  When found, sets the
+    ``StepSignalBinding.source_data_path`` to ``s.<name>`` and refreshes
+    the page.  When no match exists, adds a warning message.
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            raise PermissionDenied
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        return super().dispatch(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        from validibot.workflows.models import WorkflowSignalMapping
+
+        workflow = self.get_workflow()
+        signal_id = self.kwargs.get("signal_id")
+
+        # Scope lookup: signal must belong to this step or its validator.
+        signal_def = (
+            SignalDefinition.objects.filter(pk=signal_id)
+            .filter(
+                models.Q(workflow_step=self.step)
+                | models.Q(validator=self.step.validator),
+            )
+            .first()
+        )
+        if not signal_def:
+            raise Http404
+
+        contract_key = signal_def.contract_key
+
+        mapping = WorkflowSignalMapping.objects.filter(
+            workflow=workflow,
+            name=contract_key,
+        ).first()
+
+        if not mapping:
+            messages.warning(
+                request,
+                _(
+                    "No matching workflow signal found. "
+                    "Create a signal named '%(name)s' first."
+                )
+                % {"name": contract_key},
+            )
+            response = HttpResponse(status=HTTPStatus.OK)
+            response["HX-Refresh"] = "true"
+            return response
+
+        binding, created = StepSignalBinding.objects.get_or_create(
+            workflow_step=self.step,
+            signal_definition=signal_def,
+            defaults={
+                "source_scope": BindingSourceScope.SUBMISSION_PAYLOAD,
+                "source_data_path": f"s.{mapping.name}",
+                "is_required": True,
+            },
+        )
+        if not created:
+            binding.source_data_path = f"s.{mapping.name}"
+            binding.save(update_fields=["source_data_path"])
+
+        messages.success(
+            request,
+            _("Linked '%(key)s' to signal s.%(name)s.")
+            % {"key": contract_key, "name": mapping.name},
+        )
+        response = HttpResponse(status=HTTPStatus.OK)
+        response["HX-Refresh"] = "true"
+        return response
 
 
 class WorkflowStepCreateView(WorkflowStepFormView):

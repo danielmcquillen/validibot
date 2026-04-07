@@ -439,11 +439,71 @@ class WorkflowForm(forms.ModelForm):
                     indent=2,
                 )
 
+        # ── Superuser-only agent access fields ──────────────────────────
+        # These fields are not in Meta.fields — they are added dynamically
+        # so that only superusers can see and edit them.
+        if self.user and getattr(self.user, "is_superuser", False):
+            self._add_agent_fields()
+
         self.helper.layout = self._build_layout()
+
+    def _add_agent_fields(self) -> None:
+        """Add agent access fields to the form for superusers."""
+        from validibot.workflows.constants import AgentBillingMode
+
+        self.fields["agent_access_enabled"] = forms.BooleanField(
+            required=False,
+            label=_("Agent access enabled"),
+            help_text=_(
+                "Expose this workflow for agent access via MCP.",
+            ),
+        )
+        if self.instance and self.instance.pk:
+            self.fields[
+                "agent_access_enabled"
+            ].initial = self.instance.agent_access_enabled
+
+        self.fields["agent_billing_mode"] = forms.ChoiceField(
+            choices=AgentBillingMode.choices,
+            initial=AgentBillingMode.AUTHOR_PAYS,
+            label=_("Agent billing mode"),
+            help_text=_(
+                "Who pays when an agent invokes this workflow.",
+            ),
+            widget=forms.Select(attrs={"class": "form-select"}),
+        )
+        if self.instance and self.instance.pk:
+            self.fields["agent_billing_mode"].initial = self.instance.agent_billing_mode
+
+        self.fields["agent_price_cents"] = forms.IntegerField(
+            required=False,
+            min_value=1,
+            label=_("Price per invocation (US cents)"),
+            help_text=_(
+                "USDC equivalent. Required when billing mode is x402.",
+            ),
+            widget=forms.NumberInput(attrs={"class": "form-control"}),
+        )
+        if self.instance and self.instance.pk:
+            self.fields["agent_price_cents"].initial = self.instance.agent_price_cents
+
+        self.fields["agent_max_launches_per_hour"] = forms.IntegerField(
+            required=False,
+            min_value=1,
+            label=_("Max launches per hour"),
+            help_text=_(
+                "Per-wallet rate limit. Leave blank for platform default.",
+            ),
+            widget=forms.NumberInput(attrs={"class": "form-control"}),
+        )
+        if self.instance and self.instance.pk:
+            self.fields[
+                "agent_max_launches_per_hour"
+            ].initial = self.instance.agent_max_launches_per_hour
 
     def _build_layout(self) -> Layout:
         """Build the crispy layout used by the workflow create/edit page."""
-        return Layout(
+        sections = [
             Div(
                 self._section_intro(
                     _("Workflow basics"),
@@ -566,9 +626,29 @@ class WorkflowForm(forms.ModelForm):
                 Field("featured_image"),
                 Field("version", placeholder="e.g. 1.0"),
                 Field("is_active"),
-                css_class="border rounded-3 p-3",
+                css_class="border rounded-3 p-3 mb-4",
             ),
-        )
+        ]
+
+        if self.user and getattr(self.user, "is_superuser", False):
+            sections.append(
+                Div(
+                    self._section_intro(
+                        _("Agent access"),
+                        _(
+                            "Control how AI agents discover and invoke this "
+                            "workflow via MCP. Only visible to superusers."
+                        ),
+                    ),
+                    Field("agent_access_enabled"),
+                    Field("agent_billing_mode"),
+                    Field("agent_price_cents"),
+                    Field("agent_max_launches_per_hour"),
+                    css_class="border border-warning rounded-3 p-3",
+                ),
+            )
+
+        return Layout(*sections)
 
     def _section_intro(self, title: str, body: str) -> HTML:
         """Render a compact section heading for the crispy form layout."""
@@ -758,6 +838,21 @@ class WorkflowForm(forms.ModelForm):
 
     def save(self, *, commit: bool = True):
         workflow = super().save(commit=commit)
+
+        # Write superuser-only agent fields that are not in Meta.fields.
+        if self.user and getattr(self.user, "is_superuser", False):
+            agent_fields = [
+                "agent_access_enabled",
+                "agent_billing_mode",
+                "agent_price_cents",
+                "agent_max_launches_per_hour",
+            ]
+            for field_name in agent_fields:
+                if field_name in self.cleaned_data:
+                    setattr(workflow, field_name, self.cleaned_data[field_name])
+            if commit and workflow.pk:
+                workflow.save(update_fields=agent_fields)
+
         if commit and workflow.pk:
             description_md = (self.cleaned_data.get("description_md") or "").strip()
             public_info = workflow.get_public_info
@@ -841,6 +936,7 @@ class WorkflowLaunchForm(forms.Form):
             file_type_field.initial = choices[0][0]
         if len(choices) == 1:
             file_type_field.widget = forms.HiddenInput()
+            file_type_field.label = _("Required file type")
             self.single_file_type_label = choices[0][1]
 
     def _apply_bootstrap_styles(self) -> None:

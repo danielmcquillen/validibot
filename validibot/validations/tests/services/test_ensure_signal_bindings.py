@@ -74,7 +74,7 @@ class TestEnsureStepSignalBindings(TestCase):
             binding_a.source_scope,
             BindingSourceScope.SUBMISSION_PAYLOAD,
         )
-        self.assertEqual(binding_a.source_data_path, "panel_area")
+        self.assertEqual(binding_a.source_data_path, "")
         self.assertTrue(binding_a.is_required)
         self.assertIsNone(binding_a.default_value)
 
@@ -82,7 +82,7 @@ class TestEnsureStepSignalBindings(TestCase):
             workflow_step=step,
             signal_definition=sig_b,
         )
-        self.assertEqual(binding_b.source_data_path, "heating_setpoint")
+        self.assertEqual(binding_b.source_data_path, "")
 
     def test_uses_system_validator_config_for_binding_defaults(self):
         """System-validator library signals should derive binding defaults

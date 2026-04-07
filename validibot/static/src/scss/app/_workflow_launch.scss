@@ -54,8 +54,12 @@
       flex-direction: row;
       margin-bottom: 1rem;
       align-items: center;
+      gap: 0.5rem;
       label {
-        min-width: 5rem;
+        min-width: fit-content;
+      }
+      select {
+        width: auto;
       }
       .form-control-plaintext {
         padding: 0;
@@ -88,10 +92,24 @@
     flex: 1 1 auto;
   }
 
-  .workflow-input-mode .btn.active {
-    color: #fff;
-    background-color: var(--bs-primary);
-    border-color: var(--bs-primary);
+  .workflow-input-mode {
+    margin-bottom: 0;
+
+    .nav-tabs-sm .nav-link {
+      font-size: 0.875rem;
+      padding: 0.4rem 0.75rem;
+    }
+  }
+
+  .workflow-input-mode-content {
+    border: 1px solid var(--bs-border-color);
+    border-top: 0;
+    border-radius: 0 0 var(--bs-border-radius) var(--bs-border-radius);
+    padding: 1rem;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
 
   .workflow-drop-wrapper {
@@ -101,8 +119,7 @@
     justify-content: center;
     flex-grow: 1;
     margin: 0;
-    background: var(--bs-body-bg);
-    padding: 1rem 0;
+    padding: 0;
 
     // Hide the actual file input - dropzone JS handles interaction
     input[type="file"] {
@@ -143,6 +160,12 @@
     }
 
     &__file {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.9375rem;
+      font-weight: 500;
+      color: var(--bs-body-color);
       word-break: break-all;
     }
 

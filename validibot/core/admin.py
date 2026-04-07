@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.shortcuts import redirect
 
 from validibot.core.models import SiteSettings
 from validibot.core.models import SupportMessage
@@ -21,10 +22,8 @@ class SupportMessageAdmin(admin.ModelAdmin):
 
 @admin.register(SiteSettings)
 class SiteSettingsAdmin(admin.ModelAdmin):
-    list_display = (
-        "slug",
-        "modified",
-    )
+    """Singleton admin — clicking 'Site settings' goes straight to the edit page."""
+
     readonly_fields = (
         "slug",
         "created",
@@ -32,19 +31,52 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     )
     fieldsets = (
         (
-            "Site Configuration",
+            "Submission Policy",
+            {
+                "fields": (
+                    "metadata_key_value_only",
+                    "metadata_max_bytes",
+                ),
+                "description": (
+                    "Controls how submission metadata is validated when "
+                    "workflows are started via the API."
+                ),
+            },
+        ),
+        (
+            "Advanced",
+            {
+                "fields": ("data",),
+                "classes": ("collapse",),
+                "description": (
+                    "JSON catch-all for settings not yet promoted to "
+                    "model fields. Only edit if you know what you're doing."
+                ),
+            },
+        ),
+        (
+            "Metadata",
             {
                 "fields": (
                     "slug",
-                    "data",
                     "created",
                     "modified",
-                ),
-                "description": (
-                    "Only system administrators should edit these values. "
-                    "Keep JSON well-formed and rely on the application to fill "
-                    "missing defaults."
                 ),
             },
         ),
     )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        """Skip the list page — go straight to the singleton edit page."""
+        obj, _ = SiteSettings.objects.get_or_create(
+            slug=SiteSettings.DEFAULT_SLUG,
+        )
+        return redirect(
+            f"{request.path}{obj.pk}/change/",
+        )

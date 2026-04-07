@@ -177,6 +177,11 @@ urlpatterns = [
         name="workflow_step_signal_edit",
     ),
     path(
+        "<int:pk>/steps/<int:step_id>/signal/<int:signal_id>/auto-link/",
+        views.WorkflowStepSignalAutoLinkView.as_view(),
+        name="workflow_step_signal_auto_link",
+    ),
+    path(
         "<int:pk>/steps/<int:step_id>/delete/",
         views.WorkflowStepDeleteView.as_view(),
         name="workflow_step_delete",

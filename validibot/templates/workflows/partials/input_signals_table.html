@@ -86,8 +86,17 @@ Context:
                 <span class="text-muted">--</span>
               {% endif %}
             </td>
-            <td class="text-end">
+            <td class="text-end text-nowrap">
               {% if signal.signal_definition %}
+                {% if not signal.source_data_path %}
+                  <button type="button"
+                          class="btn btn-sm btn-outline-primary me-1"
+                          hx-post="{% org_url 'workflows:workflow_step_signal_auto_link' workflow.pk step.pk signal.signal_definition.pk %}"
+                          hx-swap="none"
+                          title="{% trans 'Auto-link to workflow signal' %}">
+                    <i class="bi bi-link-45deg"></i>
+                  </button>
+                {% endif %}
                 <button type="button"
                         class="btn btn-sm btn-outline-secondary"
                         data-bs-toggle="modal"

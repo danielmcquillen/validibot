@@ -352,7 +352,10 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     agent_access_enabled = models.BooleanField(
         default=False,
         help_text=_(
-            "Allow AI agents to discover and submit to this workflow via MCP.",
+            "Expose this workflow for agent access via MCP. "
+            "With 'Author pays' billing, only authenticated agents using "
+            "your API key can use it. With 'Agent pays (x402)', anonymous "
+            "agents can also discover and pay for access.",
         ),
     )
 
@@ -360,17 +363,19 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         null=True,
         blank=True,
         help_text=_(
-            "Maximum MCP-initiated launches per hour. Null means use the plan default.",
+            "Maximum agent launches per hour per wallet. "
+            "Null means use the platform default.",
         ),
     )
 
     agent_billing_mode = models.CharField(
-        max_length=20,
+        max_length=30,
         choices=AgentBillingMode.choices,
         default=AgentBillingMode.AUTHOR_PAYS,
         help_text=_(
-            "Who pays for agent-initiated runs: the workflow author's plan, "
-            "or the agent operator via Stripe ACP.",
+            "Who pays when an agent invokes this workflow. "
+            "AUTHOR_PAYS uses your plan quota (authenticated agents only). "
+            "AGENT_PAYS_X402 requires agents to pay per call via x402.",
         ),
     )
 
@@ -378,8 +383,8 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         null=True,
         blank=True,
         help_text=_(
-            "Price per agent invocation in US cents. "
-            "Required when billing mode is AGENT_PAYS_ACP.",
+            "Price per agent invocation in US cents (USDC equivalent). "
+            "Required when billing mode is AGENT_PAYS_X402.",
         ),
     )
 
@@ -530,6 +535,20 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                 raise ValidationError(
                     {"input_schema": exc.messages},
                 ) from exc
+
+        # ── x402 billing requires a price ─────────────────────────────
+        if (
+            self.agent_billing_mode == AgentBillingMode.AGENT_PAYS_X402
+            and not self.agent_price_cents
+        ):
+            raise ValidationError(
+                {
+                    "agent_price_cents": _(
+                        "A price per invocation is required when agents pay "
+                        "via x402 micropayments.",
+                    ),
+                },
+            )
 
     def save(self, *args, **kwargs):
         # Auto-generate slug BEFORE validation so uniqueness checks work correctly

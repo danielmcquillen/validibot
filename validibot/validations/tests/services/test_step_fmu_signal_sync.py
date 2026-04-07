@@ -97,7 +97,7 @@ class SyncStepFMUSignalsTests(TestCase):
 
         binding = bindings.first()
         self.assertEqual(binding.source_scope, BindingSourceScope.SUBMISSION_PAYLOAD)
-        self.assertEqual(binding.source_data_path, "T_outdoor")
+        self.assertEqual(binding.source_data_path, "")
         self.assertTrue(binding.is_required)
 
     def test_skips_parameter_variables(self):

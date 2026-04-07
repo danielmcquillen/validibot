@@ -70,11 +70,11 @@ class LaunchValidationError(Exception):
         self.status_code = status_code
 
 
-def enforce_metadata_policy(metadata, submission_settings):
+def enforce_metadata_policy(metadata, site_settings):
     """Ensure payload metadata abides by the configured policy."""
 
     metadata = dict(metadata or {})
-    submission_settings.enforce_metadata_policy(metadata)
+    site_settings.enforce_metadata_policy(metadata)
     return metadata
 
 
@@ -111,14 +111,19 @@ def launch_web_validation_run(
 def _resolve_api_source(request: HttpRequest) -> ValidationRunSource:
     """Determine the run source from the X-Validibot-Source request header.
 
-    API clients can self-identify by sending this header. The value must
-    match a ``ValidationRunSource`` member (e.g. ``MCP``). Invalid or
-    missing values default to ``API``. The ``LAUNCH_PAGE`` source is
-    reserved for the web form and cannot be claimed by API callers.
+    API clients can self-identify by sending this header. The value is
+    normalised to uppercase and validated against the ``ValidationRunSource``
+    enum. Invalid or missing values default to ``API``. The ``LAUNCH_PAGE``
+    source is reserved for the web form and cannot be claimed by API callers.
     """
-    header_value = request.headers.get("x-validibot-source", "")
+    raw_value = request.headers.get("x-validibot-source", "").strip()
+    if not raw_value:
+        return ValidationRunSource.API
+
+    # Normalise to uppercase so agents can send "mcp" or "MCP".
+    normalised = raw_value.upper()
     try:
-        source = ValidationRunSource(header_value)
+        source = ValidationRunSource(normalised)
     except ValueError:
         return ValidationRunSource.API
     # Don't let API callers claim to be the web launch page.
@@ -341,7 +346,7 @@ def process_structured_payload(
                 status_code=413,
             )
 
-    submission_settings = submission_settings or get_site_settings().api_submission
+    submission_settings = submission_settings or get_site_settings()
     metadata = vd.get("metadata") or {}
     try:
         metadata = enforce_metadata_policy(metadata, submission_settings)
@@ -680,7 +685,7 @@ def build_submission_from_api(
             ],
         )
 
-    submission_settings = submission_settings or get_site_settings().api_submission
+    submission_settings = submission_settings or get_site_settings()
 
     if detection_result.mode == SubmissionRequestMode.RAW_BODY:
         return handle_raw_body_mode(

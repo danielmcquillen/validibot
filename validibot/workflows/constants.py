@@ -33,8 +33,19 @@ class TriggerType(models.TextChoices):
 
 
 class AgentBillingMode(models.TextChoices):
-    AUTHOR_PAYS = "author_pays", _("Author pays (default)")
-    AGENT_PAYS_ACP = "agent_pays_acp", _("Agent pays via Stripe ACP")
+    """Billing mode for agent access to a workflow.
+
+    AUTHOR_PAYS means the workflow author's plan quota covers agent
+    usage.  This is the default and is appropriate for authenticated
+    agents that connect with the author's own API key.
+
+    AGENT_PAYS_X402 means anonymous agents pay per call via x402
+    micropayments (USDC on Base).  Requires a non-zero
+    ``agent_price_cents``.
+    """
+
+    AUTHOR_PAYS = "author_pays", _("Author pays (plan quota)")
+    AGENT_PAYS_X402 = "agent_pays_x402", _("Agent pays via x402 micropayment")
 
 
 class WorkflowStartErrorCode(models.TextChoices):

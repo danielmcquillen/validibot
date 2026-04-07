@@ -29,13 +29,17 @@ class SupportMessage(TimeStampedModel):
         return self.subject
 
 
+class MetadataPolicyError(Exception):
+    """Raised when submission metadata violates the configured policy."""
+
+
 class SiteSettings(TimeStampedModel):
     """
     Singleton-style container for platform-wide configuration.
 
-    A single row (slugged as ``default``) stores a JSON document that is loaded
-    into typed settings objects elsewhere in the codebase. System administrators
-    manage these values via the Django admin.
+    A single row (slugged as ``default``) holds settings that control how the
+    platform processes submissions and other cross-cutting concerns.  System
+    administrators manage these values via the Django admin.
     """
 
     DEFAULT_SLUG = "default"
@@ -46,10 +50,27 @@ class SiteSettings(TimeStampedModel):
         default=DEFAULT_SLUG,
         help_text="Identifier for this settings record. Only 'default' is used.",
     )
+
+    # ── Submission metadata policy ─────────────────────────────────────
+    metadata_key_value_only = models.BooleanField(
+        default=False,
+        help_text=_(
+            "When checked, metadata values must be scalars (no nested lists or dicts).",
+        ),
+    )
+    metadata_max_bytes = models.PositiveIntegerField(
+        default=4096,
+        help_text=_(
+            "Maximum size (in bytes) of stored metadata per submission. "
+            "Set to 0 to disable the limit.",
+        ),
+    )
+
+    # ── Catch-all for future complex settings ──────────────────────────
     data = models.JSONField(
         default=dict,
         blank=True,
-        help_text="JSON payload containing namespaced site configuration.",
+        help_text="JSON catch-all for settings not yet promoted to model fields.",
     )
 
     class Meta:
@@ -58,6 +79,28 @@ class SiteSettings(TimeStampedModel):
 
     def __str__(self):
         return f"SiteSettings<{self.slug}>"
+
+    def enforce_metadata_policy(self, metadata: dict) -> None:
+        """Validate submission metadata against the configured policy.
+
+        Raises ``MetadataPolicyError`` if the metadata violates either
+        the key-value-only or the max-bytes constraint.
+        """
+        import json as _json
+
+        if self.metadata_key_value_only:
+            for key, value in metadata.items():
+                if isinstance(value, (dict, list)):
+                    raise MetadataPolicyError(
+                        f"Metadata value for '{key}' must be a scalar when "
+                        "key/value enforcement is enabled.",
+                    )
+        if self.metadata_max_bytes > 0:
+            size = len(_json.dumps(metadata).encode("utf-8"))
+            if size > self.metadata_max_bytes:
+                raise MetadataPolicyError(
+                    "Metadata is too large for this workflow start request.",
+                )
 
 
 class BaseInvite(TimeStampedModel):

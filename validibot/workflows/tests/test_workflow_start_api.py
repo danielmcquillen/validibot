@@ -139,12 +139,20 @@ def start_url(workflow) -> str:
 def reset_site_settings(db):
     SiteSettings.objects.update_or_create(
         slug=SiteSettings.DEFAULT_SLUG,
-        defaults={"data": {}},
+        defaults={
+            "metadata_key_value_only": False,
+            "metadata_max_bytes": 4096,
+            "data": {},
+        },
     )
     yield
     SiteSettings.objects.update_or_create(
         slug=SiteSettings.DEFAULT_SLUG,
-        defaults={"data": {}},
+        defaults={
+            "metadata_key_value_only": False,
+            "metadata_max_bytes": 4096,
+            "data": {},
+        },
     )
 
 
@@ -378,13 +386,7 @@ class TestWorkflowStartAPI:
     ):
         SiteSettings.objects.update_or_create(
             slug=SiteSettings.DEFAULT_SLUG,
-            defaults={
-                "data": {
-                    "api_submission": {
-                        "metadata_key_value_only": True,
-                    },
-                },
-            },
+            defaults={"metadata_key_value_only": True},
         )
         api_client.force_authenticate(user=user)
         grant_role(user, org, RoleCode.EXECUTOR)
@@ -415,13 +417,7 @@ class TestWorkflowStartAPI:
     ):
         SiteSettings.objects.update_or_create(
             slug=SiteSettings.DEFAULT_SLUG,
-            defaults={
-                "data": {
-                    "api_submission": {
-                        "metadata_max_bytes": 20,
-                    },
-                },
-            },
+            defaults={"metadata_max_bytes": 20},
         )
         api_client.force_authenticate(user=user)
         grant_role(user, org, RoleCode.EXECUTOR)
@@ -924,12 +920,13 @@ class TestResolveApiSource:
         result = _resolve_api_source(_fake_request("LAUNCH_PAGE"))
         assert result == ValidationRunSource.API
 
-    def test_case_sensitive(self):
-        """The header value must match the enum exactly — lowercase 'mcp'
-        should not resolve to MCP.
+    def test_case_insensitive(self):
+        """The header value is normalised to uppercase before enum lookup.
 
-        ValidationRunSource uses uppercase values. Case-insensitive matching
-        would create ambiguity if new enum members were added.
+        Agents and MCP clients may send lowercase values (e.g. 'mcp').
+        The resolver uppercases the value so that 'mcp' correctly resolves
+        to the MCP enum member. This was changed in the April 2026 ADR
+        revision to support real-world header casing from agent SDKs.
         """
         result = _resolve_api_source(_fake_request("mcp"))
-        assert result == ValidationRunSource.API
+        assert result == ValidationRunSource.MCP

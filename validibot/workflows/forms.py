@@ -2524,13 +2524,13 @@ class SignalBindingEditForm(forms.Form):
             if (
                 binding.source_scope == BindingSourceScope.SIGNAL
                 and display_path
-                and not display_path.startswith("s.")
+                and not display_path.startswith(("s.", "signal."))
             ):
                 display_path = f"s.{display_path}"
             elif (
                 binding.source_scope == BindingSourceScope.SUBMISSION_PAYLOAD
                 and display_path
-                and not display_path.startswith("p.")
+                and not display_path.startswith(("p.", "payload."))
             ):
                 display_path = f"p.{display_path}"
             self.fields["source_data_path"].initial = display_path

@@ -263,12 +263,12 @@ class FMUVariableTargetResolutionTests(TestCase):
             validator=self.validator,
         )
 
-    def test_bare_fmu_input_accepted(self):
-        """A bare name matching only an FMU input variable is accepted.
+    def test_bare_fmu_input_rejected(self):
+        """A bare name (no prefix) is rejected even for FMU inputs.
 
-        When there's no collision with an output of the same name, the
-        user can reference the input with its plain name. With the unified
-        signal model, FMU variables resolve to SignalDefinition objects.
+        Users must reference FMU inputs via the signal namespace
+        (``s.Q_cooling_max``) because assertions target the source data
+        feeding the validator, not the validator's internal parameters.
         """
         form = self._fmu_form(
             fmu_variables=[
@@ -283,19 +283,41 @@ class FMUVariableTargetResolutionTests(TestCase):
                 "severity": Severity.ERROR,
             },
         )
-        self.assertTrue(form.is_valid(), form.errors)
-        # FMU signals now resolve to SignalDefinition objects
-        self.assertIsNotNone(form.cleaned_data["resolved_signal"])
-        self.assertEqual(
-            form.cleaned_data["resolved_signal"].contract_key,
-            "Q_cooling_max",
+        self.assertFalse(form.is_valid())
+        self.assertIn("for workflow signals", str(form.errors))
+
+    def test_s_prefixed_fmu_input_accepted(self):
+        """``s.Q_cooling_max`` resolves to its SignalDefinition.
+
+        The ``s.`` prefix indicates an input signal.  When the name
+        matches a known input signal, the form resolves it to the
+        corresponding SignalDefinition so the evaluator can use the
+        ``contract_key`` at runtime (instead of the raw prefixed path,
+        which the evaluator cannot resolve).
+        """
+        form = self._fmu_form(
+            fmu_variables=[
+                {"name": "Q_cooling_max", "causality": "input"},
+                {"name": "T_room", "causality": "output"},
+            ],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "s.Q_cooling_max",
+                "operator": "gt",
+                "comparison_value": "0",
+                "severity": Severity.ERROR,
+            },
         )
+        self.assertTrue(form.is_valid(), form.errors)
+        resolved = form.cleaned_data["resolved_signal"]
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.contract_key, "Q_cooling_max")
 
-    def test_bare_fmu_output_accepted(self):
-        """A bare name matching only an FMU output variable is accepted.
+    def test_bare_fmu_output_rejected(self):
+        """A bare name (no prefix) is rejected even for FMU outputs.
 
-        When there's no collision with an input of the same name, the
-        user can reference the output with its plain name.
+        Users must reference FMU outputs via the output namespace
+        (``o.T_room``).
         """
         form = self._fmu_form(
             fmu_variables=[
@@ -305,6 +327,27 @@ class FMUVariableTargetResolutionTests(TestCase):
             data={
                 "assertion_type": AssertionType.BASIC.value,
                 "target_data_path": "T_room",
+                "operator": "lt",
+                "comparison_value": "300",
+                "severity": Severity.ERROR,
+            },
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("for workflow signals", str(form.errors))
+
+    def test_o_prefixed_fmu_output_accepted(self):
+        """``o.T_room`` resolves to the FMU output SignalDefinition.
+
+        The ``o.`` prefix targets the validator output namespace.
+        """
+        form = self._fmu_form(
+            fmu_variables=[
+                {"name": "Q_cooling_max", "causality": "input"},
+                {"name": "T_room", "causality": "output"},
+            ],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "o.T_room",
                 "operator": "lt",
                 "comparison_value": "300",
                 "severity": Severity.ERROR,
@@ -342,13 +385,12 @@ class FMUVariableTargetResolutionTests(TestCase):
             "T_room",
         )
 
-    def test_collision_requires_output_prefix(self):
-        """A bare name that's both an FMU input and output raises a
-        collision error.
+    def test_bare_collision_name_rejected(self):
+        """A bare name that's both an FMU input and output is rejected
+        because all targets now require a namespace prefix.
 
-        In practice, FMI models enforce unique variable names per
-        causality, but the form handles this defensively.  The user
-        must write ``output.T_room`` to target the output.
+        The user must write ``o.T_room`` for the output or ``s.T_room``
+        for the input signal.
         """
         form = self._fmu_form(
             fmu_variables=[
@@ -364,7 +406,7 @@ class FMUVariableTargetResolutionTests(TestCase):
             },
         )
         self.assertFalse(form.is_valid())
-        self.assertIn("Both an input and output", str(form.errors))
+        self.assertIn("for workflow signals", str(form.errors))
 
     def test_collision_resolved_with_output_prefix(self):
         """``output.T_room`` resolves to the output SignalDefinition
@@ -529,3 +571,389 @@ class FMUVariableCelIdentifierTests(TestCase):
         )
         self.assertFalse(form.is_valid())
         self.assertIn("Bare identifiers are not allowed", str(form.errors))
+
+
+# ==============================================================================
+# Prefix-based target resolution
+#
+# All assertion targets must use a namespace prefix (s., p., o.) unless
+# the validator enables custom targets.  These tests verify the new
+# prefix-based resolution logic.
+# ==============================================================================
+
+
+class PrefixBasedTargetResolutionTests(TestCase):
+    """Tests for the prefix-based assertion target resolution.
+
+    After the refactor, assertion targets must use explicit namespace
+    prefixes:
+
+    - ``s.<name>`` for workflow signals (always accepted)
+    - ``p.<path>`` for payload data (always accepted)
+    - ``o.<name>`` for validator outputs (resolved to SignalDefinition)
+    - Bare names are rejected unless ``allow_custom_assertion_targets``
+    """
+
+    def _form(self, *, validator, catalog_entries, data, workflow_signal_names=None):
+        return RulesetAssertionForm(
+            data=data,
+            catalog_entries=catalog_entries or [],
+            validator=validator,
+            workflow_signal_names=workflow_signal_names,
+        )
+
+    def test_s_prefix_resolves_known_input(self):
+        """``s.<name>`` resolves to its SignalDefinition when the name
+        matches a declared input signal.
+
+        This ensures the evaluator uses the ``contract_key`` at runtime
+        rather than the raw prefixed path (which it cannot resolve).
+        """
+        from validibot.validations.constants import CatalogRunStage
+
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = SignalDefinitionFactory(
+            validator=validator,
+            contract_key="panel_area",
+            direction="input",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "s.panel_area",
+                "operator": "gt",
+                "comparison_value": "0",
+                "severity": Severity.ERROR,
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        resolved = form.cleaned_data["resolved_signal"]
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.contract_key, "panel_area")
+        self.assertEqual(
+            form.cleaned_data["resolved_stage"],
+            CatalogRunStage.INPUT,
+        )
+
+    def test_s_prefix_unknown_input_rejected(self):
+        """``s.<name>`` is rejected when the name doesn't match any
+        declared input signal and custom targets are not allowed.
+
+        The evaluator can only resolve targets that are known signals
+        or custom paths (when permitted).  An unknown ``s.`` name would
+        silently fail at runtime, so the form rejects it up front.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=False,
+        )
+        validator.refresh_from_db()
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "s.panel_area",
+                "operator": "gt",
+                "comparison_value": "0",
+                "severity": Severity.ERROR,
+            },
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("target_data_path", form.errors)
+
+    def test_s_prefix_resolves_workflow_signal(self):
+        """``s.<name>`` is accepted when the name matches a workflow-level
+        signal (signal mapping or promoted output from an upstream step),
+        even when it's not a declared validator input.
+
+        Workflow signals are passed to the form via ``workflow_signal_names``
+        and should always be valid targets regardless of the
+        ``allow_custom_assertion_targets`` setting.  This ensures the
+        dropdown choices (which include workflow signals) are never
+        rejected by the form's own validation.
+        """
+        from validibot.validations.constants import CatalogRunStage
+
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=False,
+        )
+        validator.refresh_from_db()
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            workflow_signal_names={"site_area", "building_height"},
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "s.site_area",
+                "operator": "gt",
+                "comparison_value": "0",
+                "severity": Severity.ERROR,
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        # Stored as a bare name (no prefix) with no signal definition.
+        self.assertIsNone(form.cleaned_data["resolved_signal"])
+        self.assertEqual(
+            form.cleaned_data["target_data_path_value"],
+            "site_area",
+        )
+        self.assertEqual(
+            form.cleaned_data["resolved_stage"],
+            CatalogRunStage.INPUT,
+        )
+
+    def test_s_prefix_prefers_validator_input_over_workflow_signal(self):
+        """When a name exists as both a validator input and a workflow signal,
+        the validator input takes precedence.
+
+        Validator inputs resolve to a SignalDefinition so the evaluator
+        uses the ``contract_key`` at runtime.  Workflow signals are stored
+        as bare paths.  Preferring the signal definition gives the
+        evaluator richer metadata.
+        """
+        from validibot.validations.constants import CatalogRunStage
+
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = SignalDefinitionFactory(
+            validator=validator,
+            contract_key="panel_area",
+            direction="input",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            workflow_signal_names={"panel_area"},
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "s.panel_area",
+                "operator": "gt",
+                "comparison_value": "0",
+                "severity": Severity.ERROR,
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        resolved = form.cleaned_data["resolved_signal"]
+        # Should resolve to the SignalDefinition, not fall through to
+        # the workflow signal path.
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.contract_key, "panel_area")
+        self.assertEqual(
+            form.cleaned_data["resolved_stage"],
+            CatalogRunStage.INPUT,
+        )
+
+    def test_p_prefix_always_accepted(self):
+        """``p.<path>`` targets are always accepted without requiring
+        ``allow_custom_assertion_targets``.
+
+        Payload paths reference raw submission data and are resolved
+        at the input stage before the validator runs.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=False,
+        )
+        validator.refresh_from_db()
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "p.building.floor_area",
+                "operator": "gt",
+                "comparison_value": "0",
+                "severity": Severity.ERROR,
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertIsNone(form.cleaned_data["resolved_signal"])
+        # The "p." prefix is stripped so the evaluator resolves the
+        # bare path against the raw payload dict.
+        self.assertEqual(
+            form.cleaned_data["target_data_path_value"],
+            "building.floor_area",
+        )
+        from validibot.validations.constants import CatalogRunStage
+
+        self.assertEqual(
+            form.cleaned_data["resolved_stage"],
+            CatalogRunStage.INPUT,
+        )
+
+    def test_payload_prefix_accepted(self):
+        """The long-form ``payload.<path>`` prefix is also accepted.
+
+        This is an alias for ``p.`` and should resolve identically.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=False,
+        )
+        validator.refresh_from_db()
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "payload.zones[0].temp",
+                "operator": "lt",
+                "comparison_value": "30",
+                "severity": Severity.ERROR,
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        # The "payload." prefix is stripped — the evaluator resolves
+        # the bare path against the payload dict.
+        self.assertEqual(
+            form.cleaned_data["target_data_path_value"],
+            "zones[0].temp",
+        )
+
+    def test_o_prefix_resolves_output_signal(self):
+        """``o.<name>`` resolves to the output SignalDefinition.
+
+        Output-prefixed targets are resolved against the validator's
+        declared output signals and set the stage to OUTPUT.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        output_sig = SignalDefinitionFactory(
+            validator=validator,
+            contract_key="site_eui",
+            direction="output",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[output_sig],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "o.site_eui",
+                "operator": "gt",
+                "comparison_value": "0",
+                "severity": Severity.ERROR,
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertIsNotNone(form.cleaned_data["resolved_signal"])
+        self.assertEqual(
+            form.cleaned_data["resolved_signal"].contract_key,
+            "site_eui",
+        )
+        from validibot.validations.constants import CatalogRunStage
+
+        self.assertEqual(
+            form.cleaned_data["resolved_stage"],
+            CatalogRunStage.OUTPUT,
+        )
+
+    def test_bare_name_rejected_without_custom_targets(self):
+        """A bare name without any namespace prefix is rejected when
+        ``allow_custom_assertion_targets`` is False.
+
+        The error message should direct the user to use ``s.``, ``p.``,
+        or ``o.`` prefixes.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=False,
+        )
+        validator.refresh_from_db()
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "temperature",
+                "operator": "gt",
+                "comparison_value": "0",
+                "severity": Severity.ERROR,
+            },
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("for workflow signals", str(form.errors))
+
+    def test_bare_name_accepted_with_custom_targets(self):
+        """A bare dotted path is accepted when the validator enables
+        custom assertion targets.
+
+        This provides backward compatibility for validators that
+        allow free-form data path targeting.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=True,
+        )
+        validator.refresh_from_db()
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "metrics.custom.value",
+                "operator": "gt",
+                "comparison_value": "0",
+                "severity": Severity.ERROR,
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(
+            form.cleaned_data["target_data_path_value"],
+            "metrics.custom.value",
+        )
+
+    def test_signal_prefix_long_form_accepted(self):
+        """The long-form ``signal.<name>`` prefix is also accepted.
+
+        This is an alias for ``s.`` — the prefix is stripped so the
+        evaluator can resolve the bare name against the payload.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "signal.panel_area",
+                "operator": "gt",
+                "comparison_value": "0",
+                "severity": Severity.ERROR,
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(
+            form.cleaned_data["target_data_path_value"],
+            "panel_area",
+        )

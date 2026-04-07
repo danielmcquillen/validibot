@@ -167,7 +167,7 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
             raise ValidationError(
                 _(
                     "Bare identifiers are not allowed. Use p.%(first)s "
-                    "for payload data or s.%(first)s for signals. "
+                    "for payload data or s.%(first)s for workflow signals. "
                     "Unknown: %(names)s"
                 )
                 % {

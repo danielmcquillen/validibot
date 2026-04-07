@@ -475,6 +475,9 @@ class RulesetAssertion(TimeStampedModel):
     def resolved_run_stage(self) -> CatalogRunStage:
         if self.target_signal_definition_id and self.target_signal_definition:
             return CatalogRunStage(self.target_signal_definition.direction)
+        path = (self.target_data_path or "").strip()
+        if path.startswith(("s.", "signal.", "p.", "payload.")):
+            return CatalogRunStage.INPUT
         return CatalogRunStage.OUTPUT
 
     def clean(self):
@@ -495,7 +498,8 @@ class RulesetAssertion(TimeStampedModel):
     def target_display(self) -> str:
         if self.target_signal_definition_id and self.target_signal_definition:
             sig = self.target_signal_definition
-            return f"{sig.label or sig.contract_key} ({sig.contract_key})"
+            prefix = "o." if sig.direction == SignalDirection.OUTPUT else "s."
+            return f"{sig.label or sig.contract_key} ({prefix}{sig.contract_key})"
         return self.target_data_path
 
     @property
@@ -1385,27 +1389,27 @@ class SignalDefinition(TimeStampedModel):
 
 
 class StepSignalBinding(TimeStampedModel):
-    """Per-step wiring that maps a signal definition to a data source.
+    """Per-step wiring that maps a validator input to a data source.
 
     While ``SignalDefinition`` declares *what* data a step expects,
     ``StepSignalBinding`` declares *where* to find it. This is the
-    per-step mapping layer that connects each input signal to a concrete
-    location in the submission payload, submission metadata, an upstream
-    step's output, or a system-provided value.
+    per-step mapping layer that connects each validator input to a
+    concrete location in the submission payload, submission metadata,
+    a workflow signal, an upstream step's output, or a system value.
 
     This separation allows the same signal definition (e.g., ``panel_area``)
     to be wired differently in different workflow steps — one step might
     read it from ``building.envelope.panel_area`` in the submission JSON,
-    while another reads it from an upstream step's output.
+    while another reads it from a workflow signal or upstream step output.
 
     Key fields:
 
     - ``source_scope``: Where to look for the value (submission payload,
-      submission metadata, upstream step output, or system).
+      submission metadata, workflow signal, upstream step output, or system).
     - ``source_data_path``: A dotted path expression (e.g.,
       ``weather.stations[0].solar_irradiance``) into the source scope.
     - ``default_value``: Fallback value when the source path resolves to
-      nothing and the signal is not required.
+      nothing and the input is not required.
     - ``is_required``: If True, a missing value with no default raises a
       structured error before validator execution.
 
@@ -1422,15 +1426,16 @@ class StepSignalBinding(TimeStampedModel):
         SignalDefinition,
         on_delete=models.CASCADE,
         related_name="bindings",
-        help_text="The signal definition this binding wires up.",
+        help_text="The validator input or output definition this binding wires up.",
     )
     source_scope = models.CharField(
         max_length=30,
         choices=BindingSourceScope.choices,
         default=BindingSourceScope.SUBMISSION_PAYLOAD,
         help_text=(
-            "The data scope to resolve the signal value from: submission "
-            "payload, submission metadata, upstream step output, or system."
+            "The data scope to resolve the input value from: submission "
+            "payload, submission metadata, workflow signal, upstream step "
+            "output, or system."
         ),
     )
     source_data_path = models.CharField(
@@ -1450,7 +1455,7 @@ class StepSignalBinding(TimeStampedModel):
         default=None,
         help_text=(
             "Fallback value used when the source path resolves to nothing "
-            "and the signal is not marked as required."
+            "and the input is not marked as required."
         ),
     )
     is_required = models.BooleanField(

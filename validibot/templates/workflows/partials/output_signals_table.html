@@ -3,103 +3,119 @@
 {% comment %}
 Validator Outputs Table
 
-Shows all validator outputs for a workflow step with a "Show to User"
-column. Each output has an inline toggle button that adds/removes it
-from the display list via HTMx POST.
+Shows all validator outputs for a workflow step.  Three columns:
+1. Slug — the output's contract key (o.<slug>)
+2. Export — toggle that adds the output to the final response
+3. Copy to Signal — promote the output to the signal namespace (s.name)
+   so downstream steps and assertions can reference it easily.
 
-The "Promoted As" column shows whether the output has been promoted
-to the signal namespace (s.name) for use in downstream steps.
+The outer div listens for the ``signals-changed`` HTMx event (fired by
+the promote/demote view) and re-fetches the table partial so the UI
+updates without a full page refresh.
 
 Context:
   unified_signals.output_signals  - list of output signal dicts
   step                            - the WorkflowStep
   workflow                        - the parent Workflow
 {% endcomment %}
-{% if unified_signals.output_signals %}
-  <div class="table-responsive">
-    <table class="table table-sm align-middle" data-sortable-table>
-      <thead>
-        <tr>
-          <th class="text-muted small" data-sortable="true">
-            {% trans "Slug" %}
-          </th>
-          <th class="text-muted small">
-            {% trans "Copy to Signal" %}
-          </th>
-          <th class="text-muted small text-center">
-            {% trans "Show to User" %}
-          </th>
-          <th class="text-muted small text-end">
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for signal in unified_signals.output_signals %}
+<div id="outputs-table-container"
+     hx-get="{% url 'workflows:workflow_step_outputs_partial' workflow.pk step.pk %}"
+     hx-trigger="signals-changed from:body"
+     hx-swap="outerHTML">
+  {% if unified_signals.output_signals %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle" data-sortable-table>
+        <thead>
           <tr>
-            <td>
-              <code class="small">o.{{ signal.slug }}</code>
-              {% if signal.label and signal.label != signal.slug %}
-                <br />
-                <span class="text-muted small">{{ signal.label }}</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if signal.signal_name %}
-                <span class="badge bg-primary-subtle text-primary">
-                  s.{{ signal.signal_name }}
-                </span>
-              {% else %}
-                <span class="text-muted">—</span>
-              {% endif %}
-            </td>
-            <td class="text-center">
-              {% include "workflows/partials/signal_show_toggle.html" with signal_slug=signal.slug is_shown=signal.show_to_user step=step workflow=workflow %}
-            </td>
-            <td class="text-end">
-              {% if can_manage_workflow %}
-                {% if signal.signal_name %}
-                  <form class="d-inline"
-                        hx-post="{% url 'workflows:workflow_step_promote_output' workflow.pk step.pk signal.signal_definition.pk %}"
-                        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                        hx-swap="none"
-                        hx-disabled-elt="find button">
-                    <input type="hidden" name="signal_name" value="" />
-                    <button type="submit"
-                            class="btn btn-sm btn-outline-secondary"
-                            title="{% trans 'Remove signal promotion' %}">
-                      <i class="bi bi-x-lg"></i>
-                    </button>
-                  </form>
-                {% else %}
-                  <form class="d-inline"
-                        hx-post="{% url 'workflows:workflow_step_promote_output' workflow.pk step.pk signal.signal_definition.pk %}"
-                        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                        hx-swap="none"
-                        hx-disabled-elt="find button">
-                    <div class="input-group input-group-sm" style="max-width: 10rem">
-                      <input type="text"
-                             name="signal_name"
-                             class="form-control form-control-sm"
-                             placeholder="{% trans 'Signal name' %}"
-                             pattern="[a-zA-Z_][a-zA-Z0-9_]*"
-                             required />
-                      <button type="submit"
-                              class="btn btn-outline-primary btn-sm"
-                              title="{% trans 'Promote to s.name' %}">
-                        <i class="bi bi-arrow-up-right"></i>
-                      </button>
-                    </div>
-                  </form>
-                {% endif %}
-              {% endif %}
-            </td>
+            <th class="text-muted small" data-sortable="true">
+              {% trans "Slug" %}
+            </th>
+            <th class="text-muted small text-center">
+              {% trans "Export" %}
+              <i class="bi bi-info-circle"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="top"
+                 title="{% trans 'Adds output values to the final output response shown to users.' %}"></i>
+            </th>
+            <th class="text-muted small">
+              {% trans "Copy to Signal" %}
+              <i class="bi bi-info-circle"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="top"
+                 title="{% trans 'Copy the output value to a signal so it is easily referenced in later steps.' %}"></i>
+            </th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-{% else %}
-  <p class="text-muted mb-0">
-    {% trans "No validator outputs." %}
-  </p>
-{% endif %}
+        </thead>
+        <tbody>
+          {% for signal in unified_signals.output_signals %}
+            <tr>
+              <td>
+                <code class="small">o.{{ signal.slug }}</code>
+                {% if signal.label and signal.label != signal.slug %}
+                  <br />
+                  <span class="text-muted small">{{ signal.label }}</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% include "workflows/partials/signal_show_toggle.html" with signal_slug=signal.slug is_shown=signal.show_to_user step=step workflow=workflow %}
+              </td>
+              <td>
+                {% if can_manage_workflow %}
+                  {% if signal.signal_name %}
+                    <div class="d-flex align-items-center gap-2">
+                      <span class="badge bg-primary-subtle text-primary">
+                        s.{{ signal.signal_name }}
+                      </span>
+                      <form class="d-inline"
+                            hx-post="{% url 'workflows:workflow_step_promote_output' workflow.pk step.pk signal.signal_definition.pk %}"
+                            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                            hx-swap="none"
+                            hx-disabled-elt="find button">
+                        <input type="hidden" name="signal_name" value="" />
+                        <button type="submit"
+                                class="btn btn-sm btn-outline-secondary"
+                                title="{% trans 'Remove signal' %}">
+                          <i class="bi bi-x-lg"></i>
+                        </button>
+                      </form>
+                    </div>
+                  {% else %}
+                    <form class="d-inline"
+                          hx-post="{% url 'workflows:workflow_step_promote_output' workflow.pk step.pk signal.signal_definition.pk %}"
+                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                          hx-swap="none"
+                          hx-disabled-elt="find button">
+                      <div class="input-group input-group-sm" style="max-width: 12rem">
+                        <input type="text"
+                               name="signal_name"
+                               class="form-control form-control-sm"
+                               placeholder="{% trans 'Signal name' %}"
+                               pattern="[a-zA-Z_][a-zA-Z0-9_]*"
+                               required />
+                        <button type="submit"
+                                class="btn btn-outline-primary btn-sm"
+                                title="{% trans 'Copy to signal' %}">
+                          <i class="bi bi-arrow-up-right"></i>
+                        </button>
+                      </div>
+                    </form>
+                  {% endif %}
+                {% elif signal.signal_name %}
+                  <span class="badge bg-primary-subtle text-primary">
+                    s.{{ signal.signal_name }}
+                  </span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-muted mb-0">
+      {% trans "No validator outputs." %}
+    </p>
+  {% endif %}
+</div>

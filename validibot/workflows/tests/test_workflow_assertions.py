@@ -305,7 +305,7 @@ class WorkflowStepAssertionsTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn("Unknown signal(s) referenced", body)
+        self.assertIn("for signals", body)
 
     def test_create_custom_target_when_validator_allows(self):
         workflow = WorkflowFactory()

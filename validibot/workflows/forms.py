@@ -2480,8 +2480,8 @@ class SignalBindingEditForm(forms.Form):
         required=False,
         label=_("Source Path"),
         help_text=_(
-            "A payload path (e.g., building.floor_area) or a signal "
-            "reference (e.g., s.floor_area) that provides the value "
+            "A payload path (e.g. <code>p.path.to.some_key_name</code>) or a signal "
+            "reference (e.g. <code>s.some_signal_name</code>) that provides the value "
             "for this input."
         ),
     )
@@ -2514,7 +2514,26 @@ class SignalBindingEditForm(forms.Form):
             self.fields["unit"].initial = signal_definition.unit
 
         if binding and not self.is_bound:
-            self.fields["source_data_path"].initial = binding.source_data_path
+            # Display the path with its namespace prefix so the user sees
+            # which scope it belongs to:
+            #   SIGNAL → "s.solar_irradiance"
+            #   SUBMISSION_PAYLOAD → "p.building.floor_area"
+            from validibot.validations.constants import BindingSourceScope
+
+            display_path = binding.source_data_path
+            if (
+                binding.source_scope == BindingSourceScope.SIGNAL
+                and display_path
+                and not display_path.startswith("s.")
+            ):
+                display_path = f"s.{display_path}"
+            elif (
+                binding.source_scope == BindingSourceScope.SUBMISSION_PAYLOAD
+                and display_path
+                and not display_path.startswith("p.")
+            ):
+                display_path = f"p.{display_path}"
+            self.fields["source_data_path"].initial = display_path
             if binding.default_value is not None:
                 self.fields["default_value"].initial = str(binding.default_value)
             self.fields["is_required"].initial = binding.is_required
@@ -2550,12 +2569,40 @@ class SignalBindingEditForm(forms.Form):
             sig.save(update_fields=["label", "description", "unit"])
 
         if binding:
-            binding.source_data_path = self.cleaned_data.get("source_data_path") or ""
+            from validibot.validations.constants import BindingSourceScope
+
+            raw_path = self.cleaned_data.get("source_data_path") or ""
+            # Detect namespace prefixes and set the correct binding scope.
+            #
+            # s. / signal. → SIGNAL scope (workflow-level signals)
+            #   e.g. "s.solar_irradiance" → path="solar_irradiance"
+            #
+            # p. / payload. → SUBMISSION_PAYLOAD scope (raw submission data)
+            #   e.g. "p.building.floor_area" → path="building.floor_area"
+            #
+            # No prefix → preserve existing scope (could be UPSTREAM_STEP,
+            # etc.) unless it was SIGNAL, in which case reset to
+            # SUBMISSION_PAYLOAD since the user removed the s. prefix.
+            if raw_path.startswith(("s.", "signal.")):
+                binding.source_data_path = raw_path.split(".", 1)[1]
+                binding.source_scope = BindingSourceScope.SIGNAL
+            elif raw_path.startswith(("p.", "payload.")):
+                binding.source_data_path = raw_path.split(".", 1)[1]
+                binding.source_scope = BindingSourceScope.SUBMISSION_PAYLOAD
+            else:
+                binding.source_data_path = raw_path
+                if binding.source_scope == BindingSourceScope.SIGNAL:
+                    binding.source_scope = BindingSourceScope.SUBMISSION_PAYLOAD
             default_str = self.cleaned_data.get("default_value", "").strip()
             binding.default_value = default_str if default_str else None
             binding.is_required = self.cleaned_data.get("is_required", True)
             binding.save(
-                update_fields=["source_data_path", "default_value", "is_required"],
+                update_fields=[
+                    "source_data_path",
+                    "source_scope",
+                    "default_value",
+                    "is_required",
+                ],
             )
 
 

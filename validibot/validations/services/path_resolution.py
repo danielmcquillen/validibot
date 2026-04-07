@@ -188,6 +188,7 @@ def resolve_input_signal(
     submission_data: dict[str, Any] | None = None,
     submission_metadata: dict[str, Any] | None = None,
     upstream_signals: dict[str, dict[str, Any]] | None = None,
+    workflow_signals: dict[str, Any] | None = None,
 ) -> ResolvedSignal:
     """Resolve a single input signal from its binding configuration.
 
@@ -202,6 +203,9 @@ def resolve_input_signal(
         submission_metadata: Submission metadata dict (for SUBMISSION_METADATA scope).
         upstream_signals: Dict of ``{step_key: {"signals": {...}}}`` from prior
             steps (for UPSTREAM_STEP scope).
+        workflow_signals: Dict of resolved workflow-level signals (for SIGNAL scope).
+            These are the ``s.`` namespace values resolved by
+            ``resolve_workflow_signals()``.
 
     Returns:
         A ``ResolvedSignal`` with the resolved value and audit metadata.
@@ -250,6 +254,15 @@ def resolve_input_signal(
         # the audit trace.
         if "." in effective_path:
             result.upstream_step_key = effective_path.split(".", 1)[0]
+    elif scope == BindingSourceScope.SIGNAL:
+        # Workflow-level signals resolved by resolve_workflow_signals().
+        # The effective_path is a plain signal name (e.g., "solar_irradiance").
+        # Users may paste CEL references like "s.solar_irradiance" — strip
+        # the "s." prefix so the lookup matches the dict keys.
+        source = workflow_signals or {}
+        if effective_path.startswith("s."):
+            effective_path = effective_path[2:]
+            result.source_data_path_used = effective_path
     else:
         # SYSTEM scope — reserved for future use
         source = {}
@@ -260,7 +273,7 @@ def resolve_input_signal(
         result.value = value
         result.resolved = True
         logger.debug(
-            "Signal '%s' resolved to %r via path '%s' (scope=%s)",
+            "Validator input '%s' resolved to %r via path '%s' (scope=%s)",
             sig.contract_key,
             value,
             effective_path,
@@ -269,7 +282,7 @@ def resolve_input_signal(
         return result
 
     logger.warning(
-        "Signal '%s' could not be resolved from %s at path '%s'. "
+        "Validator input '%s' could not be resolved from %s at path '%s'. "
         "Check that the data path matches the submission structure.",
         sig.contract_key,
         scope,
@@ -287,8 +300,8 @@ def resolve_input_signal(
     result.resolved = False
     if binding.is_required:
         result.error_message = (
-            f"Required signal '{sig.contract_key}' could not be resolved "
-            f"from {scope} at path '{path}'"
+            f"Required validator input '{sig.contract_key}' could not be "
+            f"resolved from {scope} at path '{path}'"
         )
     return result
 
@@ -300,6 +313,7 @@ def resolve_step_input_signals(
     submission_data: dict[str, Any] | None = None,
     submission_metadata: dict[str, Any] | None = None,
     upstream_signals: dict[str, dict[str, Any]] | None = None,
+    workflow_signals: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[ResolvedInputTrace]]:
     """Batch-resolve all input signal bindings for a workflow step.
 
@@ -344,6 +358,7 @@ def resolve_step_input_signals(
             submission_data=submission_data,
             submission_metadata=submission_metadata,
             upstream_signals=upstream_signals,
+            workflow_signals=workflow_signals,
         )
 
         if resolved.resolved:
@@ -352,8 +367,8 @@ def resolve_step_input_signals(
             native = resolved.signal_definition.native_name
             input_values[native] = resolved.value
         elif resolved.error_message:
-            # Required signal failed — collect the error but don't
-            # raise yet so we can build traces for all signals first.
+            # Required validator input failed — collect the error but
+            # don't raise yet so we can build traces for all inputs first.
             errors.append(resolved.error_message)
 
         traces.append(

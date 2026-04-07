@@ -30,7 +30,7 @@ Context:
             <i class="bi bi-info-circle"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
-               title="{% trans 'The contract key that identifies this signal in CEL assertions and the validation engine.' %}"></i>
+               title="{% trans 'The contract key that identifies this validator input in CEL assertions and the validation engine.' %}"></i>
           </th>
           <th class="text-muted small">
             {% trans "Source Path" %}
@@ -104,7 +104,7 @@ Context:
                         hx-get="{% org_url 'workflows:workflow_step_signal_edit' workflow.pk step.pk signal.signal_definition.pk %}"
                         hx-target="#signal-edit-modal-content"
                         hx-trigger="click"
-                        title="{% trans 'Edit signal' %}">
+                        title="{% trans 'Edit validator input' %}">
                   <i class="bi bi-pencil"></i>
                 </button>
               {% elif signal.source == "template" and signal.variable_index is not None %}

@@ -549,3 +549,246 @@ class ResolveStepInputSignalsTests(TestCase):
         self.assertEqual(input_values, {"T_outdoor": 295.0})
         self.assertEqual(len(traces), 1)
         self.assertTrue(traces[0].resolved)
+
+
+# ── SIGNAL scope: workflow signal resolution ────────────────────────
+#
+# The SIGNAL scope allows validator inputs to reference workflow-level
+# signals (the ``s.`` namespace) resolved by ``resolve_workflow_signals()``.
+# This bridges the two signal layers: a workflow signal mapping extracts
+# a value from the submission, and a SIGNAL-scoped binding feeds it
+# into a validator input.
+
+
+class ResolveSignalScopeTests(TestCase):
+    """Tests for the SIGNAL scope in resolve_input_signal().
+
+    The SIGNAL scope lets validator inputs reference resolved workflow
+    signals instead of raw submission data. This is the fix for the bug
+    where ``source_data_path='s.solar_irradiance'`` failed because the
+    resolver had no SIGNAL scope — it tried to look up the path in the
+    submission payload, which doesn't have an ``s`` key.
+    """
+
+    def _make_binding(self, *, step=None, path="", **kwargs):
+        """Create a SIGNAL-scoped binding for testing."""
+        step = step or WorkflowStepFactory()
+        sig = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            direction=SignalDirection.INPUT,
+        )
+        return StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig,
+            source_scope=BindingSourceScope.SIGNAL,
+            source_data_path=path,
+            **kwargs,
+        )
+
+    def test_resolves_from_workflow_signals_dict(self):
+        """A SIGNAL-scoped binding with path 'solar_irradiance' should
+        resolve from the workflow_signals dict, not the submission payload.
+        """
+        binding = self._make_binding(path="solar_irradiance")
+        result = resolve_input_signal(
+            binding,
+            submission_data={"unrelated": 999},
+            workflow_signals={"solar_irradiance": 800.0},
+        )
+        self.assertTrue(result.resolved)
+        self.assertEqual(result.value, 800.0)
+
+    def test_strips_s_dot_prefix(self):
+        """Users may paste CEL references like 's.solar_irradiance' as the
+        source path. The resolver should strip the 's.' prefix so the
+        lookup matches the workflow_signals dict keys.
+        """
+        binding = self._make_binding(path="s.solar_irradiance")
+        result = resolve_input_signal(
+            binding,
+            workflow_signals={"solar_irradiance": 800.0},
+        )
+        self.assertTrue(result.resolved)
+        self.assertEqual(result.value, 800.0)
+        self.assertEqual(result.source_data_path_used, "solar_irradiance")
+
+    def test_missing_required_signal_returns_error(self):
+        """When a required SIGNAL-scoped binding references a workflow
+        signal that doesn't exist, the resolver should return an error
+        result (not raise) so the batch resolver can collect all errors.
+        """
+        binding = self._make_binding(
+            path="nonexistent_signal",
+            is_required=True,
+        )
+        result = resolve_input_signal(
+            binding,
+            workflow_signals={"other_signal": 42},
+        )
+        self.assertFalse(result.resolved)
+        self.assertIn(
+            binding.signal_definition.contract_key,
+            result.error_message,
+        )
+
+    def test_falls_back_to_default_value(self):
+        """When a SIGNAL-scoped binding can't find the signal but has a
+        default value configured, the resolver should use the default.
+        """
+        binding = self._make_binding(
+            path="missing_signal",
+            default_value=500.0,
+            is_required=False,
+        )
+        result = resolve_input_signal(
+            binding,
+            workflow_signals={},
+        )
+        self.assertTrue(result.resolved)
+        self.assertEqual(result.value, 500.0)
+        self.assertTrue(result.used_default)
+
+    def test_empty_workflow_signals_falls_back_to_default(self):
+        """When workflow_signals is None (e.g., because workflow signal
+        resolution failed), a binding with a default value should still
+        resolve successfully.
+        """
+        binding = self._make_binding(
+            path="solar_irradiance",
+            default_value=600.0,
+            is_required=False,
+        )
+        result = resolve_input_signal(
+            binding,
+            workflow_signals=None,
+        )
+        self.assertTrue(result.resolved)
+        self.assertEqual(result.value, 600.0)
+        self.assertTrue(result.used_default)
+
+    def test_blank_path_falls_back_to_contract_key(self):
+        """When source_data_path is empty, the SIGNAL scope should fall
+        back to looking up by contract_key, matching the blank-path
+        fallback behavior of other scopes.
+        """
+        step = WorkflowStepFactory()
+        sig = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            direction=SignalDirection.INPUT,
+            contract_key="solar_irradiance",
+        )
+        binding = StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig,
+            source_scope=BindingSourceScope.SIGNAL,
+            source_data_path="",
+        )
+        result = resolve_input_signal(
+            binding,
+            workflow_signals={"solar_irradiance": 800.0},
+        )
+        self.assertTrue(result.resolved)
+        self.assertEqual(result.value, 800.0)
+
+
+class ResolveStepSignalScopeBatchTests(TestCase):
+    """Tests for SIGNAL scope in the batch resolve_step_input_signals().
+
+    Verifies that workflow_signals are passed through correctly when
+    resolving multiple bindings in a single batch call.
+    """
+
+    def test_batch_resolves_signal_scoped_bindings(self):
+        """The batch resolver should pass workflow_signals through to
+        individual binding resolution — enabling SIGNAL-scoped bindings
+        to find workflow-level signal values.
+        """
+        step = WorkflowStepFactory()
+        run = ValidationRunFactory(workflow=step.workflow)
+        step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+        )
+
+        sig = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            direction=SignalDirection.INPUT,
+            contract_key="solar_irradiance",
+            native_name="GHI_W_m2",
+        )
+        StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig,
+            source_scope=BindingSourceScope.SIGNAL,
+            source_data_path="solar_irradiance",
+        )
+
+        input_values, traces = resolve_step_input_signals(
+            step,
+            step_run,
+            submission_data={},
+            workflow_signals={"solar_irradiance": 800.0},
+        )
+
+        self.assertEqual(input_values, {"GHI_W_m2": 800.0})
+        self.assertEqual(len(traces), 1)
+        self.assertTrue(traces[0].resolved)
+
+    def test_batch_mixed_scopes(self):
+        """A step can have bindings in different scopes — some from
+        submission payload, some from workflow signals. The batch resolver
+        should resolve each binding in its own scope correctly.
+        """
+        step = WorkflowStepFactory()
+        run = ValidationRunFactory(workflow=step.workflow)
+        step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+        )
+
+        # Payload-scoped binding
+        sig_payload = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            direction=SignalDirection.INPUT,
+            contract_key="temperature",
+            native_name="T_outdoor",
+        )
+        StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig_payload,
+            source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
+            source_data_path="T_outdoor",
+        )
+
+        # Signal-scoped binding
+        sig_signal = SignalDefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            direction=SignalDirection.INPUT,
+            contract_key="irradiance",
+            native_name="GHI_W_m2",
+        )
+        StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=sig_signal,
+            source_scope=BindingSourceScope.SIGNAL,
+            source_data_path="solar_irradiance",
+        )
+
+        input_values, traces = resolve_step_input_signals(
+            step,
+            step_run,
+            submission_data={"T_outdoor": 295.0},
+            workflow_signals={"solar_irradiance": 800.0},
+        )
+
+        self.assertEqual(
+            input_values,
+            {"T_outdoor": 295.0, "GHI_W_m2": 800.0},
+        )
+        self.assertEqual(len(traces), 2)
+        self.assertTrue(all(t.resolved for t in traces))

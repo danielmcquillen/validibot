@@ -246,34 +246,30 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
         if hasattr(self, "_catalog_choice_cache"):
             return self._catalog_choice_cache
         from validibot.validations.constants import SignalDirection
+        from validibot.validations.models import SignalDefinition
+        from validibot.workflows.models import WorkflowSignalMapping
 
         validator = self.step.validator
         choices: list[tuple[str, str]] = []
         signal_defs: list = []
 
+        # Collect all signal definitions (needed by the form for
+        # outputs_by_slug resolution), but only show OUTPUTS in the
+        # datalist.  Input signals are not directly targetable —
+        # assertions should target the source data (s.name or p.path).
         if validator:
             signal_defs = list(
                 validator.signal_definitions.order_by("order", "contract_key")
             )
             for sig in signal_defs:
-                # Outputs get o. prefix (used in CEL as o.name).
-                # Inputs have no namespace prefix — they are the
-                # validator's own parameters, not CEL-accessible names.
                 if sig.direction == SignalDirection.OUTPUT:
-                    value = f"o.{sig.contract_key}"
-                else:
-                    value = sig.contract_key
-                role = (
-                    _("Output")
-                    if sig.direction == SignalDirection.OUTPUT
-                    else _("Input")
-                )
-                choices.append(
-                    (value, f"{sig.label or sig.contract_key} · {role}"),
-                )
+                    choices.append(
+                        (
+                            f"o.{sig.contract_key}",
+                            f"{sig.label or sig.contract_key} · {_('Output')}",
+                        ),
+                    )
 
-        # Step-level signal definitions (FMU uploads, templates, etc.)
-        # provide per-step signals not covered by the validator library.
         step_sigs = list(self.step.signal_definitions.order_by("order", "contract_key"))
         seen = {(sig.contract_key, sig.direction) for sig in signal_defs}
         for sig in step_sigs:
@@ -281,18 +277,49 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
                 continue
             seen.add((sig.contract_key, sig.direction))
             if sig.direction == SignalDirection.OUTPUT:
-                value = f"o.{sig.contract_key}"
-            else:
-                value = sig.contract_key
-            role = (
-                _("Output") if sig.direction == SignalDirection.OUTPUT else _("Input")
-            )
-            display_name = sig.label or sig.native_name or sig.contract_key
-            choices.append((value, f"{display_name} · {role}"))
+                display_name = sig.label or sig.native_name or sig.contract_key
+                choices.append(
+                    (f"o.{sig.contract_key}", f"{display_name} · {_('Output')}"),
+                )
             signal_defs.append(sig)
+
+        # Workflow-level signal mappings appear as s.<name> so authors
+        # can target resolved signal values in input-stage assertions.
+        workflow = self.step.workflow
+        seen_signal_names: set[str] = set()
+        for mapping in (
+            WorkflowSignalMapping.objects.filter(workflow=workflow)
+            .order_by("position")
+            .values("name")
+        ):
+            name = mapping["name"]
+            seen_signal_names.add(name)
+            choices.append((f"s.{name}", f"{name} · {_('Signal')}"))
+
+        # Promoted outputs from upstream steps also live in the s.*
+        # namespace and are valid assertion targets.
+        promoted = (
+            SignalDefinition.objects.filter(
+                workflow_step__workflow=workflow,
+                workflow_step__order__lt=self.step.order,
+                direction=SignalDirection.OUTPUT,
+            )
+            .exclude(signal_name="")
+            .values_list("signal_name", flat=True)
+        )
+        for signal_name in promoted:
+            if signal_name not in seen_signal_names:
+                seen_signal_names.add(signal_name)
+                choices.append(
+                    (
+                        f"s.{signal_name}",
+                        f"{signal_name} · {_('Promoted output')}",
+                    ),
+                )
 
         self._catalog_entries_cache = signal_defs
         self._catalog_choice_cache = choices
+        self._workflow_signal_names_cache = seen_signal_names
         return choices
 
     def get_context_data(self, **kwargs):

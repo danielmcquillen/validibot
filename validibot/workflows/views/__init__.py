@@ -21,6 +21,7 @@ from validibot.workflows.views.assertions import WorkflowStepAssertionCreateView
 from validibot.workflows.views.assertions import WorkflowStepAssertionDeleteView
 from validibot.workflows.views.assertions import WorkflowStepAssertionModalBase
 from validibot.workflows.views.assertions import WorkflowStepAssertionMoveView
+from validibot.workflows.views.assertions import WorkflowStepAssertionsPartialView
 from validibot.workflows.views.assertions import WorkflowStepAssertionUpdateView
 from validibot.workflows.views.assertions import WorkflowValidationListView
 from validibot.workflows.views.launch import WorkflowLastRunStatusView
@@ -59,6 +60,7 @@ from validibot.workflows.views.steps import WorkflowStepEditView
 from validibot.workflows.views.steps import WorkflowStepFormView
 from validibot.workflows.views.steps import WorkflowStepListView
 from validibot.workflows.views.steps import WorkflowStepMoveView
+from validibot.workflows.views.steps import WorkflowStepOutputsPartialView
 from validibot.workflows.views.steps import WorkflowStepSignalAutoLinkView
 from validibot.workflows.views.steps import WorkflowStepSignalEditView
 from validibot.workflows.views.steps import WorkflowStepTemplateVariableEditView
@@ -100,6 +102,7 @@ __all__ = [
     "WorkflowStepAssertionModalBase",
     "WorkflowStepAssertionMoveView",
     "WorkflowStepAssertionUpdateView",
+    "WorkflowStepAssertionsPartialView",
     "WorkflowStepCreateView",
     "WorkflowStepDeleteView",
     "WorkflowStepDisplaySignalsView",
@@ -107,6 +110,7 @@ __all__ = [
     "WorkflowStepFormView",
     "WorkflowStepListView",
     "WorkflowStepMoveView",
+    "WorkflowStepOutputsPartialView",
     "WorkflowStepSignalAutoLinkView",
     "WorkflowStepSignalEditView",
     "WorkflowStepTemplateVariableEditView",

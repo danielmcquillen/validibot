@@ -182,6 +182,11 @@ urlpatterns = [
         name="workflow_step_signal_auto_link",
     ),
     path(
+        "<int:pk>/steps/<int:step_id>/outputs-partial/",
+        views.WorkflowStepOutputsPartialView.as_view(),
+        name="workflow_step_outputs_partial",
+    ),
+    path(
         "<int:pk>/steps/<int:step_id>/delete/",
         views.WorkflowStepDeleteView.as_view(),
         name="workflow_step_delete",
@@ -210,6 +215,11 @@ urlpatterns = [
         "<int:pk>/steps/<int:step_id>/assertions/<int:assertion_id>/move/",
         views.WorkflowStepAssertionMoveView.as_view(),
         name="workflow_step_assertion_move",
+    ),
+    path(
+        "<int:pk>/steps/<int:step_id>/assertions-partial/",
+        views.WorkflowStepAssertionsPartialView.as_view(),
+        name="workflow_step_assertions_partial",
     ),
     # Signal mapping — editor page + CRUD
     path(

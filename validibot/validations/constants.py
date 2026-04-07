@@ -315,6 +315,7 @@ class BindingSourceScope(TextChoices):
     SUBMISSION_PAYLOAD = "submission_payload", _("Submission Payload")
     SUBMISSION_METADATA = "submission_metadata", _("Submission Metadata")
     UPSTREAM_STEP = "upstream_step", _("Upstream Step")
+    SIGNAL = "signal", _("Workflow Signal")
     SYSTEM = "system", _("System")
 
 

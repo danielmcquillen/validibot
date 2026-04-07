@@ -423,6 +423,23 @@ def build_input_envelope(
             # Upstream signals for cross-step resolution.
             upstream = (run.summary or {}).get("steps", {})
 
+            # Resolve workflow-level signals so SIGNAL-scoped bindings
+            # can look up values from the workflow's signal namespace.
+            # This intentionally propagates exceptions: if signal
+            # resolution fails the step must not proceed with
+            # potentially missing input values.
+            workflow_signals_dict: dict = {}
+            if step.workflow:
+                from validibot.validations.services.signal_resolution import (
+                    resolve_workflow_signals,
+                )
+
+                sig_result = resolve_workflow_signals(
+                    step.workflow,
+                    submission_data,
+                )
+                workflow_signals_dict = sig_result.signals
+
             try:
                 input_values, traces = resolve_step_input_signals(
                     step,
@@ -430,6 +447,7 @@ def build_input_envelope(
                     submission_data=submission_data,
                     submission_metadata=submission_metadata,
                     upstream_signals=upstream,
+                    workflow_signals=workflow_signals_dict,
                 )
                 if traces:
                     ResolvedInputTrace.objects.bulk_create(traces)

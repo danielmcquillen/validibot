@@ -54,35 +54,7 @@
               </div>
             {% endif %}
           </div>
-          <div class="card-body editor-workspace d-flex flex-column flex-grow-1
-                      {% if uses_signal_stages %}
-                        has-validator-flow
-                      {% endif %}">
-            {% if can_manage_assertions and supports_assertions %}
-              {% if validator_default_assertions_count %}
-                {% include 'workflows/partials/components/default_assertions_card.html' with default_assertions_count=validator_default_assertions_count %}
-              {% endif %}
-              {% if uses_signal_stages %}
-                {% include 'workflows/partials/components/assertion_group.html' with stage="input" label=_("Input assertions") assertions=assertion_groups.input empty_label=_("No input assertions yet.") %}
-                <div class="validator-process-divider">
-                  <span class="validator-process-chip">{{ validator.processor_name|default:_("Validator process") }}</span>
-                </div>
-                {% include 'workflows/partials/components/assertion_group.html' with stage="output" label=_("Output assertions") assertions=assertion_groups.output empty_label=_("No output assertions yet.") %}
-              {% else %}
-                {% if assertions %}
-                  {% for assertion in assertions %}
-                    {% include 'workflows/partials/components/assertion_step.html' %}
-                  {% endfor %}
-                {% else %}
-                  {% include 'workflows/partials/components/empty_assertions.html' %}
-                {% endif %}
-              {% endif %}
-            {% else %}
-              <div class="alert alert-info">
-                {% trans "This validator does not support assertions." %}
-              </div>
-            {% endif %}
-          </div>
+          {% include 'workflows/partials/assertions_editor_content.html' %}
         </div>
       </div>
       <div class="resizable-panel d-flex flex-column gap-4 pb-3">
@@ -95,7 +67,7 @@
        id="validatorDefaultAssertionsModal"
        tabindex="-1"
        aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content" id="default-assertions-modal-content">
         <div class="modal-body text-center text-muted py-5">
           <div class="spinner-border" role="status">
@@ -108,7 +80,7 @@
        id="workflowAssertionModal"
        tabindex="-1"
        aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content" id="workflow-assertion-modal-content">
         <div class="modal-body text-center text-muted py-5">
           <div class="spinner-border" role="status">
@@ -121,7 +93,7 @@
        id="catalogEntryDetailModal"
        tabindex="-1"
        aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
       <div class="modal-content" id="catalog-entry-detail-modal-content">
         <div class="modal-body text-center text-muted py-5">
           <div class="spinner-border" role="status">
@@ -134,7 +106,7 @@
        id="displaySignalsModal"
        tabindex="-1"
        aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content" id="display-signals-modal-content">
         <div class="modal-body text-center text-muted py-5">
           <div class="spinner-border" role="status">
@@ -160,7 +132,7 @@
        id="signalEditModal"
        tabindex="-1"
        aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content" id="signal-edit-modal-content">
         <div class="modal-body text-center text-muted py-5">
           <div class="spinner-border" role="status">
@@ -182,20 +154,20 @@
       }
       modalInstance.hide();
     });
-    document.body.addEventListener('assertions-changed', (event) => {
-      const detail = event.detail?.['assertions-changed'];
-      const focusId = detail && typeof detail === 'object' ? detail['focus_assertion_id'] : null;
-      if (focusId) {
-        sessionStorage.setItem('assertion-focus-id', focusId);
+    // After the assertions-changed HTMx swap completes, scroll to
+    // and highlight the focused assertion card (if specified in the
+    // event detail).
+    document.body.addEventListener('htmx:afterSettle', (event) => {
+      if (!event.detail?.target?.id?.startsWith('assertions-editor')) {
+        return;
       }
-      window.location.reload();
-    });
-    window.addEventListener('DOMContentLoaded', () => {
-      const focusId = sessionStorage.getItem('assertion-focus-id');
+      // The focus_assertion_id is stashed by the assertions-changed
+      // listener below, then consumed here after the swap settles.
+      const focusId = window._assertionFocusId;
+      delete window._assertionFocusId;
       if (!focusId) {
         return;
       }
-      sessionStorage.removeItem('assertion-focus-id');
       const target = document.getElementById(`assertion-card-${focusId}`);
       if (!target) {
         return;
@@ -206,6 +178,14 @@
         block: 'center',
       });
       setTimeout(() => target.classList.remove('assertion-card-highlight'), 4000);
+    });
+    // Stash focus ID before the HTMx swap replaces the DOM.
+    document.body.addEventListener('assertions-changed', (event) => {
+      const detail = event.detail?.['assertions-changed'];
+      const focusId = detail && typeof detail === 'object' ? detail['focus_assertion_id'] : null;
+      if (focusId) {
+        window._assertionFocusId = focusId;
+      }
     });
   </script>
 {% endblock app_content %}

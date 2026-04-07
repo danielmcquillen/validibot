@@ -23,6 +23,7 @@ from validibot.projects.models import Project
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
+from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import Severity
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
@@ -84,7 +85,10 @@ class CustomValidatorCreateForm(forms.Form):
     allow_custom_assertion_targets = forms.BooleanField(
         label=_("Allow custom data paths in assertions"),
         required=False,
-        help_text=_("Allow assertions against data paths not declared as signals."),
+        help_text=_(
+            "Allow assertions against data paths not declared as "
+            "validator inputs or outputs."
+        ),
     )
     supported_data_formats = forms.ChoiceField(
         label=_("Supported data format"),
@@ -206,7 +210,10 @@ class CustomValidatorUpdateForm(forms.Form):
     allow_custom_assertion_targets = forms.BooleanField(
         label=_("Allow custom data paths in assertions"),
         required=False,
-        help_text=_("Allow assertions against data paths not declared as signals."),
+        help_text=_(
+            "Allow assertions against data paths not declared as "
+            "validator inputs or outputs."
+        ),
     )
     supported_data_formats = forms.ChoiceField(
         label=_("Supported data format"),
@@ -290,7 +297,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         choices=AssertionType.choices,
     )
     target_data_path = forms.CharField(
-        label=_("Target Signal"),
+        label=_("Target Path"),
         required=False,
         widget=forms.TextInput(
             attrs={
@@ -299,7 +306,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         ),
     )
     target_catalog_entry = forms.ChoiceField(
-        label=_("Catalog Signal"),
+        label=_("Catalog Entry"),
         required=False,
         choices=[],
     )
@@ -429,6 +436,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         catalog_entries=None,
         validator=None,
         target_slug_datalist_id=None,
+        workflow_signal_names=None,
         **kwargs,
     ):
         # Ignore fmu_variables kwarg if passed.
@@ -438,6 +446,10 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         # catalog_entries parameter contains SignalDefinition objects
         # (passed from the mixin's signal_definitions query).
         self.signal_definitions: list[SignalDefinition] = list(catalog_entries or [])
+        # Workflow-level signal names (signal mappings + promoted outputs
+        # from upstream steps).  These are valid s.* assertion targets
+        # even when they don't correspond to a validator input.
+        self.workflow_signal_names: set[str] = set(workflow_signal_names or [])
         self.inputs_by_slug: dict[str, SignalDefinition] = {}
         self.outputs_by_slug: dict[str, SignalDefinition] = {}
         self.choice_map: dict[str, SignalDefinition] = {}
@@ -477,7 +489,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             signal_choices.append((value, f"{label} · {role}"))
         self.no_signal_choices = len(signal_choices) == 0
         self.fields["target_catalog_entry"].choices = [
-            ("", _("Select a signal")),
+            ("", _("Select a validator input or output")),
             *signal_choices,
         ]
         # Hide catalog selector in favor of the target field; we
@@ -495,39 +507,35 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 )
             else:
                 cel_help_text = _(
-                    "Only declared signals are available for this validator."
+                    "Only declared validator inputs and outputs "
+                    "are available for this validator."
                 )
             self.fields["cel_expression"].help_text = cel_help_text
 
         target_path_field = self.fields["target_data_path"]
+        target_path_field.label = _("Target Path")
+        base_help = _(
+            "Use s.<name> for workflow signals, "
+            "p.<path> for payload data, "
+            "o.<name> for validator outputs."
+        )
         if self._validator_allows_custom_targets():
-            if self.no_signal_choices:
-                target_path_field.label = _("Target Path")
-                target_path_field.help_text = _(
-                    "Use dot notation for nested objects, [index] for arrays, "
-                    "or filter expressions for named elements "
-                    "(e.g., items[?@.name=='x'].value)."
+            target_path_field.help_text = (
+                str(base_help)
+                + " "
+                + str(
+                    _(
+                        "You may also enter a custom dot-notation path "
+                        "(e.g. data.results[0].value)."
+                    )
                 )
-            else:
-                target_path_field.label = _("Target Signal or Path")
-                target_path_field.help_text = _(
-                    "Use `output.<name>` to "
-                    "disambiguate when an input signal shares "
-                    "the same name. "
-                    "Use dot notation for nested objects, [index] for arrays, "
-                    "or filter expressions for named elements "
-                    "(e.g., items[?@.name=='x'].value).",
-                )
-        else:
-            target_path_field.label = _("Target Signal")
-            target_path_field.help_text = _(
-                "Use `output.<name>` to "
-                "disambiguate when an input shares the same name.",
             )
+        else:
+            target_path_field.help_text = base_help
         target_attrs = target_path_field.widget.attrs
         target_attrs.update(
             {
-                "placeholder": _("Search or enter a custom path"),
+                "placeholder": _("e.g. s.panel_area, p.building.area, o.site_eui"),
             },
         )
         if self.target_slug_datalist_id:
@@ -710,7 +718,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 {
                     "cel_expression": _(
                         "Bare identifiers are not allowed. Use p.%(first)s "
-                        "for payload data or s.%(first)s for signals. "
+                        "for payload data or s.%(first)s for workflow signals. "
                         "Unknown: %(names)s"
                     )
                     % {
@@ -724,146 +732,157 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         catalog_choice = (self.cleaned_data.get("target_catalog_entry") or "").strip()
         value = (self.cleaned_data.get("target_data_path") or "").strip()
 
+        # Hidden catalog dropdown selection (output signals only).
         if catalog_choice:
             sig = self.choice_map.get(catalog_choice)
             if not sig:
                 raise ValidationError(
                     {
                         "target_data_path": _(
-                            "Unknown signal(s) referenced. Provide a catalog signal "
-                            "or enable custom targets."
-                        )
-                    }
+                            "Use s.<name> for workflow signals, p.<path> for "
+                            "payload data, or o.<name> for validator outputs."
+                        ),
+                    },
                 )
             self.cleaned_data["resolved_signal"] = sig
             self.cleaned_data["target_catalog_entry"] = None
             self.cleaned_data["target_data_path_value"] = ""
+            self.cleaned_data["resolved_stage"] = CatalogRunStage(sig.direction)
             return
 
-        if value:
-            # Strip namespace prefixes that users may type or that the
-            # datalist inserts.  An explicit output prefix (``o.`` or
-            # ``output.``) forces resolution against outputs only.
-            explicit_output = False
-            if value.startswith("o."):
-                explicit_output = True
-                value = value[2:]
-            elif value.startswith("output."):
-                explicit_output = True
-                value = value[7:]
-            elif value.startswith("s."):
-                value = value[2:]
-            elif value.startswith("signal."):
-                value = value[7:]
+        if not value:
+            raise ValidationError(
+                {
+                    "target_data_path": _(
+                        "Enter a target path. Use s.<name> for workflow signals, "
+                        "p.<path> for payload data, or o.<name> for validator outputs."
+                    ),
+                },
+            )
 
-            if explicit_output and value in self.outputs_by_slug:
-                self.cleaned_data["resolved_signal"] = self.outputs_by_slug[value]
-                self.cleaned_data["target_catalog_entry"] = None
-                self.cleaned_data["target_data_path_value"] = ""
-                return
-
-            if value in self.inputs_by_slug:
-                if value in self.outputs_by_slug and not explicit_output:
-                    raise ValidationError(
-                        {
-                            "target_data_path": _(
-                                "Both an input and output are named '%(name)s'. "
-                                "Use `output.%(name)s` to target the output signal."
-                            )
-                            % {"name": value}
-                        }
-                    )
-                self.cleaned_data["resolved_signal"] = self.inputs_by_slug[value]
-                self.cleaned_data["target_catalog_entry"] = None
-                self.cleaned_data["target_data_path_value"] = ""
-                return
-
-            if value in self.outputs_by_slug:
-                if value in self.inputs_by_slug and not explicit_output:
-                    raise ValidationError(
-                        {
-                            "target_data_path": _(
-                                "Both an input and output are named '%(name)s'. "
-                                "Use `output.%(name)s` to target the output signal."
-                            )
-                            % {"name": value}
-                        }
-                    )
-                self.cleaned_data["resolved_signal"] = self.outputs_by_slug[value]
-                self.cleaned_data["target_catalog_entry"] = None
-                self.cleaned_data["target_data_path_value"] = ""
-                return
-
-            # Step-level FMU variables — no catalog entry, stored as
-            # target_data_path.  Recognised without requiring
-            # allow_custom_assertion_targets.
-            is_fmu_input = value in self.fmu_input_names
-            is_fmu_output = value in self.fmu_output_names
-
-            if explicit_output and is_fmu_output:
-                # User explicitly wrote ``output.X`` → target the
-                # output FMU variable.  Store with the ``output.``
-                # path prefix so _resolve_path navigates the nested
-                # ``output`` namespace at evaluation time.
-                self.cleaned_data["resolved_signal"] = None
-                self.cleaned_data["target_catalog_entry"] = None
-                self.cleaned_data["target_data_path_value"] = f"output.{value}"
-                return
-
-            if is_fmu_input and is_fmu_output and not explicit_output:
-                # Name collision: the same name appears as both an
-                # FMU input and output variable.  Force the user to
-                # be explicit about which they mean.
-                raise ValidationError(
-                    {
-                        "target_data_path": _(
-                            "Both an input and output variable are named "
-                            "'%(name)s'. Use `output.%(name)s` to target "
-                            "the output signal."
-                        )
-                        % {"name": value}
-                    }
+        # ── Output prefix: o. / output. ──────────────────────────────
+        if value.startswith(("o.", "output.")):
+            name = value.split(".", 1)[1]
+            if name in self.outputs_by_slug:
+                self._set_resolved(
+                    signal=self.outputs_by_slug[name],
+                    stage=CatalogRunStage.OUTPUT,
                 )
-
-            if is_fmu_input or is_fmu_output:
-                self.cleaned_data["resolved_signal"] = None
-                self.cleaned_data["target_catalog_entry"] = None
-                self.cleaned_data["target_data_path_value"] = value
                 return
-
+            # Fall through to custom target check for unrecognised
+            # output names (e.g. FMU outputs not in outputs_by_slug).
             if not self._validator_allows_custom_targets():
                 raise ValidationError(
                     {
                         "target_data_path": _(
-                            "Unknown signal(s) referenced. Provide a catalog signal "
-                            "or enable custom targets."
-                        ),
+                            "Unknown output '%(name)s'. Check the "
+                            "Validator Outputs tab for available names."
+                        )
+                        % {"name": name},
                     },
                 )
-            if not self._is_valid_target_path(value):
+            self._set_resolved(
+                path=name,
+                stage=CatalogRunStage.OUTPUT,
+            )
+            return
+
+        # ── Signal prefix: s. / signal. ─────────────────────────────
+        # These reference either:
+        #   1. Validator input signals (resolve to a SignalDefinition)
+        #   2. Workflow-level signals — signal mappings or promoted
+        #      outputs from upstream steps (stored as bare name)
+        if value.startswith(("s.", "signal.")):
+            name = value.split(".", 1)[1]
+            if name in self.inputs_by_slug:
+                self._set_resolved(
+                    signal=self.inputs_by_slug[name],
+                    stage=CatalogRunStage.INPUT,
+                )
+                return
+            # Workflow-level signals (mappings + promoted outputs) are
+            # always valid s.* targets regardless of whether the
+            # validator allows custom assertion targets.
+            if name in self.workflow_signal_names:
+                self._set_resolved(
+                    path=name,
+                    stage=CatalogRunStage.INPUT,
+                )
+                return
+            # Not a known validator input or workflow signal.
+            if not self._validator_allows_custom_targets():
                 raise ValidationError(
                     {
                         "target_data_path": _(
-                            "Custom targets must use dot notation with optional "
-                            "numeric indexes (e.g. `data.results[0].value`) or "
-                            "JSONPath filter expressions "
-                            "(e.g. `items[?@.name=='x'].value`).",
+                            "Unknown signal '%(name)s'. Check the "
+                            "Validator Inputs tab or Signal Mappings "
+                            "for available names."
+                        )
+                        % {"name": name},
+                    },
+                )
+            self._set_resolved(
+                path=name,
+                stage=CatalogRunStage.INPUT,
+            )
+            return
+
+        # ── Payload prefix: p. / payload. ────────────────────────────
+        # References raw submission data.  Strip the prefix so the
+        # evaluator resolves against the payload dict directly.
+        if value.startswith(("p.", "payload.")):
+            path_part = value.split(".", 1)[1]
+            if not self._is_valid_target_path(path_part):
+                raise ValidationError(
+                    {
+                        "target_data_path": _(
+                            "Invalid path syntax after prefix. Use "
+                            "dot notation (e.g. p.building.floor_area) "
+                            "or bracket indexes (e.g. p.zones[0].temp)."
                         ),
                     },
                 )
-            self.cleaned_data["resolved_signal"] = None
-            self.cleaned_data["target_catalog_entry"] = None
-            self.cleaned_data["target_data_path_value"] = value
+            self._set_resolved(
+                path=path_part,
+                stage=CatalogRunStage.INPUT,
+            )
             return
 
-        raise ValidationError(
-            {
-                "target_data_path": _(
-                    "Unknown signal(s) referenced. Provide a catalog "
-                    "signal or enable custom targets."
-                )
-            }
-        )
+        # ── Bare name (no recognised prefix) ─────────────────────────
+        if not self._validator_allows_custom_targets():
+            raise ValidationError(
+                {
+                    "target_data_path": _(
+                        "Use s.<name> for workflow signals, p.<path> for "
+                        "payload data, or o.<name> for validator outputs."
+                    ),
+                },
+            )
+        if not self._is_valid_target_path(value):
+            raise ValidationError(
+                {
+                    "target_data_path": _(
+                        "Custom targets must use dot notation with optional "
+                        "numeric indexes (e.g. `data.results[0].value`) or "
+                        "JSONPath filter expressions "
+                        "(e.g. `items[?@.name=='x'].value`).",
+                    ),
+                },
+            )
+        self._set_resolved(path=value, stage=CatalogRunStage.OUTPUT)
+
+    def _set_resolved(
+        self,
+        *,
+        signal=None,
+        path: str = "",
+        stage: CatalogRunStage = CatalogRunStage.OUTPUT,
+    ) -> None:
+        """Store the resolved target in cleaned_data."""
+        self.cleaned_data["resolved_signal"] = signal
+        self.cleaned_data["target_catalog_entry"] = None
+        self.cleaned_data["target_data_path_value"] = path
+        self.cleaned_data["resolved_stage"] = stage
 
     @staticmethod
     def _is_valid_target_path(value: str) -> bool:
@@ -1087,7 +1106,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 {
                     "cel_expression": _(
                         "Bare identifiers are not allowed. Use p.%(first)s "
-                        "for payload data or s.%(first)s for signals. "
+                        "for payload data or s.%(first)s for workflow signals. "
                         "Unknown: %(names)s"
                     )
                     % {
@@ -1229,7 +1248,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
     def _target_identifier(self) -> str:
         signal = self.cleaned_data.get("resolved_signal")
         if signal:
-            return signal.contract_key
+            if signal.direction == SignalDirection.OUTPUT:
+                return f"o.{signal.contract_key}"
+            return f"s.{signal.contract_key}"
         return self.cleaned_data.get("target_data_path_value") or ""
 
     def _format_literal(self, value: Any) -> str:
@@ -1254,7 +1275,10 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         if assertion.target_signal_definition_id:
             sig = assertion.target_signal_definition
             initial["target_catalog_entry"] = f"{sig.direction}:{sig.contract_key}"
-            initial["target_data_path"] = sig.contract_key
+            if sig.direction == SignalDirection.OUTPUT:
+                initial["target_data_path"] = f"o.{sig.contract_key}"
+            else:
+                initial["target_data_path"] = f"s.{sig.contract_key}"
         else:
             initial["target_data_path"] = assertion.target_data_path
         if assertion.assertion_type == AssertionType.BASIC:
@@ -1336,7 +1360,9 @@ class ValidatorRuleForm(CelHelpLabelMixin, forms.Form):
     cel_expression = forms.CharField(
         label=_("CEL expression"),
         widget=forms.Textarea(attrs={"rows": 4}),
-        help_text=_("Enter a CEL expression that references validator signals."),
+        help_text=_(
+            "Enter a CEL expression that references validator inputs and outputs."
+        ),
     )
     order = forms.IntegerField(
         label=_("Order"),
@@ -1346,7 +1372,7 @@ class ValidatorRuleForm(CelHelpLabelMixin, forms.Form):
         help_text=_("Lower numbers run first."),
     )
     signals = forms.MultipleChoiceField(
-        label=_("Signals referenced"),
+        label=_("Inputs/outputs referenced"),
         required=False,
     )
 
@@ -1354,10 +1380,10 @@ class ValidatorRuleForm(CelHelpLabelMixin, forms.Form):
         signal_choices = kwargs.pop("signal_choices", [])
         super().__init__(*args, **kwargs)
         self.fields["signals"].choices = signal_choices
-        # Signals are auto-detected from the CEL expression; render as read-only.
+        # Inputs/outputs are auto-detected from the CEL expression; render as read-only.
         self.fields["signals"].disabled = True
         self.fields["signals"].help_text = _(
-            "Signals are detected from the CEL expression and shown for reference."
+            "Detected from the CEL expression and shown for reference."
         )
         self.helper = FormHelper()
         self.helper.form_tag = False
@@ -1393,7 +1419,7 @@ class ValidatorRuleForm(CelHelpLabelMixin, forms.Form):
 
 
 class SignalDefinitionForm(forms.ModelForm):
-    """Form for creating/updating signal definitions on a validator."""
+    """Form for creating/updating validator input and output definitions."""
 
     class Meta:
         model = SignalDefinition
@@ -1417,16 +1443,17 @@ class SignalDefinitionForm(forms.ModelForm):
         self.fields["label"].required = False
         self.fields["label"].widget = forms.HiddenInput()
         self.fields["label"].initial = ""
-        self.fields["contract_key"].label = _("Signal name")
+        self.fields["contract_key"].label = _("Name")
         self.fields["contract_key"].help_text = _(
             "Short, slug-form name (lowercase letters, numbers, hyphens) used in "
             "assertions and CEL expressions."
         )
         self.fields["contract_key"].error_messages["required"] = _(
-            "Signal name is required.",
+            "Name is required.",
         )
         self.fields["description"].help_text = _(
-            "A short description to help you remember what data this signal represents."
+            "A short description to help you remember what data "
+            "this input or output represents."
         )
         self.helper = FormHelper()
         self.helper.form_tag = False
@@ -1450,7 +1477,7 @@ class SignalDefinitionForm(forms.ModelForm):
     def clean_contract_key(self):
         value = (self.cleaned_data.get("contract_key") or "").strip()
         if not value:
-            raise ValidationError(_("Signal name is required."))
+            raise ValidationError(_("Name is required."))
         suggested = slugify(value)
         if suggested != value:
             raise ValidationError(
@@ -1468,10 +1495,7 @@ class SignalDefinitionForm(forms.ModelForm):
         ).exclude(pk=self.instance.pk)
         if existing.exists():
             raise ValidationError(
-                _(
-                    "Signal name must be unique across inputs and "
-                    "outputs for this validator."
-                )
+                _("Name must be unique across inputs and outputs for this validator.")
             )
         return value
 

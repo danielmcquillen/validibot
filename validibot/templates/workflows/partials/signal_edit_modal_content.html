@@ -1,13 +1,14 @@
 {% load i18n crispy_forms_tags %}
 
 {% comment %}
-Signal Edit Modal Content
+Validator Input/Output Edit Modal Content
 
-HTMx-loaded content for the signal edit modal. Loaded via GET into
-#signal-edit-modal-content, submitted via POST back to the same URL.
+HTMx-loaded content for editing a validator input or output on a
+workflow step. Loaded via GET into #signal-edit-modal-content,
+submitted via POST back to the same URL.
 
-For library-owned signals, definition fields (label, description, unit)
-are rendered as disabled/read-only. Binding fields (source path, default,
+For library-owned definitions, label/description/unit fields are
+rendered as disabled/read-only. Binding fields (source path, default,
 required) are always editable.
 
 Context:
@@ -25,7 +26,7 @@ Context:
       hx-swap="innerHTML">
   <div class="modal-header">
     <h5 class="modal-title">
-      {{ modal_title|default:_("Edit signal") }}
+      {{ modal_title|default:_("Edit Validator Input") }}
     </h5>
     <button type="button"
             class="btn-close"
@@ -43,13 +44,13 @@ Context:
     {% endif %}
     <fieldset>
       <legend class="small text-muted mb-2">
-        {% trans "Signal Definition" %}
+        {% trans "Definition" %}
       </legend>
       <div class="mb-2 d-flex align-items-baseline gap-2">
         <i class="bi bi-info-circle text-muted small"
            data-bs-toggle="tooltip"
            data-bs-placement="top"
-           title="{% trans 'The unique identifier used in CEL assertions and the validation engine to reference this signal.' %}"></i>
+           title="{% trans 'The unique identifier used in CEL assertions and the validation engine.' %}"></i>
         <label class="form-label small mb-0 text-nowrap">
           {% trans "Contract Key" %}:
         </label>

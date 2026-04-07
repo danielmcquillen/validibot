@@ -8,7 +8,7 @@ on an unmapped validator input, the view:
 1. Looks for a ``WorkflowSignalMapping`` whose ``name`` matches the
    signal definition's ``contract_key``.
 2. If found, creates or updates the ``StepSignalBinding`` to set
-   ``source_data_path`` to ``s.<name>``.
+   ``source_scope`` to SIGNAL and ``source_data_path`` to the signal name.
 3. If not found, returns a warning message.
 
 These tests verify:
@@ -101,7 +101,7 @@ class TestAutoLinkSuccess(TestCase):
 
     def test_auto_link_creates_binding(self):
         """When no binding exists yet, auto-link should create one with
-        ``source_data_path`` set to ``s.<mapping_name>``.
+        SIGNAL scope and the signal name as the source path.
 
         This is the primary use case: an FMU upload creates signals with
         no bindings, and the author clicks the link button to wire them
@@ -126,8 +126,8 @@ class TestAutoLinkSuccess(TestCase):
             workflow_step=step,
             signal_definition=signal_def,
         )
-        self.assertEqual(binding.source_data_path, "s.panel_area")
-        self.assertEqual(binding.source_scope, BindingSourceScope.SUBMISSION_PAYLOAD)
+        self.assertEqual(binding.source_data_path, "panel_area")
+        self.assertEqual(binding.source_scope, BindingSourceScope.SIGNAL)
 
         msgs = list(get_messages(response.wsgi_request))
         self.assertEqual(len(msgs), 1)
@@ -164,7 +164,8 @@ class TestAutoLinkSuccess(TestCase):
             workflow_step=step,
             signal_definition=signal_def,
         )
-        self.assertEqual(binding.source_data_path, "s.panel_area")
+        self.assertEqual(binding.source_data_path, "panel_area")
+        self.assertEqual(binding.source_scope, BindingSourceScope.SIGNAL)
         # Only one binding should exist (no duplicate).
         self.assertEqual(
             StepSignalBinding.objects.filter(

@@ -1740,14 +1740,15 @@ class WorkflowStepSignalAutoLinkView(WorkflowObjectMixin, View):
             workflow_step=self.step,
             signal_definition=signal_def,
             defaults={
-                "source_scope": BindingSourceScope.SUBMISSION_PAYLOAD,
-                "source_data_path": f"s.{mapping.name}",
+                "source_scope": BindingSourceScope.SIGNAL,
+                "source_data_path": mapping.name,
                 "is_required": True,
             },
         )
         if not created:
-            binding.source_data_path = f"s.{mapping.name}"
-            binding.save(update_fields=["source_data_path"])
+            binding.source_scope = BindingSourceScope.SIGNAL
+            binding.source_data_path = mapping.name
+            binding.save(update_fields=["source_scope", "source_data_path"])
 
         messages.success(
             request,
@@ -1757,6 +1758,37 @@ class WorkflowStepSignalAutoLinkView(WorkflowObjectMixin, View):
         response = HttpResponse(status=HTTPStatus.OK)
         response["HX-Refresh"] = "true"
         return response
+
+
+class WorkflowStepOutputsPartialView(WorkflowObjectMixin, View):
+    """GET: return the re-rendered validator outputs table partial.
+
+    Used by HTMx to refresh just the outputs table after a promote/demote
+    action, preserving the active tab state on the step detail page.
+    """
+
+    def get(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        step = get_object_or_404(
+            WorkflowStep,
+            workflow=workflow,
+            pk=self.kwargs.get("step_id"),
+        )
+        from validibot.workflows.views_helpers import (
+            build_unified_signals_from_definitions,
+        )
+
+        unified_signals = build_unified_signals_from_definitions(step)
+        return render(
+            request,
+            "workflows/partials/output_signals_table.html",
+            {
+                "unified_signals": unified_signals,
+                "step": step,
+                "workflow": workflow,
+                "can_manage_workflow": self.user_can_manage_workflow(),
+            },
+        )
 
 
 class WorkflowStepCreateView(WorkflowStepFormView):

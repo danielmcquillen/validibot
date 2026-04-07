@@ -46,26 +46,35 @@ Each `RulesetAssertion` row stores:
 
 ### Assertion targeting
 
-Every assertion targets data in one of two ways — never both, enforced by the
-`ck_ruleset_assertion_target_oneof` database constraint:
+Every assertion target uses a namespace prefix to identify what data it checks.
+The form's "Target Path" field accepts these prefixes:
 
-1. **Declared signal** (`target_signal_definition` FK) — references a
-   `SignalDefinition` by its contract key. The validator author has pre-declared
-   this data point with a name, type, and direction. This is the structured path
-   that provides dropdowns, type-appropriate operators, and compile-time
-   validation. In CEL expressions, declared signals are accessed via the `s`
-   (signal) namespace for inputs (e.g., `s.expected_floor_area`) or the `o`
-   (output) namespace for outputs (e.g., `o.site_eui_kwh_m2`).
+| Prefix | Alias | Stage | Meaning | Example |
+|--------|-------|-------|---------|---------|
+| `s.` | `signal.` | Input | Workflow signal value | `s.panel_area` |
+| `p.` | `payload.` | Input | Raw submission data | `p.building.floor_area` |
+| `o.` | `output.` | Output | Validator output | `o.site_eui_kwh_m2` |
 
-2. **Custom data path** (`target_data_path` string) — a free-form
-   dot-notation path like `p.building.thermostat.setpoint` or
-   `p.results[0].value`, referencing raw submission data via the `p` (payload)
-   namespace. Used when the validator doesn't declare signals or when the author
-   needs to reference data beyond the declared contract.
+The `s.` and `p.` prefixes are always accepted. The `o.` prefix resolves
+against the validator's declared output `SignalDefinition` rows. Bare names
+(without a prefix) are only accepted when the validator's
+`allow_custom_assertion_targets` flag is enabled.
 
-Which mode is available depends on the validator's `allow_custom_assertion_targets`
-flag. See [Signals — Signals vs custom data paths](signals.md#signals-vs-custom-data-paths)
-for the full conceptual explanation.
+Under the hood, targets are stored in one of two ways — never both, enforced
+by the `ck_ruleset_assertion_target_oneof` database constraint:
+
+1. **Declared signal** (`target_signal_definition` FK) — used when the target
+   resolves to a known `SignalDefinition` (currently only `o.<name>` targets).
+   Provides type-appropriate operators and compile-time validation.
+
+2. **Data path** (`target_data_path` string) — used for `s.<name>`, `p.<path>`,
+   and custom bare-name targets. The full prefixed value is stored (e.g.,
+   `s.panel_area` or `p.building.thermostat.setpoint`).
+
+The `resolved_run_stage` property on `RulesetAssertion` determines whether an
+assertion fires at the input stage (before the validator runs) or the output
+stage (after). Targets with `s.` or `p.` prefixes are input-stage; `o.` targets
+and bare names are output-stage.
 
 BASIC validators always use custom data paths because they have no provider
 catalog. CEL assertions store the raw expression in `rhs["expr"]` and reuse
@@ -112,8 +121,8 @@ namespaces (each with a short alias) are:
 | Namespace | Alias | Contents | Example |
 |-----------|-------|----------|---------|
 | `payload` | `p` | Raw submission or output data | `p.building.floor_area` |
-| `signal` | `s` | Workflow signals + promoted outputs + step inputs | `s.target_eui` |
-| `output` | `o` | This step's output signals | `o.site_eui_kwh_m2` |
+| `signal` | `s` | Workflow signals + promoted outputs | `s.target_eui` |
+| `output` | `o` | This step's validator outputs | `o.site_eui_kwh_m2` |
 | `steps` | — | Cross-step outputs | `steps.step_a.output.value` |
 
 Raw payload keys are never promoted to bare top-level CEL variables. Authors

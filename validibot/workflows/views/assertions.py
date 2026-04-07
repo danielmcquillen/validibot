@@ -17,17 +17,20 @@ from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import ListView
+from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
 from validibot.core.utils import reverse_with_org
-from validibot.core.view_helpers import hx_redirect_response
 from validibot.core.view_helpers import hx_trigger_response
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.forms import RulesetAssertionForm
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import ValidationRun
 from validibot.workflows.mixins import WorkflowAccessMixin
+from validibot.workflows.mixins import WorkflowObjectMixin
 from validibot.workflows.mixins import WorkflowStepAssertionsMixin
+from validibot.workflows.models import WorkflowStep
+from validibot.workflows.views_helpers import ensure_advanced_ruleset
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +98,11 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
         kwargs["catalog_entries"] = getattr(self, "_catalog_entries_cache", [])
         kwargs["validator"] = self.step.validator
         kwargs["target_slug_datalist_id"] = self.get_target_slug_datalist_id()
+        kwargs["workflow_signal_names"] = getattr(
+            self,
+            "_workflow_signal_names_cache",
+            set(),
+        )
         return kwargs
 
     def get_target_slug_datalist_id(self) -> str:
@@ -145,6 +153,9 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
         return context
 
     def _determine_run_stage_from_form(self, form: RulesetAssertionForm) -> str:
+        resolved_stage = form.cleaned_data.get("resolved_stage")
+        if resolved_stage:
+            return resolved_stage
         signal = form.cleaned_data.get("resolved_signal")
         if signal and getattr(signal, "direction", None):
             return signal.direction
@@ -368,14 +379,79 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
         with transaction.atomic():
             for pos, item in enumerate(assertions, start=1):
                 RulesetAssertion.objects.filter(pk=item.pk).update(order=pos * 10)
-        return hx_redirect_response(
-            reverse_with_org(
-                "workflows:workflow_step_edit",
-                request=request,
-                kwargs={
-                    "pk": self.get_workflow().pk,
-                    "step_id": self.step.pk,
+        return hx_trigger_response(
+            message=_("Assertion moved."),
+            extra_payload={
+                "assertions-changed": {
+                    "focus_assertion_id": assertion.pk,
                 },
-            )
-            + f"#assertion-card-{assertion.pk}",
+            },
         )
+
+
+class WorkflowStepAssertionsPartialView(WorkflowObjectMixin, TemplateView):
+    """HTMx partial: re-render just the assertions editor content.
+
+    Called via ``hx-trigger="assertions-changed from:body"`` after
+    assertion create, update, delete, or reorder operations.  Returns
+    the assertions area HTML without a full page reload.
+    """
+
+    template_name = "workflows/partials/assertions_editor_content.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_workflow()
+        validator = self.step.validator
+        allow_assertions = validator and validator.supports_assertions
+
+        ruleset = None
+        assertions = []
+        if allow_assertions:
+            ruleset = self.step.ruleset or ensure_advanced_ruleset(
+                workflow,
+                self.step,
+                validator,
+            )
+            assertions = list(ruleset.assertions.all().order_by("order", "pk"))
+
+        grouped_assertions = {"input": [], "output": []}
+        for assertion in assertions:
+            stage = assertion.resolved_run_stage
+            key = "input" if stage == CatalogRunStage.INPUT else "output"
+            grouped_assertions[key].append(assertion)
+
+        from validibot.workflows.views.steps import _step_has_signal_stages
+
+        uses_signal_stages = bool(
+            validator and _step_has_signal_stages(self.step) and allow_assertions,
+        )
+        default_assertions_count = (
+            validator.default_ruleset.assertions.count()
+            if validator and validator.default_ruleset_id
+            else 0
+        )
+
+        context.update(
+            {
+                "workflow": workflow,
+                "step": self.step,
+                "validator": validator,
+                "assertions": assertions,
+                "assertion_groups": grouped_assertions,
+                "uses_signal_stages": uses_signal_stages,
+                "can_manage_assertions": self.user_can_manage_workflow()
+                and allow_assertions,
+                "supports_assertions": allow_assertions,
+                "validator_default_assertions_count": default_assertions_count,
+            },
+        )
+        return context

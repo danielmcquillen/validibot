@@ -47,7 +47,7 @@ class TestAgentBillingModeEnum:
     def test_x402_is_available(self):
         """AGENT_PAYS_X402 should be a valid choice for enabling
         anonymous micropayment access."""
-        assert "agent_pays_x402" in AgentBillingMode.values
+        assert AgentBillingMode.AGENT_PAYS_X402 in AgentBillingMode.values
 
     def test_acp_removed(self):
         """AGENT_PAYS_ACP should no longer be in the active choices.

@@ -44,8 +44,8 @@ class AgentBillingMode(models.TextChoices):
     ``agent_price_cents``.
     """
 
-    AUTHOR_PAYS = "author_pays", _("Author pays (plan quota)")
-    AGENT_PAYS_X402 = "agent_pays_x402", _("Agent pays via x402 micropayment")
+    AUTHOR_PAYS = "AUTHOR_PAYS", _("Author pays (plan quota)")
+    AGENT_PAYS_X402 = "AGENT_PAYS_X402", _("Agent pays via x402 micropayment")
 
 
 class WorkflowStartErrorCode(models.TextChoices):

@@ -1636,6 +1636,8 @@ class WorkflowStepSignalEditView(WorkflowObjectMixin, FormView):
                 "signal": sig,
                 "binding": self._get_binding(),
                 "is_library_signal": bool(sig.validator_id),
+                "is_path_editable": sig.is_path_editable,
+                "source_kind_display": sig.get_source_kind_display(),
                 "modal_title": f"{title_prefix}: {sig.label or sig.contract_key}",
             },
         )

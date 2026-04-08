@@ -15,6 +15,7 @@ from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ComputeTier
+from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import CatalogEntrySpec
 from validibot.validations.validators.base.config import ValidatorConfig
@@ -51,6 +52,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             order=10,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             slug="material_count",
@@ -59,6 +62,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             order=20,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             slug="bc_count",
@@ -67,6 +72,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             order=30,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # -- Geometry --
         CatalogEntrySpec(
@@ -76,6 +83,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             order=40,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             slug="geometry_height_mm",
@@ -84,6 +93,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             order=50,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             slug="all_polygons_closed",
@@ -92,6 +103,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.BOOLEAN,
             order=60,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # -- Boundary conditions --
         CatalogEntrySpec(
@@ -101,6 +114,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             order=70,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             slug="exterior_bc_temp",
@@ -109,6 +124,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             order=80,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             slug="interior_film_coeff",
@@ -117,6 +134,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             order=90,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             slug="exterior_film_coeff",
@@ -125,6 +144,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             order=100,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # -- U-factor tags --
         CatalogEntrySpec(
@@ -134,6 +155,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.OBJECT,
             order=110,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # -- Mesh --
         CatalogEntrySpec(
@@ -143,6 +166,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             order=120,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # -- Flags --
         CatalogEntrySpec(
@@ -152,6 +177,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.BOOLEAN,
             order=130,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             slug="has_glazing_system",
@@ -160,6 +187,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.BOOLEAN,
             order=140,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # -- Version --
         CatalogEntrySpec(
@@ -169,6 +198,8 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.STRING,
             order=150,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
     ],
 )

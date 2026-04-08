@@ -23,6 +23,7 @@ from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import FMUProbeStatus
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import FMUModel
 from validibot.validations.models import FMUProbeResult
@@ -433,6 +434,12 @@ def _persist_variables(
             defaults={
                 "native_name": var.name,
                 "origin_kind": SignalOriginKind.FMU,
+                "source_kind": (
+                    SignalSourceKind.PAYLOAD_PATH
+                    if direction == SignalDirection.INPUT
+                    else SignalSourceKind.INTERNAL
+                ),
+                "is_path_editable": direction == SignalDirection.INPUT,
                 "data_type": _data_type_for_variable(var.value_type),
                 "provider_binding": FMUProviderBinding(
                     causality=var.causality,

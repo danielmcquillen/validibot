@@ -290,3 +290,39 @@ class TestEnsureStepSignalBindingsIdempotency(TestCase):
         count = ensure_step_signal_bindings(step)
 
         self.assertEqual(count, 0)
+
+
+# ── source_kind and is_path_editable ────────────────────────────────
+# These fields live on SignalDefinition and describe how the signal's
+# value is obtained. They should NOT affect binding creation — bindings
+# are always created regardless of source_kind or path editability.
+
+
+class TestEnsureStepSignalBindingsSourceKind(TestCase):
+    """Verify that source_kind/is_path_editable don't affect binding creation."""
+
+    def test_internal_non_editable_signals_still_get_bindings(self):
+        """INTERNAL signals with is_path_editable=False should still get
+        StepSignalBinding rows. The binding exists so the resolution engine
+        activates — the is_path_editable flag only controls UI editability,
+        not whether a binding is created.
+        """
+        from validibot.validations.constants import SignalSourceKind
+
+        validator = ValidatorFactory()
+        SignalDefinitionFactory(
+            validator=validator,
+            contract_key="site_eui",
+            direction=SignalDirection.INPUT,
+            origin_kind=SignalOriginKind.CATALOG,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
+        )
+        step = WorkflowStepFactory(validator=validator)
+
+        count = ensure_step_signal_bindings(step)
+
+        self.assertEqual(count, 1)
+        self.assertTrue(
+            StepSignalBinding.objects.filter(workflow_step=step).exists(),
+        )

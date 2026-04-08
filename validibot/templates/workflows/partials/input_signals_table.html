@@ -56,6 +56,12 @@ Context:
               {% endif %}>
             <td>
               <code class="small">{{ signal.slug }}</code>
+              {% if signal.signal_definition and signal.signal_definition.source_kind == "internal" %}
+                <i class="bi bi-lock-fill text-muted small ms-1"
+                   data-bs-toggle="tooltip"
+                   data-bs-placement="top"
+                   title="{% trans 'Internal — data source managed by the validator' %}"></i>
+              {% endif %}
               {% if signal.label and signal.label != signal.slug %}
                 <br />
                 <span class="text-muted small">{{ signal.label }}</span>

@@ -3020,7 +3020,6 @@ dependencies = [
     { name = "django-recaptcha" },
     { name = "django-storages", extra = ["google"] },
     { name = "djangorestframework" },
-    { name = "docker" },
     { name = "drf-spectacular", extra = ["sidecar"] },
     { name = "fmpy" },
     { name = "google-cloud-kms" },
@@ -3048,6 +3047,9 @@ dependencies = [
 [package.optional-dependencies]
 cloud = [
     { name = "stripe" },
+]
+docker-runner = [
+    { name = "docker" },
 ]
 
 [package.dev-dependencies]
@@ -3097,7 +3099,7 @@ requires-dist = [
     { name = "django-recaptcha", specifier = "==4.1.0" },
     { name = "django-storages", extras = ["google"], specifier = "==1.14.6" },
     { name = "djangorestframework", specifier = "==3.17.1" },
-    { name = "docker", specifier = "==7.1.0" },
+    { name = "docker", marker = "extra == 'docker-runner'", specifier = "==7.1.0" },
     { name = "drf-spectacular", extras = ["sidecar"], specifier = "==0.29.0" },
     { name = "fmpy", specifier = "==0.3.29" },
     { name = "google-cloud-kms", specifier = "==3.12.0" },

@@ -124,6 +124,8 @@ class Command(BaseCommand):
                                 "order": entry.order,
                                 "unit": (entry.metadata or {}).get("units", ""),
                                 "origin_kind": SignalOriginKind.CATALOG,
+                                "source_kind": entry.source_kind,
+                                "is_path_editable": entry.is_path_editable,
                                 "provider_binding": provider_binding,
                                 "metadata": entry.metadata,
                             },

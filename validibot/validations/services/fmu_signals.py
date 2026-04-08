@@ -29,6 +29,7 @@ from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import SignalSourceKind
 from validibot.validations.models import SignalDefinition
 from validibot.validations.models import StepSignalBinding
 from validibot.validations.signal_metadata.metadata import FMUProviderBinding
@@ -117,6 +118,12 @@ def sync_step_fmu_signals(
                 "data_type": _data_type_for_fmu(var.get("value_type", "")),
                 "unit": var.get("unit") or "",
                 "origin_kind": SignalOriginKind.FMU,
+                "source_kind": (
+                    SignalSourceKind.PAYLOAD_PATH
+                    if direction == SignalDirection.INPUT
+                    else SignalSourceKind.INTERNAL
+                ),
+                "is_path_editable": direction == SignalDirection.INPUT,
                 "provider_binding": FMUProviderBinding(
                     causality=causality,
                 ).model_dump(),

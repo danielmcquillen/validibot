@@ -2543,6 +2543,11 @@ class SignalBindingEditForm(forms.Form):
             for field_name in ("label", "description", "unit"):
                 self.fields[field_name].disabled = True
 
+        # Non-editable paths: disable source_data_path when the signal's
+        # value source is controlled by the validator (is_path_editable=False).
+        if signal_definition and not signal_definition.is_path_editable:
+            self.fields["source_data_path"].disabled = True
+
     def clean(self):
         cleaned = super().clean()
         default_value = (cleaned.get("default_value") or "").strip()

@@ -1430,6 +1430,8 @@ class SignalDefinitionForm(forms.ModelForm):
             "label",
             "data_type",
             "description",
+            "source_kind",
+            "is_path_editable",
             "order",
         ]
         widgets = {
@@ -1455,6 +1457,14 @@ class SignalDefinitionForm(forms.ModelForm):
             "A short description to help you remember what data "
             "this input or output represents."
         )
+        self.fields["source_kind"].help_text = _(
+            "How the signal's value is obtained: from a payload path "
+            "the author configures, or internally by the validator."
+        )
+        self.fields["is_path_editable"].help_text = _(
+            "Whether workflow authors can edit the source data path "
+            "for this signal when configuring a step."
+        )
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.layout = Layout(
@@ -1467,9 +1477,11 @@ class SignalDefinitionForm(forms.ModelForm):
             ),
             Row(
                 Column("data_type", css_class="col-12 col-md-6"),
+                Column("source_kind", css_class="col-12 col-md-6"),
             ),
             "description",
             Row(
+                Column("is_path_editable", css_class="col-12 col-md-6"),
                 Column("order", css_class="col-12 col-md-6"),
             ),
         )

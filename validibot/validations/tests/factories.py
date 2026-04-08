@@ -142,6 +142,8 @@ class SignalDefinitionFactory(DjangoModelFactory):
     direction = "input"
     data_type = "number"
     origin_kind = "catalog"
+    source_kind = "payload_path"
+    is_path_editable = True
     validator = factory.SubFactory(ValidatorFactory)
     order = factory.Sequence(lambda n: n)
 

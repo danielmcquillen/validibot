@@ -36,6 +36,7 @@ from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunSource
@@ -1204,6 +1205,22 @@ class SignalDefinition(TimeStampedModel):
     - A ``WorkflowStep`` — per-step signal definitions for step-level FMU
       uploads, template scans, or author-customized signals.
 
+    **source_kind:** Declares how the signal's value is obtained.
+    ``PAYLOAD_PATH`` means the value comes from a known path in the
+    submission payload or metadata (the author may or may not be able
+    to change the path — see ``is_path_editable``). ``INTERNAL`` means
+    the validator has its own mechanism for extracting or computing the
+    value (e.g., EnergyPlus parsing simulation metrics, FMU reading
+    output variables). This distinction is surfaced in the UI so
+    workflow authors know which signals they can configure.
+
+    **is_path_editable:** Controls whether the workflow author can edit
+    the source data path for this signal's ``StepSignalBinding``. When
+    ``False``, the source path field in the signal edit modal is
+    disabled. Typically ``False`` for signals where the validator
+    controls the extraction path internally (all EnergyPlus and THERM
+    signals, FMU output signals).
+
     **provider_binding:** A JSON column holding validator-type-specific
     properties that the resolution layer needs but that are not part of the
     generic signal contract. For FMU signals this includes ``causality``,
@@ -1259,6 +1276,24 @@ class SignalDefinition(TimeStampedModel):
             "How this signal definition was created: "
             "from a validator config declaration, "
             "an FMU probe, or a template scan."
+        ),
+    )
+    source_kind = models.CharField(
+        max_length=20,
+        choices=SignalSourceKind.choices,
+        default=SignalSourceKind.PAYLOAD_PATH,
+        help_text=(
+            "How the signal's value is obtained: from a known data path "
+            "in the submission payload (PAYLOAD_PATH) or via the "
+            "validator's own internal extraction mechanism (INTERNAL)."
+        ),
+    )
+    is_path_editable = models.BooleanField(
+        default=True,
+        help_text=(
+            "Whether the workflow author can edit the source data path "
+            "for this signal's step binding. False for signals where "
+            "the validator controls the extraction path internally."
         ),
     )
     validator = models.ForeignKey(

@@ -13,6 +13,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.test import override_settings
 
+from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Derivation
 from validibot.validations.models import SignalDefinition
@@ -235,6 +236,90 @@ class SyncValidatorsCommandTests(TestCase):
 
         # Should report signals synced
         self.assertIn("signals synced", out.lower())
+
+    # ── source_kind and is_path_editable ────────────────────────────
+    # These tests verify that the sync command correctly persists the
+    # new source metadata fields from CatalogEntrySpec to SignalDefinition.
+
+    def test_energyplus_input_signals_are_internal_and_not_editable(self):
+        """EnergyPlus input signals should be INTERNAL + non-editable.
+
+        The validator controls where its inputs come from (fixed submission
+        metadata paths). Authors should not be able to change these paths.
+        """
+        self.call_command()
+
+        validator = Validator.objects.get(slug="energyplus-idf-validator")
+        input_sigs = SignalDefinition.objects.filter(
+            validator=validator,
+            direction="input",
+        )
+
+        self.assertTrue(input_sigs.exists())
+        for sig in input_sigs:
+            self.assertEqual(
+                sig.source_kind,
+                SignalSourceKind.INTERNAL,
+                f"EnergyPlus input signal {sig.contract_key} should be INTERNAL",
+            )
+            self.assertFalse(
+                sig.is_path_editable,
+                f"EnergyPlus input signal {sig.contract_key}"
+                " should not be path-editable",
+            )
+
+    def test_energyplus_output_signals_are_internal_and_not_editable(self):
+        """EnergyPlus output signals should be INTERNAL + non-editable.
+
+        Output values come from simulation metrics extracted internally
+        by the validator — the author has no control over the extraction.
+        """
+        self.call_command()
+
+        validator = Validator.objects.get(slug="energyplus-idf-validator")
+        output_sigs = SignalDefinition.objects.filter(
+            validator=validator,
+            direction="output",
+        )
+
+        self.assertTrue(output_sigs.exists())
+        for sig in output_sigs:
+            self.assertEqual(
+                sig.source_kind,
+                SignalSourceKind.INTERNAL,
+                f"EnergyPlus output signal {sig.contract_key} should be INTERNAL",
+            )
+            self.assertFalse(
+                sig.is_path_editable,
+                f"EnergyPlus output signal {sig.contract_key}"
+                " should not be path-editable",
+            )
+
+    def test_therm_output_signals_are_internal_and_not_editable(self):
+        """THERM output signals should be INTERNAL + non-editable.
+
+        THERM extracts values directly from the THMX/THMZ XML — the
+        author has no control over the extraction paths.
+        """
+        self.call_command()
+
+        validator = Validator.objects.get(slug="therm-validator")
+        output_sigs = SignalDefinition.objects.filter(
+            validator=validator,
+            direction="output",
+        )
+
+        self.assertTrue(output_sigs.exists())
+        for sig in output_sigs:
+            self.assertEqual(
+                sig.source_kind,
+                SignalSourceKind.INTERNAL,
+                f"THERM output signal {sig.contract_key} should be INTERNAL",
+            )
+            self.assertFalse(
+                sig.is_path_editable,
+                f"THERM output signal {sig.contract_key} should not be path-editable",
+            )
 
 
 class CreateDefaultValidatorsTests(TestCase):

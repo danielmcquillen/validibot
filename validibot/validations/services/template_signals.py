@@ -29,6 +29,7 @@ from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import SignalSourceKind
 from validibot.validations.models import SignalDefinition
 from validibot.validations.models import StepSignalBinding
 from validibot.validations.signal_metadata.metadata import TemplateSignalMetadata
@@ -102,6 +103,8 @@ def sync_step_template_signals(
                 "unit": var.get("units") or "",
                 "order": position,
                 "origin_kind": SignalOriginKind.TEMPLATE,
+                "source_kind": SignalSourceKind.PAYLOAD_PATH,
+                "is_path_editable": True,
                 "provider_binding": {
                     "variable_type": variable_type,
                 },

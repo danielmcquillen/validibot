@@ -311,6 +311,11 @@ class SignalOriginKind(TextChoices):
     TEMPLATE = "template", _("Template")
 
 
+class SignalSourceKind(TextChoices):
+    PAYLOAD_PATH = "payload_path", _("Payload Path")
+    INTERNAL = "internal", _("Internal")
+
+
 class BindingSourceScope(TextChoices):
     SUBMISSION_PAYLOAD = "submission_payload", _("Submission Payload")
     SUBMISSION_METADATA = "submission_metadata", _("Submission Metadata")

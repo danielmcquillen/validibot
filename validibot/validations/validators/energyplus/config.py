@@ -13,14 +13,15 @@ from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import ResourceFileType
+from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import CatalogEntrySpec
 from validibot.validations.validators.base.config import ValidatorConfig
 
 config = ValidatorConfig(
     slug="energyplus-idf-validator",
-    name="EnergyPlus™ Validator",
-    description="Validate EnergyPlus™ IDF models and run simulations.",
+    name="EnergyPlus\u2122 Validator",
+    description="Validate EnergyPlus\u2122 IDF models and run simulations.",
     validation_type=ValidationType.ENERGYPLUS,
     validator_class=(
         "validibot.validations.validators.energyplus.validator.EnergyPlusValidator"
@@ -31,7 +32,7 @@ config = ValidatorConfig(
     version="1.0",
     order=10,
     has_processor=True,
-    processor_name="EnergyPlus™ Simulation",
+    processor_name="EnergyPlus\u2122 Simulation",
     is_system=True,
     supports_assertions=True,
     compute_tier=ComputeTier.HIGH,
@@ -55,7 +56,7 @@ config = ValidatorConfig(
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.INPUT,
             slug="expected_floor_area_m2",
-            label="Expected Floor Area (m²)",
+            label="Expected Floor Area (m\u00b2)",
             data_type=CatalogValueType.NUMBER,
             description=(
                 "User-provided expected floor area from submission metadata. "
@@ -65,15 +66,17 @@ config = ValidatorConfig(
                 "source": "submission.metadata",
                 "path": "floor_area_m2",
             },
-            metadata={"units": "m²"},
+            metadata={"units": "m\u00b2"},
             is_required=False,
             order=10,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.INPUT,
             slug="target_eui_kwh_m2",
-            label="Target EUI (kWh/m²)",
+            label="Target EUI (kWh/m\u00b2)",
             data_type=CatalogValueType.NUMBER,
             description=(
                 "Target Energy Use Intensity from submission metadata. "
@@ -83,9 +86,11 @@ config = ValidatorConfig(
                 "source": "submission.metadata",
                 "path": "target_eui_kwh_m2",
             },
-            metadata={"units": "kWh/m²"},
+            metadata={"units": "kWh/m\u00b2"},
             is_required=False,
             order=11,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -104,6 +109,8 @@ config = ValidatorConfig(
             metadata={"units": "hours"},
             is_required=False,
             order=12,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # ==================================================================
         # OUTPUT SIGNALS - Energy Consumption
@@ -119,6 +126,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=100,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -131,6 +140,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=101,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -143,6 +154,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=102,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -155,6 +168,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=103,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # ==================================================================
         # OUTPUT SIGNALS - Energy Use Intensity
@@ -163,13 +178,15 @@ config = ValidatorConfig(
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.OUTPUT,
             slug="site_eui_kwh_m2",
-            label="Site EUI (kWh/m²)",
+            label="Site EUI (kWh/m\u00b2)",
             data_type=CatalogValueType.NUMBER,
             description="Site Energy Use Intensity (total energy / floor area).",
             binding_config={"source": "metric", "key": "site_eui_kwh_m2"},
-            metadata={"units": "kWh/m²"},
+            metadata={"units": "kWh/m\u00b2"},
             is_required=False,
             order=110,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # ==================================================================
         # OUTPUT SIGNALS - End-Use Breakdown
@@ -185,6 +202,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=120,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -197,6 +216,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=121,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -209,6 +230,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=122,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -221,6 +244,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=123,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -233,6 +258,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=124,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -245,6 +272,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=125,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # ==================================================================
         # OUTPUT SIGNALS - Comfort / Performance
@@ -260,6 +289,8 @@ config = ValidatorConfig(
             metadata={"units": "hours"},
             is_required=False,
             order=130,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -272,6 +303,8 @@ config = ValidatorConfig(
             metadata={"units": "hours"},
             is_required=False,
             order=131,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -284,6 +317,8 @@ config = ValidatorConfig(
             metadata={"units": "W"},
             is_required=False,
             order=132,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # ==================================================================
         # OUTPUT SIGNALS - Building Characteristics
@@ -292,13 +327,15 @@ config = ValidatorConfig(
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.OUTPUT,
             slug="floor_area_m2",
-            label="Floor Area (m²)",
+            label="Floor Area (m\u00b2)",
             data_type=CatalogValueType.NUMBER,
             description="Total conditioned floor area from simulation.",
             binding_config={"source": "metric", "key": "floor_area_m2"},
-            metadata={"units": "m²"},
+            metadata={"units": "m\u00b2"},
             is_required=False,
             order=140,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -311,6 +348,8 @@ config = ValidatorConfig(
             metadata={"units": "count"},
             is_required=False,
             order=141,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # ==================================================================
         # OUTPUT SIGNALS - Window Envelope
@@ -329,6 +368,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh", "precision": 1},
             is_required=False,
             order=150,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -344,6 +385,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh", "precision": 1},
             is_required=False,
             order=151,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -363,6 +406,8 @@ config = ValidatorConfig(
             metadata={"units": "kWh", "precision": 1},
             is_required=False,
             order=152,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
         ),
         # ==================================================================
         # DERIVATIONS (computed from other signals)
@@ -407,5 +452,5 @@ config = ValidatorConfig(
         ),
     ],
     # Template variable editing is handled by the unified signals card
-    # (ADR-2026-03-10) — no custom step_editor_cards needed.
+    # (ADR-2026-03-10) \u2014 no custom step_editor_cards needed.
 )

@@ -63,6 +63,8 @@ class CatalogEntrySpec(BaseModel):
     binding_config: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
     is_required: bool = False
+    source_kind: str = "payload_path"
+    is_path_editable: bool = True
 
 
 class StepEditorCardSpec(BaseModel):

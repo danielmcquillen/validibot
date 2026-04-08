@@ -264,7 +264,11 @@ build: _require-gcp-config
     #   "image was found but does not provide any platform"
     # Disabling provenance produces a simple single-platform image that
     # pushes and deploys correctly.
-    docker build --platform linux/amd64 --provenance=false \
+    #
+    # --no-cache: Always rebuild from scratch. Dockerfile changes
+    # (especially to RUN commands) can be silently masked by cached
+    # layers, leading to deploying stale images.
+    docker build --platform linux/amd64 --provenance=false --no-cache \
         -f "$DOCKERFILE" \
         -t {{gcp_image}}:{{git_sha}} \
         -t {{gcp_image}}:latest .

@@ -140,7 +140,7 @@ class DockerValidatorRunner(ValidatorRunner):
             except ImportError as e:
                 msg = (
                     "docker package is required for Docker runner. "
-                    "Install with: pip install docker"
+                    "Install with: uv sync --extra docker-runner"
                 )
                 raise ImportError(msg) from e
 

@@ -641,9 +641,10 @@ CONTENT_SECURITY_POLICY = {
             "'self'",
             "https://us.i.posthog.com",
         ),
-        # Preserves current iframe embedding behavior (e.g., embedded
-        # validation badges).
-        "frame-ancestors": ("*",),
+        # Restrict iframe embedding. If we need badge/widget embedding
+        # in the future, override frame-ancestors per-view using CSP
+        # decorators rather than allowing all origins globally.
+        "frame-ancestors": ("'none'",),
     },
 }
 

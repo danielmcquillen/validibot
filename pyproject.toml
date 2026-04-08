@@ -77,8 +77,6 @@ dependencies = [
   "google-cloud-run==0.16.0",
   "python-json-logger==4.0.0",
   "django-recaptcha==4.1.0",
-  # Docker SDK for Docker Compose deployments (runs validator containers locally)
-  "docker==7.1.0",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   "validibot-shared==0.4.0",
   "django-csp==4.0",
@@ -87,6 +85,9 @@ dependencies = [
 
 [project.optional-dependencies]
 cloud = ["stripe==14.4.1"]
+# Docker SDK for the Docker-based validator runner (VALIDATOR_RUNNER=docker).
+# Not needed for Cloud Run deployments. Reduces attack surface when omitted.
+docker-runner = ["docker==7.1.0"]
 
 [project.urls]
 Homepage = "https://validibot.com"

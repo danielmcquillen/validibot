@@ -109,7 +109,7 @@ def ensure_personal_workspace(user: User) -> Organization | None:
         return existing
 
     name = _workspace_name_for(user)
-    slug = _generate_unique_slug(Organization, name, prefix="workspace-")
+    slug = _generate_unique_slug(Organization, name)
     personal_org = Organization.objects.create(
         name=name,
         slug=slug,

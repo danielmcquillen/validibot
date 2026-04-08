@@ -234,6 +234,14 @@ class PublicWorkflowInfoView(DetailView):
             schema_language: str | None = None
             if step.display_schema:
                 schema_content, schema_language = self._load_schema_content(step)
+                if not schema_content:
+                    logger.warning(
+                        "Step %s has display_schema=True but no schema content found "
+                        "(ruleset=%s, has_config_preview=%s)",
+                        step.pk,
+                        step.ruleset_id,
+                        bool((step.config or {}).get("schema_text_preview")),
+                    )
 
             if schema_content:
                 step.public_schema = {

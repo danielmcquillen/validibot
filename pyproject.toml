@@ -84,7 +84,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cloud = ["stripe==15.0.1"]
+cloud = [
+  "stripe==15.0.1",
+  # Cloud-only OIDC provider support for Claude Desktop / MCP.
+  # The cloud Docker build installs validibot-cloud with --no-deps, so these
+  # runtime dependencies must be present in the community repo's cloud extra.
+  "oauthlib==3.3.1",
+  "pyjwt[crypto]==2.12.1",
+]
 # Docker SDK for the Docker-based validator runner (VALIDATOR_RUNNER=docker).
 # Not needed for Cloud Run deployments. Reduces attack surface when omitted.
 docker-runner = ["docker==7.1.0"]

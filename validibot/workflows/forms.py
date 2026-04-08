@@ -2576,39 +2576,40 @@ class SignalBindingEditForm(forms.Form):
         if binding:
             from validibot.validations.constants import BindingSourceScope
 
-            raw_path = self.cleaned_data.get("source_data_path") or ""
-            # Detect namespace prefixes and set the correct binding scope.
-            #
-            # s. / signal. → SIGNAL scope (workflow-level signals)
-            #   e.g. "s.solar_irradiance" → path="solar_irradiance"
-            #
-            # p. / payload. → SUBMISSION_PAYLOAD scope (raw submission data)
-            #   e.g. "p.building.floor_area" → path="building.floor_area"
-            #
-            # No prefix → preserve existing scope (could be UPSTREAM_STEP,
-            # etc.) unless it was SIGNAL, in which case reset to
-            # SUBMISSION_PAYLOAD since the user removed the s. prefix.
-            if raw_path.startswith(("s.", "signal.")):
-                binding.source_data_path = raw_path.split(".", 1)[1]
-                binding.source_scope = BindingSourceScope.SIGNAL
-            elif raw_path.startswith(("p.", "payload.")):
-                binding.source_data_path = raw_path.split(".", 1)[1]
-                binding.source_scope = BindingSourceScope.SUBMISSION_PAYLOAD
-            else:
-                binding.source_data_path = raw_path
-                if binding.source_scope == BindingSourceScope.SIGNAL:
+            update_fields = ["default_value", "is_required"]
+
+            # Only update path/scope when the field is editable. When
+            # is_path_editable=False the field is disabled and Django
+            # returns the empty value, not the existing binding value.
+            if not self.fields["source_data_path"].disabled:
+                raw_path = self.cleaned_data.get("source_data_path") or ""
+                # Detect namespace prefixes and set the correct binding scope.
+                #
+                # s. / signal. → SIGNAL scope (workflow-level signals)
+                #   e.g. "s.solar_irradiance" → path="solar_irradiance"
+                #
+                # p. / payload. → SUBMISSION_PAYLOAD scope (raw submission data)
+                #   e.g. "p.building.floor_area" → path="building.floor_area"
+                #
+                # No prefix → preserve existing scope (could be UPSTREAM_STEP,
+                # etc.) unless it was SIGNAL, in which case reset to
+                # SUBMISSION_PAYLOAD since the user removed the s. prefix.
+                if raw_path.startswith(("s.", "signal.")):
+                    binding.source_data_path = raw_path.split(".", 1)[1]
+                    binding.source_scope = BindingSourceScope.SIGNAL
+                elif raw_path.startswith(("p.", "payload.")):
+                    binding.source_data_path = raw_path.split(".", 1)[1]
                     binding.source_scope = BindingSourceScope.SUBMISSION_PAYLOAD
+                else:
+                    binding.source_data_path = raw_path
+                    if binding.source_scope == BindingSourceScope.SIGNAL:
+                        binding.source_scope = BindingSourceScope.SUBMISSION_PAYLOAD
+                update_fields.extend(["source_data_path", "source_scope"])
+
             default_str = self.cleaned_data.get("default_value", "").strip()
             binding.default_value = default_str if default_str else None
             binding.is_required = self.cleaned_data.get("is_required", True)
-            binding.save(
-                update_fields=[
-                    "source_data_path",
-                    "source_scope",
-                    "default_value",
-                    "is_required",
-                ],
-            )
+            binding.save(update_fields=update_fields)
 
 
 # ── Workflow Signal Mapping ───────────────────────────────────────────

@@ -49,10 +49,11 @@ COPY pyproject.toml uv.lock ${APP_HOME}/
 COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/install-commercial-package
 
 # Install production dependencies (no dev extras).
-#   --no-sources: Skip [tool.uv.sources] overrides (local dev paths)
+#   --frozen: Use the lockfile exactly as resolved (no re-resolution,
+#     so [tool.uv.sources] overrides are not consulted)
 #   --no-install-project: Don't install validibot itself (it's a Django
 #     project run from the working directory, not a package)
-RUN uv sync --no-dev --no-sources --no-install-project --frozen \
+RUN uv sync --no-dev --no-install-project --frozen \
     && install-commercial-package ${APP_HOME}/.venv/bin/python \
     && rm -rf /tmp/uv-cache
 

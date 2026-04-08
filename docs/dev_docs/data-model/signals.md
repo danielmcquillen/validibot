@@ -255,6 +255,8 @@ that later steps can reference as `s.<signal_name>`.
 | `direction` | `CharField(10)` | `INPUT` or `OUTPUT` (from `SignalDirection` choices). |
 | `data_type` | `CharField(20)` | Value type: `NUMBER`, `STRING`, `BOOLEAN`, `TIMESERIES`, `OBJECT`. |
 | `origin_kind` | `CharField(20)` | How created: from config declaration, FMU probe, or template scan. |
+| `source_kind` | `CharField(20)` | How the value is obtained: `PAYLOAD_PATH` or `INTERNAL` (see below). |
+| `is_path_editable` | `BooleanField` | Whether the workflow author can edit the source data path in the step binding. |
 | `validator` | FK to `Validator` (nullable) | Owner for library validators. XOR with `workflow_step`. |
 | `workflow_step` | FK to `WorkflowStep` (nullable) | Owner for step-level signals. XOR with `validator`. |
 | `order` | `PositiveIntegerField` | Display ordering within the owner's signal list. |
@@ -294,6 +296,40 @@ EnergyPlus template signals store variable type and constraints:
   "choices": null
 }
 ```
+
+### Signal source kinds
+
+The `source_kind` field declares how the signal's value is obtained. This
+distinction is surfaced in the UI so workflow authors know which signals they
+can configure and which are fixed by the validator.
+
+**`PAYLOAD_PATH`** (default): The signal's value comes from a known data path
+in the submission payload or metadata. The workflow author may (depending on
+`is_path_editable`) configure the exact path via the step's signal binding.
+Most FMU input signals and template signals use this mode -- the author wires
+each input to the right field in their submission data.
+
+**`INTERNAL`**: The validator has its own mechanism for extracting or computing
+the value. Examples include EnergyPlus simulation metrics (extracted from the
+output envelope), THERM signals (parsed from XML), and FMU output variables
+(read from the FMU runtime). The source path in the step binding is typically
+fixed and should not be changed by the author.
+
+**`is_path_editable`** controls whether the source data path field in the
+signal edit modal is enabled or disabled. When `False`, Django's
+`field.disabled = True` provides server-side protection -- even if someone
+tampers with the form HTML, Django ignores the submitted value.
+
+| Validator | Direction | `source_kind` | `is_path_editable` |
+|-----------|-----------|:-------------|:-------------------|
+| EnergyPlus | Input | `INTERNAL` | `False` |
+| EnergyPlus | Output | `INTERNAL` | `False` |
+| THERM | Output | `INTERNAL` | `False` |
+| FMU | Input | `PAYLOAD_PATH` | `True` |
+| FMU | Output | `INTERNAL` | `False` |
+| Template | Input | `PAYLOAD_PATH` | `True` |
+| Custom | Any | `PAYLOAD_PATH` | `True` |
+
 
 ### Typed metadata accessors
 
@@ -487,7 +523,9 @@ it accessible as `s.simulated_eui` in downstream CEL expressions.
 Advanced validators define their signals in `config.py` modules co-located with
 the validator code. Each config module exports a `ValidatorConfig` instance
 containing a list of `CatalogEntrySpec` objects that seed `SignalDefinition`
-rows.
+rows. Each `CatalogEntrySpec` can declare `source_kind` and `is_path_editable`
+to control how the signal's value is obtained and whether the author can
+change the source path (see [Signal source kinds](#signal-source-kinds)).
 
 **Key files**:
 

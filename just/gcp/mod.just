@@ -265,10 +265,16 @@ build: _require-gcp-config
     # Disabling provenance produces a simple single-platform image that
     # pushes and deploys correctly.
     #
-    # --no-cache: Always rebuild from scratch. Dockerfile changes
-    # (especially to RUN commands) can be silently masked by cached
-    # layers, leading to deploying stale images.
-    docker build --platform linux/amd64 --provenance=false --no-cache \
+    # Use --no-cache only when GCP_NO_CACHE=1 is set (e.g. after
+    # Dockerfile RUN-line changes that Docker's layer cache would mask).
+    # Default builds use the cache for speed — dependency installation
+    # layers take 10+ minutes to rebuild from scratch.
+    CACHE_FLAG=""
+    if [ "${GCP_NO_CACHE:-0}" = "1" ]; then
+        CACHE_FLAG="--no-cache"
+        echo "Building with --no-cache (GCP_NO_CACHE=1)"
+    fi
+    docker build --platform linux/amd64 --provenance=false $CACHE_FLAG \
         -f "$DOCKERFILE" \
         -t {{gcp_image}}:{{git_sha}} \
         -t {{gcp_image}}:latest .

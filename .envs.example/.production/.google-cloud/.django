@@ -108,11 +108,6 @@ CREDENTIAL_ISSUER_URL=https://validibot.example.com
 # Optional override. ES256 is the only algorithm currently supported.
 SIGNING_ALGORITHM=ES256
 
-# GITHUB (optional)
-# ==============================================================================
-# Token for being able to pip install the validibot_shared library (if private)
-#GITHUB_SV_SHARED_TOKEN=your-github-pat
-
 # RECAPTCHA (optional)
 # ==============================================================================
 #RECAPTCHA_PUBLIC_KEY=your-recaptcha-public-key

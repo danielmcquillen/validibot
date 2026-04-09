@@ -122,4 +122,4 @@ SIGNING_ALGORITHM=ES256
 
 # OIDC
 # ------------------------------------------------------------------------------
-IDP_OIDC_PRIVATE_KEY=some private key for OIDC provider
+IDP_OIDC_PRIVATE_KEY_B64=some private key for OIDC provider

@@ -1,28 +1,6 @@
-{% comment %}
-Override of django-recaptcha's v3 JavaScript template to add CSP nonce support.
-
-The upstream template renders <script>
-   tags without nonce attributes, which
-   are blocked by our Content Security Policy.This override adds
-   nonce = "{{ csp_nonce }}"
-   to both script tags so they pass CSP validation.
-
-   The {
-     {
-       csp_nonce
-     }
-   }
-   variable is provided by django - csp 's context processor
-     (csp.context_processors.nonce), which is already in our TEMPLATES config.
-
-   See: https: //github.com/praekelt/django-recaptcha/issues/101
-     {
-       %
-       endcomment %
-     } <
-     script nonce = "{{ csp_nonce }}"
-   src = "https://{{ recaptcha_domain }}/recaptcha/api.js?render={{ public_key }}{% if api_params %}&{{ api_params }}{% endif %}" >
- </script>
+{% comment %}Override of django-recaptcha v3 JS template for CSP nonce support. See: https://github.com/praekelt/django-recaptcha/issues/101{% endcomment %}
+<script nonce="{{ csp_nonce }}"
+        src="https://{{ recaptcha_domain }}/recaptcha/api.js?render={{ public_key }}{% if api_params %}&{{ api_params }}{% endif %}"></script>
 <script nonce="{{ csp_nonce }}">
   var element
   grecaptcha.ready(function() {

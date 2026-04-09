@@ -172,6 +172,9 @@ max_blank_lines = 2
 # H037: False positives on Django template tag attributes (e.g., pk=obj.pk)
 # H020: Empty tag pairs (used for spacing/icons in Bootstrap)
 ignore = "H006,H030,H031,T002,H021,H025,H037,H020"
+# Exclude third-party template overrides that mix Django tags with JS.
+# djlint's format_js mangles Django template tags inside <script> blocks.
+extend_exclude = "django_recaptcha"
 include = "H017,H035"
 indent = 2
 max_line_length = 119

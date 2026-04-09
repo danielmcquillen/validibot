@@ -35,7 +35,7 @@ such as Docker images.
 
 ### cryptography
 
-- **Version:** 46.0.5
+- **Version:** 46.0.7
 - **License:** Apache-2.0 OR BSD-3-Clause (dual-licensed)
 - **Type:** Direct runtime dependency
 - **Chosen license:** BSD-3-Clause
@@ -144,7 +144,7 @@ not included in production deployments. They are listed here for completeness.
 
 ### pathspec
 
-- **Version:** 0.12.1
+- **Version:** 1.0.4
 - **License:** MPL-2.0
 - **Type:** Transitive (via djlint)
 - **Notes:** MPL-2.0 file-level copyleft. Used unmodified. Not shipped in the

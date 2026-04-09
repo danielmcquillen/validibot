@@ -816,6 +816,8 @@ _migrate stage:
 #   5. Show the execution logs for visibility
 #
 # The job runs: /entrypoint → gosu django → manage.py migrate --noinput
+# followed by manage.py ensure_oidc_clients so the Claude public client stays
+# registered without a manual admin step.
 # This means it goes through the same entrypoint as the web service
 # (loading /secrets/.env, waiting for the DB, etc.) but runs migrate
 # instead of gunicorn.
@@ -860,17 +862,6 @@ _run-migrate-job stage image:
     # If not, create it fresh. We use `update` rather than delete+create
     # so that previous execution history is preserved for debugging.
     # ────────────────────────────────────────────────────────────────────
-    JOB_ARGS="--image {{image}} \
-        --region {{gcp_region}} \
-        --service-account $SA \
-        --set-cloudsql-instances $DB \
-        --set-secrets=/secrets/.env=$SECRET:latest \
-        --memory 1Gi \
-        --task-timeout 300s \
-        --command /bin/bash \
-        --args -c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && echo Migrations complete \
-        --project {{gcp_project}}"
-
     if gcloud run jobs describe "$JOB_NAME" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
         echo "Updating Cloud Run Job '$JOB_NAME'..."
         gcloud run jobs update "$JOB_NAME" \
@@ -881,7 +872,7 @@ _run-migrate-job stage image:
             --task-timeout 300s \
             --execution-environment gen2 \
             --command "/bin/bash" \
-            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && echo Migrations complete" \
+            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && python manage.py ensure_oidc_clients && echo Migrations and OIDC client bootstrap complete" \
             --project {{gcp_project}} \
             --quiet
     else
@@ -896,7 +887,7 @@ _run-migrate-job stage image:
             --task-timeout 300s \
             --execution-environment gen2 \
             --command "/bin/bash" \
-            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && echo Migrations complete" \
+            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && python manage.py ensure_oidc_clients && echo Migrations and OIDC client bootstrap complete" \
             --project {{gcp_project}} \
             --quiet
     fi

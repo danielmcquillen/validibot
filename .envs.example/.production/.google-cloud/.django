@@ -123,3 +123,4 @@ SIGNING_ALGORITHM=ES256
 # OIDC
 # ------------------------------------------------------------------------------
 IDP_OIDC_PRIVATE_KEY_B64=some private key for OIDC provider
+IDP_OIDC_MCP_SERVER_CLIENT_SECRET=some client secret for OIDC provider

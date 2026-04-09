@@ -118,3 +118,8 @@ SIGNING_ALGORITHM=ES256
 # Set to enable PostHog analytics tracking. Leave empty to disable.
 #POSTHOG_PROJECT_KEY=your-posthog-project-key
 #POSTHOG_API_HOST=https://us.i.posthog.com
+
+
+# OIDC
+# ------------------------------------------------------------------------------
+IDP_OIDC_PRIVATE_KEY=some private key for OIDC provider

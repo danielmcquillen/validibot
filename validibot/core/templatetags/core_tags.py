@@ -59,6 +59,7 @@ def web_tracker(context):
         "include_tracker": include_tracker,
         "posthog_key": settings.POSTHOG_PROJECT_KEY,
         "posthog_api_host": settings.POSTHOG_API_HOST,
+        "CSP_NONCE": context.get("CSP_NONCE", ""),
     }
 
 

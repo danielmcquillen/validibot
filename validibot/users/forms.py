@@ -609,9 +609,12 @@ class UserSignupForm(SignupForm):
         # Only add reCAPTCHA field if keys are configured
         if _recaptcha_enabled():
             from django_recaptcha.fields import ReCaptchaField
-            from django_recaptcha.widgets import ReCaptchaV3
 
-            self.fields["captcha"] = ReCaptchaField(widget=ReCaptchaV3(action="signup"))
+            from validibot.users.widgets import CSPSafeReCaptchaV3
+
+            self.fields["captcha"] = ReCaptchaField(
+                widget=CSPSafeReCaptchaV3(action="signup"),
+            )
 
 
 class UserLoginForm(LoginForm):
@@ -624,9 +627,12 @@ class UserLoginForm(LoginForm):
         # Only add reCAPTCHA field if keys are configured
         if _recaptcha_enabled():
             from django_recaptcha.fields import ReCaptchaField
-            from django_recaptcha.widgets import ReCaptchaV3
 
-            self.fields["captcha"] = ReCaptchaField(widget=ReCaptchaV3(action="login"))
+            from validibot.users.widgets import CSPSafeReCaptchaV3
+
+            self.fields["captcha"] = ReCaptchaField(
+                widget=CSPSafeReCaptchaV3(action="login"),
+            )
 
 
 class UserSocialSignupForm(SocialSignupForm):

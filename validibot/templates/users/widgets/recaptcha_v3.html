@@ -1,0 +1,13 @@
+{% comment %}
+CSP-safe reCAPTCHA v3 widget template.
+
+Renders only the external API script (allowed by CSP domain whitelist) and
+the hidden input. No inline JavaScript — the form submit handler lives in
+the compiled JS bundle (recaptcha.ts).
+
+Excluded from djlint via pyproject.toml and .pre-commit-config.yaml because
+the attribute loop produces a single-line <input> that djlint would split
+across multiple lines, breaking the HTML attribute rendering.
+{% endcomment %}
+<script src="https://{{ recaptcha_domain }}/recaptcha/api.js?render={{ public_key }}{% if api_params %}&{{ api_params }}{% endif %}"></script>
+<input type="hidden" name="{{ widget.name }}" data-action="{{ action }}" {% for name, value in widget.attrs.items %}{% if value is not False %} {{ name }}{% if value is not True %}="{{ value|stringformat:'s' }}"{% endif %}{% endif %}{% endfor %}>

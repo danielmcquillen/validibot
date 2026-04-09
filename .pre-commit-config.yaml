@@ -47,7 +47,9 @@ repos:
     rev: v1.36.4
     hooks:
       - id: djlint-reformat-django
+        exclude: django_recaptcha
       - id: djlint-django
+        exclude: django_recaptcha
 
 # sets up .pre-commit-ci.yaml to ensure pre-commit dependencies stay up to date
 ci:

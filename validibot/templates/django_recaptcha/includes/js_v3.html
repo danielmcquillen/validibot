@@ -1,33 +1,22 @@
 {% comment %}Override of django-recaptcha v3 JS template for CSP nonce support. See: https://github.com/praekelt/django-recaptcha/issues/101{% endcomment %}
-<script nonce="{{ csp_nonce }}"
-        src="https://{{ recaptcha_domain }}/recaptcha/api.js?render={{ public_key }}{% if api_params %}&{{ api_params }}{% endif %}"></script>
-<script nonce="{{ csp_nonce }}">
-  var element
-  grecaptcha.ready(function() {
-    element = document.querySelector('.g-recaptcha[data-widget-uuid="{{ widget_uuid }}"]');
-    element.form.addEventListener('submit', recaptchaFormSubmit);
-  });
-
-  function recaptchaFormSubmit(event) {
-    event.preventDefault();
-    {
-      %
-      if action %
+<script nonce="{{ CSP_NONCE }}" src="https://{{ recaptcha_domain }}/recaptcha/api.js?render={{ public_key }}{% if api_params %}&{{ api_params }}{% endif %}"></script>
+<script nonce="{{ CSP_NONCE }}">
+    var element
+    grecaptcha.ready(function() {
+        element = document.querySelector('.g-recaptcha[data-widget-uuid="{{ widget_uuid }}"]');
+        element.form.addEventListener('submit', recaptchaFormSubmit);
+    });
+    function recaptchaFormSubmit(event) {
+        event.preventDefault();
+        {% if action %}
+        grecaptcha.execute('{{ public_key }}', {action: '{{ action|escape }}'})
+        {% else %}
+        grecaptcha.execute('{{ public_key }}', {})
+        {% endif %}
+        .then(function(token) {
+            console.log("reCAPTCHA validated. Setting input value...")
+            element.value = token;
+            element.form.submit();
+        });
     }
-    grecaptcha.execute('{{ public_key }}', {
-      action: '{{ action|escape }}'
-    }) {
-      %
-      else %
-    }
-    grecaptcha.execute('{{ public_key }}', {}) {
-        %
-        endif %
-      }
-      .then(function(token) {
-        console.log("reCAPTCHA validated for 'data-widget-uuid=\"{{ widget_uuid }}\"'. Setting input value...")
-        element.value = token;
-        element.form.submit();
-      });
-  }
 </script>

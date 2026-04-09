@@ -616,6 +616,10 @@ CONTENT_SECURITY_POLICY = {
             # SDK from PostHog's CDN. That injected script can't carry a nonce,
             # so we must whitelist the PostHog asset host.
             "https://*.i.posthog.com",
+            # Google reCAPTCHA v3 — the invisible widget loads scripts from
+            # Google's reCAPTCHA CDN and gstatic.
+            "https://www.google.com/recaptcha/",
+            "https://www.gstatic.com/recaptcha/",
         ),
         "style-src": (
             "'self'",
@@ -640,6 +644,12 @@ CONTENT_SECURITY_POLICY = {
         "connect-src": (
             "'self'",
             "https://us.i.posthog.com",
+        ),
+        # Google reCAPTCHA v3 uses an invisible iframe for challenge rendering.
+        "frame-src": (
+            "'self'",
+            "https://www.google.com/recaptcha/",
+            "https://recaptcha.google.com/recaptcha/",
         ),
         # Restrict iframe embedding. If we need badge/widget embedding
         # in the future, override frame-ancestors per-view using CSP

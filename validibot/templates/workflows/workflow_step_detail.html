@@ -13,14 +13,15 @@
        class="container-fluid d-flex flex-column flex-grow-1">
     <div class="app-content-header-bar row p-0">
       <div class="app-content-header">
-        <div class="badge-wrapper h-100">
-          <div class="me-2">
-            <a href="{% url 'workflows:workflow_detail' workflow.pk %}"
-               class="btn btn-link btn-sm"
-               title="{% trans 'Back to workflow' %}">
-              <i class="bi bi-chevron-double-left">Workflow</i>
-            </a>
-          </div>
+        <div class="badge-wrapper h-100 ">
+          <a href="{% url 'workflows:workflow_detail' workflow.pk %}"
+             class="btn btn-link btn-sm d-flex flex-row"
+             title="{% trans 'Back to workflow' %}">
+            <i class="bi bi-chevron-double-left me-2"></i>
+            <h1 class="app-page-title mb-0 text-truncate">
+              <i class="bi bi-box me-2"></i>Workflow
+            </h1>
+          </a>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2 title-wrapper">
           <h1 class="app-page-title mb-0">

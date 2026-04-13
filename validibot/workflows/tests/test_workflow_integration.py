@@ -92,6 +92,7 @@ def test_create_workflow_with_custom_step_and_assertion(client):
             "project": str(project.pk),
             "allowed_file_types": [SubmissionFileType.JSON],
             "data_retention": DataRetention.DO_NOT_STORE,
+            "output_retention": "STORE_30_DAYS",
         },
     )
     assert response.status_code == HTTPStatus.FOUND

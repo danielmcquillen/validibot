@@ -36,6 +36,7 @@
         Invite someone to join "{{ name }}" as a member. They'll have access based on the roles you assign.
       {% endblocktrans %}
     </p>
+    {% include "core/partial/_form_errors_summary.html" with form=invite_form %}
     {% if invite_form.non_field_errors %}
       <div class="alert alert-danger" role="alert">
         {% for error in invite_form.non_field_errors %}

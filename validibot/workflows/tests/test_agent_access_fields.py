@@ -18,6 +18,7 @@ that exposes the workflow to authenticated agents only.
 import pytest
 from django.core.exceptions import ValidationError
 
+from validibot.submissions.constants import SubmissionFileType
 from validibot.workflows.constants import AgentBillingMode
 from validibot.workflows.tests.factories import WorkflowFactory
 
@@ -154,6 +155,73 @@ class TestX402RequiresPrice:
         assert "agent_price_cents" in exc_info.value.message_dict
 
 
+# ── clean() validation: x402 requires DO_NOT_STORE retention ────────
+# This is a privacy invariant, not a pricing one: x402 enables anonymous
+# per-call access, and storing agent submissions after the call would
+# break the anonymity guarantee.  Enforced on the model so the rule
+# applies to every write path (API, admin, form, programmatic save).
+
+
+class TestX402RequiresDoNotStore:
+    """Verify that x402 billing mode requires DO_NOT_STORE retention.
+
+    The check matters because authors could otherwise accidentally
+    configure an anonymous-pay workflow that silently retains submissions,
+    which would violate the privacy promise of x402."""
+
+    def test_x402_with_store_7_days_raises(self):
+        """x402 paired with any non-DO_NOT_STORE retention should be
+        rejected.  The default retention (STORE_7_DAYS) is the most
+        likely accidental combination."""
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory.build(
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=10,
+            data_retention=SubmissionRetention.STORE_7_DAYS,
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            wf.clean()
+        assert "data_retention" in exc_info.value.message_dict
+
+    def test_x402_with_store_permanently_raises(self):
+        """Permanent storage is the most privacy-hostile pairing with
+        x402 — explicitly reject it."""
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory.build(
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=10,
+            data_retention=SubmissionRetention.STORE_PERMANENTLY,
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            wf.clean()
+        assert "data_retention" in exc_info.value.message_dict
+
+    def test_x402_with_do_not_store_is_valid(self):
+        """The only retention allowed alongside x402: immediate deletion
+        after validation.  This preserves the privacy model."""
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory.build(
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=10,
+            data_retention=SubmissionRetention.DO_NOT_STORE,
+        )
+        wf.clean()  # should not raise
+
+    def test_author_pays_with_any_retention_is_valid(self):
+        """The retention rule only applies to x402.  AUTHOR_PAYS has no
+        anonymity guarantee to break, so any retention policy is fine."""
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory.build(
+            agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
+            data_retention=SubmissionRetention.STORE_PERMANENTLY,
+        )
+        wf.clean()  # should not raise
+
+
 # ── Source resolution ────────────────────────────────────────────────
 # The _resolve_api_source helper normalises the X-Validibot-Source
 # header to uppercase and validates it against the allowed enum values.
@@ -265,3 +333,75 @@ class TestWorkflowFormAgentFields:
         assert "agent_billing_mode" in form.fields
         assert "agent_price_cents" in form.fields
         assert "agent_max_launches_per_hour" in form.fields
+
+    def test_form_rejects_x402_without_do_not_store(self):
+        """A superuser-submitted form that pairs x402 billing with a
+        non-DO_NOT_STORE retention should fail validation with the
+        error attached to the ``data_retention`` field.
+
+        This mirrors the model-level rule but surfaces the error on
+        the form field so the UI can highlight the right control."""
+        from validibot.submissions.constants import SubmissionRetention
+        from validibot.users.models import ensure_default_project
+        from validibot.users.tests.factories import MembershipFactory
+        from validibot.users.tests.factories import OrganizationFactory
+        from validibot.users.tests.factories import UserFactory
+        from validibot.workflows.forms import WorkflowForm
+
+        org = OrganizationFactory()
+        user = UserFactory(is_superuser=True)
+        MembershipFactory(user=user, org=org, is_active=True)
+        user.set_current_org(org)
+        default_project = ensure_default_project(org)
+
+        form = WorkflowForm(
+            data={
+                "name": "Anonymous agent workflow",
+                "slug": "anon-agent",
+                "project": str(default_project.pk),
+                "allowed_file_types": [SubmissionFileType.JSON],
+                "data_retention": SubmissionRetention.STORE_7_DAYS,
+                "output_retention": "STORE_30_DAYS",
+                "version": "1.0",
+                "is_active": "on",
+                "agent_access_enabled": "on",
+                "agent_billing_mode": AgentBillingMode.AGENT_PAYS_X402,
+                "agent_price_cents": "10",
+            },
+            user=user,
+        )
+        assert not form.is_valid()
+        assert "data_retention" in form.errors
+
+    def test_form_accepts_x402_with_do_not_store(self):
+        """The valid combination: x402 billing + DO_NOT_STORE retention."""
+        from validibot.submissions.constants import SubmissionRetention
+        from validibot.users.models import ensure_default_project
+        from validibot.users.tests.factories import MembershipFactory
+        from validibot.users.tests.factories import OrganizationFactory
+        from validibot.users.tests.factories import UserFactory
+        from validibot.workflows.forms import WorkflowForm
+
+        org = OrganizationFactory()
+        user = UserFactory(is_superuser=True)
+        MembershipFactory(user=user, org=org, is_active=True)
+        user.set_current_org(org)
+        default_project = ensure_default_project(org)
+
+        form = WorkflowForm(
+            data={
+                "name": "Anonymous agent workflow",
+                "slug": "anon-agent",
+                "project": str(default_project.pk),
+                "allowed_file_types": [SubmissionFileType.JSON],
+                "data_retention": SubmissionRetention.DO_NOT_STORE,
+                "output_retention": "STORE_30_DAYS",
+                "version": "1.0",
+                "is_active": "on",
+                "agent_access_enabled": "on",
+                "agent_billing_mode": AgentBillingMode.AGENT_PAYS_X402,
+                "agent_price_cents": "10",
+            },
+            user=user,
+        )
+        assert form.is_valid(), form.errors

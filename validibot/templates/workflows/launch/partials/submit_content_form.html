@@ -62,15 +62,7 @@
       </ul>
     </div>
     <div class="card-body">
-      {% if launch_form.non_field_errors %}
-        <div class="alert alert-danger" role="alert">
-          {% for error in launch_form.non_field_errors %}
-            <p class="mb-0">
-              {{ error }}
-            </p>
-          {% endfor %}
-        </div>
-      {% endif %}
+      {% include "core/partial/_form_errors_summary.html" with form=launch_form %}
       <div class="tab-content">
         <div class="tab-pane show active"
              id="workflow-launch-tab-pane"

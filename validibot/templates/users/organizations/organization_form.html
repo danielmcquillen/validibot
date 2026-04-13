@@ -57,6 +57,7 @@
           <div class="card-body">
             <form method="post" novalidate>
               {% csrf_token %}
+              {% include "core/partial/_form_errors_summary.html" %}
               {{ form|crispy }}
               {% if object and object.slug %}
                 <div class="mb-3">

@@ -550,6 +550,27 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                 },
             )
 
+        # ── x402 billing requires DO_NOT_STORE data retention ──────────
+        # x402 is anonymous per-call micropayment access for agents.
+        # Storing agent submissions would undermine the privacy model
+        # that x402 enables, so retention MUST be DO_NOT_STORE.  Enforced
+        # on the model (not just the form) so the API and admin can't
+        # bypass it.
+        if (
+            self.agent_billing_mode == AgentBillingMode.AGENT_PAYS_X402
+            and self.data_retention != SubmissionRetention.DO_NOT_STORE
+        ):
+            raise ValidationError(
+                {
+                    "data_retention": _(
+                        "Data retention must be 'Do not store' when agents "
+                        "pay via x402 micropayments — x402 is anonymous "
+                        "per-call access and storing submissions is "
+                        "incompatible with its privacy model.",
+                    ),
+                },
+            )
+
     def save(self, *args, **kwargs):
         # Auto-generate slug BEFORE validation so uniqueness checks work correctly
         if not self.slug:

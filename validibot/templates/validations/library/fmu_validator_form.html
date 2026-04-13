@@ -22,6 +22,7 @@
       <div class="card shadow-sm">
         <div class="card-body">
           {% csrf_token %}
+          {% include "core/partial/_form_errors_summary.html" %}
           {{ form|crispy }}
         </div>
         <div class="card-footer d-flex justify-content-between flex-wrap gap-2">

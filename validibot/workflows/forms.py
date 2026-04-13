@@ -336,6 +336,7 @@ class WorkflowForm(forms.ModelForm):
             "input_schema_source_mode",
             "input_schema_source_text",
             "data_retention",
+            "output_retention",
             "success_message",
             "allow_submission_name",
             "allow_submission_meta_data",
@@ -357,6 +358,11 @@ class WorkflowForm(forms.ModelForm):
                 "Controls how long the user's submission data is kept after "
                 "validation. The submission record is always preserved for "
                 "audit purposes."
+            ),
+            "output_retention": _(
+                "Controls how long validation outputs (results, artifacts, "
+                "findings) are kept after the run completes. Users need time "
+                "to review results, so immediate deletion is not an option."
             ),
         }
 
@@ -385,6 +391,9 @@ class WorkflowForm(forms.ModelForm):
         # Configure data retention field
         self.fields["data_retention"].label = _("Data retention")
         self.fields["data_retention"].widget.attrs.update({"class": "form-select"})
+        # Configure output retention field (parallel to data_retention)
+        self.fields["output_retention"].label = _("Output retention")
+        self.fields["output_retention"].widget.attrs.update({"class": "form-select"})
         # Configure success message field
         self.fields["success_message"].label = _("Success message")
         self.fields["success_message"].help_text = _(
@@ -533,6 +542,7 @@ class WorkflowForm(forms.ModelForm):
                 ),
                 Field("allowed_file_types"),
                 Field("data_retention"),
+                Field("output_retention"),
                 Field("success_message"),
                 Field("allow_submission_name"),
                 Field("allow_submission_meta_data"),
@@ -703,8 +713,41 @@ class WorkflowForm(forms.ModelForm):
         If the author provided input contract text in either mode, this
         method converts it to canonical JSON Schema, validates the supported
         v1 subset, and writes the result into the hidden model fields.
+
+        Also enforces cross-field invariants on the author's privacy
+        choices (e.g., x402 billing requires DO_NOT_STORE retention).
         """
+        from validibot.submissions.constants import SubmissionRetention
+        from validibot.workflows.constants import AgentBillingMode
+
         cleaned = super().clean()
+
+        # ── x402 billing must pair with DO_NOT_STORE retention ─────────
+        # x402 is anonymous per-call micropayment access.  Storing agent
+        # submissions would undermine the privacy model that x402 enables.
+        # Also enforced on the model so API/admin writes can't bypass it,
+        # but surfacing the error on the form field gives better UX.
+        #
+        # agent_billing_mode only exists on the form for superusers, so
+        # .get() returns None for non-superusers and the check falls
+        # through harmlessly.
+        if (
+            cleaned.get("agent_billing_mode") == AgentBillingMode.AGENT_PAYS_X402
+            and cleaned.get("data_retention") != SubmissionRetention.DO_NOT_STORE
+        ):
+            self.add_error(
+                "data_retention",
+                ValidationError(
+                    _(
+                        "Data retention must be 'Do not store' when agents "
+                        "pay via x402 micropayments — x402 is anonymous "
+                        "per-call access and storing submissions is "
+                        "incompatible with its privacy model."
+                    ),
+                    code="x402_requires_do_not_store",
+                ),
+            )
+
         mode = cleaned.get("input_schema_mode", "")
         json_text = (cleaned.get("input_schema_json") or "").strip()
         pydantic_text = (cleaned.get("input_schema_pydantic") or "").strip()

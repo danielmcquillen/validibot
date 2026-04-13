@@ -33,6 +33,7 @@
           <div class="card-body">
             <form method="post" enctype="multipart/form-data" novalidate>
               {% csrf_token %}
+              {% include "core/partial/_form_errors_summary.html" %}
               {% crispy form %}
               <div class="d-flex justify-content-between align-items-center mt-4">
                 <a class="btn btn-secondary"

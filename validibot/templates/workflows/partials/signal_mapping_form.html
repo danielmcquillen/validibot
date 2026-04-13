@@ -17,6 +17,7 @@
   </div>
   <div class="modal-body">
     {% csrf_token %}
+    {% include "core/partial/_form_errors_summary.html" %}
     {{ form|crispy }}
   </div>
   <div class="modal-footer">

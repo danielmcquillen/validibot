@@ -1,0 +1,42 @@
+{% comment %}
+Top-of-form error summary (heading-only).
+
+Purpose: when a form re-renders with errors, users can be confused
+("why am I back on this page?") if all errors are attached to fields
+further down the page. This include renders a small Bootstrap alert
+banner that says "we found issues, look below" whenever the form has
+any errors at all (field OR non-field).
+
+**Deliberately does NOT list error text.** That would duplicate what
+crispy-forms renders automatically for non-field errors, and what
+crispy renders inline for field errors. This banner is just the "look
+below" signpost — the actual error text comes from crispy (for crispy
+forms) or from explicit {{ form.non_field_errors }} / {{ form.field.errors }}
+blocks in the template (for manually-rendered forms).
+
+role="alert" + aria-live="assertive" ensures screen readers announce
+the banner immediately when the page re-renders with errors.
+
+Intended placement: inside <form>, right after {% csrf_token %}, before
+the field rendering block. That keeps the banner inside the form's
+accessibility tree and tab order.
+
+Usage:
+    {% include "core/partial/_form_errors_summary.html" %}
+
+  Or, when the form has a non-default context name:
+
+    {% include "core/partial/_form_errors_summary.html" with form=invite_form %}
+
+Rendered output is empty when the form has no errors, so it is safe to
+include unconditionally.
+{% endcomment %}
+{% load i18n %}
+
+{% if form.errors %}
+  <div class="alert alert-danger" role="alert" aria-live="assertive">
+    <h2 class="h6 mb-0">
+      {% trans "We found a few issues. Please update the highlighted fields below." %}
+    </h2>
+  </div>
+{% endif %}

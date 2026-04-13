@@ -28,6 +28,7 @@
             </h1>
             <form method="post" novalidate>
               {% csrf_token %}
+              {% include "core/partial/_form_errors_summary.html" %}
               {{ form|crispy }}
               <div class="d-flex justify-content-end gap-2 mt-3">
                 <a href="{% url 'projects:project-list' %}" class="btn btn-secondary">{% trans "Cancel" %}</a>

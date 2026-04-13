@@ -17,6 +17,7 @@
   </div>
   <div class="modal-body">
     {% csrf_token %}
+    {% include "core/partial/_form_errors_summary.html" %}
     {{ form|crispy }}
     <datalist id="{{ target_slug_datalist_id }}">
       {% for value, label in catalog_choices %}

@@ -44,17 +44,6 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Advanced",
-            {
-                "fields": ("data",),
-                "classes": ("collapse",),
-                "description": (
-                    "JSON catch-all for settings not yet promoted to "
-                    "model fields. Only edit if you know what you're doing."
-                ),
-            },
-        ),
-        (
             "Metadata",
             {
                 "fields": (

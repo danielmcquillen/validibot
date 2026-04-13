@@ -23,6 +23,7 @@
           <div class="card-body">
             <form method="post">
               {% csrf_token %}
+              {% include "core/partial/_form_errors_summary.html" %}
               {{ form|crispy }}
               <div class="form-text mb-3">
                 {% trans "Supports Markdown. Content is sanitized before publishing." %}

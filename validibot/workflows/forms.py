@@ -1137,7 +1137,8 @@ class BaseStepConfigForm(forms.Form):
         required=False,
         initial=False,
         help_text=_(
-            "When enabled, users can view the schema.",
+            "When enabled, submitters can view the schema on the workflow's "
+            "public info page.",
         ),
     )
     show_success_messages = forms.BooleanField(

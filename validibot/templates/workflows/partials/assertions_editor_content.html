@@ -24,6 +24,7 @@ Context:
   validator_default_assertions_count - int
 {% endcomment %}
 <div id="assertions-editor-content"
+     class="d-flex flex-column flex-grow-1"
      hx-get="{% org_url 'workflows:workflow_step_assertions_partial' workflow.pk step.pk %}"
      hx-trigger="assertions-changed from:body"
      hx-swap="outerHTML">

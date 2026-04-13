@@ -53,7 +53,7 @@ dependencies = [
   "gunicorn==25.3.0",
   "httpx==0.28.1",
   "jsonschema==4.26.0",
-  "lxml==6.0.2",
+  "lxml==6.0.4",
   "markdown2==2.5.5",
   "nh3==0.3.4",
   "pillow==12.2.0",
@@ -300,15 +300,15 @@ dev = [
   "pytest==9.0.3",
   "pytest-django==4.12.0",
   "pytest-sugar==1.1.1",
-  "selenium==4.41.0",
+  "selenium==4.43.0",
   # Linting and formatting
   "djlint==1.36.4",
   "pre-commit==4.5.1",
-  "ruff==0.15.9",
+  "ruff==0.15.10",
   # Type checking
   "django-stubs[compatible-mypy]==6.0.2",
   "djangorestframework-stubs==3.16.9",
-  "mypy==1.20.0",
+  "mypy==1.20.1",
   # Debugging and development utilities
   "django-debug-toolbar==6.3.0",
   "django-extensions==4.1",

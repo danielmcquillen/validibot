@@ -35,6 +35,22 @@ CLOUD_SQL_CONNECTION_NAME=your-project:region:your-instance
 
 DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@/${POSTGRES_DB}?host=/cloudsql/${CLOUD_SQL_CONNECTION_NAME}
 
+# CACHE (shared across workers + scaled instances)
+# ==============================================================================
+# Django's cache must be shared across Gunicorn workers and Cloud Run
+# instances — allauth rate limiting and TOTP replay prevention depend
+# on it. The GCP deployment uses Django's `DatabaseCache` backend by
+# default (persisted in the existing Cloud SQL Postgres database);
+# that's $0 incremental cost and fine for pre-release volume.
+#
+# Before the first deploy, run `python manage.py createcachetable` to
+# provision the `django_cache` table. See the runbook for details.
+#
+# When traffic grows or latency becomes a concern, provision Memorystore
+# for Redis, attach it via VPC connector, and uncomment REDIS_URL below.
+# `config/settings/production.py` will switch to RedisCache automatically.
+#REDIS_URL=redis://10.x.x.x:6379/0
+
 # LOGGING
 # ==============================================================================
 # Sentry error tracking (recommended for production)
@@ -119,6 +135,32 @@ SIGNING_ALGORITHM=ES256
 #POSTHOG_PROJECT_KEY=your-posthog-project-key
 #POSTHOG_API_HOST=https://us.i.posthog.com
 
+# MFA
+# ------------------------------------------------------------------------------
+# Multi-factor authentication (authenticator apps + recovery codes).
+#
+# MFA_TOTP_ISSUER is the label shown in users' authenticator apps next to
+# their account email. Replace the placeholder below with your deployment
+# name (e.g. "Acme Corp Validibot Cloud"). Leaving the placeholder will
+# technically work but makes authenticator-app entries indistinguishable
+# between deployments.
+MFA_TOTP_ISSUER=your-mfa-issuer-name
+#
+# DJANGO_MFA_ENCRYPTION_KEY is REQUIRED in production — the app refuses
+# to start without it. TOTP secrets and recovery-code seeds are stored
+# encrypted in the database via Fernet (AES-128-CBC + HMAC-SHA256).
+# Without encryption, database read access would let an attacker
+# compute any enrolled user's second-factor codes.
+#
+# Generate a fresh key with:
+#
+#     python -c "from cryptography.fernet import Fernet; \
+#         print(Fernet.generate_key().decode())"
+#
+# Then store it in GCP Secret Manager alongside DJANGO_SECRET_KEY.
+# DO NOT reuse the dev key. DO NOT commit a real key to git.
+# See docs/dev_docs/how-to/configure-mfa.md for rotation procedure.
+DJANGO_MFA_ENCRYPTION_KEY=replace-with-generated-fernet-key
 
 # OIDC
 # ------------------------------------------------------------------------------

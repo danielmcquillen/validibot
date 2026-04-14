@@ -7,9 +7,11 @@
 # Usage:
 #   just local-cloud up            # Start cloud containers (detached)
 #   just local-cloud up --build    # Rebuild and start
+#   just local-cloud down          # Stop cloud containers (including MCP)
 #
-# To stop:
-#   just down                # Works for both local and cloud
+# Note: `just down` only stops the local stack (docker-compose.local.yml).
+# The cloud stack includes extra services like the MCP server that aren't
+# in the local compose file, so use `just local-cloud down` to stop them.
 #
 # =============================================================================
 
@@ -35,6 +37,15 @@ up *args:
         docker volume rm validibot_validibot_local_venv 2>/dev/null || true
     fi
     docker compose -f "{{cloud_compose}}" up -d $args
+
+# Stop all cloud containers (including MCP server)
+#
+# Tears down every service defined in docker-compose.cloud.yml — web, worker,
+# postgres, redis, mcp, mailpit, etc. Volumes are preserved so data persists
+# across restarts; use `just local-cloud clean` for a full reset.
+[no-cd]
+down:
+    docker compose -f {{cloud_compose}} down
 
 # Rebuild and start containers, clearing the venv volume
 #

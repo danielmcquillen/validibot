@@ -1,0 +1,100 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% comment %}
+  Validibot override of allauth's `mfa/recovery_codes/index.html`.
+
+  Renders the user's unused recovery codes plus actions to download or
+  regenerate them, inside our in-app chrome. Follows the same pattern
+  as `mfa/totp/activate_form.html`: extend `app_base.html` directly,
+  skip allauth's `base_manage`/`{% element %}` layer, render plain
+  Bootstrap markup.
+
+  The allauth view supplies `unused_codes` (list of strings) and
+  `total_count` (int) in the context. Generate and download URLs
+  resolve via the standard allauth URL names.
+{% endcomment %}
+
+{% block title %}
+  {% trans "Recovery Codes" %}
+{% endblock title %}
+{% block bodyclass %}
+  {{ block.super }} account-settings-page
+{% endblock bodyclass %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block top_bar %}
+  {% trans "Recovery Codes" as leaf_label %}
+  {% mfa_breadcrumbs leaf_label as breadcrumbs %}
+  {% include "app/partial/components/app_top_bar.html" %}
+{% endblock top_bar %}
+{% block app_content %}
+  <div id="mfa-recovery-codes" class="app-page container-fluid">
+    <div class="app-content-header-bar row mb-3">
+      <div class="app-content-header col-12 col-lg-8">
+        <h1 class="app-page-title mb-0">
+          <i class="bi bi-key me-2"></i>{% trans "Recovery Codes" %}
+        </h1>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-12 col-lg-8">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <p class="text-muted">
+              {% blocktrans count unused_count=unused_codes|length %}There is {{ unused_count }} out of {{ total_count }} recovery codes available.{% plural %}There are {{ unused_count }} out of {{ total_count }} recovery codes available.{% endblocktrans %}
+            </p>
+            <p class="text-muted small">
+              {% blocktrans %}Each code works only once — store them somewhere safe, like a password manager. If you lose access to your authenticator app, a recovery code is how you'll sign in.{% endblocktrans %}
+            </p>
+
+            {% if unused_codes %}
+              <div class="mb-3">
+                <label for="recovery_codes" class="form-label">
+                  {% trans "Unused codes" %}
+                </label>
+                {% comment %}
+                  Render one code per line in a monospace readonly
+                  textarea — matches allauth's upstream layout but
+                  styled with Bootstrap.
+                {% endcomment %}
+                <textarea id="recovery_codes" class="form-control font-monospace" rows="{{ unused_codes|length }}" readonly>{% for code in unused_codes %}{{ code }}{% if not forloop.last %}
+{% endif %}{% endfor %}</textarea>
+              </div>
+            {% else %}
+              <div class="alert alert-warning d-flex gap-2 mb-0">
+                <i class="bi bi-exclamation-triangle-fill flex-shrink-0 pt-1"></i>
+                <div>
+                  {% blocktrans %}You have no unused recovery codes left. Generate a new set below to restore your ability to sign in if you lose your authenticator app.{% endblocktrans %}
+                </div>
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <a class="btn btn-link text-decoration-none px-0"
+               href="{% org_url 'users:security' %}">
+              <i class="bi bi-arrow-left me-1"></i>{% trans "Back to Security" %}
+            </a>
+            <div class="d-flex flex-wrap gap-2">
+              {% if unused_codes %}
+                <a class="btn btn-secondary"
+                   href="{% url 'mfa_download_recovery_codes' %}">
+                  <i class="bi bi-download me-1"></i>{% trans "Download codes" %}
+                </a>
+              {% endif %}
+              <a class="btn btn-outline-warning"
+                 href="{% url 'mfa_generate_recovery_codes' %}">
+                <i class="bi bi-arrow-repeat me-1"></i>{% trans "Generate new codes" %}
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

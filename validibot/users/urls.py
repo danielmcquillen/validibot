@@ -14,6 +14,7 @@ from validibot.users.views import user_detail_view
 from validibot.users.views import user_email_view
 from validibot.users.views import user_profile_view
 from validibot.users.views import user_redirect_view
+from validibot.users.views import user_security_view
 
 app_name = "users"
 urlpatterns = [
@@ -61,6 +62,7 @@ urlpatterns = [
         view=user_api_key_rotate_view,
         name="api-key-rotate",
     ),
+    path("security/", view=user_security_view, name="security"),
     path(
         "organizations/<int:org_id>/switch/",
         switch_current_org_view,

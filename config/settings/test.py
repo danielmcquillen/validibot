@@ -20,6 +20,11 @@ SECRET_KEY = env(
     "DJANGO_SECRET_KEY",
     default="INgnwuvH37jf6eck2HmmKz8ISsZbDCj8v5YbhI9PXxzOCuBTS7Ns4Y4gZGGFTfDQ",
 )
+# Fixed MFA encryption key for the test suite. Production sets this via
+# DJANGO_MFA_ENCRYPTION_KEY; during tests we use a deterministic Fernet
+# key so tests don't need to reach for os.environ or generate one per
+# test module. Never reuse this value outside tests.
+MFA_ENCRYPTION_KEY = "qYy0eDvn7TRiLVXGJk1XeXgvr1SYathyVc9X-7HIV5E="
 # https://docs.djangoproject.com/en/dev/ref/settings/#test-runner
 TEST_RUNNER = "django.test.runner.DiscoverRunner"
 # For threaded live server tests, force new DB connections per request/test.

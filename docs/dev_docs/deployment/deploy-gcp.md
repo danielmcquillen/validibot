@@ -78,6 +78,36 @@ just gcp scheduler-setup dev
 
 After that, verify the environment, then repeat the same process for `staging` or `prod` as needed.
 
+### Secrets checklist
+
+Before `just gcp secrets dev`, make sure `.envs/.production/.google-cloud/.django`
+defines:
+
+- `DJANGO_SECRET_KEY` — Django session / signed-cookie key.
+- `DJANGO_MFA_ENCRYPTION_KEY` — Fernet key for MFA secret material. The
+  app refuses to start without this, and the startup check validates
+  the format (not just presence). Generate with:
+  `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+- `DATABASE_URL`, `POSTGRES_*` — Cloud SQL connection.
+- `MFA_TOTP_ISSUER` — authenticator-app label (e.g. "Validibot Cloud").
+
+See [configure-mfa.md](../how-to/configure-mfa.md) for key-generation
+and rotation procedures. The encryption key is stored in Secret Manager
+via `just gcp secrets`, never committed.
+
+### Cache table
+
+Production uses Django's `DatabaseCache` backend by default (rather
+than Memorystore/Redis) — a zero-marginal-cost option that reuses
+the Cloud SQL instance for allauth rate limiting and TOTP replay
+protection. The `just gcp migrate` step runs `createcachetable`
+automatically on every deploy (idempotent — no-op after the first
+run). If you ever need higher cache throughput, set `REDIS_URL` to a
+Memorystore instance and the settings module switches backends
+automatically — see
+[configure-mfa.md](../how-to/configure-mfa.md#upgrade-path-redis-via-memorystore)
+for the full upgrade path.
+
 ## Routine deployment flow
 
 For normal updates:

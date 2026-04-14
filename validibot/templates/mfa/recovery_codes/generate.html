@@ -1,0 +1,106 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% comment %}
+  Validibot override of allauth's `mfa/recovery_codes/generate.html`.
+
+  Confirmation page before generating a new set of recovery codes.
+  When the user already has unused codes, this action invalidates
+  them — the template makes that consequence explicit before letting
+  them proceed.
+
+  Context vars supplied by the allauth view:
+    - `form`: GenerateRecoveryCodesForm (no visible fields, just CSRF)
+    - `unused_code_count`: int, used to decide whether to show the
+      destructive-action warning.
+{% endcomment %}
+
+{% block title %}
+  {% trans "Generate Recovery Codes" %}
+{% endblock title %}
+{% block bodyclass %}
+  {{ block.super }} account-settings-page
+{% endblock bodyclass %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block top_bar %}
+  {% trans "Generate Recovery Codes" as leaf_label %}
+  {% mfa_breadcrumbs leaf_label as breadcrumbs %}
+  {% include "app/partial/components/app_top_bar.html" %}
+{% endblock top_bar %}
+{% block app_content %}
+  <div id="mfa-recovery-codes-generate" class="app-page container-fluid">
+    <div class="app-content-header-bar row mb-3">
+      <div class="app-content-header col-12 col-lg-8">
+        <h1 class="app-page-title mb-0">
+          <i class="bi bi-arrow-repeat me-2"></i>{% trans "Generate Recovery Codes" %}
+        </h1>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-12 col-lg-8">
+        <form method="post"
+              action="{% url 'mfa_generate_recovery_codes' %}"
+              novalidate>
+          {% csrf_token %}
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <p class="text-muted">
+                {% blocktrans %}You're about to generate a fresh set of recovery codes for your account.{% endblocktrans %}
+              </p>
+              {% if unused_code_count %}
+                <div class="alert alert-warning d-flex gap-2 mb-3">
+                  <i class="bi bi-exclamation-triangle-fill flex-shrink-0 pt-1"></i>
+                  <div>
+                    {% blocktrans %}This will invalidate your existing codes. Make sure you save the new set immediately — you won't be able to view the old ones again.{% endblocktrans %}
+                  </div>
+                </div>
+              {% endif %}
+              <p class="text-muted mb-0">
+                {% trans "Are you sure you want to continue?" %}
+              </p>
+              {% for field in form %}
+                {{ field }}
+                {% for error in field.errors %}
+                  <div class="invalid-feedback d-block">
+                    {{ error }}
+                  </div>
+                {% endfor %}
+              {% endfor %}
+              {% for error in form.non_field_errors %}
+                <div class="alert alert-danger mt-3 mb-0">
+                  {{ error }}
+                </div>
+              {% endfor %}
+            </div>
+
+            <div class="card-footer d-flex justify-content-between align-items-center gap-2">
+              <a class="btn btn-link text-decoration-none px-0"
+                 href="{% org_url 'users:security' %}">
+                <i class="bi bi-arrow-left me-1"></i>{% trans "Back to Security" %}
+              </a>
+              {% comment %}
+                Use danger styling when there are existing codes to
+                invalidate, plain primary otherwise — matches the
+                destructive-action convention used on other pages.
+              {% endcomment %}
+              <button type="submit"
+                      class="btn
+                             {% if unused_code_count %}
+                               btn-danger
+                             {% else %}
+                               btn-primary
+                             {% endif %}">
+                <i class="bi bi-arrow-repeat me-1"></i>{% trans "Generate" %}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

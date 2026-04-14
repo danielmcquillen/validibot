@@ -1,0 +1,131 @@
+{% extends "app_base.html" %}
+
+{% load i18n %}
+
+{% block title %}
+  {% trans "Security" %}
+{% endblock title %}
+{% block bodyclass %}
+  {{ block.super }} account-settings-page
+{% endblock bodyclass %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div id="user-security" class="app-page container-fluid">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12">
+        <h1 class="app-page-title">
+          {% trans "Account Security" %}
+        </h1>
+      </div>
+    </div>
+
+    <div class="row g-4">
+      {# Authenticator App (TOTP) card — the primary second factor. #}
+      {% if "totp" in MFA_SUPPORTED_TYPES %}
+        <div class="col-12 col-lg-8">
+          <div id="totp-panel" class="card shadow-sm h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span class="fw-semibold">
+                <i class="bi bi-phone me-1"></i>
+                {% trans "Authenticator app" %}
+              </span>
+              {% if totp_enabled %}
+                <span class="badge text-bg-success text-uppercase small">{% trans "Active" %}</span>
+              {% else %}
+                <span class="badge text-bg-light text-uppercase small">{% trans "Not active" %}</span>
+              {% endif %}
+            </div>
+            <div class="card-body">
+              <p class="text-muted small mb-3">
+                {% blocktrans %}Use any time-based one-time password (TOTP) app — Aegis, 1Password, Bitwarden, Google Authenticator — to generate a 6-digit code every time you sign in.{% endblocktrans %}
+              </p>
+              <div class="d-grid d-sm-flex gap-2">
+                {% if totp_enabled %}
+                  <a href="{% url 'mfa_deactivate_totp' %}"
+                     class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-shield-slash me-1"></i>
+                    {% trans "Deactivate authenticator" %}
+                  </a>
+                {% else %}
+                  <a href="{% url 'mfa_activate_totp' %}" class="btn btn-sm btn-primary">
+                    <i class="bi bi-shield-check me-1"></i>
+                    {% trans "Set up authenticator" %}
+                  </a>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      {% comment %}
+      Recovery codes card — only shown once a primary factor is active,
+      because recovery codes are meaningless on their own.
+      {% endcomment %}
+      {% if "recovery_codes" in MFA_SUPPORTED_TYPES and is_mfa_enabled %}
+        <div class="col-12 col-lg-8">
+          <div id="recovery-codes-panel" class="card shadow-sm h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span class="fw-semibold">
+                <i class="bi bi-key me-1"></i>
+                {% trans "Recovery codes" %}
+              </span>
+              {% if recovery_codes %}
+                {% with unused_count=recovery_codes.get_unused_codes|length total_count=recovery_codes.generate_codes|length %}
+                  <span class="badge text-bg-light small">
+                    {% blocktrans %}{{ unused_count }} of {{ total_count }} unused{% endblocktrans %}
+                  </span>
+                {% endwith %}
+              {% endif %}
+            </div>
+            <div class="card-body">
+              <p class="text-muted small mb-3">
+                {% blocktrans %}Use a recovery code to sign in if you lose access to your authenticator app. Each code works only once, so store them somewhere safe — a password manager is a good choice.{% endblocktrans %}
+              </p>
+              <div class="d-grid d-sm-flex gap-2 flex-wrap">
+                {% if recovery_codes %}
+                  <a href="{% url 'mfa_view_recovery_codes' %}"
+                     class="btn btn-sm btn-secondary">
+                    <i class="bi bi-eye me-1"></i>
+                    {% trans "View codes" %}
+                  </a>
+                  <a href="{% url 'mfa_download_recovery_codes' %}"
+                     class="btn btn-sm btn-secondary">
+                    <i class="bi bi-download me-1"></i>
+                    {% trans "Download" %}
+                  </a>
+                {% endif %}
+                <a href="{% url 'mfa_generate_recovery_codes' %}"
+                   class="btn btn-sm btn-outline-warning">
+                  <i class="bi bi-arrow-repeat me-1"></i>
+                  {% trans "Regenerate codes" %}
+                </a>
+              </div>
+              {% if recovery_codes %}
+                <p class="text-muted small mt-3 mb-0">
+                  {% trans "Regenerating codes immediately invalidates your current set. Make sure you save the new ones." %}
+                </p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      {# Info callout — clarifies that MFA is opt-in and how to opt out. #}
+      <div class="col-12 col-lg-8">
+        <div class="alert alert-info d-flex gap-2 mb-0">
+          <i class="bi bi-info-circle-fill flex-shrink-0 pt-1"></i>
+          <div>
+            {% if is_mfa_enabled %}
+              {% blocktrans %}Two-factor authentication is enabled on your account. You can deactivate it at any time from this page — your password will still be required to sign in.{% endblocktrans %}
+            {% else %}
+              {% blocktrans %}Two-factor authentication is optional. Activating it means you'll be asked for a one-time code (from your authenticator app, or a recovery code) whenever you sign in, which keeps attackers out even if your password leaks.{% endblocktrans %}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

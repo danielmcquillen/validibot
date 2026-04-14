@@ -1,0 +1,89 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% comment %}
+  Validibot override of allauth's `mfa/totp/deactivate_form.html`.
+
+  Confirmation page before turning off TOTP-based two-factor auth.
+  Renders a warning about the security implications and a single
+  "Deactivate" button. Uses allauth's `DeactivateTOTPForm`, whose
+  fields are hidden (it carries the CSRF token + a management
+  nonce), so there's nothing visible to render in the form body.
+{% endcomment %}
+
+{% block title %}
+  {% trans "Deactivate Authenticator App" %}
+{% endblock title %}
+{% block bodyclass %}
+  {{ block.super }} account-settings-page
+{% endblock bodyclass %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block top_bar %}
+  {% trans "Deactivate Authenticator App" as leaf_label %}
+  {% mfa_breadcrumbs leaf_label as breadcrumbs %}
+  {% include "app/partial/components/app_top_bar.html" %}
+{% endblock top_bar %}
+{% block app_content %}
+  <div id="mfa-totp-deactivate" class="app-page container-fluid">
+    <div class="app-content-header-bar row mb-3">
+      <div class="app-content-header col-12 col-lg-8">
+        <h1 class="app-page-title mb-0">
+          <i class="bi bi-shield-slash me-2"></i>{% trans "Deactivate Authenticator App" %}
+        </h1>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-12 col-lg-8">
+        <form method="post" action="{% url 'mfa_deactivate_totp' %}" novalidate>
+          {% csrf_token %}
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="alert alert-warning d-flex gap-2 mb-3">
+                <i class="bi bi-exclamation-triangle-fill flex-shrink-0 pt-1"></i>
+                <div>
+                  {% blocktrans %}You're about to turn off two-factor authentication for your account. After this, signing in will only require your password — you won't be asked for an authenticator code.{% endblocktrans %}
+                </div>
+              </div>
+              <p class="text-muted mb-0">
+                {% blocktrans %}Are you sure you want to continue? You can always re-enable two-factor authentication later from the Security page.{% endblocktrans %}
+              </p>
+              {% comment %}
+                DeactivateTOTPForm has no visible fields, but render any
+                that exist (and surface errors) just in case allauth
+                changes the form in a later version.
+              {% endcomment %}
+              {% for field in form %}
+                {{ field }}
+                {% for error in field.errors %}
+                  <div class="invalid-feedback d-block">
+                    {{ error }}
+                  </div>
+                {% endfor %}
+              {% endfor %}
+              {% for error in form.non_field_errors %}
+                <div class="alert alert-danger mt-3 mb-0">
+                  {{ error }}
+                </div>
+              {% endfor %}
+            </div>
+
+            <div class="card-footer d-flex justify-content-between align-items-center gap-2">
+              <a class="btn btn-link text-decoration-none px-0"
+                 href="{% org_url 'users:security' %}">
+                <i class="bi bi-arrow-left me-1"></i>{% trans "Back to Security" %}
+              </a>
+              <button type="submit" class="btn btn-danger">
+                <i class="bi bi-shield-slash me-1"></i>{% trans "Deactivate" %}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

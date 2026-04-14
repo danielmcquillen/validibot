@@ -878,7 +878,7 @@ _run-migrate-job stage image:
             --task-timeout 300s \
             --execution-environment gen2 \
             --command "/bin/bash" \
-            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && python manage.py ensure_oidc_clients && echo Migrations and OIDC client bootstrap complete" \
+            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && python manage.py createcachetable && python manage.py ensure_oidc_clients && echo Migrations, cache table, and OIDC client bootstrap complete" \
             --project {{gcp_project}} \
             --quiet
     else
@@ -893,7 +893,7 @@ _run-migrate-job stage image:
             --task-timeout 300s \
             --execution-environment gen2 \
             --command "/bin/bash" \
-            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && python manage.py ensure_oidc_clients && echo Migrations and OIDC client bootstrap complete" \
+            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && python manage.py createcachetable && python manage.py ensure_oidc_clients && echo Migrations, cache table, and OIDC client bootstrap complete" \
             --project {{gcp_project}} \
             --quiet
     fi

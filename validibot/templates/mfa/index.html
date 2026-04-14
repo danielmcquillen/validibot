@@ -1,0 +1,53 @@
+{% extends "app_base.html" %}
+
+{% load i18n %}
+
+{% comment %}
+  Validibot override of allauth's `mfa/index.html`.
+
+  The URL override for `mfa_index` in `config/urls_web.py` already
+  redirects ``/accounts/2fa/`` to our Security page, so this template
+  should never render in normal operation. We ship it anyway as
+  belt-and-braces defense: if any code path ever renders
+  ``mfa/index.html`` directly (e.g. via ``render_to_string`` in a
+  middleware, a ``{% include %}`` tag, or a future allauth version
+  that stops going through ``reverse("mfa_index")``), users will see
+  this stub — a meta-refresh redirect + a manual link to Security —
+  instead of allauth's unbranded MFA index page.
+
+  Security-wise this is also defensible: if the URL redirect ever
+  breaks (e.g. the URL include order flips after a refactor), this
+  template still keeps users on-brand and pointed at the real
+  Security page rather than showing an allauth-styled duplicate.
+{% endcomment %}
+
+{% block title %}
+  {% trans "Security" %}
+{% endblock title %}
+{% block extra_head %}
+  <meta http-equiv="refresh" content="0; url={% url 'users:security' %}" />
+{% endblock extra_head %}
+{% block bodyclass %}
+  {{ block.super }} account-settings-page
+{% endblock bodyclass %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div class="app-page container-fluid">
+    <div class="row">
+      <div class="col-12 col-lg-8">
+        <div class="card shadow-sm">
+          <div class="card-body text-center py-5">
+            <p class="mb-3">
+              {% trans "Redirecting to Security…" %}
+            </p>
+            <a href="{% url 'users:security' %}" class="btn btn-primary">
+              {% trans "Go to Security settings" %}
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

@@ -6,6 +6,7 @@ from django import template
 from django.conf import settings
 from django.contrib.sites.shortcuts import get_current_site
 from django.utils.safestring import mark_safe
+from django.utils.translation import gettext_lazy as _
 
 from validibot.core.utils import pretty_json
 from validibot.core.utils import render_markdown_safe
@@ -174,6 +175,7 @@ def user_settings_nav_state(context) -> dict[str, bool]:
         "profile": False,
         "email": False,
         "api_key": False,
+        "security": False,
         "organizations": False,
     }
     if not request:
@@ -192,9 +194,17 @@ def user_settings_nav_state(context) -> dict[str, bool]:
     state["profile"] = is_match("profile")
     state["email"] = is_match("email")
     state["api_key"] = is_match("api-key")
+    # Keep "Security" highlighted during multi-step allauth MFA flows
+    # (mfa_index, mfa_activate_totp, mfa_generate_recovery_codes, ...).
+    state["security"] = (
+        is_match("security")
+        or url_name.startswith("mfa_")
+        or view_name.startswith("mfa_")
+    )
     state["organizations"] = view_name.startswith("users:organization-")
     state["active"] = any(
-        state[key] for key in ("profile", "email", "api_key", "organizations")
+        state[key]
+        for key in ("profile", "email", "api_key", "security", "organizations")
     )
     return state
 
@@ -218,6 +228,35 @@ def org_url(context, view_name, *args, **kwargs):
         args=args,
         kwargs=resolved_kwargs,
     )
+
+
+@register.simple_tag(takes_context=True)
+def mfa_breadcrumbs(context, leaf_label: str) -> list[dict[str, str]]:
+    """Build a breadcrumb trail for an allauth MFA management page.
+
+    Allauth views don't run through our ``BreadcrumbMixin``, so pages
+    that extend ``app_base.html`` directly need to supply the trail
+    themselves. This tag returns the standard ``User Settings ›
+    Security › {leaf_label}`` shape, with the ``users:security`` link
+    scoped to the current org via ``reverse_with_org``.
+
+    Example::
+
+        {% mfa_breadcrumbs "Set up authenticator" as breadcrumbs %}
+        {% include "app/partial/components/app_top_bar.html" %}
+    """
+    request = context.get("request")
+    return [
+        {
+            "name": _("User Settings"),
+            "url": reverse_with_org("users:profile", request=request),
+        },
+        {
+            "name": _("Security"),
+            "url": reverse_with_org("users:security", request=request),
+        },
+        {"name": leaf_label, "url": ""},
+    ]
 
 
 @register.simple_tag(takes_context=True)

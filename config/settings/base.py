@@ -448,6 +448,50 @@ ACCOUNT_RATE_LIMITS = {
     "reset_password": "5/m/ip,3/m/key",
 }
 
+# MFA (django-allauth)
+# ------------------------------------------------------------------------------
+# Validibot ships with TOTP (authenticator apps) + recovery codes as the
+# two opt-in second factors. Authenticators are a single polymorphic table
+# keyed by `type`, so adding "webauthn" here later is a one-line change —
+# no schema migration required. MFA is strictly opt-in: users enable it
+# from the Security settings page and can disable it at any time.
+# https://docs.allauth.org/en/latest/mfa/configuration.html
+#
+# There is no feature flag to disable MFA globally. If we ever need one
+# (e.g. to turn MFA off for a deployment that previously had it on), the
+# gap to close covers: (1) gating the `allauth.mfa` URL include in
+# config/urls_web.py; (2) hiding the Security page's TOTP + recovery
+# sections; (3) skipping allauth's login-time MFA challenge so users
+# already enrolled aren't locked into a challenge loop; (4) a management
+# command to deactivate all existing Authenticator rows so those users
+# can sign in without a second factor. Setting MFA_SUPPORTED_TYPES = []
+# alone is NOT a safe kill switch — it hides the UI but leaves the
+# login-challenge flow intact, potentially trapping enrolled users.
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+# Name that appears in authenticator apps next to the account email.
+# Without this, apps show the bare email, which is confusing when users
+# have multiple TOTP entries for different services.
+MFA_TOTP_ISSUER = "Validibot"
+# Allauth's default is 10, but we state it explicitly so future maintainers
+# don't have to chase the upstream default if we ever need to audit it.
+MFA_RECOVERY_CODE_COUNT = 10
+# Custom MFA adapter — encrypts TOTP secrets and recovery-code seeds at
+# rest. Allauth's default adapter uses no-op encrypt/decrypt, leaving
+# secret material in cleartext in the `mfa_authenticator.data` column.
+# Our adapter uses Fernet with a dedicated key (not SECRET_KEY, so the
+# two can be rotated independently). See validibot/users/mfa_adapter.py.
+MFA_ADAPTER = "validibot.users.mfa_adapter.ValidibotMFAAdapter"
+# Fernet key used by ValidibotMFAAdapter. Required in every environment
+# — the adapter raises ImproperlyConfigured if missing, which is
+# deliberately noisy: silent fallback to cleartext storage is worse
+# than a failed deploy. Generate a fresh key with:
+#   python -c "from cryptography.fernet import Fernet; \
+#       print(Fernet.generate_key().decode())"
+# Rotate by switching to a cryptography.fernet.MultiFernet in the
+# adapter (new key first, old key second) — not wired up yet; add
+# when needed.
+MFA_ENCRYPTION_KEY = env("DJANGO_MFA_ENCRYPTION_KEY", default=None)
+
 # django-rest-framework
 # -------------------------------------------------------------------------------
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/

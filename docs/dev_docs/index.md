@@ -41,6 +41,7 @@ Step-by-step instructions for common tasks:
 - **[Configure Storage](how-to/configure-storage.md)** — Set up file storage backends
 - **[Configure Scheduled Tasks](how-to/configure-scheduled-tasks.md)** — Set up background jobs
 - **[Add a Form](how-to/add-a-form.md)** — Django Crispy Forms patterns
+- **[Configure MFA](how-to/configure-mfa.md)** — Multi-factor authentication settings and extension points
 - **[Manage Organizations & Projects](organization_management.md)** — Admin workflows
 
 ---

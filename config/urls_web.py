@@ -96,6 +96,24 @@ if "validibot_pro" in settings.INSTALLED_APPS:
     urlpatterns += pro_urlpatterns
 
 if settings.ACCOUNT_ALLOW_LOGIN:
+    # ── MFA index redirect ────────────────────────────────────────────
+    # Allauth ships an ``/accounts/2fa/`` landing page (URL name
+    # ``mfa_index``) that duplicates our own Security settings page at
+    # ``/app/users/security/``, which is the canonical entry point and
+    # is styled to match the rest of the app. Allauth's MFA flows
+    # hard-code ``reverse("mfa_index")`` as their post-action redirect
+    # (e.g. after deactivating TOTP), so we preempt the URL name here —
+    # Django's resolver picks the first match, and our override is
+    # registered before the allauth include below.
+    from django.views.generic import RedirectView
+
+    urlpatterns.append(
+        path(
+            "accounts/2fa/",
+            RedirectView.as_view(pattern_name="users:security", permanent=False),
+            name="mfa_index",
+        ),
+    )
     urlpatterns.append(path("accounts/", include("allauth.urls")))
 
 # Public API surface (available on web). Internal-only endpoints are on worker.

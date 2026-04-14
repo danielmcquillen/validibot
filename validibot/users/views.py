@@ -1,4 +1,7 @@
 from allauth.account.views import EmailView as AllauthEmailView
+from allauth.mfa import app_settings as mfa_app_settings
+from allauth.mfa.models import Authenticator
+from allauth.mfa.utils import is_mfa_enabled
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -185,6 +188,67 @@ class UserApiKeyView(
 
 
 user_api_key_view = UserApiKeyView.as_view()
+
+
+class UserSecurityView(
+    BreadcrumbMixin,
+    LoginRequiredMixin,
+    TemplateView,
+):
+    """Security settings — MFA management landing page.
+
+    The canonical entry point for second-factor management. Replaces
+    allauth's built-in ``/accounts/2fa/`` index page, which lives at URL
+    name ``mfa_index`` and is overridden in ``config/urls_web.py`` to
+    redirect here — so every allauth flow that ends with
+    ``reverse("mfa_index")`` (e.g. after deactivating TOTP) lands on
+    this view.
+
+    Activation and deactivation flows delegate to allauth's own URLs
+    (``mfa_activate_totp``, ``mfa_deactivate_totp``,
+    ``mfa_generate_recovery_codes``, etc.). Those pages are styled to
+    match the rest of the app via per-leaf template overrides in
+    ``validibot/templates/mfa/`` — each one extends ``app_base.html``
+    directly. We do NOT extend allauth's ``mfa/base_manage.html``
+    because Django block inheritance doesn't compose cleanly when
+    allauth's leaf templates redefine ``{% block content %}``.
+
+    MFA is strictly opt-in. Any authenticated user can view this page; no
+    enrolment is forced. A user who has activated a second factor can return
+    here at any time to deactivate it.
+    """
+
+    template_name = "users/security.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = self.request.user
+        authenticators: dict[str, object] = {}
+        for auth in Authenticator.objects.filter(user=user):
+            if auth.type == Authenticator.Type.WEBAUTHN:
+                authenticators.setdefault(auth.type, []).append(auth.wrap())
+            else:
+                authenticators[auth.type] = auth.wrap()
+        context["authenticators"] = authenticators
+        context["totp_enabled"] = Authenticator.Type.TOTP in authenticators
+        context["recovery_codes"] = authenticators.get(
+            Authenticator.Type.RECOVERY_CODES,
+        )
+        context["is_mfa_enabled"] = is_mfa_enabled(user)
+        context["MFA_SUPPORTED_TYPES"] = mfa_app_settings.SUPPORTED_TYPES
+        return context
+
+    def get_breadcrumbs(self):
+        return [
+            {
+                "name": _("User Settings"),
+                "url": reverse_with_org("users:profile", request=self.request),
+            },
+            {"name": _("Security"), "url": ""},
+        ]
+
+
+user_security_view = UserSecurityView.as_view()
 
 
 @login_required

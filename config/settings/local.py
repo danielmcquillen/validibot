@@ -20,6 +20,20 @@ SECRET_KEY = env(
 if not SECRET_KEY:
     raise ValueError("DJANGO_SECRET_KEY must be set in local development")
 
+# MFA secret-material encryption key. Separate from SECRET_KEY so the
+# two can be rotated independently. See validibot/users/mfa_adapter.py.
+# Generate with:
+#   python -c "from cryptography.fernet import Fernet; \
+#       print(Fernet.generate_key().decode())"
+MFA_ENCRYPTION_KEY = env("DJANGO_MFA_ENCRYPTION_KEY", default=None)
+if not MFA_ENCRYPTION_KEY:
+    raise ValueError(
+        "DJANGO_MFA_ENCRYPTION_KEY must be set in local development. "
+        "Generate one with: "
+        "python -c 'from cryptography.fernet import Fernet; "
+        "print(Fernet.generate_key().decode())'",
+    )
+
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
 ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1"]  # noqa: S104
 

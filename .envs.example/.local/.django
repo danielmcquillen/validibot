@@ -34,12 +34,40 @@ SUPERUSER_NAME=Admin
 # Postmark (recommended):
 # POSTMARK_SERVER_TOKEN=your-postmark-server-token
 
+
+# MFA
+# ------------------------------------------------------------------------------
+# Multi-factor authentication (authenticator apps + recovery codes).
+#
+# MFA_TOTP_ISSUER is the label shown in users' authenticator apps next to
+# their account email. Replace the placeholder below with your company or
+# deployment name (e.g. "Acme Corp Validibot Self-Hosted"). Leaving the
+# placeholder will technically work but makes authenticator-app entries
+# indistinguishable between deployments.
+MFA_TOTP_ISSUER=your-mfa-issuer-name
+#
+# DJANGO_MFA_ENCRYPTION_KEY is REQUIRED. TOTP secrets and recovery-code
+# seeds are stored encrypted in the database via Fernet (AES-128-CBC +
+# HMAC-SHA256). The app will fail to start without this key.
+#
+# Generate a fresh key with:
+#
+#     python -c "from cryptography.fernet import Fernet; \
+#         print(Fernet.generate_key().decode())"
+#
+# The output is a 44-character URL-safe base64 string ending in `=`.
+# NEVER reuse a key across deployments (dev / staging / prod should each
+# have their own). See docs/dev_docs/how-to/configure-mfa.md for rotation.
+DJANGO_MFA_ENCRYPTION_KEY=replace-with-generated-fernet-key
+
 # Feature Toggles
 # ------------------------------------------------------------------------------
 # Show the sign up page (set to false to disable new registrations)
 DJANGO_ACCOUNT_ALLOW_REGISTRATION=true
 # Allow users to log in (can be false while allowing existing users to stay logged in)
 DJANGO_ACCOUNT_ALLOW_LOGIN=true
+
+
 
 # Workflow Configuration
 # ------------------------------------------------------------------------------

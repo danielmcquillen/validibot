@@ -114,6 +114,27 @@ DATABASE_URL=postgres://validibot_user:<url-encoded-password>@/validibot?host=/c
 
 Where `<db-instance>` is `$GCP_APP_NAME-db-dev`, `$GCP_APP_NAME-db-staging`, or `$GCP_APP_NAME-db` (for prod).
 
+While you're in the env file, also generate and set
+`DJANGO_MFA_ENCRYPTION_KEY` — the app refuses to start without it, and
+validates the format at import time so malformed values fail the deploy
+rather than showing up as mysterious errors during MFA enrolment.
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Paste the output as `DJANGO_MFA_ENCRYPTION_KEY=<value>`. Generate a
+fresh key per stage — never reuse across dev / staging / prod. See
+[configure-mfa.md](../how-to/configure-mfa.md) for details.
+
+No Redis setup is needed for the default GCP deployment. The production
+settings use Django's `DatabaseCache` backend (persisted in the same
+Cloud SQL instance) for allauth rate limiting and TOTP replay
+protection — a zero-marginal-cost option that's fine for pre-release
+volume. The migration step in Step 5 runs `createcachetable`
+automatically. See [configure-mfa.md](../how-to/configure-mfa.md) for
+the upgrade path to Memorystore Redis when traffic warrants it.
+
 ### Step 3: Upload Secrets to Secret Manager
 
 ```bash

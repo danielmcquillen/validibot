@@ -109,6 +109,13 @@ This component renders the top navigation bar for the app.
                     {% endif %}"
              href="{% org_url 'users:api-key' %}">{% trans "API Key" %}</a>
         </li>
+        <li>
+          <a class="dropdown-item
+                    {% if user_settings_nav.security %}
+                      active
+                    {% endif %}"
+             href="{% org_url 'users:security' %}">{% trans "Security" %}</a>
+        </li>
         <hr class="dropdown-divider" />
         <li>
           <a class="dropdown-item d-flex justify-content-between align-items-center"

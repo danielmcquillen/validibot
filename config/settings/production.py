@@ -80,6 +80,24 @@ DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 
 # CACHES
 # ------------------------------------------------------------------------------
+# Production needs a SHARED cache across Gunicorn workers and scaled Cloud
+# Run instances. allauth's rate limiting (login throttling, MFA attempt
+# caps) and its short-window "don't let the same TOTP code be reused"
+# protection rely on this cross-process visibility. A per-process
+# LocMemCache silently weakens those controls — we therefore explicitly
+# REFUSE to fall back to LocMem here and pick between two supported
+# shared backends:
+#
+#   1. RedisCache (preferred at scale)   — set REDIS_URL.
+#   2. DatabaseCache (default at launch) — zero-marginal-cost option
+#      that reuses the existing Cloud SQL / Postgres database. Fine for
+#      the low-volume rate-limit workload at our current stage (a few
+#      hundred cache ops/day). Run `python manage.py createcachetable`
+#      once during first deploy to create the cache table. See
+#      docs/dev_docs/how-to/configure-mfa.md for upgrade guidance.
+#
+# Switch to Redis when traffic grows or when latency on the DB-backed
+# cache shows up in auth-path monitoring — it's a one-variable change.
 REDIS_URL = env("REDIS_URL", default=None)
 if REDIS_URL:
     CACHES = {
@@ -91,10 +109,45 @@ if REDIS_URL:
 else:
     CACHES = {
         "default": {
-            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-            "LOCATION": "validibot-production",
+            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+            "LOCATION": "django_cache",
         },
     }
+
+# MFA encryption key. Hard-required in production — we validate the key
+# at import time so a misconfigured deploy fails before it can serve
+# any traffic, rather than discovering the problem when the first user
+# tries to enroll. We both check the env var is present AND try to
+# construct a Fernet with it: a malformed key (wrong length, non-base64)
+# gets caught now instead of exploding at first MFA use.
+_mfa_key = env("DJANGO_MFA_ENCRYPTION_KEY", default=None)
+if not _mfa_key:
+    from django.core.exceptions import ImproperlyConfigured
+
+    _mfa_key_msg = (
+        "DJANGO_MFA_ENCRYPTION_KEY is required in production. Generate "
+        'one with: python -c "from cryptography.fernet import Fernet; '
+        'print(Fernet.generate_key().decode())" and store it in GCP '
+        "Secret Manager alongside DJANGO_SECRET_KEY."
+    )
+    raise ImproperlyConfigured(_mfa_key_msg)
+try:
+    # Import-time validation: proves the key is a well-formed Fernet
+    # key. Same check the adapter runs per-call, but running it here
+    # surfaces malformed keys before the app starts accepting traffic.
+    from cryptography.fernet import Fernet as _Fernet
+
+    _Fernet(_mfa_key if isinstance(_mfa_key, bytes) else _mfa_key.encode())
+except ValueError as _exc:
+    from django.core.exceptions import ImproperlyConfigured
+
+    _mfa_key_msg = (
+        "DJANGO_MFA_ENCRYPTION_KEY is malformed — Fernet expects a "
+        "URL-safe base64-encoded 32-byte key. Regenerate with: "
+        'python -c "from cryptography.fernet import Fernet; '
+        'print(Fernet.generate_key().decode())".'
+    )
+    raise ImproperlyConfigured(_mfa_key_msg) from _exc
 
 # SECURITY
 # ------------------------------------------------------------------------------

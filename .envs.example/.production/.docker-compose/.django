@@ -72,6 +72,33 @@ SUPERUSER_NAME=Admin User
 #EMAIL_HOST_USER=your-smtp-user
 #EMAIL_HOST_PASSWORD=your-smtp-password
 
+# MFA
+# ==============================================================================
+# Multi-factor authentication (authenticator apps + recovery codes).
+#
+# MFA_TOTP_ISSUER is the label shown in users' authenticator apps next to
+# their account email. Replace the placeholder below with your deployment
+# name (e.g. "Acme Corp Validibot Self-Hosted"). Leaving the placeholder
+# will technically work but makes authenticator-app entries
+# indistinguishable between deployments.
+MFA_TOTP_ISSUER=your-mfa-issuer-name
+#
+# DJANGO_MFA_ENCRYPTION_KEY is REQUIRED in production — the app refuses
+# to start without it. TOTP secrets and recovery-code seeds are stored
+# encrypted in the database via Fernet (AES-128-CBC + HMAC-SHA256).
+# Without encryption, database read access would let an attacker
+# compute any enrolled user's second-factor codes.
+#
+# Generate a fresh key with:
+#
+#     python -c "from cryptography.fernet import Fernet; \
+#         print(Fernet.generate_key().decode())"
+#
+# DO NOT reuse the dev key. DO NOT commit a real key to git.
+# See docs/dev_docs/how-to/configure-mfa.md for rotation procedure.
+DJANGO_MFA_ENCRYPTION_KEY=replace-with-generated-fernet-key
+
+
 # FEATURE TOGGLES
 # ==============================================================================
 # Registration and login

@@ -31,16 +31,18 @@
   <div class="d-flex flex-column align-items-center text-center">
     <div class="message-404">
       {% blocktrans %}
-         ERROR 404. No page found.
+         ERROR 404. Page not found.
       {% endblocktrans %}
     </div>
     <figure class="text-center">
       <img src="{% static 'images/robot_scene_404.png' %}"
            alt="{% trans 'Validibot robot holding a map while searching for a missing page.' %}"
-           class="img-fluid mx-auto rounded-4 shadow-sm w-100 robot-404" />
+           class="img-fluid mx-auto rounded-4 shadow-sm robot-404"
+           width="600"
+           height="400" />
     </figure>
     <div class="d-flex flex-row mt-4">
-      <a class="btn btn-secondary " href="{% url 'home:home' %}">{% trans "Back to homepage" %}</a>
+      <a class="btn btn-secondary" href="{% url 'home:home' %}">{% trans "Back to homepage" %}</a>
     </div>
   </div>
 {% endblock content %}

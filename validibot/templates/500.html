@@ -3,7 +3,7 @@
 {% load i18n static %}
 
 {% block title %}
-  {% trans "Server Error" %}
+  {% trans "Server Error" %} | Validibot
 {% endblock title %}
 {% block meta_description %}
   {% blocktrans %}
@@ -11,49 +11,40 @@
     homepage.
   {% endblocktrans %}
 {% endblock meta_description %}
+{% block bodyclass %}
+  error-page
+{% endblock bodyclass %}
+{% block top_nav %}
+  <nav class="error-nav">
+    <div class="container">
+      <a href="{% url 'home:home' %}"
+         class="d-flex align-items-center text-decoration-none">
+        <img src="{% static 'images/robot_head_bw.png' %}"
+             alt=""
+             class="brand-mark"
+             width="28"
+             height="28" />
+        <span class="brand-name">Validibot</span>
+      </a>
+    </div>
+  </nav>
+{% endblock top_nav %}
 {% block mainclass %}
-  container py-5 py-lg-5 flex-grow-1 d-flex align-items-center
+  error-content
 {% endblock mainclass %}
+{% block breadcrumbs %}
+{% endblock breadcrumbs %}
 {% block content %}
-  <style>
-    .robot-500 {
-      max-width: 400px;
-      width: 100%;
-      height: auto;
-    }
-
-    @media (min-width: 992px) {
-      .robot-500 {
-        max-width: 500px;
-      }
-    }
-
-    .message-500 {
-      font-family: "Space Grotesk", Arial, sans-serif;
-      margin: 2rem 0 2rem;
-      font-size: 2rem;
-    }
-  </style>
-  <div class="d-flex flex-column align-items-center text-center">
-    <div class="message-500">
-      {% blocktrans %}
-         ERROR 500. Not good.
-      {% endblocktrans %}
+  <div class="text-center">
+    <div class="error-message">
+      {% trans "ERROR 500. Something went wrong." %}
     </div>
     <figure class="text-center">
       <img src="{% static 'images/robot_scene_500.png' %}"
            alt="{% trans 'Validibot robot dealing with a big issue.' %}"
-           class="img-fluid mx-auto rounded-4 shadow-sm w-100 robot-500" />
+           class="img-fluid mx-auto rounded-4 shadow-sm error-robot"
+           width="500"
+           height="500" />
     </figure>
-    <div class="mt-4">
-      <h3>
-        Looks like something went wrong!
-      </h3>
-      <p>
-        We track these errors automatically, but if the problem
-        <br />
-        persists please contact us. In the meantime, try refreshing.
-      </p>
-    </div>
   </div>
 {% endblock content %}

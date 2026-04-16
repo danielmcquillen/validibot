@@ -1,0 +1,60 @@
+// Standalone error page styles (404, 500).
+//
+// Error pages do not extend core/base.html — they render even if the main
+// layout's context processors or middleware are partially broken. Keeping
+// these styles in project.css (rather than inline in each template) lets
+// the browser reuse the cached stylesheet and keeps the markup minimal.
+
+.error-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.error-nav {
+  background: #fff;
+  border-bottom: 1px solid #dee2e6;
+  padding: 1rem 0;
+
+  .container {
+    display: flex;
+    align-items: center;
+  }
+
+  .brand-name {
+    font-family: "Space Grotesk", Arial, sans-serif;
+    font-weight: 500;
+    font-size: 1.25rem;
+    color: #333;
+    text-decoration: none;
+  }
+
+  .brand-mark {
+    height: 28px;
+    margin-right: 0.5rem;
+  }
+}
+
+.error-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+}
+
+.error-message {
+  font-family: "Space Grotesk", Arial, sans-serif;
+  margin: 2rem 0;
+  font-size: 2rem;
+}
+
+.error-robot {
+  max-width: 400px;
+  width: 100%;
+  height: auto;
+
+  @media (min-width: 992px) {
+    max-width: 500px;
+  }
+}

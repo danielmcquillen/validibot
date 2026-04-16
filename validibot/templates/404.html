@@ -3,46 +3,42 @@
 {% load i18n static %}
 
 {% block title %}
-  {% trans "Page not found" %}
+  {% trans "Page Not Found" %} | Validibot
 {% endblock title %}
+{% block bodyclass %}
+  error-page
+{% endblock bodyclass %}
+{% block top_nav %}
+  <nav class="error-nav">
+    <div class="container">
+      <a href="{% url 'home:home' %}"
+         class="d-flex align-items-center text-decoration-none">
+        <img src="{% static 'images/robot_head_bw.png' %}"
+             alt=""
+             class="brand-mark"
+             width="28"
+             height="28" />
+        <span class="brand-name">Validibot</span>
+      </a>
+    </div>
+  </nav>
+{% endblock top_nav %}
 {% block mainclass %}
-  container py-5 py-lg-5 flex-grow-1 d-flex align-items-center
+  error-content
 {% endblock mainclass %}
+{% block breadcrumbs %}
+{% endblock breadcrumbs %}
 {% block content %}
-  <style>
-    .robot-404 {
-      max-width: 400px;
-      width: 100%;
-      height: auto;
-    }
-
-    @media (min-width: 992px) {
-      .robot-404 {
-        max-width: 500px;
-      }
-    }
-
-    .message-404 {
-      font-family: "Space Grotesk", Arial, sans-serif;
-      margin: 2rem 0 2rem;
-      font-size: 2rem;
-    }
-  </style>
-  <div class="d-flex flex-column align-items-center text-center">
-    <div class="message-404">
-      {% blocktrans %}
-         ERROR 404. Page not found.
-      {% endblocktrans %}
+  <div class="text-center">
+    <div class="error-message">
+      {% trans "ERROR 404. Page not found." %}
     </div>
     <figure class="text-center">
       <img src="{% static 'images/robot_scene_404.png' %}"
            alt="{% trans 'Validibot robot holding a map while searching for a missing page.' %}"
-           class="img-fluid mx-auto rounded-4 shadow-sm robot-404"
+           class="img-fluid mx-auto rounded-4 shadow-sm error-robot"
            width="600"
            height="400" />
     </figure>
-    <div class="d-flex flex-row mt-4">
-      <a class="btn btn-secondary" href="{% url 'home:home' %}">{% trans "Back to homepage" %}</a>
-    </div>
   </div>
 {% endblock content %}

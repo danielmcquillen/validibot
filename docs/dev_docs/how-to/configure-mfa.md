@@ -59,6 +59,44 @@ whichever key works and re-encrypt under the new one on next write. The
 current adapter uses a single-key `Fernet`; wire up `MultiFernet` when
 rotation is actually needed.
 
+### Recover from a lost or single-key rotation
+
+If the old key is genuinely gone (not just superseded by a `MultiFernet`
+with both keys), every user enrolled under it is locked out of the
+normal login flow. The stored TOTP secret can't be decrypted, so
+`ValidibotMFAAdapter.decrypt()` raises `InvalidToken` and
+`/accounts/2fa/authenticate/` returns 500.
+
+The fix is to delete the affected `Authenticator` rows so allauth skips
+the MFA stage on next login and the user can re-enroll under the new
+key. That's what the `clear_mfa` management command is for:
+
+```bash
+# Single user (normal case — one admin's key rotated, most users unaffected)
+just gcp management-cmd prod "clear_mfa --email daniel@example.com"
+
+# Every user (mass rotation — run once, then notify affected users to re-enroll)
+just gcp management-cmd prod "clear_mfa --all-users"
+
+# Preview first, especially for --all-users
+just gcp management-cmd prod "clear_mfa --all-users --dry-run"
+```
+
+The command refuses to run without a selector (`--email`,
+`--user-id`, or `--all-users`) so "accidentally delete every row" is not
+a possible failure mode. It also fails loudly on a missing email rather
+than silently deleting zero rows — silent success during an incident is
+worse than a loud error.
+
+Why this lives in a management command rather than the Django admin: the
+admin panel is itself authenticated through Django's built-in login
+(which does *not* route through allauth MFA), so a locked-out staff user
+can still reach admin — but any other recovery channel that depends on
+allauth login would share the same failure. A management command
+runnable as a Cloud Run Job is the one recovery path that works even if
+every admin account is locked out and the admin panel is later
+network-restricted.
+
 ## Other settings
 
 Three additional settings in `config/settings/base.py` drive the feature:

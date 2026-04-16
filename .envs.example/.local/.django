@@ -59,6 +59,14 @@ MFA_TOTP_ISSUER=your-mfa-issuer-name
 # NEVER reuse a key across deployments (dev / staging / prod should each
 # have their own). See docs/dev_docs/how-to/configure-mfa.md for rotation.
 DJANGO_MFA_ENCRYPTION_KEY=replace-with-generated-fernet-key
+#
+# DJANGO_ADMIN_FORCE_ALLAUTH routes Django's /admin/login/ through
+# allauth so admin inherits allauth's MFA enforcement and rate
+# limiting. Defaults to False here so that local development and the
+# test suite aren't affected — turn it on locally only if you're
+# specifically testing the admin-gate flow. In production example
+# files (.envs.example/.production/...) this defaults to True.
+DJANGO_ADMIN_FORCE_ALLAUTH=False
 
 # Feature Toggles
 # ------------------------------------------------------------------------------

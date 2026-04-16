@@ -97,6 +97,21 @@ MFA_TOTP_ISSUER=your-mfa-issuer-name
 # DO NOT reuse the dev key. DO NOT commit a real key to git.
 # See docs/dev_docs/how-to/configure-mfa.md for rotation procedure.
 DJANGO_MFA_ENCRYPTION_KEY=replace-with-generated-fernet-key
+#
+# DJANGO_ADMIN_FORCE_ALLAUTH routes Django's built-in /admin/login/ view
+# through the django-allauth authentication flow, so that admin sign-in
+# inherits allauth's rate limiting, session rotation, and — most
+# importantly — MFA enforcement on users who have enrolled a second
+# factor. Without this flag, admin logs in via a plain Django form that
+# bypasses allauth entirely, meaning a staff user with MFA configured
+# can still enter the admin with only a password.
+#
+# Leave this True in production. Flip to False ONLY as a break-glass
+# when allauth itself is broken (e.g. a bad MFA key, a corrupted
+# Authenticator row the `clear_mfa` management command can't fix). A
+# container restart is required for the change to take effect — see
+# docs/dev_docs/how-to/configure-mfa.md for the full recovery procedure.
+DJANGO_ADMIN_FORCE_ALLAUTH=True
 
 
 # FEATURE TOGGLES

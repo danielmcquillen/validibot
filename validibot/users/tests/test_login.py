@@ -110,22 +110,33 @@ class TestLoginFormErrorDisplay:
             "Empty login form must show 'required' field errors."
         )
 
-    def test_successful_login_redirects(self, client, login_user):
-        """Correct credentials must redirect, not re-render the form.
+    def test_successful_login_with_username_redirects(self, client, login_user):
+        """Login with username + correct password must redirect (302).
 
-        This is the positive-path complement: if login succeeds, the
-        response is a 302 redirect (to dashboard or ``next`` URL), NOT
-        a 200 re-render. If this fails, something in the authentication
-        pipeline is broken.
-
-        Uses ``username`` for the login field because
-        ``ACCOUNT_AUTHENTICATION_METHOD`` defaults to ``"username"``
-        in allauth when not explicitly overridden.
+        ``ACCOUNT_LOGIN_METHODS`` includes ``"username"``, so this
+        must work. If it returns 200, the auth pipeline is broken.
         """
         response = client.post(
             reverse("account_login"),
             {
                 "login": login_user.username,
+                "password": "CorrectHorse42!",
+            },
+        )
+        assert response.status_code == HTTPStatus.FOUND
+
+    def test_successful_login_with_email_redirects(self, client, login_user):
+        """Login with email + correct password must also redirect (302).
+
+        ``ACCOUNT_LOGIN_METHODS`` includes ``"email"``, so users can
+        sign in with their email address instead of remembering their
+        username. This was added because the sign-up form prominently
+        collects email, so users naturally try it at login.
+        """
+        response = client.post(
+            reverse("account_login"),
+            {
+                "login": login_user.email,
                 "password": "CorrectHorse42!",
             },
         )

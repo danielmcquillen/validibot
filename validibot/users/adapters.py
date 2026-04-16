@@ -25,27 +25,31 @@ WORKFLOW_INVITE_SESSION_KEY = "workflow_invite_token"
 TRIAL_INVITE_SESSION_KEY = "trial_invite_token"
 
 # Session key for storing the selected plan during self-register signup.
-# Set by the cloud onboarding StartTrialView, consumed after signup
-# to activate the trial with the chosen plan.
+# Set by the cloud onboarding CloudSignupView from the ?plan=
+# querystring on /accounts/signup/, consumed by the email_confirmed
+# signal handler to activate the trial with the chosen plan.
 SELF_REGISTER_PLAN_SESSION_KEY = "signup_plan"
 
 
-def _is_cloud_self_register() -> bool:
-    """
-    Check if the cloud layer is installed and self-registration is enabled.
+def _is_cloud_installed() -> bool:
+    """Check if the cloud layer is installed.
 
-    Returns True only when validibot-cloud is installed AND its CloudSettings
-    has signup_mode set to SELF_REGISTER. Returns False if the cloud package
-    is not installed (community/self-hosted mode) or if signup mode is
-    INVITE_ONLY.
+    Returns True if ``validibot-cloud`` is on the import path, which
+    means this deployment offers the hosted SaaS signup flow (plan
+    selection via ``?plan=`` on ``/accounts/signup/``). Returns False
+    for community/self-hosted deployments where signup is controlled
+    purely by ``ACCOUNT_ALLOW_REGISTRATION``.
+
+    Previously this function also checked ``CloudSettings.signup_mode``
+    to distinguish invite-only from self-register. That distinction was
+    removed when the onboarding flow was collapsed to a single path —
+    installing the cloud package now always enables self-registration.
     """
     try:
-        from validibot_cloud.onboarding.models import CloudSettings
+        import validibot_cloud.onboarding.models  # noqa: F401
     except ImportError:
         return False
-
-    cloud_settings = CloudSettings.get_cloud_settings()
-    return cloud_settings.signup_mode == "self_register"
+    return True
 
 
 class AccountAdapter(DefaultAccountAdapter):
@@ -80,7 +84,7 @@ class AccountAdapter(DefaultAccountAdapter):
             return True
 
         # Allow signup if cloud layer has self-registration enabled
-        if _is_cloud_self_register():
+        if _is_cloud_installed():
             return True
 
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
@@ -222,7 +226,7 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
             return True
 
         # Allow signup if cloud layer has self-registration enabled
-        if _is_cloud_self_register():
+        if _is_cloud_installed():
             return True
 
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)

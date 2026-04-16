@@ -163,6 +163,14 @@ These variables are optional and only needed when you want Docker to install a c
 | `DJANGO_ADMIN_URL`       | Admin URL path (randomize for production!)           | `admin/`                | No              |
 | `DEPLOYMENT_TARGET`      | Deployment platform (`docker_compose`, `gcp`, `aws`) | -                       | Production only |
 
+#### Security
+
+| Variable                       | Description                                                                                                                          | Default          | Required        |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------- | --------------- |
+| `DJANGO_MFA_ENCRYPTION_KEY`    | Fernet key encrypting TOTP secrets + recovery-code seeds at rest. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Never reuse across environments. | -                | Yes             |
+| `MFA_TOTP_ISSUER`              | Label shown in users' authenticator apps next to their email (e.g. "Validibot Cloud").                                               | `Validibot`      | No              |
+| `DJANGO_ADMIN_FORCE_ALLAUTH`   | Routes `/admin/login/` through allauth so admin inherits MFA enforcement, rate limiting, and session rotation. Flip to `False` only as a break-glass when allauth itself is broken (redeploy required). See [`docs/dev_docs/how-to/configure-mfa.md`](../docs/dev_docs/how-to/configure-mfa.md). | `False`          | No (but recommended `True` in production) |
+
 #### Infrastructure
 
 | Variable     | Description                 | Default                |

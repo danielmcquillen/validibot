@@ -6,6 +6,20 @@
 <form class="login" method="post" action="{% url 'account_login' %}">
   {% csrf_token %}
   {% comment %}
+    Non-field errors — allauth puts invalid-credentials messages and
+    reCAPTCHA failures here. Without this block, form validation
+    errors are invisible and the page just refreshes silently.
+  {% endcomment %}
+  {% if form.non_field_errors %}
+    <div class="alert alert-danger mb-3">
+      {% for error in form.non_field_errors %}
+        <p class="mb-0">
+          {{ error }}
+        </p>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% comment %}
     Render all form fields except captcha (rendered separately at the end).
   {% endcomment %}
   {% for field in form %}

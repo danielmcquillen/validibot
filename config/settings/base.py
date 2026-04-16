@@ -655,24 +655,13 @@ CONTENT_SECURITY_POLICY = {
         "script-src": (
             "'self'",
             NONCE,
-            # 'strict-dynamic' — scripts loaded by a nonce-tagged script
-            # are allowed to run without their own nonce or hash. This is
-            # required because both PostHog and Google reCAPTCHA work by
-            # dynamically injecting <script> tags from within a nonce'd
-            # bootstrap script. Without 'strict-dynamic', those injected
-            # scripts are blocked as inline scripts and the widgets
-            # silently break (reCAPTCHA token exchange fails, PostHog
-            # events never send). This is Google's recommended CSP
-            # approach for reCAPTCHA:
-            # https://developers.google.com/recaptcha/docs/csp
-            #
-            # Note: per CSP spec, when 'strict-dynamic' is present,
-            # host-based allowlists (like https://www.google.com/...) are
-            # ignored by browsers that understand 'strict-dynamic'. We
-            # keep the allowlists below as fallbacks for older browsers
-            # that don't support 'strict-dynamic'.
-            "'strict-dynamic'",
+            # PostHog analytics — the tracker stub (in web_tracker.html) has a
+            # nonce, but it dynamically creates a <script> tag to load the full
+            # SDK from PostHog's CDN. That injected script can't carry a nonce,
+            # so we must whitelist the PostHog asset host.
             "https://*.i.posthog.com",
+            # Google reCAPTCHA v3 — the invisible widget loads scripts from
+            # Google's reCAPTCHA CDN and gstatic.
             "https://www.google.com/recaptcha/",
             "https://www.gstatic.com/recaptcha/",
         ),

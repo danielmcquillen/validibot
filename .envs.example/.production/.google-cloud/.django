@@ -129,6 +129,23 @@ SIGNING_ALGORITHM=ES256
 #RECAPTCHA_PUBLIC_KEY=your-recaptcha-public-key
 #RECAPTCHA_PRIVATE_KEY=your-recaptcha-private-key
 
+# SIGNUP ABUSE PROTECTIONS (community defaults; cloud layer overrides)
+# ==============================================================================
+# Both default False in community; cloud.py flips them on. Override here
+# to explicitly force a value (e.g. to test a hardened signup locally
+# without loading cloud settings, or to DISABLE them in a cloud env).
+#REJECT_DISPOSABLE_EMAILS=False
+#USE_SIGNUP_HONEYPOT=False
+
+# RUNTIME LAUNCH VELOCITY LIMITS (cloud only)
+# ==============================================================================
+# Per-org rate limits on validation-run launches, enforced by
+# validibot_cloud.metering.policies.launch_velocity_policy. Orthogonal
+# to monthly plan quotas — this caps speed, not total budget. Bump if a
+# legitimate Pro customer hits the limit; tighten if abuse emerges.
+#LAUNCH_VELOCITY_PER_MINUTE=30
+#LAUNCH_VELOCITY_PER_HOUR=500
+
 # POSTHOG (analytics - optional)
 # ==============================================================================
 # Set to enable PostHog analytics tracking. Leave empty to disable.

@@ -109,7 +109,11 @@ def ensure_personal_workspace(user: User) -> Organization | None:
         return existing
 
     name = _workspace_name_for(user)
-    slug = _generate_unique_slug(Organization, name)
+    # Slug is derived from the username, not the display name, so personal-org
+    # URLs look like /orgs/danielmctest/ rather than /orgs/danielmctests-workspace/.
+    # The display name keeps the "'s Workspace" suffix for UI clarity.
+    slug_source = (user.username or "").strip() or name
+    slug = _generate_unique_slug(Organization, slug_source)
     personal_org = Organization.objects.create(
         name=name,
         slug=slug,

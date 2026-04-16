@@ -104,3 +104,17 @@ SIGNING_KEY_PATH=
 CREDENTIAL_ISSUER_URL=
 # Optional override. ES256 is the only algorithm currently supported.
 SIGNING_ALGORITHM=ES256
+
+# SIGNUP ABUSE PROTECTIONS
+# ==============================================================================
+# Leave commented to use community defaults (both False). Useful to set
+# to False explicitly when running with DJANGO_SETTINGS_MODULE pointing
+# at validibot_cloud.settings.local if you want to sign up with a
+# throwaway address like test@mailinator.com during dev.
+#REJECT_DISPOSABLE_EMAILS=False
+#USE_SIGNUP_HONEYPOT=False
+
+# RUNTIME LAUNCH VELOCITY LIMITS (cloud only)
+# ==============================================================================
+#LAUNCH_VELOCITY_PER_MINUTE=30
+#LAUNCH_VELOCITY_PER_HOUR=500

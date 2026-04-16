@@ -588,7 +588,18 @@ class UserSignupForm(SignupForm):
     (cloud, Pro, Enterprise). Community edition users are governed by the
     AGPL-3.0 license and do not need to accept a Terms of Service at signup.
     The REQUIRE_TERMS_ACCEPTANCE setting controls this behaviour.
+
+    Disposable-email rejection and the honeypot field are gated by the
+    REJECT_DISPOSABLE_EMAILS and USE_SIGNUP_HONEYPOT settings respectively.
+    Both default False so self-hosted deployments are unaffected; cloud
+    turns them on to harden the free-trial signup against credit farming
+    and spam.
     """
+
+    # Generic error shown for any bot-detection trigger. We deliberately
+    # avoid leaking which check failed (honeypot vs. other) so solver
+    # services can't tune around a specific field.
+    _BOT_VALIDATION_ERROR = _("We couldn't process your signup. Please try again.")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -606,6 +617,26 @@ class UserSignupForm(SignupForm):
                 },
             )
 
+        # Honeypot field — hidden via aria + off-screen CSS, not type=hidden,
+        # because solver services specifically look for hidden inputs. Real
+        # users never see or fill this field; bots that autofill every
+        # input will trip it. See clean_company below for the check.
+        if getattr(settings, "USE_SIGNUP_HONEYPOT", False):
+            self.fields["company"] = forms.CharField(
+                required=False,
+                label=_("Company"),
+                widget=forms.TextInput(
+                    attrs={
+                        "autocomplete": "off",
+                        "tabindex": "-1",
+                        "aria-hidden": "true",
+                        # Off-screen but still in the DOM — avoids display:none
+                        # which some bots skip.
+                        "style": "position:absolute;left:-10000px;",
+                    },
+                ),
+            )
+
         # Only add reCAPTCHA field if keys are configured
         if _recaptcha_enabled():
             from django_recaptcha.fields import ReCaptchaField
@@ -615,6 +646,49 @@ class UserSignupForm(SignupForm):
             self.fields["captcha"] = ReCaptchaField(
                 widget=CSPSafeReCaptchaV3(action="signup"),
             )
+
+    def clean_email(self):
+        """Strip, lowercase, and optionally reject disposable email domains.
+
+        ``allauth.account.forms.SignupForm`` already handles uniqueness
+        validation against existing users — we only layer on the
+        disposable-domain check here. If REJECT_DISPOSABLE_EMAILS is False
+        (community default), this reduces to plain super().clean_email().
+        """
+        email = super().clean_email()
+
+        if getattr(settings, "REJECT_DISPOSABLE_EMAILS", False):
+            # Import lazily so the dependency is only required when the
+            # feature is enabled. The package ships a flat set of domains.
+            from disposable_email_domains import blocklist
+
+            domain = email.rsplit("@", 1)[-1].lower()
+            if domain in blocklist:
+                raise forms.ValidationError(
+                    _(
+                        "Please use a non-disposable email address. "
+                        "If this is your real email, contact support."
+                    ),
+                )
+
+        return email
+
+    def clean_company(self):
+        """Silently reject honeypot submissions.
+
+        We raise a generic error (not one that names the honeypot) so the
+        response looks the same as any other validation failure. Bots
+        using DOM-agnostic autofill see "signup failed" and move on.
+        """
+        value = self.cleaned_data.get("company", "")
+        if value:
+            import logging
+
+            logging.getLogger(__name__).info(
+                "Signup honeypot tripped — submission discarded",
+            )
+            raise forms.ValidationError(self._BOT_VALIDATION_ERROR)
+        return value
 
 
 class UserLoginForm(LoginForm):

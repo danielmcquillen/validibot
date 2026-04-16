@@ -561,6 +561,15 @@ wheels = [
 ]
 
 [[package]]
+name = "disposable-email-domains"
+version = "0.0.170"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b6/4c/483fb170d1ff4dc714f1cd41e14aa377c86d785ec64cfadb0ec54abbe3fa/disposable_email_domains-0.0.170.tar.gz", hash = "sha256:4c0749b3a49543df343fdf84da4a1e65717b01a10a2f9043a419f82621ef395d", size = 63991 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2d/d6/0cb30c86e530dfafb51c1620a3910d332fbedbe80450bbe1e45e365c86a1/disposable_email_domains-0.0.170-py3-none-any.whl", hash = "sha256:630a80377caad442664b9f9ff2c5593062148257a3207c7c667cf952a796a87d", size = 32904 },
+]
+
+[[package]]
 name = "distlib"
 version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3043,6 +3052,7 @@ dependencies = [
     { name = "crispy-bootstrap5" },
     { name = "cryptography" },
     { name = "defusedxml" },
+    { name = "disposable-email-domains" },
     { name = "django" },
     { name = "django-allauth", extra = ["mfa"] },
     { name = "django-anymail" },
@@ -3124,6 +3134,7 @@ requires-dist = [
     { name = "crispy-bootstrap5", specifier = "==2026.3" },
     { name = "cryptography", specifier = "==46.0.7" },
     { name = "defusedxml", specifier = "==0.7.1" },
+    { name = "disposable-email-domains", specifier = "==0.0.170" },
     { name = "django", specifier = "==6.0.4" },
     { name = "django-allauth", extras = ["mfa"], specifier = "==65.15.1" },
     { name = "django-anymail", extras = ["postmark"], specifier = "==14.0" },

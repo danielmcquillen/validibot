@@ -77,6 +77,11 @@ dependencies = [
   "google-cloud-run==0.16.0",
   "python-json-logger==4.1.0",
   "django-recaptcha==4.1.0",
+  # Maintained blocklist of ~2800 throwaway email domains (mailinator,
+  # guerrillamail, tempmail, etc). Used by UserSignupForm when
+  # REJECT_DISPOSABLE_EMAILS is enabled — off by default for community/
+  # self-hosted deployments, on in cloud to deter free-trial abuse.
+  "disposable-email-domains==0.0.170",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   "validibot-shared==0.4.0",
   "django-csp==4.0",

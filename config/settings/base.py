@@ -450,6 +450,27 @@ ACCOUNT_RATE_LIMITS = {
     "reset_password": "5/m/ip,3/m/key",
 }
 
+# Signup abuse protections.
+# ------------------------------------------------------------------------------
+# Both settings default to False so self-hosted community deployments
+# (where admins often test with throwaway addresses like test@mailinator.com)
+# are unaffected. Cloud turns them on in cloud.py because a hosted free
+# trial is an attractive target for credit-farming and spam signups.
+#
+# REJECT_DISPOSABLE_EMAILS: when True, the UserSignupForm hard-rejects
+#   emails whose domain appears in the ``disposable-email-domains`` PyPI
+#   blocklist (~2800 throwaway providers). The user sees a clear error
+#   asking them to use a non-disposable address. The blocklist is
+#   maintained upstream; we refresh by bumping the package pin.
+#
+# USE_SIGNUP_HONEYPOT: when True, the UserSignupForm adds a hidden
+#   ``company`` field. Real users never fill it; naive bots (and
+#   solver-service bots that don't inspect the DOM) do. Submissions
+#   where the honeypot is filled raise a generic validation error so
+#   we don't signal to the bot that the field is the trap.
+REJECT_DISPOSABLE_EMAILS = env.bool("REJECT_DISPOSABLE_EMAILS", default=False)
+USE_SIGNUP_HONEYPOT = env.bool("USE_SIGNUP_HONEYPOT", default=False)
+
 # MFA (django-allauth)
 # ------------------------------------------------------------------------------
 # Validibot ships with TOTP (authenticator apps) + recovery codes as the

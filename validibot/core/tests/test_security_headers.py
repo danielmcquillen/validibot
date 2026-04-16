@@ -89,6 +89,74 @@ class TestCSPHeaders:
         csp = response.get(self.CSP_HEADER, "")
         assert "us.i.posthog.com" in csp
 
+    # ── reCAPTCHA CSP requirements ────────────────────────────────────
+    # reCAPTCHA v3 needs three CSP directives to function:
+    #   - script-src: loads the widget JS from Google's CDN
+    #   - connect-src: the widget makes XHR requests back to Google to
+    #     exchange the challenge token (missing this causes the form to
+    #     silently fail — no error shown to the user)
+    #   - frame-src: the invisible reCAPTCHA widget renders in an iframe
+    #
+    # These tests pin all three so that a CSP refactor can't silently
+    # break login/signup for every user.
+
+    RECAPTCHA_DOMAINS = (
+        "https://www.google.com/recaptcha/",
+        "https://www.gstatic.com/recaptcha/",
+    )
+    RECAPTCHA_CONNECT_DOMAINS = ("https://www.google.com/recaptcha/",)
+    RECAPTCHA_FRAME_DOMAINS = (
+        "https://www.google.com/recaptcha/",
+        "https://recaptcha.google.com/recaptcha/",
+    )
+
+    @pytest.mark.django_db
+    @pytest.mark.parametrize("domain", RECAPTCHA_DOMAINS)
+    def test_csp_script_src_allows_recaptcha(self, authenticated_client, domain):
+        """reCAPTCHA widget JS must be loadable via script-src.
+
+        Without this, the reCAPTCHA script tag is blocked entirely and
+        the captcha field never renders — causing a "This field is
+        required" error on login/signup with no user-recoverable action.
+        """
+        response = authenticated_client.get(reverse("home:home"))
+        csp = response.get(self.CSP_HEADER, "")
+        script_src = [d for d in csp.split(";") if "script-src" in d]
+        assert any(domain in directive for directive in script_src), (
+            f"script-src must include {domain} for reCAPTCHA"
+        )
+
+    @pytest.mark.django_db
+    @pytest.mark.parametrize("domain", RECAPTCHA_CONNECT_DOMAINS)
+    def test_csp_connect_src_allows_recaptcha(self, authenticated_client, domain):
+        """reCAPTCHA token exchange needs connect-src to reach Google.
+
+        This was the root cause of a production login outage: the
+        reCAPTCHA widget loaded and rendered, but its XHR token-exchange
+        request was blocked by connect-src. The token never arrived at
+        the server, so the form POST either silently failed (client-side
+        block) or returned a "This field is required" error for the
+        captcha field (server-side validation failure). No user-visible
+        error explained what went wrong.
+        """
+        response = authenticated_client.get(reverse("home:home"))
+        csp = response.get(self.CSP_HEADER, "")
+        connect_src = [d for d in csp.split(";") if "connect-src" in d]
+        assert any(domain in directive for directive in connect_src), (
+            f"connect-src must include {domain} for reCAPTCHA"
+        )
+
+    @pytest.mark.django_db
+    @pytest.mark.parametrize("domain", RECAPTCHA_FRAME_DOMAINS)
+    def test_csp_frame_src_allows_recaptcha(self, authenticated_client, domain):
+        """reCAPTCHA invisible widget renders in an iframe from Google."""
+        response = authenticated_client.get(reverse("home:home"))
+        csp = response.get(self.CSP_HEADER, "")
+        frame_src = [d for d in csp.split(";") if "frame-src" in d]
+        assert any(domain in directive for directive in frame_src), (
+            f"frame-src must include {domain} for reCAPTCHA"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Referrer-Policy header

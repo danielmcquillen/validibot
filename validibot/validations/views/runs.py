@@ -3,6 +3,7 @@
 import json
 import logging
 
+from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
@@ -539,13 +540,13 @@ class CredentialDownloadView(ValidationRunAccessMixin, DetailView):
     def get(self, request, *args, **kwargs):
         run = self.get_object()
 
-        try:
+        # Pro is required for issued credentials; gate on the installed
+        # apps so we don't try to query an unregistered model.
+        if apps.is_installed("validibot_pro"):
             from validibot_pro.credentials.models import IssuedCredential
 
-            credential = IssuedCredential.objects.filter(
-                workflow_run=run,
-            ).first()
-        except Exception:
+            credential = IssuedCredential.objects.filter(workflow_run=run).first()
+        else:
             credential = None
 
         if credential is None:

@@ -358,7 +358,15 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(issues[0]["path"], finding.path)
 
     def test_detail_includes_credential_metadata(self):
-        """Detail responses should expose credential download metadata when present."""
+        """Detail responses should expose credential download metadata when present.
+
+        Uses ``patch.dict("sys.modules", ...)`` to inject a fake Pro
+        ``IssuedCredential`` model and patches ``apps.is_installed``
+        directly here (rather than via the ``pro_installed`` fixture)
+        because this is a TestCase subclass — pytest fixture injection
+        in TestCase classes requires extra wiring. The targeted patch
+        is equivalent and avoids the wiring noise.
+        """
         self.client.force_authenticate(user=self.user)
         _add_signed_credential_step(self.workflow)
         run = ValidationRunFactory(
@@ -374,7 +382,13 @@ class ValidationRunViewSetTestCase(TestCase):
             media_type="application/vc+jwt",
             created=issued_at,
         )
-        with patch.dict("sys.modules", _fake_pro_modules(credential)):
+        with (
+            patch.dict("sys.modules", _fake_pro_modules(credential)),
+            patch(
+                "validibot.validations.serializers.apps.is_installed",
+                return_value=True,
+            ),
+        ):
             response = self.client.get(runs_detail_url(self.org, run))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -434,7 +448,13 @@ class ValidationRunViewSetTestCase(TestCase):
             },
         )
 
-        with patch.dict("sys.modules", _fake_pro_modules(credential)):
+        with (
+            patch.dict("sys.modules", _fake_pro_modules(credential)),
+            patch(
+                "validibot.validations.api_views.apps.is_installed",
+                return_value=True,
+            ),
+        ):
             response = self.client.get(runs_credential_download_url(self.org, run))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)

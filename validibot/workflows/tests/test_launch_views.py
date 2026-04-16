@@ -562,7 +562,7 @@ def test_run_detail_page_shows_completion_actions(client):
     assert "View full run" in body
 
 
-def test_run_detail_page_shows_signed_credential_card(client):
+def test_run_detail_page_shows_signed_credential_card(client, pro_installed):
     """Completed workflow status pages should render an issued credential card."""
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
@@ -586,10 +586,10 @@ def test_run_detail_page_shows_signed_credential_card(client):
         },
     )
 
-    with patch.dict(
-        "sys.modules",
-        _fake_pro_modules(credential),
-    ):
+    # The ``pro_installed`` fixture (in conftest) flips
+    # apps.is_installed("validibot_pro") to True so the production
+    # gate falls through to the fake-module path under sys.modules.
+    with patch.dict("sys.modules", _fake_pro_modules(credential)):
         response = client.get(
             reverse(
                 "workflows:workflow_run_detail",
@@ -604,7 +604,7 @@ def test_run_detail_page_shows_signed_credential_card(client):
     assert "Download Credential" in body
 
 
-def test_launch_status_partial_shows_signed_credential_card(client):
+def test_launch_status_partial_shows_signed_credential_card(client, pro_installed):
     """The status fragment should include the credential card for completed runs."""
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
@@ -628,10 +628,7 @@ def test_launch_status_partial_shows_signed_credential_card(client):
         },
     )
 
-    with patch.dict(
-        "sys.modules",
-        _fake_pro_modules(credential),
-    ):
+    with patch.dict("sys.modules", _fake_pro_modules(credential)):
         response = client.get(
             reverse(
                 "workflows:workflow_launch_status",

@@ -13,6 +13,7 @@ from datetime import timedelta
 from http import HTTPStatus
 from typing import TYPE_CHECKING
 
+from django.apps import apps
 from django.http import Http404
 from django.http import HttpResponse
 from django.utils import timezone
@@ -115,13 +116,11 @@ class OrgScopedRunViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
 
         run = self.get_object()
 
-        try:
+        if apps.is_installed("validibot_pro"):
             from validibot_pro.credentials.models import IssuedCredential
 
-            credential = IssuedCredential.objects.filter(
-                workflow_run=run,
-            ).first()
-        except Exception:
+            credential = IssuedCredential.objects.filter(workflow_run=run).first()
+        else:
             credential = None
 
         if credential is None:

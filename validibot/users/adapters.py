@@ -32,24 +32,36 @@ SELF_REGISTER_PLAN_SESSION_KEY = "signup_plan"
 
 
 def _is_cloud_installed() -> bool:
-    """Check if the cloud layer is installed.
+    """Check whether the cloud layer is active in this deployment.
 
-    Returns True if ``validibot-cloud`` is on the import path, which
-    means this deployment offers the hosted SaaS signup flow (plan
-    selection via ``?plan=`` on ``/accounts/signup/``). Returns False
-    for community/self-hosted deployments where signup is controlled
-    purely by ``ACCOUNT_ALLOW_REGISTRATION``.
+    Returns True only when the cloud tenancy app is registered in
+    ``INSTALLED_APPS`` — i.e. when Django is running under
+    ``validibot_cloud.settings.cloud`` or ``.local``. That's a stronger
+    check than "is the package importable?" because the cloud package
+    may be on the Python path (e.g. editable-installed for tests)
+    without its apps being configured. Importing cloud models in the
+    latter case raises ``RuntimeError: doesn't declare an explicit
+    app_label and isn't in an application in INSTALLED_APPS``, which
+    took down /accounts/signup/ on community test settings.
 
-    Previously this function also checked ``CloudSettings.signup_mode``
-    to distinguish invite-only from self-register. That distinction was
-    removed when the onboarding flow was collapsed to a single path —
-    installing the cloud package now always enables self-registration.
+    Why tenancy and not the bare ``"validibot_cloud"`` label? The
+    cloud package is a namespace containing several Django apps
+    (tenancy, onboarding, billing, etc) — there's no app named
+    ``validibot_cloud`` itself, so that check would always return
+    False. We pick ``tenancy`` because ``CloudOrgProfile`` is the
+    bedrock model that signals "this is a cloud deployment" and
+    tenancy is the least likely cloud sub-app to ever be renamed
+    or split out.
+
+    Previously this function also read ``CloudSettings.signup_mode``
+    to distinguish invite-only from self-register. That distinction
+    was removed when the onboarding flow was collapsed to a single
+    path — installing the cloud package now always enables
+    self-registration.
     """
-    try:
-        import validibot_cloud.onboarding.models  # noqa: F401
-    except ImportError:
-        return False
-    return True
+    from django.apps import apps
+
+    return apps.is_installed("validibot_cloud.tenancy")
 
 
 class AccountAdapter(DefaultAccountAdapter):

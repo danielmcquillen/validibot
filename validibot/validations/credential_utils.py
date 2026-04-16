@@ -21,6 +21,7 @@ import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
+from django.apps import apps
 from django.utils.text import slugify
 
 from validibot.core.utils import reverse_with_org
@@ -131,7 +132,7 @@ def get_signed_credential_display_context(
     credential_download_name = None
     credential_resource_label = None
 
-    try:
+    if apps.is_installed("validibot_pro"):
         from validibot_pro.credentials.models import IssuedCredential
 
         issued_credential = IssuedCredential.objects.filter(workflow_run=run).first()
@@ -149,8 +150,6 @@ def get_signed_credential_display_context(
                 request=request,
                 kwargs={"pk": run.pk},
             )
-    except Exception:
-        logger.debug("Pro credential lookup unavailable", exc_info=True)
 
     return {
         "issued_credential": issued_credential,

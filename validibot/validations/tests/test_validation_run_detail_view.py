@@ -125,9 +125,12 @@ class ValidationRunDetailViewTests(TestCase):
         )
 
         self.client.force_login(user)
-        with patch.dict(
-            "sys.modules",
-            _fake_pro_modules(credential),
+        with (
+            patch.dict("sys.modules", _fake_pro_modules(credential)),
+            patch(
+                "validibot.validations.credential_utils.apps.is_installed",
+                return_value=True,
+            ),
         ):
             response = self.client.get(
                 reverse("validations:validation_detail", kwargs={"pk": run.pk}),

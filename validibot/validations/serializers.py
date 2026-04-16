@@ -5,6 +5,7 @@ import binascii
 import json
 from typing import Any
 
+from django.apps import apps
 from django.conf import settings
 from django.urls import NoReverseMatch
 from django.utils.translation import gettext_lazy as _
@@ -171,17 +172,28 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         """Return credential metadata if one was issued for this run.
 
         Returns None when no credential exists (community-only install,
-        feature disabled, or the run didn't have a credential action).
-        The compact JWS is not inlined — use the download_url instead.
-        """
-        try:
-            from validibot_pro.credentials.models import IssuedCredential
+        Pro app not registered, or the run didn't have a credential
+        action). The compact JWS is not inlined — use the download_url
+        instead.
 
-            credential = IssuedCredential.objects.filter(
-                workflow_run=obj,
-            ).first()
-        except ImportError:
+        The ``apps.is_installed`` gate is the right question to ask
+        here, not "is the feature flag enabled". The feature registry
+        gets populated as a side-effect of importing ``validibot_pro``,
+        which can happen indirectly during test collection — leaving
+        the flag True even when the app isn't actually wired into
+        ``INSTALLED_APPS``. Querying ``IssuedCredential`` in that state
+        raises ``ValueError: Related model 'validibot_pro.
+        SignedCredentialAction' cannot be resolved`` because the FK
+        target is unreachable. ``apps.is_installed`` reflects the
+        actual Django configuration, so it's both the correct gate
+        and test-isolation safe.
+        """
+        if not apps.is_installed("validibot_pro"):
             return None
+
+        from validibot_pro.credentials.models import IssuedCredential
+
+        credential = IssuedCredential.objects.filter(workflow_run=obj).first()
 
         if credential is None:
             return None

@@ -234,6 +234,14 @@ class TestDeferredSignedCredentialIssuance:
                     "validibot_pro.credentials.issuance": fake_issuance_module,
                 },
             ),
+            # Production gates the issuance import on apps.is_installed
+            # so we don't try to query unregistered models. Tests inject
+            # a fake issuance module via sys.modules and need this gate
+            # flipped so the production code reaches the fake.
+            patch(
+                "validibot.validations.services.step_orchestrator.apps.is_installed",
+                return_value=True,
+            ),
         ):
             result = orchestrator.execute_workflow_steps(run.id, run.user_id)
 
@@ -321,6 +329,10 @@ class TestDeferredSignedCredentialIssuance:
                     ),
                     "validibot_pro.credentials.issuance": fake_issuance_module,
                 },
+            ),
+            patch(
+                "validibot.validations.services.step_orchestrator.apps.is_installed",
+                return_value=True,
             ),
         ):
             result = orchestrator.execute_workflow_steps(run.id, run.user_id)

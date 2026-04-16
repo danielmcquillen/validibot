@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
+from django.apps import apps
 from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -691,12 +692,10 @@ class StepOrchestrator:
         if not signed_step_runs:
             return False
 
-        try:
-            from validibot_pro.credentials import issuance as credential_issuance
-        except ModuleNotFoundError:
-            logger.exception(
+        if not apps.is_installed("validibot_pro"):
+            logger.error(
                 "Signed credential steps exist for run %s but validibot_pro "
-                "is not importable during deferred issuance.",
+                "is not in INSTALLED_APPS during deferred issuance.",
                 validation_run.id,
             )
             message = _(
@@ -713,6 +712,9 @@ class StepOrchestrator:
                     or summary_needs_rebuild
                 )
             return summary_needs_rebuild
+
+        # Pro is installed — safe to import the credential issuance module.
+        from validibot_pro.credentials import issuance as credential_issuance
 
         summary_needs_rebuild = False
         for step_run in signed_step_runs:

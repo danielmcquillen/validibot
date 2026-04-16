@@ -9,6 +9,7 @@ import json
 import logging
 from http import HTTPStatus
 
+from django.apps import apps
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError
@@ -57,12 +58,19 @@ BREAK_GLASS_DELETE_MESSAGE = _(
 
 
 def _issued_credential_model():
-    """Return the Pro credential model when available."""
+    """Return the Pro credential model when available.
 
-    try:
-        from validibot_pro.credentials.models import IssuedCredential
-    except Exception:
+    Guards on ``apps.is_installed`` rather than catching ImportError
+    because validibot_pro may be importable yet not registered in
+    INSTALLED_APPS — in that state the import succeeds but any model
+    operation raises ``ValueError: Related model ... cannot be
+    resolved``. ``apps.is_installed`` is the right "are the apps
+    actually wired in?" question.
+    """
+    if not apps.is_installed("validibot_pro"):
         return None
+    from validibot_pro.credentials.models import IssuedCredential
+
     return IssuedCredential
 
 
@@ -101,14 +109,17 @@ def _workflow_issued_credential_count(workflow: Workflow) -> int:
 
 
 def _compute_workflow_definition_hash(workflow: Workflow) -> str:
-    """Compute the locked workflow-definition digest when Pro is installed."""
+    """Compute the locked workflow-definition digest when Pro is installed.
 
-    try:
-        from validibot_pro.credentials.workflow_digest import (
-            compute_workflow_definition_hash,
-        )
-    except Exception:
+    See ``_issued_credential_model`` for why we gate on
+    ``apps.is_installed`` rather than catching ImportError.
+    """
+    if not apps.is_installed("validibot_pro"):
         return ""
+    from validibot_pro.credentials.workflow_digest import (
+        compute_workflow_definition_hash,
+    )
+
     return compute_workflow_definition_hash(workflow)
 
 

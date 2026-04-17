@@ -1,18 +1,26 @@
 """
 Tests for agent access fields on the Workflow model.
 
-These tests verify the ``agent_access_enabled`` visibility flag, the
-``agent_billing_mode`` enum, and the ``clean()`` validation rules that
-govern their interaction:
+These tests verify the two-level agent visibility system:
 
-- ``agent_access_enabled`` and ``agent_billing_mode`` are independent.
-  Any combination of the two is valid except x402 billing without a price.
-- The x402 billing mode requires a non-zero ``agent_price_cents``.
+- ``agent_access_enabled`` — master switch for all agent access via MCP.
+  When True, authenticated agents in the workflow's org can discover and
+  invoke it.
+- ``agent_public_discovery`` — whether the workflow appears on the cross-org
+  public catalog for external agent discovery.  Enabling this automatically
+  forces ``agent_billing_mode=AGENT_PAYS_X402`` (the cascade is enforced
+  in ``clean()`` so it applies to every write path).
+- ``agent_billing_mode`` — who pays: AUTHOR_PAYS (plan quota) or
+  AGENT_PAYS_X402 (per-call micropayment).
 
-The two fields were decoupled in April 2026 (ADR-2026-03-03 Phase 3a
-revision).  Previously, enabling agent access required x402 billing;
-now ``agent_access_enabled=True`` + ``AUTHOR_PAYS`` is a valid state
-that exposes the workflow to authenticated agents only.
+Constraint hierarchy (enforced via cascades, not validation errors):
+- ``agent_public_discovery=True`` requires ``agent_access_enabled=True``
+- ``agent_public_discovery=True`` forces ``agent_billing_mode=AGENT_PAYS_X402``
+- ``agent_access_enabled=False`` forces ``agent_public_discovery=False``
+
+History: the two fields were decoupled in April 2026 (ADR-2026-03-03
+Phase 3a revision) and the public discovery field was added to separate
+org-level MCP access from cross-org public catalog visibility.
 """
 
 import pytest
@@ -319,17 +327,19 @@ class TestWorkflowFormAgentFields:
 
         form = WorkflowForm(user=self._make_user(is_superuser=False))
         assert "agent_access_enabled" not in form.fields
+        assert "agent_public_discovery" not in form.fields
         assert "agent_billing_mode" not in form.fields
         assert "agent_price_cents" not in form.fields
         assert "agent_max_launches_per_hour" not in form.fields
 
     def test_superuser_form_includes_agent_fields(self):
-        """Superusers should see all four agent access fields in the
+        """Superusers should see all five agent access fields in the
         workflow form."""
         from validibot.workflows.forms import WorkflowForm
 
         form = WorkflowForm(user=self._make_user(is_superuser=True))
         assert "agent_access_enabled" in form.fields
+        assert "agent_public_discovery" in form.fields
         assert "agent_billing_mode" in form.fields
         assert "agent_price_cents" in form.fields
         assert "agent_max_launches_per_hour" in form.fields
@@ -405,3 +415,226 @@ class TestWorkflowFormAgentFields:
             user=user,
         )
         assert form.is_valid(), form.errors
+
+    def test_form_rejects_public_discovery_without_agent_access(self):
+        """Public discovery without agent access enabled should fail.
+
+        The form-level check mirrors the model's belt-and-suspenders
+        validation: if someone submits the form with public_discovery=on
+        but agent_access_enabled=off, the error should land on the
+        public_discovery field."""
+        from validibot.submissions.constants import SubmissionRetention
+        from validibot.users.models import ensure_default_project
+        from validibot.users.tests.factories import MembershipFactory
+        from validibot.users.tests.factories import OrganizationFactory
+        from validibot.users.tests.factories import UserFactory
+        from validibot.workflows.forms import WorkflowForm
+
+        org = OrganizationFactory()
+        user = UserFactory(is_superuser=True)
+        MembershipFactory(user=user, org=org, is_active=True)
+        user.set_current_org(org)
+        default_project = ensure_default_project(org)
+
+        form = WorkflowForm(
+            data={
+                "name": "Bad config workflow",
+                "slug": "bad-config",
+                "project": str(default_project.pk),
+                "allowed_file_types": [SubmissionFileType.JSON],
+                "data_retention": SubmissionRetention.DO_NOT_STORE,
+                "output_retention": "STORE_30_DAYS",
+                "version": "1.0",
+                "is_active": "on",
+                # agent_access_enabled is NOT checked
+                "agent_public_discovery": "on",
+                "agent_price_cents": "10",
+            },
+            user=user,
+        )
+        assert not form.is_valid()
+        assert "agent_public_discovery" in form.errors
+
+    def test_form_cascades_public_discovery_to_x402_billing(self):
+        """Enabling public discovery should auto-set billing to x402.
+
+        The user doesn't need to manually select the billing mode —
+        public discovery implies agent-pays-x402 because external agents
+        must pay per call."""
+        from validibot.submissions.constants import SubmissionRetention
+        from validibot.users.models import ensure_default_project
+        from validibot.users.tests.factories import MembershipFactory
+        from validibot.users.tests.factories import OrganizationFactory
+        from validibot.users.tests.factories import UserFactory
+        from validibot.workflows.forms import WorkflowForm
+
+        org = OrganizationFactory()
+        user = UserFactory(is_superuser=True)
+        MembershipFactory(user=user, org=org, is_active=True)
+        user.set_current_org(org)
+        default_project = ensure_default_project(org)
+
+        form = WorkflowForm(
+            data={
+                "name": "Public discovery workflow",
+                "slug": "public-disc",
+                "project": str(default_project.pk),
+                "allowed_file_types": [SubmissionFileType.JSON],
+                "data_retention": SubmissionRetention.DO_NOT_STORE,
+                "output_retention": "STORE_30_DAYS",
+                "version": "1.0",
+                "is_active": "on",
+                "agent_access_enabled": "on",
+                "agent_public_discovery": "on",
+                "agent_billing_mode": AgentBillingMode.AUTHOR_PAYS,
+                "agent_price_cents": "10",
+            },
+            user=user,
+        )
+        assert form.is_valid(), form.errors
+        assert (
+            form.cleaned_data["agent_billing_mode"] == AgentBillingMode.AGENT_PAYS_X402
+        )
+
+
+# ── Public discovery defaults ──────────────────────────────────────
+# The agent_public_discovery flag defaults to False and must be
+# explicitly enabled by a superuser.
+
+
+class TestAgentPublicDiscoveryDefault:
+    """Verify that agent_public_discovery defaults to False."""
+
+    def test_defaults_to_false(self):
+        """New workflows should not appear on the public agent catalog
+        by default.  The superuser must explicitly opt in."""
+        wf = WorkflowFactory.build()
+        assert wf.agent_public_discovery is False
+
+
+# ── clean() validation: public discovery constraints ───────────────
+# These tests verify the cascade and constraint hierarchy for the
+# agent_public_discovery field.
+
+
+class TestAgentPublicDiscoveryConstraints:
+    """Verify the constraint hierarchy for agent_public_discovery.
+
+    The field has two cascading behaviors:
+    - Enabling public discovery forces agent_billing_mode to X402
+    - Disabling agent access forces public discovery off
+
+    And one hard validation:
+    - Public discovery requires agent_access_enabled=True
+    """
+
+    def test_public_discovery_requires_agent_access(self):
+        """Attempting to enable public discovery without agent access
+        should raise a ValidationError on agent_public_discovery.
+
+        In practice this can only happen via the API/admin since the
+        form also validates this, but the model enforces it as a
+        belt-and-suspenders measure."""
+        wf = WorkflowFactory.build(
+            agent_access_enabled=False,
+            agent_public_discovery=True,
+            agent_price_cents=10,
+        )
+        wf.clean()
+        assert wf.agent_public_discovery is False
+
+    def test_public_discovery_forces_x402_billing(self):
+        """Enabling public discovery should auto-set billing mode to
+        AGENT_PAYS_X402, regardless of what was previously configured.
+
+        This is a cascade, not a validation error — the model silently
+        adjusts the billing mode so the constraint hierarchy is
+        consistent."""
+        wf = WorkflowFactory.build(
+            agent_access_enabled=True,
+            agent_public_discovery=True,
+            agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
+            agent_price_cents=10,
+        )
+        wf.clean()
+        assert wf.agent_billing_mode == AgentBillingMode.AGENT_PAYS_X402
+
+    def test_disabling_agent_access_clears_public_discovery(self):
+        """When agent_access_enabled is set to False, clean() should
+        cascade and clear agent_public_discovery too.
+
+        This prevents an impossible state where the workflow is publicly
+        discoverable but agents can't actually access it."""
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory.build(
+            agent_access_enabled=False,
+            agent_public_discovery=True,
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=10,
+            data_retention=SubmissionRetention.DO_NOT_STORE,
+        )
+        wf.clean()
+        assert wf.agent_public_discovery is False
+
+    def test_full_valid_public_discovery_config(self):
+        """The complete valid configuration for a publicly-discoverable
+        workflow: agent access on, public discovery on, x402 billing,
+        a price, and DO_NOT_STORE retention."""
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory.build(
+            agent_access_enabled=True,
+            agent_public_discovery=True,
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=50,
+            data_retention=SubmissionRetention.DO_NOT_STORE,
+        )
+        wf.clean()  # should not raise
+        assert wf.agent_public_discovery is True
+        assert wf.agent_billing_mode == AgentBillingMode.AGENT_PAYS_X402
+
+    def test_agent_access_enabled_without_public_discovery_is_valid(self):
+        """agent_access_enabled=True + agent_public_discovery=False is
+        the member-only MCP access configuration.  The workflow is
+        visible to org members' agents but not on the public catalog."""
+        wf = WorkflowFactory.build(
+            agent_access_enabled=True,
+            agent_public_discovery=False,
+            agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
+        )
+        wf.clean()  # should not raise
+        assert wf.agent_billing_mode == AgentBillingMode.AUTHOR_PAYS
+
+
+# ── Tombstone clears public discovery ──────────────────────────────
+# Tombstoning a workflow should clear both agent flags to prevent
+# a deleted workflow from remaining on the public catalog.
+
+
+class TestTombstoneClearsPublicDiscovery:
+    """Verify that tombstoning clears agent_public_discovery."""
+
+    def test_tombstone_clears_both_agent_flags(self):
+        """Tombstoning a workflow should set both agent_access_enabled
+        and agent_public_discovery to False.
+
+        This prevents a race condition where a tombstoned workflow
+        could briefly remain on the public catalog between the
+        tombstone and the next cache refresh."""
+        from validibot.submissions.constants import SubmissionRetention
+        from validibot.users.tests.factories import UserFactory
+
+        wf = WorkflowFactory(
+            agent_access_enabled=True,
+            agent_public_discovery=True,
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=50,
+            data_retention=SubmissionRetention.DO_NOT_STORE,
+        )
+        user = UserFactory()
+        wf.tombstone(deleted_by=user, reason="test cleanup")
+
+        wf.refresh_from_db()
+        assert wf.agent_access_enabled is False
+        assert wf.agent_public_discovery is False

@@ -472,6 +472,21 @@ class WorkflowForm(forms.ModelForm):
                 "agent_access_enabled"
             ].initial = self.instance.agent_access_enabled
 
+        self.fields["agent_public_discovery"] = forms.BooleanField(
+            required=False,
+            label=_("Public discovery (cross-org catalog)"),
+            help_text=_(
+                "List this workflow on the public agent catalog. External "
+                "agents from any organization can discover and run it via "
+                "x402 micropayments. Enabling this automatically sets "
+                "billing to 'Agent pays via x402'.",
+            ),
+        )
+        if self.instance and self.instance.pk:
+            self.fields[
+                "agent_public_discovery"
+            ].initial = self.instance.agent_public_discovery
+
         self.fields["agent_billing_mode"] = forms.ChoiceField(
             choices=AgentBillingMode.choices,
             initial=AgentBillingMode.AUTHOR_PAYS,
@@ -651,6 +666,7 @@ class WorkflowForm(forms.ModelForm):
                         ),
                     ),
                     Field("agent_access_enabled"),
+                    Field("agent_public_discovery"),
                     Field("agent_billing_mode"),
                     Field("agent_price_cents"),
                     Field("agent_max_launches_per_hour"),
@@ -721,6 +737,26 @@ class WorkflowForm(forms.ModelForm):
         from validibot.workflows.constants import AgentBillingMode
 
         cleaned = super().clean()
+
+        # ── Cascade: public discovery forces x402 billing ─────────────
+        # Enabling public discovery implies agents-pay-x402, so auto-set
+        # the billing mode rather than making the user pick it manually.
+        if cleaned.get("agent_public_discovery"):
+            cleaned["agent_billing_mode"] = AgentBillingMode.AGENT_PAYS_X402
+
+        # ── Public discovery requires agent access ────────���───────────
+        if cleaned.get("agent_public_discovery") and not cleaned.get(
+            "agent_access_enabled"
+        ):
+            self.add_error(
+                "agent_public_discovery",
+                ValidationError(
+                    _(
+                        "Public discovery requires agent access to be enabled first.",
+                    ),
+                    code="public_discovery_requires_agent_access",
+                ),
+            )
 
         # ── x402 billing must pair with DO_NOT_STORE retention ─────────
         # x402 is anonymous per-call micropayment access.  Storing agent
@@ -886,6 +922,7 @@ class WorkflowForm(forms.ModelForm):
         if self.user and getattr(self.user, "is_superuser", False):
             agent_fields = [
                 "agent_access_enabled",
+                "agent_public_discovery",
                 "agent_billing_mode",
                 "agent_price_cents",
                 "agent_max_launches_per_hour",

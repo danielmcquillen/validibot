@@ -352,10 +352,20 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     agent_access_enabled = models.BooleanField(
         default=False,
         help_text=_(
-            "Expose this workflow for agent access via MCP. "
-            "With 'Author pays' billing, only authenticated agents using "
-            "your API key can use it. With 'Agent pays (x402)', anonymous "
-            "agents can also discover and pay for access.",
+            "Master switch for all agent access via MCP. When enabled, "
+            "authenticated agents in your organization can discover and "
+            "invoke this workflow. For public cross-org discovery, also "
+            "enable 'Public discovery'.",
+        ),
+    )
+
+    agent_public_discovery = models.BooleanField(
+        default=False,
+        help_text=_(
+            "List this workflow on the cross-org public catalog so agents "
+            "outside your organization can discover and run it via x402 "
+            "micropayments. Requires 'Agent access enabled' and "
+            "automatically sets billing to 'Agent pays via x402'.",
         ),
     )
 
@@ -536,6 +546,24 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                     {"input_schema": exc.messages},
                 ) from exc
 
+        # ── Cascade: disabling agent access clears public discovery ───
+        if not self.agent_access_enabled:
+            self.agent_public_discovery = False
+
+        # ── Cascade: public discovery forces x402 billing ─────────────
+        if self.agent_public_discovery:
+            self.agent_billing_mode = AgentBillingMode.AGENT_PAYS_X402
+
+        # ── Public discovery requires agent access (belt-and-suspenders)
+        if self.agent_public_discovery and not self.agent_access_enabled:
+            raise ValidationError(
+                {
+                    "agent_public_discovery": _(
+                        "Public discovery requires agent access to be enabled first.",
+                    ),
+                },
+            )
+
         # ── x402 billing requires a price ─────────────────────────────
         if (
             self.agent_billing_mode == AgentBillingMode.AGENT_PAYS_X402
@@ -675,6 +703,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         self.is_public = False
         self.make_info_page_public = False
         self.agent_access_enabled = False
+        self.agent_public_discovery = False
         self.tombstoned_at = now
         self.tombstoned_by = deleted_by
         self.tombstone_reason = cleaned_reason
@@ -687,6 +716,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                 "is_public",
                 "make_info_page_public",
                 "agent_access_enabled",
+                "agent_public_discovery",
                 "tombstoned_at",
                 "tombstoned_by",
                 "tombstone_reason",

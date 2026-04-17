@@ -254,6 +254,7 @@ class WorkflowSlimSerializer(serializers.ModelSerializer):
             "allowed_file_types",
             "input_schema",
             "agent_access_enabled",
+            "agent_public_discovery",
             "agent_price_cents",
             "url",
         ]

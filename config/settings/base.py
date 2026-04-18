@@ -887,9 +887,37 @@ CLOUD_TASKS_SERVICE_ACCOUNT = env("CLOUD_TASKS_SERVICE_ACCOUNT", default="")
 
 # Shared secret for authenticating requests to worker-only API endpoints.
 # Required for Docker Compose deployments (all services share the same key).
-# Leave empty for GCP deployments (Cloud Run IAM handles authentication).
+# Leave empty for GCP deployments (Cloud Run IAM + OIDC handle authentication).
 # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
 WORKER_API_KEY = env("WORKER_API_KEY", default="")
+
+# Worker-endpoint OIDC verification (GCP deployments only).
+# ------------------------------------------------------------------------------
+# ``CloudTasksOIDCAuthentication`` re-verifies Cloud Tasks / Cloud Scheduler
+# OIDC identity tokens at the application layer, as defence in depth against
+# Cloud Run IAM misconfiguration. See validibot/core/api/task_auth.py.
+#
+#   TASK_OIDC_AUDIENCE
+#       Expected ``aud`` claim on inbound tokens. Cloud Tasks signs tokens
+#       with audience = WORKER_URL (see GoogleCloudTasksDispatcher). Leave
+#       empty to inherit ``WORKER_URL``, which is the correct default for
+#       single-service GCP deployments.
+#
+#   TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS
+#       Comma-separated list of service-account emails permitted to invoke
+#       worker endpoints (``execute-validation-run``, validator callbacks,
+#       scheduled tasks). Leave empty to inherit
+#       ``[CLOUD_TASKS_SERVICE_ACCOUNT]`` — correct for the default
+#       single-SA deployment (Cloud Tasks, Cloud Scheduler, and Cloud Run
+#       Jobs all reuse ``${APP_NAME}-cloudrun-<stage>@...``). Override when
+#       splitting SAs per caller, or when validator Cloud Run Jobs run
+#       under a separate identity. See ``just gcp`` recipes for the SAs
+#       wired by our deployment tooling.
+TASK_OIDC_AUDIENCE = env("TASK_OIDC_AUDIENCE", default="")
+TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS = env.list(
+    "TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS",
+    default=[],
+)
 
 
 # FEATURES

@@ -403,6 +403,49 @@ else:  # docker_compose
 SITE_URL = env("SITE_URL", default="http://localhost:8000")
 WORKER_URL = env("WORKER_URL", default=SITE_URL)
 
+# WORKER-ENDPOINT OIDC VERIFICATION (GCP only)
+# ------------------------------------------------------------------------------
+# Fail-fast boot check. When DEPLOYMENT_TARGET=gcp the worker service uses
+# ``CloudTasksOIDCAuthentication`` (see validibot/core/api/task_auth.py) to
+# verify inbound OIDC tokens on every callback and scheduled-task request.
+# Two settings must resolve to non-empty values, either directly or via their
+# documented fallbacks:
+#
+#   * TASK_OIDC_AUDIENCE               → falls back to WORKER_URL
+#   * TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS → falls back to [CLOUD_TASKS_SERVICE_ACCOUNT]
+#
+# If we let Django boot with either resolved to empty, EVERY worker endpoint
+# call would 401 — validator callbacks, Cloud Tasks dispatches, and
+# scheduled tasks would all silently fail. ImproperlyConfigured at boot time
+# surfaces the misconfig in the Cloud Run deploy log instead of in
+# production traffic. See ADR-2026-04-18.
+if DEPLOYMENT_TARGET == "gcp":
+    _oidc_audience = (TASK_OIDC_AUDIENCE or WORKER_URL or "").strip()  # noqa: F405
+    if not _oidc_audience:
+        raise ImproperlyConfigured(
+            "DEPLOYMENT_TARGET=gcp requires an OIDC audience. Set "
+            "TASK_OIDC_AUDIENCE (or WORKER_URL) to the worker service URL "
+            "origin (scheme + host, no path). See "
+            "docs/dev_docs/deployment/environment-configuration.md."
+        )
+
+    _oidc_allowlist = [
+        sa.strip().lower()
+        for sa in (TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS or [])  # noqa: F405
+        if sa.strip()
+    ]
+    if not _oidc_allowlist:
+        _fallback_sa = (CLOUD_TASKS_SERVICE_ACCOUNT or "").strip()  # noqa: F405
+        if not _fallback_sa:
+            raise ImproperlyConfigured(
+                "DEPLOYMENT_TARGET=gcp requires at least one allowlisted "
+                "service account for worker-endpoint OIDC verification. "
+                "Set TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS (comma-separated "
+                "emails) or CLOUD_TASKS_SERVICE_ACCOUNT. Empty allowlist "
+                "would reject every validator callback and Cloud Tasks "
+                "dispatch. See ADR-2026-04-18."
+            )
+
 # EMAIL
 # ------------------------------------------------------------------------------
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)

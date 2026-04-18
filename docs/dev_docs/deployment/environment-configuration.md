@@ -230,31 +230,43 @@ For a complete list of environment variables and their descriptions, see:
 - `.envs.example/README.md` in the project root - Quick reference table with all variables
 - [Configuration Settings](../overview/settings.md) - Django-specific settings documentation
 
-## Internal API Security (WORKER_API_KEY)
+## Internal API Security (Worker Endpoints)
 
-Validibot's worker service exposes internal API endpoints for validation execution, callbacks, and scheduled tasks. These endpoints need protection against unauthorized access.
+Validibot's worker service exposes internal API endpoints for validation
+execution, callbacks, and scheduled tasks. These endpoints need protection
+against unauthorized access. The authentication backend is selected
+automatically based on `DEPLOYMENT_TARGET` — see
+[ADR-2026-04-18](https://github.com/mcquilleninteractive/validibot-project/blob/main/docs/adr/2026-04-18-worker-endpoint-auth-platform-agnostic.md)
+for the full design.
 
-The `WORKER_API_KEY` setting provides a shared-secret authentication layer:
-
-| Deployment | Primary Auth | WORKER_API_KEY |
+| Deployment target | Primary auth | Application-layer auth |
 |---|---|---|
-| **Docker Compose** | None (same network) | **Required** - protects against SSRF |
-| **GCP** | Cloud Run IAM (OIDC) | Optional - defense in depth |
-| **Local dev** | None | Optional |
+| **Docker Compose** | Network isolation | `WORKER_API_KEY` (shared secret) — **required** |
+| **GCP** | Cloud Run IAM + private ingress | `CloudTasksOIDCAuthentication` — **required** |
+| **AWS** *(not yet implemented)* | — | `WORKER_API_KEY` fallback |
+| **Local dev / test** | — | None (skipped when key unset) |
 
-### How It Works
+Worker views inherit from `WorkerOnlyAPIView`, whose
+`get_authenticators()` delegates to the deployment-aware factory in
+`validibot/core/api/task_auth.py::get_worker_auth_classes()`. Adding a
+new deployment target means writing one DRF `BaseAuthentication`
+subclass and extending the factory — no view code changes.
 
-When `WORKER_API_KEY` is set, all requests to worker endpoints must include it in the Authorization header:
+### Shared-secret (`WORKER_API_KEY`) — Docker Compose
+
+When the shared-secret backend is active, all requests to worker
+endpoints must include the key in the `Authorization` header:
 
 ```
 Authorization: Worker-Key <key>
 ```
 
-When `WORKER_API_KEY` is empty (the default), the check is skipped. This allows GCP deployments to rely solely on Cloud Run IAM.
+When `WORKER_API_KEY` is empty (the default outside production), the
+check is skipped. This allows local dev to run without provisioning a
+key.
 
-### Docker Compose Setup
-
-For Docker Compose deployments, add `WORKER_API_KEY` to your `.envs/.production/.docker-compose/.django` file:
+For Docker Compose deployments, add `WORKER_API_KEY` to
+`.envs/.production/.docker-compose/.django`:
 
 ```bash
 # Generate a key
@@ -264,11 +276,71 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 WORKER_API_KEY=your-generated-key-here
 ```
 
-Since all Docker Compose services (web, worker, scheduler) share the same env file, the key is automatically available to all services. The Celery worker uses it when making internal API calls.
+Since all Docker Compose services (web, worker, scheduler) share the
+same env file, the key is automatically available to every service.
+The Celery worker uses it when making internal API calls.
 
-### Why This Matters
+**Why this matters:** in Docker Compose, all containers share the
+Docker bridge network. Without `WORKER_API_KEY`, an SSRF vulnerability
+in the web container could let an attacker call worker endpoints
+directly, potentially spoofing validation results or triggering data
+deletion.
 
-In Docker Compose, all containers share the same Docker bridge network. Without `WORKER_API_KEY`, an SSRF vulnerability in the web container could allow an attacker to call worker endpoints directly, potentially spoofing validation results or triggering data deletion.
+### OIDC identity tokens — GCP
+
+On `DEPLOYMENT_TARGET=gcp`, worker endpoints verify a Google-signed
+OIDC identity token on every request. The token is provided as
+`Authorization: Bearer <jwt>` by the caller (Cloud Tasks, Cloud
+Scheduler, or a validator Cloud Run Job via the metadata server).
+
+Two settings control verification:
+
+| Setting | What it does |
+|---|---|
+| `TASK_OIDC_AUDIENCE` | Expected `aud` claim. Must equal the worker service URL origin (scheme + host, **no path**). Falls back to `WORKER_URL` when unset. |
+| `TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS` | Comma-separated list of service-account emails authorised to sign tokens. **Empty list → reject everything.** Legacy fallback: `CLOUD_TASKS_SERVICE_ACCOUNT`. |
+
+Both settings live in the Secret Manager-mounted `.env` on the worker
+service. A typical `.envs/.production/.google-cloud/.django`:
+
+```bash
+DEPLOYMENT_TARGET=gcp
+WORKER_URL=https://validibot-worker-xxxx.run.app
+# Optional — defaults to WORKER_URL
+TASK_OIDC_AUDIENCE=https://validibot-worker-xxxx.run.app
+TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS=validibot-cloudrun-prod@PROJECT.iam.gserviceaccount.com
+```
+
+**Set both explicitly in production.** The fallbacks (`WORKER_URL` for
+audience, `CLOUD_TASKS_SERVICE_ACCOUNT` for the allowlist) are there so
+the settings module doesn't raise `ImproperlyConfigured` on a minimal
+`.env`, but leaving them implicit couples worker authentication to
+settings whose primary purpose is something else. Rotating the Cloud
+Tasks dispatcher SA, changing `WORKER_URL` to add a custom domain, or
+splitting Cloud Scheduler onto its own SA all become accidentally
+breaking changes if the auth layer is piggy-backing on them. Setting
+`TASK_OIDC_AUDIENCE` and `TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS` directly
+makes the auth contract self-documenting and lets you rotate the two
+concerns independently.
+
+**Boot-time validation.** `config/settings/production.py` raises
+`ImproperlyConfigured` at Cloud Run startup when `DEPLOYMENT_TARGET=gcp`
+and the resolved audience or allowlist (after applying fallbacks) is
+empty. Misconfiguration surfaces in the deploy log, not in production
+traffic.
+
+**Audience contract.** Cloud Tasks and Cloud Scheduler sign tokens
+with `aud = <service URL origin>` — path and query are NOT included.
+Django's strict verification enforces exact match. Validator
+containers derive the audience the same way (see
+`validibot-validators/validators/core/callback_auth.py`). If you front
+the worker behind a load balancer with a different signed audience,
+override with `TASK_OIDC_AUDIENCE`.
+
+**Failure modes.** Missing header, missing signature, audience
+mismatch, un-allowlisted signer, or unverified email all return 401
+with an audit log line identifying the presented audience and signing
+account. These are diagnosable from worker logs alone.
 
 ## Security Reminders
 

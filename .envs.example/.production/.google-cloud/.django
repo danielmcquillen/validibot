@@ -98,6 +98,25 @@ GCP_REGION=us-west1
 GCS_TASK_QUEUE_NAME=your-app-name-tasks
 CLOUD_TASKS_SERVICE_ACCOUNT=your-app-name-cloudrun-prod@your-project.iam.gserviceaccount.com
 
+# Worker-endpoint OIDC verification (validators, Cloud Tasks, Cloud Scheduler).
+# See docs/dev_docs/deployment/environment-configuration.md and
+# ADR-2026-04-18 for the full design.
+#
+# TASK_OIDC_AUDIENCE: Expected `aud` claim. Must equal the worker service
+# URL origin (scheme + host, NO path). Cloud Tasks and Cloud Scheduler sign
+# tokens with this exact value, and validator containers derive it from the
+# callback URL's origin. If unset, Django falls back to WORKER_URL.
+# Typical value (same as WORKER_URL above):
+TASK_OIDC_AUDIENCE=https://your-worker-service.region.run.app
+#
+# TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS: Comma-separated list of service
+# account emails authorised to sign tokens for worker endpoints. EMPTY LIST
+# MEANS REJECT EVERYTHING. Django raises ImproperlyConfigured on startup
+# when DEPLOYMENT_TARGET=gcp and this list is empty. Include every SA that
+# invokes the worker: the main Cloud Run SA (used by Cloud Tasks + Cloud
+# Scheduler + validator Cloud Run Jobs). Add per-stage SAs as needed.
+TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS=your-app-name-cloudrun-prod@your-project.iam.gserviceaccount.com
+
 # Validation infrastructure (Cloud Run Jobs)
 GCS_VALIDATION_BUCKET=your-app-name-storage
 GCS_WEATHER_DATA_DIR=weather_data

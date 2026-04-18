@@ -1906,7 +1906,7 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
         --network default \
         --subnet default \
         --vpc-egress all-traffic \
-        --set-env-vars VALIDATOR_VERSION={{git_sha}},VALIDIBOT_STAGE={{stage}} \
+        --set-env-vars VALIDATOR_VERSION={{git_sha}},VALIDIBOT_STAGE={{stage}},DEPLOYMENT_TARGET=gcp \
         --labels validator={{name}},version={{git_sha}},stage={{stage}} \
         --project {{gcp_project}}
     echo "$JOB_NAME deployed"

@@ -153,11 +153,18 @@ See [Secrets Management](deployment.md#secrets-management) in the deployment gui
 
 ## Worker Service Authentication
 
-The worker service exposes internal API endpoints (validation execution, callbacks, scheduled tasks). On GCP, these are protected by Cloud Run IAM -- the service is deployed with `--no-allow-unauthenticated`, so Cloud Run rejects any request without a valid OIDC identity token.
+The worker service exposes internal API endpoints (validation execution, callbacks, scheduled tasks). Protection is layered:
 
-Validibot also supports an application-level `WORKER_API_KEY` shared secret as defense in depth. On GCP this is optional (Cloud Run IAM is the primary control), but it's required for Docker Compose deployments where there's no infrastructure-level auth.
+1. **URL routing.** Worker endpoints only exist on worker instances (`config/urls_worker.py`).
+2. **App guard.** `WorkerOnlyAPIView.initial()` raises `Http404` when `APP_ROLE != worker`, before authentication runs. Probing a worker endpoint from the web service returns a bare 404 with no information about which auth scheme is expected.
+3. **Application-layer auth.** On `DEPLOYMENT_TARGET=gcp`, `CloudTasksOIDCAuthentication` verifies a Google-signed OIDC identity token on every request. On `docker_compose` the shared-secret `WorkerKeyAuthentication` is used instead. The backend is chosen by `get_worker_auth_classes()` in `validibot/core/api/task_auth.py`.
+4. **Infrastructure auth.** The worker Cloud Run service is deployed with `--no-allow-unauthenticated` and `--ingress internal`, so Cloud Run IAM rejects unauthenticated traffic before it reaches the application layer.
 
-See [Internal API Security](../deployment/environment-configuration.md#internal-api-security-worker_api_key) for configuration details.
+The application-layer OIDC check on GCP is **defence in depth against IAM misconfiguration**, not an optional nicety. If the ingress or invoker bindings are ever loosened by mistake, the application will still reject callers whose token does not match `TASK_OIDC_AUDIENCE` and is not signed by an account in `TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS`.
+
+Validator containers (Cloud Run Jobs) authenticate to the worker service the same way — they fetch an OIDC token from the GCE metadata server with the callback URL's origin as the audience. See [ADR-2026-04-18](https://github.com/mcquilleninteractive/validibot-project/blob/main/docs/adr/2026-04-18-worker-endpoint-auth-platform-agnostic.md) for the full architecture.
+
+See [Internal API Security](../deployment/environment-configuration.md#internal-api-security-worker-endpoints) for configuration details.
 
 ## Related
 

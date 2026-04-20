@@ -14,6 +14,9 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING
 
 from django.apps import apps
+from django.db.models import Exists
+from django.db.models import OuterRef
+from django.db.models import Prefetch
 from django.http import Http404
 from django.http import HttpResponse
 from django.utils import timezone
@@ -23,6 +26,7 @@ from rest_framework import permissions
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
+from validibot.actions.constants import CredentialActionType
 from validibot.core.api.org_scoped import OrgMembershipPermission
 from validibot.core.api.org_scoped import OrgScopedMixin
 from validibot.core.utils import truthy
@@ -35,7 +39,9 @@ from validibot.validations.credential_utils import (
     extract_signed_credential_resource_label,
 )
 from validibot.validations.models import ValidationRun
+from validibot.validations.models import ValidationStepRun
 from validibot.validations.serializers import ValidationRunSerializer
+from validibot.workflows.models import WorkflowStep
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -103,7 +109,63 @@ class OrgScopedRunViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
             cutoff = timezone.now() - timedelta(days=30)
             qs = qs.filter(created__gte=cutoff)
 
-        return qs
+        # Serializer-shape optimizations — see refactor-step item
+        # ``[review-#5]``. The serializer reads ``workflow``, ``org``,
+        # ``user``, and ``submission`` per row (FK lookups) and walks
+        # ``step_runs → workflow_step → findings`` for each. Without
+        # these joins + prefetches, an org with 10 k runs triggers
+        # thousands of extra queries against the paginator.
+        #
+        # The ``_has_credential_action`` annotation pre-computes what
+        # would otherwise be ``workflow.has_signed_credential_action``
+        # (an ``EXISTS`` subquery) for every row. The serializer reads
+        # this annotation in two places; without the annotation the
+        # subquery runs N times per list. Pagination itself is already
+        # applied globally via
+        # ``REST_FRAMEWORK["DEFAULT_PAGINATION_CLASS"]`` (cursor-style,
+        # resistant to offset-DoS), so no per-viewset attribute is
+        # needed.
+        return (
+            qs.select_related(
+                "workflow",
+                "org",
+                "user",
+                "submission",
+            )
+            .prefetch_related(
+                Prefetch(
+                    "step_runs",
+                    queryset=(
+                        ValidationStepRun.objects.select_related(
+                            "workflow_step__validator",
+                        ).prefetch_related(
+                            "findings",
+                            # ``_build_signal_map`` and
+                            # ``_build_template_param_meta`` iterate
+                            # these to enrich output_signals /
+                            # template_parameters_used. Without the
+                            # prefetch, each step_run issues one
+                            # query against signal_definitions
+                            # (step-owned) plus one against the
+                            # validator's signal_definitions —
+                            # a classic N+1 on signal-bearing runs.
+                            "workflow_step__signal_definitions",
+                            "workflow_step__validator__signal_definitions",
+                        )
+                    ),
+                ),
+            )
+            .annotate(
+                _has_credential_action=Exists(
+                    WorkflowStep.objects.filter(
+                        workflow_id=OuterRef("workflow_id"),
+                        action__definition__type=(
+                            CredentialActionType.SIGNED_CREDENTIAL
+                        ),
+                    ),
+                ),
+            )
+        )
 
     @action(
         detail=True,

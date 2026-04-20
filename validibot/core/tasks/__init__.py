@@ -47,22 +47,38 @@ in each Django app. By importing the tasks here, they get registered.
 
 ## Admin Task Registry
 
-The admin task registry (`registry.py`) is the single source of truth for all
-scheduled admin task definitions. It provides metadata for both Celery Beat
-and Cloud Scheduler backends:
+The admin task registry (`registry.py`) is the authoritative source for all
+scheduled admin task definitions. Read it via the accessor functions —
+never by importing `SCHEDULED_ADMIN_TASKS` directly, because that tuple only
+contains community-owned static tasks. Downstream packages (cloud, pro,
+enterprise) register their own tasks dynamically at `AppConfig.ready()`
+time, and only the accessors see both halves.
 
 ```python
 from validibot.core.tasks.registry import (
-    SCHEDULED_ADMIN_TASKS,
+    get_all_admin_tasks,
     get_admin_tasks_for_backend,
 )
 
-# Get all admin tasks for Celery Beat
-celery_tasks = get_admin_tasks_for_backend("celery")
+# Every task, static + dynamic
+all_tasks = get_all_admin_tasks()
 
-# Get all admin tasks for GCP Cloud Scheduler
+# Tasks filtered to one backend (Celery Beat, GCP Cloud Scheduler, ...)
+celery_tasks = get_admin_tasks_for_backend("celery")
 gcp_tasks = get_admin_tasks_for_backend("gcp")
 ```
+
+### Read-path contract
+
+- **Core / community tasks** live in the static `SCHEDULED_ADMIN_TASKS`
+  tuple in `registry.py`. Plain data, easy to reason about, no import-order
+  surprises.
+- **Extension tasks** from downstream packages register via
+  `register_scheduled_admin_task(...)` in their `AppConfig.ready()`.
+- **Consumers** (sync tools, API endpoints, admin commands) must read
+  through `get_all_admin_tasks()` or `get_admin_tasks_for_backend(...)`.
+  Direct reads of `SCHEDULED_ADMIN_TASKS` are a bug — they miss extension
+  tasks.
 """
 
 # =============================================================================
@@ -76,12 +92,17 @@ gcp_tasks = get_admin_tasks_for_backend("gcp")
 # =============================================================================
 # PUBLIC API
 # =============================================================================
-from validibot.core.tasks.registry import SCHEDULED_ADMIN_TASKS
+# ``SCHEDULED_ADMIN_TASKS`` is deliberately NOT re-exported here — consumers
+# should read through the accessor functions below so both community-static
+# tasks and downstream-registered dynamic tasks are visible. See the
+# read-path contract in this module's docstring.
 from validibot.core.tasks.registry import Backend
 from validibot.core.tasks.registry import ScheduledAdminTaskDefinition
 from validibot.core.tasks.registry import get_admin_task_by_id
 from validibot.core.tasks.registry import get_admin_tasks_for_backend
+from validibot.core.tasks.registry import get_all_admin_tasks
 from validibot.core.tasks.registry import get_enabled_admin_tasks
+from validibot.core.tasks.registry import register_scheduled_admin_task
 from validibot.core.tasks.scheduled_tasks import cleanup_callback_receipts  # noqa: F401
 from validibot.core.tasks.scheduled_tasks import cleanup_idempotency_keys  # noqa: F401
 from validibot.core.tasks.scheduled_tasks import (  # noqa: F401
@@ -100,11 +121,12 @@ from validibot.core.tasks.validation_tasks import (  # noqa: F401
 )
 
 __all__ = [
-    "SCHEDULED_ADMIN_TASKS",
     "Backend",
     "ScheduledAdminTaskDefinition",
     "enqueue_validation_run",
     "get_admin_task_by_id",
     "get_admin_tasks_for_backend",
+    "get_all_admin_tasks",
     "get_enabled_admin_tasks",
+    "register_scheduled_admin_task",
 ]

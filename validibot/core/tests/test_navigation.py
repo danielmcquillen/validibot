@@ -3,8 +3,9 @@ from django.test import TestCase
 from django.urls import reverse
 
 from validibot.core.features import CommercialFeature
-from validibot.core.features import register_feature
-from validibot.core.features import reset_features
+from validibot.core.license import Edition
+from validibot.core.license import License
+from validibot.core.license import set_license
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import MembershipFactory
 from validibot.users.tests.utils import ensure_all_roles_exist
@@ -25,10 +26,14 @@ class NavigationVisibilityTests(TestCase):
         ensure_all_roles_exist()
 
     def setUp(self):
-        register_feature(CommercialFeature.TEAM_MANAGEMENT)
-
-    def tearDown(self):
-        reset_features()
+        # The root conftest autouse fixture snapshots and restores
+        # the license, so no explicit tearDown reset is needed.
+        set_license(
+            License(
+                edition=Edition.PRO,
+                features=frozenset({CommercialFeature.TEAM_MANAGEMENT.value}),
+            ),
+        )
 
     def test_viewer_nav_shows_limited_links(self):
         membership = MembershipFactory()

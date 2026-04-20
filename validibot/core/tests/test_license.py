@@ -1,7 +1,9 @@
 """
 Tests for the license module.
 
-Tests edition gating and license provider registration.
+Covers the Edition enum, the frozen ``License`` dataclass, the
+``set_license`` / ``get_license`` pair, and the
+``require_edition`` decorator.
 """
 
 from __future__ import annotations
@@ -13,9 +15,8 @@ from validibot.core.license import License
 from validibot.core.license import LicenseError
 from validibot.core.license import get_license
 from validibot.core.license import is_edition_available
-from validibot.core.license import register_license_provider
 from validibot.core.license import require_edition
-from validibot.core.license import reset_license_provider
+from validibot.core.license import set_license
 
 
 class TestEdition:
@@ -51,10 +52,15 @@ class TestEdition:
 
 
 class TestLicense:
-    """Tests for the License dataclass."""
+    """Tests for the License dataclass.
+
+    License is frozen — construction validates shape, property
+    accessors cover the tier-membership helpers, and features
+    default to the empty frozenset.
+    """
 
     def test_community_license(self):
-        """Community license should have correct properties."""
+        """Community license has no features by default."""
         lic = License(edition=Edition.COMMUNITY)
 
         assert lic.edition == Edition.COMMUNITY
@@ -62,13 +68,13 @@ class TestLicense:
         assert lic.is_pro is False
         assert lic.is_enterprise is False
         assert lic.is_commercial is False
-        assert lic.organization is None
+        assert lic.features == frozenset()
 
-    def test_pro_license(self):
-        """Pro license should have correct properties."""
+    def test_pro_license_with_features(self):
+        """Pro license carries its feature set inline."""
         lic = License(
             edition=Edition.PRO,
-            organization="Acme Corp",
+            features=frozenset({"team_management", "billing"}),
         )
 
         assert lic.edition == Edition.PRO
@@ -76,21 +82,17 @@ class TestLicense:
         assert lic.is_pro is True
         assert lic.is_enterprise is False
         assert lic.is_commercial is True
-        assert lic.organization == "Acme Corp"
+        assert "team_management" in lic.features
 
     def test_enterprise_license(self):
-        """Enterprise license should have correct properties."""
-        lic = License(
-            edition=Edition.ENTERPRISE,
-            organization="Big Corp",
-        )
+        """Enterprise is a Pro superset, both flags True."""
+        lic = License(edition=Edition.ENTERPRISE)
 
         assert lic.edition == Edition.ENTERPRISE
         assert lic.is_community is False
         assert lic.is_pro is True  # Enterprise includes Pro
         assert lic.is_enterprise is True
         assert lic.is_commercial is True
-        assert lic.organization == "Big Corp"
 
     def test_require_edition_community(self):
         """Community should not satisfy Pro or Enterprise requirements."""
@@ -150,95 +152,46 @@ class TestLicenseError:
 
 
 class TestGetLicense:
-    """Tests for get_license function."""
+    """Tests for ``set_license`` / ``get_license`` and default behaviour.
+
+    The root conftest autouse fixture snapshots and restores the
+    license around every test, so these tests can ``set_license``
+    freely without manual teardown.
+    """
 
     def test_get_license_default_community(self):
-        """Should return Community edition by default."""
-        reset_license_provider()
+        """Before any set_license, get_license returns Community."""
+        # Explicitly force the baseline for this test — the conftest
+        # fixture's snapshot captures whatever the environment set
+        # at test start, which may or may not be Community depending
+        # on whether Pro is installed.
+        set_license(License(edition=Edition.COMMUNITY))
 
         lic = get_license()
 
         assert lic.edition == Edition.COMMUNITY
 
-    def test_get_license_caching(self):
-        """get_license should be cached."""
-        reset_license_provider()
+    def test_set_license_overrides(self):
+        """Calling set_license swaps the current license in place."""
+        set_license(
+            License(
+                edition=Edition.PRO,
+                features=frozenset({"team_management"}),
+            ),
+        )
 
-        license1 = get_license()
-        license2 = get_license()
+        lic = get_license()
+        assert lic.edition == Edition.PRO
+        assert "team_management" in lic.features
 
-        assert license1 is license2
+    def test_later_set_license_wins(self):
+        """set_license has last-writer-wins semantics — the pattern
+        Enterprise uses to overwrite Pro's license.
+        """
+        set_license(License(edition=Edition.PRO))
+        set_license(License(edition=Edition.ENTERPRISE))
 
-    def test_register_pro_provider(self):
-        """Registering a Pro provider should change license."""
-        reset_license_provider()
-
-        def pro_provider():
-            return License(edition=Edition.PRO, organization="Test Org")
-
-        try:
-            register_license_provider(Edition.PRO, pro_provider)
-
-            lic = get_license()
-
-            assert lic.edition == Edition.PRO
-            assert lic.organization == "Test Org"
-        finally:
-            reset_license_provider()
-
-    def test_register_enterprise_provider(self):
-        """Registering an Enterprise provider should change license."""
-        reset_license_provider()
-
-        def enterprise_provider():
-            return License(edition=Edition.ENTERPRISE, organization="Big Corp")
-
-        try:
-            register_license_provider(Edition.ENTERPRISE, enterprise_provider)
-
-            lic = get_license()
-
-            assert lic.edition == Edition.ENTERPRISE
-            assert lic.organization == "Big Corp"
-        finally:
-            reset_license_provider()
-
-    def test_enterprise_takes_precedence_over_pro(self):
-        """Enterprise provider should take precedence over Pro."""
-        reset_license_provider()
-
-        def pro_provider():
-            return License(edition=Edition.PRO, organization="Pro Org")
-
-        def enterprise_provider():
-            return License(edition=Edition.ENTERPRISE, organization="Enterprise Org")
-
-        try:
-            register_license_provider(Edition.PRO, pro_provider)
-            register_license_provider(Edition.ENTERPRISE, enterprise_provider)
-
-            lic = get_license()
-
-            assert lic.edition == Edition.ENTERPRISE
-            assert lic.organization == "Enterprise Org"
-        finally:
-            reset_license_provider()
-
-    def test_provider_returning_none(self):
-        """Provider returning None should fall back to Community."""
-        reset_license_provider()
-
-        def null_provider():
-            return None
-
-        try:
-            register_license_provider(Edition.PRO, null_provider)
-
-            lic = get_license()
-
-            assert lic.edition == Edition.COMMUNITY
-        finally:
-            reset_license_provider()
+        assert get_license().edition == Edition.ENTERPRISE
 
 
 class TestRequireEditionDecorator:
@@ -246,7 +199,7 @@ class TestRequireEditionDecorator:
 
     def test_require_edition_pro_community(self):
         """Should raise for Community when Pro required."""
-        reset_license_provider()
+        set_license(License(edition=Edition.COMMUNITY))
 
         @require_edition(Edition.PRO, "Pro feature")
         def pro_feature():
@@ -257,61 +210,40 @@ class TestRequireEditionDecorator:
 
     def test_require_edition_pro_pro(self):
         """Should work for Pro when Pro required."""
-        reset_license_provider()
-
-        def pro_provider():
-            return License(edition=Edition.PRO)
+        set_license(License(edition=Edition.PRO))
 
         @require_edition(Edition.PRO, "Pro feature")
         def pro_feature():
             return "pro"
 
-        try:
-            register_license_provider(Edition.PRO, pro_provider)
-            result = pro_feature()
-            assert result == "pro"
-        finally:
-            reset_license_provider()
+        result = pro_feature()
+        assert result == "pro"
 
     def test_require_edition_enterprise(self):
         """Should work for Enterprise when Enterprise required."""
-        reset_license_provider()
-
-        def enterprise_provider():
-            return License(edition=Edition.ENTERPRISE)
+        set_license(License(edition=Edition.ENTERPRISE))
 
         @require_edition(Edition.ENTERPRISE, "Enterprise feature")
         def enterprise_feature():
             return "enterprise"
 
-        try:
-            register_license_provider(Edition.ENTERPRISE, enterprise_provider)
-            result = enterprise_feature()
-            assert result == "enterprise"
-        finally:
-            reset_license_provider()
+        result = enterprise_feature()
+        assert result == "enterprise"
 
     def test_require_edition_enterprise_with_pro(self):
         """Pro should not satisfy Enterprise requirement."""
-        reset_license_provider()
-
-        def pro_provider():
-            return License(edition=Edition.PRO)
+        set_license(License(edition=Edition.PRO))
 
         @require_edition(Edition.ENTERPRISE, "Enterprise feature")
         def enterprise_feature():
             return "enterprise"
 
-        try:
-            register_license_provider(Edition.PRO, pro_provider)
-            with pytest.raises(LicenseError):
-                enterprise_feature()
-        finally:
-            reset_license_provider()
+        with pytest.raises(LicenseError):
+            enterprise_feature()
 
     def test_require_edition_uses_function_name(self):
         """Should use function name as default description."""
-        reset_license_provider()
+        set_license(License(edition=Edition.COMMUNITY))
 
         @require_edition(Edition.PRO)
         def my_pro_feature():
@@ -339,7 +271,7 @@ class TestIsEditionAvailable:
 
     def test_community_edition(self):
         """Community should only satisfy Community check."""
-        reset_license_provider()
+        set_license(License(edition=Edition.COMMUNITY))
 
         assert is_edition_available(Edition.COMMUNITY) is True
         assert is_edition_available(Edition.PRO) is False
@@ -347,32 +279,16 @@ class TestIsEditionAvailable:
 
     def test_pro_edition(self):
         """Pro should satisfy Community and Pro checks."""
-        reset_license_provider()
+        set_license(License(edition=Edition.PRO))
 
-        def pro_provider():
-            return License(edition=Edition.PRO)
-
-        try:
-            register_license_provider(Edition.PRO, pro_provider)
-
-            assert is_edition_available(Edition.COMMUNITY) is True
-            assert is_edition_available(Edition.PRO) is True
-            assert is_edition_available(Edition.ENTERPRISE) is False
-        finally:
-            reset_license_provider()
+        assert is_edition_available(Edition.COMMUNITY) is True
+        assert is_edition_available(Edition.PRO) is True
+        assert is_edition_available(Edition.ENTERPRISE) is False
 
     def test_enterprise_edition(self):
         """Enterprise should satisfy all edition checks."""
-        reset_license_provider()
+        set_license(License(edition=Edition.ENTERPRISE))
 
-        def enterprise_provider():
-            return License(edition=Edition.ENTERPRISE)
-
-        try:
-            register_license_provider(Edition.ENTERPRISE, enterprise_provider)
-
-            assert is_edition_available(Edition.COMMUNITY) is True
-            assert is_edition_available(Edition.PRO) is True
-            assert is_edition_available(Edition.ENTERPRISE) is True
-        finally:
-            reset_license_provider()
+        assert is_edition_available(Edition.COMMUNITY) is True
+        assert is_edition_available(Edition.PRO) is True
+        assert is_edition_available(Edition.ENTERPRISE) is True

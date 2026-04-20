@@ -5,8 +5,10 @@ Provides a simple registry for downstream packages (e.g., validibot-cloud) to
 register email handlers that run on a schedule. The ``send_periodic_emails``
 management command calls all registered handlers.
 
-This follows the same pattern as ``validibot.core.features.register_feature()``.
-In community-only installs, no handlers are registered and the command is a no-op.
+Follows the "community owns the extension point, commercial packages fill it
+at import time" pattern (cf. how commercial packages call
+``validibot.core.license.set_license`` at import time). In community-only
+installs, no handlers are registered and the command is a no-op.
 
 Usage (in a downstream AppConfig.ready):
 

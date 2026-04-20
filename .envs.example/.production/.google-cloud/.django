@@ -51,6 +51,16 @@ DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@/${POSTGRES_DB}?ho
 # `config/settings/production.py` will switch to RedisCache automatically.
 #REDIS_URL=redis://10.x.x.x:6379/0
 
+# Cache key prefix — required when the Redis instance is shared with
+# other environments (e.g. staging + prod behind the same managed
+# Redis, or dev environments sharing a single Memorystore instance
+# to save on cost). Django transparently prepends this to every
+# cache key; without it, keys collide silently across environments
+# and a staging org's plan mask can leak into production. Safe to
+# leave unset when Redis is single-tenant to this deployment —
+# Django will log a warning on boot if it looks risky.
+#DJANGO_CACHE_KEY_PREFIX=prod
+
 # LOGGING
 # ==============================================================================
 # Sentry error tracking (recommended for production)

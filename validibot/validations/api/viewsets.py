@@ -5,6 +5,8 @@ import logging
 from datetime import timedelta
 
 import django_filters
+from django.db.models import Exists
+from django.db.models import OuterRef
 from django.db.models import Prefetch
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
@@ -12,6 +14,7 @@ from rest_framework import filters
 from rest_framework import permissions
 from rest_framework import viewsets
 
+from validibot.actions.constants import CredentialActionType
 from validibot.core.utils import truthy
 from validibot.users.permissions import PermissionCode
 from validibot.validations.constants import ValidationRunStatus
@@ -19,6 +22,7 @@ from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.serializers import ValidationRunSerializer
+from validibot.workflows.models import WorkflowStep
 
 logger = logging.getLogger(__name__)
 
@@ -149,13 +153,35 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
             has_full_access,
         )
 
+        # ``user`` added to ``select_related`` alongside the existing
+        # ``workflow``/``org``/``submission`` for parity with the
+        # serializer's per-row FK access — see refactor-step item
+        # ``[review-#5]``. The ``_has_credential_action`` annotation
+        # pre-computes what would otherwise be
+        # ``workflow.has_signed_credential_action`` (an ``EXISTS``
+        # subquery) for every row — the serializer reads it in two
+        # places. The ``step_runs`` and run-level ``findings``
+        # prefetches are applied further below (they must be attached
+        # *after* the date-window filter to avoid materialising a
+        # prefetch for rows the filter will exclude).
         base_qs = (
             super()
             .get_queryset()
             .select_related(
                 "workflow",
                 "org",
+                "user",
                 "submission",
+            )
+            .annotate(
+                _has_credential_action=Exists(
+                    WorkflowStep.objects.filter(
+                        workflow_id=OuterRef("workflow_id"),
+                        action__definition__type=(
+                            CredentialActionType.SIGNED_CREDENTIAL
+                        ),
+                    ),
+                ),
             )
         )
         if has_full_access:
@@ -176,8 +202,21 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
 
         step_run_prefetch = Prefetch(
             "step_runs",
-            queryset=ValidationStepRun.objects.select_related("workflow_step")
-            .prefetch_related("findings", "findings__ruleset_assertion")
+            queryset=ValidationStepRun.objects.select_related(
+                "workflow_step__validator",
+            )
+            .prefetch_related(
+                "findings",
+                "findings__ruleset_assertion",
+                # See refactor-step item ``[review-#5]`` (amendment).
+                # ``_build_signal_map`` and
+                # ``_build_template_param_meta`` iterate these per
+                # step_run to enrich output_signals /
+                # template_parameters_used — without prefetch each
+                # step issues two extra queries.
+                "workflow_step__signal_definitions",
+                "workflow_step__validator__signal_definitions",
+            )
             .order_by("step_order", "pk"),
         )
         findings_prefetch = Prefetch(

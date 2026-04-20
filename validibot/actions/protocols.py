@@ -35,7 +35,7 @@ class RunContext:
             workflow-level signal mapping configuration. Populated once
             at run start from ``WorkflowSignalMapping`` rows resolved
             against the submission data. Available in CEL expressions
-            via ``s.<name>`` (or ``signals.<name>``).
+            via ``s.<name>`` (or ``signal.<name>``).
     """
 
     validation_run: ValidationRun | None = None

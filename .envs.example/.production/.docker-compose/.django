@@ -21,6 +21,15 @@ DJANGO_ALLOWED_HOSTS=validibot.example.com,localhost
 # ==============================================================================
 REDIS_URL=redis://redis:6379/0
 
+# Cache key prefix — only necessary when this Redis instance is shared
+# with another environment (staging alongside prod, multiple dev setups
+# on a shared Redis). Django prepends this to every cache key, so
+# shared-instance deployments can't silently leak state between
+# environments. Safe to leave unset for single-tenant Redis (the
+# default Docker Compose setup); Django warns on boot if it looks
+# risky.
+#DJANGO_CACHE_KEY_PREFIX=prod
+
 # STORAGE
 # ==============================================================================
 # By default, files are stored on the local filesystem in /app/storage.

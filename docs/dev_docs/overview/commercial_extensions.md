@@ -80,9 +80,31 @@ As you browse the core codebase, you'll encounter two patterns that reference co
 
 **Feature flags in templates.** Some navigation links and UI elements are wrapped in `{% if feature_team_management %}` or similar checks. These elements are hidden when the corresponding commercial package is not installed.
 
-**Feature guard mixins on views.** Some views include `FeatureRequiredMixin` with a `required_commercial_feature` attribute. These views return a 404 when the feature is not registered. This is defense-in-depth alongside the template-level hiding.
+**Feature guard mixins on views.** Some views include `FeatureRequiredMixin` with a `required_commercial_feature` attribute. These views return a 404 when the feature is not in the active license's feature set. This is defense-in-depth alongside the template-level hiding.
 
-Both patterns use the feature registry in `validibot/core/features.py`, which defines `CommercialFeature` -- an enum of all features that commercial packages can activate.
+Both patterns read from the active license. `validibot/core/features.py` defines `CommercialFeature` — an enum of every feature name commercial packages can activate — and exposes `is_feature_enabled()` and a template-context processor (`get_feature_context()`) that builds the `feature_<name>: bool` keys templates check against.
+
+## Editions and the license module
+
+Everything commercial flows through a single `License` object defined in `validibot/core/license.py`. A License carries two pieces of information:
+
+- `edition` — the tier (Community, Pro, Enterprise) for coarse-grained checks.
+- `features` — a `frozenset[str]` of the exact feature names this license unlocks, for fine-grained `is_feature_enabled(...)` checks.
+
+Commercial packages build their License object once (e.g. `validibot_pro/license.py` declares `PRO_LICENSE`) and call `set_license(PRO_LICENSE)` at import time. Community code never imports commercial packages — it only calls `get_license()` / `is_feature_enabled()`.
+
+When Enterprise is also installed, it loads after Pro (Django INSTALLED_APPS order) and overwrites the whole License with its own declaration, which unions Pro's features with Enterprise-only additions. Last-writer-wins keeps the model simple.
+
+```python
+from validibot.core.license import get_license, Edition
+
+lic = get_license()
+if lic.edition.includes(Edition.PRO):
+    # Pro or Enterprise
+    ...
+```
+
+For most cases, the feature flag approach (`is_feature_enabled()`) is preferred over edition checks because it's more granular — a feature can migrate between tiers without touching the gating code.
 
 ## How commercial code plugs into workflows
 
@@ -90,25 +112,8 @@ Commercial packages do not need community code to host every concrete action or 
 
 Today that means:
 
-- community code owns the feature registry, workflow orchestration, and action registry contract
-- `validibot-pro` can register Pro-owned workflow actions from its own `AppConfig.ready()`
+- community owns the `License` type, the `CommercialFeature` enum, the workflow orchestration, and the action registry contract
+- `validibot-pro` declares its `License` object (listing exactly the features Pro provides) and calls `set_license(PRO_LICENSE)` at import time, then registers Pro-owned workflow actions from its own `AppConfig.ready()`
 - synced `ActionDefinition` rows make those actions appear in the step picker just like built-in actions
 
 This keeps the open-core boundary cleaner. The community app knows how to host plugins, while Pro and Enterprise packages own the commercial behavior itself.
-
-## Editions and the license module
-
-The `validibot/core/license.py` module provides edition detection. The three editions (Community, Pro, Enterprise) form a hierarchy where higher tiers include all lower-tier capabilities. Commercial packages register a license provider at startup, and `get_license()` returns the current edition.
-
-Code that needs to check the edition directly (rather than a specific feature flag) can use:
-
-```python
-from validibot.core.license import get_license, Edition
-
-license = get_license()
-if license.edition.includes(Edition.PRO):
-    # Pro or Enterprise
-    ...
-```
-
-For most cases, the feature flag approach (`is_feature_enabled()`) is preferred over edition checks because it's more granular.

@@ -10,14 +10,28 @@ Validibot is available in three editions:
 
 This module detects the current edition based on installed packages.
 Commercial editions are provided by separate packages:
-- `validibot-pro` - unlocks Pro edition
-- `validibot-enterprise` - unlocks Enterprise edition (includes all Pro capabilities)
+
+- ``validibot-pro`` — unlocks Pro edition
+- ``validibot-enterprise`` — unlocks Enterprise edition (includes all Pro capabilities)
 
 License enforcement follows a simple model: installing the package activates
-the edition. The private package index authentication is the license enforcement.
+the edition. The private package index authentication is the license
+enforcement.
 
-For more on Validibot editions, see: https://validibot.com/pricing
+### Mechanism
 
+Commercial packages call :func:`set_license` at import time with a
+pre-built :class:`License` instance that carries both the edition and
+the feature set that edition unlocks. The community code never imports
+commercial packages — it only reads ``get_license()`` to branch on
+tier, and ``is_feature_enabled()`` (from :mod:`validibot.core.features`)
+to gate specific capabilities.
+
+Because the License object carries its own features, there is no
+separate feature registry — a single call sets both the tier and
+exactly the features that tier provides.
+
+For more on Validibot editions, see https://validibot.com/pricing
 """
 
 from __future__ import annotations
@@ -25,8 +39,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from dataclasses import field
 from enum import StrEnum
-from functools import lru_cache
 from typing import TypeVar
 
 from django.utils.translation import gettext_lazy as _
@@ -93,18 +107,26 @@ class LicenseError(Exception):
         self.required_edition = required_edition
 
 
-@dataclass
+@dataclass(frozen=True)
 class License:
     """
     Represents the current Validibot license.
 
-    Attributes:
-        edition: The edition (Community, Pro, or Enterprise)
-        organization: Organization name for commercial licenses (optional)
+    Carries two pieces of information:
+
+    - ``edition`` — the tier (Community / Pro / Enterprise) for
+      coarse-grained checks like ``is_pro``.
+    - ``features`` — the exact set of commercial feature names this
+      license unlocks, for fine-grained ``is_feature_enabled(...)``
+      checks.
+
+    A License is a value object: construct it once at import time in
+    the commercial package, hand it to :func:`set_license`. There is
+    no mutation in place.
     """
 
     edition: Edition
-    organization: str | None = None
+    features: frozenset[str] = field(default_factory=frozenset)
 
     @property
     def is_pro(self) -> bool:
@@ -148,74 +170,40 @@ class License:
             raise LicenseError(feature_description, required_edition=edition)
 
 
-# Registry for license providers
-# Commercial packages register themselves here on import
-# Enterprise takes precedence over Pro
-_license_providers: dict[Edition, Callable[[], License | None]] = {}
+# Module-level current license. Defaults to Community — commercial
+# packages overwrite it at import time via :func:`set_license`.
+#
+# Higher-tier packages register LAST in Django's INSTALLED_APPS order
+# (Enterprise after Pro), so the final value reflects the highest
+# tier available. This ordering is an explicit invariant — see
+# ``AppConfig`` ordering in commercial packages.
+_COMMUNITY_LICENSE: License = License(edition=Edition.COMMUNITY)
+_current_license: License = _COMMUNITY_LICENSE
 
 
-def register_license_provider(
-    edition: Edition,
-    provider: Callable[[], License | None],
-) -> None:
+def set_license(lic: License) -> None:
+    """Set the current Validibot license.
+
+    Called by commercial packages at import time (via their
+    ``AppConfig.ready()`` or ``__init__.py``). Later calls overwrite
+    earlier ones — higher-tier packages loading later win naturally.
+
+    The License object is frozen, so after this call every
+    ``get_license()`` reader sees a consistent snapshot without
+    defensive copying.
     """
-    Register a license provider for an edition.
-
-    This is called by commercial packages when they're imported:
-    - validibot-pro registers for Edition.PRO
-    - validibot-enterprise registers for Edition.ENTERPRISE
-
-    Args:
-        edition: The edition this provider handles
-        provider: A callable that returns a License or None
-    """
-    _license_providers[edition] = provider
-    # Clear the cached license so it gets re-evaluated
-    get_license.cache_clear()
-    logger.info("%s license provider registered", edition.value.title())
+    global _current_license  # noqa: PLW0603 — intentional module-level state
+    _current_license = lic
+    logger.debug("Using %s license", lic.edition.value.title())
 
 
-def reset_license_provider() -> None:
-    """
-    Reset all license providers (for testing).
-
-    This clears any registered providers and the license cache.
-    """
-    _license_providers.clear()
-    get_license.cache_clear()
-
-
-@lru_cache(maxsize=1)
 def get_license() -> License:
+    """Return the current Validibot license.
+
+    Defaults to Community. Commercial packages call
+    :func:`set_license` to replace it at import time.
     """
-    Get the current Validibot license.
-
-    Checks license providers in order of precedence:
-    1. Enterprise (highest tier)
-    2. Pro
-    3. Falls back to Community
-
-    This function is cached - the license is determined once per process.
-    Call `get_license.cache_clear()` to force re-evaluation.
-
-    Returns:
-        The current License object
-    """
-    # Check providers in order of tier (highest first)
-    for edition in [Edition.ENTERPRISE, Edition.PRO]:
-        provider = _license_providers.get(edition)
-        if provider is not None:
-            lic = provider()
-            if lic is not None:
-                logger.debug(
-                    "Using %s license: %s",
-                    lic.edition.value.title(),
-                    lic.organization,
-                )
-                return lic
-
-    # Default to Community edition
-    return License(edition=Edition.COMMUNITY)
+    return _current_license
 
 
 def require_edition(

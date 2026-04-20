@@ -18,17 +18,38 @@ Each task is defined once here with all metadata needed for any backend:
 Usage:
 
     from validibot.core.tasks.registry import (
-        SCHEDULED_ADMIN_TASKS,
+        get_all_admin_tasks,
         get_admin_tasks_for_backend,
     )
 
-    # Get all tasks
-    for task in SCHEDULED_ADMIN_TASKS:
+    # Every task — static built-ins AND runtime-registered
+    # extension tasks from cloud / pro / enterprise.
+    for task in get_all_admin_tasks():
         print(f"{task.name}: {task.schedule_cron}")
 
-    # Get tasks for a specific backend
+    # Tasks filtered to a specific backend.
     celery_tasks = get_admin_tasks_for_backend("celery")
     gcp_tasks = get_admin_tasks_for_backend("gcp")
+
+### Read-path contract
+
+Two write paths, ONE read path:
+
+- **Core / community built-ins** live in the static
+  ``SCHEDULED_ADMIN_TASKS`` tuple below. Plain data, easy to read.
+- **Extension tasks** from downstream packages
+  (``validibot-cloud``, ``validibot-pro``, ``validibot-enterprise``)
+  register dynamically via :func:`register_scheduled_admin_task`
+  at ``AppConfig.ready()`` time.
+- **Consumers MUST read through the accessor functions**
+  (:func:`get_all_admin_tasks`, :func:`get_admin_tasks_for_backend`,
+  :func:`get_admin_task_by_id`, :func:`get_enabled_admin_tasks`).
+
+Reading ``SCHEDULED_ADMIN_TASKS`` directly from outside this
+module is a bug — it sees only half the registry and will silently
+omit every dynamically-registered extension task. See
+``tests/test_registry_read_path.py`` for the test that enforces
+this.
 
 The registry is consumed by:
     - setup_validibot command (creates Celery Beat PeriodicTask records)
@@ -209,11 +230,65 @@ SCHEDULED_ADMIN_TASKS: tuple[ScheduledAdminTaskDefinition, ...] = (
 )
 
 
+# =============================================================================
+# RUNTIME-REGISTERED TASKS
+# =============================================================================
+# Extension point for downstream packages (``validibot-cloud``,
+# ``validibot-pro``, ``validibot-enterprise``) to contribute their own
+# scheduled tasks. Community code never knows about these — a cloud-only
+# concern like "verify license-document hashes against stored
+# acceptances" has no business being in the public-repo registry.
+#
+# Downstream packages call ``register_scheduled_admin_task(...)`` from
+# their ``AppConfig.ready()``, mirroring how commercial packages call
+# ``validibot.core.license.set_license(...)``. The registration hook is
+# process-local and import-time; it has no runtime cost once Django
+# has booted.
+
+_DYNAMIC_TASKS: list[ScheduledAdminTaskDefinition] = []
+
+
+def register_scheduled_admin_task(task: ScheduledAdminTaskDefinition) -> None:
+    """Register a scheduled admin task from a downstream package.
+
+    The shared ``sync_schedules`` machinery (Celery Beat + Cloud
+    Scheduler) reads the union of ``SCHEDULED_ADMIN_TASKS`` and the
+    dynamically-registered tasks via :func:`get_all_admin_tasks`.
+
+    Duplicate registration (same ``id``) is an error — it almost
+    certainly means two AppConfig.ready bodies are registering the
+    same task, which would duplicate the scheduled row.
+    """
+    for existing in _DYNAMIC_TASKS:
+        if existing.id == task.id:
+            msg = f"Scheduled admin task already registered: {task.id!r}"
+            raise ValueError(msg)
+    _DYNAMIC_TASKS.append(task)
+
+
+def get_all_admin_tasks() -> tuple[ScheduledAdminTaskDefinition, ...]:
+    """Return static + dynamically-registered admin tasks as one tuple.
+
+    Used by the sync machinery and any tooling that needs the full
+    picture. Order is stable: static tasks first (in declaration
+    order), then dynamic tasks in registration order.
+    """
+    return SCHEDULED_ADMIN_TASKS + tuple(_DYNAMIC_TASKS)
+
+
+def reset_dynamic_tasks() -> None:
+    """Clear runtime-registered tasks (for testing)."""
+    _DYNAMIC_TASKS.clear()
+
+
 def get_admin_tasks_for_backend(
     backend: Backend | str,
 ) -> list[ScheduledAdminTaskDefinition]:
     """
     Get all tasks that should run on the specified backend.
+
+    Includes both the static ``SCHEDULED_ADMIN_TASKS`` and any
+    downstream-registered tasks.
 
     Args:
         backend: The backend to filter for (Backend enum or string)
@@ -224,7 +299,7 @@ def get_admin_tasks_for_backend(
     if isinstance(backend, str):
         backend = Backend(backend)
 
-    return [task for task in SCHEDULED_ADMIN_TASKS if task.supports_backend(backend)]
+    return [task for task in get_all_admin_tasks() if task.supports_backend(backend)]
 
 
 def get_admin_task_by_id(task_id: str) -> ScheduledAdminTaskDefinition | None:
@@ -237,12 +312,12 @@ def get_admin_task_by_id(task_id: str) -> ScheduledAdminTaskDefinition | None:
     Returns:
         The task definition, or None if not found
     """
-    for task in SCHEDULED_ADMIN_TASKS:
+    for task in get_all_admin_tasks():
         if task.id == task_id:
             return task
     return None
 
 
 def get_enabled_admin_tasks() -> list[ScheduledAdminTaskDefinition]:
-    """Get all enabled admin task definitions."""
-    return [task for task in SCHEDULED_ADMIN_TASKS if task.enabled]
+    """Get all enabled admin task definitions (static + dynamic)."""
+    return [task for task in get_all_admin_tasks() if task.enabled]

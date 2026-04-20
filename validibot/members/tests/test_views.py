@@ -4,8 +4,9 @@ import pytest
 from django.urls import reverse
 
 from validibot.core.features import CommercialFeature
-from validibot.core.features import register_feature
-from validibot.core.features import reset_features
+from validibot.core.license import Edition
+from validibot.core.license import License
+from validibot.core.license import set_license
 from validibot.users.constants import RoleCode
 from validibot.users.models import Membership
 from validibot.users.tests.factories import OrganizationFactory
@@ -17,11 +18,22 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture(autouse=True)
 def _enable_member_features():
-    """Enable commercial features required for member and guest view tests."""
-    register_feature(CommercialFeature.TEAM_MANAGEMENT)
-    register_feature(CommercialFeature.GUEST_MANAGEMENT)
-    yield
-    reset_features()
+    """Activate a Pro license with team + guest features for member tests.
+
+    The root conftest autouse fixture snapshots and restores the
+    license around every test, so no explicit reset is needed here.
+    """
+    set_license(
+        License(
+            edition=Edition.PRO,
+            features=frozenset(
+                {
+                    CommercialFeature.TEAM_MANAGEMENT.value,
+                    CommercialFeature.GUEST_MANAGEMENT.value,
+                },
+            ),
+        ),
+    )
 
 
 @pytest.fixture
@@ -271,7 +283,10 @@ def test_guest_invite_selected_requires_workflows(admin_client):
 @pytest.mark.django_db
 def test_member_list_returns_404_without_feature(client):
     """Member views return 404 when team management feature is not enabled."""
-    reset_features()
+    # Override the autouse Pro license with a Community one for this
+    # single test. The root conftest autouse fixture restores the
+    # baseline afterward.
+    set_license(License(edition=Edition.COMMUNITY))
 
     org = OrganizationFactory()
     admin = UserFactory(orgs=[org])

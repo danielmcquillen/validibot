@@ -645,8 +645,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
 
         All data references must use a namespace prefix:
         - ``p.key`` / ``payload.key`` — raw submission data
-        - ``s.name`` / ``signals.name`` — author-defined signals
-        - ``output.name`` — this step's validator outputs
+        - ``s.name`` / ``signal.name`` — author-defined signals
+        - ``o.name`` / ``output.name`` — this step's validator outputs
         - ``steps.key.output.name`` — upstream step outputs
 
         Bare identifiers are only allowed for CEL literals (``true``,

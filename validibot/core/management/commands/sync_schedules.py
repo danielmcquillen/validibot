@@ -31,9 +31,9 @@ import logging
 
 from django.core.management.base import BaseCommand
 
-from validibot.core.tasks.registry import SCHEDULED_ADMIN_TASKS
 from validibot.core.tasks.registry import Backend
 from validibot.core.tasks.registry import get_admin_tasks_for_backend
+from validibot.core.tasks.registry import get_all_admin_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +93,17 @@ class Command(BaseCommand):
             )
 
     def _list_tasks(self, options):
-        """List all registered scheduled tasks."""
+        """List all registered scheduled tasks.
+
+        Reads through :func:`get_all_admin_tasks` so both community-owned
+        static tasks AND downstream-registered dynamic tasks (cloud /
+        pro / enterprise) are included. Reading ``SCHEDULED_ADMIN_TASKS``
+        directly would only show the static half and would silently
+        miss any task registered via ``register_scheduled_admin_task``
+        at ``AppConfig.ready()`` time.
+        """
         output_format = options["format"]
+        all_tasks = get_all_admin_tasks()
 
         if output_format == "json":
             tasks_data = [
@@ -109,19 +118,19 @@ class Command(BaseCommand):
                     "enabled": task.enabled,
                     "backends": [b.value for b in task.backends],
                 }
-                for task in SCHEDULED_ADMIN_TASKS
+                for task in all_tasks
             ]
             self.stdout.write(json.dumps(tasks_data, indent=2))
             return
 
         # Text output
-        task_count = len(SCHEDULED_ADMIN_TASKS)
+        task_count = len(all_tasks)
         self.stdout.write(
             self.style.SUCCESS(f"\nRegistered Scheduled Tasks ({task_count} total)\n")
         )
         self.stdout.write("=" * 80)
 
-        for task in SCHEDULED_ADMIN_TASKS:
+        for task in all_tasks:
             status = "✓" if task.enabled else "✗"
             backends = ", ".join(b.value for b in task.backends)
             self.stdout.write(f"\n{status} {task.name} ({task.id})")

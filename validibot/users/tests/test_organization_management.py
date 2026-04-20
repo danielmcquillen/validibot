@@ -4,8 +4,9 @@ import pytest
 from django.urls import reverse
 
 from validibot.core.features import CommercialFeature
-from validibot.core.features import register_feature
-from validibot.core.features import reset_features
+from validibot.core.license import Edition
+from validibot.core.license import License
+from validibot.core.license import set_license
 from validibot.users.constants import RoleCode
 from validibot.users.models import Membership
 from validibot.users.models import Organization
@@ -16,11 +17,25 @@ from validibot.users.tests.factories import grant_role
 
 @pytest.fixture(autouse=True)
 def _enable_features():
-    """Enable commercial features required for organization management tests."""
-    register_feature(CommercialFeature.TEAM_MANAGEMENT)
-    register_feature(CommercialFeature.MULTI_ORG)
-    yield
-    reset_features()
+    """Activate an Enterprise license so both TEAM_MANAGEMENT and
+    MULTI_ORG are available.
+
+    MULTI_ORG is Enterprise-only; TEAM_MANAGEMENT is Pro but
+    included in Enterprise. Using a single Enterprise license
+    covers both without needing to model a mixed tier. The root
+    conftest autouse fixture restores the baseline at teardown.
+    """
+    set_license(
+        License(
+            edition=Edition.ENTERPRISE,
+            features=frozenset(
+                {
+                    CommercialFeature.TEAM_MANAGEMENT.value,
+                    CommercialFeature.MULTI_ORG.value,
+                },
+            ),
+        ),
+    )
 
 
 @pytest.fixture

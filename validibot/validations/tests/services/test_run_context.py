@@ -4,7 +4,7 @@ Tests for run-aware validator execution and downstream signal/output exposure.
 This test suite verifies the CEL namespace contract for cross-step data
 access: validator outputs from completed steps are accessible in downstream
 CEL expressions via ``steps.<step_key>.output.<name>``, and workflow-level
-signals are accessible via ``s.<name>`` (or ``signals.<name>``).
+signals are accessible via ``s.<name>`` (or ``signal.<name>``).
 
 The persisted run summary uses the schema:
 ``validation_run.summary["steps"][step_key]["output"] = {name: value}``.
@@ -59,7 +59,7 @@ def test_build_cel_context_exposes_workflow_signals():
 
     These are author-defined named values resolved from the workflow's
     signal mapping configuration before any step runs. They are available
-    in CEL expressions as ``s.<name>`` or ``signals.<name>``.
+    in CEL expressions as ``s.<name>`` or ``signal.<name>``.
     """
     validator = ValidatorFactory(validation_type=ValidationType.BASIC)
     engine = BasicValidator()

@@ -168,6 +168,40 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             )
         return payload
 
+    def _has_credential_action(self, instance: ValidationRun) -> bool:
+        """Return whether the run's workflow has a signed-credential step.
+
+        ``Workflow.has_signed_credential_action`` is a property that
+        issues an ``EXISTS`` subquery every time it's accessed. The
+        serializer reads the same answer in two places —
+        :meth:`get_credential` (to decide whether to query Pro) and
+        :meth:`to_representation` (to decide whether to pop the field)
+        — and the API viewsets list many rows at once. Three layers
+        of fallback here, from best to worst:
+
+        1. **Queryset annotation** (``_has_credential_action``) on the
+           run itself. The viewsets in ``api/viewsets.py`` and
+           ``api_views.py`` apply this via ``.annotate(Exists(...))``,
+           so the whole list is computed in one SQL round-trip instead
+           of one ``EXISTS`` per row.
+        2. **Per-instance cache** (``_cached_has_credential_action``)
+           populated on first property-fallback access. Collapses the
+           two intra-serialization calls to one.
+        3. **Property access** on the workflow. Still correct, just
+           slow — covers callers who build a ValidationRun directly
+           in memory without going through the viewset.
+        """
+        annotated = getattr(instance, "_has_credential_action", None)
+        if annotated is not None:
+            return bool(annotated)
+
+        cached = getattr(instance, "_cached_has_credential_action", None)
+        if cached is not None:
+            return cached
+        value = instance.workflow.has_signed_credential_action
+        instance._cached_has_credential_action = value
+        return value
+
     def get_credential(self, obj: ValidationRun) -> dict | None:
         """Return credential metadata if one was issued for this run.
 
@@ -187,7 +221,19 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         target is unreachable. ``apps.is_installed`` reflects the
         actual Django configuration, so it's both the correct gate
         and test-isolation safe.
+
+        We also short-circuit when the run's workflow has no signed-
+        credential action configured — see refactor-step item
+        ``[review-#5]``. ``to_representation`` pops the ``credential``
+        field in that case, but only after every ``SerializerMethodField``
+        getter has already run. Skipping the ``IssuedCredential`` query
+        up front saves one DB round-trip per run for the common case
+        of workflows that never issue credentials (the majority of
+        runs in any org).
         """
+        if not self._has_credential_action(obj):
+            return None
+
         if not apps.is_installed("validibot_pro"):
             return None
 
@@ -225,7 +271,7 @@ class ValidationRunSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         """Omit ``credential`` for workflows without a credential step."""
         data = super().to_representation(instance)
-        if not instance.workflow.has_signed_credential_action:
+        if not self._has_credential_action(instance):
             data.pop("credential", None)
         return data
 

@@ -186,17 +186,26 @@ def _build_template_param_meta(
 ) -> dict[str, dict[str, str]]:
     """Build a metadata lookup for template parameters.
 
-    Queries ``SignalDefinition`` rows for the step to build a
-    name-to-metadata mapping used by the results display.
+    Iterates ``SignalDefinition`` rows for the step and filters to
+    template-origin ones in Python. ``.all()`` (rather than
+    ``.filter(origin_kind=...)``) is deliberate — Django's prefetch
+    cache only populates the ``.all()`` result, so callers that
+    pre-fetched ``workflow_step__signal_definitions`` at the
+    queryset level (see ``OrgScopedRunViewSet.get_queryset`` and
+    ``ValidationRunViewSet.get_queryset``) get zero extra queries
+    per step. Callers that didn't prefetch still work — they pay
+    one query per step, same as before the refactor — so the
+    change is strictly an optimisation, not a behavioural one.
+
+    See refactor-step item ``[review-#5]`` (amendment for
+    signal-bearing runs).
     """
     from validibot.validations.constants import SignalOriginKind
 
-    # Try SignalDefinition first — the unified source of truth.
-    template_sigs = workflow_step.signal_definitions.filter(
-        origin_kind=SignalOriginKind.TEMPLATE,
-    )
     meta: dict[str, dict[str, str]] = {}
-    for sig in template_sigs:
+    for sig in workflow_step.signal_definitions.all():
+        if sig.origin_kind != SignalOriginKind.TEMPLATE:
+            continue
         meta[sig.native_name] = {
             "label": sig.label or sig.native_name,
             "units": sig.unit or "",
@@ -244,23 +253,37 @@ def _build_signal_map(
     Checks both validator-owned signals (library validators) and
     step-owned signals (step-level FMU uploads) to cover all origin
     kinds.  Returns a dict mapping contract_key → signal definition.
+
+    Iterates ``.all()`` and filters by ``slug`` in Python rather
+    than using ``.filter(contract_key__in=slugs)``. Django's
+    prefetch cache only populates for ``.all()`` — a filtered
+    queryset forces a fresh DB hit even when the prefetch already
+    loaded every signal_definition for the step. The viewsets
+    pre-fetch ``workflow_step__signal_definitions`` and
+    ``workflow_step__validator__signal_definitions`` so listing
+    runs with populated ``output["signals"]`` stays O(1) in step
+    count.
+
+    See refactor-step item ``[review-#5]`` (amendment for
+    signal-bearing runs).
     """
     workflow_step = getattr(step_run, "workflow_step", None)
     if not workflow_step:
         return {}
 
+    slug_set = set(slugs)
+
     # Step-owned signals (e.g., step-level FMU uploads) take priority.
     result: dict[str, SignalDefinition] = {}
-    step_signals = workflow_step.signal_definitions.filter(contract_key__in=slugs)
-    for sig in step_signals:
-        result[sig.contract_key] = sig
+    for sig in workflow_step.signal_definitions.all():
+        if sig.contract_key in slug_set:
+            result[sig.contract_key] = sig
 
     # Fill in from validator-owned signals (library validators).
     validator = getattr(workflow_step, "validator", None)
     if validator:
-        remaining = [s for s in slugs if s not in result]
-        if remaining:
-            for sig in validator.signal_definitions.filter(contract_key__in=remaining):
+        for sig in validator.signal_definitions.all():
+            if sig.contract_key in slug_set:
                 result.setdefault(sig.contract_key, sig)
 
     return result

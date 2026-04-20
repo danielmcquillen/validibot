@@ -291,15 +291,20 @@ class BaseValidator(ABC):
         """
         Build the namespaced CEL context for assertion evaluation.
 
-        The context has four namespaces (plus two aliases):
+        The context has four namespaces, three with short/long aliases.
+        Singular long names are used throughout (``payload``, ``signal``,
+        ``output``) — each namespace is a singular "thing" from the
+        author's perspective, even when the underlying dict holds
+        many values. ``steps`` is the one exception because it really
+        is a collection of per-step records.
 
         - ``p`` / ``payload`` — raw submission data (or validator output
           payload for output-stage assertions). Always present.
-        - ``s`` / ``signals`` — author-defined signals from workflow-level
+        - ``s`` / ``signal`` — author-defined signals from workflow-level
           signal mapping and promoted validator outputs. Populated from
           ``RunContext.workflow_signals`` and step-bound input signal
           bindings.
-        - ``output`` — this step's declared output signals (from
+        - ``o`` / ``output`` — this step's declared output signals (from
           ``SignalDefinition`` with ``direction="output"``).
         - ``steps`` — validator outputs from completed upstream steps,
           accessible as ``steps.<step_key>.output.<name>``.
@@ -307,9 +312,9 @@ class BaseValidator(ABC):
         Raw payload keys are **never promoted** to top-level CEL
         variables. Authors access raw data via ``p.key`` (or
         ``payload.key``) and signals via ``s.name`` (or
-        ``signals.name``).
+        ``signal.name``).
         """
-        # ── Signals namespace (s / signals) ──────────────────────────
+        # ── Signals namespace (s / signal) ───────────────────────────
         signals_dict: dict[str, Any] = {}
 
         # 1. Workflow-level signals from RunContext (resolved at run start

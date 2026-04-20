@@ -21,8 +21,8 @@ These tests cover:
   with a clear error before any parsing is attempted.
 - **Parse error handling**: malformed JSON/XML produces actionable error messages.
 - **CEL context building**: payload data is accessible under ``p.`` / ``payload.``,
-  signal definitions populate ``s.`` / ``signals.``, and output signals go
-  into the ``output`` namespace.  Keys that aren't valid CEL identifiers
+  signal definitions populate ``s.`` / ``signal.``, and output signals go
+  into the ``o.`` / ``output.`` namespace.  Keys that aren't valid CEL identifiers
   (hyphens, ``@``-prefixes, ``#text``) are naturally contained inside their
   namespace dicts rather than promoted to the root.
 - **End-to-end XML with hyphenated elements**: full ``validate()`` calls with

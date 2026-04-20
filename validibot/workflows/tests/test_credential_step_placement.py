@@ -472,9 +472,9 @@ class TestServerSideFeatureGating:
         """Attempting to create a credential step without Pro installed
         should return 404, not silently succeed.
         """
-        from validibot.core.features import get_enabled_features
-        from validibot.core.features import register_feature
-        from validibot.core.features import reset_features
+        from validibot.core.license import Edition
+        from validibot.core.license import License
+        from validibot.core.license import set_license
 
         workflow, user, org = workflow_with_owner
         client.force_login(user)
@@ -488,15 +488,11 @@ class TestServerSideFeatureGating:
             },
         )
 
-        original_features = get_enabled_features()
-        reset_features()
-        try:
-            response = client.get(url)
-            assert response.status_code == HTTPStatus.NOT_FOUND
-        finally:
-            reset_features()
-            for feature in original_features:
-                register_feature(feature)
+        # Force a Community license (no features). The root conftest
+        # autouse fixture restores the baseline at test teardown.
+        set_license(License(edition=Edition.COMMUNITY))
+        response = client.get(url)
+        assert response.status_code == HTTPStatus.NOT_FOUND
 
     def test_create_endpoint_allows_when_feature_enabled(
         self,
@@ -508,13 +504,15 @@ class TestServerSideFeatureGating:
         """The step create endpoint returns a form when the feature is active.
 
         This is the positive case for server-side feature gating: when
-        ``signed_credentials`` is registered (as it would be when
-        validibot-pro is installed), the endpoint should render the
-        credential step form rather than returning 404.
+        ``signed_credentials`` is part of the active license (as it
+        would be when validibot-pro is installed), the endpoint
+        should render the credential step form rather than
+        returning 404.
         """
-        from validibot.core.features import get_enabled_features
-        from validibot.core.features import register_feature
-        from validibot.core.features import reset_features
+        from validibot.core.features import CommercialFeature
+        from validibot.core.license import Edition
+        from validibot.core.license import License
+        from validibot.core.license import set_license
 
         workflow, user, org = workflow_with_owner
         client.force_login(user)
@@ -528,14 +526,17 @@ class TestServerSideFeatureGating:
             },
         )
 
-        original_features = get_enabled_features()
-        reset_features()
-        register_feature("signed_credentials")
-        try:
-            response = client.get(url)
-            assert response.status_code == HTTPStatus.OK
-            assert "Step name" in response.content.decode()
-        finally:
-            reset_features()
-            for feature in original_features:
-                register_feature(feature)
+        # Install a minimal Pro license with just the feature under
+        # test. The conftest autouse fixture restores the baseline
+        # at teardown.
+        set_license(
+            License(
+                edition=Edition.PRO,
+                features=frozenset(
+                    {CommercialFeature.SIGNED_CREDENTIALS.value},
+                ),
+            ),
+        )
+        response = client.get(url)
+        assert response.status_code == HTTPStatus.OK
+        assert "Step name" in response.content.decode()

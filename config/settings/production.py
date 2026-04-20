@@ -114,6 +114,39 @@ else:
         },
     }
 
+# Environment-scoped cache key prefix. Django transparently prepends
+# this to every key passed to every backend, so a single setting
+# isolates keys across environments without any changes at the
+# ``cache.get/set`` callsites. See refactor-step item ``[review-#7]``.
+#
+# Two environments sharing a Redis instance (staging and prod behind
+# the same managed Redis; CI and developers' shared dev Redis) will
+# otherwise clobber each other's plan caches, rate-limit counters,
+# JWKS ``kid`` caches, and so on. The damage mode is silent — a
+# staging org's plan mask bleeding into prod surfaces only as a
+# "why did this user suddenly have Pro features?" support ticket
+# weeks later.
+#
+# Recommended values: one of ``prod``, ``staging``, ``ci``,
+# ``dev-alice`` (developer-specific when sharing a dev Redis). The
+# default is empty, which is correct when Redis is single-tenant
+# to this deployment — we emit a loud warning on boot otherwise so
+# operators running shared-Redis topologies have to make an explicit
+# choice.
+_cache_key_prefix = env("DJANGO_CACHE_KEY_PREFIX", default="")
+if _cache_key_prefix:
+    CACHES["default"]["KEY_PREFIX"] = _cache_key_prefix
+elif REDIS_URL:
+    import logging as _cache_logging
+
+    _cache_logging.getLogger(__name__).warning(
+        "DJANGO_CACHE_KEY_PREFIX is empty while REDIS_URL is set. "
+        "Cache keys will not be namespaced. If this Redis instance "
+        "is shared with other environments (staging, CI, dev), set "
+        "DJANGO_CACHE_KEY_PREFIX to an environment-specific string "
+        "to prevent cross-environment cache collisions."
+    )
+
 # MFA encryption key. Hard-required in production — we validate the key
 # at import time so a misconfigured deploy fails before it can serve
 # any traffic, rather than discovering the problem when the first user

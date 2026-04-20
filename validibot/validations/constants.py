@@ -476,7 +476,49 @@ def get_resource_types_for_validator(validation_type: str) -> list[str]:
 # large output contexts (e.g., FMU simulation results with many variables).
 CEL_MAX_EVAL_TIMEOUT_MS = getattr(django_settings, "CEL_MAX_EVAL_TIMEOUT_MS", 2000)
 CEL_MAX_EXPRESSION_CHARS = 2000
+
+# Top-level variable-namespace bound. An expression can reference at
+# most this many distinct top-level names (``p``, ``s``, ``output`` ...).
+# Independent of — and complementary to — the deep bounds below.
 CEL_MAX_CONTEXT_SYMBOLS = 200
+
+# Maximum nesting depth of the CEL evaluation context. Mirrors the
+# ``DEFAULT_MAX_DEPTH`` discipline in ``xml_utils.py``: a maliciously
+# nested payload (5 MB of recursive JSON, say) balloons CPU and memory
+# inside ``celpy.json_to_cel()`` during normalization, even though the
+# top-level symbol count is tiny. Real CEL contexts are namespace-style
+# (``s.price``, ``p.foo.bar``) and rarely exceed 5 levels; 32 is ~10x
+# the realistic maximum and well below Python's recursion limit.
+CEL_MAX_CONTEXT_DEPTH = 32
+
+# Maximum total symbol count (dict keys + list items) across the entire
+# context tree. Complements ``CEL_MAX_CONTEXT_SYMBOLS`` (top-level only)
+# with a bounded-work guarantee for the normalization step — a context
+# with one top-level key holding a 100k-entry nested structure is
+# rejected before ``json_to_cel`` is called.
+CEL_MAX_CONTEXT_TOTAL_SYMBOLS = 10_000
+
+# Maximum nesting depth of CEL macros within a single expression.
+# Macros (``all``, ``exists``, ``map``, ``filter``, ...) are the only
+# avenue for exponential evaluation time in CEL — the cel-spec itself
+# calls this out. An expression like
+# ``items.all(a, items.all(b, items.all(c, ...)))`` is O(|items|^N)
+# where N is the nesting depth, so even a 230-char expression with
+# five levels and lists of ten is 10^5 evaluations.
+#
+# Two levels accommodates the common real-world intent
+# (``items.all(i, i.tags.all(t, ...))``) and rejects the exponential
+# pathology. Mirrors cel-go's ``ValidateComprehensionNestingLimit``.
+# Chained macros (``items.all(...).filter(...)``) are additive, not
+# nested, and are not counted by this limit.
+CEL_MAX_MACRO_NESTING = 2
+
+# Maximum total number of CEL macro calls anywhere in one expression.
+# Chained ``.map(...).map(...).map(...)`` past five stages is never
+# legitimate business logic — it is either a mistake or an attacker
+# probing for cost amplification. Sits alongside CEL_MAX_MACRO_NESTING
+# so that neither dimension can be exploited in isolation.
+CEL_MAX_MACRO_COUNT = 5
 
 # Regex evaluation timeout (milliseconds). Prevents ReDoS from pathological patterns.
 REGEX_EVAL_TIMEOUT_MS = getattr(django_settings, "REGEX_EVAL_TIMEOUT_MS", 1000)

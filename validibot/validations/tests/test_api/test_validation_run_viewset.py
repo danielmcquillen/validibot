@@ -39,11 +39,14 @@ from validibot.validations.api.viewsets import ValidationRunViewSet
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import ValidationRun
+from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidationFindingFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
+from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.tests.factories import WorkflowFactory
+from validibot.workflows.tests.factories import WorkflowStepFactory
 
 logger = logging.getLogger(__name__)
 
@@ -826,3 +829,254 @@ class ValidationRunViewSetTestCase(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    # ─────────────────────────────────────────────────────────────────
+    # Query-count guards — [review-#5]
+    # ─────────────────────────────────────────────────────────────────
+    #
+    # The serializer walks ``step_runs → findings`` per row and does a
+    # per-row Pro credential lookup. Without the prefetch + short-circuit
+    # applied in ``[review-#5]``, listing N runs issues ~O(N) extra
+    # queries against the paginated window — an attacker paging the
+    # feed can trivially blow up DB load. These tests pin a constant
+    # ceiling so any future regression that reintroduces an N+1 fails
+    # CI instead of drifting silently into production.
+
+    def test_run_list_query_count_does_not_scale_with_run_count(self):
+        """Listing more runs must not issue proportionally more queries.
+
+        Creates a 1-run baseline and then a 5-run dataset, each with
+        their own step runs + findings, and asserts the query count
+        for the 5-run list is equal to the 1-run baseline — not
+        5× larger as it would be without the prefetch.
+
+        If this trips, either the Prefetch was dropped from the
+        viewset queryset or the serializer started doing a per-row
+        query that bypasses the prefetch cache.
+        """
+
+        def _make_run_with_steps():
+            run = ValidationRunFactory(
+                org=self.org,
+                user=self.user,
+                workflow=self.workflow,
+                submission=self.submission,
+                status=ValidationRunStatus.SUCCEEDED,
+            )
+            for _ in range(3):
+                step_run = ValidationStepRunFactory(validation_run=run)
+                ValidationFindingFactory(
+                    validation_run=run,
+                    validation_step_run=step_run,
+                )
+            return run
+
+        self.client.force_authenticate(user=self.user)
+        # Warm the client — first request may issue schema / system
+        # queries we don't care to measure.
+        self.client.get(runs_list_url(self.org))
+
+        # One-run baseline.
+        _make_run_with_steps()
+        with self.assertNumQueries(17):
+            response = self.client.get(runs_list_url(self.org))
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(len(response.data["results"]), 1)
+
+        # Five-run count — same query count as 1 run. If this grows,
+        # an N+1 has been reintroduced.
+        for _ in range(4):
+            _make_run_with_steps()
+        with self.assertNumQueries(17):
+            response = self.client.get(runs_list_url(self.org))
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(len(response.data["results"]), 5)
+
+    def test_run_list_query_count_stable_with_signal_bearing_outputs(self):
+        """Runs whose step_runs have populated ``output["signals"]``
+        must not issue proportionally more queries than bare runs.
+
+        This is the sneaky N+1 case the original ``[review-#5]`` fix
+        missed: ``ValidationRunSerializer.get_steps`` calls
+        ``build_display_signals(step_run)``, which iterates
+        ``workflow_step.signal_definitions.filter(contract_key__in=...)``
+        per step_run. Without a prefetch on signal_definitions (and a
+        corresponding in-Python filter inside ``_build_signal_map``),
+        a run with 10 step_runs × 2 signals issues ~10 extra queries
+        against signal_definitions on top of the base queryset.
+
+        The test constructs a realistic shape — each step produces
+        ``signals.eui`` and ``signals.total_cost`` as output signals
+        and has matching ``SignalDefinition`` rows declared on the
+        validator — and compares 1-run vs 5-run query counts. If the
+        N+1 ever regresses, the 5-run count grows by ~4 × the per-run
+        overhead and this test fails loudly.
+        """
+        from validibot.validations.constants import SignalDirection
+
+        # Build a workflow step with two OUTPUT signal definitions
+        # on its validator. The serializer's
+        # ``build_display_signals`` helper looks these up by
+        # ``contract_key`` to enrich the dashboard payload — the
+        # exact code path that used to fan out per step_run.
+        target_validator = ValidatorFactory(org=self.org)
+        SignalDefinitionFactory(
+            validator=target_validator,
+            contract_key="eui",
+            direction=SignalDirection.OUTPUT,
+        )
+        SignalDefinitionFactory(
+            validator=target_validator,
+            contract_key="total_cost",
+            direction=SignalDirection.OUTPUT,
+        )
+        target_workflow_step = WorkflowStepFactory(
+            workflow=self.workflow,
+            validator=target_validator,
+        )
+
+        def _make_run_with_signal_bearing_step():
+            run = ValidationRunFactory(
+                org=self.org,
+                user=self.user,
+                workflow=self.workflow,
+                submission=self.submission,
+                status=ValidationRunStatus.SUCCEEDED,
+            )
+            # One step_run per run (uq_step_run_run_step constraint
+            # is per-run, so multiple step_runs would need
+            # multiple workflow_steps — simpler to keep the N
+            # varying on run count and pin the per-step shape
+            # here).
+            ValidationStepRunFactory(
+                validation_run=run,
+                workflow_step=target_workflow_step,
+                output={
+                    "signals": {
+                        "eui": 42.0,
+                        "total_cost": 1234.56,
+                    },
+                },
+            )
+            return run
+
+        self.client.force_authenticate(user=self.user)
+        self.client.get(runs_list_url(self.org))  # warm
+
+        _make_run_with_signal_bearing_step()
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as one_run_ctx:
+            response = self.client.get(runs_list_url(self.org))
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(len(response.data["results"]), 1)
+            # Sanity: the output_signals enrichment actually ran.
+            self.assertEqual(
+                len(response.data["results"][0]["steps"][0]["output_signals"]),
+                2,
+            )
+
+        one_run_query_count = len(one_run_ctx.captured_queries)
+
+        # Add four more runs. The delta MUST be bounded by a small
+        # constant — not proportional to the new run count.
+        for _ in range(4):
+            _make_run_with_signal_bearing_step()
+
+        with CaptureQueriesContext(connection) as five_run_ctx:
+            response = self.client.get(runs_list_url(self.org))
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(len(response.data["results"]), 5)
+
+        # The real assertion — flat line between 1 and 5 runs.
+        # If it regresses, signal_definitions is being queried per
+        # step_run inside ``_build_signal_map``.
+        self.assertEqual(
+            len(five_run_ctx.captured_queries),
+            one_run_query_count,
+            f"signal-bearing N+1 regressed — 1-run={one_run_query_count}, "
+            f"5-run={len(five_run_ctx.captured_queries)}",
+        )
+
+    def test_run_list_query_count_stable_with_many_step_runs(self):
+        """Adding more step_runs to a single run must not issue
+        proportionally more queries.
+
+        Separate from the run-count test because step_runs are a
+        second-level nested N+1: ``get_steps`` loops step_runs, and
+        inside that loop it used to call ``step_run.findings.all()``
+        which was a fresh query per step. The
+        ``Prefetch(step_runs, ...).prefetch_related(findings)`` shape
+        is what pins that down — this test will fail if the nested
+        prefetch ever regresses to a plain ``step_runs.all()``.
+        """
+        run = ValidationRunFactory(
+            org=self.org,
+            user=self.user,
+            workflow=self.workflow,
+            submission=self.submission,
+            status=ValidationRunStatus.SUCCEEDED,
+        )
+        # Ten steps with three findings each — a fat run.
+        for _ in range(10):
+            step_run = ValidationStepRunFactory(validation_run=run)
+            for _ in range(3):
+                ValidationFindingFactory(
+                    validation_run=run,
+                    validation_step_run=step_run,
+                )
+
+        self.client.force_authenticate(user=self.user)
+        self.client.get(runs_list_url(self.org))  # warm
+
+        with self.assertNumQueries(17):
+            response = self.client.get(runs_list_url(self.org))
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(len(response.data["results"]), 1)
+
+    def test_credential_short_circuit_skips_pro_query_for_non_credential_workflows(
+        self,
+    ):
+        """Listing runs whose workflows have no signed-credential
+        action must not trigger an ``IssuedCredential`` query per row.
+
+        The short-circuit in ``get_credential`` (see refactor-step
+        item ``[review-#5]``) checks
+        ``workflow.has_signed_credential_action`` first and returns
+        ``None`` early. Without it, every list request hits
+        ``IssuedCredential.objects.filter(workflow_run=obj)`` per row
+        — even when the credential field will later be popped out
+        of the response entirely by ``to_representation``.
+
+        The setUp workflow has no credential step, so this test
+        verifies the short-circuit by (a) query-count stability and
+        (b) asserting ``credential`` is absent from the response
+        payload.
+        """
+        for _ in range(3):
+            ValidationRunFactory(
+                org=self.org,
+                user=self.user,
+                workflow=self.workflow,
+                submission=self.submission,
+                status=ValidationRunStatus.SUCCEEDED,
+            )
+
+        self.client.force_authenticate(user=self.user)
+        self.client.get(runs_list_url(self.org))  # warm
+
+        # Runs with no step_runs — the findings prefetch short-circuits
+        # on empty step_runs, so we see one fewer query than the
+        # other tests that set up step runs.
+        with self.assertNumQueries(14):
+            response = self.client.get(runs_list_url(self.org))
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(len(response.data["results"]), 3)
+
+        # ``credential`` must not be present — ``to_representation``
+        # pops it for non-credential workflows. Pinning absence here
+        # guards against a future change that silently starts
+        # returning ``None`` under the same key.
+        for row in response.data["results"]:
+            self.assertNotIn("credential", row)

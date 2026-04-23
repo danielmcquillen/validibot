@@ -5,9 +5,9 @@ description = "Validibot MCP server — exposes validation workflows to AI agent
 license = "LicenseRef-Commercial"
 requires-python = ">=3.13"
 dependencies = [
-    "fastmcp>=2.0.0",
-    "httpx>=0.27",
-    "pydantic-settings>=2.0",
+    "fastmcp==3.2.4",
+    "httpx==0.28.1",
+    "pydantic-settings==2.13.1",
     # stripe is NOT needed here — all Stripe billing (ACP PaymentIntents,
     # subscriptions, webhooks) lives in the Django cloud layer, not the
     # MCP server. The MCP server just forwards the X-Stripe-SPT header.
@@ -15,11 +15,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.24",
-    "respx>=0.22",         # httpx mocking
-    "ruff>=0.9",
-    "asgi-lifespan>=2.1.0",  # ASGI lifespan for integration tests
+    "pytest==9.0.3",
+    "pytest-asyncio==1.3.0",
+    "respx==0.22.0",         # httpx mocking
+    "ruff==0.15.5",
+    "asgi-lifespan==2.1.0",  # ASGI lifespan for integration tests
 ]
 
 [build-system]

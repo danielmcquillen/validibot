@@ -7,7 +7,8 @@
 # Architecture:
 #   - Cloud Run: Web and Worker services (containerized Django)
 #   - Cloud SQL: PostgreSQL database (managed)
-#   - Cloud Storage: Media and file storage (GCS buckets)
+#   - Cloud Storage: Media and file storage + CMEK-encrypted audit log
+#                    archive (GCS buckets)
 #   - Cloud Tasks: Background job queue
 #   - Cloud Scheduler: Cron-like scheduled tasks
 #   - Secret Manager: Environment variables and secrets
@@ -1113,8 +1114,13 @@ job-logs job:
 # Use these commands to set up a new environment (dev, staging, prod) from scratch.
 #
 # Full setup workflow:
-#   1. just gcp init-stage dev          # Create infrastructure
-#   2. Create .envs/.dev/.google-cloud/.django manually (see .envs.example/)
+#   1. just gcp init-stage dev          # Create infrastructure (service account,
+#                                       #   Cloud SQL, GCS storage bucket, Cloud
+#                                       #   Tasks queue, KMS permissions, AUDIT
+#                                       #   ARCHIVE bucket + CMEK + lifecycle)
+#   2. Create .envs/.dev/.google-cloud/.django manually (see .envs.example/) —
+#      include AUDIT_ARCHIVE_GCS_BUCKET and AUDIT_ARCHIVE_GCS_PROJECT_ID
+#      printed at the end of init-stage
 #   3. just gcp secrets dev             # Upload secrets to Secret Manager
 #   4. just gcp deploy-all dev          # Build, migrate, and deploy services
 #   5. just gcp setup-data dev          # Seed initial data
@@ -1488,6 +1494,21 @@ init-stage stage: _require-gcp-config
     fi
     echo ""
 
+    # Step 9: Audit log archive bucket (CMEK-encrypted, lifecycle-tiered)
+    #
+    # Required by validibot_cloud.audit_archive.GCSArchiveBackend. A Django
+    # system check at startup refuses to boot if AUDIT_ARCHIVE_GCS_BUCKET is
+    # empty while that backend is selected, so this must exist before the
+    # first cloud deploy.
+    echo "9. Setting up audit archive bucket"
+    just gcp audit-archive-setup {{stage}}
+    if [ "{{stage}}" = "prod" ]; then
+        AUDIT_BUCKET="{{gcp_project}}-${APP_NAME}-audit-archive"
+    else
+        AUDIT_BUCKET="{{gcp_project}}-${APP_NAME}-audit-archive-{{stage}}"
+    fi
+    echo ""
+
     # Summary
     echo "============================================="
     echo "Infrastructure setup complete for {{stage}}"
@@ -1498,6 +1519,7 @@ init-stage stage: _require-gcp-config
     echo "  Cloud SQL: $DB_INSTANCE (database: $DB_NAME)"
     echo "  Cloud Tasks queue: $QUEUE_NAME"
     echo "  GCS bucket: $STORAGE_BUCKET (public/ and private/ prefixes)"
+    echo "  Audit archive bucket: $AUDIT_BUCKET (CMEK-encrypted, lifecycle-tiered)"
     echo "  KMS permissions: cloudkms.viewer, cloudkms.signerVerifier"
     echo "  Secret: $SECRET_NAME"
     echo ""
@@ -1510,6 +1532,8 @@ init-stage stage: _require-gcp-config
     echo "Next steps:"
     echo "  1. Configure env file:  Edit $ENV_PATH with:"
     echo "                          - STORAGE_BUCKET=$STORAGE_BUCKET"
+    echo "                          - AUDIT_ARCHIVE_GCS_BUCKET=$AUDIT_BUCKET"
+    echo "                          - AUDIT_ARCHIVE_GCS_PROJECT_ID={{gcp_project}}"
     echo "                          - POSTGRES_PASSWORD and DATABASE_URL (use password shown above)"
     echo "                          - DJANGO_SECRET_KEY (generate a new one)"
     echo "                          - DJANGO_ALLOWED_HOSTS (add Cloud Run URL after first deploy)"
@@ -1537,12 +1561,14 @@ list-resources stage: _require-gcp-config
         DB="${APP_NAME}-db"
         SECRET="django-env"
         SA="${APP_NAME}-cloudrun-prod"
+        AUDIT_BUCKET="{{gcp_project}}-${APP_NAME}-audit-archive"
     else
         SERVICE="${APP_NAME}-web-{{stage}}"
         WORKER="${APP_NAME}-worker-{{stage}}"
         DB="${APP_NAME}-db-{{stage}}"
         SECRET="django-env-{{stage}}"
         SA="${APP_NAME}-cloudrun-{{stage}}"
+        AUDIT_BUCKET="{{gcp_project}}-${APP_NAME}-audit-archive-{{stage}}"
     fi
 
     echo "Cloud Run Services:"
@@ -1554,12 +1580,254 @@ list-resources stage: _require-gcp-config
     gcloud sql instances describe "$DB" --project={{gcp_project}} --format="value(state)" 2>/dev/null && echo "  $DB" || echo "  $DB (not found)"
     echo ""
 
+    echo "Audit Archive Bucket:"
+    gcloud storage buckets describe "gs://$AUDIT_BUCKET" --project={{gcp_project}} &>/dev/null && echo "  $AUDIT_BUCKET" || echo "  $AUDIT_BUCKET (not found)"
+    echo ""
+
     echo "Secrets:"
     gcloud secrets describe "$SECRET" --project={{gcp_project}} &>/dev/null && echo "  $SECRET" || echo "  $SECRET (not found)"
     echo ""
 
     echo "Service Account:"
     gcloud iam service-accounts describe "$SA@{{gcp_project}}.iam.gserviceaccount.com" --project={{gcp_project}} &>/dev/null && echo "  $SA" || echo "  $SA (not found)"
+
+# =============================================================================
+# Audit Log Archive (GCS bucket + CMEK + lifecycle)
+# =============================================================================
+#
+# Provisions the bucket consumed by
+# validibot_cloud.audit_archive.backends.gcs.GCSArchiveBackend. The backend
+# writes JSONL+gzip partitions and a companion .sha256 sidecar per (org, day)
+# under gs://<bucket>/audit/org_<id>/YYYY/MM/DD.jsonl.gz.
+#
+# A Django system check (validibot_cloud.audit_archive.E001) refuses to boot
+# the app — including the migrate job — if AUDIT_ARCHIVE_GCS_BUCKET is empty
+# while the GCS backend is selected. init-stage runs this recipe as Step 9,
+# so fresh stages pick it up automatically. It is also exposed standalone so
+# existing deployments (like prod today) can catch up without reprovisioning
+# the rest of the stack.
+#
+# Layout mirrors the operations doc at
+# ../validibot-cloud/docs/operations/audit-archive.md:
+#
+#   * Dedicated regional bucket, uniform IAM, versioning off
+#   * CMEK key in {app_name}-keys keyring, key name "audit-archive",
+#     30-day rotation
+#   * Bucket default encryption set to that key
+#   * Lifecycle: Nearline @ 30d, Coldline @ 180d, Archive @ 365d, NO delete
+#   * Cloud Run SA gets objectCreator + objectViewer (viewer is needed for
+#     verify-on-read), and cryptoKeyEncrypterDecrypter on the CMEK key
+#
+# Usage: just gcp audit-archive-setup dev|staging|prod
+[arg('stage', pattern='dev|staging|prod')]
+audit-archive-setup stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+
+    # Resource naming follows the rest of this file: prod is unsuffixed,
+    # non-prod stages carry the stage as a suffix. Prefixing the bucket
+    # with the project ID guarantees global uniqueness — GCS bucket names
+    # are a flat global namespace.
+    if [ "{{stage}}" = "prod" ]; then
+        SA_NAME="${APP_NAME}-cloudrun-prod"
+        BUCKET="{{gcp_project}}-${APP_NAME}-audit-archive"
+        KMS_KEY_NAME="audit-archive"
+    else
+        SA_NAME="${APP_NAME}-cloudrun-{{stage}}"
+        BUCKET="{{gcp_project}}-${APP_NAME}-audit-archive-{{stage}}"
+        KMS_KEY_NAME="audit-archive-{{stage}}"
+    fi
+    SA_EMAIL="$SA_NAME@{{gcp_project}}.iam.gserviceaccount.com"
+    KMS_KEYRING="${APP_NAME}-keys"
+
+    echo "============================================="
+    echo "Audit archive setup for {{stage}}"
+    echo "============================================="
+    echo ""
+    echo "Bucket:   gs://$BUCKET"
+    echo "CMEK:     $KMS_KEYRING/$KMS_KEY_NAME"
+    echo "SA:       $SA_EMAIL"
+    echo ""
+
+    # Step 1: Ensure the shared KMS keyring exists.
+    # The keyring is reused across uses (credential signing lives here too);
+    # creation is idempotent per keyring.
+    echo "1. Ensuring KMS keyring: $KMS_KEYRING"
+    if gcloud kms keyrings describe "$KMS_KEYRING" \
+        --location={{gcp_region}} \
+        --project={{gcp_project}} &>/dev/null; then
+        echo "   Keyring already exists"
+    else
+        gcloud kms keyrings create "$KMS_KEYRING" \
+            --location={{gcp_region}} \
+            --project={{gcp_project}}
+        echo "   Keyring created"
+    fi
+    echo ""
+
+    # Step 2: Create the CMEK key. ENCRYPT_DECRYPT purpose (not signing).
+    # 30-day rotation matches Google's recommendation for high-sensitivity
+    # data. Software-level protection is fine for archive-tier workloads;
+    # operators who need HSM can change --protection-level=hsm later.
+    echo "2. Ensuring CMEK key: $KMS_KEY_NAME"
+    if gcloud kms keys describe "$KMS_KEY_NAME" \
+        --keyring="$KMS_KEYRING" \
+        --location={{gcp_region}} \
+        --project={{gcp_project}} &>/dev/null; then
+        echo "   Key already exists"
+    else
+        gcloud kms keys create "$KMS_KEY_NAME" \
+            --keyring="$KMS_KEYRING" \
+            --location={{gcp_region}} \
+            --purpose=encryption \
+            --rotation-period=30d \
+            --next-rotation-time="$(date -u -v+30d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+30 days' +%Y-%m-%dT%H:%M:%SZ)" \
+            --project={{gcp_project}}
+        echo "   Key created"
+    fi
+    KMS_KEY_RESOURCE="projects/{{gcp_project}}/locations/{{gcp_region}}/keyRings/$KMS_KEYRING/cryptoKeys/$KMS_KEY_NAME"
+    echo ""
+
+    # Step 3: Grant the GCS service agent permission to use the CMEK key.
+    # Without this, bucket default-encryption on the CMEK fails at upload
+    # time with a confusing 403, not at bucket-create time.
+    #
+    # Gotcha: the GCS service agent is created lazily by GCP on first use
+    # of the Storage API in the project. If we just grant IAM directly,
+    # gcloud errors with "Service account service-<num>@gs-project-accounts
+    # ... does not exist" because the principal hasn't materialised yet.
+    # The `--authorize-cmek` flag on `gcloud storage service-agent` both
+    # materialises the agent AND grants cryptoKeyEncrypterDecrypter on the
+    # supplied key in one call — designed specifically for this bootstrap
+    # ordering problem.
+    echo "3. Granting CMEK access to GCS service agent"
+    gcloud storage service-agent \
+        --project={{gcp_project}} \
+        --authorize-cmek="$KMS_KEY_RESOURCE" \
+        >/dev/null
+    echo "   GCS service agent materialised and granted cryptoKeyEncrypterDecrypter"
+    echo ""
+
+    # Step 4: Create the bucket. Uniform bucket-level access (no ACLs),
+    # versioning off (backend writes idempotently per (org, day), and
+    # versions would just pile up). No public access whitelist.
+    echo "4. Ensuring bucket: gs://$BUCKET"
+    if gcloud storage buckets describe "gs://$BUCKET" --project={{gcp_project}} &>/dev/null; then
+        echo "   Bucket already exists"
+    else
+        gcloud storage buckets create "gs://$BUCKET" \
+            --location={{gcp_region}} \
+            --project={{gcp_project}} \
+            --uniform-bucket-level-access \
+            --public-access-prevention \
+            --default-storage-class=STANDARD
+        echo "   Bucket created"
+    fi
+    echo ""
+
+    # Step 5: Set bucket default encryption to the CMEK key. Existing
+    # buckets get updated in place.
+    echo "5. Setting bucket default encryption to CMEK"
+    gcloud storage buckets update "gs://$BUCKET" \
+        --default-encryption-key="$KMS_KEY_RESOURCE" \
+        --project={{gcp_project}} \
+        --quiet >/dev/null
+    echo "   Default encryption set to $KMS_KEY_NAME"
+    echo ""
+
+    # Step 6: Disable versioning explicitly (create doesn't set it either
+    # way; being explicit keeps the state obvious to audit).
+    echo "6. Disabling object versioning"
+    gcloud storage buckets update "gs://$BUCKET" \
+        --no-versioning \
+        --project={{gcp_project}} \
+        --quiet >/dev/null
+    echo "   Versioning off"
+    echo ""
+
+    # Step 7: Lifecycle rules — tier down to cheaper storage as data ages.
+    # Deliberately NO delete action: audit archives are meant to outlive
+    # Cloud SQL, and the regulatory horizon varies by jurisdiction.
+    # Operators who need a delete rule add it separately.
+    echo "7. Applying lifecycle rules (Nearline 30d / Coldline 180d / Archive 365d)"
+    LIFECYCLE_JSON=$(cat <<'EOF'
+    {
+      "lifecycle": {
+        "rule": [
+          {
+            "action": {"type": "SetStorageClass", "storageClass": "NEARLINE"},
+            "condition": {"age": 30, "matchesStorageClass": ["STANDARD"]}
+          },
+          {
+            "action": {"type": "SetStorageClass", "storageClass": "COLDLINE"},
+            "condition": {"age": 180, "matchesStorageClass": ["NEARLINE"]}
+          },
+          {
+            "action": {"type": "SetStorageClass", "storageClass": "ARCHIVE"},
+            "condition": {"age": 365, "matchesStorageClass": ["COLDLINE"]}
+          }
+        ]
+      }
+    }
+    EOF
+    )
+    TMP_LIFECYCLE=$(mktemp)
+    trap "rm -f $TMP_LIFECYCLE" EXIT
+    echo "$LIFECYCLE_JSON" > "$TMP_LIFECYCLE"
+    gcloud storage buckets update "gs://$BUCKET" \
+        --lifecycle-file="$TMP_LIFECYCLE" \
+        --project={{gcp_project}} \
+        --quiet >/dev/null
+    echo "   Lifecycle applied"
+    echo ""
+
+    # Step 8: IAM on the bucket. The Cloud Run SA needs to write partitions
+    # (objectCreator) and re-read them to verify the sha256 sidecar
+    # (objectViewer). It deliberately does NOT get objectAdmin — audit
+    # archives should be append-only from the app's perspective.
+    if gcloud iam service-accounts describe "$SA_EMAIL" --project={{gcp_project}} &>/dev/null; then
+        echo "8. Granting bucket IAM to Cloud Run SA"
+        for role in roles/storage.objectCreator roles/storage.objectViewer; do
+            gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
+                --member="serviceAccount:$SA_EMAIL" \
+                --role="$role" \
+                --project={{gcp_project}} \
+                --quiet >/dev/null
+            echo "   Granted $role"
+        done
+        echo ""
+
+        # Step 9: CMEK access for the Cloud Run SA. The backend can pass
+        # kms_key_name on blob upload explicitly; that path also needs
+        # encrypter/decrypter on the SA (not just the GCS service agent).
+        echo "9. Granting CMEK access to Cloud Run SA"
+        gcloud kms keys add-iam-policy-binding "$KMS_KEY_NAME" \
+            --keyring="$KMS_KEYRING" \
+            --location={{gcp_region}} \
+            --project={{gcp_project}} \
+            --member="serviceAccount:$SA_EMAIL" \
+            --role=roles/cloudkms.cryptoKeyEncrypterDecrypter \
+            --quiet &>/dev/null
+        echo "   Granted cryptoKeyEncrypterDecrypter on $KMS_KEY_NAME"
+    else
+        echo "8-9. Skipping SA IAM: $SA_EMAIL does not exist yet"
+        echo "     Run 'just gcp init-stage {{stage}}' first (or re-run this"
+        echo "     after the SA is created)."
+    fi
+    echo ""
+
+    echo "============================================="
+    echo "Audit archive ready for {{stage}}"
+    echo "============================================="
+    echo ""
+    echo "Add to your env file:"
+    echo "  AUDIT_ARCHIVE_GCS_BUCKET=$BUCKET"
+    echo "  AUDIT_ARCHIVE_GCS_PROJECT_ID={{gcp_project}}"
+    echo "  # AUDIT_ARCHIVE_GCS_KMS_KEY=$KMS_KEY_RESOURCE  (optional; bucket default already set)"
+    echo ""
+    echo "Then: just gcp secrets {{stage}} && re-run the failing deploy."
+    echo ""
 
 # =============================================================================
 # Cloud Scheduler

@@ -76,6 +76,31 @@ DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@/${POSTGRES_DB}?ho
 #   private/ - Private files (submissions, validation data)
 STORAGE_BUCKET=your-app-name-storage
 
+# AUDIT LOG ARCHIVE (GCS, CMEK-encrypted)
+# ==============================================================================
+# The cloud layer's validibot_cloud.audit_archive app writes gzipped JSONL
+# partitions of expired audit-log rows to a dedicated bucket so the table
+# stays small and the history survives Cloud SQL. A Django startup check
+# (validibot_cloud.audit_archive.E001) refuses to boot — including migrate
+# — when AUDIT_ARCHIVE_GCS_BUCKET is empty while the GCS backend is
+# selected (which is the cloud default).
+#
+# The bucket, CMEK key, lifecycle rules, and IAM bindings are provisioned
+# by `just gcp audit-archive-setup {stage}` (also run automatically as
+# Step 9 of `just gcp init-stage {stage}`). The recipe prints the exact
+# values to paste here at the end.
+#
+# Naming convention: {project}-{app}-audit-archive[-{stage}]
+AUDIT_ARCHIVE_GCS_BUCKET=your-gcp-project-id-your-app-name-audit-archive
+AUDIT_ARCHIVE_GCS_PROJECT_ID=your-gcp-project-id
+# Optional: explicit CMEK key. The bucket default encryption is already set
+# to this key by the setup recipe, so leave this commented unless you want
+# the backend to pass kms_key_name on every upload.
+#AUDIT_ARCHIVE_GCS_KMS_KEY=projects/your-project/locations/region/keyRings/your-app-name-keys/cryptoKeys/audit-archive
+# Optional: object-name prefix (default "audit/"). Change only if sharing
+# the bucket with other workloads.
+#AUDIT_ARCHIVE_GCS_PREFIX=audit/
+
 # DEFAULT USERS
 # ==============================================================================
 # Initial superuser created on first run

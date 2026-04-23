@@ -90,6 +90,31 @@ defines:
   `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 - `DATABASE_URL`, `POSTGRES_*` — Cloud SQL connection.
 - `MFA_TOTP_ISSUER` — authenticator-app label (e.g. "Validibot Cloud").
+- `STORAGE_BUCKET` — media / submission bucket, printed at the end of
+  `init-stage`.
+- `AUDIT_ARCHIVE_GCS_BUCKET` and `AUDIT_ARCHIVE_GCS_PROJECT_ID` — the
+  CMEK-encrypted audit archive bucket (also printed at the end of
+  `init-stage`). A Django startup check refuses to run `migrate` if
+  `AUDIT_ARCHIVE_GCS_BUCKET` is empty while the cloud settings module
+  is active, so these must be set before the first deploy.
+
+### Provisioned resources
+
+`just gcp init-stage {stage}` is idempotent and creates, among other
+things:
+
+- Runtime and validator service accounts with IAM bindings.
+- Cloud SQL instance and database.
+- Cloud Tasks queue and Cloud Scheduler-ready KMS permissions.
+- Media/submissions GCS bucket (`{app}-storage[-stage]`) with
+  public/private prefix IAM.
+- **Audit archive GCS bucket** (`{project}-{app}-audit-archive[-stage]`)
+  with CMEK encryption, lifecycle tiering (Nearline/Coldline/Archive),
+  and append-only IAM. Provisioned by the `audit-archive-setup` recipe,
+  also runnable standalone to catch up an older stage. See the
+  [cloud audit-archive operations guide](../../../../validibot-cloud/docs/operations/audit-archive.md)
+  for the full shape.
+- Secret Manager placeholder for `django-env[-stage]`.
 
 See [configure-mfa.md](../how-to/configure-mfa.md) for key-generation
 and rotation procedures. The encryption key is stored in Secret Manager

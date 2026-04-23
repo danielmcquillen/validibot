@@ -310,11 +310,26 @@ class FilesystemArchiveBackend:
         contents (if any) or the new complete contents — never a
         partial write. Belt-and-braces for a reference backend whose
         users may be unfamiliar with durable-write patterns.
+
+        **Refuses to overwrite an existing path.** Archive objects
+        are meant to be append-only. If ``_unique_suffix`` ever
+        produces a collision (astronomically unlikely with 64 bits
+        of random, but defensible to guard against), raising here
+        is far safer than silently overwriting an existing archive
+        whose source rows have already been deleted.
         """
 
         import os
 
         path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            msg = (
+                f"Refusing to overwrite existing archive object at {path}: "
+                "filename collision suggests two archive() calls produced "
+                "the same unique suffix. Investigate clock skew, "
+                "_unique_suffix entropy, or duplicated retention runs."
+            )
+            raise FileExistsError(msg)
         with tempfile.NamedTemporaryFile(
             mode="wb",
             delete=False,
@@ -326,24 +341,45 @@ class FilesystemArchiveBackend:
             tmp.flush()
             os.fsync(tmp.fileno())
             tmp_path = pathlib.Path(tmp.name)
-        tmp_path.replace(path)
+        # ``os.link`` + unlink instead of ``replace``: link fails when
+        # the target exists, which guards against a TOCTOU window
+        # between our exists() check and the rename. Not available on
+        # all filesystems (NFS quirks), so fall back to rename when
+        # link isn't supported.
+        try:
+            os.link(tmp_path, path)
+        except OSError:
+            # Filesystem doesn't support hardlinks; fall back to
+            # rename. The exists() check above still covers the
+            # common case; this is for filesystems where link is
+            # unsupported entirely.
+            tmp_path.replace(path)
+        else:
+            tmp_path.unlink()
 
 
 def _unique_suffix() -> str:
     """Return a filename suffix unique to this archive-write call.
 
-    Shape: ``T<HHMMSSZ>-<4 hex>`` — UTC time to the second plus four
-    random hex digits. Combined with the ``(org, YYYY, MM, DD)``
-    prefix it gives every ``archive()`` call a distinct output
-    filename, even when two calls land in the same wall-clock second
-    against the same partition. Prevents the same-day-overwrite data
-    loss the single-name-per-day scheme had.
+    Shape: ``T<HHMMSSZ>-<16 hex>`` — UTC time to the second plus 16
+    random hex digits (64 bits of entropy). The time component alone
+    isn't collision-safe when many chunks per second hit the same
+    partition (a birthday-paradox estimate on 4 hex digits crosses
+    50% collision at ~323 same-second writes, which a fast retention
+    run can approach). 64 bits of random suffix keeps the birthday-
+    paradox collision probability below 1 in a billion for any
+    plausible per-second write rate.
+
+    The timestamp is kept because it makes the filenames sortable
+    by wall-clock order when an operator eyeballs a bucket listing.
     """
 
     # ``timezone.now()`` returns a UTC-aware datetime when
     # ``USE_TZ=True`` (the default). Format-to-string preserves UTC
-    # so the ``Z`` suffix is accurate.
-    return f"T{timezone.now().strftime('%H%M%SZ')}-{secrets.token_hex(2)}"
+    # so the ``Z`` suffix is accurate. ``secrets.token_hex(8)``
+    # returns 16 hex characters / 64 bits — comfortably
+    # collision-resistant for any realistic retention run.
+    return f"T{timezone.now().strftime('%H%M%SZ')}-{secrets.token_hex(8)}"
 
 
 def _entry_to_archive_dict(entry: AuditLogEntry) -> dict[str, Any]:

@@ -161,8 +161,8 @@ class FilesystemArchiveBackendLayoutTests(TestCase):
         # ``org_<id>`` segment is 3 levels up from the file.
         self.assertTrue(target_file.parent.parent.parent.name.startswith("org_"))
         # Filename starts with the zero-padded day followed by a ``T``
-        # literal from the unique suffix format.
-        self.assertRegex(target_file.name, r"^\d{2}T\d{6}Z-[0-9a-f]{4}\.jsonl\.gz$")
+        # literal from the unique suffix format (``T<HHMMSSZ>-<16 hex>``).
+        self.assertRegex(target_file.name, r"^\d{2}T\d{6}Z-[0-9a-f]{16}\.jsonl\.gz$")
         # Sidecar exists and matches.
         sidecar = target_file.with_name(target_file.name + ".sha256")
         self.assertTrue(sidecar.exists())

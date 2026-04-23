@@ -28,14 +28,23 @@ which enforces three things:
 Error handling
 --------------
 
-* ``400`` if the payload is missing ``event_type`` — the task is
-  malformed and retrying won't help. Cloud Tasks treats 4xx as a
-  permanent failure.
-* ``200`` when the event is recorded OR when the referenced user /
-  org / project has been deleted between enqueue and execution. The
-  tracking row is orphaned; retrying won't recover it.
-* ``500`` for DB connection errors and other transient infrastructure
-  failures. Cloud Tasks retries 5xx with exponential backoff.
+Cloud Tasks retries every non-2xx response. We therefore return:
+
+* ``200`` for every *permanent* outcome the worker can reach:
+  payload malformed (missing ``event_type``), referenced user / org
+  / project deleted between enqueue and execution, unknown
+  ``event_type`` string. Retrying won't change the outcome, so we
+  deliberately acknowledge the task and log the drop reason.
+* ``500`` for transient infrastructure failures — DB connection
+  error, Redis down, etc. Cloud Tasks retries 5xx with exponential
+  backoff.
+
+The view calls :meth:`TrackingEventService._log_tracking_event`
+(the raising path) rather than the public
+:meth:`log_tracking_event` wrapper, because the wrapper catches
+every exception and returns ``None``. That would silently
+acknowledge transient failures as if they succeeded, defeating the
+retry semantics we want from Cloud Tasks.
 """
 
 from __future__ import annotations
@@ -81,13 +90,13 @@ class LogTrackingEventView(WorkerOnlyAPIView):
 
         event_type = request.data.get("event_type")
         if not event_type:
+            # Permanently malformed — no amount of retrying recovers
+            # a missing event_type. 200 deliberately acknowledges so
+            # Cloud Tasks doesn't burn the retry budget on it.
             logger.warning(
                 "LogTrackingEventView: payload missing event_type (dropped)",
             )
-            return Response(
-                {"error": "event_type is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"status": "dropped_missing_event_type"})
 
         app_event_type = request.data.get("app_event_type")
         user_id = request.data.get("user_id")
@@ -122,7 +131,14 @@ class LogTrackingEventView(WorkerOnlyAPIView):
                 return Response({"status": "skipped_missing_user"})
 
             service = TrackingEventService()
-            service.log_tracking_event(
+            # Deliberately use the private, raising method. The public
+            # ``log_tracking_event`` wrapper swallows every exception
+            # and returns ``None``, which would hide transient DB
+            # failures from Cloud Tasks (it'd see a 200 and not
+            # retry). Calling the raising path means a real DB error
+            # bubbles to the ``except Exception`` below and becomes a
+            # 500 that Cloud Tasks retries with backoff.
+            service._log_tracking_event(
                 event_type=event_type,
                 app_event_type=app_event_type,
                 project=project,
@@ -132,6 +148,18 @@ class LogTrackingEventView(WorkerOnlyAPIView):
                 channel=channel,
             )
             return Response({"status": "ok"})
+        except ValueError as exc:
+            # Raised by the service for structurally-bad payloads
+            # (unknown event_type, missing required fields on the
+            # service contract). Permanent failure — no retry.
+            logger.warning(
+                "LogTrackingEventView: permanently rejected event "
+                "(event_type=%s app_event_type=%s): %s",
+                event_type,
+                app_event_type,
+                exc,
+            )
+            return Response({"status": "dropped_invalid_payload"})
 
         except Exception as exc:
             # Transient infrastructure failure — DB connection, etc.

@@ -424,6 +424,33 @@ class OrphanedActorCleanupTests(TestCase):
         self.assertIn("orphaned actor", output)
         self.assertIn("DRY-RUN", output)
 
+    def test_dry_run_count_includes_would_be_orphans(self) -> None:
+        """Regression: the dry-run orphan count must include actors
+        that WOULD become orphans after the run, not just actors who
+        are already orphaned before the run starts.
+
+        Scenario: two actors, each with one entry past the retention
+        window, plus one actor with a fresh entry. After a real run
+        the two stale-entry actors would be deleted (their entries
+        are gone, no other entries reference them). The fresh-entry
+        actor stays. Dry-run must report 2 would-be-orphans, not 0.
+
+        Before this fix, the dry-run query only counted "already
+        orphaned" actors (zero entries at all), which under-reported
+        the real delete count by exactly the group this test checks.
+        """
+
+        _make_entry(org=self.org, offset=timedelta(days=-100))
+        _make_entry(org=self.org, offset=timedelta(days=-101))
+        # Fresh-entry actor — must NOT be counted as an orphan.
+        _make_entry(org=self.org, offset=timedelta(days=-1))
+
+        output = _run(dry_run=True)
+
+        # Three actors in the DB; dry-run reports 2 would-be-orphans.
+        self.assertEqual(AuditActor.objects.count(), 3)
+        self.assertIn("would delete 2 orphaned actor(s)", output)
+
 
 class RegistryEntryTests(TestCase):
     """The retention task is registered in the scheduler registry."""

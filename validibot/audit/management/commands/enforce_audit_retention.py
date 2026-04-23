@@ -206,7 +206,19 @@ class Command(BaseCommand):
         if not dry_run:
             total_actors_deleted = self._delete_orphaned_actors()
         else:
-            orphan_count = self._count_orphaned_actors()
+            # Two groups of would-be-orphans after a real run:
+            #   (a) Actors with ZERO entries right now — already
+            #       orphaned, would be deleted immediately.
+            #   (b) Actors whose entries are ALL older than the
+            #       retention cutoff — they'd become orphans once
+            #       the chunked loop above (simulated by the
+            #       ``[dry-run] would archive+delete`` lines)
+            #       actually deletes those entries.
+            # The old dry-run query only counted group (a), which
+            # under-reports whenever a retention run will produce
+            # newly-orphaned actors. Adding group (b) makes the
+            # dry-run count match what the real run would delete.
+            orphan_count = self._count_would_be_orphans(cutoff=cutoff)
             self.stdout.write(
                 f"  [dry-run] would delete {orphan_count} orphaned actor(s)",
             )
@@ -344,6 +356,34 @@ class Command(BaseCommand):
         """Count actors that ``_delete_orphaned_actors`` would remove."""
 
         return cls._orphaned_actors_queryset().count()
+
+    @staticmethod
+    def _count_would_be_orphans(*, cutoff) -> int:
+        """Count actors that WOULD be orphaned after a real run.
+
+        Includes two disjoint groups:
+
+        * Actors with zero remaining log entries (already orphaned).
+        * Actors whose every remaining entry is older than the
+          retention ``cutoff`` — these become orphans once the real
+          run deletes those entries.
+
+        Skips erased actors (``erased_at`` set) because retention
+        preserves them as pseudonymised identities regardless.
+
+        Drives the dry-run's reported actor count. The non-dry-run
+        path calls :meth:`_delete_orphaned_actors` after the chunk
+        loop has already deleted the eligible entries, so it can
+        use the simpler "no entries at all" query.
+        """
+
+        from validibot.audit.models import AuditActor
+
+        return (
+            AuditActor.objects.filter(erased_at__isnull=True)
+            .exclude(log_entries__occurred_at__gte=cutoff)
+            .count()
+        )
 
 
 def _chunked(iterable, size: int) -> Iterator[list]:

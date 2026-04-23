@@ -114,17 +114,23 @@ class LogTrackingEventViewTests(TestCase):
             1,
         )
 
-    def test_missing_event_type_returns_400(self):
-        """A payload missing ``event_type`` is malformed — 400.
+    def test_missing_event_type_returns_200_and_acks(self):
+        """A payload missing ``event_type`` is permanently malformed.
 
-        Cloud Tasks treats 4xx as a permanent failure, so retrying
-        a malformed payload is futile. We surface the error clearly
-        for observability.
+        Cloud Tasks retries every non-2xx response — 4xx is NOT a
+        "permanent failure" signal in their API. Returning 200 here
+        deliberately acknowledges the task so it doesn't churn
+        through the retry schedule for an event that can never
+        succeed. The drop reason lands in the structured log for
+        observability.
         """
         response = self._post({"user_id": 1})
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("event_type", response.json()["error"])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"status": "dropped_missing_event_type"},
+        )
         self.assertEqual(TrackingEvent.objects.count(), 0)
 
     def test_deleted_user_logged_and_ack_200(self):
@@ -157,6 +163,16 @@ class LogTrackingEventViewTests(TestCase):
         Represents genuine infrastructure failures — DB connection
         dropped mid-request, etc. Cloud Tasks will re-deliver the
         task after a delay; the view is stateless so retry is safe.
+
+        We patch ``_log_tracking_event`` (the **raising** private
+        method the view calls) rather than the public
+        ``log_tracking_event`` wrapper. Patching the public wrapper
+        would hide the actual failure mode we care about: the
+        wrapper catches every exception and returns ``None``, so a
+        test that stubs it with a side_effect is testing the wrong
+        path and would pass even if the view reverted to calling the
+        swallowing public method. This test is the regression guard
+        against exactly that reversion.
         """
         user = UserFactory()
         payload = {
@@ -167,10 +183,75 @@ class LogTrackingEventViewTests(TestCase):
         }
 
         with patch(
-            "validibot.tracking.services.TrackingEventService.log_tracking_event",
+            "validibot.tracking.services.TrackingEventService._log_tracking_event",
             side_effect=RuntimeError("simulated DB outage"),
         ):
             response = self._post(payload)
 
         self.assertEqual(response.status_code, 500)
         self.assertIn("simulated DB outage", response.json()["error"])
+
+    def test_invalid_payload_valueerror_returns_200_and_drops(self):
+        """Structurally-invalid payloads (unknown event_type,
+        missing required fields on the service contract) raise
+        ``ValueError`` from the service. Retrying never recovers
+        them — the view returns 200 with a ``dropped_invalid_payload``
+        status so Cloud Tasks acknowledges and moves on.
+        """
+        user = UserFactory()
+        payload = {
+            "event_type": TrackingEventType.APP_EVENT,
+            "app_event_type": str(AppEventType.USER_LOGGED_IN),
+            "user_id": user.pk,
+            "channel": "web",
+        }
+
+        with patch(
+            "validibot.tracking.services.TrackingEventService._log_tracking_event",
+            side_effect=ValueError("unknown event type 'banana'"),
+        ):
+            response = self._post(payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "dropped_invalid_payload"})
+
+    def test_view_calls_raising_method_not_swallowing_wrapper(self):
+        """Regression lock: the view must call the private
+        ``_log_tracking_event`` (raising), not the public
+        ``log_tracking_event`` (swallowing).
+
+        If a future refactor flips the call back to the public
+        wrapper, transient DB failures will return 200 and Cloud
+        Tasks will silently drop them without retrying. This test
+        asserts on the call path directly so that regression
+        surfaces as a failing test rather than as "tasks mysteriously
+        failing silently in production".
+        """
+        user = UserFactory()
+        payload = {
+            "event_type": TrackingEventType.APP_EVENT,
+            "app_event_type": str(AppEventType.USER_LOGGED_IN),
+            "user_id": user.pk,
+            "channel": "web",
+        }
+
+        with (
+            patch(
+                "validibot.tracking.services.TrackingEventService._log_tracking_event",
+            ) as raising_mock,
+            patch(
+                "validibot.tracking.services.TrackingEventService.log_tracking_event",
+            ) as swallowing_mock,
+        ):
+            raising_mock.return_value = None
+            swallowing_mock.return_value = None
+            response = self._post(payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(raising_mock.call_count, 1)
+        self.assertEqual(
+            swallowing_mock.call_count,
+            0,
+            "LogTrackingEventView must NOT call the public wrapper — "
+            "it swallows exceptions and defeats Cloud Tasks retry.",
+        )

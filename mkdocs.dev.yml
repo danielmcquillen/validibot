@@ -79,6 +79,7 @@ nav:
       - Step Processor: overview/step_processor.md
       - Plugin Architecture: overview/plugin_architecture.md
       - Service Architecture: overview/service_architecture.md
+      - Async Dispatch: overview/async_dispatch.md
       - Advanced Validator Interface: overview/validator_architecture.md
       - Execution Backends: overview/execution_backends.md
       - Submission Data Lifecycle: overview/submission_data_lifecycle.md

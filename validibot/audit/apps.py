@@ -34,6 +34,10 @@ class AuditConfig(AppConfig):
           actions show up alongside everything else (Session 3).
         """
 
+        # Import side-effect: registers the startup system check that
+        # validates AUDIT_ARCHIVE_GCS_BUCKET when the GCS backend is
+        # selected. No-op when any other backend is configured.
+        from validibot.audit import checks  # noqa: F401
         from validibot.audit.admin_bridge import connect_admin_bridge
         from validibot.audit.model_audit import connect_model_audit_receivers
         from validibot.audit.model_audit import register_builtin_model_audits

@@ -1140,6 +1140,26 @@ AUDIT_ARCHIVE_FILESYSTEM_BASE_PATH = env.str(
     "AUDIT_ARCHIVE_FILESYSTEM_BASE_PATH",
     default="",
 )
+# GCS-backend settings. Read by
+# ``validibot.audit.backends.gcs.GCSArchiveBackend`` when
+# ``AUDIT_ARCHIVE_BACKEND`` points at it. Community-hosted for
+# self-hosted Pro deployments on GCP that want the same CMEK-
+# encrypted archive story the hosted cloud offering has.
+#
+# The Django startup system check at ``validibot.audit.checks``
+# fires an E001 error when the GCS backend is selected but
+# ``AUDIT_ARCHIVE_GCS_BUCKET`` is empty — misconfiguration
+# surfaces at deploy time rather than at 02:30 the next morning.
+AUDIT_ARCHIVE_GCS_BUCKET = env.str("AUDIT_ARCHIVE_GCS_BUCKET", default="")
+AUDIT_ARCHIVE_GCS_PREFIX = env.str("AUDIT_ARCHIVE_GCS_PREFIX", default="audit/")
+# Fully-qualified KMS resource name
+# (``projects/.../cryptoKeys/...``). Empty means new objects
+# inherit the bucket's default CMEK. Google's recommendation for
+# high-sensitivity data is a dedicated per-app key.
+AUDIT_ARCHIVE_GCS_KMS_KEY = env.str("AUDIT_ARCHIVE_GCS_KMS_KEY", default="")
+# GCP project id for the storage client. Empty → ADC / env-based
+# resolution. Rarely needed in production.
+AUDIT_ARCHIVE_GCS_PROJECT_ID = env.str("AUDIT_ARCHIVE_GCS_PROJECT_ID", default="")
 
 # ── MCP helper API service-to-service auth ───────────────────────────
 # Read by ``validibot.mcp_api.authentication.MCPServiceAuthentication``.

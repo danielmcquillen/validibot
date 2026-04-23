@@ -330,3 +330,8 @@ docker-compose.cloud.yml
 
 # Personal notes for local dev
 mcq-notes.md
+
+# Claude Code local settings (permission allowlists, personal preferences).
+# launch.json is intentionally tracked; these two are machine-local.
+.claude/settings.json
+.claude/settings.local.json

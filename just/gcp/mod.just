@@ -1854,6 +1854,31 @@ scheduler-list:
 # Set up all scheduled jobs for a stage (dev, staging, prod)
 # Creates jobs for session cleanup, idempotency key cleanup, callback receipts,
 # submission purging, and stuck run cleanup.
+#
+# ⚠️  KEEP IN SYNC WITH THE PYTHON TASK REGISTRY
+# ⚠️  validibot/core/tasks/registry.py (SCHEDULED_ADMIN_TASKS tuple +
+# ⚠️  register_scheduled_admin_task() calls in downstream apps).
+#
+# The job list below is hardcoded because driving it from the registry
+# requires booting Django under cloud settings from the host shell,
+# which pulls in a cascade of env-var demands. Not worth the wiring for
+# a list that changes every few months.
+#
+# When adding a scheduled task:
+#   1. Add a ScheduledAdminTaskDefinition in validibot/core/tasks/registry.py
+#      (or call register_scheduled_admin_task() from your AppConfig.ready)
+#   2. Add the corresponding create_or_update_job block below
+#   3. Re-run `just gcp scheduler-setup {stage}` to pick it up in GCP
+#
+# If a task exists in ONE place but not the other:
+#   - Registry only → Docker Compose (Celery Beat) has it, GCP does NOT.
+#     The task just silently never runs in prod. This is the failure
+#     mode that hid enforce-audit-retention from prod until someone
+#     noticed. Check `just gcp scheduler-list` against the registry
+#     periodically.
+#   - Justfile only → GCP Cloud Scheduler will POST to an endpoint that
+#     may or may not exist. If the API endpoint isn't registered in the
+#     scheduled_tasks router, you'll see 404s in worker logs.
 [arg('stage', pattern='dev|staging|prod')]
 scheduler-setup stage: _require-gcp-config
     #!/usr/bin/env bash
@@ -1986,6 +2011,18 @@ scheduler-setup stage: _require-gcp-config
         "0 */6 * * *" \
         "/api/v1/scheduled/send-periodic-emails/" \
         "Run periodic email handlers - trial lifecycle etc ({{stage}})"
+
+    # Job 8: Enforce audit log retention (daily at 2:30 AM)
+    # Archives AuditLogEntry rows past AUDIT_HOT_RETENTION_DAYS to the
+    # CMEK-encrypted GCS bucket set up by `audit-archive-setup`, then
+    # deletes only rows the archive backend confirmed. Matches the cron
+    # registered at validibot/core/tasks/registry.py for the
+    # "enforce-audit-retention" task.
+    create_or_update_job \
+        "${APP_NAME}-enforce-audit-retention${JOB_SUFFIX}" \
+        "30 2 * * *" \
+        "/api/v1/scheduled/enforce-audit-retention/" \
+        "Archive + delete audit log rows past retention ({{stage}})"
 
     echo "All scheduler jobs configured for {{stage}}!"
     echo ""

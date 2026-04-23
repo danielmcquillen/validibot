@@ -26,16 +26,16 @@ For an overview of all test layers, see the [Testing Overview](./testing.md).
 
 ```bash
 # Run all integration tests
-just test-integration
+just local test-integration
 
 # Run a specific test file
-just test-integration tests/tests_integration/test_validator_jobs.py
+just local test-integration tests/tests_integration/test_validator_jobs.py
 
 # Run with extra verbosity
-just test-integration -vvv
+just local test-integration -vvv
 ```
 
-The `just test-integration` recipe:
+The `just local test-integration` recipe:
 
 1. Ensures the `django` Docker image exists (Chromium + chromedriver baked in
    for Selenium)
@@ -95,7 +95,7 @@ export E2E_TEST_API_TOKEN=your-api-token
 export E2E_TEST_WORKFLOW_ID=your-workflow-uuid
 
 # Run
-just test-e2e
+just local test-e2e
 ```
 
 | Variable                            | Required | Description                                                          |
@@ -114,7 +114,7 @@ just test-e2e
     GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     GCS_VALIDATION_BUCKET: ${{ secrets.GCS_VALIDATION_BUCKET }}
     # ... other env vars
-  run: just test-integration
+  run: just local test-integration
 
 # E2E tests (post-deployment)
 - name: Run E2E tests
@@ -122,7 +122,7 @@ just test-e2e
     E2E_TEST_API_URL: https://staging.validibot.com/api/v1
     E2E_TEST_API_TOKEN: ${{ secrets.E2E_API_TOKEN }}
     E2E_TEST_WORKFLOW_ID: ${{ vars.E2E_WORKFLOW_ID }}
-  run: just test-e2e
+  run: just local test-e2e
 ```
 
 ## psycopg3 + live_server fix

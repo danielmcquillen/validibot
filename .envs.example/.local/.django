@@ -118,3 +118,18 @@ SIGNING_ALGORITHM=ES256
 # ==============================================================================
 #LAUNCH_VELOCITY_PER_MINUTE=30
 #LAUNCH_VELOCITY_PER_HOUR=500
+
+# MCP HELPER API SERVICE-TO-SERVICE AUTH
+# ==============================================================================
+# Shared secret used by the FastMCP server to authenticate itself to
+# Django when calling /api/v1/mcp/*. MUST match ``VALIDIBOT_MCP_SERVICE_KEY``
+# in .envs/.local/.mcp on the MCP side. Without this, MCP tool calls
+# hit the helper API and get 401 on every request.
+#
+# Read by ``validibot.mcp_api.authentication.MCPServiceAuthentication``
+# as ``settings.MCP_SERVICE_KEY``. In hosted cloud production, leave
+# this empty — the auth class falls back to Cloud Run OIDC identity
+# tokens instead.
+#
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+#VALIDIBOT_MCP_SERVICE_KEY=

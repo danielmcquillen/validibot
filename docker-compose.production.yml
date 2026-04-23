@@ -54,7 +54,11 @@ services:
       - .envs/.production/.docker-compose/.django
       - .envs/.production/.docker-compose/.postgres
     environment:
-      - DJANGO_SETTINGS_MODULE=config.settings.production
+      # Defaults to community production settings. Self-hosted Pro
+      # operators override this to config.settings.production_pro in
+      # their .envs/.production/.docker-compose/.django to activate
+      # the Pro app + license.
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
       # Configure advanced validator runner for Docker Compose
       - VALIDATOR_RUNNER=docker
       # Advanced validators run with no network by default (most secure)
@@ -92,7 +96,7 @@ services:
       - .envs/.production/.docker-compose/.django
       - .envs/.production/.docker-compose/.postgres
     environment:
-      - DJANGO_SETTINGS_MODULE=config.settings.production
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
       - APP_ROLE=worker
       - VALIDATOR_RUNNER=docker
       # Advanced validators run with no network by default (most secure)
@@ -123,7 +127,7 @@ services:
       - .envs/.production/.docker-compose/.django
       - .envs/.production/.docker-compose/.postgres
     environment:
-      - DJANGO_SETTINGS_MODULE=config.settings.production
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
       - APP_ROLE=scheduler
     # Note: Only run ONE scheduler instance to avoid duplicate task execution.
     # If scaling horizontally, use external orchestration (Kubernetes, Swarm)
@@ -165,6 +169,39 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  mcp:
+    # Validibot MCP server — exposes validation workflows to AI agents.
+    #
+    # Opt-in via the ``mcp`` Compose profile (set ENABLE_MCP_SERVER=true and
+    # `just docker-compose up` will enable it). MCP is a Pro feature: the
+    # server boots only if the deployment's license advertises the
+    # ``mcp_server`` feature, so self-hosted users without validibot-pro
+    # will see the container fail its startup license check even if the
+    # profile is active.
+    #
+    # The MCP package lives in ``mcp/`` alongside this compose file. It is
+    # a sibling Python project with no Django imports.
+    profiles: ["mcp"]
+    build:
+      context: ./mcp
+      dockerfile: ../compose/production/mcp/Dockerfile
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - validibot
+    env_file:
+      - .envs/.production/.docker-compose/.mcp
+    ports:
+      - "8001:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'uvicorn' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
 # Optional services (uncomment as needed):

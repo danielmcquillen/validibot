@@ -2,7 +2,7 @@
 E2E concurrent stress tests.
 
 These tests submit multiple validation runs concurrently against a running
-Validibot instance (typically started via ``just up``) and verify that:
+Validibot instance (typically started via ``just local up``) and verify that:
 
 1. All runs reach a terminal status (no runs lost)
 2. No runs are duplicated
@@ -15,12 +15,12 @@ concurrency.
 
 Prerequisites:
 
-- A running Validibot environment (e.g., ``just up``)
+- A running Validibot environment (e.g., ``just local up``)
 - Environment variables configured (see conftest.py)
 
 Running::
 
-    just test-e2e
+    just local test-e2e
 """
 
 from __future__ import annotations

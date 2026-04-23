@@ -69,7 +69,7 @@ def _get_chromedriver_path() -> str:
     if not chromedriver_path:
         raise RuntimeError(
             "Chromedriver not found. Run integration tests via "
-            "`just test-integration` to use the container with Chrome "
+            "`just local test-integration` to use the container with Chrome "
             "preinstalled, or set CHROMEDRIVER_PATH to a valid binary.",
         )
     return chromedriver_path

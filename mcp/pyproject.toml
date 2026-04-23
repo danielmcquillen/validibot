@@ -1,0 +1,57 @@
+[project]
+name = "validibot-mcp"
+version = "0.1.0"
+description = "Validibot MCP server — exposes validation workflows to AI agents."
+license = "LicenseRef-Commercial"
+requires-python = ">=3.13"
+dependencies = [
+    "fastmcp>=2.0.0",
+    "httpx>=0.27",
+    "pydantic-settings>=2.0",
+    # stripe is NOT needed here — all Stripe billing (ACP PaymentIntents,
+    # subscriptions, webhooks) lives in the Django cloud layer, not the
+    # MCP server. The MCP server just forwards the X-Stripe-SPT header.
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "respx>=0.22",         # httpx mocking
+    "ruff>=0.9",
+    "asgi-lifespan>=2.1.0",  # ASGI lifespan for integration tests
+]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["validibot_mcp*"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 99
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",    # pyflakes + pycodestyle
+    "I",               # isort
+    "B",               # flake8-bugbear
+    "UP",              # pyupgrade
+    "S",               # flake8-bandit
+    "T20",             # flake8-print
+    "RUF",             # ruff-specific
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["validibot_mcp"]
+
+# Enforce no Django/cloud imports — this package must remain extractable.
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]  # assert + test tokens are fine in tests
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

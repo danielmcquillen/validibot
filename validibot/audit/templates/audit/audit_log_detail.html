@@ -1,0 +1,172 @@
+{% extends "app_base.html" %}
+
+{% load i18n %}
+
+{% block title %}
+  {% trans "Audit entry" %} #{{ entry.pk }} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div id="audit-log-detail"
+       class="container-fluid d-flex flex-column flex-grow-1">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12">
+        <div class="d-flex flex-column gap-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h1 class="app-page-title mb-0 text-truncate">
+              <i class="bi bi-shield-check me-2"></i>
+              {% trans "Audit entry" %} #{{ entry.pk }}
+            </h1>
+            <span class="badge text-bg-secondary">
+              <code class="small">{{ entry.get_action_display }}</code>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-content-body flex-grow-1">
+      <div class="card mb-4">
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-sm-3">
+              {% trans "Occurred" %}
+            </dt>
+            <dd class="col-sm-9">
+              <time datetime="{{ entry.occurred_at|date:'c' }}">
+                {{ entry.occurred_at|date:"Y-m-d H:i:s T" }}
+              </time>
+            </dd>
+
+            <dt class="col-sm-3">
+              {% trans "Actor" %}
+            </dt>
+            <dd class="col-sm-9">
+              {% if entry.actor.erased_at %}
+                <span class="text-muted fst-italic">
+                  {% blocktrans with erased_at=entry.actor.erased_at|date:'Y-m-d' %}
+                    (erased on {{ erased_at }})
+                  {% endblocktrans %}
+                </span>
+              {% elif entry.actor.user %}
+                {{ entry.actor.user.email }}
+                {% if entry.actor.ip_address %}
+                  <span class="text-muted">
+                    · {{ entry.actor.ip_address }}
+                  </span>
+                {% endif %}
+              {% elif entry.actor.email %}
+                {{ entry.actor.email }}
+                {% if entry.actor.ip_address %}
+                  <span class="text-muted">
+                    · {{ entry.actor.ip_address }}
+                  </span>
+                {% endif %}
+              {% else %}
+                <span class="text-muted">{% trans "system" %}</span>
+              {% endif %}
+            </dd>
+
+            {% if entry.target_type %}
+              <dt class="col-sm-3">
+                {% trans "Target" %}
+              </dt>
+              <dd class="col-sm-9">
+                <code>{{ entry.target_type }}</code>
+                {% if entry.target_id %}
+                  <span class="text-muted">#{{ entry.target_id }}</span>
+                {% endif %}
+                {% if entry.target_repr %}
+                  <div class="text-truncate">
+                    {{ entry.target_repr }}
+                  </div>
+                {% endif %}
+              </dd>
+            {% endif %}
+
+            {% if entry.request_id %}
+              <dt class="col-sm-3">
+                {% trans "Request id" %}
+              </dt>
+              <dd class="col-sm-9">
+                <code class="small">{{ entry.request_id }}</code>
+              </dd>
+            {% endif %}
+          </dl>
+        </div>
+      </div>
+
+      {% if entry.changes %}
+        <div class="card mb-4">
+          <div class="card-header">
+            {% trans "Changes" %}
+          </div>
+          <div class="card-body">
+            <table class="table table-sm mb-0">
+              <thead>
+                <tr>
+                  <th scope="col">
+                    {% trans "Field" %}
+                  </th>
+                  <th scope="col">
+                    {% trans "Before" %}
+                  </th>
+                  <th scope="col">
+                    {% trans "After" %}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for field, diff in entry.changes.items %}
+                  <tr>
+                    <td>
+                      <code>{{ field }}</code>
+                    </td>
+                    <td>
+                      {% if diff == '<redacted>' %}
+                        <span class="badge text-bg-warning">
+                          {% trans "redacted" %}
+                        </span>
+                      {% else %}
+                        <code class="small">{{ diff.before|default_if_none:"—" }}</code>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if diff == '<redacted>' %}
+                        <span class="badge text-bg-warning">
+                          {% trans "redacted" %}
+                        </span>
+                      {% else %}
+                        <code class="small">{{ diff.after|default_if_none:"—" }}</code>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endif %}
+
+      {% if entry.metadata %}
+        <div class="card mb-4">
+          <div class="card-header">
+            {% trans "Metadata" %}
+          </div>
+          <div class="card-body">
+            <pre class="mb-0 small">{{ entry.metadata|pprint }}</pre>
+          </div>
+        </div>
+      {% endif %}
+
+      <div>
+        <a href="{% url 'audit:list' %}" class="btn btn-secondary">
+          <i class="bi bi-arrow-left me-1"></i>
+          {% trans "Back to audit log" %}
+        </a>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

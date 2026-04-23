@@ -20,6 +20,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework.routers import SimpleRouter
 
 from validibot.core.api.auth_views import AuthMeView
+from validibot.core.api.license_views import LicenseFeaturesView
 from validibot.users.api.views import OrganizationViewSet
 from validibot.users.api.views import UserViewSet
 from validibot.validations.api_views import OrgScopedRunViewSet
@@ -49,6 +50,17 @@ app_name = "api"
 urlpatterns = [
     # Auth endpoint for token verification and user identification
     path("auth/me/", AuthMeView.as_view(), name="auth-me"),
+    # License introspection used by the MCP server to gate on Pro/Enterprise
+    path(
+        "license/features/",
+        LicenseFeaturesView.as_view(),
+        name="license-features",
+    ),
+    # MCP helper API consumed by the standalone FastMCP server (mcp/).
+    # Authenticated via service-to-service auth (shared secret locally,
+    # Cloud Run OIDC in production) with the end user's identity
+    # forwarded in headers. See validibot/mcp_api/authentication.py.
+    path("mcp/", include("validibot.mcp_api.urls", namespace="mcp")),
     # Root-level routes (users)
     *root_router.urls,
     # Org-scoped routes

@@ -22,7 +22,7 @@ All deployment targets use the [Just command runner](justfile-guide.md).
 Typical commands look like this:
 
 ```bash
-just up
+just local up
 just docker-compose bootstrap
 just gcp deploy-all dev
 ```

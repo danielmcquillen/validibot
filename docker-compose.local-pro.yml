@@ -1,0 +1,111 @@
+# =============================================================================
+# Validibot community + Pro — local Docker Compose overlay.
+#
+# This file extends docker-compose.local.yml with the additions needed to
+# run the community stack with validibot-pro installed editable, without
+# pulling in validibot-cloud. Use it when you want to exercise Pro
+# features (teams, guests, signed credentials, MCP) locally without the
+# cloud billing/tenancy/metering surface on top.
+#
+# Usage (from the community repo root):
+#   just local-pro up --build
+#   just local-pro up --build   ENABLE_MCP_SERVER=true  # + MCP container
+#
+# Under the hood that runs:
+#   docker compose \
+#     -f docker-compose.local.yml \
+#     -f docker-compose.local-pro.yml \
+#     up -d --build
+#
+# Compose merges the two files: volumes lists are additive, command and
+# env additions replace/extend the base. So the ``web``/``worker``/
+# ``scheduler`` services keep everything from the base file and gain:
+#
+#   - /app/validibot-pro volume mount (read-only, for editable install)
+#   - command wrapper that runs install-pro-package.sh before starting
+#
+# The web/worker/scheduler services also override ``DJANGO_SETTINGS_MODULE``
+# to ``config.settings.local_pro``, which extends the community local
+# settings by adding ``validibot_pro`` to ``INSTALLED_APPS``. Without
+# that step the wheel would be importable but Django would skip running
+# its ``AppConfig.ready()`` hooks, so teams/guests/MCP features stay
+# gated as though Pro weren't installed.
+#
+# If you also want the cloud layer, use ``just local-cloud up`` instead,
+# which uses docker-compose.cloud.yml in validibot-cloud/.
+# =============================================================================
+
+name: validibot
+
+services:
+  web:
+    volumes:
+      # Mount validibot-pro source into the container so the install script
+      # can register it as an editable install. Read-only is sufficient —
+      # we never write back into the sibling repo from the container.
+      - ../validibot-pro:/app/validibot-pro:ro
+    environment:
+      # Activate Pro: adds validibot_pro to INSTALLED_APPS so Django imports
+      # the package on startup and the License object is registered.
+      - DJANGO_SETTINGS_MODULE=config.settings.local_pro
+    command:
+      - bash
+      - /app/compose/install-pro-package.sh
+      - /start
+
+  worker:
+    volumes:
+      - ../validibot-pro:/app/validibot-pro:ro
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.local_pro
+    command:
+      - bash
+      - /app/compose/install-pro-package.sh
+      - celery
+      - -A
+      - config
+      - worker
+      - --loglevel=info
+      - --concurrency=1
+
+  scheduler:
+    volumes:
+      - ../validibot-pro:/app/validibot-pro:ro
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.local_pro
+    command:
+      - bash
+      - /app/compose/install-pro-package.sh
+      - celery
+      - -A
+      - config
+      - beat
+      - --loglevel=info
+      - --scheduler
+      - django_celery_beat.schedulers:DatabaseScheduler
+
+  mcp:
+    # Standalone FastMCP server — activated only when the "mcp" Compose
+    # profile is on (ENABLE_MCP_SERVER=true, via the just recipe).
+    # Pro supplies the ``mcp_server`` feature flag that the MCP server's
+    # startup license check requires; without pro installed the container
+    # will start but then exit with LicenseCheckError.
+    profiles: ["mcp"]
+    build:
+      context: ./mcp
+      dockerfile: ../compose/production/mcp/Dockerfile
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - validibot
+    env_file:
+      - .envs/.local/.mcp
+    ports:
+      - "8001:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'uvicorn' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

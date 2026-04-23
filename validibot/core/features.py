@@ -53,8 +53,20 @@ class CommercialFeature(TextChoices):
     TEAM_MANAGEMENT = "team_management", _("Team Management")
     GUEST_MANAGEMENT = "guest_management", _("Guest Management")
     BILLING = "billing", _("Billing")
+    # ``ADVANCED_ANALYTICS`` and ``AUDIT_LOG`` are deliberately separate
+    # flags — the ADR's four-pillar taxonomy treats product analytics
+    # and the audit log as distinct concerns with different retention,
+    # models, and UI surfaces. Pro today advertises both; down the line
+    # we can ship standalone analytics dashboards without re-using the
+    # audit log's flag and vice versa.
     ADVANCED_ANALYTICS = "advanced_analytics", _("Advanced Analytics")
+    AUDIT_LOG = "audit_log", _("Audit Log")
     SIGNED_CREDENTIALS = "signed_credentials", _("Signed Credentials")
+    # Standalone FastMCP server that exposes validation workflows to AI
+    # agents over OAuth/API tokens. The server lives in this repo under
+    # mcp/ and refuses to start unless this feature is advertised by the
+    # deployment's license (i.e. validibot-pro is installed).
+    MCP_SERVER = "mcp_server", _("MCP Server")
 
     # Enterprise features (requires validibot-enterprise)
     MULTI_ORG = "multi_org", _("Multiple Organizations")

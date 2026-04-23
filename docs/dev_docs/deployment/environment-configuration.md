@@ -62,7 +62,7 @@ This pattern follows the [cookiecutter-django](https://github.com/cookiecutter/c
 4. Start Docker Compose:
 
     ```bash
-    just up
+    just local up
     ```
 
 ### Docker Compose Production
@@ -110,21 +110,41 @@ Each deployment environment uses two files:
 
 This separation keeps database credentials isolated and makes it clear which variables configure which service.
 
-### Optional Docker Build File
+### The `.build` file — Docker builds AND recipe knobs
 
-Docker-based deployments can also use an optional `.build` file when you need to bake a commercial package into the image.
+The `.build` file plays two roles, both loaded from the same file:
 
-This file is only for Docker build-time variables such as:
+1. **Docker build-time vars.** Passed to `docker compose --env-file` for
+   YAML interpolation of `${FOO}` references in the compose files. This
+   is where you bake a commercial package into the image:
 
-- `VALIDIBOT_COMMERCIAL_PACKAGE` -- must be an exact version like
-  `validibot-pro==0.1.0` or a quoted exact wheel URL on
-  `pypi.validibot.com` that includes `#sha256=<hash>`
-- `VALIDIBOT_PRIVATE_INDEX_URL`
+    - `VALIDIBOT_COMMERCIAL_PACKAGE` — must be an exact version like
+      `validibot-pro==0.1.0` or a quoted exact wheel URL on
+      `pypi.validibot.com` that includes `#sha256=<hash>`
+    - `VALIDIBOT_PRIVATE_INDEX_URL`
 
-If you are using the Community edition, you can ignore `.build` entirely.
-If you are using Pro or Enterprise, remember that `.build` only installs the
-wheel into the image. You still need to add the corresponding Django app or
-apps to `INSTALLED_APPS` in the settings module for that deployment.
+2. **Recipe-level knobs.** The `just local up` / `just local-pro up` /
+   `just local-cloud up` recipes (and the production
+   `just docker-compose` recipes) source this file at the top, so
+   shell-level variables drive recipe logic **before** `docker compose`
+   is invoked. The canonical example is `ENABLE_MCP_SERVER`, which
+   decides whether to activate the `mcp` Compose profile.
+
+    - `ENABLE_MCP_SERVER=true` — include the FastMCP container in the
+      stack. Flip to `true` for `local-pro` and `local-cloud`, where
+      validibot-pro is installed and satisfies the runtime license
+      gate. Ignored by `just local up` because the community compose
+      file defines no `mcp` service.
+
+Both categories are optional — if `.build` is absent, the recipes
+no-op cleanly. For community Docker Compose self-hosters, the file
+is effectively always worth copying because category (2) is how you
+turn on MCP.
+
+Pro / Enterprise reminder: installing the wheel via category (1)
+gets the package into the image, but Django still needs the app in
+`INSTALLED_APPS`. Use `config.settings.local_pro` /
+`config.settings.production_pro` settings modules for that.
 
 ### DATABASE_URL Construction
 

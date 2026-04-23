@@ -1,0 +1,45 @@
+{% extends "idp/oidc/base.html" %}
+
+{% load i18n %}
+{% load allauth %}
+
+{% block head_title %}
+  {% trans "Authorize MCP Access" %}
+{% endblock head_title %}
+{% block content %}
+
+  {% element h1 %}
+  {% trans "Authorize MCP Access" %}
+{% endelement h1 %}
+
+{% element p %}
+{% blocktranslate with client_name=client.name %}{{ client_name }} wants to connect to your Validibot account.{% endblocktranslate %}
+{% endelement %}
+
+{% element p %}
+{% trans "This lets Claude browse and run workflows through the Validibot MCP server. It does not grant general administration access to your account." %}
+{% endelement %}
+
+{% url 'idp:oidc:authorization' as authorize_url %}
+
+{% element form method="post" action=authorize_url %}
+
+{% slot body %}
+{% csrf_token %}
+{{ form }}
+{% endslot %}
+
+{% slot actions %}
+{% element button_group %}
+{% element button name="action" value="grant" type="submit" tags="primary,consent" %}
+{% translate "Authorize" %}
+{% endelement %}
+{% element button name="action" value="cancel" type="submit" tags="outline,consent" %}
+{% translate "Cancel" %}
+{% endelement %}
+{% endelement %}
+{% endslot %}
+
+{% endelement %}
+
+{% endblock content %}

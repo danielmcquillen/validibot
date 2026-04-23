@@ -19,18 +19,34 @@ from django.urls import resolve
 
 class UrlRoleRoutingTests(SimpleTestCase):
     def _reload_urls(self):
+        # ``config.urls`` branches to ``config.urls_web`` /
+        # ``config.urls_worker`` based on APP_ROLE, and those modules
+        # snapshot the role at import time. Reload the chain so
+        # override_settings(APP_ROLE=...) actually takes effect.
         import config.urls
+        import config.urls_web
+        import config.urls_worker
 
         clear_url_caches()
+        importlib.reload(config.urls_web)
+        importlib.reload(config.urls_worker)
         importlib.reload(config.urls)
 
     @override_settings(APP_ROLE="web", APP_IS_WORKER=False, ENABLE_API=True)
     def test_web_role_has_public_api_and_ui(self):
         self._reload_urls()
-        # UI route should resolve
-        self.assertEqual(resolve("/").namespace, "marketing")
-        # Public API route should resolve
-        self.assertEqual(resolve("/api/v1/workflows/").namespace, "api")
+        # UI route should resolve. The root path is mounted from
+        # ``validibot.home.urls`` with namespace ``home`` in
+        # config.urls_web — the older assertion pointed at a
+        # non-existent ``marketing`` namespace that never lived in this
+        # (community) repo.
+        self.assertEqual(resolve("/").namespace, "home")
+        # Public API route should resolve. We hit ``/api/v1/auth/me/``
+        # because that's a stable non-kwarg route under the ``api``
+        # namespace; the older ``/api/v1/workflows/`` assertion broke
+        # when workflows became org-scoped
+        # (``/api/v1/orgs/<org_slug>/workflows/``).
+        self.assertEqual(resolve("/api/v1/auth/me/").namespace, "api")
         # Internal callback should 404
         with pytest.raises(Resolver404):
             resolve("/api/v1/validation-callbacks/")

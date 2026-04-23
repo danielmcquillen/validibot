@@ -38,7 +38,7 @@ ongoing development.
 1. Fork the repository
 2. Create a feature branch from `main`
 3. Make your changes
-4. Ensure tests pass: `just test`
+4. Ensure tests pass: `just local test`
 5. Ensure code is formatted: `uv run ruff check`
 6. Submit a pull request
 

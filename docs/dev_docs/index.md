@@ -42,6 +42,7 @@ Step-by-step instructions for common tasks:
 - **[Configure Scheduled Tasks](how-to/configure-scheduled-tasks.md)** — Set up background jobs
 - **[Add a Form](how-to/add-a-form.md)** — Django Crispy Forms patterns
 - **[Configure MFA](how-to/configure-mfa.md)** — Multi-factor authentication settings and extension points
+- **[Extend the Audit Log](how-to/extend-the-audit-log.md)** — Add new action codes, extend the field whitelist, capture new models
 - **[Manage Organizations & Projects](organization_management.md)** — Admin workflows
 
 ---

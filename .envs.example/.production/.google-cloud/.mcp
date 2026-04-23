@@ -1,0 +1,46 @@
+# Validibot MCP server — GCP Cloud Run production (example).
+#
+# Copy to .envs/.production/.google-cloud/.mcp and fill in. Uploaded to
+# GCP Secret Manager as `mcp-env` by `just mcp secrets prod` (in the
+# validibot-cloud repo). Cloud Run mounts this file at /secrets/.env and
+# pydantic-settings reads it at container start.
+#
+# Non-secret config (VALIDIBOT_API_BASE_URL, VALIDIBOT_MCP_ENABLED) is
+# set via `--set-env-vars` in the deploy recipe instead of going here.
+
+# ── Logging ────────────────────────────────────────────────────────────
+
+VALIDIBOT_LOG_LEVEL=INFO
+
+# ── OAuth (required for Claude Desktop support) ────────────────────────
+
+# These identify the MCP server as a confidential OAuth client to the
+# Django OIDC provider (see docs/dev_docs/how-to/configure-mfa.md for
+# how to register new clients on the Django side).
+#
+# Omitting oauth_client_secret disables the OAuth path and falls back to
+# the legacy API-token flow only. Production needs OAuth for Claude
+# Desktop's Dynamic Client Registration to work.
+VALIDIBOT_OAUTH_CLIENT_ID=validibot-mcp-server
+VALIDIBOT_OAUTH_CLIENT_SECRET=replace-with-generated-client-secret
+
+# ── Public service URLs ────────────────────────────────────────────────
+
+# Override these if you serve MCP from a domain other than the defaults
+# baked into config.py. For mcp.validibot.com + app.validibot.com the
+# defaults apply and these lines can be omitted.
+# VALIDIBOT_MCP_BASE_URL=https://mcp.validibot.com
+# VALIDIBOT_OAUTH_AUTHORIZATION_SERVER_URL=https://app.validibot.com
+
+# ── x402 payments ──────────────────────────────────────────────────────
+
+# Mainnet (set VALIDIBOT_X402_TEST_MODE=false to use these).
+VALIDIBOT_X402_ENABLED=true
+VALIDIBOT_X402_TEST_MODE=false
+VALIDIBOT_X402_PAY_TO_ADDRESS=0xYOUR_PRODUCTION_BASE_MAINNET_WALLET
+# VALIDIBOT_X402_NETWORK=eip155:8453              # default
+# VALIDIBOT_X402_ASSET=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913  # default
+# VALIDIBOT_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402  # default
+
+# Testnet values (readable even in prod so flipping test_mode=true works).
+VALIDIBOT_TEST_X402_PAY_TO_ADDRESS=0xYOUR_BASE_SEPOLIA_WALLET

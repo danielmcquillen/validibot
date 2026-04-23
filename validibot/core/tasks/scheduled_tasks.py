@@ -13,9 +13,20 @@ Architecture (Docker Compose):
 For Google Cloud deployments, scheduled tasks are handled by Cloud Scheduler
 triggering HTTP endpoints instead of Celery tasks.
 
-Task scheduling is configured via:
-    1. Django admin (Periodic Tasks UI provided by django-celery-beat)
-    2. Data migration (see core/migrations/XXXX_celery_beat_schedules.py)
+### Where schedules come from
+
+The authoritative list of scheduled tasks lives in
+:mod:`validibot.core.tasks.registry` — a static tuple of
+``ScheduledAdminTaskDefinition`` rows plus a ``register_scheduled_admin_task``
+hook for downstream packages. The community-repo ``setup_validibot``
+management command reconciles the registry against the
+``django_celery_beat`` tables via ``sync_schedules``; cloud has an
+equivalent ``just gcp scheduler-setup`` recipe for Cloud Scheduler.
+
+Operators should not define schedules in data migrations — the registry
+is the only source of truth. A data migration pre-dated the registry and
+has been removed; ``sync_schedules`` (run automatically by
+``setup_validibot``) is the single write path now.
 
 Each task wraps a Django management command, providing:
     - Scheduled execution via cron or interval schedules
@@ -391,4 +402,37 @@ def cleanup_orphaned_containers(self) -> dict:
     )
 
     logger.info("Orphaned container cleanup completed: %s", result.get("output", ""))
+    return result
+
+
+@shared_task(
+    bind=True,
+    name="validibot.enforce_audit_retention",
+    autoretry_for=RETRYABLE_EXCEPTIONS,
+    max_retries=3,
+    retry_backoff=60,
+    retry_backoff_max=600,
+    acks_late=True,
+)
+def enforce_audit_retention(self) -> dict:
+    """Archive + delete AuditLogEntry rows older than the retention window.
+
+    Wraps the ``enforce_audit_retention`` management command. The
+    real logic (backend dispatch, chunked query, verified delete)
+    lives in ``validibot/audit/management/commands/enforce_audit_retention.py``
+    so it's callable from any scheduler backend (Celery here, Cloud
+    Scheduler via the matching API endpoint, ad-hoc from a shell).
+
+    Default schedule: daily at 02:30 server time (see
+    ``validibot/core/tasks/registry.py``).
+    """
+
+    logger.info(
+        "Starting scheduled audit retention enforcement (task_id=%s)",
+        self.request.id,
+    )
+
+    result = _run_management_command("enforce_audit_retention")
+
+    logger.info("Audit retention completed: %s", result.get("output", ""))
     return result

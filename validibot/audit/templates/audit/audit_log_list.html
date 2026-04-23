@@ -1,0 +1,241 @@
+{% extends "app_base.html" %}
+
+{% load i18n %}
+
+{% block title %}
+  {% trans "Audit log" %} · {{ organization.name }} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div id="audit-log" class="container-fluid d-flex flex-column flex-grow-1">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12">
+        <div class="d-flex flex-column gap-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h1 class="app-page-title mb-0 text-truncate">
+              <i class="bi bi-shield-check me-2"></i>{% trans "Audit log" %}
+            </h1>
+          </div>
+          <p class="text-muted mb-0">
+            {% blocktrans with org_name=organization.name %}
+              Append-only record of configuration changes, security
+              events, and admin actions for {{ org_name }}. See
+              <a href="https://docs.validibot.com/self-hosted-editions/audit-log/" class="text-decoration-underline" rel="noopener">the audit log documentation</a>
+              for the full taxonomy and retention policy.
+            {% endblocktrans %}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-content-body flex-grow-1">
+
+      {# ── Filter form ────────────────────────────────────────── #}
+      {# Plain HTML form (not django-crispy) so the rendered markup #}
+      {# stays legible in ``view-source`` and easy for test client   #}
+      {# scraping. All filters are GET-bound; the form posts to the  #}
+      {# same URL with the filter values in the query string.        #}
+      <form method="get"
+            class="card mb-3"
+            aria-label="{% trans 'Audit log filters' %}">
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label" for="id_action">
+                {{ filter_form.action.label }}
+              </label>
+              <select name="action" id="id_action" class="form-select form-select-sm">
+                {% for value, label in filter_form.action.field.choices %}
+                  <option value="{{ value }}"
+                          {% if value == filter_form.action.value %}
+                            selected
+                          {% endif %}>
+                    {{ label }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="id_actor">
+                {{ filter_form.actor.label }}
+              </label>
+              <input type="text"
+                     name="actor"
+                     id="id_actor"
+                     class="form-control form-control-sm"
+                     value="{{ filter_form.actor.value|default:'' }}"
+                     placeholder="name@example.com" />
+            </div>
+            <div class="col-md-2">
+              <label class="form-label" for="id_target_type">
+                {{ filter_form.target_type.label }}
+              </label>
+              <input type="text"
+                     name="target_type"
+                     id="id_target_type"
+                     class="form-control form-control-sm"
+                     value="{{ filter_form.target_type.value|default:'' }}"
+                     placeholder="workflows.Workflow" />
+            </div>
+            <div class="col-md-2">
+              <label class="form-label" for="id_date_from">
+                {{ filter_form.date_from.label }}
+              </label>
+              <input type="date"
+                     name="date_from"
+                     id="id_date_from"
+                     class="form-control form-control-sm"
+                     value="{{ filter_form.date_from.value|default:'' }}" />
+            </div>
+            <div class="col-md-2">
+              <label class="form-label" for="id_date_to">
+                {{ filter_form.date_to.label }}
+              </label>
+              <input type="date"
+                     name="date_to"
+                     id="id_date_to"
+                     class="form-control form-control-sm"
+                     value="{{ filter_form.date_to.value|default:'' }}" />
+            </div>
+          </div>
+
+          {% if filter_form.non_field_errors %}
+            <div class="alert alert-danger mt-3 mb-0" role="alert">
+              {{ filter_form.non_field_errors }}
+            </div>
+          {% endif %}
+
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            <button type="submit" class="btn btn-sm btn-primary">
+              <i class="bi bi-funnel me-1"></i>{% trans "Filter" %}
+            </button>
+            <a href="{% url 'audit:list' %}"
+               class="btn btn-sm btn-outline-secondary">
+              {% trans "Clear" %}
+            </a>
+            <div class="ms-auto d-flex gap-2">
+              {# "Export current view" — the querystring carries the #}
+              {# same filters so the export mirrors the on-screen    #}
+              {# result set.                                          #}
+              <a class="btn btn-sm btn-outline-primary"
+                 href="{% url 'audit:export' %}?format=csv{% if export_querystring %}&amp;{{ export_querystring }}{% endif %}">
+                <i class="bi bi-filetype-csv me-1"></i>{% trans "Export CSV" %}
+              </a>
+              <a class="btn btn-sm btn-outline-primary"
+                 href="{% url 'audit:export' %}?format=jsonl{% if export_querystring %}&amp;{{ export_querystring }}{% endif %}">
+                <i class="bi bi-filetype-json me-1"></i>{% trans "Export JSONL" %}
+              </a>
+            </div>
+          </div>
+        </div>
+      </form>
+
+      {% if entries %}
+        <div class="table-responsive">
+          <table class="table table-hover align-middle">
+            <thead>
+              <tr>
+                <th scope="col">
+                  {% trans "When" %}
+                </th>
+                <th scope="col">
+                  {% trans "Action" %}
+                </th>
+                <th scope="col">
+                  {% trans "Actor" %}
+                </th>
+                <th scope="col">
+                  {% trans "Target" %}
+                </th>
+                <th scope="col" class="text-end">
+                  {% trans "Details" %}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in entries %}
+                <tr>
+                  <td>
+                    <time datetime="{{ entry.occurred_at|date:'c' }}"
+                          title="{{ entry.occurred_at|date:'c' }}">
+                      {{ entry.occurred_at|date:"Y-m-d H:i" }}
+                    </time>
+                  </td>
+                  <td>
+                    <code class="small">{{ entry.get_action_display }}</code>
+                  </td>
+                  <td>
+                    {% if entry.actor.erased_at %}
+                      <span class="text-muted fst-italic">
+                        {% trans "(erased)" %}
+                      </span>
+                    {% elif entry.actor.user %}
+                      {{ entry.actor.user.email }}
+                    {% elif entry.actor.email %}
+                      {{ entry.actor.email }}
+                    {% else %}
+                      <span class="text-muted">{% trans "system" %}</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if entry.target_repr %}
+                      {{ entry.target_repr|truncatechars:60 }}
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="{% url 'audit:detail' entry_id=entry.pk %}">
+                      {% trans "View" %}
+                    </a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if is_paginated %}
+          {# Pagination links preserve the active filter set so that #}
+          {# "Next" on a filtered view stays filtered. The export    #}
+          {# querystring is exactly the filter set stripped of      #}
+          {# ``page`` — we reuse it here and append the page param.  #}
+          <nav aria-label="{% trans 'Audit log pagination' %}" class="mt-3">
+            <ul class="pagination">
+              {% if page_obj.has_previous %}
+                <li class="page-item">
+                  <a class="page-link"
+                     href="?page={{ page_obj.previous_page_number }}{% if export_querystring %}&amp;{{ export_querystring }}{% endif %}">
+                    {% trans "Previous" %}
+                  </a>
+                </li>
+              {% endif %}
+              <li class="page-item active" aria-current="page">
+                <span class="page-link">
+                  {% blocktrans with current=page_obj.number total=page_obj.paginator.num_pages %}
+                    Page {{ current }} of {{ total }}
+                  {% endblocktrans %}
+                </span>
+              </li>
+              {% if page_obj.has_next %}
+                <li class="page-item">
+                  <a class="page-link"
+                     href="?page={{ page_obj.next_page_number }}{% if export_querystring %}&amp;{{ export_querystring }}{% endif %}">
+                    {% trans "Next" %}
+                  </a>
+                </li>
+              {% endif %}
+            </ul>
+          </nav>
+        {% endif %}
+      {% else %}
+        <div class="alert alert-info" role="alert">
+          {% trans "No audit log entries recorded yet." %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endblock app_content %}

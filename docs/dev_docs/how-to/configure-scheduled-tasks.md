@@ -33,7 +33,18 @@ Validibot uses **Celery** with **Celery Beat** for scheduled task execution. Thi
 
 ## Scheduled Tasks
 
-The following tasks run on schedules (configured via Django admin or data migration):
+The **single source of truth** for scheduled tasks is the registry at
+`validibot/core/tasks/registry.py`. Each task is a
+`ScheduledAdminTaskDefinition` row declaring the cron expression, the
+Celery task path, and the Cloud Scheduler API endpoint. The same
+definitions feed every backend (Celery Beat for Docker Compose,
+Google Cloud Scheduler for GCP, AWS EventBridge in future).
+
+Do not define schedules in data migrations. The registry is the only
+write path; reconciliation is handled by `sync_schedules` (called
+automatically by `setup_validibot` and `just docker-compose bootstrap`).
+
+Current entries:
 
 | Task | Default Schedule | Description |
 |------|------------------|-------------|
@@ -45,6 +56,25 @@ The following tasks run on schedules (configured via Django admin or data migrat
 | `cleanup_idempotency_keys` | Daily at 3 AM | Remove expired idempotency keys |
 | `cleanup_callback_receipts` | Weekly (Sunday 4 AM) | Clean old callback receipts |
 | `clear_sessions` | Daily at 2 AM | Remove expired Django sessions |
+| `send_periodic_emails` | Every 6 hours | Dispatch registered periodic email handlers (no-op in community) |
+
+### Adding a new scheduled task
+
+1. **Add a `ScheduledAdminTaskDefinition` entry** to
+   `SCHEDULED_ADMIN_TASKS` in `validibot/core/tasks/registry.py`.
+2. **Add the Celery task wrapper** to
+   `validibot/core/tasks/scheduled_tasks.py`. Conventionally wraps a
+   Django management command via `call_command`.
+3. **Add an API endpoint** at the declared path for Cloud Scheduler
+   to invoke (wire it through `validibot/core/api/scheduled_tasks.py`).
+4. **Run `python manage.py sync_schedules --backend=celery`** (or just
+   `setup_validibot`) to pick up the new entry.
+
+Downstream packages (`validibot-cloud`, `validibot-pro`,
+`validibot-enterprise`) add their own scheduled tasks by calling
+`validibot.core.tasks.registry.register_scheduled_admin_task()` from
+their `AppConfig.ready()`. See the registry docstring for the
+read-path contract.
 
 ## Configuration
 
@@ -118,24 +148,28 @@ The Django admin provides a UI for managing periodic tasks at `/admin/django_cel
 
 ### Modifying Schedules
 
-To change when a task runs:
+There are two ways to change when a task runs:
+
+**Code-level (permanent, canonical):** edit the
+`ScheduledAdminTaskDefinition` entry in `validibot/core/tasks/registry.py`
+and re-run `sync_schedules` (or `setup_validibot`). The registry is the
+source of truth — every backend (Celery Beat, Cloud Scheduler) reads
+from the same definition.
+
+**Admin-level (one-off override):** for emergency schedule changes
+without redeploying:
 
 1. Go to Django Admin → Periodic Tasks
 2. Find the task (e.g., "Purge expired submissions")
 3. Click to edit
-4. Change the crontab or interval schedule
+4. Change the crontab or interval schedule, or uncheck Enabled
 5. Save
 
-Changes take effect on the next Beat scheduler sync (typically within 5 minutes).
-
-### Disabling Tasks
-
-To temporarily disable a scheduled task:
-
-1. Go to Django Admin → Periodic Tasks
-2. Find the task
-3. Uncheck "Enabled"
-4. Save
+Changes take effect on the next Beat scheduler sync (typically within
+5 minutes). Note that running `sync_schedules` again will reconcile
+the admin-level override back to the registry value — admin edits are
+best thought of as temporary incident-response moves, not permanent
+configuration.
 
 ## Monitoring
 

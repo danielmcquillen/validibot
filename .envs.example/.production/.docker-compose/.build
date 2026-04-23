@@ -1,14 +1,44 @@
-# Optional Docker build settings for self-hosted commercial packages.
-# Copy this file to .envs/.production/.docker-compose/.build only if you
-# purchased Pro or Enterprise.
+# =============================================================================
+# Production Docker Compose build + recipe configuration
+# =============================================================================
+#
+# Copy this file to ``.envs/.production/.docker-compose/.build`` before
+# your first ``just docker-compose build``. The just docker-compose
+# module sources this file at the top of every recipe that might need
+# recipe-level knobs (e.g. ``up``, ``build``, ``bootstrap``), and Docker
+# Compose itself reads it via ``--env-file`` for YAML interpolation.
+#
+# Keep this file private; it is gitignored.
+# =============================================================================
+
+
+# -- 1. Docker build-time vars (Pro / Enterprise packaging) ----------------
 #
 # Set one of:
 #   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro==0.1.0
 #   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-enterprise==0.1.0
 #   VALIDIBOT_COMMERCIAL_PACKAGE="https://YOUR_EMAIL:YOUR_API_KEY@pypi.validibot.com/packages/validibot_pro-0.1.0-py3-none-any.whl#sha256=<hash>"
 #
-# The private index URL comes from your license email and typically includes
-# embedded credentials. Keep this file private; it is gitignored.
-
+# The private index URL comes from your license email and typically
+# includes embedded credentials.
 VALIDIBOT_COMMERCIAL_PACKAGE=
 VALIDIBOT_PRIVATE_INDEX_URL=
+
+
+# -- 2. Recipe-level knobs --------------------------------------------------
+#
+# ENABLE_MCP_SERVER
+# -----------------
+# The production Docker Compose stack defines the MCP service behind
+# the ``mcp`` Compose profile. ``just docker-compose`` recipes read
+# this variable to decide whether to include the container in ``build``,
+# ``up``, and related lifecycle commands.
+#
+# Requires validibot-pro (or enterprise) to be set in
+# VALIDIBOT_COMMERCIAL_PACKAGE above — the MCP server calls
+# ``GET /api/v1/license/features/`` at startup and refuses to boot if
+# ``mcp_server`` isn't advertised.
+#
+#   true   — include MCP container
+#   false  — omit MCP (default)
+ENABLE_MCP_SERVER=false

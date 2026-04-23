@@ -11,6 +11,7 @@ from validibot.core.api.scheduled_tasks import CleanupCallbackReceiptsView
 from validibot.core.api.scheduled_tasks import CleanupIdempotencyKeysView
 from validibot.core.api.scheduled_tasks import CleanupStuckRunsView
 from validibot.core.api.scheduled_tasks import ClearSessionsView
+from validibot.core.api.scheduled_tasks import EnforceAuditRetentionView
 from validibot.core.api.scheduled_tasks import ProcessPurgeRetriesView
 from validibot.core.api.scheduled_tasks import PurgeExpiredSubmissionsView
 from validibot.core.api.scheduled_tasks import SendPeriodicEmailsView
@@ -66,5 +67,10 @@ urlpatterns = [
         "scheduled/send-periodic-emails/",
         SendPeriodicEmailsView.as_view(),
         name="scheduled-send-periodic-emails",
+    ),
+    path(
+        "scheduled/enforce-audit-retention/",
+        EnforceAuditRetentionView.as_view(),
+        name="scheduled-enforce-audit-retention",
     ),
 ]

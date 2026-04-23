@@ -60,22 +60,75 @@ git_sha := `git rev-parse --short HEAD`
 # Container Lifecycle
 # =============================================================================
 
-# Start all services in production mode
-# This brings up web, worker, database, redis, and any other services
+# Translate the cross-target ENABLE_MCP_SERVER flag into the Compose profile
+# that docker-compose.production.yml uses to gate the optional MCP service.
+# The recipes below `eval $(just ... _mcp-profile-env)` into their environment
+# so the setting is consistent across up/build/build-only.
+[private]
+_mcp-profile-env:
+    #!/usr/bin/env bash
+    case "${ENABLE_MCP_SERVER:-false}" in
+        true|True|TRUE|1|yes|Yes|YES)
+            echo "export COMPOSE_PROFILES=\"\${COMPOSE_PROFILES:+\${COMPOSE_PROFILES},}mcp\""
+            ;;
+        *)
+            ;;
+    esac
+
+# Source recipe-level knobs from .envs/.production/.docker-compose/.build
+# if present. Kept as a helper so every lifecycle recipe (up, build,
+# build-only) picks up the same variables. The file's build-time vars
+# (VALIDIBOT_COMMERCIAL_PACKAGE, etc) are separately passed to docker
+# compose via ``--env-file`` through ``compose_env_args`` above.
+[private]
+_load-build-env:
+    #!/usr/bin/env bash
+    if [ -f .envs/.production/.docker-compose/.build ]; then
+        echo "set -a"
+        # shellcheck disable=SC1091
+        echo "source .envs/.production/.docker-compose/.build"
+        echo "set +a"
+    fi
+
+# Start all services in production mode.
+# Brings up web, worker, database, redis, and any other services. When
+# ENABLE_MCP_SERVER=true (set inline or in .envs/.production/
+# .docker-compose/.build), also starts the MCP container (profile: mcp).
 up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(just docker-compose _load-build-env)"
+    eval "$(just docker-compose _mcp-profile-env)"
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} up -d
 
 # Stop all services (containers remain, data persists)
+# Always acts on every profile so the MCP container is torn down
+# regardless of whether it was started via the flag.
 down:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export COMPOSE_PROFILES="${COMPOSE_PROFILES:+${COMPOSE_PROFILES},}mcp"
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} down
 
-# Build images and start services
-# Use this after code changes or dependency updates
+# Build images and start services.
+# Use this after code changes or dependency updates. Honours
+# ENABLE_MCP_SERVER=true (inline or from
+# .envs/.production/.docker-compose/.build) to include the MCP
+# container in the build.
 build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(just docker-compose _load-build-env)"
+    eval "$(just docker-compose _mcp-profile-env)"
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} up -d --build
 
-# Build images without starting (useful for CI/CD)
+# Build images without starting (useful for CI/CD).
+# Same ENABLE_MCP_SERVER semantics as `build`.
 build-only:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(just docker-compose _load-build-env)"
+    eval "$(just docker-compose _mcp-profile-env)"
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} build
 
 # Wait until the web container accepts management commands
@@ -96,10 +149,17 @@ _wait-web:
 
 # First-time install for self-hosted customers
 # Builds and starts the stack, applies migrations, seeds default data,
-# and verifies the installation.
+# registers OIDC clients (for MCP OAuth), and verifies the installation.
+#
+# ensure_oidc_clients is a no-op when no OIDC clients are configured in
+# the env file — so this step is safe on community-only deployments
+# too. For Pro deployments that have set IDP_OIDC_MCP_SERVER_CLIENT_SECRET,
+# this is what creates the Claude Desktop + MCP confidential client
+# rows that make OAuth actually work.
 bootstrap: check-env build _wait-web
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py migrate --noinput
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py setup_validibot --noinput
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py ensure_oidc_clients
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py check_validibot
     @echo ""
     @echo "Bootstrap complete!"

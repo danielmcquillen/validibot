@@ -5,6 +5,13 @@
 
 # DJANGO
 # ==============================================================================
+# Pick the settings module that matches your edition:
+#   config.settings.production      — community only
+#   config.settings.production_pro  — community + validibot-pro (adds
+#                                     validibot_pro to INSTALLED_APPS, which
+#                                     is what actually activates the Pro
+#                                     license at import time)
+# Both modules honour the same DJANGO_* and OIDC env vars in this file.
 DJANGO_SETTINGS_MODULE=config.settings.production
 DEPLOYMENT_TARGET=docker_compose
 DJANGO_SECRET_KEY=your-secret-key-here-change-this
@@ -190,3 +197,31 @@ VALIDATOR_CPU_LIMIT=2.0
 # ==============================================================================
 #LAUNCH_VELOCITY_PER_MINUTE=30
 #LAUNCH_VELOCITY_PER_HOUR=500
+
+# MCP HELPER API SERVICE-TO-SERVICE AUTH
+# ==============================================================================
+# Shared secret used by the FastMCP server to authenticate itself to
+# Django when calling /api/v1/mcp/*. MUST match ``VALIDIBOT_MCP_SERVICE_KEY``
+# in .envs/.production/.docker-compose/.mcp on the MCP side. Without
+# this, every MCP tool call 401s at the Django helper API.
+#
+# Read by ``validibot.mcp_api.authentication.MCPServiceAuthentication``
+# as ``settings.MCP_SERVICE_KEY``.
+#
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+VALIDIBOT_MCP_SERVICE_KEY=replace-with-a-long-random-string
+
+# ── MCP OAuth (required for Claude Desktop support) ───────────────────
+# The confidential OAuth client that the MCP server uses to proxy
+# Dynamic Client Registration for Claude Desktop. Leave commented to
+# disable the OAuth path — the legacy API-token flow will still work.
+#IDP_OIDC_MCP_SERVER_CLIENT_SECRET=
+# Private key PEM, base64-encoded. Generate with:
+#   openssl genrsa -out oidc-key.pem 2048 \
+#     && base64 < oidc-key.pem | tr -d '\n'
+#IDP_OIDC_PRIVATE_KEY_B64=
+# Public URL of the MCP server. The OIDC audience claim and the
+# confidential client's redirect URI default to {BASE}/mcp and
+# {BASE}/auth/callback respectively — setting this one var lines up
+# both Django and the MCP container.
+#VALIDIBOT_MCP_BASE_URL=https://mcp.your-domain.example

@@ -26,11 +26,13 @@
 # USAGE
 # =====
 #
-# Local development (commands imported directly, no prefix):
-#   just up               # Start local containers
-#   just down             # Stop local containers
-#   just logs             # View logs
-#   just test             # Run tests
+# Local Docker development (commands namespaced by flavour):
+#   just local up              # Community-only stack
+#   just local-pro up          # Community + validibot-pro
+#   just local-cloud up        # Community + validibot-pro + validibot-cloud
+#   just local down            # Stop containers (same pattern for each flavour)
+#   just local logs            # View logs
+#   just local test            # Run tests
 #
 # Platform-specific deployment (prefixed with platform name):
 #   just gcp deploy prod          # Deploy to GCP production
@@ -87,9 +89,6 @@ set shell := ["bash", "-cu"]
 # Shared configuration and helper functions
 import 'just/common.just'
 
-# Local Docker development commands (up, down, build, logs, etc.)
-import 'just/local.just'
-
 # =============================================================================
 # Modules
 # =============================================================================
@@ -101,6 +100,15 @@ import 'just/local.just'
 # Access: just <name> <recipe>
 #
 # =============================================================================
+
+# Local Docker development — community-only stack (no commercial add-ons).
+# Usage: just local <command>
+# Examples:
+#   just local up
+#   just local up --build
+#   just local down
+#   just local logs
+mod local 'just/local'
 
 # Google Cloud Platform deployment
 # Usage: just gcp <command>
@@ -123,6 +131,12 @@ mod aws 'just/aws'
 #   just docker-compose health-check
 mod docker-compose 'just/docker-compose'
 
+# Pro version local development (community + validibot-pro, no cloud layer)
+# Usage: just local-pro up
+# Usage: just local-pro up --build
+# Usage: ENABLE_MCP_SERVER=true just local-pro up   # include MCP container
+mod local-pro 'just/local-pro'
+
 # Cloud version local development (layers validibot-cloud on local stack)
 # Usage: just local-cloud up
 # Usage: just local-cloud up --build
@@ -138,8 +152,12 @@ default:
     @echo "Validibot Command Runner"
     @echo "========================"
     @echo ""
-    @echo "Local Development:"
-    @just --list --unsorted 2>/dev/null | grep -E "^    (up|down|build|logs|ps|restart|clean|shell|migrate|test|manage)" || true
+    @echo "Local Docker (pick the flavour you need):"
+    @echo "    just local <command>        # Community only"
+    @echo "    just local-pro <command>    # Community + validibot-pro"
+    @echo "    just local-cloud <command>  # Community + pro + cloud"
+    @echo ""
+    @echo "Each local flavour supports: up, up --build, down, rebuild, logs, ..."
     @echo ""
     @echo "Platform Modules:"
     @echo "    just gcp <command>        # Google Cloud Platform"
@@ -147,13 +165,13 @@ default:
     @echo "    just docker-compose <command> # Docker Compose production"
     @echo ""
     @echo "Examples:"
-    @echo "    just up                   # Start local dev containers"
+    @echo "    just local up             # Start community dev stack"
+    @echo "    just local-pro up         # Start community + pro"
     @echo "    just gcp deploy prod      # Deploy to GCP production"
     @echo "    just gcp --list           # List all GCP commands"
-    @echo "    just docker-compose deploy # Deploy Docker Compose production"
     @echo ""
     @echo "Run 'just --list' for full command list"
-    @echo "Run 'just <module> --list' for module commands (e.g., just gcp --list)"
+    @echo "Run 'just <module> --list' for module commands (e.g., just local --list)"
     @echo ""
 
 # =============================================================================

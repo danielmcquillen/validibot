@@ -19,15 +19,15 @@ the machine and whether the container image is cached.
 
 Prerequisites:
 
-- Docker Compose stack is running (``just up`` or ``just local-cloud up --build``)
+- Docker Compose stack is running (``just local up`` or ``just local-cloud up --build``)
 - ``setup_validibot`` has been run (creates EnergyPlus validator)
 - ``seed_weather_files`` has been run (creates weather file records)
 - ``validibot/validator-energyplus:latest`` Docker image is available
-- Environment variables set (auto-provisioned by ``just test-e2e-energyplus``)
+- Environment variables set (auto-provisioned by ``just local test-e2e-energyplus``)
 
 Running::
 
-    just test-e2e-energyplus
+    just local test-e2e-energyplus
 """
 
 from __future__ import annotations

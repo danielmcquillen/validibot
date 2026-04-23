@@ -13,10 +13,10 @@
 #   - docker-compose.local.yml in the project root
 #
 # Quick start:
-#   just up          # Start all containers
-#   just logs        # Follow logs
-#   just shell       # Open Django shell
-#   just down        # Stop containers
+#   just local up          # Start all containers
+#   just local logs        # Follow logs
+#   just local shell       # Open Django shell
+#   just local down        # Stop containers
 #
 # Optional for Pro/Enterprise:
 #   copy .envs.example/.local/.build to .envs/.local/.build before the first build
@@ -27,6 +27,19 @@
 
 # Docker Compose file for local development
 local_compose := "docker-compose.local.yml"
+
+# The .build file plays two roles — see ``.envs.example/.local/.build``
+# for the full explanation:
+#
+# 1. ``--env-file`` for ``docker compose`` YAML interpolation of
+#    ``${FOO}`` references (mostly Pro/Enterprise packaging build args).
+# 2. ``source``d at the top of recipe bodies that need shell-level knobs
+#    (``ENABLE_MCP_SERVER``, future recipe-level flags). The community
+#    stack has no MCP service defined, so sourcing here is forward-
+#    looking — it keeps the three local recipes symmetric and lets any
+#    future recipe-level knob flow through automatically.
+#
+# Both are no-ops when the file is absent.
 local_compose_env_args := `bash -lc 'if [ -f ".envs/.local/.build" ]; then printf -- "--env-file .envs/.local/.build"; fi'`
 
 # =============================================================================
@@ -55,7 +68,7 @@ up:
         done
         echo ""
         echo "This is often caused by a leftover process from a previous session."
-        echo "To fix: kill the process(es) above, then re-run 'just up'."
+        echo "To fix: kill the process(es) above, then re-run 'just local up'."
         echo ""
         exit 1
     fi
@@ -68,8 +81,8 @@ down:
 
 # Rebuild and start all containers
 # Use this after changing Dockerfile, requirements, or dependencies
-# Usage: just build           # detached (background)
-# Usage: just build --attach  # attached (shows logs, Ctrl+C to stop)
+# Usage: just local build           # detached (background)
+# Usage: just local build --attach  # attached (shows logs, Ctrl+C to stop)
 build *args:
     docker compose {{local_compose_env_args}} -f {{local_compose}} up {{ if args == "--attach" { "" } else { "-d" } }} --build
 
@@ -80,9 +93,9 @@ build *args:
 # `uv sync` repopulates it from the fresh image (critical after
 # dependency upgrades like validibot-shared).
 #
-# Usage: just rebuild              # cached rebuild + fresh venv
-#        just rebuild --no-cache   # full clean rebuild (slow)
-#        just rebuild worker       # rebuild specific service
+# Usage: just local rebuild              # cached rebuild + fresh venv
+#        just local rebuild --no-cache   # full clean rebuild (slow)
+#        just local rebuild worker       # rebuild specific service
 rebuild *args:
     docker compose {{local_compose_env_args}} -f {{local_compose}} down
     -docker volume rm validibot_validibot_local_venv
@@ -120,7 +133,7 @@ shell:
     docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} exec bash'
 
 # Open a Django shell in the container
-# Usage: just djshell
+# Usage: just local djshell
 djshell:
     docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py shell'
 
@@ -130,9 +143,9 @@ migrate:
     docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py migrate'
 
 # Run a Django management command in the container
-# Usage: just manage createsuperuser
-# Usage: just manage "shell_plus --ipython"
-# Usage: just manage seed_weather_files
+# Usage: just local manage createsuperuser
+# Usage: just local manage "shell_plus --ipython"
+# Usage: just local manage seed_weather_files
 manage +command:
     docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py {{command}}'
 
@@ -142,9 +155,9 @@ manage +command:
 
 # Run tests locally (no GCP/cloud dependencies)
 # Uses local database and mocked services
-# Usage: just test
-# Usage: just test -k "test_name"    # Run specific test
-# Usage: just test --collect-only    # See what tests would run
+# Usage: just local test
+# Usage: just local test -k "test_name"    # Run specific test
+# Usage: just local test --collect-only    # See what tests would run
 test *args:
     uv run pytest {{args}} --log-cli-level=INFO
 
@@ -180,11 +193,11 @@ test-integration *args:
         uv run --group dev pytest {{ if args == "" { "tests/tests_integration/" } else { args } }} -v --log-cli-level=INFO
 
 # Run E2E stress tests against a running Docker Compose environment
-# Requires: `just up` running. Test data (user, org, workflow, API token) is
+# Requires: `just local up` running. Test data (user, org, workflow, API token) is
 # auto-provisioned via the setup_fullstack_test_data management command.
 # See: docs/dev_docs/how-to/run-e2e-tests.md
 #
-# Usage: just test-e2e
+# Usage: just local test-e2e
 test-e2e *args:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -197,7 +210,7 @@ test-e2e *args:
         if [ -z "$env_output" ]; then
             echo ""
             echo "Error: Could not provision test data."
-            echo "Make sure 'just up' is running and the app has been set up."
+            echo "Make sure 'just local up' is running and the app has been set up."
             echo ""
             exit 1
         fi
@@ -209,11 +222,11 @@ test-e2e *args:
     uv run --group dev pytest tests/tests_e2e/test_stress.py {{args}} -v --log-cli-level=INFO
 
 # Run EnergyPlus E2E tests against a running Docker Compose environment
-# Requires: Docker Compose stack running (`just up` or `just local-cloud up --build`)
+# Requires: Docker Compose stack running (`just local up` or `just local-cloud up --build`)
 # AND the EnergyPlus Docker image available.
 # The EnergyPlus simulation takes ~2-5 minutes per test case.
 #
-# Usage: just test-e2e-energyplus
+# Usage: just local test-e2e-energyplus
 test-e2e-energyplus *args:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -235,9 +248,9 @@ test-e2e-energyplus *args:
         if [ -z "$env_output" ]; then
             echo ""
             echo "Error: Could not provision E2E workflow data."
-            echo "Make sure Docker Compose is running ('just up' or 'just local-cloud up --build')"
+            echo "Make sure Docker Compose is running ('just local up' or 'just local-cloud up --build')"
             echo "and the app has been set up"
-            echo "(run 'just manage setup_validibot' and 'just manage seed_weather_files')."
+            echo "(run 'just local manage setup_validibot' and 'just local manage seed_weather_files')."
             echo ""
             exit 1
         fi

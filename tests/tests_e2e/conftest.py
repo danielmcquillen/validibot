@@ -2,7 +2,7 @@
 Pytest fixtures for E2E tests (stress tests and advanced validator workflows).
 
 These tests run against a live Validibot environment (Docker Compose or deployed).
-When run via ``just test-e2e`` or ``just test-e2e-energyplus``, environment
+When run via ``just local test-e2e`` or ``just local test-e2e-energyplus``, environment
 variables are auto-provisioned by management commands.  They can also be set
 manually:
 
@@ -28,7 +28,7 @@ def _require_env(name: str) -> str:
     value = os.environ.get(name, "")
     if not value:
         pytest.skip(
-            f"Missing {name}. Run via 'just test-e2e' for auto-provisioning.",
+            f"Missing {name}. Run via 'just local test-e2e' for auto-provisioning.",
         )
     return value
 

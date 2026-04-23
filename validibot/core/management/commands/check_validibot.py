@@ -740,7 +740,10 @@ class Command(BaseCommand):
                         CheckStatus.SKIPPED,
                         f"{len(missing)} validator image(s) not installed",
                         details="\n".join(f"  - {img}" for img in missing),
-                        fix_hint="Build images: just build energyplus fmu",
+                        fix_hint=(
+                            "Build images: (in ../validibot-validators) "
+                            "just build energyplus fmu"
+                        ),
                     )
 
         except Exception:  # noqa: S110

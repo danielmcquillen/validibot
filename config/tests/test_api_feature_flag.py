@@ -16,15 +16,27 @@ class ApiFeatureFlagTests(SimpleTestCase):
         self._reload_urls()
 
     def _reload_urls(self) -> None:
-        from config import urls as config_urls
+        # ``config.urls`` delegates to ``config.urls_web`` for web-role
+        # deployments, and ``urls_web`` is where the ``ENABLE_API`` flag
+        # actually gates the api_router include. Reloading only
+        # ``config.urls`` leaves the cached ``urls_web`` module intact,
+        # so the gated routes keep being reachable. Reload the chain.
+        import config.urls as config_urls
+        import config.urls_web as config_urls_web
 
+        reload(config_urls_web)
         reload(config_urls)
         clear_url_caches()
         set_urlconf(None)
 
     def test_api_urls_enabled_by_default(self) -> None:
-        url = reverse("api:workflow-list")
-        self.assertEqual(url, "/api/v1/workflows/")
+        # ``api:auth-me`` is a simple non-kwarg route registered directly
+        # in config.api_router — a stable canary that the API URLConf is
+        # mounted when ENABLE_API is on. The older assertion used
+        # ``api:workflow-list`` but workflows are now org-scoped
+        # (``api:org-workflows-list`` requires an ``org_slug`` kwarg).
+        url = reverse("api:auth-me")
+        self.assertEqual(url, "/api/v1/auth/me/")
         match = resolve(url)
         self.assertIsNotNone(match.func)
 
@@ -32,10 +44,10 @@ class ApiFeatureFlagTests(SimpleTestCase):
         with self.settings(ENABLE_API=False):
             self._reload_urls()
             with pytest.raises(NoReverseMatch):
-                reverse("api:workflow-list")
+                reverse("api:auth-me")
 
             with pytest.raises(Resolver404):
-                resolve("/api/v1/workflows/")
+                resolve("/api/v1/auth/me/")
 
             with pytest.raises(NoReverseMatch):
                 reverse("obtain_auth_token")

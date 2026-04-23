@@ -9,7 +9,7 @@
 #   just local-cloud up --build    # Rebuild and start
 #   just local-cloud down          # Stop cloud containers (including MCP)
 #
-# Note: `just down` only stops the local stack (docker-compose.local.yml).
+# Note: `just local down` only stops the community-only stack (docker-compose.local.yml).
 # The cloud stack includes extra services like the MCP server that aren't
 # in the local compose file, so use `just local-cloud down` to stop them.
 #
@@ -24,6 +24,12 @@ _db_url := 'DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POS
 
 # Start cloud containers locally
 #
+# Recipe-level knobs (ENABLE_MCP_SERVER, future flags) come from
+# ``.envs/.local/.build`` — see ``.envs.example/.local/.build`` for
+# the variable reference. Setting a knob inline
+# (``ENABLE_MCP_SERVER=true just local-cloud up``) still works and
+# wins over the file.
+#
 # When --build is passed, the venv volume is removed first so that
 # `uv sync` installs dependencies from the updated lockfile.
 # Without this, the persisted volume can serve a stale venv that
@@ -32,9 +38,30 @@ _db_url := 'DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POS
 up *args:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Load shell-level knobs from .envs/.local/.build if present.
+    # ``set -a`` exports every variable so the ENABLE_MCP_SERVER check
+    # below sees them. Absent file → no-op, inline env still works.
+    if [ -f .envs/.local/.build ]; then
+        set -a
+        # shellcheck disable=SC1091
+        source .envs/.local/.build
+        set +a
+    fi
     args="{{args}}"
     if [[ "$args" == *"--build"* ]]; then
         docker volume rm validibot_validibot_local_venv 2>/dev/null || true
+    fi
+    # ENABLE_MCP_SERVER=true activates the "mcp" Compose profile so the
+    # standalone FastMCP container is built and started alongside the
+    # rest of the stack. The MCP service definition lives in
+    # docker-compose.cloud.yml and refuses to run without the profile.
+    # Any other value (or unset) leaves it out, matching the fact that
+    # MCP is a Pro feature.
+    if [[ "${ENABLE_MCP_SERVER:-false}" == "true" || \
+          "${ENABLE_MCP_SERVER:-false}" == "1" || \
+          "${ENABLE_MCP_SERVER:-false}" == "yes" ]]; then
+        export COMPOSE_PROFILES="${COMPOSE_PROFILES:+${COMPOSE_PROFILES},}mcp"
+        echo "ENABLE_MCP_SERVER is set — including the MCP container (profile: mcp)"
     fi
     docker compose -f "{{cloud_compose}}" up -d $args
 
@@ -59,10 +86,26 @@ down:
 #        just local-cloud rebuild worker       # rebuild specific service
 [no-cd]
 rebuild *args:
-    docker compose -f {{cloud_compose}} down
-    -docker volume rm validibot_validibot_local_venv
-    docker compose -f {{cloud_compose}} build {{args}}
-    docker compose -f {{cloud_compose}} up -d
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Same .envs/.local/.build sourcing + ENABLE_MCP_SERVER translation
+    # as the ``up`` recipe above — keeps the toggle consistent for
+    # developers who rebuild in a loop.
+    if [ -f .envs/.local/.build ]; then
+        set -a
+        # shellcheck disable=SC1091
+        source .envs/.local/.build
+        set +a
+    fi
+    if [[ "${ENABLE_MCP_SERVER:-false}" == "true" || \
+          "${ENABLE_MCP_SERVER:-false}" == "1" || \
+          "${ENABLE_MCP_SERVER:-false}" == "yes" ]]; then
+        export COMPOSE_PROFILES="${COMPOSE_PROFILES:+${COMPOSE_PROFILES},}mcp"
+    fi
+    docker compose -f "{{cloud_compose}}" down
+    docker volume rm validibot_validibot_local_venv 2>/dev/null || true
+    docker compose -f "{{cloud_compose}}" build {{args}}
+    docker compose -f "{{cloud_compose}}" up -d
 
 # Run EnergyPlus E2E tests — one command does everything
 #

@@ -1,0 +1,218 @@
+"""
+Run status tools: get_run_status and wait_for_run.
+
+Validation runs are asynchronous — EnergyPlus simulations can take minutes.
+These tools let agents check status or block until completion.
+
+Two-path dispatch:
+    - **run_ref**: decodes to the correct member-access helper path or
+      anonymous x402 polling path automatically.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from typing import TYPE_CHECKING, Any
+
+from validibot_mcp import auth, client
+from validibot_mcp.errors import MCPToolError
+from validibot_mcp.gating import check_global_enabled
+from validibot_mcp.refs import (
+    RUN_REF_MEMBER_KIND,
+    RUN_REF_X402_KIND,
+    build_member_run_ref,
+    build_x402_run_ref,
+    parse_run_ref,
+)
+from validibot_mcp.tools import format_error
+
+if TYPE_CHECKING:
+    from fastmcp import FastMCP
+
+# States that indicate the run is finished (no more polling needed).
+_TERMINAL_STATES = {"COMPLETED", "SUCCEEDED", "FAILED", "CANCELED"}
+
+_DEFAULT_TIMEOUT = 300  # 5 minutes
+_POLL_INITIAL_INTERVAL = 2  # seconds — catches fast validators quickly
+_POLL_MAX_INTERVAL = 30  # seconds — cap for slow validators (EnergyPlus, FMU)
+_POLL_BACKOFF_FACTOR = 2  # double the interval each iteration
+
+_READ_ONLY_TOOL_ANNOTATIONS = {
+    "readOnlyHint": True,
+    "idempotentHint": True,
+    "openWorldHint": True,
+}
+
+
+async def _get_run_for_path(
+    *,
+    api_key: str | None,
+    user_sub: str | None,
+    run_ref: str | None,
+) -> dict[str, Any]:
+    """Dispatch run status lookup to the correct path.
+
+    Member-access runs use the authenticated MCP helper endpoint.
+    Anonymous x402 runs use the public dual-key agent endpoint.
+    """
+    if run_ref:
+        try:
+            resolved_run = parse_run_ref(run_ref)
+        except ValueError:
+            return {
+                "error": {
+                    "code": "INVALID_PARAMS",
+                    "message": "run_ref is invalid.",
+                },
+            }
+
+        if resolved_run.auth_kind == RUN_REF_MEMBER_KIND:
+            if api_key is None:
+                return {
+                    "error": {
+                        "code": "INVALID_PARAMS",
+                        "message": "A bearer token is required for member-access run_ref values.",
+                    },
+                }
+            run = await client.get_authenticated_run(
+                run_ref,
+                user_sub=user_sub,
+                api_token=None if user_sub else api_key,
+            )
+            return _with_run_ref(run)
+
+        if resolved_run.auth_kind == RUN_REF_X402_KIND:
+            run = await client.get_agent_run_status(
+                run_id=resolved_run.run_id,
+                wallet_address=resolved_run.wallet_address or "",
+            )
+            return _with_run_ref(run)
+
+    return {
+        "error": {
+            "code": "INVALID_PARAMS",
+            "message": ("run_ref is required."),
+        },
+    }
+
+
+def _with_run_ref(run: dict[str, Any]) -> dict[str, Any]:
+    """Attach the opaque ``run_ref`` used by the MCP contract."""
+
+    enriched = {**run}
+    run_id = str(enriched.get("run_id") or enriched.get("id") or "").strip()
+    org_slug = str(enriched.get("org") or "").strip()
+    wallet_address = str(enriched.get("wallet_address") or "").strip()
+
+    if run_id and org_slug:
+        enriched["run_ref"] = build_member_run_ref(
+            org_slug=org_slug,
+            run_id=run_id,
+        )
+        enriched.setdefault("run_id", run_id)
+        return enriched
+
+    if run_id and wallet_address:
+        enriched["run_ref"] = build_x402_run_ref(
+            run_id=run_id,
+            wallet_address=wallet_address,
+        )
+    return enriched
+
+
+async def get_run_status(
+    run_ref: str = "",
+) -> dict[str, Any]:
+    """Check the current status of a validation run.
+
+    Returns the run's state, result, and findings (if complete).
+
+    Pass the opaque ``run_ref`` returned by ``validate_file``.
+
+    Returns:
+        Run status including state, result, and findings (if complete).
+    """
+    try:
+        check_global_enabled()
+        api_key = auth.get_api_key_or_none()
+        user_sub = auth.get_authenticated_user_sub_or_none()
+        return await _get_run_for_path(
+            api_key=api_key,
+            user_sub=user_sub,
+            run_ref=run_ref,
+        )
+    except MCPToolError as exc:
+        return format_error(exc)
+
+
+async def wait_for_run(
+    run_ref: str = "",
+    timeout_seconds: int = _DEFAULT_TIMEOUT,
+) -> dict[str, Any]:
+    """Wait for a validation run to complete, polling periodically.
+
+    Blocks until the run reaches a terminal state or the timeout expires.
+    Useful when the agent wants to act on the results immediately.
+
+    Args:
+        run_ref: Opaque run handle from ``validate_file``.
+        timeout_seconds: Maximum time to wait (default: 300 = 5 minutes).
+
+    Returns:
+        Final run status. If the timeout expires before completion, the
+        ``result`` field will be "TIMED_OUT" and ``is_complete`` will be False.
+    """
+    try:
+        check_global_enabled()
+        api_key = auth.get_api_key_or_none()
+        user_sub = auth.get_authenticated_user_sub_or_none()
+        start = time.monotonic()
+        interval = _POLL_INITIAL_INTERVAL
+
+        while True:
+            run = await _get_run_for_path(
+                api_key=api_key,
+                user_sub=user_sub,
+                run_ref=run_ref,
+            )
+
+            # If the helper returned an error, propagate it immediately.
+            # Check for a truthy value — the API may include "error": null
+            # on success responses.
+            if run.get("error"):
+                return run
+
+            state = run.get("state", "")
+            if state in _TERMINAL_STATES:
+                return run
+
+            elapsed = time.monotonic() - start
+            if elapsed > timeout_seconds:
+                return {
+                    **run,
+                    "result": "TIMED_OUT",
+                    "is_complete": False,
+                    "message": (
+                        f"Run still in progress after {timeout_seconds}s. "
+                        f"Use get_run_status to check again later."
+                    ),
+                }
+
+            # Clamp sleep to the remaining time budget so we never
+            # overshoot the caller's requested timeout.
+            remaining = timeout_seconds - (time.monotonic() - start)
+            await asyncio.sleep(min(interval, max(remaining, 0)))
+            interval = min(
+                interval * _POLL_BACKOFF_FACTOR,
+                _POLL_MAX_INTERVAL,
+            )
+    except MCPToolError as exc:
+        return format_error(exc)
+
+
+def register_tools(server: FastMCP) -> None:
+    """Register the run tools on a FastMCP server instance."""
+
+    server.tool(get_run_status, annotations=_READ_ONLY_TOOL_ANNOTATIONS)
+    server.tool(wait_for_run, annotations=_READ_ONLY_TOOL_ANNOTATIONS)

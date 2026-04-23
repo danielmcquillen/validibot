@@ -16,7 +16,7 @@ Choose [Deploy with Docker Compose](deploy-docker-compose.md) instead if you wan
 
 ## What this target runs
 
-The local stack uses `docker-compose.local.yml` and the root `just` commands:
+The local stack uses `docker-compose.local.yml` and the `just local` commands:
 
 - `web` running Django with local code mounted in
 - `worker` for background jobs
@@ -45,8 +45,14 @@ mkdir -p .envs/.local
 cp .envs.example/.local/.django .envs/.local/.django
 cp .envs.example/.local/.postgres .envs/.local/.postgres
 
+# Also copy the build/recipe config. It holds both build-time knobs
+# (commercial-package installation) and recipe-level knobs
+# (ENABLE_MCP_SERVER for the Pro stacks). Safe to copy even for
+# community-only use — every variable has a sensible default.
+cp .envs.example/.local/.build .envs/.local/.build
+
 # Edit .envs/.local/.django and set SUPERUSER_PASSWORD
-just up
+just local up
 ```
 
 Once the containers are up:
@@ -57,7 +63,9 @@ Once the containers are up:
 
 ## If you purchased Pro or Enterprise
 
-Local Docker builds can optionally bake a commercial package into the image. Do that before your first `just up`, or run `just build` afterwards to rebuild the stack.
+Local Docker builds can optionally bake a commercial package into the image. Do that before your first `just local up`, or run `just local build` afterwards to rebuild the stack.
+
+If you already copied `.envs.example/.local/.build` in the Quick start above, just edit `.envs/.local/.build`. Otherwise:
 
 ```bash
 cp .envs.example/.local/.build .envs/.local/.build
@@ -74,18 +82,50 @@ Use `validibot-enterprise==<version>` instead of `validibot-pro==<version>` if
 you purchased Enterprise. You can also use a quoted exact wheel URL on
 `pypi.validibot.com` that includes `#sha256=<hash>` instead of a package name
 and version.
-Then add the commercial Django app to `config/settings/base.py` before you
-start or rebuild the stack:
 
-```python
-INSTALLED_APPS += ["validibot_pro"]
+Then point Django at the Pro-activating settings module by setting
+`DJANGO_SETTINGS_MODULE` in `.envs/.local/.django`:
+
+```bash
+DJANGO_SETTINGS_MODULE=config.settings.local_pro
 ```
 
-If you purchased Enterprise, add both apps:
+That's all — the settings module adds `validibot_pro` to
+`INSTALLED_APPS`, which is what Django needs in order to import the
+package and run its license-registration hook. Do not patch
+`config/settings/base.py` directly (that makes upgrades messier);
+the dedicated settings module is the supported path.
 
-```python
-INSTALLED_APPS += ["validibot_pro", "validibot_enterprise"]
+For Enterprise, use the same pattern with a forthcoming
+`config.settings.local_enterprise` module (or stack two modules via
+`DJANGO_SETTINGS_MODULE=config.settings.local_enterprise` which will
+append both `validibot_pro` and `validibot_enterprise`).
+
+## Include the MCP server
+
+The FastMCP container is a Pro feature — exposes validation workflows
+to AI agents over the Model Context Protocol. It's defined in the
+`local-pro` and `local-cloud` compose overlays behind an opt-in
+`mcp` Compose profile, so an empty `.build` file leaves it out by
+default.
+
+To include it, open `.envs/.local/.build` and set:
+
+```bash
+ENABLE_MCP_SERVER=true
 ```
+
+Then restart the stack:
+
+```bash
+just local-pro up --build    # community + Pro + MCP
+# or
+just local-cloud up --build  # community + Pro + Cloud + MCP
+```
+
+The recipe prints `"ENABLE_MCP_SERVER is set — including the MCP container (profile: mcp)"` on start, and the container listens on `http://localhost:8001`.
+
+`ENABLE_MCP_SERVER=true` is ignored by `just local up` because the community compose file defines no `mcp` service. The MCP server also has a runtime license check at boot — a community-only deployment without validibot-pro would fail the check even if the container were somehow started.
 
 ## Enable signed credentials locally
 
@@ -108,7 +148,7 @@ SIGNING_KEY_PATH=/run/validibot-keys/credential-signing.pem
 CREDENTIAL_ISSUER_URL=http://localhost:8000
 ```
 
-That in-container path works for the standard `just up` stack. If you are
+That in-container path works for the standard `just local up` stack. If you are
 using the separate `just local-cloud ...` development flow, use this instead:
 
 ```bash
@@ -123,8 +163,8 @@ available there even though that stack does not currently mount
 After updating the env file, rebuild or restart the stack:
 
 ```bash
-just build
-just up
+just local build
+just local up
 ```
 
 ## Verify the install
@@ -132,27 +172,27 @@ just up
 Run these checks after the stack starts:
 
 ```bash
-just ps
+just local ps
 curl http://localhost:8000/health/
-just manage "check_validibot"
+just local manage "check_validibot"
 ```
 
 If you want more detail while the app is starting, use:
 
 ```bash
-just logs
+just local logs
 ```
 
 ## Common local commands
 
 ```bash
-just up
-just down
-just build
-just logs
-just migrate
-just manage "check_validibot"
-just manage "createsuperuser"
+just local up
+just local down
+just local build
+just local logs
+just local migrate
+just local manage "check_validibot"
+just local manage "createsuperuser"
 ```
 
 See [Justfile Guide](justfile-guide.md) for the full command reference.
@@ -174,7 +214,7 @@ If you see `just local-cloud ...` elsewhere in the repo, that is for the separat
 
 If you hit a startup error in that separate `local-cloud` flow mentioning
 `psycopg_c`, the usual cause is a stale shared virtualenv volume. That issue is
-specific to `validibot-cloud`, not the standard `just up` stack.
+specific to `validibot-cloud`, not the standard `just local up` stack.
 
 `local-cloud` keeps a shared `.venv` volume for its web and worker containers.
 `psycopg[c]` includes a compiled extension, so after dependency changes or base

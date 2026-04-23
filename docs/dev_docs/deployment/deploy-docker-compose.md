@@ -44,7 +44,10 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
    cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
    ```
 
-   If you purchased Pro or Enterprise, also copy the optional build file:
+   Also copy the `.build` file — it holds both commercial-package
+   installation vars (Pro / Enterprise) and recipe-level knobs like
+   `ENABLE_MCP_SERVER`. Safe to copy for any deployment; all vars
+   have sensible defaults when left empty.
 
    ```bash
    cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-compose/.build
@@ -71,18 +74,32 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
    Use `validibot-enterprise==<version>` instead if you purchased Enterprise.
    You can also use a quoted exact wheel URL on `pypi.validibot.com` that
    includes `#sha256=<hash>` instead of a package name and version.
-   Then add the commercial Django app to `config/settings/base.py`
-   before you build the image:
 
-   ```python
-   INSTALLED_APPS += ["validibot_pro"]
+   Then point Django at the Pro-activating settings module by setting
+   `DJANGO_SETTINGS_MODULE` in your `.envs/.production/.docker-compose/.django`:
+
+   ```bash
+   DJANGO_SETTINGS_MODULE=config.settings.production_pro
    ```
 
-   If you purchased Enterprise, add both apps:
+   That settings module adds `validibot_pro` to `INSTALLED_APPS`, which
+   is what Django needs in order to import the package and run its
+   license-registration hook. Do not edit `config/settings/base.py`
+   directly — that makes future upgrades harder; the dedicated
+   settings module is the supported path.
 
-   ```python
-   INSTALLED_APPS += ["validibot_pro", "validibot_enterprise"]
+   To also include the MCP server (Pro feature, exposes validation
+   workflows to AI agents), flip this in `.envs/.production/.docker-compose/.build`:
+
+   ```bash
+   ENABLE_MCP_SERVER=true
    ```
+
+   The `just docker-compose up` / `build` recipes source the `.build`
+   file at the top and activate the `mcp` Compose profile when the
+   flag is truthy. The MCP server has a runtime license check that
+   requires validibot-pro (or enterprise) to be installed — it refuses
+   to start on community-only deployments even when the flag is set.
 
 4. Validate the env files and bootstrap the deployment:
 

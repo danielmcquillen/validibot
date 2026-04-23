@@ -20,12 +20,15 @@ mkdir -p .envs/.local
 cp .envs.example/.local/.django .envs/.local/.django
 cp .envs.example/.local/.postgres .envs/.local/.postgres
 
-# Optional: if you purchased Pro or Enterprise, copy the build-time package config
+# Copy the build/recipe config. Recommended for every local stack:
+# it drives recipe-level knobs like ENABLE_MCP_SERVER (Pro stacks)
+# and build-time Pro/Enterprise packaging (community Docker builds).
 cp .envs.example/.local/.build .envs/.local/.build
 
-# Edit the files and replace !!!SET...!!! placeholders with your values
+# Edit the files and replace !!!SET...!!! placeholders with your values.
+# For local-pro / local-cloud, flip ENABLE_MCP_SERVER=true in .build.
 # Then start the local stack:
-just up
+just local up
 ```
 
 **What runs where:**
@@ -41,11 +44,13 @@ just up
 # Create the directory structure
 mkdir -p .envs/.production/.docker-compose
 
-# Copy both files
+# Copy runtime files
 cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-compose/.django
 cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
 
-# Optional: if you purchased Pro or Enterprise, copy the build-time package config
+# Copy the build/recipe config. Required if you set a commercial package
+# (VALIDIBOT_COMMERCIAL_PACKAGE) or want the MCP container
+# (ENABLE_MCP_SERVER=true). Safe to copy even if both stay unset.
 cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-compose/.build
 
 # Edit with your production values (especially secrets!)
@@ -141,14 +146,26 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
 
 **Note:** `DATABASE_URL` is automatically constructed by the entrypoint script from these variables.
 
-### Docker Build Variables (`.build`)
+### Docker Build + Recipe Variables (`.build`)
 
-These variables are optional and only needed when you want Docker to install a commercial package during image build.
+The `.build` file plays two roles — both loaded from the same file:
 
-| Variable | Description | Example |
-| --- | --- | --- |
-| `VALIDIBOT_COMMERCIAL_PACKAGE` | Exact commercial package reference to bake into the image | `validibot-pro==0.1.0` |
-| `VALIDIBOT_PRIVATE_INDEX_URL` | Private package index URL from your license email | `https://user:pass@pypi.validibot.com/simple/` |
+1. **Docker build-time vars** — passed to `docker compose --env-file` for
+   YAML interpolation of `${FOO}` references in the compose files
+   (primarily build args that bake commercial packages into the image).
+2. **Recipe-level knobs** — the `just local up` / `just local-pro up` /
+   `just local-cloud up` recipes (and the production
+   `just docker-compose` recipes) source this file at the top so
+   shell-level variables like `ENABLE_MCP_SERVER` drive which Compose
+   profiles get activated.
+
+Both are optional — if the file is absent the recipes no-op cleanly.
+
+| Variable | Role | Description | Example |
+| --- | --- | --- | --- |
+| `VALIDIBOT_COMMERCIAL_PACKAGE` | Build-time | Exact commercial package reference to bake into the image. Not needed for `local-pro` / `local-cloud` development (those editable-install from the sibling repo). | `validibot-pro==0.1.0` |
+| `VALIDIBOT_PRIVATE_INDEX_URL` | Build-time | Private package index URL from your license email. | `https://user:pass@pypi.validibot.com/simple/` |
+| `ENABLE_MCP_SERVER` | Recipe | Activate the `mcp` Compose profile so the FastMCP container is built and started alongside the stack. Set to `true` for `just local-pro up` / `just local-cloud up`; ignored by `just local up` (community compose has no mcp service). | `true` / `false` |
 
 ### Django Variables (`.django`)
 

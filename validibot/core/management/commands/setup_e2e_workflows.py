@@ -17,7 +17,7 @@ Usage::
     # Human-readable output
     python manage.py setup_e2e_workflows
 
-    # Shell-sourceable output (for just test-e2e-energyplus)
+    # Shell-sourceable output (for just local test-e2e-energyplus)
     python manage.py setup_e2e_workflows --export-env
 """
 

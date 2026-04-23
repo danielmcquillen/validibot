@@ -15,12 +15,12 @@ set -o nounset
 #   - Wasted DB connections from concurrent SELECT ... FOR UPDATE locks
 #   - Unclear error attribution (migration failure vs app failure)
 #
-# For Docker Compose deployments, migrations run via `just migrate`
+# For Docker Compose deployments, migrations run via `just local migrate`
 # before starting the stack.
 #
 # If you need to run migrations manually:
 #   GCP:   just gcp migrate <stage>
-#   Local: just migrate
+#   Local: just local migrate
 # ────────────────────────────────────────────────────────────────────
 
 # Collect static assets for serving.

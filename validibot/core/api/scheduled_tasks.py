@@ -418,3 +418,47 @@ class SendPeriodicEmailsView(ScheduledTaskBaseView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class EnforceAuditRetentionView(ScheduledTaskBaseView):
+    """Archive + delete AuditLogEntry rows older than the retention window.
+
+    Wraps the ``enforce_audit_retention`` management command so
+    Cloud Scheduler can invoke it over HTTP with the same auth
+    machinery as the other scheduled tasks (WorkerOnlyAPIView → OIDC
+    identity token or WORKER_API_KEY). See the command module for the
+    contract details (kill-switch, chunking, verified-upload-before-
+    delete).
+
+    URL: POST /api/v1/scheduled/enforce-audit-retention/
+    Recommended schedule: Daily at 02:30 server time
+    """
+
+    def post(self, request):
+        logger.info("Starting scheduled audit retention enforcement")
+
+        try:
+            out = StringIO()
+            call_command("enforce_audit_retention", stdout=out)
+            output = out.getvalue()
+
+            logger.info("Audit retention completed: %s", output.strip())
+
+            return Response(
+                {
+                    "task": "enforce_audit_retention",
+                    "status": "completed",
+                    "output": output.strip(),
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.exception("Failed to enforce audit retention")
+            return Response(
+                {
+                    "task": "enforce_audit_retention",
+                    "status": "failed",
+                    "error": str(e),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

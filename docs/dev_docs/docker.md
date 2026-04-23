@@ -9,7 +9,7 @@ Validibot has separate compose files for different environments. If you call Doc
 
 | File                            | Purpose                                    | Command                                              |
 | ------------------------------- | ------------------------------------------ | ---------------------------------------------------- |
-| `docker-compose.local.yml`      | Local development (hot reload, runserver)  | `just up`                                            |
+| `docker-compose.local.yml`      | Local development (hot reload, runserver)  | `just local up`                                      |
 | `docker-compose.production.yml` | Production-style (gunicorn, no code mount) | `just docker-compose bootstrap`                      |
 
 There is no default `docker-compose.yml` — running `docker compose up` without `-f` will fail.
@@ -39,7 +39,7 @@ There is no default `docker-compose.yml` — running `docker compose up` without
    Or use the just command:
 
    ```bash
-   just up
+   just local up
    ```
 
    On first run, the web container automatically:
@@ -62,7 +62,7 @@ There is no default `docker-compose.yml` — running `docker compose up` without
 
 ## `local-cloud` troubleshooting note
 
-Most community users only need the standard `just up` stack described above.
+Most community users only need the standard `just local up` stack described above.
 If you see `just local-cloud ...` elsewhere in the repo, that belongs to the
 separate `validibot-cloud` development workflow rather than the normal
 self-hosted community path.

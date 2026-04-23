@@ -28,8 +28,8 @@ Deployment guides in this repo should help self-host customers get Validibot run
 ### Local Preview
 
 ```bash
-just docs-build
-just docs-dev
+just local docs-build
+just local docs-dev
 # Opens at http://localhost:9000
 ```
 

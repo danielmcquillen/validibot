@@ -55,7 +55,8 @@ def features_context(request):
     - feature_team_management: Team/member management (Pro)
     - feature_guest_management: Guest user management (Pro)
     - feature_billing: Billing/Stripe integration (Pro)
-    - feature_advanced_analytics: Advanced analytics (Pro)
+    - feature_advanced_analytics: Advanced analytics dashboards (Pro)
+    - feature_audit_log: Audit log UI (Pro)
     - feature_multi_org: Multi-organization support (Enterprise)
     - etc.
     """

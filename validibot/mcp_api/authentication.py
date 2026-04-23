@@ -1,0 +1,178 @@
+"""Service-to-service authentication for the MCP helper API.
+
+The HTTP caller on these endpoints is always the standalone FastMCP
+server, not an end user. We verify the service identity first, then
+trust the additional header the MCP server adds after having validated
+the end user's bearer credential on its own side.
+
+Two verification modes:
+
+* **Production:** the MCP Cloud Run (or equivalent container) mints a
+  Cloud Run OIDC identity token and sends it as ``Authorization: Bearer
+  <token>``. Verified with google-auth against the configured audience.
+* **Local dev / self-hosted:** a shared secret in ``X-MCP-Service-Key``
+  is accepted as a fallback. The secret comes from the ``MCP_SERVICE_KEY``
+  Django setting and must match ``VALIDIBOT_MCP_SERVICE_KEY`` on the
+  FastMCP side.
+
+Cloud's x402-paid agent routes use a sibling auth class
+(``validibot_cloud.agents.authentication.AgentRouteAuthentication``)
+that extracts payment context instead of a user identity. That one
+stays in cloud because it depends on x402 data formats and the
+``AgentValidationRun`` model.
+"""
+
+from __future__ import annotations
+
+import hmac
+from dataclasses import dataclass
+
+from allauth.idp.oidc.adapter import get_adapter
+from django.conf import settings
+from rest_framework.authentication import BaseAuthentication
+from rest_framework.authtoken.models import Token
+from rest_framework.exceptions import AuthenticationFailed
+
+
+@dataclass(frozen=True)
+class MCPAuthenticatedUserContext:
+    """Describe the end-user identity forwarded by the MCP service.
+
+    The MCP service authenticates the end user's bearer token locally,
+    then forwards either the OIDC ``sub`` claim or a legacy Validibot
+    API token to Django over a trusted service-to-service channel. Views
+    use this context to distinguish which compatibility path produced
+    the Django user.
+    """
+
+    user_identifier: str
+    auth_kind: str
+
+
+class MCPServiceAuthentication(BaseAuthentication):
+    """Verify that the caller is the trusted MCP service."""
+
+    def authenticate_header(self, request) -> str:
+        """Advertise a challenge so authentication failures become HTTP 401."""
+
+        return 'Bearer realm="validibot-mcp-service"'
+
+    def _verify_service_identity(self, request) -> None:
+        """Verify that the caller is the MCP service.
+
+        In production, the MCP service sends a Cloud Run OIDC identity
+        token in the Authorization header. In local dev, a shared secret
+        in X-MCP-Service-Key is accepted as a fallback.
+
+        Raises:
+            AuthenticationFailed: If neither verification method succeeds.
+        """
+        # Local dev: shared secret fallback.
+        service_key = getattr(settings, "MCP_SERVICE_KEY", "")
+        if service_key:
+            header_key = request.headers.get("X-MCP-Service-Key", "")
+            if header_key and hmac.compare_digest(header_key, service_key):
+                return
+
+        # Production: Cloud Run OIDC token.
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+            if self._verify_oidc_token(token):
+                return
+
+        raise AuthenticationFailed(
+            "Missing or invalid service identity. Provide a valid "
+            "Cloud Run OIDC token or X-MCP-Service-Key.",
+        )
+
+    # Lazy-initialized google-auth transport. Reused across requests to
+    # avoid creating a new requests.Session (and TCP connection pool)
+    # per OIDC verification. Initialized on first use; None if
+    # google-auth is not installed (local dev without GCP deps).
+    _google_transport: object | None = None
+    _google_transport_initialized: bool = False
+
+    @classmethod
+    def _get_google_transport(cls):
+        """Return a reusable google-auth HTTP transport, or None."""
+        if not cls._google_transport_initialized:
+            try:
+                from google.auth.transport import requests as google_requests
+
+                cls._google_transport = google_requests.Request()
+            except ImportError:
+                cls._google_transport = None
+            cls._google_transport_initialized = True
+        return cls._google_transport
+
+    def _verify_oidc_token(self, token: str) -> bool:
+        """Verify a Cloud Run OIDC identity token.
+
+        Uses google-auth to verify the token against Google's OIDC
+        discovery endpoint. The expected audience is the MCP helper API URL.
+
+        Returns True if valid, False otherwise.
+        """
+        transport = self._get_google_transport()
+        if transport is None:
+            return False
+
+        expected_audience = getattr(settings, "MCP_OIDC_AUDIENCE", "")
+        if not expected_audience:
+            return False
+
+        try:
+            from google.auth import exceptions as google_auth_exceptions
+            from google.oauth2 import id_token
+
+            id_token.verify_oauth2_token(
+                token,
+                transport,
+                audience=expected_audience,
+            )
+        except (google_auth_exceptions.TransportError, ValueError):
+            return False
+        return True
+
+
+class MCPUserRouteAuthentication(MCPServiceAuthentication):
+    """Verify the MCP service and resolve the forwarded end user.
+
+    Used by Django endpoints that exist purely to support the
+    authenticated MCP experience. The MCP service has already validated
+    the user's bearer credential; this class converts the forwarded
+    OIDC subject or legacy API token into a concrete Django
+    ``request.user``.
+    """
+
+    def authenticate(self, request):
+        """Verify service identity and resolve the forwarded user."""
+
+        self._verify_service_identity(request)
+
+        user_sub = request.headers.get("X-Validibot-User-Sub", "").strip()
+        if user_sub:
+            user = get_adapter().get_user_by_sub(None, user_sub)
+            if user is None:
+                raise AuthenticationFailed("Unknown MCP user subject.")
+            context = MCPAuthenticatedUserContext(
+                user_identifier=user_sub,
+                auth_kind="oidc_sub",
+            )
+            return (user, context)
+
+        api_token = request.headers.get("X-Validibot-Api-Token", "").strip()
+        if api_token:
+            token = Token.objects.select_related("user").filter(key=api_token).first()
+            if token is None or not token.user.is_active:
+                raise AuthenticationFailed("Unknown or inactive legacy API token.")
+            context = MCPAuthenticatedUserContext(
+                user_identifier=token.key,
+                auth_kind="legacy_api_token",
+            )
+            return (token.user, context)
+
+        raise AuthenticationFailed(
+            "Missing X-Validibot-User-Sub or X-Validibot-Api-Token header.",
+        )

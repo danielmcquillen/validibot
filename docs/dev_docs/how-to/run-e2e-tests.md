@@ -56,12 +56,12 @@ These tests are excluded from normal `pytest` runs (via `norecursedirs` in
 ### Running
 
 Test data (user, org, workflow, API token) is auto-provisioned by the
-`setup_fullstack_test_data` management command, which `just test-e2e`
+`setup_fullstack_test_data` management command, which `just local test-e2e`
 calls automatically. All you need is a running environment:
 
 ```bash
-just up
-just test-e2e
+just local up
+just local test-e2e
 ```
 
 That's it. The recipe provisions a test user, organization, workflow with a
@@ -77,7 +77,7 @@ FULLSTACK_API_URL=https://staging.example.com/api/v1 \
 FULLSTACK_API_TOKEN=your-token \
 FULLSTACK_ORG_SLUG=my-org \
 FULLSTACK_WORKFLOW_ID=workflow-uuid \
-just test-e2e
+just local test-e2e
 ```
 
 ### Environment Variables

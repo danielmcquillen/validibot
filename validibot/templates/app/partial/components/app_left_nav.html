@@ -152,6 +152,17 @@
                 <span>{% trans "Validation Runs" %}</span>
               </a>
             </li>
+            {# Advanced analytics dashboard — Pro-gated (ADVANCED_ANALYTICS) #}
+            {% if feature_advanced_analytics %}
+              <li class="nav-item" role="none">
+                <a href="{% url 'analytics:dashboard' %}"
+                   class="nav-link text-white {% active_link_views 'analytics:dashboard' %}"
+                   role="menuitem">
+                  <i class="bi bi-graph-up-arrow"></i>
+                  <span>{% trans "Advanced Analytics" %}</span>
+                </a>
+              </li>
+            {% endif %}
           </ul>
         {% elif has_any_org_roles %}
           <ul class="nav nav-pills flex-column" role="menu">
@@ -229,6 +240,17 @@
                   </a>
                 </li>
               {% endif %}
+            {% endif %}
+            {# Audit log — Pro-gated (AUDIT_LOG) org-admin surface #}
+            {% if feature_audit_log %}
+              <li class="nav-item" role="none">
+                <a href="{% url 'audit:list' %}"
+                   class="nav-link text-white {% active_link_views 'audit:list' 'audit:detail' %}"
+                   role="menuitem">
+                  <i class="bi bi-journal-text"></i>
+                  <span>{% trans "Audit Log" %}</span>
+                </a>
+              </li>
             {% endif %}
           {% endif %}
           <div class="group-label mt-4">

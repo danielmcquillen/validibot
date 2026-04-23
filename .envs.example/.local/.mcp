@@ -1,0 +1,36 @@
+# Validibot MCP server — local Docker Compose development (example).
+#
+# Copy to .envs/.local/.mcp and fill in the values below. The Compose
+# `mcp` service in ../validibot-cloud/docker-compose.cloud.yml reads
+# this file when `ENABLE_MCP_SERVER=true just local-cloud up` runs.
+
+# ── Core ───────────────────────────────────────────────────────────────
+
+VALIDIBOT_MCP_ENABLED=true
+VALIDIBOT_LOG_LEVEL=DEBUG
+
+# Django web container URL inside the Compose network.
+VALIDIBOT_API_BASE_URL=http://web:8000
+VALIDIBOT_AGENT_API_BASE_URL=http://web:8000
+
+# Generate a long random string for local dev. Must match MCP_SERVICE_KEY
+# on the Django side.
+VALIDIBOT_MCP_SERVICE_KEY=replace-with-a-long-random-string
+
+# ── x402 payments (optional) ───────────────────────────────────────────
+
+# Enable + test mode keeps you on Base Sepolia. Flip test_mode=false to
+# use the mainnet values below (do not without a funded wallet).
+VALIDIBOT_X402_ENABLED=true
+VALIDIBOT_X402_TEST_MODE=true
+
+# Testnet (Base Sepolia) — defaults in config.py, listed for readability.
+VALIDIBOT_TEST_X402_FACILITATOR_URL=https://x402.org/facilitator
+VALIDIBOT_TEST_X402_NETWORK=eip155:84532
+VALIDIBOT_TEST_X402_ASSET=0x036CbD53842c5426634e7929541eC2318f3dCF7e
+VALIDIBOT_TEST_X402_PAY_TO_ADDRESS=0xYOUR_BASE_SEPOLIA_WALLET
+
+# Mainnet values — ignored while test_mode=true.
+VALIDIBOT_X402_NETWORK=eip155:8453
+VALIDIBOT_X402_ASSET=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+VALIDIBOT_X402_PAY_TO_ADDRESS=0xYOUR_BASE_MAINNET_WALLET

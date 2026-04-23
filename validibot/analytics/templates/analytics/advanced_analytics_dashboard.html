@@ -1,0 +1,75 @@
+{% extends "app_base.html" %}
+
+{% load i18n %}
+
+{% block title %}
+  {% trans "Advanced analytics" %} · {{ organization.name }} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div id="advanced-analytics"
+       class="container-fluid d-flex flex-column flex-grow-1">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12">
+        <div class="d-flex flex-column gap-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h1 class="app-page-title mb-0 text-truncate">
+              <i class="bi bi-graph-up-arrow me-2"></i>{% trans "Advanced analytics" %}
+            </h1>
+          </div>
+          <p class="text-muted mb-0">
+            {% blocktrans with org_name=organization.name %}
+              Cross-run reporting and trend analysis for {{ org_name }}.
+              Built on top of the product analytics stream; complements
+              the per-run detail page and the compliance-grade audit log.
+            {% endblocktrans %}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-content-body flex-grow-1">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-start gap-3">
+            <i class="bi bi-info-circle-fill fs-3 text-primary"></i>
+            <div>
+              <h2 class="h5 mb-2">
+                {% trans "Coming soon" %}
+              </h2>
+              <p class="text-muted mb-3">
+                {% blocktrans %}
+                  This dashboard will render cross-run charts and
+                  quota-consumption forecasts from the product
+                  analytics stream that already powers the per-run
+                  breakdowns elsewhere in the app. It's separate from
+                  the audit log, which is a compliance surface —
+                  different retention, different consumers.
+                {% endblocktrans %}
+              </p>
+              <p class="text-muted mb-2">
+                <strong>{% trans "Planned first reports" %}</strong>
+              </p>
+              <ul class="text-muted small mb-0">
+                <li>
+                  {% trans "Validation run throughput over time (daily / weekly rollups)" %}
+                </li>
+                <li>
+                  {% trans "Validator error-rate heatmap by workflow step" %}
+                </li>
+                <li>
+                  {% trans "Quota and credit consumption forecasts" %}
+                </li>
+                <li>
+                  {% trans "Per-workflow success trends" %}
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

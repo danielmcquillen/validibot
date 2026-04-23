@@ -227,6 +227,22 @@ SCHEDULED_ADMIN_TASKS: tuple[ScheduledAdminTaskDefinition, ...] = (
         description="Remove orphaned Docker validator containers (Docker Compose only)",
         backends=(Backend.CELERY,),  # Only for Docker Compose deployments
     ),
+    # -------------------------------------------------------------------------
+    # Audit log retention
+    # -------------------------------------------------------------------------
+    ScheduledAdminTaskDefinition(
+        id="enforce-audit-retention",
+        name="Enforce Audit Log Retention",
+        celery_task="validibot.enforce_audit_retention",
+        api_endpoint="/api/v1/scheduled/enforce-audit-retention/",
+        schedule_cron="30 2 * * *",  # Daily at 02:30 server time
+        description=(
+            "Delete AuditLogEntry rows older than AUDIT_HOT_RETENTION_DAYS. "
+            "Calls AUDIT_ARCHIVE_BACKEND.archive() first so Pro/Enterprise/"
+            "cloud deployments preserve the rows before deletion. Community "
+            "default (NullArchiveBackend) discards them without preserving."
+        ),
+    ),
 )
 
 

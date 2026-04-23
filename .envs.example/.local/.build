@@ -1,13 +1,65 @@
-# Optional Docker build settings for local self-hosting with commercial packages.
-# Copy this file to .envs/.local/.build only if you purchased Pro or Enterprise.
+# =============================================================================
+# Local Docker Compose build + recipe configuration
+# =============================================================================
+#
+# Copy this file to ``.envs/.local/.build`` on first setup. Both layers
+# read it:
+#
+#   1. ``docker compose --env-file .envs/.local/.build`` — YAML interpolation
+#      of ``${FOO}`` references in the compose files (build args, image
+#      tags, etc.). Variables in category (1) flow to ``docker build``.
+#
+#   2. ``just local up`` / ``just local-pro up`` / ``just local-cloud up``
+#      source this file at the top of the recipe, so variables in
+#      category (2) drive recipe-level logic (which Compose profiles to
+#      activate, whether to pull extra overlays, etc.) before ``docker
+#      compose`` is invoked.
+#
+# Keep this file private; it is gitignored.
+# =============================================================================
+
+
+# -- 1. Docker build-time vars (Docker Compose self-hosters only) -----------
+#
+# Only set these if you installed Pro/Enterprise from PyPI for a
+# community Docker Compose deployment. For ``local-pro`` and ``local-cloud``
+# development we editable-install from the sibling directory, so leave
+# these empty.
 #
 # Set one of:
 #   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro==0.1.0
 #   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-enterprise==0.1.0
 #   VALIDIBOT_COMMERCIAL_PACKAGE="https://YOUR_EMAIL:YOUR_API_KEY@pypi.validibot.com/packages/validibot_pro-0.1.0-py3-none-any.whl#sha256=<hash>"
 #
-# The private index URL comes from your license email and typically includes
-# embedded credentials. Keep this file private; it is gitignored.
-
+# The private index URL comes from your license email and typically
+# includes embedded credentials.
 VALIDIBOT_COMMERCIAL_PACKAGE=
 VALIDIBOT_PRIVATE_INDEX_URL=
+
+
+# -- 2. Recipe-level knobs --------------------------------------------------
+#
+# ENABLE_MCP_SERVER
+# -----------------
+# The standalone FastMCP container is defined in the compose overlays
+# used by ``just local-pro up`` and ``just local-cloud up``. Those
+# recipes read this variable to decide whether to activate the ``mcp``
+# Compose profile.
+#
+# Defaults to ``false``. Flip to ``true`` when running local-pro or
+# local-cloud — MCP is a Pro feature, so both stacks have the
+# prerequisite (validibot-pro) installed.
+#
+#   true   — include MCP (local-pro / local-cloud only; ignored by
+#            ``just local up`` since the community compose file has no
+#            mcp service defined)
+#   false  — omit MCP
+#
+# The MCP server has a second, runtime gate inside the container: at
+# startup it calls ``GET /api/v1/license/features/`` and refuses to
+# boot unless ``mcp_server`` appears. ``local-pro`` and ``local-cloud``
+# install validibot-pro, which advertises that feature — so the gate
+# is satisfied automatically. ``local`` (community only) has no Pro
+# and would fail the runtime check even if ENABLE_MCP_SERVER=true
+# were honoured there.
+ENABLE_MCP_SERVER=false

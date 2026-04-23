@@ -66,9 +66,9 @@ We use two mechanisms for organizing recipes:
 
 **Imports** (local development) are accessed directly because you use them constantly:
 ```bash
-just up          # Start containers
-just logs        # View logs
-just test        # Run tests
+just local up          # Start containers
+just local logs        # View logs
+just local test        # Run tests
 ```
 
 **Modules** (deployment platforms) are namespaced to make the target platform explicit:
@@ -85,23 +85,23 @@ These commands are imported directly (no prefix needed):
 
 ```bash
 # Container lifecycle
-just up              # Start all local containers
-just down            # Stop containers
-just build           # Rebuild and restart
-just logs            # Follow all container logs
-just ps              # Show container status
-just restart         # Stop then start
-just clean           # Stop and remove volumes (deletes data!)
+just local up              # Start all local containers
+just local down            # Stop containers
+just local build           # Rebuild and restart
+just local logs            # Follow all container logs
+just local ps              # Show container status
+just local restart         # Stop then start
+just local clean           # Stop and remove volumes (deletes data!)
 
 # Django commands
-just shell           # Bash shell in Django container
-just migrate         # Run database migrations
-just manage "cmd"    # Run any manage.py command
+just local shell           # Bash shell in Django container
+just local migrate         # Run database migrations
+just local manage "cmd"    # Run any manage.py command
 
 # Testing
-just test            # Run tests locally
-just test -k "name"  # Run specific tests
-just test-integration # Run integration tests with Docker
+just local test            # Run tests locally
+just local test -k "name"  # Run specific tests
+just local test-integration # Run integration tests with Docker
 ```
 
 ### Google Cloud Platform
@@ -243,8 +243,8 @@ just docker-compose logs
 
 ```bash
 # Local development
-just manage "createsuperuser"
-just manage "shell_plus"
+just local manage "createsuperuser"
+just local manage "shell_plus"
 
 # GCP (creates temporary Cloud Run Job)
 just gcp management-cmd prod "createsuperuser"
@@ -291,7 +291,7 @@ Just automatically finds the justfile in parent directories:
 
 ```bash
 cd validibot/core/
-just up  # Still works!
+just local up  # Still works!
 ```
 
 ### Environment Variables

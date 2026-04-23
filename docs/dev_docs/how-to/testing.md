@@ -11,8 +11,8 @@ which suite to run when debugging a failure.
 |-------|----------|-------------------|------------|-------|
 | **Unit** | `validibot/*/tests/` | Individual functions, classes, models | `pytest` | Fast (seconds) |
 | **Use case** | `tests/tests_use_cases/` | Business scenarios end-to-end in-process | `pytest` | Fast (seconds) |
-| **Integration** | `tests/tests_integration/` | Cloud infra (GCS, Cloud Run Jobs, Selenium) | `just test-integration` | Medium (minutes) |
-| **E2E stress** | `tests/tests_e2e/test_stress.py` | Concurrent HTTP load against live stack | `just test-e2e` | Medium (minutes) |
+| **Integration** | `tests/tests_integration/` | Cloud infra (GCS, Cloud Run Jobs, Selenium) | `just local test-integration` | Medium (minutes) |
+| **E2E stress** | `tests/tests_e2e/test_stress.py` | Concurrent HTTP load against live stack | `just local test-e2e` | Medium (minutes) |
 | **E2E workflow** | `tests/tests_e2e/test_energyplus_template.py` | Real Docker-based simulations, full pipeline | `just local-cloud e2e-tests` | Slow (2-5 min/test) |
 
 ## How the layers differ
@@ -40,11 +40,11 @@ bottlenecks, concurrency bugs, and end-to-end data flow issues.
 |----------|-----|
 | Routine development | `pytest` (unit + use case) |
 | Changed models, views, or business logic | `pytest` |
-| Changed cloud integration code (GCS, Cloud Run) | `just test-integration` |
-| Changed Celery tasks or worker code | `just test-e2e` |
+| Changed cloud integration code (GCS, Cloud Run) | `just local test-integration` |
+| Changed Celery tasks or worker code | `just local test-e2e` |
 | Changed EnergyPlus validator or template pipeline | `just local-cloud e2e-tests` |
 | Before opening a PR | `pytest` + `pre-commit run --all-files` |
-| Verifying a deployed environment | `just test-e2e` with env vars pointing at staging |
+| Verifying a deployed environment | `just local test-e2e` with env vars pointing at staging |
 
 ## Running the test suite
 

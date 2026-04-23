@@ -9,7 +9,7 @@ Usage::
     # Human-readable output
     python manage.py setup_fullstack_test_data
 
-    # Shell-sourceable output (for just test-e2e)
+    # Shell-sourceable output (for just local test-e2e)
     python manage.py setup_fullstack_test_data --export-env
 """
 

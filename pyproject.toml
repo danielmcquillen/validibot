@@ -53,7 +53,7 @@ dependencies = [
   "gunicorn==25.3.0",
   "httpx==0.28.1",
   "jsonschema==4.26.0",
-  "lxml==6.0.2",
+  "lxml==6.1.0",
   "markdown2==2.5.5",
   "nh3==0.3.4",
   "pillow==12.2.0",

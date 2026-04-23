@@ -1,8 +1,11 @@
 # Validibot MCP server — local Docker Compose development (example).
 #
-# Copy to .envs/.local/.mcp and fill in the values below. The Compose
-# `mcp` service in ../validibot-cloud/docker-compose.cloud.yml reads
-# this file when `ENABLE_MCP_SERVER=true just local-cloud up` runs.
+# Copy to .envs/.local/.mcp and fill in the values below. The `mcp`
+# service defined by the MCP-enabled Compose profile reads this file
+# when `ENABLE_MCP_SERVER=true just local-pro up` (or `just local-cloud
+# up` for the full hosted stack) runs. The MCP server itself also
+# requires a license that advertises the `mcp_server` feature — plain
+# community deployments won't boot it.
 
 # ── Core ───────────────────────────────────────────────────────────────
 

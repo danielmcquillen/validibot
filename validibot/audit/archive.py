@@ -60,6 +60,7 @@ import gzip
 import json
 import logging
 import pathlib
+import secrets
 import tempfile
 from typing import TYPE_CHECKING
 from typing import Any
@@ -160,10 +161,19 @@ class FilesystemArchiveBackend:
     .. code-block:: text
 
         <base_path>/
-          org_7/2026/04/22.jsonl.gz
-          org_7/2026/04/22.jsonl.gz.sha256
-          org_9/2026/04/22.jsonl.gz
-          org_9/2026/04/22.jsonl.gz.sha256
+          org_7/2026/04/22T020302Z-a4d1.jsonl.gz
+          org_7/2026/04/22T020302Z-a4d1.jsonl.gz.sha256
+          org_7/2026/04/22T023015Z-9f02.jsonl.gz
+          org_7/2026/04/22T023015Z-9f02.jsonl.gz.sha256
+
+    Each ``archive()`` call gets a unique filename within its
+    ``(org, day)`` partition. The suffix is ``T<HHMMSS>Z-<4 hex>``:
+    timestamp + a short random tag in case two archive calls land
+    in the same wall-clock second (rare, but possible when the
+    retention command chunks a large backlog). Without this,
+    multiple chunks for the same day would all write to ``DD.jsonl.gz``
+    and each would overwrite the previous — silent data loss after
+    the command deleted the source rows from the DB.
 
     File format matches what the GCS backend produces so the two are
     interchangeable for downstream tooling.
@@ -233,14 +243,23 @@ class FilesystemArchiveBackend:
         if not partitions:
             return ArchiveReceipt(archived_ids=[], location=str(self._base_path))
 
+        # One unique filename suffix per ``archive()`` call — shared
+        # across every partition written in this call. Timestamp +
+        # 4 random hex digits. Two chunks for the same (org, day)
+        # from back-to-back retention iterations will always land in
+        # different files; the random tag covers the extreme case of
+        # two calls in the same wall-clock second.
+        call_suffix = _unique_suffix()
+
         archived: list[int] = []
         locations: list[str] = []
         for (org_id, year, month, day), group in partitions.items():
             org_segment = f"org_{org_id}" if org_id is not None else "org_unscoped"
             target_dir = self._base_path / org_segment / f"{year:04d}" / f"{month:02d}"
             target_dir.mkdir(parents=True, exist_ok=True)
-            target_file = target_dir / f"{day:02d}.jsonl.gz"
-            sha_file = target_dir / f"{day:02d}.jsonl.gz.sha256"
+            base_name = f"{day:02d}{call_suffix}"
+            target_file = target_dir / f"{base_name}.jsonl.gz"
+            sha_file = target_dir / f"{base_name}.jsonl.gz.sha256"
 
             payload_bytes = self._serialise_group(group)
             sha256 = self._sha256(payload_bytes)
@@ -308,6 +327,23 @@ class FilesystemArchiveBackend:
             os.fsync(tmp.fileno())
             tmp_path = pathlib.Path(tmp.name)
         tmp_path.replace(path)
+
+
+def _unique_suffix() -> str:
+    """Return a filename suffix unique to this archive-write call.
+
+    Shape: ``T<HHMMSSZ>-<4 hex>`` — UTC time to the second plus four
+    random hex digits. Combined with the ``(org, YYYY, MM, DD)``
+    prefix it gives every ``archive()`` call a distinct output
+    filename, even when two calls land in the same wall-clock second
+    against the same partition. Prevents the same-day-overwrite data
+    loss the single-name-per-day scheme had.
+    """
+
+    # ``timezone.now()`` returns a UTC-aware datetime when
+    # ``USE_TZ=True`` (the default). Format-to-string preserves UTC
+    # so the ``Z`` suffix is accurate.
+    return f"T{timezone.now().strftime('%H%M%SZ')}-{secrets.token_hex(2)}"
 
 
 def _entry_to_archive_dict(entry: AuditLogEntry) -> dict[str, Any]:

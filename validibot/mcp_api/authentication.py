@@ -25,6 +25,7 @@ stays in cloud because it depends on x402 data formats and the
 from __future__ import annotations
 
 import hmac
+import logging
 from dataclasses import dataclass
 
 from allauth.idp.oidc.adapter import get_adapter
@@ -32,6 +33,8 @@ from django.conf import settings
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.authtoken.models import Token
 from rest_framework.exceptions import AuthenticationFailed
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -107,12 +110,22 @@ class MCPServiceAuthentication(BaseAuthentication):
         return cls._google_transport
 
     def _verify_oidc_token(self, token: str) -> bool:
-        """Verify a Cloud Run OIDC identity token.
+        """Verify a Cloud Run OIDC identity token + enforce SA allowlist.
 
-        Uses google-auth to verify the token against Google's OIDC
-        discovery endpoint. The expected audience is the MCP helper API URL.
+        Two-step verification mirroring
+        :class:`validibot.core.api.task_auth.CloudTasksOIDCAuthentication`:
 
-        Returns True if valid, False otherwise.
+        1. Google-issued + audience match (``id_token.verify_oauth2_token``).
+           Prevents forged / cross-audience token replay.
+        2. Service-account allowlist + ``email_verified`` check. Without
+           this step, any Google service account that can mint a token
+           with our audience passes — an allowlist narrows that to our
+           own MCP-invoker SA(s). Empty allowlist in production is a
+           deployment error and fails closed.
+
+        Returns True if *both* checks pass. Returns False for invalid /
+        rejected tokens so the caller can fall back to the service-key
+        path before raising.
         """
         transport = self._get_google_transport()
         if transport is None:
@@ -126,13 +139,66 @@ class MCPServiceAuthentication(BaseAuthentication):
             from google.auth import exceptions as google_auth_exceptions
             from google.oauth2 import id_token
 
-            id_token.verify_oauth2_token(
+            claims = id_token.verify_oauth2_token(
                 token,
                 transport,
                 audience=expected_audience,
             )
         except (google_auth_exceptions.TransportError, ValueError):
             return False
+
+        # Allowlist + email_verified. We don't fall through to the
+        # service-key path on allowlist rejection — a valid Google
+        # token from an unauthorised SA is a signal we want a clean
+        # 401 with a log line, not a silent continue-on.
+        return self._claims_pass_allowlist(claims)
+
+    @staticmethod
+    def _claims_pass_allowlist(claims: dict) -> bool:
+        """Return True iff the token's subject is in the SA allowlist.
+
+        ``email_verified`` must be True; Google sets this to False for
+        tokens where the ``email`` claim wasn't verified at issuance,
+        and an unverified email can't be trusted as an identity.
+        """
+
+        allowlist_raw = getattr(settings, "MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS", [])
+        # Accept either a list in settings or a comma-separated string
+        # (what the env-var path typically yields) — match the shape
+        # ``task_auth.CloudTasksOIDCAuthentication`` tolerates.
+        if isinstance(allowlist_raw, str):
+            allowlist = {
+                e.strip().lower() for e in allowlist_raw.split(",") if e.strip()
+            }
+        else:
+            allowlist = {
+                str(e).strip().lower() for e in allowlist_raw if str(e).strip()
+            }
+
+        if not allowlist:
+            logger.error(
+                "MCP OIDC allowlist is empty; cannot authorise caller. "
+                "Set MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS.",
+            )
+            return False
+
+        email = (claims.get("email") or "").lower()
+        email_verified = claims.get("email_verified", False)
+
+        if not email_verified:
+            logger.warning(
+                "MCP OIDC token rejected: email_verified=false (email=%s)",
+                email,
+            )
+            return False
+
+        if email not in allowlist:
+            logger.warning(
+                "MCP OIDC token rejected: non-allowlisted SA (%s)",
+                email,
+            )
+            return False
+
         return True
 
 

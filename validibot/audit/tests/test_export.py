@@ -312,6 +312,58 @@ class ExportAccessTests(TestCase):
         self.assertIn("Own Org Entry", body)
         self.assertNotIn("Cross-Org Canary", body)
 
+    def test_user_without_active_org_gets_404(self) -> None:
+        """Regression: export must reject callers with no active org.
+
+        Without the early 404, the rate-limit branch silently bypasses
+        (no org pk to key a counter by) AND the queryset would leak
+        ``org IS NULL`` entries via Django's ``filter(org=None)``
+        semantics.
+
+        We stub out ``ensure_active_org_scope`` to return no active
+        org regardless of the user's memberships — isolates the
+        behaviour we care about (``self.org is None`` → 404) from the
+        unrelated concern of how to construct a user with genuinely
+        no memberships inside a ``TestCase``
+        (``ensure_personal_workspace`` signals auto-create one).
+        """
+
+        from unittest.mock import patch
+
+        # Seed an org=None audit entry (the shape LOGIN_FAILED /
+        # admin bridge produces). A user without a membership must
+        # not be able to see this via export.
+        actor = AuditActor.objects.create(email="system@example.com")
+        AuditLogEntry.objects.create(
+            actor=actor,
+            org=None,
+            action=AuditAction.LOGIN_FAILED.value,
+            target_type="auth.User",
+            target_id="1",
+            target_repr="ORG-NULL-EXPORT-CANARY",
+        )
+
+        membership = MembershipFactory()
+        _login_with_membership(self.client, membership)
+
+        # Patch where OrgMixin imports it. The mixin calls
+        # ``ensure_active_org_scope(request)`` at dispatch time and
+        # then reads ``request.active_org`` — returning an empty tuple
+        # and not setting the attribute makes ``self.org`` resolve to
+        # None via ``getattr(request, "active_org", None)``.
+        def _no_active_org(request, memberships=None):
+            # Mimic the real signature:
+            # (memberships_list, active_org, active_membership)
+            return [], None, None
+
+        with patch(
+            "validibot.users.mixins.ensure_active_org_scope",
+            side_effect=_no_active_org,
+        ):
+            response = self.client.get(reverse("audit:export") + "?format=jsonl")
+
+        self.assertEqual(response.status_code, 404)
+
 
 # ──────────────────────────────────────────────────────────────────
 # Export view — format correctness

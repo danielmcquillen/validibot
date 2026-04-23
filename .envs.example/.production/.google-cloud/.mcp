@@ -1,9 +1,10 @@
 # Validibot MCP server — GCP Cloud Run production (example).
 #
-# Copy to .envs/.production/.google-cloud/.mcp and fill in. Uploaded to
-# GCP Secret Manager as `mcp-env` by `just mcp secrets prod` (in the
-# validibot-cloud repo). Cloud Run mounts this file at /secrets/.env and
-# pydantic-settings reads it at container start.
+# Copy to .envs/.production/.google-cloud/.mcp and fill in. Your
+# deployment tooling uploads this file to GCP Secret Manager (default
+# name: `mcp-env`) and Cloud Run mounts it at /secrets/.env, where
+# pydantic-settings reads it at container start. The MCP server boots
+# only if the deployment's license advertises the `mcp_server` feature.
 #
 # Non-secret config (VALIDIBOT_API_BASE_URL, VALIDIBOT_MCP_ENABLED) is
 # set via `--set-env-vars` in the deploy recipe instead of going here.

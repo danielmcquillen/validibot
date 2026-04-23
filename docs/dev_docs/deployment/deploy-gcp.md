@@ -92,11 +92,12 @@ defines:
 - `MFA_TOTP_ISSUER` — authenticator-app label (e.g. "Validibot Cloud").
 - `STORAGE_BUCKET` — media / submission bucket, printed at the end of
   `init-stage`.
-- `AUDIT_ARCHIVE_GCS_BUCKET` and `AUDIT_ARCHIVE_GCS_PROJECT_ID` — the
-  CMEK-encrypted audit archive bucket (also printed at the end of
-  `init-stage`). A Django startup check refuses to run `migrate` if
-  `AUDIT_ARCHIVE_GCS_BUCKET` is empty while the cloud settings module
-  is active, so these must be set before the first deploy.
+
+Commercial add-ons may introduce additional env vars (for example, a
+GCS audit-archive bucket with CMEK encryption). Each add-on's own
+deployment docs lists the env vars it expects — a community GCP
+deployment uses the null / filesystem audit-archive backends and
+needs nothing beyond the list above.
 
 ### Provisioned resources
 
@@ -108,13 +109,13 @@ things:
 - Cloud Tasks queue and Cloud Scheduler-ready KMS permissions.
 - Media/submissions GCS bucket (`{app}-storage[-stage]`) with
   public/private prefix IAM.
-- **Audit archive GCS bucket** (`{project}-{app}-audit-archive[-stage]`)
-  with CMEK encryption, lifecycle tiering (Nearline/Coldline/Archive),
-  and append-only IAM. Provisioned by the `audit-archive-setup` recipe,
-  also runnable standalone to catch up an older stage. See the
-  [cloud audit-archive operations guide](../../../../validibot-cloud/docs/operations/audit-archive.md)
-  for the full shape.
 - Secret Manager placeholder for `django-env[-stage]`.
+
+A community-only deployment uses the ``NullArchiveBackend`` for audit
+log retention, which needs no extra GCP resources. Deployments that
+layer on a commercial add-on with the GCS audit-archive backend provision
+the bucket, CMEK key, and IAM separately — see the add-on's own
+deployment docs.
 
 See [configure-mfa.md](../how-to/configure-mfa.md) for key-generation
 and rotation procedures. The encryption key is stored in Secret Manager

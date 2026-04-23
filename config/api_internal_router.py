@@ -15,6 +15,7 @@ from validibot.core.api.scheduled_tasks import EnforceAuditRetentionView
 from validibot.core.api.scheduled_tasks import ProcessPurgeRetriesView
 from validibot.core.api.scheduled_tasks import PurgeExpiredSubmissionsView
 from validibot.core.api.scheduled_tasks import SendPeriodicEmailsView
+from validibot.tracking.api.log_event import LogTrackingEventView
 from validibot.validations.api.callbacks import ValidationCallbackView
 from validibot.validations.api.execute import ExecuteValidationRunView
 
@@ -25,6 +26,15 @@ urlpatterns = [
         "execute-validation-run/",
         ExecuteValidationRunView.as_view(),
         name="execute-validation-run",
+    ),
+    # Tracking event write (from Cloud Tasks on GCP, called by
+    # CloudTasksTrackingDispatcher). Path matches WORKER_ENDPOINT_PATH
+    # in validibot/tracking/dispatch/cloud_tasks.py — if it drifts,
+    # that constant must move too.
+    path(
+        "tasks/tracking/log-event/",
+        LogTrackingEventView.as_view(),
+        name="tasks-tracking-log-event",
     ),
     # Validator callbacks (from Cloud Run Jobs)
     path(

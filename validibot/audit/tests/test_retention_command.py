@@ -320,6 +320,111 @@ class MisconfigurationTests(TestCase):
             _run()
 
 
+class OrphanedActorCleanupTests(TestCase):
+    """Retention must sweep actors with no remaining entries.
+
+    Each audit write creates a fresh ``AuditActor`` row (by design —
+    the actor model carries session-point-in-time PII). If retention
+    deletes the entries referencing an actor but never touches the
+    actor itself, the actor table grows indefinitely with email / IP
+    / user-agent data past the retention horizon — defeating the
+    whole point of retention.
+
+    Actors with ``erased_at`` set are a separate case: the erasure
+    workflow deliberately preserves those rows as pseudonymised
+    identities, so retention leaves them alone even when their
+    entries are gone.
+    """
+
+    def setUp(self) -> None:
+        self.org = OrganizationFactory()
+
+    def test_orphaned_actor_deleted_after_entry_prune(self) -> None:
+        """An actor whose only entry is pruned → actor gone too."""
+
+        entry = _make_entry(org=self.org, offset=timedelta(days=-100))
+        actor_id = entry.actor_id
+
+        _run()
+
+        # Entry pruned (established by CutoffTests) — the actor should
+        # follow, because no other entry references it.
+        self.assertFalse(AuditLogEntry.objects.filter(pk=entry.pk).exists())
+        self.assertFalse(AuditActor.objects.filter(pk=actor_id).exists())
+
+    def test_actor_with_surviving_entries_is_not_deleted(self) -> None:
+        """An actor that still has entries (even fresh ones) stays.
+
+        Scenario: an actor has two entries, one 100 days old and one
+        1 day old. The 100-day entry gets pruned; the 1-day entry
+        stays. The actor must NOT be deleted because the 1-day entry
+        still references them.
+        """
+
+        actor = AuditActor.objects.create(email="survivor@example.com")
+        AuditLogEntry.objects.create(
+            actor=actor,
+            org=self.org,
+            action=AuditAction.WORKFLOW_UPDATED.value,
+            target_type="workflows.Workflow",
+            target_id="1",
+        )
+        old_entry = AuditLogEntry.objects.create(
+            actor=actor,
+            org=self.org,
+            action=AuditAction.WORKFLOW_UPDATED.value,
+            target_type="workflows.Workflow",
+            target_id="2",
+        )
+        AuditLogEntry.objects.filter(pk=old_entry.pk).update(
+            occurred_at=timezone.now() - timedelta(days=100),
+        )
+
+        _run()
+
+        self.assertFalse(AuditLogEntry.objects.filter(pk=old_entry.pk).exists())
+        self.assertTrue(AuditActor.objects.filter(pk=actor.pk).exists())
+
+    def test_erased_actor_preserved_even_when_entries_gone(self) -> None:
+        """Actors with ``erased_at`` set are deliberately kept around
+        as pseudonymised identities. Retention must skip them even
+        when all their referencing entries have been pruned.
+        """
+
+        entry = _make_entry(org=self.org, offset=timedelta(days=-100))
+        AuditActor.objects.filter(pk=entry.actor_id).update(
+            erased_at=timezone.now(),
+            email=None,
+            ip_address=None,
+        )
+
+        _run()
+
+        # Entry pruned but the erased actor stays as a pseudonymised
+        # row — defends the PROTECT FK model against accidentally
+        # deleting an identity that the erasure workflow meant to keep.
+        self.assertFalse(AuditLogEntry.objects.filter(pk=entry.pk).exists())
+        self.assertTrue(AuditActor.objects.filter(pk=entry.actor_id).exists())
+
+    def test_dry_run_reports_orphans_without_deleting(self) -> None:
+        """``--dry-run`` counts the orphans but leaves them in place.
+
+        This is the "how many actors would this prune?" capacity
+        answer an operator wants before committing to a real run.
+        """
+
+        _make_entry(org=self.org, offset=timedelta(days=-100))
+
+        output = _run(dry_run=True)
+
+        # Entry and actor still there because of dry-run.
+        self.assertEqual(AuditLogEntry.objects.count(), 1)
+        self.assertEqual(AuditActor.objects.count(), 1)
+        # Output mentions "orphaned actor" and the dry-run marker.
+        self.assertIn("orphaned actor", output)
+        self.assertIn("DRY-RUN", output)
+
+
 class RegistryEntryTests(TestCase):
     """The retention task is registered in the scheduler registry."""
 

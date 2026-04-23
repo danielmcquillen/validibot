@@ -192,9 +192,30 @@ class Command(BaseCommand):
                 f"deleted {deleted} from DB",
             )
 
+        # After every chunk is processed, sweep actors that no longer
+        # have any referencing entries. ``AuditActor`` isn't touched
+        # by the chunk loop above — each audit write creates a fresh
+        # actor row, so without this pass the actor table would grow
+        # forever even as entries are pruned. With the PROTECT FK
+        # from entry → actor, we can only delete an actor once its
+        # last entry is gone, so there's no referential-integrity
+        # risk. Actors with ``erased_at`` set are preserved as
+        # pseudonymised identities even if their entries are gone,
+        # because the erasure workflow created them deliberately for
+        # long-term audit-trail continuity.
+        if not dry_run:
+            total_actors_deleted = self._delete_orphaned_actors()
+        else:
+            orphan_count = self._count_orphaned_actors()
+            self.stdout.write(
+                f"  [dry-run] would delete {orphan_count} orphaned actor(s)",
+            )
+            total_actors_deleted = 0
+
         self.stdout.write(
             f"Done. considered={total_considered} "
-            f"archived={total_archived} deleted={total_deleted}"
+            f"archived={total_archived} deleted={total_deleted} "
+            f"actors_deleted={total_actors_deleted}"
             + (" [DRY-RUN]" if dry_run else ""),
         )
         logger.info(
@@ -203,6 +224,7 @@ class Command(BaseCommand):
                 "considered": total_considered,
                 "archived": total_archived,
                 "deleted": total_deleted,
+                "actors_deleted": total_actors_deleted,
                 "dry_run": dry_run,
                 "cutoff": cutoff.isoformat(),
             },
@@ -289,6 +311,39 @@ class Command(BaseCommand):
         with transaction.atomic():
             deleted, _ = AuditLogEntry.objects.filter(pk__in=ids).delete()
         return deleted
+
+    @staticmethod
+    def _orphaned_actors_queryset():
+        """Actors whose last referencing entry has been deleted.
+
+        Limited to actors whose ``erased_at`` is NULL — rows with
+        ``erased_at`` set are pseudonymised-but-preserved identities
+        created by the erasure workflow for long-term audit-trail
+        continuity, so we leave them alone even when their entries
+        are gone. The ``log_entries`` reverse accessor comes from
+        the PROTECT FK on :class:`AuditLogEntry.actor`.
+        """
+
+        from validibot.audit.models import AuditActor
+
+        return AuditActor.objects.filter(
+            erased_at__isnull=True,
+            log_entries__isnull=True,
+        )
+
+    @classmethod
+    def _delete_orphaned_actors(cls) -> int:
+        """Delete actors with no remaining entries. Returns deleted count."""
+
+        with transaction.atomic():
+            deleted, _ = cls._orphaned_actors_queryset().delete()
+        return deleted
+
+    @classmethod
+    def _count_orphaned_actors(cls) -> int:
+        """Count actors that ``_delete_orphaned_actors`` would remove."""
+
+        return cls._orphaned_actors_queryset().count()
 
 
 def _chunked(iterable, size: int) -> Iterator[list]:

@@ -92,11 +92,16 @@ class _AuditLogBaseMixin(
 
         ``OrgMixin`` populates ``self.org`` from ``request.active_org``.
         If no active org is resolved (user has no memberships yet, or
-        the org cookie is stale), the queryset filters to an empty
-        set via the impossible ``org=None`` predicate — safer than
-        "all entries with no org", which would be a cross-org leak.
+        the org cookie is stale), we return ``.none()`` — **never**
+        ``filter(org=None)``, because Django compiles that to
+        ``WHERE org_id IS NULL`` and the admin-bridge and login-failure
+        paths legitimately create entries with ``org=None``. The
+        ``.none()`` ensures cross-org + org-unscoped entries stay
+        invisible to any caller without a resolved active org.
         """
 
+        if self.org is None:
+            return AuditLogEntry.objects.none()
         return (
             AuditLogEntry.objects.filter(org=self.org)
             .select_related("actor", "actor__user", "org")
@@ -199,6 +204,14 @@ class AuditLogExportView(_AuditLogBaseMixin, View):
     def get(self, request: HttpRequest) -> HttpResponse:
         """Route to CSV or JSONL streaming, or 400 for unknown formats."""
 
+        # Reject export entirely when the caller has no resolved org.
+        # Without this, the rate-limit path below would be bypassed
+        # (no key to scope by) and the queryset would risk leaking
+        # org=NULL entries. ``.none()`` in the queryset plus this
+        # check keeps both exfiltration paths closed.
+        if self.org is None:
+            return HttpResponse(status=HTTPStatus.NOT_FOUND)
+
         export_format = request.GET.get("format", "csv").lower()
         if export_format not in self.SUPPORTED_FORMATS:
             return HttpResponse(
@@ -241,13 +254,10 @@ class AuditLogExportView(_AuditLogBaseMixin, View):
         decorator is IP-keyed, while the policy on this endpoint is
         per-org (10 requests per hour per organisation).
 
-        When the org has no active membership we skip the check;
-        ``get_queryset`` already returns an empty result for those
-        callers, so there's nothing to exfiltrate.
+        ``self.org`` is guaranteed non-None at this point — the
+        ``get`` handler returns 404 earlier when no active org is
+        resolved, so there's no org-less caller to rate-limit.
         """
-
-        if self.org is None:
-            return None
 
         cache_key = f"audit:export:org:{self.org.pk}"
         current = cache.get(cache_key)

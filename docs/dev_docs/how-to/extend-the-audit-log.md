@@ -245,7 +245,7 @@ without forking settings.
 |---|---|---|
 | ``NullArchiveBackend`` | Returns a verified receipt naming every input id without writing anything. Retention still prunes the table, but the rows are gone for good. | Community deployments that only want "stop the table from growing". The default. |
 | ``FilesystemArchiveBackend`` | Writes ``org_<id>/YYYY/MM/DD.jsonl.gz`` partitions under ``AUDIT_ARCHIVE_FILESYSTEM_BASE_PATH`` with a SHA-256 sidecar. Atomic write (tempfile + fsync + rename). | Self-hosted Pro deployments with a persistent volume. Reference implementation of the contract. |
-| ``GCSArchiveBackend`` (Cloud only) | Same file format as filesystem, written to a CMEK-encrypted bucket; verification re-reads the object and compares SHA-256. Shipping in `validibot-cloud`; operators see the bucket / KMS provisioning checklist in [`validibot-cloud/docs/operations/audit-archive.md`](../../../../validibot-cloud/docs/operations/audit-archive.md). | Validibot Cloud. |
+| ``GCSArchiveBackend`` (commercial add-on) | Same file format as the filesystem backend, written to a CMEK-encrypted GCS bucket; verification re-reads the object and compares SHA-256. Shipped as part of the hosted offering. | The Validibot Cloud deployment. |
 
 The cloud backend is a layer above the community scaffolding — the
 retention command doesn't know or care which backend it's driving.

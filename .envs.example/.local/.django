@@ -107,17 +107,19 @@ SIGNING_ALGORITHM=ES256
 
 # SIGNUP ABUSE PROTECTIONS
 # ==============================================================================
-# Leave commented to use community defaults (both False). Useful to set
-# to False explicitly when running with DJANGO_SETTINGS_MODULE pointing
-# at validibot_cloud.settings.local if you want to sign up with a
-# throwaway address like test@mailinator.com during dev.
+# Defaults are False. Some deployments (e.g. the hosted offering) flip
+# these on to reject throwaway addresses and add a honeypot field to the
+# signup form. Set to False explicitly during local dev if another
+# settings module has enabled them and you want to sign up with a
+# disposable address like test@mailinator.com.
 #REJECT_DISPOSABLE_EMAILS=False
 #USE_SIGNUP_HONEYPOT=False
 
-# RUNTIME LAUNCH VELOCITY LIMITS (cloud only)
+# ADD-ON CONFIGURATION
 # ==============================================================================
-#LAUNCH_VELOCITY_PER_MINUTE=30
-#LAUNCH_VELOCITY_PER_HOUR=500
+# Commercial add-ons (e.g. runtime rate limits, audit-log archiving to
+# object storage) define their own env vars. Consult the add-on's own
+# documentation if you have one installed.
 
 # MCP HELPER API SERVICE-TO-SERVICE AUTH
 # ==============================================================================

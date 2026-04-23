@@ -479,6 +479,30 @@ if DEPLOYMENT_TARGET == "gcp":
                 "dispatch. See ADR-2026-04-18."
             )
 
+    # MCP service-to-service OIDC on the ``/api/v1/mcp/*`` helper API
+    # uses ``validibot.mcp_api.authentication.MCPServiceAuthentication``.
+    # Same allowlist-plus-audience shape as the worker endpoints: if the
+    # MCP server talks to Django over OIDC (rather than the shared-secret
+    # local-dev path), both settings must resolve to non-empty values or
+    # every MCP helper call 401s. We only enforce when
+    # ``MCP_OIDC_AUDIENCE`` is set — self-hosted Pro deployments that
+    # use the shared-secret path don't need the allowlist.
+    if MCP_OIDC_AUDIENCE:  # noqa: F405
+        _mcp_allowlist = [
+            sa.strip().lower()
+            for sa in (MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS or [])  # noqa: F405
+            if sa.strip()
+        ]
+        if not _mcp_allowlist:
+            raise ImproperlyConfigured(
+                "DEPLOYMENT_TARGET=gcp with MCP_OIDC_AUDIENCE set "
+                "requires MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS (comma-"
+                "separated Cloud Run service-account emails). Without "
+                "an allowlist, any Google SA that can mint a token "
+                "with our audience would be authorised — effectively "
+                "broken service-to-service auth."
+            )
+
 # EMAIL
 # ------------------------------------------------------------------------------
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)

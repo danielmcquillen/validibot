@@ -208,15 +208,15 @@ GCP deployments use completely different infrastructure:
 - Cloud SQL for database (via Unix socket)
 - Cloud Tasks for background work
 - Cloud Run Jobs for validator containers
-- GCS for file storage (media + CMEK-encrypted audit log archive)
+- GCS for file storage (media + submissions)
 
 Infrastructure is provisioned idempotently via
-`just gcp init-stage {dev|staging|prod}`, which in turn runs the
-`audit-archive-setup` recipe as one of its steps. After running
-`init-stage`, the recipe prints the exact env var values (e.g.
-`AUDIT_ARCHIVE_GCS_BUCKET`, `STORAGE_BUCKET`) to paste into
-`.envs/.production/.google-cloud/.django` before the first
-`just gcp secrets` upload.
+`just gcp init-stage {dev|staging|prod}`. After it finishes, the
+recipe prints the env var values (e.g. `STORAGE_BUCKET`) to paste
+into `.envs/.production/.google-cloud/.django` before the first
+`just gcp secrets` upload. Commercial add-ons (e.g. the GCS
+audit-archive backend) provision their own resources via their own
+recipes on top of this baseline.
 
 **Two types of environment files**:
 

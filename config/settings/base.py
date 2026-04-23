@@ -1155,6 +1155,23 @@ MCP_SERVICE_KEY = env("VALIDIBOT_MCP_SERVICE_KEY", default="")
 # this with the deployment's Django API URL.
 MCP_OIDC_AUDIENCE = env.str("MCP_OIDC_AUDIENCE", default="")
 
+# Service-account allowlist for Cloud Run OIDC identity tokens. A
+# valid Google-signed token with the right audience is necessary but
+# not sufficient — any Google SA that can mint a token with our
+# audience would pass ``verify_oauth2_token``. The allowlist narrows
+# that to our own MCP-invoker SA(s).
+#
+# Accepts a comma-separated env var OR a Python list (e.g. from a
+# cloud settings module): both flow through the same set-of-strings
+# normaliser in the auth class. Community leaves this empty; a
+# production GCP deployment populates it with the SAs that run the
+# MCP container. An empty allowlist with the OIDC path active is a
+# deployment error — the auth class logs and fails closed.
+MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS = env.list(
+    "MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS",
+    default=[],
+)
+
 # CELERY TASK QUEUE
 # ------------------------------------------------------------------------------
 # Celery is used for background task processing in Docker Compose deployments.

@@ -57,6 +57,12 @@ class UrlRoleRoutingTests(SimpleTestCase):
         # Internal callback should resolve
         match = resolve("/api/v1/validation-callbacks/")
         self.assertEqual(match.url_name, "validation-callbacks")
+        # Tracking-event receiver should resolve too. This is the
+        # Cloud Tasks target for CloudTasksTrackingDispatcher;
+        # dropping it from worker URLs would silently break login
+        # tracking on GCP.
+        match = resolve("/api/v1/tasks/tracking/log-event/")
+        self.assertEqual(match.url_name, "tasks-tracking-log-event")
         # UI route should 404
         with pytest.raises(Resolver404):
             resolve("/")

@@ -168,10 +168,11 @@ class AuditListViewAccessTests(TestCase):
 
     def test_user_without_membership_sees_empty_list(self) -> None:
         """Logged-in users with no active org see an empty list, not
-        a 500 or a cross-org leak. The queryset filter resolves to
-        ``org=None`` which always produces an empty set, so returning
-        200 with the empty-state template is both safe and a cleaner
-        UX than a scary error page.
+        a 500 or a cross-org leak. The queryset explicitly returns
+        ``.none()`` when ``self.org is None`` — we never issue
+        ``filter(org=None)`` because Django compiles that to
+        ``WHERE org_id IS NULL`` and would leak legitimate
+        org-unscoped entries (admin-bridge, LOGIN_FAILED).
         """
 
         other_org = OrganizationFactory()
@@ -187,6 +188,57 @@ class AuditListViewAccessTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Cross-Org Leak Canary")
         self.assertContains(response, "No audit log entries recorded yet")
+
+    def test_user_without_membership_cannot_see_org_null_entries(self) -> None:
+        """Regression: ``filter(org=None)`` in Django returns rows
+        with ``org_id IS NULL``, not an empty set. Entries created by
+        the login-failure / admin-bridge capture paths have
+        ``org=None`` legitimately — a caller whose ``self.org`` is
+        None must NOT see them.
+
+        We stub ``ensure_active_org_scope`` so ``self.org`` resolves
+        to ``None`` regardless of the logged-in user's memberships.
+        That isolates "what happens when there's no active org" from
+        the unrelated mechanics of building a user without a personal
+        workspace inside a ``TestCase``
+        (``ensure_personal_workspace`` signals auto-create one, and
+        ``UserFactory`` adds one via ``post_generation``).
+
+        Failure mode this locks in: a refactor that replaces
+        ``.none()`` with ``filter(org=self.org)`` would re-introduce
+        the leak — the seeded org-null canary would become visible.
+        """
+
+        from unittest.mock import patch
+
+        # An org-unscoped entry (the shape admin-bridge and login-failure
+        # capture paths produce).
+        actor = AuditActor.objects.create(email="system@example.com")
+        AuditLogEntry.objects.create(
+            actor=actor,
+            org=None,
+            action=AuditAction.LOGIN_FAILED.value,
+            target_type="auth.User",
+            target_id="1",
+            target_repr="ORG-NULL-LEAK-CANARY",
+        )
+
+        membership = MembershipFactory()
+        _login_with_membership(self.client, membership)
+
+        def _no_active_org(request, memberships=None):
+            # Mirror the real return shape; not setting request.active_org
+            # is what causes OrgMixin to resolve self.org to None.
+            return [], None, None
+
+        with patch(
+            "validibot.users.mixins.ensure_active_org_scope",
+            side_effect=_no_active_org,
+        ):
+            response = self.client.get(reverse("audit:list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "ORG-NULL-LEAK-CANARY")
 
     def test_pro_member_sees_list(self) -> None:
         """The happy path: Pro license, flag enabled, member of an

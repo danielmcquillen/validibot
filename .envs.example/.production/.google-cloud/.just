@@ -33,9 +33,10 @@ export GCP_SCHEDULER_TIMEZONE="UTC"
 # Format: seconds with 's' suffix, max 3600s (1 hour)
 export GCP_CLOUD_RUN_TIMEOUT="3600s"
 
-# Cloud SaaS Layer
+# Commercial Layers (optional)
 # ==============================================================================
-# Set to "1" to include the validibot-cloud package in Docker builds.
-# Requires ../validibot-cloud to exist as a sibling directory.
-# When unset or "0", `just gcp build` produces a community-only image.
+# Set to "1" to bundle the commercial pro + cloud packages into Docker
+# builds. Requires the corresponding sibling directories to exist and is
+# only meaningful if you have a license for them. When unset or "0",
+# `just gcp build` produces a community-only image.
 # export GCP_BUILD_VALIDIBOT_CLOUD="1"

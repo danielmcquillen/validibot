@@ -153,10 +153,16 @@ class FilesystemArchiveBackendLayoutTests(TestCase):
         files = list(self.base_path.rglob("*.jsonl.gz"))
         self.assertEqual(len(files), 1)
         target_file = files[0]
-        # Layout: <base>/org_<id>/YYYY/MM/DD.jsonl.gz
+        # Layout: <base>/org_<id>/YYYY/MM/DD<suffix>.jsonl.gz where
+        # suffix is ``T<HHMMSS>Z-<4 hex>``. Suffix guarantees each
+        # archive() call gets a unique filename so same-day chunks
+        # don't overwrite.
         self.assertEqual(target_file.suffixes, [".jsonl", ".gz"])
         # ``org_<id>`` segment is 3 levels up from the file.
         self.assertTrue(target_file.parent.parent.parent.name.startswith("org_"))
+        # Filename starts with the zero-padded day followed by a ``T``
+        # literal from the unique suffix format.
+        self.assertRegex(target_file.name, r"^\d{2}T\d{6}Z-[0-9a-f]{4}\.jsonl\.gz$")
         # Sidecar exists and matches.
         sidecar = target_file.with_name(target_file.name + ".sha256")
         self.assertTrue(sidecar.exists())
@@ -238,6 +244,56 @@ class FilesystemArchiveBackendLayoutTests(TestCase):
             [],
             "A crashed write must not produce a visible partial file.",
         )
+
+    def test_same_day_chunks_do_not_overwrite(self) -> None:
+        """Critical regression: multiple archive() calls for the same
+        ``(org, day)`` must produce distinct files.
+
+        Background: the retention command chunks its work (default
+        500 rows per call to the backend). A backlog of 1200 stale
+        rows for one day runs 3 archive() calls against the same
+        partition. With a single-filename-per-day scheme, each call
+        overwrites the previous — and the command has already
+        deleted those rows from the DB by the time the next chunk
+        arrives. Silent data loss.
+
+        This test simulates that: three archive() calls for the
+        same org/day. All three files must end up on disk, and the
+        total number of archived JSON lines across them must equal
+        the total rows input (no rows dropped by overwrite).
+        """
+
+        org = OrganizationFactory()
+        # Each chunk is its own archive() call — mirrors how the
+        # retention command drives the backend.
+        chunk_one = [_make_entry(org=org) for _ in range(2)]
+        chunk_two = [_make_entry(org=org) for _ in range(2)]
+        chunk_three = [_make_entry(org=org) for _ in range(2)]
+
+        backend = FilesystemArchiveBackend(base_path=self.base_path)
+        backend.archive(chunk_one)
+        backend.archive(chunk_two)
+        backend.archive(chunk_three)
+
+        files = sorted(self.base_path.rglob("*.jsonl.gz"))
+        # Three distinct output files — one per archive() call.
+        self.assertEqual(len(files), 3)
+        # All three filenames must be unique. A regression that
+        # reintroduces same-day overwriting would either collapse to
+        # one file (len != 3) or have duplicate names (the set would
+        # have < 3 elements).
+        self.assertEqual(len({f.name for f in files}), 3)
+
+        # Concatenated line count across all three files must equal
+        # the total rows we passed in. Confirms no rows got lost to
+        # an overwrite partway through.
+        import gzip
+
+        total_lines = 0
+        for f in files:
+            body = gzip.decompress(f.read_bytes()).decode()
+            total_lines += sum(1 for line in body.splitlines() if line.strip())
+        self.assertEqual(total_lines, 6)
 
 
 class FilesystemArchiveBackendConfigTests(TestCase):

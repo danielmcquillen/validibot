@@ -2,21 +2,36 @@
 Login / logout tracking signal receivers.
 
 Extracts context (org, user-agent, path, derived channel) from the
-request on the signal thread, then enqueues a Celery task to write
-the ``TrackingEvent`` row asynchronously. See refactor-step item
-``[review-#11]``.
+request on the signal thread, then hands the event off to a
+:class:`validibot.tracking.dispatch.TrackingDispatcher` — which picks
+the right async backend for the current ``DEPLOYMENT_TARGET``
+(inline for tests, Celery for Docker Compose, Cloud Tasks for GCP).
 
 Why asynchronous:
-- The signal fires on the auth-path critical section. An inline
+
+* The signal fires on the auth-path critical section. An inline
   tracking insert adds DB round-trip latency to every login /
   logout, on top of whatever slower storage (separate replica,
   WAL-backed disk) tracking eventually moves to.
-- ``transaction.on_commit`` guarantees the enqueue only happens
+* ``transaction.on_commit`` guarantees the dispatch only happens
   when the surrounding transaction (if any) commits — an auth
   flow that rolls back will not produce a ghost login event.
+
+Why routed through a dispatcher:
+
+* GCP deployments have no Redis broker. The previous direct
+  ``log_tracking_event_task.delay()`` call broke 2FA login in prod
+  with a 500 when Celery tried to reach ``redis://localhost:6379``.
+  The dispatcher selects Cloud Tasks on GCP, Celery on Docker
+  Compose, and inline execution in tests — each deployment uses the
+  async mechanism it actually has.
+* Adding a new backend (AWS SQS, Pub/Sub, etc.) is a subclass +
+  registry entry — the signal receivers stay unchanged.
 """
 
 from __future__ import annotations
+
+import logging
 
 from django.contrib.auth.signals import user_logged_in
 from django.contrib.auth.signals import user_logged_out
@@ -25,6 +40,8 @@ from django.dispatch import receiver
 
 from validibot.events.constants import AppEventType
 from validibot.tracking.constants import TrackingEventType
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_org(user):
@@ -63,33 +80,70 @@ def _enqueue_tracking_event(
     extra_data: dict[str, str],
     channel: str,
 ) -> None:
-    """Enqueue a tracking-event write via Celery on transaction commit.
+    """Hand a tracking event off to the configured dispatcher on commit.
 
-    Local import of ``log_tracking_event_task`` keeps ``signals.py``
-    importable without Celery being fully configured (e.g. during
-    Django's ``makemigrations`` or check phases).
+    Scheduling the dispatch inside ``transaction.on_commit`` is the
+    piece that stays here rather than moving into the dispatcher
+    hierarchy: every dispatcher benefits from not firing for a
+    rolled-back transaction, but the hook is Django-transaction-
+    specific and lives in the caller's DB context. Dispatchers stay
+    transport-only; callers stay transaction-aware.
+
+    The inner try/except is a last-resort safety net. The dispatcher
+    contract promises ``dispatch()`` won't raise for transient
+    failures (broker down, API error, missing config — all return a
+    response with ``error`` set). But a genuine programming error
+    (bad import, attribute error) could still leak out, and the auth
+    request must not 500 because of a tracking bug. Broad catch is
+    correct here; ``exc_info=True`` preserves the traceback in Cloud
+    Logging so the root cause remains diagnosable.
     """
-    from validibot.tracking.tasks import log_tracking_event_task
+    # Local imports keep signals.py importable during Django's
+    # ``check`` / ``makemigrations`` phases — before apps are fully
+    # loaded and before a dispatcher could safely be instantiated.
+    from validibot.tracking.dispatch import TrackingEventRequest
+    from validibot.tracking.dispatch import get_tracking_dispatcher
 
-    transaction.on_commit(
-        lambda: log_tracking_event_task.delay(
-            event_type=TrackingEventType.APP_EVENT,
-            app_event_type=str(app_event_type),
-            user_id=user_id,
-            org_id=org_id,
-            extra_data=extra_data or None,
-            channel=channel,
-        ),
+    event_request = TrackingEventRequest(
+        event_type=TrackingEventType.APP_EVENT,
+        app_event_type=str(app_event_type),
+        user_id=user_id,
+        org_id=org_id,
+        extra_data=extra_data or None,
+        channel=channel,
     )
+
+    def _send() -> None:
+        try:
+            dispatcher = get_tracking_dispatcher()
+            response = dispatcher.dispatch(event_request)
+            if response.error:
+                # The dispatcher already logged with its own context;
+                # logging again here would double up. We only care
+                # here whether an unexpected exception escapes — the
+                # ``error`` field means the dispatcher handled it
+                # cleanly.
+                return
+        except Exception:
+            logger.warning(
+                "Failed to dispatch tracking event (dropped): "
+                "app_event_type=%s user_id=%s channel=%s",
+                app_event_type,
+                user_id,
+                channel,
+                exc_info=True,
+            )
+
+    transaction.on_commit(_send)
 
 
 @receiver(user_logged_in)
 def log_user_logged_in(sender, request, user, **kwargs):
-    """Enqueue a USER_LOGGED_IN tracking event.
+    """Dispatch a USER_LOGGED_IN tracking event.
 
     All request-bound data (headers, path, current org) is captured
     here synchronously because ``request`` won't survive past the
-    response boundary. Only primitives cross into the Celery task.
+    response boundary. Only primitives cross into the dispatcher.
     """
     org = _extract_org(user)
     metadata = _build_request_metadata(request)
@@ -107,12 +161,12 @@ def log_user_logged_in(sender, request, user, **kwargs):
 
 @receiver(user_logged_out)
 def log_user_logged_out(sender, request, user, **kwargs):
-    """Enqueue a USER_LOGGED_OUT tracking event.
+    """Dispatch a USER_LOGGED_OUT tracking event.
 
     ``user`` may be ``None`` when the logout request had no
-    authenticated user attached (rare but valid). The task still
-    records the event with ``user_id=None``; tracking analytics
-    treats anonymous logouts as "session ended without attribution."
+    authenticated user attached (rare but valid). The event still
+    records with ``user_id=None``; tracking analytics treats
+    anonymous logouts as "session ended without attribution."
     """
     org = _extract_org(user)
     metadata = _build_request_metadata(request)

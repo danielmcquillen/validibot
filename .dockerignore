@@ -56,3 +56,15 @@ AGENTS.md
 # the root build context, so excluding them here prevents the runtime
 # stage's ``COPY . /app`` from shipping them into the final image.
 _extra_packages/
+
+# Sibling repo mount points, if present. The commercial package sources
+# are read via --build-context at build time (see just/gcp/mod.just);
+# any copies that land in the repo root — historically named
+# ``_validibot-pro/`` or ``_validibot-cloud/``, or plain
+# ``validibot-pro/`` / ``validibot-cloud/`` from other tooling — must
+# stay out of the image.
+_validibot-pro/
+_validibot-cloud/
+validibot-pro/
+validibot-cloud/
+validibot-enterprise/

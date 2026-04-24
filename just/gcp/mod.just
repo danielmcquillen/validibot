@@ -442,10 +442,12 @@ deploy-worker stage: _require-gcp-config (_require-not-maintenance stage) build 
 # ENABLE_MCP_SERVER can be set three ways (in precedence order):
 #   1. Inline on the command line
 #   2. Your shell environment
-#   3. ``.envs/.production/.google-cloud/.build`` (see ``.envs.example/``
-#      for the template). This is the "set and forget" path for
-#      operators running MCP in prod — no need to remember to prepend
-#      the flag on every deploy.
+#   3. The STAGE-SPECIFIC ``.envs/<stage>/.google-cloud/.build`` file
+#      (prod reads .envs/.production/...; dev reads .envs/.dev/...).
+#      See ``.envs.example/.production/.google-cloud/.build`` for the
+#      template. This is the "set and forget" path — each stage has
+#      its own knob file so a dev deploy cannot accidentally inherit
+#      prod's settings.
 #
 # Usage: just gcp deploy-all dev | just gcp deploy-all prod
 # Usage (with MCP, ad-hoc): ENABLE_MCP_SERVER=true just gcp deploy-all prod
@@ -472,22 +474,27 @@ deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build pus
 # them unconditionally from deploy-all is safe on community-only
 # stacks.
 #
-# The flag itself comes from one of three places, in precedence order:
-#   1. inline on the command line (``ENABLE_MCP_SERVER=true just gcp deploy-all prod``)
-#   2. the user's shell environment
-#   3. ``.envs/.production/.google-cloud/.build`` if present — see
-#      ``.envs.example/.production/.google-cloud/.build`` for the
-#      template. ``set -a`` around the source makes every variable
-#      exportable so the child ``just`` processes inherit it.
+# The flag comes from (in precedence order):
+#   1. Inline on the command line
+#   2. The user's shell environment
+#   3. ``.envs/<stage>/.google-cloud/.build`` if present — the file is
+#      STAGE-SPECIFIC so ``just gcp deploy-all dev`` does not read the
+#      prod build file. ``set -a`` exports the values so the child
+#      ``just`` processes inherit them.
 [private]
 _maybe-deploy-mcp stage:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if [ -f .envs/.production/.google-cloud/.build ]; then
+    if [ "{{stage}}" = "prod" ]; then
+        BUILD_FILE=".envs/.production/.google-cloud/.build"
+    else
+        BUILD_FILE=".envs/.{{stage}}/.google-cloud/.build"
+    fi
+    if [ -f "$BUILD_FILE" ]; then
         set -a
         # shellcheck disable=SC1091
-        source .envs/.production/.google-cloud/.build
+        source "$BUILD_FILE"
         set +a
     fi
 
@@ -677,10 +684,10 @@ _deploy-worker stage:
 #   - ``just gcp mcp secrets <stage>``     — runs but short-circuits
 #     via its ``_mcp_enabled_gate`` when ENABLE_MCP_SERVER is unset
 #
-# The ``.envs/.production/.google-cloud/.build`` file provides the
-# default for ENABLE_MCP_SERVER so operators running MCP don't have to
-# prefix the flag on every invocation. See
-# ``.envs.example/.production/.google-cloud/.build``.
+# The stage-specific ``.envs/<stage>/.google-cloud/.build`` file
+# provides the default for ENABLE_MCP_SERVER so operators don't have
+# to prefix the flag on every invocation. See
+# ``.envs.example/.production/.google-cloud/.build`` for the template.
 #
 # For surgical pushes (rotating only one service's secrets), use:
 #   - ``just gcp django secrets <stage>``  — only .django
@@ -703,13 +710,19 @@ secrets stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Source the .build knob file so ``just mcp secrets`` sees the
-    # current value of ENABLE_MCP_SERVER. ``set -a`` exports every
-    # sourced variable so the child ``just`` processes inherit it.
-    if [ -f .envs/.production/.google-cloud/.build ]; then
+    # Source the STAGE-SPECIFIC .build knob file so ``just gcp mcp
+    # secrets`` sees the current value of ENABLE_MCP_SERVER for THIS
+    # stage. ``set -a`` exports every sourced variable so the child
+    # ``just`` processes inherit it.
+    if [ "{{stage}}" = "prod" ]; then
+        BUILD_FILE=".envs/.production/.google-cloud/.build"
+    else
+        BUILD_FILE=".envs/.{{stage}}/.google-cloud/.build"
+    fi
+    if [ -f "$BUILD_FILE" ]; then
         set -a
         # shellcheck disable=SC1091
-        source .envs/.production/.google-cloud/.build
+        source "$BUILD_FILE"
         set +a
     fi
 

@@ -131,6 +131,42 @@ _require-not-maintenance stage:
 git_sha := `git rev-parse --short HEAD`
 
 # =============================================================================
+# Submodules
+# =============================================================================
+#
+# Service-specific submodules under ``just gcp``. The umbrella recipes
+# at the top level of this module (``secrets``, ``deploy-all``) delegate
+# to these for the per-service work, so there's one source of truth for
+# each service's GCP operations.
+#
+# Users pick the granularity they need:
+#
+#   just gcp secrets prod           # umbrella — pushes .django AND .mcp
+#   just gcp django secrets prod    # surgical — only .django
+#   just gcp mcp secrets prod       # surgical — only .mcp
+#
+# The same triangle exists for other MCP operations (build, deploy,
+# logs, status, ...) via the ``gcp mcp`` submodule; there's no
+# corresponding Django submodule yet because Django has no additional
+# per-service recipes distinct from the main ``gcp`` commands.
+
+# Django-specific operations on GCP (currently just the surgical
+# ``secrets`` recipe).
+mod django 'django'
+
+# MCP server operations on GCP — re-exposes the existing ``just/mcp``
+# module at ``just gcp mcp`` so operators can use either grammar:
+#
+#   just mcp deploy prod         # historical path (still works)
+#   just gcp mcp deploy prod     # new grammar, matches django + secrets pattern
+#
+# Both invocations hit the same module; there is no code duplication.
+# The test recipes (``just mcp test``, ``just mcp test-e2e``) also
+# surface at ``just gcp mcp test`` but are genuinely local commands —
+# the more natural home remains ``just mcp ...`` for those.
+mod mcp '../mcp'
+
+# =============================================================================
 # Service Account Configuration
 # =============================================================================
 #
@@ -227,19 +263,29 @@ build: _require-gcp-config
 
     echo "Building image: {{gcp_image}}:{{git_sha}}"
 
+    # Single Dockerfile for community and hosted builds — the
+    # hosted path layers on extras via build args + --build-context.
+    # See compose/production/django/Dockerfile for the mechanism.
     DOCKERFILE="compose/production/django/Dockerfile"
 
+    # Default to community build: no extras, empty overlay directory.
+    EXTRA_UV_EXTRAS=""
+    EXTRA_PACKAGES_CONTEXT=""
+
     if [ "${GCP_BUILD_VALIDIBOT_CLOUD:-0}" = "1" ]; then
-        # Copy Pro and Cloud repos into the build context (Docker can't
-        # access parent directories). The cloud Dockerfile COPYs and
-        # installs both packages.
+        # Copy Pro and Cloud repos into ``_extra_packages/`` in the
+        # build context (Docker can't COPY from parent directories).
+        # The community Dockerfile's builder stage then pulls them in
+        # via ``COPY --from=extra-packages`` using the --build-context
+        # overlay configured below.
         RSYNC_EXCLUDES="--exclude='.git' --exclude='.venv' --exclude='__pycache__' \
             --exclude='*.egg-info' --exclude='.pytest_cache' --exclude='.ruff_cache' \
             --exclude='.mypy_cache' --exclude='node_modules'"
 
+        mkdir -p _extra_packages
         for REPO in validibot-pro validibot-cloud; do
             SRC="../$REPO"
-            DST="_$REPO"
+            DST="_extra_packages/$REPO"
 
             if [ ! -d "$SRC" ]; then
                 echo "Error: $SRC not found."
@@ -247,15 +293,18 @@ build: _require-gcp-config
                 exit 1
             fi
 
-            echo "Copying $REPO into build context..."
+            echo "Copying $REPO into _extra_packages/ build overlay..."
             rsync -a $RSYNC_EXCLUDES "$SRC/" "$DST/"
         done
 
-        cleanup() { rm -rf _validibot-pro _validibot-cloud; }
+        cleanup() { rm -rf _extra_packages; }
         trap cleanup EXIT
 
-        # Use the cloud Dockerfile instead of the community one.
-        DOCKERFILE="_validibot-cloud/deploy/Dockerfile"
+        # Turn on the Stripe extra (pulled in by validibot-cloud) and
+        # swap the Dockerfile's empty default overlay stage for the
+        # real ``_extra_packages/`` directory on disk.
+        EXTRA_UV_EXTRAS="cloud"
+        EXTRA_PACKAGES_CONTEXT="--build-context extra-packages=./_extra_packages"
     fi
 
     # --provenance=false: Docker 28+ defaults to provenance attestations,
@@ -277,6 +326,8 @@ build: _require-gcp-config
     fi
     docker build --platform linux/amd64 --provenance=false $CACHE_FLAG \
         -f "$DOCKERFILE" \
+        --build-arg EXTRA_UV_EXTRAS="${EXTRA_UV_EXTRAS}" \
+        ${EXTRA_PACKAGES_CONTEXT} \
         -t {{gcp_image}}:{{git_sha}} \
         -t {{gcp_image}}:latest .
 
@@ -379,11 +430,12 @@ deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build pus
 
 # Internal: build and deploy the MCP server when the deploy is MCP-aware.
 #
-# Delegates straight to the ``just mcp`` recipes so there is one source
-# of truth for how MCP gets built and deployed. Those recipes have
-# their own ENABLE_MCP_SERVER gate — when the flag is unset they print
-# a short "skipped" message and exit 0, so calling them unconditionally
-# from deploy-all is safe on community-only stacks.
+# Delegates straight to the ``just gcp mcp`` submodule recipes so there
+# is one source of truth for how MCP gets built and deployed. Those
+# recipes have their own ENABLE_MCP_SERVER gate — when the flag is
+# unset they print a short "skipped" message and exit 0, so calling
+# them unconditionally from deploy-all is safe on community-only
+# stacks.
 #
 # The flag itself comes from one of three places, in precedence order:
 #   1. inline on the command line (``ENABLE_MCP_SERVER=true just gcp deploy-all prod``)
@@ -391,7 +443,7 @@ deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build pus
 #   3. ``.envs/.production/.google-cloud/.build`` if present — see
 #      ``.envs.example/.production/.google-cloud/.build`` for the
 #      template. ``set -a`` around the source makes every variable
-#      exportable so the child ``just mcp`` processes inherit it.
+#      exportable so the child ``just`` processes inherit it.
 [private]
 _maybe-deploy-mcp stage:
     #!/usr/bin/env bash
@@ -404,8 +456,8 @@ _maybe-deploy-mcp stage:
         set +a
     fi
 
-    just mcp build
-    just mcp deploy "{{stage}}"
+    just gcp mcp build
+    just gcp mcp deploy "{{stage}}"
 
 # Internal: conditionally run migrations before deploy.
 # Skipped when GCP_SKIP_MIGRATE=1 (for hotfixes with no schema changes).
@@ -582,111 +634,43 @@ _deploy-worker stage:
 # Secrets Management
 # =============================================================================
 
-# Upload secrets for a specific stage to GCP Secret Manager.
+# Umbrella secrets command — pushes every env file that might need
+# pushing before a deploy.
 #
-# This is the "default" secrets command — it pushes every env file
-# that might need pushing before a deploy. Specifically:
-#   - .django → django-env (always)
-#   - .mcp    → mcp-env     (when ENABLE_MCP_SERVER is set)
+# Delegates to two submodule recipes:
+#   - ``just gcp django secrets <stage>``  — always runs
+#   - ``just gcp mcp secrets <stage>``     — runs but short-circuits
+#     via its ``_mcp_enabled_gate`` when ENABLE_MCP_SERVER is unset
 #
-# The flag comes from inline, the shell, or
-# ``.envs/.production/.google-cloud/.build``.
+# The ``.envs/.production/.google-cloud/.build`` file provides the
+# default for ENABLE_MCP_SERVER so operators running MCP don't have to
+# prefix the flag on every invocation. See
+# ``.envs.example/.production/.google-cloud/.build``.
 #
-# For surgical pushes to a single service, reach for:
-#   - ``just mcp secrets <stage>`` — upload only the MCP env file
+# For surgical pushes (rotating only one service's secrets), use:
+#   - ``just gcp django secrets <stage>``  — only .django
+#   - ``just gcp mcp secrets <stage>``     — only .mcp
 #
-# When you'd use the surgical path: you're rotating the MCP OAuth
-# client secret (or an x402 credential) without changing anything
-# Django-side. Using ``just gcp secrets`` in that case generates a
-# no-op new version of django-env, which is harmless but noisy in
-# Secret Manager's audit history.
+# Avoiding the umbrella when you only changed one file keeps Secret
+# Manager's version history tidy — each new version should ideally
+# reflect a real change to that service's secret.
 #
-# For the common "I'm about to run deploy-all, push everything that
-# might have changed" case, use this recipe.
-#
-# Usage: just gcp secrets dev | just gcp secrets prod
-#
-# Files:
-#   - .envs/.dev/.google-cloud/.django -> django-env-dev
-#   - .envs/.staging/.google-cloud/.django -> django-env-staging
-#   - .envs/.production/.google-cloud/.django -> django-env
-#   - (when ENABLE_MCP_SERVER is set:)
-#   - .envs/.dev/.google-cloud/.mcp -> mcp-env-dev
-#   - .envs/.staging/.google-cloud/.mcp -> mcp-env-staging
-#   - .envs/.production/.google-cloud/.mcp -> mcp-env
+# Usage:
+#   just gcp secrets dev
+#   just gcp secrets staging
+#   just gcp secrets prod
 #
 # After uploading, redeploy services to pick up new secrets (Cloud Run
 # mounts Secret Manager values at container start time, so a running
 # revision keeps the old values until a new revision starts).
 [arg('stage', pattern='dev|staging|prod')]
-secrets stage: _require-gcp-config (_maybe-upload-mcp-secrets stage)
+secrets stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Compute secret name and source file
-    if [ "{{stage}}" = "prod" ]; then
-        SECRET_NAME="django-env"
-        ENV_FILE=".envs/.production/.google-cloud/.django"
-    else
-        SECRET_NAME="django-env-{{stage}}"
-        ENV_FILE=".envs/.{{stage}}/.google-cloud/.django"
-    fi
-
-    # Each stage must have its own env file with stage-specific values.
-    # These are created manually — never copy from another stage, as
-    # accidentally using production credentials in dev/staging could
-    # cause data corruption or security issues.
-    if [ ! -f "$ENV_FILE" ]; then
-        echo "Error: $ENV_FILE not found"
-        echo ""
-        echo "Create the environment file manually:"
-        echo "  mkdir -p $(dirname "$ENV_FILE")"
-        echo "  # Create $ENV_FILE with stage-specific values"
-        echo ""
-        echo "See .envs.example/ for the required variables."
-        echo "IMPORTANT: Do NOT copy from another stage's secrets."
-        exit 1
-    fi
-
-    # Check if secret exists, create if not
-    if ! gcloud secrets describe "$SECRET_NAME" --project={{gcp_project}} &>/dev/null; then
-        echo "Creating new secret: $SECRET_NAME"
-        gcloud secrets create "$SECRET_NAME" \
-            --replication-policy="user-managed" \
-            --locations="{{gcp_region}}" \
-            --project={{gcp_project}}
-    fi
-
-    echo "Uploading secrets from $ENV_FILE to $SECRET_NAME..."
-    gcloud secrets versions add "$SECRET_NAME" \
-        --data-file="$ENV_FILE" \
-        --project {{gcp_project}}
-
-    echo ""
-    echo "Secret $SECRET_NAME updated."
-    echo "Run 'just gcp deploy-all {{stage}}' to apply changes."
-
-# Internal: upload the MCP secret when the deploy is MCP-aware.
-#
-# Mirrors ``_maybe-deploy-mcp``: sources the ``.build`` knob file and
-# delegates to ``just mcp secrets``. The child recipe has its own
-# ``_mcp_enabled_gate`` short-circuit when ``ENABLE_MCP_SERVER`` is
-# unset, so calling it unconditionally from ``secrets`` is safe on
-# community-only stacks — the gate prints "skipped" and exits 0.
-#
-# Keeping the gate inside ``just mcp secrets`` (rather than here in
-# the parent) means every ``just mcp <recipe>`` behaves identically
-# around the flag — one mental model.
-#
-# The flag comes from one of three places, in precedence order:
-#   1. inline on the command line
-#   2. the user's shell environment
-#   3. ``.envs/.production/.google-cloud/.build`` if present
-[private]
-_maybe-upload-mcp-secrets stage:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
+    # Source the .build knob file so ``just mcp secrets`` sees the
+    # current value of ENABLE_MCP_SERVER. ``set -a`` exports every
+    # sourced variable so the child ``just`` processes inherit it.
     if [ -f .envs/.production/.google-cloud/.build ]; then
         set -a
         # shellcheck disable=SC1091
@@ -694,7 +678,8 @@ _maybe-upload-mcp-secrets stage:
         set +a
     fi
 
-    just mcp secrets "{{stage}}"
+    just gcp django secrets "{{stage}}"
+    just gcp mcp secrets "{{stage}}"
 
 # =============================================================================
 # Operations

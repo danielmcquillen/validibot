@@ -88,8 +88,9 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
    directly — that makes future upgrades harder; the dedicated
    settings module is the supported path.
 
-   To also include the MCP server (Pro feature, exposes validation
-   workflows to AI agents), flip this in `.envs/.production/.docker-compose/.build`:
+   To also include the MCP server (exposes validation workflows to
+   AI agents over the Model Context Protocol), flip this in
+   `.envs/.production/.docker-compose/.build`:
 
    ```bash
    ENABLE_MCP_SERVER=true
@@ -97,9 +98,17 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
 
    The `just docker-compose up` / `build` recipes source the `.build`
    file at the top and activate the `mcp` Compose profile when the
-   flag is truthy. The MCP server has a runtime license check that
-   requires validibot-pro (or enterprise) to be installed — it refuses
-   to start on community-only deployments even when the flag is set.
+   flag is truthy.
+
+   **License gate.** The MCP code itself lives in this repo at
+   `mcp/` and is free to build, but at startup the server calls
+   `GET /api/v1/license/features/` against the Django API and
+   refuses to serve traffic unless `mcp_server` is advertised —
+   which only happens when `validibot-pro` (or enterprise) is
+   installed via `VALIDIBOT_COMMERCIAL_PACKAGE`. So a community-only
+   deployment that flips `ENABLE_MCP_SERVER=true` will build and
+   start the container, then watch it exit on the license check.
+   If you're running Pro, you're all set.
 
 4. Validate the env files and bootstrap the deployment:
 

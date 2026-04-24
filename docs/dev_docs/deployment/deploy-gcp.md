@@ -147,6 +147,91 @@ just gcp migrate dev
 
 Promote to production only after the lower stage looks healthy.
 
+## Include the MCP server
+
+The standalone FastMCP container exposes validation workflows to AI
+agents over the Model Context Protocol. On GCP it runs as its own
+Cloud Run service (`validibot-mcp` in prod, `validibot-mcp-<stage>`
+otherwise) with its own Artifact Registry image and service account,
+deployed independently from the main Django web service.
+
+**Source and image.** The MCP code lives in this repo at `mcp/` and
+is built from `compose/production/mcp/Dockerfile`. The image is a
+lightweight Python container (~80 MB) with FastMCP, httpx, and
+pydantic-settings only — no Django, no database drivers.
+
+**License gate.** At startup the MCP server calls
+`GET /api/v1/license/features/` against the Django API and refuses
+to serve traffic unless `mcp_server` is advertised. This only
+happens when `validibot-pro` (or enterprise) is installed. So a
+community-only deployment can build and deploy the image but the
+container will exit during the license check.
+
+### Configure the knobs
+
+The MCP deploy tooling reads two values from
+`.envs/.production/.google-cloud/.build`:
+
+```bash
+# Include the MCP container in ``just gcp deploy-all`` and unlock
+# the ``just gcp mcp ...`` recipes. Requires validibot-pro to be
+# installed so the runtime license check passes.
+ENABLE_MCP_SERVER=true
+
+# Public URL of YOUR Validibot Django API — the MCP server proxies
+# tool calls here. There is no default; setting this wrong could
+# accidentally proxy your users' traffic to another operator's API.
+VALIDIBOT_MCP_API_BASE_URL=https://app.your-domain.example
+```
+
+See `.envs.example/.production/.google-cloud/.build` for the full
+documented template.
+
+### Deploy
+
+First-time setup provisions the MCP service account, IAM bindings,
+and Artifact Registry access:
+
+```bash
+source .envs/.production/.google-cloud/.just
+just gcp mcp setup prod
+```
+
+Then upload the MCP secret (OAuth client credentials, etc.) and
+deploy the service. You have three levels of granularity:
+
+```bash
+# Umbrella — pushes every secret that might have changed
+just gcp secrets prod
+# Equivalent to: gcp django secrets + gcp mcp secrets
+
+# Surgical — just one service
+just gcp django secrets prod   # only .django → django-env
+just gcp mcp secrets prod      # only .mcp → mcp-env
+```
+
+```bash
+# Full deploy — Django web + worker + scheduler + MCP build + MCP deploy
+just gcp deploy-all prod
+
+# MCP-only deploy — useful for hotfixing just the MCP image
+just gcp mcp build
+just gcp mcp deploy prod
+```
+
+### Routing
+
+To expose MCP on a custom domain via the load balancer you set up
+for Django, run:
+
+```bash
+just gcp mcp lb-add prod mcp.your-domain.example
+```
+
+That provisions a serverless NEG, a backend service, adds the MCP
+hostname to the managed SSL certificate, and locks the Cloud Run
+service's ingress to load-balancer-only.
+
 ## Domain and networking
 
 There are two normal ways to expose a GCP deployment publicly:

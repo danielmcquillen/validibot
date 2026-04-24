@@ -118,13 +118,21 @@ mod local 'just/local'
 #   just gcp status-all
 mod gcp 'just/gcp'
 
-# MCP server — GCP Cloud Run deployment for the standalone FastMCP image
-# Usage: just mcp <command>
-# Examples:
-#   ENABLE_MCP_SERVER=true just mcp build
-#   just mcp deploy prod
-#   just mcp secrets prod
-#   just mcp logs prod
+# MCP server — standalone FastMCP image operations (build, deploy,
+# secrets, logs, tests).
+#
+# Historical entry point. Prefer ``just gcp mcp <command>`` for GCP
+# work — that grammar is symmetric with ``just gcp django <command>``
+# and scopes MCP operations under their deploy target. Both paths
+# reach the same module; neither deprecates the other.
+#
+# The test recipes (``just mcp test``, ``just mcp test-e2e``) are
+# genuinely target-agnostic and stay naturally accessed via this
+# top-level mount.
+#
+# Usage:
+#   just mcp test                        # local pytest + ruff on mcp/
+#   just mcp deploy prod                 # same as ``just gcp mcp deploy prod``
 mod mcp 'just/mcp'
 
 # Amazon Web Services deployment (stub - not yet implemented)
@@ -169,10 +177,12 @@ default:
     @echo "Each local flavour supports: up, up --build, down, rebuild, logs, ..."
     @echo ""
     @echo "Platform Modules:"
-    @echo "    just gcp <command>        # Google Cloud Platform"
-    @echo "    just mcp <command>        # MCP server on GCP Cloud Run"
-    @echo "    just aws <command>        # AWS (not implemented)"
-    @echo "    just docker-compose <command> # Docker Compose production"
+    @echo "    just gcp <command>             # Google Cloud Platform"
+    @echo "    just gcp django <command>      # Django-only GCP ops (e.g. secrets)"
+    @echo "    just gcp mcp <command>         # MCP-only GCP ops (secrets, deploy, ...)"
+    @echo "    just mcp <command>             # MCP operations (alias; also: local tests)"
+    @echo "    just aws <command>             # AWS (not implemented)"
+    @echo "    just docker-compose <command>  # Docker Compose production"
     @echo ""
     @echo "Examples:"
     @echo "    just local up             # Start community dev stack"

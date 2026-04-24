@@ -51,8 +51,10 @@ CLAUDE.md
 AGENTS.md
 .claude/
 .vscode/
-# Commercial layers must NOT be excluded — needed by Dockerfile for cloud builds.
-# These directories are copied into the build context by `just gcp build`
-# and removed after the build completes.
-!_validibot-pro/
-!_validibot-cloud/
+# Commercial layers must NOT be excluded — needed by the Dockerfile
+# for cloud builds. ``just gcp build`` rsyncs the sibling repos into
+# ``_extra_packages/`` here and removes it after the build completes;
+# the Dockerfile's builder stage pulls from this directory via
+# ``--build-context extra-packages=./_extra_packages`` when the
+# hosted build is active.
+!_extra_packages/

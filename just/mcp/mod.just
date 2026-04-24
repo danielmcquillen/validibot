@@ -65,12 +65,51 @@ mcp_image := gcp_region + "-docker.pkg.dev/" + gcp_project + "/" + app_name + "/
 # traceable back to a specific commit.
 git_sha := `git rev-parse --short HEAD`
 
-# URL of the Validibot REST API the MCP server proxies to. Override per
-# stage via the environment, e.g. VALIDIBOT_MCP_API_BASE_URL=https://staging.example.com.
-mcp_api_base_url := env_var_or_default("VALIDIBOT_MCP_API_BASE_URL", "https://app.validibot.com")
+# Note: ``VALIDIBOT_MCP_API_BASE_URL`` is deliberately NOT a justfile
+# variable. It's read at recipe runtime — typically from the stage's
+# ``.build`` file — so self-hosters must supply it explicitly rather
+# than inheriting a default that happens to point at another
+# operator's API. See ``_require-mcp-api-base-url`` below and the
+# template at ``.envs.example/.production/.google-cloud/.build``.
 
 
 # ── Environment check ────────────────────────────────────────────────────
+
+# Fail fast when VALIDIBOT_MCP_API_BASE_URL is missing. Used by the
+# deploy recipe so self-hosted operators who forgot to set this env
+# var get a loud error instead of silently shipping an MCP container
+# that proxies tool calls to some other operator's default hostname.
+#
+# The value can be supplied three ways (checked in this order):
+#   1. inline on the command line
+#   2. the user's shell environment
+#   3. ``.envs/<stage>/.google-cloud/.build`` if present — see
+#      ``.envs.example/.production/.google-cloud/.build`` for the
+#      template. ``set -a`` around the source exports the variable
+#      so this check and the child ``gcloud run deploy`` both see it.
+[private]
+_require-mcp-api-base-url:
+    #!/usr/bin/env bash
+    if [ -z "${VALIDIBOT_MCP_API_BASE_URL:-}" ]; then
+        echo "Error: VALIDIBOT_MCP_API_BASE_URL is not set."
+        echo ""
+        echo "The MCP server needs the URL of the Validibot Django API"
+        echo "it should forward tool calls to. There is no default"
+        echo "because shipping a default could accidentally proxy your"
+        echo "users' traffic to a different operator's service."
+        echo ""
+        echo "Set it via one of:"
+        echo ""
+        echo "  1. Inline:"
+        echo "       VALIDIBOT_MCP_API_BASE_URL=https://app.yourco.com just gcp mcp deploy prod"
+        echo ""
+        echo "  2. Your shell:"
+        echo "       export VALIDIBOT_MCP_API_BASE_URL=https://app.yourco.com"
+        echo ""
+        echo "  3. (Recommended) .envs/<stage>/.google-cloud/.build"
+        echo "     (template: .envs.example/.production/.google-cloud/.build)"
+        exit 1
+    fi
 
 # Fail fast when GCP_PROJECT_ID is missing so every recipe has the same
 # error surface regardless of which one the user invoked first.
@@ -353,6 +392,31 @@ deploy stage: _require-gcp-config
     {{_mcp_enabled_gate}}
     APP_NAME="{{app_name}}"
 
+    # Source the stage's .build file (if present) to pick up knobs like
+    # VALIDIBOT_MCP_API_BASE_URL. ``set -a`` exports every variable the
+    # file defines so the ``gcloud run deploy`` invocation below inherits
+    # them. Absent file → no-op (inline env vars still work).
+    if [ "{{stage}}" = "prod" ]; then
+        BUILD_FILE=".envs/.production/.google-cloud/.build"
+    else
+        BUILD_FILE=".envs/.{{stage}}/.google-cloud/.build"
+    fi
+    if [ -f "$BUILD_FILE" ]; then
+        set -a
+        # shellcheck disable=SC1091
+        source "$BUILD_FILE"
+        set +a
+    fi
+
+    # Fail loudly if the API URL still isn't set — self-hosted operators
+    # must choose a destination rather than ship a default that might
+    # accidentally proxy their users' traffic to a different operator.
+    just gcp mcp _require-mcp-api-base-url
+
+    # Re-read the variable now that .build has been sourced and the
+    # check has passed. This is what gets stamped into --set-env-vars.
+    API_BASE_URL="${VALIDIBOT_MCP_API_BASE_URL}"
+
     if [ "{{stage}}" = "prod" ]; then
         SERVICE="${APP_NAME}-mcp"
         SA="${APP_NAME}-mcp-prod@{{gcp_project}}.iam.gserviceaccount.com"
@@ -388,7 +452,7 @@ deploy stage: _require-gcp-config
         --port 8080 \
         --service-account "$SA" \
         --set-secrets=/secrets/.env="$SECRET":latest \
-        --set-env-vars "VALIDIBOT_API_BASE_URL={{mcp_api_base_url}},VALIDIBOT_MCP_ENABLED=true" \
+        --set-env-vars "VALIDIBOT_API_BASE_URL=${API_BASE_URL},VALIDIBOT_MCP_ENABLED=true" \
         --min-instances $MIN_INSTANCES \
         --max-instances $MAX_INSTANCES \
         --memory 512Mi \

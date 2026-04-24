@@ -322,8 +322,7 @@ temp.json
 temp*.json
 
 # Commercial layer temp copies (created by `just gcp build`, cleaned up automatically)
-_validibot-pro/
-_validibot-cloud/
+_extra_packages/
 
 # Cloud development overlay (local only, references sibling repos)
 docker-compose.cloud.yml

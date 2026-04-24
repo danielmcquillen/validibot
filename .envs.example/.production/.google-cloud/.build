@@ -5,19 +5,26 @@
 # Copy this file to ``.envs/.production/.google-cloud/.build`` before
 # your first ``just gcp deploy-all prod``. The ``just gcp`` module
 # sources this file at the top of any recipe that needs deploy-time
-# knobs (currently just the MCP build/deploy step inside deploy-all).
+# knobs — currently the MCP build/deploy step and the MCP API URL.
 #
 # Unlike the other files in this directory (``.django``, ``.mcp``,
 # ``.just``), this file is NOT uploaded to GCP Secret Manager — it
 # only affects local ``just`` behavior at deploy time. Values here
-# never reach a running Cloud Run container.
+# become ``--set-env-vars`` on the Cloud Run service, so they do
+# reach a running container, but as public env vars, not secrets.
 #
 # Keep this file private; the whole .envs/ tree is gitignored.
+#
+# Every knob here is REQUIRED if the corresponding recipe is invoked —
+# there are no defaults that point at the hosted ``validibot.com``
+# deployment, so a misconfigured self-hoster cannot accidentally
+# proxy their users' traffic to someone else's API. Recipes fail
+# with a loud error listing the missing variable.
 # =============================================================================
 
 
 # -- Recipe-level knobs ----------------------------------------------------
-#
+
 # ENABLE_MCP_SERVER
 # -----------------
 # Controls whether ``just gcp deploy-all <stage>`` builds and deploys
@@ -31,10 +38,32 @@
 # If you set this to true without Pro installed, the MCP Cloud Run
 # service will deploy but fail its license check and 503 every request.
 #
-# Also read by the standalone ``just mcp build`` and ``just mcp deploy``
-# recipes — the same knob controls both the unified deploy-all path
-# and the surgical ``just mcp`` path.
+# Also read by the standalone ``just gcp mcp build`` / ``deploy``
+# (and their legacy aliases ``just mcp build`` / ``deploy``) — the
+# same knob controls both the unified deploy-all path and surgical
+# MCP-only paths.
 #
 #   true   — include MCP build + deploy
 #   false  — omit MCP (default)
 ENABLE_MCP_SERVER=false
+
+# VALIDIBOT_MCP_API_BASE_URL
+# --------------------------
+# Public URL of the Validibot Django API the MCP server should proxy
+# tool calls to. Gets stamped into the MCP Cloud Run service as
+# ``VALIDIBOT_API_BASE_URL`` at deploy time.
+#
+# Required when ENABLE_MCP_SERVER=true. There is no default — set this
+# to YOUR Validibot deployment's hostname. Examples:
+#
+#   # validibot.com (hosted)
+#   VALIDIBOT_MCP_API_BASE_URL=https://app.validibot.com
+#
+#   # your own self-hosted deployment
+#   VALIDIBOT_MCP_API_BASE_URL=https://app.yourco.com
+#
+# This value must also match what the MCP service account has
+# ``run.invoker`` on, since the MCP Cloud Run service authenticates
+# to Django using a Cloud Run OIDC identity token issued for this
+# audience. ``just gcp mcp setup`` wires that up automatically.
+VALIDIBOT_MCP_API_BASE_URL=

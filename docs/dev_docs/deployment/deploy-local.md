@@ -103,11 +103,24 @@ append both `validibot_pro` and `validibot_enterprise`).
 
 ## Include the MCP server
 
-The FastMCP container is a Pro feature — exposes validation workflows
-to AI agents over the Model Context Protocol. It's defined in the
-`local-pro` and `local-cloud` compose overlays behind an opt-in
-`mcp` Compose profile, so an empty `.build` file leaves it out by
-default.
+The standalone FastMCP container exposes validation workflows to AI
+agents (Claude, Cursor, etc.) over the Model Context Protocol. The
+code itself lives in this repo at `mcp/` — it's community, not Pro
+— so self-hosted deployments can build and run it. At runtime,
+though, the container calls `GET /api/v1/license/features/` against
+the Django API and refuses to serve traffic unless `mcp_server` is
+advertised, which only happens when `validibot-pro` (or enterprise)
+is installed. So the practical picture is:
+
+- **Community-only stack**: the container can be built, but it will
+  fail its license check on startup and exit. Useful for
+  contributors hacking on the MCP code, not for end users.
+- **Pro/Cloud stack**: the license check passes, MCP serves requests
+  normally.
+
+The container is defined in the `local-pro` and `local-cloud`
+compose overlays behind an opt-in `mcp` Compose profile, so an
+empty `.build` file leaves it out by default.
 
 To include it, open `.envs/.local/.build` and set:
 
@@ -125,7 +138,7 @@ just local-cloud up --build  # community + Pro + Cloud + MCP
 
 The recipe prints `"ENABLE_MCP_SERVER is set — including the MCP container (profile: mcp)"` on start, and the container listens on `http://localhost:8001`.
 
-`ENABLE_MCP_SERVER=true` is ignored by `just local up` because the community compose file defines no `mcp` service. The MCP server also has a runtime license check at boot — a community-only deployment without validibot-pro would fail the check even if the container were somehow started.
+`ENABLE_MCP_SERVER=true` is ignored by `just local up` because the community local compose file defines no `mcp` service — if you want to exercise MCP locally, use `local-pro` or `local-cloud`.
 
 ## Enable signed credentials locally
 

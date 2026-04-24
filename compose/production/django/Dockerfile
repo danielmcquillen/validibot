@@ -1,46 +1,37 @@
 # =============================================================================
 # Validibot Production Dockerfile (multi-stage)
 #
-# Three-stage build to minimize image size and attack surface:
-#   Stage 0 (extra-packages): Provides an empty default overlay directory
-#                             so commercial builds can inject packages
-#                             without branching the Dockerfile
-#   Stage 1 (builder):        Installs compilers and builds Python C
-#                             extensions
-#   Stage 2 (runtime):        Slim image with only runtime dependencies
+# Three-stage build:
+#   Stage 0 (extras):  Empty default overlay for optional extra packages
+#   Stage 1 (builder): Compiles Python C extensions
+#   Stage 2 (runtime): Slim image with only what's needed to serve Django
 #
-# The builder stage adds ~600MB of build tools (gcc, headers, git) that
-# are thrown away. The runtime stage only keeps what's needed to serve
-# the Django application.
-#
-# The same Dockerfile is used by community and hosted builds. Hosted
-# builds layer on the ``cloud`` extra + Pro/Cloud packages through two
-# mechanisms:
-#   - EXTRA_UV_EXTRAS build arg (space-separated pyproject.toml extras)
-#   - --build-context extra-packages=./_extra_packages (overlay dir)
-# See ``just/gcp/mod.just`` for the call site when
-# ``GCP_BUILD_VALIDIBOT_CLOUD=1``; self-hosters building via
-# docker-compose leave both at their defaults for a community build.
+# Two optional knobs let a deployment layer extra Python packages on
+# top of the base install without branching the Dockerfile:
+#   EXTRA_UV_EXTRAS         — extras to pass to ``uv sync`` (build arg)
+#   --build-context extras  — overlay directory of sdists to install
+# Both default to no-op; leaving them unset produces the standard
+# community image.
 # =============================================================================
 
 
 # =============================================================================
-# Stage 0: Empty defaults
+# Stage 0: Empty default for the ``extras`` named context
 #
-# A tiny stage whose only job is to own an empty ``/_extra_packages``
-# directory. The builder stage below copies from this by default, so
-# community builds do not need to create ``_extra_packages/`` in the
-# build context. Hosted / commercial builds override this with
-# ``--build-context extra-packages=./_extra_packages`` at ``just gcp
-# build`` time to inject the actual packages.
+# ``FROM scratch`` provides an empty filesystem that the builder stage
+# copies from by default. A build can override this with:
 #
-# This pattern (empty default stage + optional overlay via
-# ``--build-context``) is BuildKit's idiomatic solution to the "COPY
-# may or may not have a source" problem: no conditional COPY, no
-# multi-file Dockerfile drift, works identically for every build path.
+#   docker build --build-context extras=./some/dir ...
+#
+# rebinding the stage's content to any host directory. The builder's
+# ``COPY --from=extras / /tmp/extras/`` reads from the root of whatever
+# ``extras`` resolves to — empty with the default, populated with the
+# override. Installing an override's subdirectories happens in the
+# builder stage below.
+#
+# Docs: https://docs.docker.com/reference/cli/docker/buildx/build/#build-context
 # =============================================================================
-FROM alpine:3.20 AS extra-packages
-RUN mkdir -p /_extra_packages
+FROM scratch AS extras
 
 
 # =============================================================================
@@ -68,20 +59,11 @@ ARG VALIDIBOT_PRIVATE_INDEX_URL=""
 # Self-hosters leave this blank.
 ARG EXTRA_UV_EXTRAS=""
 
-# Optional commercial-package installation. When a deployment wants to
-# layer validibot-pro, validibot-enterprise, or validibot-cloud packages
-# on top of the community venv, it places the source trees as
-# subdirectories of ``_extra_packages/`` in the build context *before*
-# invoking ``docker build``. Every subdirectory is installed with
-# ``uv pip install --no-deps`` in the order ``find`` returns them, so
-# packages that register features should be named to sort before
-# packages that depend on those features (e.g. ``validibot-pro/`` sorts
-# before ``validibot-cloud/`` alphabetically).
-#
-# The directory is required to exist but may be empty — the RUN block
-# below no-ops when it has no subdirectories. This keeps the same
-# Dockerfile usable for community-only deploys and commercial builds
-# without a conditional COPY (which Docker handles poorly).
+# Optional overlay packages are read from the ``extras`` named context
+# (see Stage 0 above and the COPY --from=extras step further down).
+# Each subdirectory is installed with ``uv pip install --no-deps`` —
+# its declared dependencies are expected to already be satisfied by
+# the main ``uv sync`` above.
 WORKDIR ${APP_HOME}
 
 # Build tools — only needed here, not in the final image.
@@ -102,43 +84,49 @@ COPY pyproject.toml uv.lock ${APP_HOME}/
 COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/install-commercial-package
 
 # Install production dependencies (no dev extras).
-#   --frozen: Use the lockfile exactly as resolved (no re-resolution,
-#     so [tool.uv.sources] overrides are not consulted)
+#   --frozen: Use the lockfile exactly as resolved
 #   --no-install-project: Don't install validibot itself (it's a Django
 #     project run from the working directory, not a package)
 #
 # EXTRA_UV_EXTRAS is a space-separated list of pyproject.toml extras
-# to include (e.g. "cloud" enables the Stripe extra for hosted
-# deployments). Split into repeated --extra flags so that empty/blank
-# → zero flags, "cloud" → --extra cloud, "cloud enterprise" →
-# --extra cloud --extra enterprise.
+# to include. Empty → no --extra flags; "foo" → --extra foo;
+# "foo bar" → --extra foo --extra bar.
 RUN EXTRA_FLAGS=""; \
     for extra in ${EXTRA_UV_EXTRAS}; do EXTRA_FLAGS="${EXTRA_FLAGS} --extra ${extra}"; done; \
     uv sync --no-dev --no-install-project --frozen ${EXTRA_FLAGS} \
     && install-commercial-package ${APP_HOME}/.venv/bin/python \
     && rm -rf /tmp/uv-cache
 
-# Install optional commercial layers packaged as directories under
-# ``_extra_packages/``. Each subdirectory is installed with
-# ``uv pip install --no-deps`` (its dependencies are already in the
-# venv from ``uv sync`` above). An empty directory is a clean no-op,
-# so community builds pass through untouched.
-#
-# ``COPY --from=extra-packages`` pulls from the empty Stage 0 by
-# default. Hosted builds override it with
-# ``--build-context extra-packages=./_extra_packages`` on the
-# ``docker build`` command line so the overlay directory contains
-# the real packages instead of an empty one. See
-# ``just/gcp/mod.just`` for the call site.
-COPY --from=extra-packages /_extra_packages /tmp/_extra_packages
+# Install any overlay packages pulled in via the ``extras`` named
+# context. Install order is explicit so that packages which register
+# feature flags (validibot-pro, validibot-enterprise) land before
+# anything that depends on those flags at import time. Extra packages
+# that don't appear in the explicit list are installed last in
+# alphabetical order.
+COPY --from=extras / /tmp/extras/
 RUN set -e; \
-    if [ -n "$(ls -A /tmp/_extra_packages 2>/dev/null)" ]; then \
-        for pkg_dir in $(find /tmp/_extra_packages -mindepth 1 -maxdepth 1 -type d | sort); do \
-            echo "Installing extra commercial package from $(basename "$pkg_dir")..."; \
+    INSTALLED=""; \
+    for pkg_name in validibot-pro validibot-enterprise; do \
+        pkg_dir="/tmp/extras/${pkg_name}"; \
+        if [ -d "$pkg_dir" ]; then \
+            echo "Installing extra commercial package: ${pkg_name}..."; \
+            uv pip install --no-deps "$pkg_dir"; \
+            INSTALLED="${INSTALLED} ${pkg_name}"; \
+        fi; \
+    done; \
+    # Install anything else that happens to be there (future-proofing
+    # for additional commercial layers we haven't named above).
+    if [ -d /tmp/extras ]; then \
+        for pkg_dir in $(find /tmp/extras -mindepth 1 -maxdepth 1 -type d | sort); do \
+            pkg_name=$(basename "$pkg_dir"); \
+            case " ${INSTALLED} " in \
+                *" ${pkg_name} "*) continue ;; \
+            esac; \
+            echo "Installing extra commercial package (generic): ${pkg_name}..."; \
             uv pip install --no-deps "$pkg_dir"; \
         done; \
     fi; \
-    rm -rf /tmp/_extra_packages
+    rm -rf /tmp/extras
 
 
 # =============================================================================

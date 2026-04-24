@@ -51,10 +51,8 @@ CLAUDE.md
 AGENTS.md
 .claude/
 .vscode/
-# Commercial layers must NOT be excluded — needed by the Dockerfile
-# for cloud builds. ``just gcp build`` rsyncs the sibling repos into
-# ``_extra_packages/`` here and removes it after the build completes;
-# the Dockerfile's builder stage pulls from this directory via
-# ``--build-context extra-packages=./_extra_packages`` when the
-# hosted build is active.
-!_extra_packages/
+# Overlay directory used by optional commercial-package builds. The
+# Dockerfile reads these via the ``extras`` named context, not via
+# the root build context, so excluding them here prevents the runtime
+# stage's ``COPY . /app`` from shipping them into the final image.
+_extra_packages/

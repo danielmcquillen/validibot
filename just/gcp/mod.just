@@ -263,9 +263,6 @@ build: _require-gcp-config
 
     echo "Building image: {{gcp_image}}:{{git_sha}}"
 
-    # Single Dockerfile for community and hosted builds — the
-    # hosted path layers on extras via build args + --build-context.
-    # See compose/production/django/Dockerfile for the mechanism.
     DOCKERFILE="compose/production/django/Dockerfile"
 
     # Default to community build: no extras, empty overlay directory.
@@ -273,19 +270,51 @@ build: _require-gcp-config
     EXTRA_PACKAGES_CONTEXT=""
 
     if [ "${GCP_BUILD_VALIDIBOT_CLOUD:-0}" = "1" ]; then
-        # Copy Pro and Cloud repos into ``_extra_packages/`` in the
-        # build context (Docker can't COPY from parent directories).
-        # The community Dockerfile's builder stage then pulls them in
-        # via ``COPY --from=extra-packages`` using the --build-context
-        # overlay configured below.
-        RSYNC_EXCLUDES="--exclude='.git' --exclude='.venv' --exclude='__pycache__' \
-            --exclude='*.egg-info' --exclude='.pytest_cache' --exclude='.ruff_cache' \
-            --exclude='.mypy_cache' --exclude='node_modules'"
+        # Copy sibling commercial package sources into an out-of-tree
+        # overlay that the Dockerfile reads via --build-context.
+        # Out-of-tree placement means the runtime stage's COPY . /app
+        # can't pick them up even if .dockerignore regresses.
+        OVERLAY_DIR="$(mktemp -d -t validibot-extras-XXXXXXXX)"
+        cleanup() { rm -rf "$OVERLAY_DIR"; }
+        trap cleanup EXIT
 
-        mkdir -p _extra_packages
+        # Denylist of paths a commercial package source tree might
+        # contain but MUST NOT enter the image. Anything not strictly
+        # needed for ``uv pip install --no-deps .`` is excluded.
+        # Operator-local files (.envs/, .envrc) are the real risk;
+        # the rest just keeps the overlay small.
+        RSYNC_EXCLUDES=(
+            # VCS and developer state
+            --exclude='.git' --exclude='.git/' --exclude='.gitignore'
+            --exclude='.venv' --exclude='venv' --exclude='env'
+            --exclude='.direnv' --exclude='.envrc'
+            # Operator-local env files (NEVER copy — these contain secrets)
+            --exclude='.envs' --exclude='.envs/' --exclude='.envs.example'
+            --exclude='.env' --exclude='.env.*' --exclude='*.env'
+            # Python caches and build artifacts
+            --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo'
+            --exclude='*.egg-info' --exclude='build' --exclude='dist'
+            --exclude='.pytest_cache' --exclude='.ruff_cache'
+            --exclude='.mypy_cache' --exclude='.tox' --exclude='htmlcov'
+            --exclude='.coverage' --exclude='.coverage.*' --exclude='coverage.xml'
+            # IDE and agent config
+            --exclude='.vscode' --exclude='.idea' --exclude='.claude'
+            # Infra definitions that belong to the source repo, not the image
+            --exclude='Dockerfile' --exclude='Dockerfile.*'
+            --exclude='docker-compose.yml' --exclude='docker-compose.*.yml'
+            --exclude='compose' --exclude='deploy'
+            --exclude='justfile' --exclude='just' --exclude='.pre-commit-config.yaml'
+            # Docs, tests, and other runtime-irrelevant trees
+            --exclude='docs' --exclude='tests' --exclude='test'
+            --exclude='node_modules' --exclude='static/dist' --exclude='media'
+            --exclude='tmp' --exclude='.cache' --exclude='knowledge_base'
+            # Stray data files a developer might leave lying around
+            --exclude='*.log' --exclude='*.sqlite3' --exclude='*.db'
+        )
+
         for REPO in validibot-pro validibot-cloud; do
             SRC="../$REPO"
-            DST="_extra_packages/$REPO"
+            DST="${OVERLAY_DIR}/$REPO"
 
             if [ ! -d "$SRC" ]; then
                 echo "Error: $SRC not found."
@@ -293,18 +322,24 @@ build: _require-gcp-config
                 exit 1
             fi
 
-            echo "Copying $REPO into _extra_packages/ build overlay..."
-            rsync -a $RSYNC_EXCLUDES "$SRC/" "$DST/"
+            echo "Copying $REPO into build overlay at ${OVERLAY_DIR}/$REPO..."
+            rsync -a "${RSYNC_EXCLUDES[@]}" "$SRC/" "$DST/"
         done
 
-        cleanup() { rm -rf _extra_packages; }
-        trap cleanup EXIT
+        # Paranoia check — confirm no secret-bearing paths sneaked through
+        # (belt-and-suspenders against a future rsync-excludes regression).
+        if find "$OVERLAY_DIR" \( -name '.env' -o -name '.env.*' -o -name '*.env' -o -path '*/.envs*' -o -path '*/.envrc' \) -print -quit 2>/dev/null | grep -q .; then
+            echo "ERROR: secret-bearing path found in overlay after rsync:"
+            find "$OVERLAY_DIR" \( -name '.env' -o -name '.env.*' -o -name '*.env' -o -path '*/.envs*' -o -path '*/.envrc' \)
+            echo "The rsync excludes list in just/gcp/mod.just is missing a pattern."
+            exit 1
+        fi
 
-        # Turn on the Stripe extra (pulled in by validibot-cloud) and
-        # swap the Dockerfile's empty default overlay stage for the
-        # real ``_extra_packages/`` directory on disk.
+        # Enable the cloud extra and point --build-context at the
+        # overlay. "extras" must match the ``FROM scratch AS extras``
+        # label in the Dockerfile.
         EXTRA_UV_EXTRAS="cloud"
-        EXTRA_PACKAGES_CONTEXT="--build-context extra-packages=./_extra_packages"
+        EXTRA_PACKAGES_CONTEXT="--build-context extras=${OVERLAY_DIR}"
     fi
 
     # --provenance=false: Docker 28+ defaults to provenance attestations,

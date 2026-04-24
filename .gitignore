@@ -321,7 +321,10 @@ _envs/*
 temp.json
 temp*.json
 
-# Commercial layer temp copies (created by `just gcp build`, cleaned up automatically)
+# Commercial layer temp copies. The hosted ``just gcp build`` path
+# used to create ``_extra_packages/`` in the repo root; it now uses
+# mktemp outside the repo. The pattern stays here as belt-and-
+# suspenders in case someone reintroduces an in-tree overlay.
 _extra_packages/
 
 # Cloud development overlay (local only, references sibling repos)

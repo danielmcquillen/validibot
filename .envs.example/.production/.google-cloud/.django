@@ -223,7 +223,34 @@ DJANGO_MFA_ENCRYPTION_KEY=replace-with-generated-fernet-key
 # recovery procedure.
 DJANGO_ADMIN_FORCE_ALLAUTH=True
 
-# OIDC
+# OIDC — MCP OAuth support
 # ------------------------------------------------------------------------------
-IDP_OIDC_PRIVATE_KEY_B64=some private key for OIDC provider
-IDP_OIDC_MCP_SERVER_CLIENT_SECRET=some client secret for OIDC provider
+# Required when your deployment runs the MCP server and you want
+# OAuth-capable MCP clients (Claude Desktop, Cursor, Windsurf, Continue,
+# Zed, etc.) to authenticate end users via Dynamic Client Registration.
+# Leave blank to disable the OAuth path — the legacy API-token flow
+# still works as a fallback for clients that accept a raw bearer token.
+#
+# Private key PEM, base64-encoded. Used by the Django OIDC provider to
+# sign JWT access tokens that the MCP server verifies via JWKS.
+# Generate once and back up securely — rotating it invalidates every
+# outstanding MCP session. Command:
+#   openssl genrsa -out oidc-key.pem 2048 \
+#     && base64 < oidc-key.pem | tr -d '\n'
+IDP_OIDC_PRIVATE_KEY_B64=<your-base64-encoded-pem>
+# Shared secret for the confidential OAuth client the MCP Cloud Run
+# service registers with. Must be identical to the value in
+# .envs/<stage>/.google-cloud/.mcp's VALIDIBOT_OAUTH_CLIENT_SECRET so
+# both sides of the token exchange agree. Generate with:
+#   openssl rand -hex 32
+IDP_OIDC_MCP_SERVER_CLIENT_SECRET=<your-hex-random-secret>
+
+# Public URL of YOUR MCP server. This one variable drives both
+# Django's OIDC audience claim ({BASE}/mcp, stamped onto tokens) and
+# the confidential client's registered redirect URI
+# ({BASE}/auth/callback), so both sides of the OAuth flow stay in
+# lockstep. There is no default — set this to wherever your MCP Cloud
+# Run service is reachable:
+#
+#   VALIDIBOT_MCP_BASE_URL=https://mcp.your-domain.example
+VALIDIBOT_MCP_BASE_URL=

@@ -254,3 +254,54 @@ IDP_OIDC_MCP_SERVER_CLIENT_SECRET=<your-hex-random-secret>
 #
 #   VALIDIBOT_MCP_BASE_URL=https://mcp.your-domain.example
 VALIDIBOT_MCP_BASE_URL=
+
+
+# MCP → Django service-to-service auth (Cloud Run OIDC identity tokens)
+# ------------------------------------------------------------------------------
+# Every MCP tool call reaches Django via the helper API at
+# ``/api/v1/mcp/*``. That API is protected by a two-layer auth check:
+#
+#   1. Service identity — proves the request came from the MCP Cloud
+#      Run service (not a random caller who got hold of a user token).
+#   2. End-user identity — resolved from the forwarded
+#      X-Validibot-User-Sub / X-Validibot-Api-Token headers that the
+#      MCP server attaches after validating the user's OAuth token.
+#
+# In production on GCP, step 1 uses Cloud Run's built-in OIDC identity
+# token flow: the MCP service fetches a Google-signed token whose
+# ``aud`` claim equals MCP_OIDC_AUDIENCE (below), and Django verifies
+# both the signature and that the token's service-account email is on
+# the MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS list. This mirrors the
+# existing TASK_OIDC_* allowlist used for worker/Cloud Tasks auth.
+#
+# Both settings are REQUIRED together when running MCP on GCP:
+# Django refuses to boot (ImproperlyConfigured) if MCP_OIDC_AUDIENCE is
+# set but MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS is empty — an empty
+# allowlist would let any Google service account that can mint a
+# token with our audience pass the check, which is equivalent to no
+# service identity at all.
+#
+# (On self-hosted docker-compose deployments, set VALIDIBOT_MCP_SERVICE_KEY
+# instead; that path uses a shared secret and skips OIDC entirely.
+# See the docker-compose env template.)
+
+# Audience Cloud Run stamps onto identity tokens the MCP service mints
+# for Django calls. By convention the audience is the public URL of
+# the service being called — set this to your Django hostname:
+#
+#   MCP_OIDC_AUDIENCE=https://app.your-domain.example
+MCP_OIDC_AUDIENCE=
+
+# Comma-separated allowlist of service-account emails permitted to
+# mint identity tokens for the audience above. Must include the
+# service account your MCP Cloud Run service runs as (typically
+# named ``{app}-mcp-prod@{project}.iam.gserviceaccount.com`` when
+# provisioned by ``just gcp mcp setup prod``).
+#
+#   MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS=validibot-mcp-prod@your-project.iam.gserviceaccount.com
+#
+# Multiple SAs can be listed, comma-separated (useful when staging
+# and prod share one Django deployment, or during a SA migration):
+#
+#   MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS=validibot-mcp-prod@...,validibot-mcp-staging@...
+MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS=

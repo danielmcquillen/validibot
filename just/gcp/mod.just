@@ -337,12 +337,35 @@ deploy stage: _require-gcp-config (_require-not-maintenance stage) build push (_
 [arg('stage', pattern='dev|staging|prod')]
 deploy-worker stage: _require-gcp-config (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-worker stage)
 
-# Deploy both web and worker to a stage (single build+push, single migrate).
-# Also creates/updates Cloud Scheduler jobs (idempotent) so that scheduled
-# tasks like trial lifecycle emails are always in sync with the deployed code.
+# Deploy every service to a stage (single build+push for Django, plus
+# an MCP build+deploy when ENABLE_MCP_SERVER is set).
+#
+# Composition:
+#   1. build + push Django image
+#   2. migrate (unless GCP_SKIP_MIGRATE=1)
+#   3. deploy web + worker Cloud Run services
+#   4. sync Cloud Scheduler jobs
+#   5. build + deploy MCP — no-op when ENABLE_MCP_SERVER is unset
+#
+# Step 5 is gated by the ``just mcp`` recipes' built-in
+# ``_mcp_enabled_gate``: when ENABLE_MCP_SERVER is unset, each MCP
+# recipe prints a "skipped" message and exits 0. Community-only
+# operators get the same deploy-all UX as cloud operators — just
+# without the MCP step running.
+#
+# ENABLE_MCP_SERVER can be set three ways (in precedence order):
+#   1. Inline on the command line
+#   2. Your shell environment
+#   3. ``.envs/.production/.google-cloud/.build`` (see ``.envs.example/``
+#      for the template). This is the "set and forget" path for
+#      operators running MCP in prod — no need to remember to prepend
+#      the flag on every deploy.
+#
 # Usage: just gcp deploy-all dev | just gcp deploy-all prod
+# Usage (with MCP, ad-hoc): ENABLE_MCP_SERVER=true just gcp deploy-all prod
+# Usage (with MCP, persisted via .build file): just gcp deploy-all prod
 [arg('stage', pattern='dev|staging|prod')]
-deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-web stage) (_deploy-worker stage) (scheduler-setup stage)
+deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-web stage) (_deploy-worker stage) (scheduler-setup stage) (_maybe-deploy-mcp stage)
     @echo ""
     @echo "All services deployed to {{stage}}"
     @echo ""
@@ -350,6 +373,39 @@ deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build pus
     @echo "environment variables in .envs/, run:"
     @echo "  just gcp secrets {{stage}}"
     @echo "  just gcp deploy-all {{stage}}"
+    @echo ""
+    @echo "``just gcp secrets`` uploads .django always; it also uploads"
+    @echo ".mcp when ENABLE_MCP_SERVER is set (in .build or inline)."
+
+# Internal: build and deploy the MCP server when the deploy is MCP-aware.
+#
+# Delegates straight to the ``just mcp`` recipes so there is one source
+# of truth for how MCP gets built and deployed. Those recipes have
+# their own ENABLE_MCP_SERVER gate — when the flag is unset they print
+# a short "skipped" message and exit 0, so calling them unconditionally
+# from deploy-all is safe on community-only stacks.
+#
+# The flag itself comes from one of three places, in precedence order:
+#   1. inline on the command line (``ENABLE_MCP_SERVER=true just gcp deploy-all prod``)
+#   2. the user's shell environment
+#   3. ``.envs/.production/.google-cloud/.build`` if present — see
+#      ``.envs.example/.production/.google-cloud/.build`` for the
+#      template. ``set -a`` around the source makes every variable
+#      exportable so the child ``just mcp`` processes inherit it.
+[private]
+_maybe-deploy-mcp stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ -f .envs/.production/.google-cloud/.build ]; then
+        set -a
+        # shellcheck disable=SC1091
+        source .envs/.production/.google-cloud/.build
+        set +a
+    fi
+
+    just mcp build
+    just mcp deploy "{{stage}}"
 
 # Internal: conditionally run migrations before deploy.
 # Skipped when GCP_SKIP_MIGRATE=1 (for hotfixes with no schema changes).
@@ -526,8 +582,27 @@ _deploy-worker stage:
 # Secrets Management
 # =============================================================================
 
-# Upload secrets for a specific stage
-# Reads from local .envs/ directory and uploads to GCP Secret Manager.
+# Upload secrets for a specific stage to GCP Secret Manager.
+#
+# This is the "default" secrets command — it pushes every env file
+# that might need pushing before a deploy. Specifically:
+#   - .django → django-env (always)
+#   - .mcp    → mcp-env     (when ENABLE_MCP_SERVER is set)
+#
+# The flag comes from inline, the shell, or
+# ``.envs/.production/.google-cloud/.build``.
+#
+# For surgical pushes to a single service, reach for:
+#   - ``just mcp secrets <stage>`` — upload only the MCP env file
+#
+# When you'd use the surgical path: you're rotating the MCP OAuth
+# client secret (or an x402 credential) without changing anything
+# Django-side. Using ``just gcp secrets`` in that case generates a
+# no-op new version of django-env, which is harmless but noisy in
+# Secret Manager's audit history.
+#
+# For the common "I'm about to run deploy-all, push everything that
+# might have changed" case, use this recipe.
 #
 # Usage: just gcp secrets dev | just gcp secrets prod
 #
@@ -535,10 +610,16 @@ _deploy-worker stage:
 #   - .envs/.dev/.google-cloud/.django -> django-env-dev
 #   - .envs/.staging/.google-cloud/.django -> django-env-staging
 #   - .envs/.production/.google-cloud/.django -> django-env
+#   - (when ENABLE_MCP_SERVER is set:)
+#   - .envs/.dev/.google-cloud/.mcp -> mcp-env-dev
+#   - .envs/.staging/.google-cloud/.mcp -> mcp-env-staging
+#   - .envs/.production/.google-cloud/.mcp -> mcp-env
 #
-# After uploading, redeploy services to pick up new secrets.
+# After uploading, redeploy services to pick up new secrets (Cloud Run
+# mounts Secret Manager values at container start time, so a running
+# revision keeps the old values until a new revision starts).
 [arg('stage', pattern='dev|staging|prod')]
-secrets stage: _require-gcp-config
+secrets stage: _require-gcp-config (_maybe-upload-mcp-secrets stage)
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -583,7 +664,37 @@ secrets stage: _require-gcp-config
 
     echo ""
     echo "Secret $SECRET_NAME updated."
-    echo "Run 'just gcp deploy {{stage}}' to apply changes."
+    echo "Run 'just gcp deploy-all {{stage}}' to apply changes."
+
+# Internal: upload the MCP secret when the deploy is MCP-aware.
+#
+# Mirrors ``_maybe-deploy-mcp``: sources the ``.build`` knob file and
+# delegates to ``just mcp secrets``. The child recipe has its own
+# ``_mcp_enabled_gate`` short-circuit when ``ENABLE_MCP_SERVER`` is
+# unset, so calling it unconditionally from ``secrets`` is safe on
+# community-only stacks — the gate prints "skipped" and exits 0.
+#
+# Keeping the gate inside ``just mcp secrets`` (rather than here in
+# the parent) means every ``just mcp <recipe>`` behaves identically
+# around the flag — one mental model.
+#
+# The flag comes from one of three places, in precedence order:
+#   1. inline on the command line
+#   2. the user's shell environment
+#   3. ``.envs/.production/.google-cloud/.build`` if present
+[private]
+_maybe-upload-mcp-secrets stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [ -f .envs/.production/.google-cloud/.build ]; then
+        set -a
+        # shellcheck disable=SC1091
+        source .envs/.production/.google-cloud/.build
+        set +a
+    fi
+
+    just mcp secrets "{{stage}}"
 
 # =============================================================================
 # Operations

@@ -1,16 +1,13 @@
-# Validibot MCP Server — Production Docker Compose image.
+# Validibot MCP Server — Production image.
 #
 # Standalone FastMCP server with no Django dependency. Communicates with
-# the community Validibot REST API at VALIDIBOT_API_BASE_URL.
-#
-# This is the community/self-hosted equivalent of validibot-cloud's
-# deploy/Dockerfile.mcp. The two files drift independently: the cloud
-# image is optimised for Cloud Run and mounts GCP Secret Manager
-# secrets; this image is vanilla and reads a docker-compose env file.
+# the Validibot REST API at VALIDIBOT_API_BASE_URL. Used by every
+# production-style deployment target — Cloud Run (``just mcp build``),
+# docker-compose production, and local-pro dev.
 #
 # Build context: ``mcp/`` (the sibling Python project at mcp/ in this repo).
-# The docker-compose.production.yml file passes this Dockerfile with the
-# mcp/ directory as context, so COPY paths are relative to mcp/.
+# Callers pass the ``mcp/`` directory as the build context, so COPY
+# paths below are relative to mcp/.
 #
 # Required env vars at runtime (see .envs.example/.production/.docker-compose/.mcp):
 #   VALIDIBOT_API_BASE_URL  — URL of the Validibot Django API
@@ -18,6 +15,7 @@
 #   VALIDIBOT_OAUTH_AUTHORIZATION_SERVER_URL — upstream OAuth issuer
 #   VALIDIBOT_MCP_ENABLED   — global kill switch (default true)
 #   VALIDIBOT_MCP_SERVICE_KEY — shared secret for MCP→Django service auth
+#     (only used in local dev; Cloud Run uses OIDC identity tokens)
 
 FROM python:3.13-slim AS base
 

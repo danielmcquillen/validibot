@@ -1,0 +1,40 @@
+# =============================================================================
+# Production GCP build + recipe configuration
+# =============================================================================
+#
+# Copy this file to ``.envs/.production/.google-cloud/.build`` before
+# your first ``just gcp deploy-all prod``. The ``just gcp`` module
+# sources this file at the top of any recipe that needs deploy-time
+# knobs (currently just the MCP build/deploy step inside deploy-all).
+#
+# Unlike the other files in this directory (``.django``, ``.mcp``,
+# ``.just``), this file is NOT uploaded to GCP Secret Manager — it
+# only affects local ``just`` behavior at deploy time. Values here
+# never reach a running Cloud Run container.
+#
+# Keep this file private; the whole .envs/ tree is gitignored.
+# =============================================================================
+
+
+# -- Recipe-level knobs ----------------------------------------------------
+#
+# ENABLE_MCP_SERVER
+# -----------------
+# Controls whether ``just gcp deploy-all <stage>`` builds and deploys
+# the MCP Cloud Run service as part of the full deploy. When unset or
+# false, deploy-all skips the MCP step silently (web + worker +
+# scheduler still deploy as normal).
+#
+# Requires validibot-pro (or enterprise) to be installed in the
+# deployment — the MCP server calls ``GET /api/v1/license/features/``
+# at startup and refuses to boot if ``mcp_server`` isn't advertised.
+# If you set this to true without Pro installed, the MCP Cloud Run
+# service will deploy but fail its license check and 503 every request.
+#
+# Also read by the standalone ``just mcp build`` and ``just mcp deploy``
+# recipes — the same knob controls both the unified deploy-all path
+# and the surgical ``just mcp`` path.
+#
+#   true   — include MCP build + deploy
+#   false  — omit MCP (default)
+ENABLE_MCP_SERVER=false

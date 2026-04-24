@@ -26,11 +26,11 @@ no Django imports.
 Deployment
 ----------
 
-The production image for validibot.com lives in the private
-``validibot-cloud`` repository (``deploy/Dockerfile.mcp``). It copies
-this directory into the build context and installs the wheel.
-Self-hosted Pro users can follow the same pattern to run their own
-MCP endpoint.
+The production image is defined by ``compose/production/mcp/Dockerfile``
+in this repo and built from the ``mcp/`` directory as context. The same
+Dockerfile is used by every deployment target — Cloud Run via
+``just mcp build``, docker-compose production, and local-pro dev — so
+self-hosted Pro users and hosted cloud stay on a single image recipe.
 
 x402 / agent payments
 ---------------------

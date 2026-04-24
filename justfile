@@ -118,6 +118,15 @@ mod local 'just/local'
 #   just gcp status-all
 mod gcp 'just/gcp'
 
+# MCP server — GCP Cloud Run deployment for the standalone FastMCP image
+# Usage: just mcp <command>
+# Examples:
+#   ENABLE_MCP_SERVER=true just mcp build
+#   just mcp deploy prod
+#   just mcp secrets prod
+#   just mcp logs prod
+mod mcp 'just/mcp'
+
 # Amazon Web Services deployment (stub - not yet implemented)
 # Usage: just aws <command>
 # Status: Commands show "not implemented" message with implementation guidance
@@ -161,6 +170,7 @@ default:
     @echo ""
     @echo "Platform Modules:"
     @echo "    just gcp <command>        # Google Cloud Platform"
+    @echo "    just mcp <command>        # MCP server on GCP Cloud Run"
     @echo "    just aws <command>        # AWS (not implemented)"
     @echo "    just docker-compose <command> # Docker Compose production"
     @echo ""

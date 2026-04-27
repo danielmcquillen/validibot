@@ -425,6 +425,62 @@ class TestDockerComposeExecutionBackend:
 
         assert image == "my-custom-image:custom-tag"
 
+    def test_get_container_image_reads_from_validator_config(
+        self, settings, monkeypatch
+    ):
+        """``ValidatorConfig.image_name`` is the canonical source for the
+        Docker image base name.
+
+        System validators declare ``image_name`` in their ``config.py``.
+        This test patches ``get_config()`` to return a config whose
+        ``image_name`` differs from the convention, proving the backend
+        actually reads it (rather than coincidentally producing the same
+        value via the convention fallback). This is what makes the
+        validator definition — not an env var or settings dict — the
+        source of truth for which container to launch.
+        """
+        from types import SimpleNamespace
+
+        settings.VALIDATOR_IMAGE_TAG = "latest"
+        settings.VALIDATOR_IMAGE_REGISTRY = ""
+        settings.VALIDATOR_IMAGES = {}
+
+        fake_config = SimpleNamespace(image_name="my-org/explicit-energyplus")
+        monkeypatch.setattr(
+            "validibot.validations.validators.base.config.get_config",
+            lambda vtype: fake_config if vtype == "ENERGYPLUS" else None,
+        )
+
+        backend = DockerComposeExecutionBackend()
+        image = backend.get_container_image("energyplus")
+
+        assert image == "my-org/explicit-energyplus:latest"
+
+    def test_get_container_image_falls_back_when_no_config(self, settings, monkeypatch):
+        """Convention fallback applies when the validator has no
+        registered ``ValidatorConfig``.
+
+        Custom org validators (created in the admin, not via a
+        ``config.py``) won't have an entry in the config registry.
+        Rather than crashing, the backend falls back to the convention
+        ``validibot-validator-backend-{slug}`` so dispatch still works
+        for sane custom-validator naming. This contract matters for
+        org-defined validators added through the UI.
+        """
+        settings.VALIDATOR_IMAGE_TAG = "latest"
+        settings.VALIDATOR_IMAGE_REGISTRY = ""
+        settings.VALIDATOR_IMAGES = {}
+
+        monkeypatch.setattr(
+            "validibot.validations.validators.base.config.get_config",
+            lambda vtype: None,
+        )
+
+        backend = DockerComposeExecutionBackend()
+        image = backend.get_container_image("custom-validator")
+
+        assert image == "validibot-validator-backend-custom-validator:latest"
+
     @pytest.mark.django_db
     @patch(
         "validibot.validations.services.execution.docker_compose.get_validator_runner"

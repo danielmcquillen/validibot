@@ -54,6 +54,7 @@ class Command(BaseCommand):
                         "card_image",
                         "catalog_entries",
                         "icon",
+                        "image_name",
                         "output_envelope_class",
                         "provider",
                         "resolved_class",

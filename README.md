@@ -63,7 +63,7 @@ These validators run directly in a Django "worker" process -- no extra infrastru
 
 ### "Advanced" Validators
 
-These validators run as isolated Docker containers for complex domain-specific validation:
+These validators include backends that run as isolated Docker containers for complex domain-specific operations:
 
 - **EnergyPlus™**: Validate IDF and epJSON building energy models
 - **FMU**: Validate Functional Mock-up Units via OpenModelica simulation

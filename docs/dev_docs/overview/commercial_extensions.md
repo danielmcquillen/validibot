@@ -2,8 +2,21 @@
 
 Validibot follows an open-core model. The core application is open source under AGPL-3.0 and includes the full validation system, all built-in validators, workflows, and single-user management. Two optional commercial packages add team and enterprise capabilities:
 
-- **validibot-pro** -- team management, billing, advanced analytics, signed credentials
+- **validibot-pro** -- team management, billing, advanced analytics, signed credentials, MCP server
 - **validibot-enterprise** -- multi-org support, SSO/SAML, LDAP integration (includes all Pro features)
+
+!!! note "MCP is community code, Pro-licensed"
+    The MCP (Model Context Protocol) server is a special case worth
+    flagging up front: its source, Dockerfile, and deploy recipes
+    live in this repo under `mcp/`, `compose/production/mcp/Dockerfile`,
+    and `just/mcp/mod.just`. A self-hoster can build and run the
+    container without any commercial package installed. However, at
+    startup the MCP server calls
+    `GET /api/v1/license/features/` against the Django API and
+    refuses to serve traffic unless the `mcp_server` feature is
+    advertised — which only happens when validibot-pro (or
+    enterprise) is installed. The code is community for portability
+    and clarity; the commercial boundary is enforced at runtime.
 
 If you want the lower-level extension mechanics, read [Plugin Architecture](plugin_architecture.md) alongside this page. That document explains the shared registry and sync pattern used by both validators and actions.
 

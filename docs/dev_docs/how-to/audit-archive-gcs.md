@@ -86,11 +86,10 @@ place.
    names per retention call; versioning would duplicate every write
    without value.
 
-Hosted Validibot Cloud runs a `just gcp audit-archive-setup` recipe
-that does the above. Self-hosted operators can crib from that
-recipe's source if running `gcloud` commands directly — it lives in
-`validibot-cloud/just/gcp/mod.just` (closed-source) but the steps
-above are the same.
+The hosted Validibot deployment automates the above via a
+private `just audit-archive setup <stage>` recipe. Self-hosted
+operators running Pro on GCP can replicate the steps with the
+`gcloud` commands directly — the list above is the full set.
 
 ### Non-GCP self-hosters
 

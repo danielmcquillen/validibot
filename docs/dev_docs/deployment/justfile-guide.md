@@ -37,13 +37,23 @@ Our justfile setup uses a modular architecture to support multiple deployment pl
 justfile              # Root orchestrator
 just/
 ├── common.just       # Shared variables and helpers
-├── local.just        # Local Docker development commands
+├── local/
+│   └── mod.just      # Community-only local dev (just local ...)
+├── local-pro/
+│   └── mod.just      # Community + validibot-pro local dev
+├── local-cloud/
+│   └── mod.just      # Community + pro + cloud local dev
 ├── gcp/
-│   └── mod.just      # Google Cloud Platform deployment
+│   ├── mod.just      # Google Cloud Platform deployment
+│   ├── django/
+│   │   └── mod.just  # Django-only GCP ops (just gcp django ...)
+│   └── mcp/          # (re-exposure of ../mcp so "just gcp mcp ..." works)
+├── mcp/
+│   └── mod.just      # MCP server build/deploy/secrets/logs/test
 ├── aws/
 │   └── mod.just      # AWS deployment (stub - not implemented)
 └── docker-compose/
-    └── mod.just      # Docker Compose Docker Compose deployment
+    └── mod.just      # Docker Compose production deployment
 ```
 
 ### Root Justfile
@@ -51,31 +61,41 @@ just/
 The root `justfile` serves as the orchestrator. It:
 
 - Sets global configuration (shell, dotenv settings)
-- **Imports** shared and local development recipes (merged into root namespace)
-- Declares **modules** for each deployment platform (namespaced)
+- **Imports** shared helpers (merged into root namespace)
+- Declares **modules** for each deployment target (namespaced)
+
+### Modules and submodules
+
+Every platform-specific group of commands is a module. Deployment
+targets with multiple sub-areas (like GCP, which hosts the Django web
+service plus optionally the MCP server plus per-service secret
+management) use **submodules** for clean grouping:
+
+```bash
+just gcp deploy-all prod        # Umbrella: web + worker + scheduler + MCP
+just gcp secrets prod           # Umbrella: pushes .django AND .mcp
+just gcp django secrets prod    # Surgical: only .django → django-env
+just gcp mcp deploy prod        # Surgical: only rebuild/redeploy MCP
+```
+
+The same mcp module is also mounted at the top level so `just mcp ...`
+works as an alias for `just gcp mcp ...` — useful for target-agnostic
+commands like `just mcp test` (local pytest).
 
 ### Imports vs Modules
 
-We use two mechanisms for organizing recipes:
+Two mechanisms for organizing recipes:
 
 | Feature | Imports | Modules |
 |---------|---------|---------|
 | Syntax | `import 'path.just'` | `mod name 'path'` |
 | Access | Direct: `just recipe` | Namespaced: `just module recipe` |
-| Use case | Frequently used commands | Platform-specific commands |
+| Use case | Shared helpers | Platform-specific commands |
 
-**Imports** (local development) are accessed directly because you use them constantly:
-```bash
-just local up          # Start containers
-just local logs        # View logs
-just local test        # Run tests
-```
-
-**Modules** (deployment platforms) are namespaced to make the target platform explicit:
-```bash
-just gcp deploy prod        # Deploy to GCP
-just docker-compose deploy      # Deploy Docker Compose
-```
+Currently only `just/common.just` is imported at the root. All user-
+facing command groups (`local`, `local-pro`, `local-cloud`, `gcp`,
+`mcp`, `docker-compose`, `aws`) are modules so the target is explicit
+in every invocation.
 
 ## Quick Reference
 
@@ -125,10 +145,10 @@ Commands are prefixed with `gcp`:
 # List all GCP commands
 just --list gcp
 
-# Deployment
-just gcp deploy prod         # Deploy web service
-just gcp deploy-worker prod  # Deploy worker service
-just gcp deploy-all prod     # Deploy both services
+# Deployment (web + worker)
+just gcp deploy prod         # Hotfix path: web only
+just gcp deploy-worker prod  # Hotfix path: worker only
+just gcp deploy-all prod     # Full: web + worker + scheduler + MCP (if enabled)
 
 # Operations
 just gcp logs prod           # View logs
@@ -140,22 +160,43 @@ just gcp open prod           # Open in browser
 # Database & Django
 just gcp migrate prod                  # Run migrations
 just gcp setup-data prod               # Initialize data
-just gcp management-cmd prod "shell"   # Run any command
+just gcp management-cmd prod "shell"   # Run any command via a temp Cloud Run Job
 
-# Secrets
-just gcp secrets prod                  # Upload secrets
-just gcp secrets-init dev              # Create env template
+# Secrets — umbrella and surgical paths
+just gcp secrets prod                  # Umbrella: .django AND .mcp (when MCP enabled)
+just gcp django secrets prod           # Surgical: only .django → django-env
+just gcp mcp secrets prod              # Surgical: only .mcp → mcp-env
 
 # Infrastructure
-just gcp init-stage dev                # Create all infrastructure
-just gcp kms-setup dev                 # Set up KMS signing key
+just gcp init-stage dev                # Create web/worker SAs + Cloud SQL, etc.
 just gcp scheduler-setup dev           # Create scheduled jobs
-just gcp lb-setup prod "example.com"   # Set up load balancer (see deployment guide for alternatives)
+just gcp lb-setup prod "example.com"   # Set up HTTPS load balancer
 
 # Maintenance
 just gcp maintenance-on dev            # Put in maintenance mode
 just gcp maintenance-off dev           # Resume from maintenance
 ```
+
+#### MCP server commands
+
+When the deployment runs the MCP server (`ENABLE_MCP_SERVER=true` in
+the stage's `.build` file), it has its own Cloud Run service and
+lifecycle. The commands are submodule-scoped under `gcp mcp`:
+
+```bash
+just gcp mcp setup prod      # First-time: create MCP SA + IAM bindings
+just gcp mcp build           # Build + push MCP image to Artifact Registry
+just gcp mcp deploy prod     # Deploy MCP image to Cloud Run
+just gcp mcp secrets prod    # Upload .mcp → mcp-env Secret Manager secret
+just gcp mcp lb-add prod mcp.yourdomain.com  # Wire MCP into the LB
+just gcp mcp logs prod       # Tail MCP service logs
+just gcp mcp status prod     # MCP service URL + revision info
+just gcp mcp test            # Run MCP pytest suite locally (no GCP calls)
+```
+
+Same module is also reachable as `just mcp ...` at the top level;
+`just mcp test` and `just mcp test-e2e` are the natural entry points
+for local test runs.
 
 ### Docker Compose
 
@@ -213,18 +254,22 @@ Example resource names:
 ### Deploying Updates
 
 ```bash
-# GCP: Deploy to dev first, then prod
-just gcp deploy dev
-just gcp migrate dev
+# GCP: full-stack deploy (web + worker + scheduler + MCP when enabled)
+just gcp deploy-all dev
 just gcp verify-deployment-quick dev
 
-# After testing on dev
+# After testing on dev, promote to prod
+just gcp deploy-all prod
+
+# Hotfix path: web-only deploy, skips worker and MCP
 just gcp deploy prod
-just gcp migrate prod
 
 # Docker Compose: Single command update
 just docker-compose update
 ```
+
+Migrations run automatically as part of `deploy-all` and `deploy`
+(gated by `GCP_SKIP_MIGRATE=1` for hotfixes with no schema changes).
 
 ### Viewing Logs
 

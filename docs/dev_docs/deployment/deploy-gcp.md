@@ -187,6 +187,54 @@ VALIDIBOT_MCP_API_BASE_URL=https://app.your-domain.example
 See `.envs.example/.production/.google-cloud/.build` for the full
 documented template.
 
+### Configure MCP auth
+
+MCP has two independent auth chains, both of which need their own
+settings in `.envs/.production/.google-cloud/.django`:
+
+**1. End user → MCP server (OAuth 2.1).** When an OAuth-capable MCP
+client (Claude Desktop, Cursor, Windsurf, Continue, Zed, etc.)
+connects, the MCP server proxies a Dynamic Client Registration flow
+to Django's OIDC provider. Required settings:
+
+```bash
+# Signing key for JWT access tokens (base64-encoded PEM). Generate
+# once and back up securely — rotating invalidates every live session.
+IDP_OIDC_PRIVATE_KEY_B64=<base64 of a fresh openssl genrsa 2048 -out key.pem>
+
+# Shared secret for the confidential OAuth client the MCP server
+# registers as. Must equal VALIDIBOT_OAUTH_CLIENT_SECRET in the
+# .mcp file (openssl rand -hex 32).
+IDP_OIDC_MCP_SERVER_CLIENT_SECRET=<hex random secret>
+
+# Public URL of your MCP server. Drives both Django's OIDC audience
+# claim and the confidential client's registered redirect URI.
+VALIDIBOT_MCP_BASE_URL=https://mcp.your-domain.example
+```
+
+**2. MCP server → Django API (Cloud Run OIDC identity token).** Every
+tool call reaches Django via `/api/v1/mcp/*`, which requires a Google-
+signed identity token minted by the MCP service account. Required
+settings:
+
+```bash
+# Audience that Cloud Run stamps on identity tokens. Convention is
+# the public URL of the service being called.
+MCP_OIDC_AUDIENCE=https://app.your-domain.example
+
+# Allowlist of service-account emails permitted to mint tokens for
+# the audience above. Must include the SA provisioned by
+# ``just gcp mcp setup prod``.
+MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS=validibot-mcp-prod@your-project.iam.gserviceaccount.com
+```
+
+Django refuses to boot if `MCP_OIDC_AUDIENCE` is set but the
+allowlist is empty — a safety guard against accepting tokens from
+any Google SA that can mint to the audience.
+
+See `.envs.example/.production/.google-cloud/.django` for the fully
+commented template.
+
 ### Deploy
 
 First-time setup provisions the MCP service account, IAM bindings,

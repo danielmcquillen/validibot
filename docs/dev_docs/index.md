@@ -71,7 +71,7 @@ Deploy Validibot to production:
 - **[Deployment Overview](deployment/overview.md)** — Choose the right deployment target
 - **[Run Validibot Locally](deployment/deploy-local.md)** — Quickest path to a running app
 - **[Deploy with Docker Compose](deployment/deploy-docker-compose.md)** — Single-host self-hosting
-- **[Deploy to GCP](deployment/deploy-gcp.md)** — Managed cloud deployment on Google Cloud
+- **[Deploy to GCP](deployment/deploy-gcp.md)** — Managed cloud deployment on Google Cloud (`just gcp deploy-all` covers web, worker, scheduler, and optionally MCP)
 - **[Deploy to AWS](deployment/deploy-aws.md)** — Current status and interim guidance
 - **[Google Cloud Run Deep Dive](google_cloud/deployment.md)** — Full Cloud Run runbook
 - **[Docker Compose Responsibility](deployment/docker-compose-responsibility.md)** — Operator responsibilities for self-hosting
@@ -84,6 +84,7 @@ Deploy Validibot to production:
 
 ## Integrations
 
+- **[MCP Server](mcp/index.md)** — Standalone FastMCP service that exposes validation workflows to AI agents (Claude, Cursor, Windsurf, etc.). Source, Dockerfile, and deploy recipes all live in this repo; license-gated at runtime.
 - **[EnergyPlus Modal](integrations/energyplus_modal.md)** — Modal-backed EnergyPlus simulation runner
 
 ---

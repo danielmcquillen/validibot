@@ -100,6 +100,7 @@ nav:
       - Integration Tests: how-to/run-integration-tests.md
       - E2E and Stress Tests: how-to/run-e2e-tests.md
   - Integrations:
+      - MCP Server: mcp/index.md
       - EnergyPlus Modal: integrations/energyplus_modal.md
   - API:
       - Authentication: api/authentication.md

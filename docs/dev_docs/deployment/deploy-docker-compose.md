@@ -75,6 +75,19 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
    You can also use a quoted exact wheel URL on `pypi.validibot.com` that
    includes `#sha256=<hash>` instead of a package name and version.
 
+   !!! warning "Credentials in build args are visible in image metadata"
+       These values are passed to `docker build` as build args and end up
+       in the final image's `docker history`. If you push the built image
+       to a private registry only you control, that is usually acceptable.
+       If you push to a shared registry, or you export the image via
+       `docker save` and share the archive, the embedded PyPI credentials
+       are recoverable. Rotate the index credentials regularly, and do
+       not share built images outside your own trust boundary.
+
+       A BuildKit-secrets-based alternative that avoids this exposure is
+       on the roadmap — see the "Build security" issue in the private
+       project tracker for the migration plan.
+
    Then point Django at the Pro-activating settings module by setting
    `DJANGO_SETTINGS_MODULE` in your `.envs/.production/.docker-compose/.django`:
 

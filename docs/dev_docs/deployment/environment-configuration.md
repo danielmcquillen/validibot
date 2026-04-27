@@ -11,16 +11,20 @@ Environment configuration uses a template-based approach:
 ├── README.md               # Quick start guide and variable reference
 ├── .local/
 │   ├── .django             # Django settings for local development
-│   ├── .build              # Optional Docker build settings for Pro/Enterprise
+│   ├── .build              # Optional Docker build + recipe knobs (Pro/Enterprise, MCP)
+│   ├── .mcp                # Optional MCP container env (docker-compose MCP profile)
 │   └── .postgres           # Postgres credentials for local development
 └── .production/
     ├── .docker-compose/    # Docker Compose production deployment
-    │   ├── .build          # Optional Docker build settings for Pro/Enterprise
+    │   ├── .build          # Docker build args + recipe knobs (Pro/Enterprise, MCP)
     │   ├── .django
+    │   ├── .mcp            # MCP container env (when MCP is enabled)
     │   └── .postgres
     ├── .google-cloud/      # Google Cloud Platform deployment
+    │   ├── .build          # Deploy-time knobs (ENABLE_MCP_SERVER, VALIDIBOT_MCP_API_BASE_URL)
     │   ├── .django         # Django runtime settings (uploaded to Secret Manager)
-    │   └── .just           # Just command runner settings (sourced locally)
+    │   ├── .just           # Just command runner settings (sourced locally)
+    │   └── .mcp            # MCP Cloud Run env (uploaded to Secret Manager as mcp-env)
     └── .aws/               # AWS deployment (future)
         └── .django
 
@@ -145,6 +149,45 @@ Pro / Enterprise reminder: installing the wheel via category (1)
 gets the package into the image, but Django still needs the app in
 `INSTALLED_APPS`. Use `config.settings.local_pro` /
 `config.settings.production_pro` settings modules for that.
+
+### The `.mcp` file — MCP container env
+
+The MCP server runs in its own container (docker-compose) or Cloud Run
+service (GCP) with its own env mount. The `.mcp` file is where its
+settings live, separate from `.django` so the MCP image never sees
+Django-only secrets (database passwords, Stripe keys, etc.) it doesn't
+need. Contains things like `VALIDIBOT_API_BASE_URL`,
+`VALIDIBOT_MCP_BASE_URL`, and `VALIDIBOT_OAUTH_CLIENT_SECRET` (which
+must match `IDP_OIDC_MCP_SERVER_CLIENT_SECRET` in `.django`).
+
+On GCP, `just gcp mcp secrets <stage>` uploads this file to Secret
+Manager as `mcp-env` and Cloud Run mounts it at `/secrets/.env` on
+the MCP service.
+
+### Variable-to-file reference
+
+The quick version of "where does each variable go":
+
+| Variable | File | Why |
+|---|---|---|
+| `DJANGO_SECRET_KEY`, `DATABASE_URL`, `SITE_URL` | `.django` | Read by Django at process startup |
+| `IDP_OIDC_PRIVATE_KEY_B64` | `.django` | Signs JWT access tokens |
+| `IDP_OIDC_MCP_SERVER_CLIENT_SECRET` | `.django` | Django verifies this when the MCP server exchanges codes for tokens |
+| `VALIDIBOT_MCP_BASE_URL` | `.django` | Django stamps this as the OIDC audience; `ensure_oidc_clients` derives the redirect URI from it |
+| `MCP_OIDC_AUDIENCE`, `MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS` | `.django` | Django verifies MCP → Django identity tokens on GCP |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST` | `.postgres` | Database credentials, kept isolated |
+| `VALIDIBOT_API_BASE_URL` | `.mcp` | MCP server's target for REST calls |
+| `VALIDIBOT_OAUTH_CLIENT_SECRET` | `.mcp` | Must equal `IDP_OIDC_MCP_SERVER_CLIENT_SECRET` in `.django` |
+| `VALIDIBOT_MCP_BASE_URL` (also in `.mcp`) | `.mcp` | MCP server's own public URL (used for RFC 9728 metadata) |
+| `VALIDIBOT_COMMERCIAL_PACKAGE`, `VALIDIBOT_PRIVATE_INDEX_URL` | `.build` | Docker build-time args (docker-compose only) |
+| `ENABLE_MCP_SERVER` | `.build` | Recipe-level knob; decides whether `just gcp deploy-all` and the compose MCP profile activate MCP |
+| `VALIDIBOT_MCP_API_BASE_URL` | `.build` (GCP) | Passed as `--set-env-vars` at `gcloud run deploy` time |
+| `GCP_PROJECT_ID`, `GCP_REGION` | `.just` (GCP) | Sourced into the shell before running `just gcp` recipes |
+
+If a variable needs to appear in two files (like `VALIDIBOT_MCP_BASE_URL`
+in `.django` AND `.mcp`, or the shared client secret), keep them in
+sync by hand. A future "validate env consistency" check is tracked in
+the private project tracker.
 
 ### DATABASE_URL Construction
 

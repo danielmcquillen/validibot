@@ -72,13 +72,61 @@ The validator SA deliberately does **not** have:
 
 This limits the blast radius if a validator container is compromised by a malicious user-provided model (IDF, FMU, etc.).
 
+### MCP Service Account
+
+Only relevant on deployments that run the MCP server. Provisioned by
+`just gcp mcp setup <stage>` when `ENABLE_MCP_SERVER=true` is set in
+`.envs/<stage>/.google-cloud/.build`.
+
+| Stage | Service Account |
+| ----- | --------------- |
+| dev | `$GCP_APP_NAME-mcp-dev` |
+| staging | `$GCP_APP_NAME-mcp-staging` |
+| prod | `$GCP_APP_NAME-mcp-prod` |
+
+**Roles granted:**
+
+| Role | Scope | Purpose |
+| ---- | ----- | ------- |
+| `roles/secretmanager.secretAccessor` | Project | Read the `mcp-env` secret (OAuth client secret, x402 config) |
+| `roles/run.invoker` | Django web service | Mint OIDC identity tokens to call `/api/v1/mcp/*` on Django |
+
+The MCP SA deliberately does **not** have:
+
+- `cloudsql.client` (no database access — MCP talks to Django over REST)
+- `cloudtasks.enqueuer` (no task queue access)
+- `roles/storage.objectAdmin` (no storage access)
+- KMS roles (no credential signing)
+
+This is the most constrained SA in the deployment. Even a full MCP
+container compromise only exposes the OAuth client secret and lets
+the attacker call Django's `/api/v1/mcp/*` surface — everything
+interesting (workflows, runs, submissions) is still gated by the
+end user's forwarded identity.
+
+For the identity-token flow to work, Django must also be configured
+to accept tokens minted by this SA. Set
+`MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS` in `.envs/<stage>/.google-cloud/.django`
+to include the email, and `MCP_OIDC_AUDIENCE` to the Django hostname.
+See [Deploy to GCP — Configure MCP auth](../deployment/deploy-gcp.md)
+for the full setting list.
+
 ## Setup
 
-All service accounts and IAM bindings are created automatically by `just gcp init-stage`:
+The web/worker and validator service accounts are created automatically
+by `just gcp init-stage`:
 
 ```bash
-just gcp init-stage dev      # Creates both SAs + all bindings
+just gcp init-stage dev      # Creates web/worker + validator SAs + all bindings
 just gcp init-stage prod     # Same for production
+```
+
+The MCP service account is created separately — only if you're
+running MCP — by:
+
+```bash
+just gcp mcp setup dev       # Creates MCP SA + secret/run.invoker bindings
+just gcp mcp setup prod
 ```
 
 The `just gcp validator-deploy` command additionally grants:

@@ -185,7 +185,7 @@ def main():
 
     # 4. Run container
     print("\n4. Running EnergyPlus validator container...")
-    container_image = "validibot-validator-energyplus:latest"
+    container_image = "validibot-validator-backend-energyplus:latest"
     print(f"   Image: {container_image}")
     print(f"   Input URI: {input_uri}")
     print(f"   Output URI: {output_uri}")

@@ -524,7 +524,7 @@ All Docker containers are launched with these security settings:
 
 ## Reference Implementations
 
-See the [validibot-validators](https://github.com/danielmcquillen/validibot-validators) repository for complete examples:
+See the [validibot-validator-backends](https://github.com/danielmcquillen/validibot-validator-backends) repository for complete examples:
 
 - **EnergyPlus validator** — Building energy simulation
 - **FMU validator** — Functional Mock-up Unit simulation

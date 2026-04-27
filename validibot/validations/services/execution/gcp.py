@@ -162,7 +162,7 @@ class GCPExecutionBackend(ExecutionBackend):
             return job_names[vtype]
 
         # Default naming convention
-        return f"validibot-validator-{vtype}"
+        return f"validibot-validator-backend-{vtype}"
 
     def execute(self, request: ExecutionRequest) -> ExecutionResponse:
         """

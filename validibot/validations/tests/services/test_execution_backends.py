@@ -383,7 +383,7 @@ class TestDockerComposeExecutionBackend:
     def test_get_container_image_default(self, settings):
         """Default image name should follow the naming convention.
 
-        Format: ``validibot-validator-{type}:{tag}`` — the convention
+        Format: ``validibot-validator-backend-{type}:{tag}`` — the convention
         used in ``docker-compose.yml`` and local builds.
         """
         settings.VALIDATOR_IMAGE_TAG = "latest"
@@ -393,7 +393,7 @@ class TestDockerComposeExecutionBackend:
         backend = DockerComposeExecutionBackend()
         image = backend.get_container_image("energyplus")
 
-        assert image == "validibot-validator-energyplus:latest"
+        assert image == "validibot-validator-backend-energyplus:latest"
 
     def test_get_container_image_with_registry(self, settings):
         """When a registry is configured, it should prefix the image name.
@@ -408,7 +408,7 @@ class TestDockerComposeExecutionBackend:
         backend = DockerComposeExecutionBackend()
         image = backend.get_container_image("fmu")
 
-        assert image == "gcr.io/my-project/validibot-validator-fmu:v1.0.0"
+        assert image == "gcr.io/my-project/validibot-validator-backend-fmu:v1.0.0"
 
     def test_get_container_image_explicit_mapping(self, settings):
         """Explicit ``VALIDATOR_IMAGES`` mapping should override defaults.

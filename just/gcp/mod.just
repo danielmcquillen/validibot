@@ -2040,25 +2040,25 @@ scheduler-resume job_name:
 #   - energyplus: EnergyPlus simulation validator
 #   - fmu: Functional Mock-up Unit validator
 #
-# Validators live in the separate validibot-validators repository at
-# ../validibot-validators. Run these commands from that directory.
+# Validator backends live in the separate validibot-validator-backends repository
+# at ../validibot-validator-backends. Run these commands from that directory.
 #
 # =============================================================================
 
 # Build a specific validator container (energyplus, fmu, etc.)
 # Usage: just gcp validator-build energyplus
-# NOTE: Run from ../validibot-validators directory
+# NOTE: Run from ../validibot-validator-backends directory
 validator-build name:
     docker build --platform linux/amd64 \
-        -f ../validibot-validators/validators/{{name}}/Dockerfile \
-        -t {{validator_repo}}/{{app_name}}-validator-{{name}}:{{git_sha}} \
-        -t {{validator_repo}}/{{app_name}}-validator-{{name}}:latest \
-        ../validibot-validators
+        -f ../validibot-validator-backends/validator_backends/{{name}}/Dockerfile \
+        -t {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:{{git_sha}} \
+        -t {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:latest \
+        ../validibot-validator-backends
 
 # Push a validator container
 validator-push name:
-    docker push {{validator_repo}}/{{app_name}}-validator-{{name}}:{{git_sha}}
-    docker push {{validator_repo}}/{{app_name}}-validator-{{name}}:latest
+    docker push {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:{{git_sha}}
+    docker push {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:latest
 
 # Build and push in one step
 validator-build-push name: (validator-build name) (validator-push name)

@@ -154,8 +154,8 @@ automatically, but you do need to build the EnergyPlus validator Docker image
 first (one-time step):
 
 ```bash
-# In the validibot-validators repo
-cd ../validibot-validators
+# In the validibot-validator-backends repo
+cd ../validibot-validator-backends
 just build energyplus
 ```
 

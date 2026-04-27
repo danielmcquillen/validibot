@@ -210,7 +210,7 @@ When the GCP backend triggers a Cloud Run Job, the launcher stores execution met
 ```python
 stats = {
     "job_status": "PENDING",
-    "job_name": "validibot-validator-energyplus",
+    "job_name": "validibot-validator-backend-energyplus",
     "execution_name": "projects/p/locations/r/jobs/j/executions/e",
     "input_uri": "gs://bucket/runs/org/run-id/input.json",
     "execution_bundle_uri": "gs://bucket/runs/org/run-id",

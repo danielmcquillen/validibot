@@ -54,8 +54,8 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
         }
 
     The runner maps container images to pre-deployed Cloud Run Jobs:
-        validibot/validator-energyplus -> validibot-validator-energyplus job
-        validibot/validator-fmu -> validibot-validator-fmu job
+        validibot/validator-energyplus -> validibot-validator-backend-energyplus job
+        validibot/validator-fmu -> validibot-validator-backend-fmu job
 
     Jobs must be pre-deployed to Cloud Run with the correct container image.
     The runner triggers executions of existing jobs rather than creating new ones.
@@ -127,7 +127,7 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
 
         Convention: image name maps to job name with the same identifier.
         Example: "validibot/validator-energyplus:latest"
-            -> "validibot-validator-energyplus"
+            -> "validibot-validator-backend-energyplus"
 
         Args:
             container_image: Container image name
@@ -136,8 +136,8 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
             Cloud Run Job name
         """
         # Extract image name without registry and tag
-        # e.g., "gcr.io/project/validibot-validator-energyplus:v1"
-        # -> "validibot-validator-energyplus"
+        # e.g., "gcr.io/project/validibot-validator-backend-energyplus:v1"
+        # -> "validibot-validator-backend-energyplus"
         # Get last part after /
         image_parts = container_image.rsplit("/", maxsplit=1)[-1]
         job_name = image_parts.split(":")[0]  # Remove tag

@@ -704,8 +704,8 @@ class Command(BaseCommand):
 
         # Expected validator images
         expected_images = [
-            "validibot-validator-energyplus",
-            "validibot-validator-fmu",
+            "validibot-validator-backend-energyplus",
+            "validibot-validator-backend-fmu",
         ]
 
         try:
@@ -741,7 +741,7 @@ class Command(BaseCommand):
                         f"{len(missing)} validator image(s) not installed",
                         details="\n".join(f"  - {img}" for img in missing),
                         fix_hint=(
-                            "Build images: (in ../validibot-validators) "
+                            "Build images: (in ../validibot-validator-backends) "
                             "just build energyplus fmu"
                         ),
                     )

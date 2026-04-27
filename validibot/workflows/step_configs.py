@@ -131,11 +131,11 @@ class EnergyPlusStepConfig(BaseStepConfig):
     # ``timestep_per_hour`` reaches the input envelope but the runner
     # ignores it.  ``idf_checks`` and ``run_simulation`` are not included
     # in the envelope schema at all.  Wiring these requires changes to
-    # both validibot-shared (envelope schema) and validibot-validators
+    # both validibot-shared (envelope schema) and validibot-validator-backends
     # (runner logic).  This is a pre-existing gap, not a regression from
     # the template work.
     # TODO: Forward run settings to the container (requires validibot-shared
-    #       and validibot-validators changes).
+    #       and validibot-validator-backends changes).
 
     idf_checks: list[str] = Field(default_factory=list)
     """Author-selected IDF compliance checks to run before simulation

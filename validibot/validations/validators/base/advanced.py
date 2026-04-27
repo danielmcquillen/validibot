@@ -3,8 +3,9 @@ Base class for advanced validators requiring dedicated compute resources.
 
 Advanced validators include container-based validators that dispatch work to
 **validator jobs** — self-contained Docker containers defined in the
-``validibot-validators`` repository — as well as compute-intensive validators
-that call external APIs (e.g., AI-assisted validation via LLM providers).
+``validibot-validator-backends`` repository — as well as compute-intensive
+validators that call external APIs (e.g., AI-assisted validation via LLM
+providers).
 
 For container-based validators, this class handles envelope building, job
 dispatch, callback processing, and assertion evaluation; the actual
@@ -66,8 +67,9 @@ class AdvancedValidator(BaseValidator):
     Abstract base for container-based validators using the Template Method pattern.
 
     Advanced validators dispatch validation work to external container jobs
-    (Docker containers defined in the ``validibot-validators`` repo) via the
-    ExecutionBackend abstraction. This base class handles the shared lifecycle:
+    (Docker containers defined in the ``validibot-validator-backends`` repo)
+    via the ExecutionBackend abstraction. This base class handles the shared
+    lifecycle:
 
     - Validating that run_context is properly set
     - Getting the execution backend and building the request

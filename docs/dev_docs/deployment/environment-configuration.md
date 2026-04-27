@@ -404,7 +404,7 @@ traffic.
 with `aud = <service URL origin>` — path and query are NOT included.
 Django's strict verification enforces exact match. Validator
 containers derive the audience the same way (see
-`validibot-validators/validators/core/callback_auth.py`). If you front
+`validibot-validator-backends/validator_backends/core/callback_auth.py`). If you front
 the worker behind a load balancer with a different signed audience,
 override with `TASK_OIDC_AUDIENCE`.
 

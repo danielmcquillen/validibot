@@ -232,10 +232,10 @@ test-e2e-energyplus *args:
     set -euo pipefail
 
     # Check EnergyPlus validator image exists
-    if ! docker image inspect validibot-validator-energyplus:latest >/dev/null 2>&1; then
+    if ! docker image inspect validibot-validator-backend-energyplus:latest >/dev/null 2>&1; then
         echo ""
         echo "Error: EnergyPlus validator image not found."
-        echo "Build it first: (in ../validibot-validators) just build energyplus"
+        echo "Build it first: (in ../validibot-validator-backends) just build energyplus"
         echo ""
         exit 1
     fi

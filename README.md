@@ -32,7 +32,7 @@ Validibot is composed of several repositories that work together:
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------- |
 | **[validibot](https://github.com/danielmcquillen/validibot)**                       | Core platform (this repo) — Django web application, REST API, workflow engine, and built-in validators | AGPL-3.0 |
 | **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)**               | Command-line interface for running validations from terminals and scripts                              | MIT      |
-| **[validibot-validators](https://github.com/danielmcquillen/validibot-validators)** | Advanced validators (EnergyPlus™, FMU) that run as isolated Docker containers                          | MIT      |
+| **[validibot-validator-backends](https://github.com/danielmcquillen/validibot-validator-backends)** | Advanced validator backends (EnergyPlus™, FMU) that run as isolated Docker containers                  | MIT      |
 | **[validibot-shared](https://github.com/danielmcquillen/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators                | MIT      |
 
 ---
@@ -188,7 +188,7 @@ See [Pricing](https://validibot.com/pricing) for commercial product details. Nee
 | Repository              | License    | Purpose                         |
 | ----------------------- | ---------- | ------------------------------- |
 | `validibot` (this repo) | AGPL-3.0   | Core platform                   |
-| `validibot-validators`  | MIT        | Advanced validator containers   |
+| `validibot-validator-backends` | MIT | Advanced validator backend containers |
 | `validibot-cli`         | MIT        | Command-line interface          |
 | `validibot-shared`      | MIT        | Shared library for integrations |
 | `validibot-pro`         | Commercial | Pro tier features               |

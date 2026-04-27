@@ -59,7 +59,7 @@ class EnergyPlusValidator(AdvancedValidator):
 
     Dispatches EnergyPlus submissions (IDF/epJSON) to container-based validator
     jobs via the ExecutionBackend. The actual simulation runs inside a Docker
-    container defined in the ``validibot-validators`` repository.
+    container defined in the ``validibot-validator-backends`` repository.
 
     Overrides:
 

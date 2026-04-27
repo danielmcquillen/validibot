@@ -158,7 +158,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             return image_map[vtype]
 
         # Default naming convention
-        image_name = f"validibot-validator-{vtype}"
+        image_name = f"validibot-validator-backend-{vtype}"
         image_tag = getattr(settings, "VALIDATOR_IMAGE_TAG", "latest")
         registry = getattr(settings, "VALIDATOR_IMAGE_REGISTRY", "")
 

@@ -33,7 +33,7 @@ class AWSBatchValidatorRunner(ValidatorRunner):
     Configuration via settings:
         VALIDATOR_RUNNER = "aws_batch"
         VALIDATOR_RUNNER_OPTIONS = {
-            "job_queue": "validibot-validators",
+            "job_queue": "validibot-validator-backends",
             "region": "ap-southeast-2",
         }
 

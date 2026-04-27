@@ -40,7 +40,7 @@ class FMUValidator(AdvancedValidator):
 
     Dispatches FMU files to container-based validator jobs via the
     ExecutionBackend. The actual FMU execution runs inside a Docker
-    container defined in the ``validibot-validators`` repository.
+    container defined in the ``validibot-validator-backends`` repository.
 
     This class only needs to implement ``extract_output_signals()`` — the
     shared validate/post_execute_validate lifecycle is handled by

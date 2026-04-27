@@ -50,7 +50,8 @@ def run_validator_job(
     Args:
         project_id: GCP project ID
         region: GCP region (e.g., 'us-west1')
-        job_name: Cloud Run Job short name (e.g., 'validibot-validator-energyplus').
+        job_name: Cloud Run Job short name (e.g.,
+            'validibot-validator-backend-energyplus').
             Must NOT be fully-qualified (no 'projects/' prefix).
         input_uri: GCS URI to input.json (e.g., 'gs://bucket/runs/abc/input.json')
 
@@ -66,7 +67,7 @@ def run_validator_job(
         >>> execution_name = run_validator_job(
         ...     project_id="my-project",
         ...     region="us-west1",
-        ...     job_name="validibot-validator-energyplus",
+        ...     job_name="validibot-validator-backend-energyplus",
         ...     input_uri="gs://my-bucket/runs/abc-123/input.json",
         ... )
         >>> print(f"Started execution: {execution_name}")

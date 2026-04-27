@@ -19,8 +19,8 @@ using Docker containers for advanced validators (EnergyPlus, FMU).
 For Docker-based tests:
 - Docker daemon running
 - Validator images available locally:
-  - `validibot-validator-energyplus:latest`
-  - `validibot-validator-fmu:latest`
+  - `validibot-validator-backend-energyplus:latest`
+  - `validibot-validator-backend-fmu:latest`
 
 ## Running These Tests
 
@@ -94,7 +94,7 @@ def energyplus_image_available() -> bool:
         import docker
 
         client = docker.from_env()
-        images = client.images.list(name="validibot-validator-energyplus")
+        images = client.images.list(name="validibot-validator-backend-energyplus")
         return len(images) > 0
     except Exception:
         return False
@@ -119,7 +119,7 @@ def fmu_image_available() -> bool:
         import docker
 
         client = docker.from_env()
-        images = client.images.list(name="validibot-validator-fmu")
+        images = client.images.list(name="validibot-validator-backend-fmu")
         return len(images) > 0
     except Exception:
         return False
@@ -695,7 +695,7 @@ class TestDockerComposeBackendDirect:
             VALIDATOR_IMAGE_REGISTRY="",
         ):
             image = backend.get_container_image("energyplus")
-            assert image == "validibot-validator-energyplus:latest"
+            assert image == "validibot-validator-backend-energyplus:latest"
 
         # With registry
         with override_settings(
@@ -703,7 +703,7 @@ class TestDockerComposeBackendDirect:
             VALIDATOR_IMAGE_REGISTRY="gcr.io/my-project",
         ):
             image = backend.get_container_image("fmu")
-            assert image == "gcr.io/my-project/validibot-validator-fmu:v1.0"
+            assert image == "gcr.io/my-project/validibot-validator-backend-fmu:v1.0"
 
     @skip_if_no_energyplus_image
     def test_get_container_image_for_energyplus(self):

@@ -653,13 +653,13 @@ generate-secret-key:
 # =============================================================================
 
 # Build validator images locally
-# Validator source is in the separate validibot-validators repo
+# Validator backend source is in the separate validibot-validator-backends repo
 validator-build name:
     docker build --platform linux/amd64 \
-        -f ../validibot-validators/validators/{{name}}/Dockerfile \
-        -t validibot-validator-{{name}}:{{git_sha}} \
-        -t validibot-validator-{{name}}:latest \
-        ../validibot-validators
+        -f ../validibot-validator-backends/validator_backends/{{name}}/Dockerfile \
+        -t validibot-validator-backend-{{name}}:{{git_sha}} \
+        -t validibot-validator-backend-{{name}}:latest \
+        ../validibot-validator-backends
 
 # Build all validator images
 validators-build-all:

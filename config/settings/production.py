@@ -401,11 +401,11 @@ if DEPLOYMENT_TARGET == "gcp":
     GCS_TASK_QUEUE_NAME = env("GCS_TASK_QUEUE_NAME", default="validibot-tasks")
     GCS_ENERGYPLUS_JOB_NAME = env(
         "GCS_ENERGYPLUS_JOB_NAME",
-        default="validibot-validator-energyplus",
+        default="validibot-validator-backend-energyplus",
     )
     GCS_FMU_JOB_NAME = env(
         "GCS_FMU_JOB_NAME",
-        default="validibot-validator-fmu",
+        default="validibot-validator-backend-fmu",
     )
 
 elif DEPLOYMENT_TARGET == "aws":

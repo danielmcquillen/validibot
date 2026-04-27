@@ -79,7 +79,7 @@ This helps us avoid duplicate work and ensures contributions align with our road
 
 ### Validator Contributions
 
-We're more open to contributions for **[validibot-validators](https://github.com/danielmcquillen/validibot-validators)** (MIT licensed). If you've built a custom validator that might benefit others, open an issue to discuss adding it.
+We're more open to contributions for **[validibot-validator-backends](https://github.com/danielmcquillen/validibot-validator-backends)** (MIT licensed). If you've built a custom validator backend that might benefit others, open an issue to discuss adding it.
 
 ### Sponsoring Features
 

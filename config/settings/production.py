@@ -396,17 +396,11 @@ if DEPLOYMENT_TARGET == "gcp":
         "region": env("GCP_REGION", default="us-west1"),
     }
 
-    # Cloud Run Job names
+    # Cloud Run Job names are derived from the validator's slug — see
+    # GoogleCloudRunExecutionBackend.get_container_image. No per-validator
+    # env vars needed here.
     GCS_VALIDATION_BUCKET = STORAGE_BUCKET
     GCS_TASK_QUEUE_NAME = env("GCS_TASK_QUEUE_NAME", default="validibot-tasks")
-    GCS_ENERGYPLUS_JOB_NAME = env(
-        "GCS_ENERGYPLUS_JOB_NAME",
-        default="validibot-validator-backend-energyplus",
-    )
-    GCS_FMU_JOB_NAME = env(
-        "GCS_FMU_JOB_NAME",
-        default="validibot-validator-backend-fmu",
-    )
 
 elif DEPLOYMENT_TARGET == "aws":
     # AWS Batch runner (future implementation)

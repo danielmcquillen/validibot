@@ -168,6 +168,15 @@ class ValidatorConfig(BaseModel):
     # declares an ``output_envelope_class`` path.
     resolved_envelope_class: type[Any] | None = None
 
+    # --- Container image (advanced/container-based validators) ---
+    # The Docker image / Cloud Run job base name. Must match the
+    # ``IMAGE_NAME`` declared in the corresponding validator backend's
+    # ``__metadata__.py`` in the ``validibot-validator-backends`` repo.
+    # When empty (the default), execution backends fall back to the
+    # naming convention ``validibot-validator-backend-{slug}`` derived
+    # from ``validation_type``.  Built-in validators leave this empty.
+    image_name: str = ""
+
     # --- File handling ---
     supported_file_types: list[str] = Field(default_factory=list)
     supported_data_formats: list[str] = Field(default_factory=list)

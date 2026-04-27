@@ -146,22 +146,24 @@ class GCPExecutionBackend(ExecutionBackend):
 
     def get_container_image(self, validator_type: str) -> str:
         """
-        Get the container image for a validator type.
+        Get the container image / Cloud Run job name for a validator type.
 
-        For GCP, images are stored in Artifact Registry.
+        Resolution order:
+
+        1. ``ValidatorConfig.image_name`` — the validator's own declaration
+           (the canonical source for system validators, set in each
+           validator's ``config.py``).
+        2. Convention fallback — ``validibot-validator-backend-{slug}``,
+           used when no config is registered or ``image_name`` is empty.
         """
+        from validibot.validations.validators.base.config import get_config
+
         vtype = validator_type.lower()
 
-        # Check for explicit job name mapping
-        job_names = {
-            "energyplus": getattr(settings, "GCS_ENERGYPLUS_JOB_NAME", None),
-            "fmu": getattr(settings, "GCS_FMU_JOB_NAME", None),
-        }
+        config = get_config(vtype.upper())
+        if config and config.image_name:
+            return config.image_name
 
-        if job_names.get(vtype):
-            return job_names[vtype]
-
-        # Default naming convention
         return f"validibot-validator-backend-{vtype}"
 
     def execute(self, request: ExecutionRequest) -> ExecutionResponse:

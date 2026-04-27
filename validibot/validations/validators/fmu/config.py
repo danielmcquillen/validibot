@@ -19,6 +19,7 @@ config = ValidatorConfig(
     validation_type=ValidationType.FMU,
     validator_class="validibot.validations.validators.fmu.validator.FMUValidator",
     output_envelope_class="validibot_shared.fmu.envelopes.FMUOutputEnvelope",
+    image_name="validibot-validator-backend-fmu",
     version="1.0",
     order=20,
     has_processor=True,

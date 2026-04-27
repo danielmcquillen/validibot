@@ -6,7 +6,7 @@
 
 # Validibot
 
-**Open-source data validation engine for energy models, simulations, and beyond**
+**Open-source data validation engine**
 
 [![Build Status](https://github.com/danielmcquillen/validibot/actions/workflows/ci.yml/badge.svg)](https://github.com/danielmcquillen/validibot/actions)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
@@ -22,7 +22,7 @@
 </div>
 
 > [!IMPORTANT]
-> I'm still actively developing this project. Features, APIs, and documentation are still incomplete. But it's operational so have a go and let me know what you think!
+> I'm still actively developing this project. Features, APIs, and documentation are still evolving. But it's very operational so have a go and let me know what you think!
 
 ## Related Projects
 
@@ -39,7 +39,7 @@ Validibot is composed of several repositories that work together:
 
 ## What is Validibot?
 
-Validibot is an **open-source data validation platform** that transforms fragmented validation processes into systematic, reliable validation workflows. Originally built for validating building energy models (using [EnergyPlus™](https://energyplus.net/)), it's now designed to handle any structured data validation with complex logic or simulations (e.g. an arbitrary FMU file).
+Validibot is an **open-source data validation platform** that transforms fragmented validation processes into systematic, reliable validation workflows. Originally built for validating building energy models (using [EnergyPlus™](https://energyplus.net/)), it's now designed to handle any structured data validation, including validation workflows that need complex logic or simulations (e.g. running an FMU file).
 
 **Key problems Validibot solves:**
 

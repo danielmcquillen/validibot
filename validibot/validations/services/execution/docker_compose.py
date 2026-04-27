@@ -147,18 +147,38 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         """
         Get the container image for a validator type.
 
-        Uses settings to determine the image name and tag.
+        Resolution order for the image base name:
+
+        1. ``settings.VALIDATOR_IMAGES`` — deploy-time override mapping
+           (still supported; use this for fully-qualified per-deploy images).
+        2. ``ValidatorConfig.image_name`` — the validator's own declaration
+           (the canonical source for system validators, set in each
+           validator's ``config.py``).
+        3. Convention fallback — ``validibot-validator-backend-{slug}``.
+
+        Steps 2 and 3 then have ``VALIDATOR_IMAGE_TAG`` and
+        ``VALIDATOR_IMAGE_REGISTRY`` applied. Step 1 is taken verbatim
+        because callers configuring ``VALIDATOR_IMAGES`` typically supply
+        a complete image reference already.
         """
+        from validibot.validations.validators.base.config import get_config
+
         # Normalize validator type
         vtype = validator_type.lower()
 
-        # Check for explicit image mapping in settings
+        # 1. Deploy-time override mapping
         image_map = getattr(settings, "VALIDATOR_IMAGES", {})
         if vtype in image_map:
             return image_map[vtype]
 
-        # Default naming convention
-        image_name = f"validibot-validator-backend-{vtype}"
+        # 2. ValidatorConfig.image_name from the validator's own declaration
+        config = get_config(vtype.upper())
+        if config and config.image_name:
+            image_name = config.image_name
+        else:
+            # 3. Convention fallback
+            image_name = f"validibot-validator-backend-{vtype}"
+
         image_tag = getattr(settings, "VALIDATOR_IMAGE_TAG", "latest")
         registry = getattr(settings, "VALIDATOR_IMAGE_REGISTRY", "")
 

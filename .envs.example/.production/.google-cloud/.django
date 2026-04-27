@@ -137,8 +137,9 @@ TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS=your-app-name-cloudrun-prod@your-project.iam.
 # Validation infrastructure (Cloud Run Jobs)
 GCS_VALIDATION_BUCKET=your-app-name-storage
 GCS_WEATHER_DATA_DIR=weather_data
-GCS_ENERGYPLUS_JOB_NAME=your-app-name-validator-energyplus
-GCS_FMU_JOB_NAME=your-app-name-validator-fmu
+# Cloud Run job names are derived from the validator's slug
+# (e.g. slug="energyplus" -> "validibot-validator-backend-energyplus").
+# No per-validator env vars are required here.
 
 # FEATURE TOGGLES
 # ==============================================================================

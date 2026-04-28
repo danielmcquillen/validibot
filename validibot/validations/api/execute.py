@@ -130,7 +130,7 @@ class ExecuteValidationRunView(WorkerOnlyAPIView):
                 status=status.HTTP_200_OK,
             )
 
-        except Exception as exc:
+        except Exception:
             # Log the exception and return 500 to trigger task retry
             logger.exception(
                 "Failed to execute validation run %s",
@@ -139,7 +139,11 @@ class ExecuteValidationRunView(WorkerOnlyAPIView):
             return Response(
                 {
                     "validation_run_id": validation_run_id,
-                    "error": str(exc),
+                    # Don't leak exception text. ``logger.exception``
+                    # above captures the traceback; this endpoint is
+                    # called by Cloud Tasks, which only consumes the
+                    # status code.
+                    "error": "internal error",
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

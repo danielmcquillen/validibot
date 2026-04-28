@@ -119,16 +119,16 @@ The raw JSON text is never inserted unescaped.
       return tokens;
     }
 
-    function safeSpan(cls, text) {
-      const escaped = text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      return '<span class="' + cls + '">' + escaped + "</span>";
-    }
-
+    // Each line is an array of {cls, text} segments. ``cls=null`` means
+    // the segment is plain whitespace and is appended as a text node
+    // with no <span> wrapper. The renderer builds DOM nodes via
+    // ``createElement`` + ``textContent`` so user-controlled JSON
+    // content cannot ever be parsed as HTML \u2014 even if a future token
+    // type forgets to escape its value, the renderer would still
+    // treat it as text.
     function tokensToLines(tokens) {
       const lines = [];
-      let current = "";
+      let current = [];
 
       const typeToClass = {
         key: "jt-key",
@@ -143,17 +143,25 @@ The raw JSON text is never inserted unescaped.
         if (tok.type === "ws") {
           const parts = tok.value.split("\n");
           for (let p = 0; p < parts.length; p++) {
-            current += parts[p];
+            if (parts[p] !== "") {
+              current.push({
+                cls: null,
+                text: parts[p]
+              });
+            }
             if (p < parts.length - 1) {
               lines.push(current);
-              current = "";
+              current = [];
             }
           }
         } else {
-          current += safeSpan(typeToClass[tok.type] || "jt-punc", tok.value);
+          current.push({
+            cls: typeToClass[tok.type] || "jt-punc",
+            text: tok.value,
+          });
         }
       }
-      if (current !== "") {
+      if (current.length > 0) {
         lines.push(current);
       }
       return lines;
@@ -173,7 +181,7 @@ The raw JSON text is never inserted unescaped.
       const linesDiv = document.createElement("div");
       linesDiv.className = "json-lines";
 
-      for (const lineHtml of lines) {
+      for (const segments of lines) {
         const row = document.createElement("div");
         row.className = "json-line";
 
@@ -182,7 +190,23 @@ The raw JSON text is never inserted unescaped.
 
         const codeCell = document.createElement("div");
         codeCell.className = "json-line-code";
-        codeCell.innerHTML = lineHtml || "\u200b";
+        if (segments.length === 0) {
+          // Empty line \u2014 append zero-width space as a text node so the
+          // line renders with non-zero height.
+          codeCell.appendChild(document.createTextNode("\u200b"));
+        } else {
+          for (const seg of segments) {
+            if (seg.cls === null) {
+              // Plain whitespace, no wrapper.
+              codeCell.appendChild(document.createTextNode(seg.text));
+            } else {
+              const span = document.createElement("span");
+              span.className = seg.cls;
+              span.textContent = seg.text;
+              codeCell.appendChild(span);
+            }
+          }
+        }
 
         row.appendChild(numCell);
         row.appendChild(codeCell);

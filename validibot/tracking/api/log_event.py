@@ -161,7 +161,7 @@ class LogTrackingEventView(WorkerOnlyAPIView):
             )
             return Response({"status": "dropped_invalid_payload"})
 
-        except Exception as exc:
+        except Exception:
             # Transient infrastructure failure — DB connection, etc.
             # Return 500 so Cloud Tasks retries with backoff. The
             # service itself is tolerant of malformed event_type /
@@ -175,7 +175,10 @@ class LogTrackingEventView(WorkerOnlyAPIView):
                 app_event_type,
                 user_id,
             )
+            # Don't leak exception text into the response.
+            # ``logger.exception`` above captures the full traceback for
+            # operators; the response body only needs to signal failure.
             return Response(
-                {"error": str(exc)},
+                {"error": "internal error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

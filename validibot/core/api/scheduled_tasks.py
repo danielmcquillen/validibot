@@ -72,13 +72,17 @@ class CleanupIdempotencyKeysView(ScheduledTaskBaseView):
                 },
                 status=status.HTTP_200_OK,
             )
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to cleanup idempotency keys")
             return Response(
                 {
                     "task": "cleanup_idempotency_keys",
                     "status": "failed",
-                    "error": str(e),
+                    # Don't leak exception text into the HTTP response.
+                    # ``logger.exception`` above captures the full
+                    # traceback for operators; the response only needs
+                    # to indicate failure to the caller (Cloud Scheduler).
+                    "error": "internal error",
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -124,13 +128,17 @@ class CleanupCallbackReceiptsView(ScheduledTaskBaseView):
                 },
                 status=status.HTTP_200_OK,
             )
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to cleanup callback receipts")
             return Response(
                 {
                     "task": "cleanup_callback_receipts",
                     "status": "failed",
-                    "error": str(e),
+                    # Don't leak exception text into the HTTP response.
+                    # ``logger.exception`` above captures the full
+                    # traceback for operators; the response only needs
+                    # to indicate failure to the caller (Cloud Scheduler).
+                    "error": "internal error",
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -166,13 +174,17 @@ class ClearSessionsView(ScheduledTaskBaseView):
                 },
                 status=status.HTTP_200_OK,
             )
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to clear sessions")
             return Response(
                 {
                     "task": "clearsessions",
                     "status": "failed",
-                    "error": str(e),
+                    # Don't leak exception text into the HTTP response.
+                    # ``logger.exception`` above captures the full
+                    # traceback for operators; the response only needs
+                    # to indicate failure to the caller (Cloud Scheduler).
+                    "error": "internal error",
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -233,13 +245,17 @@ class PurgeExpiredSubmissionsView(ScheduledTaskBaseView):
                 response_data["errors"] = errors.strip()
 
             return Response(response_data, status=status.HTTP_200_OK)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to purge expired submissions")
             return Response(
                 {
                     "task": "purge_expired_submissions",
                     "status": "failed",
-                    "error": str(e),
+                    # Don't leak exception text into the HTTP response.
+                    # ``logger.exception`` above captures the full
+                    # traceback for operators; the response only needs
+                    # to indicate failure to the caller (Cloud Scheduler).
+                    "error": "internal error",
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -296,13 +312,17 @@ class ProcessPurgeRetriesView(ScheduledTaskBaseView):
                 response_data["errors"] = errors.strip()
 
             return Response(response_data, status=status.HTTP_200_OK)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to process purge retries")
             return Response(
                 {
                     "task": "process_purge_retries",
                     "status": "failed",
-                    "error": str(e),
+                    # Don't leak exception text into the HTTP response.
+                    # ``logger.exception`` above captures the full
+                    # traceback for operators; the response only needs
+                    # to indicate failure to the caller (Cloud Scheduler).
+                    "error": "internal error",
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -365,13 +385,17 @@ class CleanupStuckRunsView(ScheduledTaskBaseView):
                 },
                 status=status.HTTP_200_OK,
             )
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to cleanup stuck runs")
             return Response(
                 {
                     "task": "cleanup_stuck_runs",
                     "status": "failed",
-                    "error": str(e),
+                    # Don't leak exception text into the HTTP response.
+                    # ``logger.exception`` above captures the full
+                    # traceback for operators; the response only needs
+                    # to indicate failure to the caller (Cloud Scheduler).
+                    "error": "internal error",
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -408,13 +432,17 @@ class SendPeriodicEmailsView(ScheduledTaskBaseView):
                 },
                 status=status.HTTP_200_OK,
             )
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to send periodic emails")
             return Response(
                 {
                     "task": "send_periodic_emails",
                     "status": "failed",
-                    "error": str(e),
+                    # Don't leak exception text into the HTTP response.
+                    # ``logger.exception`` above captures the full
+                    # traceback for operators; the response only needs
+                    # to indicate failure to the caller (Cloud Scheduler).
+                    "error": "internal error",
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -452,13 +480,17 @@ class EnforceAuditRetentionView(ScheduledTaskBaseView):
                 },
                 status=status.HTTP_200_OK,
             )
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to enforce audit retention")
             return Response(
                 {
                     "task": "enforce_audit_retention",
                     "status": "failed",
-                    "error": str(e),
+                    # Don't leak exception text into the HTTP response.
+                    # ``logger.exception`` above captures the full
+                    # traceback for operators; the response only needs
+                    # to indicate failure to the caller (Cloud Scheduler).
+                    "error": "internal error",
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

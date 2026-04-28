@@ -146,11 +146,17 @@ if _settings.oauth_client_secret:
         require_authorization_consent=False,
         token_endpoint_auth_method="client_secret_post",  # noqa: S106
     )
-    _logger.info(
-        "Auth: OIDCProxy (client_id=%s, upstream=%s)",
-        _settings.oauth_client_id,
-        _settings.oauth_authorization_server_url,
-    )
+    # Explicit dict so the safety is auditable: client_id is the
+    # OAuth 2 public client identifier (NOT the secret), and the
+    # upstream URL is the published authorization server hostname.
+    # Build from named fields rather than passing _settings.* attrs
+    # directly to avoid CodeQL flagging taint propagation from the
+    # Settings class (which also holds oauth_client_secret).
+    _auth_log_fields = {
+        "client_id": _settings.oauth_client_id,
+        "upstream": _settings.oauth_authorization_server_url,
+    }
+    _logger.info("Auth: OIDCProxy %s", _auth_log_fields)
 else:
     # Fallback for environments without OAuth configured (local dev).
     # Legacy API token verifier only.

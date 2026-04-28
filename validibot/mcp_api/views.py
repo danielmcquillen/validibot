@@ -99,10 +99,18 @@ def _raise_launch_validation_error(
     *,
     status_code: int,
 ) -> None:
-    """Re-raise a workflow launch error using the helper API error contract."""
+    """Re-raise a workflow launch error using the helper API error contract.
+
+    The user-facing detail is taken from the exception's structured
+    ``payload["detail"]`` when present, falling back to a generic message.
+    The exception's ``str()`` representation is intentionally NOT used as a
+    fallback — that path could leak unredacted internal text if a future
+    code site ever raises ``LaunchValidationError(<some raw error>)``
+    without a curated payload.
+    """
 
     payload = exc.payload if isinstance(exc.payload, dict) else {}
-    detail = str(payload.get("detail") or str(exc) or "Workflow launch failed.")
+    detail = str(payload.get("detail") or "Workflow launch failed.")
     code = str(payload.get("code") or MCPHelperErrorCode.INVALID_PARAMS)
     raw_errors = payload.get("errors")
     errors = raw_errors if isinstance(raw_errors, list) else None

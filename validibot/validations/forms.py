@@ -33,6 +33,42 @@ from validibot.validations.constants import get_resource_types_for_validator
 from validibot.validations.models import SignalDefinition
 from validibot.validations.models import ValidatorResourceFile
 
+# Hard upper bound on CEL expression length, enforced before regex-based
+# identifier extraction. CEL expressions in practice are short (a few
+# hundred characters at most); 4096 is generous headroom while bounding
+# worst-case time on the string-literal stripper below.
+_MAX_CEL_EXPRESSION_LEN = 4096
+
+# Compiled deterministic regex for stripping string literals out of a
+# CEL expression. Two important properties:
+#   - **No alternation overlap.** The body of each literal is matched by
+#     ``[^"\\]*(?:\\.[^"\\]*)*`` (and the symmetric single-quote form),
+#     which has exactly one path through any input — the regex engine
+#     can never backtrack across the alternation. The earlier form
+#     ``[^"\\]|\\.`` allowed the engine multiple ways to consume the
+#     same character (e.g. ``\\`` as ``\\.`` OR as ``[^"\\]`` then
+#     another character), enabling polynomial-time backtracking on
+#     pathological inputs (CodeQL ``py/polynomial-redos``).
+#   - **Compiled once.** Reused across every form clean, avoiding
+#     re-parsing the pattern per call.
+_CEL_STRING_LITERAL_RE = re.compile(
+    r'"[^"\\]*(?:\\.[^"\\]*)*"'
+    r"|'[^'\\]*(?:\\.[^'\\]*)*'",
+)
+
+
+def _strip_cel_string_literals(expression: str) -> str:
+    """Remove all CEL string literals from ``expression``.
+
+    Used as a preprocessing step before identifier extraction so that
+    identifier-shaped tokens inside string literals (``"p.foo"``) are
+    not mistaken for bare identifiers. Caller is responsible for
+    bounding the input length — this function does not enforce
+    ``_MAX_CEL_EXPRESSION_LEN`` on its own.
+    """
+
+    return _CEL_STRING_LITERAL_RE.sub("", expression)
+
 
 class CelHelpLabelMixin:
     """Provide a helper to append the CEL help tooltip to field labels."""
@@ -696,10 +732,28 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         }
         cel_builtins.update(custom_helpers)
 
+        # Reject pathological lengths up-front. ``_strip_cel_string_literals``
+        # is linear-time on inputs that pass this check; without the cap an
+        # attacker could submit a multi-MB string and consume CPU even
+        # though every legitimate expression is well under 4 KB.
+        if len(expression) > _MAX_CEL_EXPRESSION_LEN:
+            raise ValidationError(
+                {
+                    "cel_expression": _(
+                        "Expression is too long "
+                        "(%(length)d characters; max %(limit)d).",
+                    )
+                    % {
+                        "length": len(expression),
+                        "limit": _MAX_CEL_EXPRESSION_LEN,
+                    },
+                },
+            )
+
         unknown = set()
         # Strip string literals (including escaped quotes) so identifiers
         # inside quotes are not treated as bare identifiers.
-        stripped = re.sub(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'', "", expression)
+        stripped = _strip_cel_string_literals(expression)
         for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\\.]*", stripped):
             name = match.group(0)
             if name in reserved_literals or name in cel_builtins:
@@ -1090,6 +1144,23 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             raise ValidationError(
                 {"cel_expression": _("Provide a CEL expression.")},
             )
+        # Bound length before any regex work to make the polynomial
+        # ReDoS surface in ``_find_unknown_cel_slugs`` a non-issue.
+        # 4 KB is generous; legitimate CEL expressions are typically
+        # well under 500 characters.
+        if len(expression) > _MAX_CEL_EXPRESSION_LEN:
+            raise ValidationError(
+                {
+                    "cel_expression": _(
+                        "Expression is too long "
+                        "(%(length)d characters; max %(limit)d).",
+                    )
+                    % {
+                        "length": len(expression),
+                        "limit": _MAX_CEL_EXPRESSION_LEN,
+                    },
+                },
+            )
         if not self._delimiters_balanced(expression):
             raise ValidationError(
                 {
@@ -1181,7 +1252,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         }
         # Strip string literals (including escaped quotes) so identifiers
         # inside quotes are not treated as bare identifiers.
-        stripped = re.sub(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'', "", expression)
+        stripped = _strip_cel_string_literals(expression)
         identifiers = {
             match.group(0)
             for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\.]*", stripped)

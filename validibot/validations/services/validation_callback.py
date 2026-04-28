@@ -182,10 +182,14 @@ class ValidationCallbackService:
                 {"error": f"Invalid callback payload: {exc}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        except Exception as exc:
+        except Exception:
+            # Don't leak exception text into the response.
+            # ``logger.exception`` captures the full traceback for
+            # operators; this endpoint is called by validator workers
+            # under OIDC auth and only consumes the status code anyway.
             logger.exception("Unexpected error processing callback")
             return Response(
-                {"error": f"Internal server error: {exc}"},
+                {"error": "Internal server error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

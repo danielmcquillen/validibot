@@ -32,7 +32,7 @@ from validibot.core.license import set_license
 from validibot.users.constants import RoleCode
 from validibot.users.models import MemberInvite
 from validibot.users.models import Membership
-from validibot.users.seats import SeatQuotaExceeded
+from validibot.users.seats import SeatQuotaExceededError
 from validibot.users.seats import check_org_seat_quota
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
@@ -134,7 +134,7 @@ def test_seat_quota_at_cap_raises(restore_community_license):
     for _ in range(3):
         Membership.objects.create(user=UserFactory(), org=org, is_active=True)
 
-    with pytest.raises(SeatQuotaExceeded) as excinfo:
+    with pytest.raises(SeatQuotaExceededError) as excinfo:
         check_org_seat_quota(org)
 
     pro_seat_cap = 3
@@ -205,7 +205,7 @@ def test_invite_accept_refuses_when_org_at_seat_cap(restore_community_license):
         Membership.objects.create(user=UserFactory(), org=org, is_active=True)
 
     invite = _make_pending_invite(org, UserFactory())
-    with pytest.raises(SeatQuotaExceeded):
+    with pytest.raises(SeatQuotaExceededError):
         invite.accept()
     # The invite stays pending so the inviter can retry once a seat
     # is freed — flipping it to ACCEPTED on a refused accept would

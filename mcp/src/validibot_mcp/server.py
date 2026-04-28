@@ -47,13 +47,20 @@ logging.basicConfig(
 )
 
 _logger = logging.getLogger(__name__)
-_logger.info(
-    "MCP server starting. log_level=%s jwks_uri=%s issuer=%s audience=%s",
-    _settings.log_level,
-    _settings.effective_oauth_jwks_url,
-    _settings.oauth_authorization_server_url.rstrip("/"),
-    _settings.effective_oauth_resource_audience,
-)
+# Build a startup-info dict from explicitly-non-sensitive Settings fields
+# only (URLs, scopes, log level). Never include client_secret, signing
+# keys, or anything else that could be marked sensitive in Pydantic
+# Field metadata. CodeQL's clear-text-logging query taints any
+# attribute access on a Settings instance because the class also holds
+# oauth_client_secret; constructing the dict explicitly makes the
+# safety auditable at a glance.
+_startup_log_fields = {
+    "log_level": _settings.log_level,
+    "jwks_uri": _settings.effective_oauth_jwks_url,
+    "issuer": _settings.oauth_authorization_server_url.rstrip("/"),
+    "audience": _settings.effective_oauth_resource_audience,
+}
+_logger.info("MCP server starting. %s", _startup_log_fields)
 
 _AUTHENTICATED_INSTRUCTIONS = (
     "Validibot validates building energy models and technical data "

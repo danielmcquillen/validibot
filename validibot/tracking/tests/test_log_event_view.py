@@ -173,6 +173,13 @@ class LogTrackingEventViewTests(TestCase):
         path and would pass even if the view reverted to calling the
         swallowing public method. This test is the regression guard
         against exactly that reversion.
+
+        The response body intentionally does NOT echo the exception
+        message — leaking ``str(exc)`` into HTTP responses is what
+        the ``py/stack-trace-exposure`` CodeQL query catches. We
+        assert a generic error string instead so the contract is
+        "Cloud Tasks gets a 500 to retry on" and operators read the
+        real traceback from ``logger.exception`` in Cloud Logging.
         """
         user = UserFactory()
         payload = {
@@ -189,7 +196,11 @@ class LogTrackingEventViewTests(TestCase):
             response = self._post(payload)
 
         self.assertEqual(response.status_code, 500)
-        self.assertIn("simulated DB outage", response.json()["error"])
+        # Body must not leak the exception message; status code is
+        # the load-bearing contract for Cloud Tasks retry.
+        body = response.json()
+        self.assertEqual(body, {"error": "internal error"})
+        self.assertNotIn("simulated DB outage", str(body))
 
     def test_invalid_payload_valueerror_returns_200_and_drops(self):
         """Structurally-invalid payloads (unknown event_type,

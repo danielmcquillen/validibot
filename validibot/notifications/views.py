@@ -141,7 +141,17 @@ class AcceptInviteView(LoginRequiredMixin, View):
                     request, _("This invite is not addressed to your account.")
                 )
                 return HttpResponseRedirect(reverse("notifications:notification-list"))
-        invite.accept()
+        # Seat-cap refusals on paid editions (e.g. Pro at 3 seats) are
+        # raised by ``invite.accept()`` and surfaced as a flash error
+        # rather than a 500 — this is a routine "ask your admin to free
+        # a seat" friction moment, not a system failure.
+        from validibot.users.seats import SeatQuotaExceededError
+
+        try:
+            invite.accept()
+        except SeatQuotaExceededError as exc:
+            messages.error(request, str(exc))
+            return HttpResponseRedirect(reverse("notifications:notification-list"))
         notification.read_at = timezone.now()
         notification.save(update_fields=["read_at"])
         _notify_inviter(invite, action=_("accepted"))

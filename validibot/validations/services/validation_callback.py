@@ -176,10 +176,10 @@ class ValidationCallbackService:
 
             return self._process_with_idempotency_guard(callback, run)
 
-        except ValidationError as exc:
-            logger.warning("Invalid callback payload: %s", exc)
+        except ValidationError:
+            logger.warning("Invalid callback payload")
             return Response(
-                {"error": f"Invalid callback payload: {exc}"},
+                {"error": "Invalid callback payload"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except Exception:

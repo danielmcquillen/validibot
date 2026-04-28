@@ -15,7 +15,6 @@ from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
 from django.shortcuts import render
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.decorators.http import require_POST
@@ -251,6 +250,37 @@ class UserSecurityView(
 user_security_view = UserSecurityView.as_view()
 
 
+def _resolve_org_switch_redirect(request) -> str:
+    """Return a server-generated redirect target for organization switching.
+
+    The workspace selector sends the current path as ``next`` for convenience,
+    but the redirect itself should never be built from request data. Compare the
+    requested value with a small allowlist of known internal destinations, then
+    return the matching server-generated URL.
+    """
+
+    fallback = reverse_with_org("dashboard:my_dashboard", request=request)
+    requested_next = request.POST.get("next") or request.GET.get("next")
+    allowed_targets = (
+        reverse_with_org("dashboard:my_dashboard", request=request),
+        reverse_with_org("workflows:workflow_list", request=request),
+        reverse_with_org("workflows:guest_workflow_list", request=request),
+        reverse_with_org("members:member_list", request=request),
+        reverse_with_org("members:guest_list", request=request),
+        reverse_with_org("users:organization-list", request=request),
+        reverse_with_org("users:profile", request=request),
+        reverse_with_org("users:email", request=request),
+        reverse_with_org("users:api-key", request=request),
+        reverse_with_org("users:security", request=request),
+    )
+
+    for target in allowed_targets:
+        if requested_next == target:
+            return target
+
+    return fallback
+
+
 @login_required
 @require_POST
 def switch_current_org_view(request, org_id: int) -> HttpResponse:
@@ -280,23 +310,7 @@ def switch_current_org_view(request, org_id: int) -> HttpResponse:
     request.user.set_current_org(organization)
     request.session["active_org_id"] = organization.id
 
-    # Resolve a safe redirect target. Start from the
-    # server-controlled fallback (so the variable is never bound to
-    # an unvalidated user value) and only replace it with a request-
-    # supplied URL after passing Django's host-and-scheme allowlist.
-    # Initialising-then-conditionally-replacing makes the safety
-    # invariant local: ``next_url`` is server-controlled at every
-    # point, and the only path that can change it is the validated
-    # branch. This shape also lets static analysis (CodeQL
-    # py/url-redirection) see the validation gate clearly.
-    next_url = reverse_with_org("dashboard:my_dashboard", request=request)
-    requested_next = request.POST.get("next") or request.GET.get("next")
-    if requested_next and url_has_allowed_host_and_scheme(
-        url=requested_next,
-        allowed_hosts={request.get_host()},
-        require_https=request.is_secure(),
-    ):
-        next_url = requested_next
+    next_url = _resolve_org_switch_redirect(request)
 
     if request.headers.get("HX-Request"):
         response = HttpResponse(status=204)

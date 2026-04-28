@@ -39,23 +39,6 @@ from validibot.validations.models import ValidatorResourceFile
 # worst-case time on the string-literal stripper below.
 _MAX_CEL_EXPRESSION_LEN = 4096
 
-# Compiled deterministic regex for stripping string literals out of a
-# CEL expression. Two important properties:
-#   - **No alternation overlap.** The body of each literal is matched by
-#     ``[^"\\]*(?:\\.[^"\\]*)*`` (and the symmetric single-quote form),
-#     which has exactly one path through any input — the regex engine
-#     can never backtrack across the alternation. The earlier form
-#     ``[^"\\]|\\.`` allowed the engine multiple ways to consume the
-#     same character (e.g. ``\\`` as ``\\.`` OR as ``[^"\\]`` then
-#     another character), enabling polynomial-time backtracking on
-#     pathological inputs (CodeQL ``py/polynomial-redos``).
-#   - **Compiled once.** Reused across every form clean, avoiding
-#     re-parsing the pattern per call.
-_CEL_STRING_LITERAL_RE = re.compile(
-    r'"[^"\\]*(?:\\.[^"\\]*)*"'
-    r"|'[^'\\]*(?:\\.[^'\\]*)*'",
-)
-
 
 def _strip_cel_string_literals(expression: str) -> str:
     """Remove all CEL string literals from ``expression``.
@@ -67,7 +50,27 @@ def _strip_cel_string_literals(expression: str) -> str:
     ``_MAX_CEL_EXPRESSION_LEN`` on its own.
     """
 
-    return _CEL_STRING_LITERAL_RE.sub("", expression)
+    output: list[str] = []
+    quote: str | None = None
+    escaped = False
+
+    for char in expression:
+        if quote is None:
+            if char in {"'", '"'}:
+                quote = char
+                escaped = False
+            else:
+                output.append(char)
+            continue
+
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == quote:
+            quote = None
+
+    return "".join(output)
 
 
 class CelHelpLabelMixin:

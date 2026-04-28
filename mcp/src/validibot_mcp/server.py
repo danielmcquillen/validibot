@@ -47,20 +47,7 @@ logging.basicConfig(
 )
 
 _logger = logging.getLogger(__name__)
-# Build a startup-info dict from explicitly-non-sensitive Settings fields
-# only (URLs, scopes, log level). Never include client_secret, signing
-# keys, or anything else that could be marked sensitive in Pydantic
-# Field metadata. CodeQL's clear-text-logging query taints any
-# attribute access on a Settings instance because the class also holds
-# oauth_client_secret; constructing the dict explicitly makes the
-# safety auditable at a glance.
-_startup_log_fields = {
-    "log_level": _settings.log_level,
-    "jwks_uri": _settings.effective_oauth_jwks_url,
-    "issuer": _settings.oauth_authorization_server_url.rstrip("/"),
-    "audience": _settings.effective_oauth_resource_audience,
-}
-_logger.info("MCP server starting. %s", _startup_log_fields)
+_logger.info("MCP server starting")
 
 _AUTHENTICATED_INSTRUCTIONS = (
     "Validibot validates building energy models and technical data "
@@ -146,17 +133,7 @@ if _settings.oauth_client_secret:
         require_authorization_consent=False,
         token_endpoint_auth_method="client_secret_post",  # noqa: S106
     )
-    # Explicit dict so the safety is auditable: client_id is the
-    # OAuth 2 public client identifier (NOT the secret), and the
-    # upstream URL is the published authorization server hostname.
-    # Build from named fields rather than passing _settings.* attrs
-    # directly to avoid CodeQL flagging taint propagation from the
-    # Settings class (which also holds oauth_client_secret).
-    _auth_log_fields = {
-        "client_id": _settings.oauth_client_id,
-        "upstream": _settings.oauth_authorization_server_url,
-    }
-    _logger.info("Auth: OIDCProxy %s", _auth_log_fields)
+    _logger.info("Auth: OIDCProxy enabled")
 else:
     # Fallback for environments without OAuth configured (local dev).
     # Legacy API token verifier only.

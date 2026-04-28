@@ -711,6 +711,23 @@ class MemberInvite(TimeStampedModel):
 
         membership_roles = roles or self.roles or []
 
+        # Seat-quota gate. Skipped when the invitee is already a
+        # member of this org (re-invite or role-update flow) — the
+        # ``get_or_create`` below would not create a new seat in
+        # that case, so it would be wrong to refuse the accept.
+        already_member = Membership.objects.filter(
+            user=self.invitee_user,
+            org=self.org,
+            is_active=True,
+        ).exists()
+        if not already_member:
+            # Local import keeps ``users.models`` free of a hard
+            # dependency on the seats module at import time —
+            # avoids any chance of a cycle as the app graph loads.
+            from validibot.users.seats import check_org_seat_quota
+
+            check_org_seat_quota(self.org)
+
         membership, _ = Membership.objects.get_or_create(
             user=self.invitee_user,
             org=self.org,

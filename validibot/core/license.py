@@ -112,13 +112,17 @@ class License:
     """
     Represents the current Validibot license.
 
-    Carries two pieces of information:
+    Carries three pieces of information:
 
     - ``edition`` — the tier (Community / Pro / Enterprise) for
       coarse-grained checks like ``is_pro``.
     - ``features`` — the exact set of commercial feature names this
       license unlocks, for fine-grained ``is_feature_enabled(...)``
       checks.
+    - ``max_members_per_org`` — the seat cap for paid tiers. ``None``
+      means unlimited (Community has no cap because it's free,
+      Enterprise has no cap because it's negotiated). Pro sets this
+      to its contractual seat count.
 
     A License is a value object: construct it once at import time in
     the commercial package, hand it to :func:`set_license`. There is
@@ -127,6 +131,7 @@ class License:
 
     edition: Edition
     features: frozenset[str] = field(default_factory=frozenset)
+    max_members_per_org: int | None = None
 
     @property
     def is_pro(self) -> bool:

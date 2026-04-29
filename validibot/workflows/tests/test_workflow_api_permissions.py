@@ -280,3 +280,26 @@ def test_org_member_still_sees_all_workflows_in_org(
     returned_ids = {item["id"] for item in data}
     assert workflow.pk in returned_ids
     assert other_workflow.pk in returned_ids
+
+
+def test_superuser_still_sees_all_workflows_in_org_without_membership(
+    api_client: APIClient, workflow, other_workflow, org
+):
+    """
+    Superusers keep the intentional org-wide debug view without membership.
+
+    The guest-scoping fix routes normal callers through
+    ``Workflow.objects.for_user(...)``. Superusers have an explicit carve-out
+    in ``OrgMembershipPermission`` and ``OrgScopedWorkflowViewSet`` so support
+    staff can inspect an org even when they are not an org member or guest.
+    """
+    superuser = UserFactory(is_superuser=True, is_staff=True, orgs=[])
+    api_client.force_authenticate(user=superuser)
+
+    resp = api_client.get(f"/api/v1/orgs/{org.slug}/workflows/")
+
+    assert resp.status_code == status.HTTP_200_OK
+    data = resp.data["results"] if isinstance(resp.data, dict) else resp.data
+    returned_ids = {item["id"] for item in data}
+    assert workflow.pk in returned_ids
+    assert other_workflow.pk in returned_ids

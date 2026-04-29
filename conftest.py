@@ -1,12 +1,12 @@
 """
 Root-level pytest configuration for Validibot tests.
 
-Autouse fixtures defined here apply to every test discovered by
-pytest from this project root — anything under ``tests/`` or
-``validibot/``. This file is intentionally minimal: the existing
-``tests/conftest.py`` and ``validibot/conftest.py`` hold
-domain-specific fixtures; this root-level file only holds
-process-scope state resets that have to run for every single test.
+Autouse fixtures and reporting hooks defined here apply to every test
+discovered by pytest from this project root — anything under ``tests/``
+or ``validibot/``. This file is intentionally minimal: the existing
+``tests/conftest.py`` and ``validibot/conftest.py`` hold domain-specific
+fixtures; this root-level file only holds process-scope state resets and
+global test-run reporting.
 
 ### What this file is responsible for
 
@@ -32,7 +32,55 @@ See refactor-step item ``[review-#10]`` in
 
 from __future__ import annotations
 
+import os
+
 import pytest
+
+
+def pytest_report_header(config: pytest.Config) -> list[str]:
+    """Explain env-gated optional suites before pytest starts running tests."""
+
+    notices = []
+    if not os.environ.get("SMOKE_TEST_STAGE"):
+        notices.append(
+            "smoke deployment tests will skip: SMOKE_TEST_STAGE is not set",
+        )
+    elif not os.environ.get("GCP_PROJECT_ID"):
+        notices.append(
+            "smoke deployment tests will skip: GCP_PROJECT_ID is not set",
+        )
+    elif not (
+        os.environ.get("SUPERUSER_USERNAME") and os.environ.get("SUPERUSER_PASSWORD")
+    ):
+        notices.append(
+            "authenticated smoke tests will skip: "
+            "SUPERUSER_USERNAME/SUPERUSER_PASSWORD are not set",
+        )
+
+    missing_fullstack = [
+        name
+        for name in (
+            "FULLSTACK_API_TOKEN",
+            "FULLSTACK_ORG_SLUG",
+            "FULLSTACK_WORKFLOW_ID",
+        )
+        if not os.environ.get(name)
+    ]
+    if missing_fullstack:
+        notices.append(
+            "full-stack E2E tests will skip if selected: missing "
+            + ", ".join(missing_fullstack),
+        )
+
+    selected_args = " ".join(config.args).lower()
+    if "mcp" in selected_args and not os.environ.get("VALIDIBOT_E2E_TOKEN"):
+        notices.append(
+            "MCP live E2E tests will skip if selected: VALIDIBOT_E2E_TOKEN is not set",
+        )
+
+    if not notices:
+        return []
+    return ["Env-gated optional tests:", *[f"  - {notice}" for notice in notices]]
 
 
 @pytest.fixture(autouse=True)

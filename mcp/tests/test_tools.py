@@ -345,6 +345,56 @@ class TestRunTools:
         assert result["result"] == "TIMED_OUT"
         assert result["is_complete"] is False
 
+    async def test_wait_for_run_returns_when_server_reports_timed_out(self, monkeypatch, mock_api):
+        """
+        ADR-2026-04-27 [trust-#6]: when the server reports a terminal run
+        whose result is ``TIMED_OUT``, ``wait_for_run`` must return the
+        snapshot immediately rather than polling until the client-side
+        budget expires.
+
+        After the wire-format unification, both the authenticated MCP path
+        and the anonymous x402 path emit ``state="COMPLETED"`` for any
+        terminal status, with the granular outcome in ``result``. This
+        test exercises that contract on the x402 path: the server says
+        the run is done (``state="COMPLETED", result="TIMED_OUT"``) and
+        the tool must surface that snapshot without idling for the
+        client-side ``timeout_seconds`` budget.
+
+        Before [trust-#6] the x402 endpoint emitted ``state="TIMED_OUT"``
+        and the MCP terminal-state set didn't include it, so an agent
+        calling ``wait_for_run(timeout_seconds=300)`` after a server
+        timeout would idle for five minutes and then fabricate its own
+        client-side timeout envelope, hiding the real verdict.
+        """
+
+        monkeypatch.setattr("validibot_mcp.auth.get_api_key_or_none", lambda: None)
+        run_id = SAMPLE_RUN_PENDING["id"]
+        wallet_address = "0xMYWALLET"
+        run_ref = build_x402_run_ref(
+            run_id=run_id,
+            wallet_address=wallet_address,
+        )
+        # Production shape after the fix: ``state`` is the projected
+        # lifecycle value; ``result`` carries the granular outcome.
+        mock_api.get(f"/api/v1/agent/runs/{run_id}/").respond(
+            json={
+                "run_id": run_id,
+                "wallet_address": wallet_address,
+                "state": "COMPLETED",
+                "result": "TIMED_OUT",
+            },
+        )
+
+        # A generous client-side timeout proves the function returns based on
+        # the server's terminal state, not because the budget expired.
+        result = await wait_for_run(run_ref=run_ref, timeout_seconds=60)
+
+        assert result["state"] == "COMPLETED"
+        assert result["result"] == "TIMED_OUT"
+        # The client-side timeout helper would have stamped ``is_complete``
+        # to ``False``; an early-exit must not.
+        assert "is_complete" not in result or result.get("is_complete") is not False
+
     async def test_x402_run_ref_uses_agent_polling(self, monkeypatch, mock_api):
         """x402 run refs should continue to use the anonymous agent endpoint."""
 

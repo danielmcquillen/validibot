@@ -26,7 +26,7 @@ This captures both lifecycle transitions and terminal outcomes in a single field
 
 ### Public state and result
 
-The API and CLI expose a simpler two-field model instead of the raw status. This split is defined in `validations/constants.py` as `ValidationRunState` and `ValidationRunResult`, and the serializer maps the internal status into these fields.
+The API and CLI expose a simpler two-field model instead of the raw status. This split is defined in `validations/constants.py` as `ValidationRunState` and `ValidationRunResult`. The status-to-state projection itself lives in the helper `validations.constants.project_run_state(...)`, which is the single source of truth for "is the run still going?" semantics across the authenticated REST API, the MCP helper endpoints, and the anonymous x402 endpoints. The serializer's `get_state()` delegates to that helper, and the cloud agent views call it directly so the wire-format `state` field has one vocabulary regardless of which endpoint a caller used (ADR-2026-04-27 `[trust-#6]`).
 
 **State** answers "is this done yet?" -- useful for polling loops in CI/CD:
 

@@ -64,6 +64,33 @@ VALIDATION_RUN_TERMINAL_STATUSES = [
 ]
 
 
+def project_run_state(status: str) -> str:
+    """Project the model ``ValidationRunStatus`` to public ``ValidationRunState``.
+
+    This is the single source of truth for "is the run still going?" semantics
+    across every API surface (web, REST, MCP helper, anonymous x402). The
+    model column captures both lifecycle and terminal outcomes
+    (PENDING / RUNNING / SUCCEEDED / FAILED / CANCELED / TIMED_OUT) but
+    consumers should see the simplified state machine
+    (PENDING / RUNNING / COMPLETED) plus a separate ``result`` field that
+    carries the terminal outcome.
+
+    ADR-2026-04-27 ``[trust-#6]``: the anonymous x402 status endpoint
+    previously exposed ``vr.status`` verbatim under the same ``state`` key
+    that the authenticated path used for the projected lifecycle value.
+    The MCP server then needed a five-element ``_TERMINAL_STATES`` set that
+    spanned both vocabularies. Centralising the projection here lets every
+    Validibot endpoint emit one ``state`` vocabulary, so MCP, CLI, and
+    future ``validibot-shared`` re-export only have to know one enum.
+    """
+
+    if status == ValidationRunStatus.PENDING:
+        return ValidationRunState.PENDING
+    if status == ValidationRunStatus.RUNNING:
+        return ValidationRunState.RUNNING
+    return ValidationRunState.COMPLETED
+
+
 class ValidationRunErrorCategory(TextChoices):
     """
     Top-level classification of why a validation run failed.

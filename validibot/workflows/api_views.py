@@ -56,9 +56,29 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
     lookup_value_regex = r"[^/]+"
 
     def get_queryset(self) -> QuerySet[Workflow]:
-        """Return workflows for the org from the URL."""
-        return Workflow.objects.filter(
-            org=self.get_org(),
+        """
+        Return workflows the caller may see in this org.
+
+        Per ADR-2026-04-27 ``[trust-#1]``: ``OrgMembershipPermission`` only
+        proves the caller has *some* relationship to the org (membership or
+        a guest grant on at least one workflow). It is not enough to scope
+        the queryset, because a guest invited to one workflow could otherwise
+        list every workflow in the org. Object-level scoping is delegated to
+        ``Workflow.objects.for_user(...)`` which intersects org-membership,
+        creator-of, and active ``WorkflowAccessGrant`` rows. Superusers keep
+        the broad org view for debugging — this matches the existing
+        permission carve-out in ``OrgMembershipPermission``.
+        """
+        org = self.get_org()
+        user = self.request.user
+        if user.is_authenticated and user.is_superuser:
+            return Workflow.objects.filter(
+                org=org,
+                is_archived=False,
+                is_tombstoned=False,
+            )
+        return Workflow.objects.for_user(user).filter(
+            org=org,
             is_archived=False,
             is_tombstoned=False,
         )
@@ -194,10 +214,27 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
     lookup_value_regex = r"[^/]+"
 
     def get_queryset(self) -> QuerySet[Workflow]:
-        """Return all versions of the workflow family."""
+        """
+        Return versions of the workflow family the caller may see.
+
+        Per ADR-2026-04-27 ``[trust-#1]``: a guest with a grant on a
+        different workflow in the same org must not be able to enumerate
+        versions of this workflow family. ``Workflow.objects.for_user(...)``
+        applies the same object-level scoping used by the latest-version
+        viewset, so version-pinned routes share one access policy.
+        """
         workflow_slug = self.kwargs.get("workflow_slug")
-        return Workflow.objects.filter(
-            org=self.get_org(),
+        org = self.get_org()
+        user = self.request.user
+        if user.is_authenticated and user.is_superuser:
+            return Workflow.objects.filter(
+                org=org,
+                slug=workflow_slug,
+                is_archived=False,
+                is_tombstoned=False,
+            )
+        return Workflow.objects.for_user(user).filter(
+            org=org,
             slug=workflow_slug,
             is_archived=False,
             is_tombstoned=False,

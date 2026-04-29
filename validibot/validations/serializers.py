@@ -18,8 +18,8 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunResult
-from validibot.validations.constants import ValidationRunState
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.constants import project_run_state
 from validibot.validations.models import ValidationRun
 from validibot.workflows.constants import SUPPORTED_CONTENT_TYPES
 
@@ -68,11 +68,10 @@ class ValidationRunSerializer(serializers.ModelSerializer):
     credential = serializers.SerializerMethodField()
 
     def get_state(self, obj: ValidationRun) -> str:
-        if obj.status == ValidationRunStatus.PENDING:
-            return ValidationRunState.PENDING
-        if obj.status == ValidationRunStatus.RUNNING:
-            return ValidationRunState.RUNNING
-        return ValidationRunState.COMPLETED
+        # Delegated to ``project_run_state`` so this projection has one
+        # implementation across the community API and the cloud agent
+        # endpoints (ADR-2026-04-27 [trust-#6]).
+        return project_run_state(obj.status)
 
     def get_result(self, obj: ValidationRun) -> str:
         """

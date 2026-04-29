@@ -337,3 +337,9 @@ mcq-notes.md
 # launch.json is intentionally tracked; these two are machine-local.
 .claude/settings.json
 .claude/settings.local.json
+
+# Agent-harness worktrees. Created when a Claude Code subagent runs in
+# isolation mode — each is a full git worktree on a throwaway branch.
+# Cleaned up when the agent exits cleanly, but interrupted runs can
+# leave one behind. Never useful in a commit; never shared.
+.claude/worktrees/

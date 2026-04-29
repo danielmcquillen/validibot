@@ -31,7 +31,16 @@ if TYPE_CHECKING:
     from fastmcp import FastMCP
 
 # States that indicate the run is finished (no more polling needed).
-_TERMINAL_STATES = {"COMPLETED", "SUCCEEDED", "FAILED", "CANCELED"}
+#
+# Both backends now emit the projected lifecycle state under ``state``:
+# ``PENDING`` → ``RUNNING`` → ``COMPLETED``. The terminal outcome travels
+# in the separate ``result`` field (PASS / FAIL / ERROR / CANCELED /
+# TIMED_OUT / UNKNOWN). ADR-2026-04-27 ``[trust-#6]`` removed the earlier
+# vocabulary drift where the anonymous x402 status endpoint returned the
+# raw ``ValidationRunStatus`` here too. Follow-up still pending: move the
+# enum constants to ``validibot-shared`` so MCP, CLI, and Django stop
+# encoding it independently (ADR section 6).
+_TERMINAL_STATES = {"COMPLETED"}
 
 _DEFAULT_TIMEOUT = 300  # 5 minutes
 _POLL_INITIAL_INTERVAL = 2  # seconds — catches fast validators quickly
@@ -126,12 +135,21 @@ async def get_run_status(
 ) -> dict[str, Any]:
     """Check the current status of a validation run.
 
-    Returns the run's state, result, and findings (if complete).
-
     Pass the opaque ``run_ref`` returned by ``validate_file``.
 
     Returns:
-        Run status including state, result, and findings (if complete).
+        A dict with these stable fields:
+
+        - ``state``: lifecycle, one of ``PENDING`` / ``RUNNING`` /
+          ``COMPLETED``. Use this to decide whether to poll again.
+        - ``result``: terminal outcome, one of ``PASS`` / ``FAIL`` /
+          ``ERROR`` / ``CANCELED`` / ``TIMED_OUT`` / ``UNKNOWN``. Only
+          informative once ``state`` is ``COMPLETED``.
+        - ``run_ref``: the opaque ref you passed in.
+        - ``findings``: validation findings (if the run is terminal).
+
+        The same shape is emitted by both the authenticated MCP helper and
+        the anonymous x402 path, so polling code can be path-agnostic.
     """
     try:
         check_global_enabled()
@@ -152,16 +170,28 @@ async def wait_for_run(
 ) -> dict[str, Any]:
     """Wait for a validation run to complete, polling periodically.
 
-    Blocks until the run reaches a terminal state or the timeout expires.
-    Useful when the agent wants to act on the results immediately.
+    Blocks until the run reaches a terminal state (``state == "COMPLETED"``)
+    or ``timeout_seconds`` elapses. Useful when the agent wants to act on
+    the results immediately.
 
     Args:
         run_ref: Opaque run handle from ``validate_file``.
         timeout_seconds: Maximum time to wait (default: 300 = 5 minutes).
 
     Returns:
-        Final run status. If the timeout expires before completion, the
-        ``result`` field will be "TIMED_OUT" and ``is_complete`` will be False.
+        A dict with the same fields as ``get_run_status``:
+
+        - ``state``: ``PENDING`` / ``RUNNING`` / ``COMPLETED``.
+        - ``result``: ``PASS`` / ``FAIL`` / ``ERROR`` / ``CANCELED`` /
+          ``TIMED_OUT`` / ``UNKNOWN``.
+        - ``findings`` if the run is terminal.
+
+        If the *client-side* ``timeout_seconds`` budget expires before the
+        server reports the run done, the response carries the last known
+        snapshot plus ``is_complete=False`` and ``result="TIMED_OUT"``.
+        Note that this client-side timeout is distinct from a server-side
+        ``TIMED_OUT`` outcome — the former means "we stopped waiting", the
+        latter means "the validator ran past its time limit".
     """
     try:
         check_global_enabled()

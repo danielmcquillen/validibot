@@ -1,9 +1,9 @@
-# Environment variables for the Docker Compose MCP container.
+# Environment variables for the self-hosted MCP container.
 #
-# Copy this file to .envs/.production/.docker-compose/.mcp and fill in
+# Copy this file to .envs/.production/.self-hosted/.mcp and fill in
 # the values that apply to your deployment. The MCP service only runs
-# when ``ENABLE_MCP_SERVER=true`` is set at ``just docker-compose up`` —
-# see validibot/just/docker-compose/mod.just.
+# when ``ENABLE_MCP_SERVER=true`` is set at ``just self-hosted up`` —
+# see validibot/just/self-hosted/mod.just.
 #
 # All variables are read by the FastMCP server at
 # validibot/mcp/src/validibot_mcp/config.py.
@@ -11,7 +11,7 @@
 # ── Required ───────────────────────────────────────────────────────────
 
 # The Validibot REST API the MCP server forwards tool calls to. On a
-# docker-compose deployment this is usually the internal service URL,
+# self-hosted deployment this is usually the internal service URL,
 # e.g. http://web:8000 (or the externally reachable URL if you prefer).
 VALIDIBOT_API_BASE_URL=http://web:8000
 

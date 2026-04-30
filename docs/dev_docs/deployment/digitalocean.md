@@ -226,14 +226,14 @@ cd validibot
 mkdir -p .envs/.production/.docker-compose
 
 # Copy templates
-cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-compose/.django
-cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
+cp .envs.example/.production/.self-hosted/.django .envs/.production/.self-hosted/.django
+cp .envs.example/.production/.self-hosted/.postgres .envs/.production/.self-hosted/.postgres
 ```
 
-Edit `.envs/.production/.docker-compose/.django`:
+Edit `.envs/.production/.self-hosted/.django`:
 
 ```bash
-nano .envs/.production/.docker-compose/.django
+nano .envs/.production/.self-hosted/.django
 ```
 
 Key settings to change:
@@ -254,10 +254,10 @@ SUPERUSER_PASSWORD=your-secure-password-here
 SUPERUSER_EMAIL=admin@example.com
 ```
 
-Edit `.envs/.production/.docker-compose/.postgres`:
+Edit `.envs/.production/.self-hosted/.postgres`:
 
 ```bash
-nano .envs/.production/.docker-compose/.postgres
+nano .envs/.production/.self-hosted/.postgres
 ```
 
 Generate a strong password:
@@ -324,11 +324,11 @@ EOF
 
 ```bash
 # Validate env files and bootstrap Validibot
-just docker-compose check-env
-just docker-compose bootstrap
+just self-hosted check-env
+just self-hosted bootstrap
 
 # Wait for services to be healthy
-just docker-compose status
+just self-hosted status
 
 # Start Caddy (after the network is created)
 VALIDIBOT_DOMAIN=validibot.example.com docker compose -f docker-compose.caddy.yml up -d
@@ -336,7 +336,7 @@ VALIDIBOT_DOMAIN=validibot.example.com docker compose -f docker-compose.caddy.ym
 
 ### First-run setup
 
-On first startup, `just docker-compose bootstrap` handles the first-run setup. This includes:
+On first startup, `just self-hosted bootstrap` handles the first-run setup. This includes:
 
 - Database migrations
 - Site domain configuration (from `VALIDIBOT_SITE_DOMAIN` env var)
@@ -347,14 +347,14 @@ On first startup, `just docker-compose bootstrap` handles the first-run setup. T
 You can verify setup completed successfully:
 
 ```bash
-just docker-compose manage "check_validibot"
+just self-hosted doctor
 ```
 
 ### Verify the deployment
 
 ```bash
 # Check all containers are running
-just docker-compose status
+just self-hosted status
 docker compose -f docker-compose.caddy.yml ps
 
 # Test the health endpoint
@@ -384,7 +384,7 @@ For production workloads, consider using DigitalOcean's managed PostgreSQL inste
 
 3. **Update environment:**
 
-   Edit `.envs/.production/.docker-compose/.postgres`:
+   Edit `.envs/.production/.self-hosted/.postgres`:
 
    ```bash
    POSTGRES_HOST=your-db-cluster-hostname.db.ondigitalocean.com
@@ -479,10 +479,10 @@ cd ~/validibot
 
 # Pull latest code and apply the standard update flow
 git pull origin main
-just docker-compose update
+just self-hosted update
 
 # Check logs
-just docker-compose logs-service web
+just self-hosted logs-service web
 ```
 
 ## Troubleshooting

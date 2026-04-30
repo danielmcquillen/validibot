@@ -10,7 +10,7 @@ Validibot has separate compose files for different environments. If you call Doc
 | File                            | Purpose                                    | Command                                              |
 | ------------------------------- | ------------------------------------------ | ---------------------------------------------------- |
 | `docker-compose.local.yml`      | Local development (hot reload, runserver)  | `just local up`                                      |
-| `docker-compose.production.yml` | Production-style (gunicorn, no code mount) | `just docker-compose bootstrap`                      |
+| `docker-compose.production.yml` | Production-style (gunicorn, no code mount) | `just self-hosted bootstrap`                      |
 
 There is no default `docker-compose.yml` — running `docker compose up` without `-f` will fail.
 
@@ -101,10 +101,10 @@ Use `docker-compose.production.yml` to test production-like behavior locally. Th
 
    ```bash
    mkdir -p .envs/.production/.docker-compose
-   cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-compose/.django
-   cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
+   cp .envs.example/.production/.self-hosted/.django .envs/.production/.self-hosted/.django
+   cp .envs.example/.production/.self-hosted/.postgres .envs/.production/.self-hosted/.postgres
    # Optional for Pro/Enterprise
-   cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-compose/.build
+   cp .envs.example/.production/.self-hosted/.build .envs/.production/.self-hosted/.build
    ```
 
 2. Edit the files with production-appropriate values:
@@ -115,8 +115,8 @@ Use `docker-compose.production.yml` to test production-like behavior locally. Th
 3. Validate the env files and bootstrap the stack:
 
    ```bash
-   just docker-compose check-env
-   just docker-compose bootstrap
+   just self-hosted check-env
+   just self-hosted bootstrap
    ```
 
    `bootstrap` builds and starts the production-style stack, applies migrations,

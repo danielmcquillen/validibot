@@ -80,10 +80,10 @@ This pattern follows the [cookiecutter-django](https://github.com/cookiecutter/c
 2. Copy both template files:
 
     ```bash
-    cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-compose/.django
-    cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
+    cp .envs.example/.production/.self-hosted/.django .envs/.production/.self-hosted/.django
+    cp .envs.example/.production/.self-hosted/.postgres .envs/.production/.self-hosted/.postgres
     # Optional for Pro/Enterprise
-    cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-compose/.build
+    cp .envs.example/.production/.self-hosted/.build .envs/.production/.self-hosted/.build
     ```
 
 3. Edit with your production values (generate a proper secret key, set your domain, etc.).
@@ -91,8 +91,8 @@ This pattern follows the [cookiecutter-django](https://github.com/cookiecutter/c
 4. Validate the env files and bootstrap the deployment:
 
     ```bash
-    just docker-compose check-env
-    just docker-compose bootstrap
+    just self-hosted check-env
+    just self-hosted bootstrap
     ```
 
 ### Google Cloud Platform
@@ -234,11 +234,11 @@ Key files:
 Docker Compose deployments run with production-grade settings:
 
 - `DJANGO_SETTINGS_MODULE=config.settings.production`
-- `DEPLOYMENT_TARGET=docker_compose`
+- `DEPLOYMENT_TARGET=self_hosted`
 - Real SSL certificates (via reverse proxy)
 - Proper secret key and passwords
 
-The `DEPLOYMENT_TARGET=docker_compose` setting tells Django to:
+The `DEPLOYMENT_TARGET=self_hosted` setting tells Django to:
 - Use Celery for background tasks (not Cloud Tasks)
 - Use Docker socket for running validator containers
 - Use local filesystem or S3/GCS for file storage
@@ -337,7 +337,7 @@ check is skipped. This allows local dev to run without provisioning a
 key.
 
 For Docker Compose deployments, add `WORKER_API_KEY` to
-`.envs/.production/.docker-compose/.django`:
+`.envs/.production/.self-hosted/.django`:
 
 ```bash
 # Generate a key

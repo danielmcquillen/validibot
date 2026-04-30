@@ -14,23 +14,39 @@ just gcp deploy-all prod
 just verify-deployment prod
 ```
 
-## Application Health Check
+## Application Health Check (doctor)
 
-For Docker Compose deployments or to verify application-level configuration, use the built-in health check command:
+For self-hosted Compose deployments, the operator-facing entry point
+is `just self-hosted doctor`. That recipe shells into the web
+container and runs the same `check_validibot` management command
+internally.
 
 ```bash
-# Basic health check
-python manage.py check_validibot
-
-# Verbose output with details
-python manage.py check_validibot --verbose
-
-# Attempt to auto-fix common issues
-python manage.py check_validibot --fix
-
-# JSON output for scripting/monitoring
-python manage.py check_validibot --json
+# From the repo root, against a running self-hosted stack:
+just self-hosted doctor                       # human-readable
+just self-hosted doctor --json                # stable JSON schema (validibot.doctor.v1)
+just self-hosted doctor --strict              # warnings cause non-zero exit
+just self-hosted doctor --verbose             # show detail blocks
 ```
+
+For developers running locally without going through `just`, you can
+invoke the underlying command directly:
+
+```bash
+# Inside the web container (e.g. via just local manage):
+python manage.py check_validibot
+python manage.py check_validibot --target self_hosted
+python manage.py check_validibot --target gcp --stage prod
+python manage.py check_validibot --json
+python manage.py check_validibot --strict
+python manage.py check_validibot --fix
+```
+
+Each result includes a stable check ID (`VB101`, `VB401`, etc.). See
+[`docs/operations/self-hosting/doctor-check-ids.md`][check-ids] for
+the ID-to-fix mapping.
+
+[check-ids]: ../../operations/self-hosting/doctor-check-ids.md
 
 The `check_validibot` command verifies:
 

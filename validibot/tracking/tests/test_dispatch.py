@@ -80,9 +80,13 @@ class TrackingDispatcherRegistryTests(TestCase):
         self.assertEqual(dispatcher.dispatcher_name, "celery")
         self.assertFalse(dispatcher.is_sync)
 
-    @override_settings(DEPLOYMENT_TARGET="docker_compose")
-    def test_docker_compose_picks_celery(self):
-        """Prod Docker Compose uses the Celery dispatcher."""
+    @override_settings(DEPLOYMENT_TARGET="self_hosted")
+    def test_self_hosted_picks_celery(self):
+        """Self-hosted uses the Celery dispatcher.
+
+        Same Compose substrate as local dev — the rename is for
+        operator-facing terminology only. See ADR-2026-04-27.
+        """
         dispatcher = get_tracking_dispatcher()
         self.assertEqual(dispatcher.dispatcher_name, "celery")
         self.assertFalse(dispatcher.is_sync)

@@ -215,7 +215,7 @@ The command is wired into the scheduled-task registry:
 |---|---|---|---|
 | ``enforce-audit-retention`` | ``validibot.enforce_audit_retention`` | ``30 2 * * *`` (daily 02:30) | ``/api/v1/scheduled/enforce-audit-retention/`` |
 
-Running ``setup_validibot`` (or ``just docker-compose bootstrap``)
+Running ``setup_validibot`` (or ``just self-hosted bootstrap``)
 picks up the registry entry automatically via
 ``sync_schedules --backend=celery``. No data migration, no manual
 ``PeriodicTask`` row to create. See

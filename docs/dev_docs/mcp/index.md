@@ -140,7 +140,7 @@ just gcp mcp deploy prod
 
 For docker-compose self-hosters, MCP rides along when
 `ENABLE_MCP_SERVER=true` is set in
-`.envs/.production/.docker-compose/.build` — `just docker-compose up`
+`.envs/.production/.self-hosted/.build` — `just self-hosted up`
 activates the `mcp` profile automatically.
 
 ## Where to look when something breaks

@@ -38,25 +38,29 @@ just local up
 - Redis: Docker container (port 6379)
 - Celery worker: Docker container
 
-### Docker Compose Production
+### Self-Hosted (single-VM Docker Compose deployment)
+
+The customer-operated production target — runs on a single Linux VM
+(DigitalOcean, AWS EC2, Hetzner, on-prem). See
+`docs/operations/self-hosting/overview.md` and ADR-2026-04-27.
 
 ```bash
 # Create the directory structure
-mkdir -p .envs/.production/.docker-compose
+mkdir -p .envs/.production/.self-hosted
 
 # Copy runtime files
-cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-compose/.django
-cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
+cp .envs.example/.production/.self-hosted/.django .envs/.production/.self-hosted/.django
+cp .envs.example/.production/.self-hosted/.postgres .envs/.production/.self-hosted/.postgres
 
 # Copy the build/recipe config. Required if you set a commercial package
 # (VALIDIBOT_COMMERCIAL_PACKAGE) or want the MCP container
 # (ENABLE_MCP_SERVER=true). Safe to copy even if both stay unset.
-cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-compose/.build
+cp .envs.example/.production/.self-hosted/.build .envs/.production/.self-hosted/.build
 
 # Edit with your production values (especially secrets!)
 # Then validate and bootstrap with:
-just docker-compose check-env
-just docker-compose bootstrap
+just self-hosted check-env
+just self-hosted bootstrap
 ```
 
 ### Google Cloud Platform (Cloud Run)
@@ -105,14 +109,15 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
 │   ├── .build              # Optional Docker build settings for Pro/Enterprise
 │   └── .postgres           # Postgres credentials for local dev
 └── .production/
-    ├── .docker-compose/
+    ├── .self-hosted/       # Customer-operated single-VM Compose deployment
     │   ├── .build          # Optional Docker build settings for Pro/Enterprise
     │   ├── .django
+    │   ├── .mcp            # Optional MCP server config (Pro feature)
     │   └── .postgres
-    ├── .google-cloud/
+    ├── .google-cloud/      # Validibot's hosted GCP deployment
     │   ├── .django         # Django runtime settings (uploaded to Secret Manager)
     │   └── .just           # Just command runner settings (sourced locally)
-    └── .aws/
+    └── .aws/               # Future AWS deployment (stub)
         └── .django
 
 .envs/                      # Your actual secrets (NOT committed - gitignored)
@@ -121,9 +126,10 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
 │   ├── .build
 │   └── .postgres
 └── .production/
-    ├── .docker-compose/
+    ├── .self-hosted/
     │   ├── .build
     │   ├── .django
+    │   ├── .mcp
     │   └── .postgres
     ├── .google-cloud/
     │   ├── .django

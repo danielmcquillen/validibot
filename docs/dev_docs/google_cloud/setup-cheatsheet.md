@@ -512,8 +512,10 @@ just gcp migrate
 # Run setup_validibot (configures site, seeds default data, creates superuser)
 just gcp setup-data
 
-# Verify setup is correct
-just gcp run-command "check_validibot --verbose"
+# Verify setup is correct.
+# (Phase 1 Session 1: Use the underlying management command directly.
+# `just gcp doctor <stage>` ships in Session 2 with full Cloud Run wiring.)
+just gcp run-command "check_validibot --target gcp --stage prod --verbose"
 
 # View job logs
 just gcp job-logs $GCP_APP_NAME-migrate

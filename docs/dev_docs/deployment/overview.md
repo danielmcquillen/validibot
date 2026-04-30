@@ -23,7 +23,7 @@ Typical commands look like this:
 
 ```bash
 just local up
-just docker-compose bootstrap
+just self-hosted bootstrap
 just gcp deploy-all dev
 ```
 

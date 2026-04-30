@@ -60,11 +60,12 @@ class TestGetWorkerAuthClasses:
         classes = get_worker_auth_classes()
         assert classes == [CloudTasksOIDCAuthentication]
 
-    @override_settings(DEPLOYMENT_TARGET="docker_compose")
-    def test_docker_compose_returns_shared_secret(self):
-        """Docker Compose must keep ``WorkerKeyAuthentication`` unchanged.
+    @override_settings(DEPLOYMENT_TARGET="self_hosted")
+    def test_self_hosted_returns_shared_secret(self):
+        """Self-hosted must keep ``WorkerKeyAuthentication`` unchanged.
 
-        There is no OIDC issuer on Docker Compose, so the shared secret
+        There is no OIDC issuer on a self-hosted single-VM deployment,
+        so the shared secret
         is the only available app-layer guard against SSRF between
         containers that share the Docker bridge network.
         """

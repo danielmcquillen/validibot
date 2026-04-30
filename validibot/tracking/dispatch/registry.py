@@ -56,7 +56,7 @@ def get_tracking_dispatcher() -> TrackingDispatcher:
     dispatchers: dict[DeploymentTarget, type[TrackingDispatcher]] = {
         DeploymentTarget.TEST: InlineTrackingDispatcher,
         DeploymentTarget.LOCAL_DOCKER_COMPOSE: CeleryTrackingDispatcher,
-        DeploymentTarget.DOCKER_COMPOSE: CeleryTrackingDispatcher,
+        DeploymentTarget.SELF_HOSTED: CeleryTrackingDispatcher,
         DeploymentTarget.GCP: CloudTasksTrackingDispatcher,
     }
 

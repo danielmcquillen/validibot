@@ -17,7 +17,7 @@ Choose [Run Validibot Locally](deploy-local.md) instead if you only want to eval
 
 ## What this target runs
 
-The Docker Compose production stack uses `docker-compose.production.yml` and the `just docker-compose ...` commands.
+The Docker Compose production stack uses `docker-compose.production.yml` and the `just self-hosted ...` commands.
 
 It runs:
 
@@ -40,8 +40,8 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
 2. Copy the env templates:
 
    ```bash
-   cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-compose/.django
-   cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
+   cp .envs.example/.production/.self-hosted/.django .envs/.production/.self-hosted/.django
+   cp .envs.example/.production/.self-hosted/.postgres .envs/.production/.self-hosted/.postgres
    ```
 
    Also copy the `.build` file — it holds both commercial-package
@@ -50,7 +50,7 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
    have sensible defaults when left empty.
 
    ```bash
-   cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-compose/.build
+   cp .envs.example/.production/.self-hosted/.build .envs/.production/.self-hosted/.build
    ```
 
 3. Edit both files and replace the placeholder values.
@@ -64,7 +64,7 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
    - `POSTGRES_PASSWORD`
    - `SUPERUSER_PASSWORD`
 
-   If you are installing a commercial package, edit `.envs/.production/.docker-compose/.build` too:
+   If you are installing a commercial package, edit `.envs/.production/.self-hosted/.build` too:
 
    ```bash
    VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro==<version>
@@ -89,7 +89,7 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
        project tracker for the migration plan.
 
    Then point Django at the Pro-activating settings module by setting
-   `DJANGO_SETTINGS_MODULE` in your `.envs/.production/.docker-compose/.django`:
+   `DJANGO_SETTINGS_MODULE` in your `.envs/.production/.self-hosted/.django`:
 
    ```bash
    DJANGO_SETTINGS_MODULE=config.settings.production_pro
@@ -103,13 +103,13 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
 
    To also include the MCP server (exposes validation workflows to
    AI agents over the Model Context Protocol), flip this in
-   `.envs/.production/.docker-compose/.build`:
+   `.envs/.production/.self-hosted/.build`:
 
    ```bash
    ENABLE_MCP_SERVER=true
    ```
 
-   The `just docker-compose up` / `build` recipes source the `.build`
+   The `just self-hosted up` / `build` recipes source the `.build`
    file at the top and activate the `mcp` Compose profile when the
    flag is truthy.
 
@@ -126,8 +126,8 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
 4. Validate the env files and bootstrap the deployment:
 
    ```bash
-   just docker-compose check-env
-   just docker-compose bootstrap
+   just self-hosted check-env
+   just self-hosted bootstrap
    ```
 
 `bootstrap` is the recommended first-run command. It:
@@ -146,20 +146,20 @@ self-hosted option is the local file signing backend.
 Create a private signing key on the host:
 
 ```bash
-mkdir -p .envs/.production/.docker-compose/keys
+mkdir -p .envs/.production/.self-hosted/keys
 openssl ecparam -name prime256v1 -genkey -noout \
-  -out .envs/.production/.docker-compose/keys/credential-signing.pem
-chmod 600 .envs/.production/.docker-compose/keys/credential-signing.pem
+  -out .envs/.production/.self-hosted/keys/credential-signing.pem
+chmod 600 .envs/.production/.self-hosted/keys/credential-signing.pem
 ```
 
-Then add this to `.envs/.production/.docker-compose/.django`:
+Then add this to `.envs/.production/.self-hosted/.django`:
 
 ```bash
 SIGNING_KEY_PATH=/run/validibot-keys/credential-signing.pem
 CREDENTIAL_ISSUER_URL=https://validibot.example.com
 ```
 
-The production compose file mounts `.envs/.production/.docker-compose/keys`
+The production compose file mounts `.envs/.production/.self-hosted/keys`
 into the web and worker containers at `/run/validibot-keys`.
 
 If you rotate the key later, existing credentials remain valid only as long as
@@ -171,9 +171,9 @@ rotation deliberately.
 After bootstrap completes:
 
 ```bash
-just docker-compose status
-just docker-compose health-check
-just docker-compose manage "check_validibot"
+just self-hosted status
+just self-hosted health-check
+just self-hosted doctor                # full doctor diagnostic
 ```
 
 At this point the app is running on port `8000` on the host. For a real deployment, put it behind a reverse proxy before exposing it publicly.
@@ -189,14 +189,14 @@ Use one of these guides next:
 
 ## Updates and day-two operations
 
-Routine operations use the same `just docker-compose ...` namespace:
+Routine operations use the same `just self-hosted ...` namespace:
 
 ```bash
-just docker-compose deploy
-just docker-compose update
-just docker-compose logs
-just docker-compose backup-db
-just docker-compose restore-db backups/file.sql.gz
+just self-hosted deploy
+just self-hosted update
+just self-hosted logs
+just self-hosted backup-db
+just self-hosted restore-db backups/file.sql.gz
 ```
 
 `deploy` is for starting or rebuilding the stack. `update` is the safer day-two path because it takes a database backup and runs migrations as part of the update flow.

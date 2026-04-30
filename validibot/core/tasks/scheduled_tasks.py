@@ -377,10 +377,11 @@ def cleanup_orphaned_containers(self) -> dict:
     """
     from django.conf import settings
 
-    # Only run on Docker Compose deployments where Docker containers are used.
-    # GCP deployments use Cloud Run which handles its own container lifecycle.
+    # Only run on Compose-based deployments where Docker containers are
+    # used (i.e. self-hosted production or local-dev). GCP deployments
+    # use Cloud Run which handles its own container lifecycle.
     deployment_target = getattr(settings, "DEPLOYMENT_TARGET", "")
-    if deployment_target not in ("docker_compose", "local_docker_compose"):
+    if deployment_target not in ("self_hosted", "local_docker_compose"):
         logger.debug(
             "Skipping container cleanup on deployment target: %s",
             deployment_target,

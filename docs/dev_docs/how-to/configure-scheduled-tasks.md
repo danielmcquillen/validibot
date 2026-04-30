@@ -42,7 +42,7 @@ Google Cloud Scheduler for GCP, AWS EventBridge in future).
 
 Do not define schedules in data migrations. The registry is the only
 write path; reconciliation is handled by `sync_schedules` (called
-automatically by `setup_validibot` and `just docker-compose bootstrap`).
+automatically by `setup_validibot` and `just self-hosted bootstrap`).
 
 Current entries:
 

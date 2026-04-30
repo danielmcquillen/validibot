@@ -41,7 +41,7 @@ must use the generator above.
 |---|---|---|
 | Local dev | `.envs/.local/.django` | Generate once and reuse; never commit |
 | GCP production | `.envs/.production/.google-cloud/.django` | Uploaded to Secret Manager via `just gcp secrets prod` |
-| Docker Compose production | `.envs/.production/.docker-compose/.django` | Deployed to the target host; keep out of git |
+| Docker Compose production | `.envs/.production/.self-hosted/.django` | Deployed to the target host; keep out of git |
 | AWS production | `.envs/.production/.aws/.django` | Store in AWS Secrets Manager or Parameter Store |
 | Tests | `config/settings/test.py` (hardcoded) | Fixed test key; never reuse outside tests |
 

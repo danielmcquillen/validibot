@@ -3381,3 +3381,89 @@ local-to-gcp-shell stage: _require-gcp-config
 
     echo "Stopping Cloud SQL Proxy..."
     kill $PROXY_PID 2>/dev/null || true
+
+# =============================================================================
+# Operator-Facing Stub Recipes (Phase 0 of ADR-2026-04-27)
+# =============================================================================
+#
+# These recipes mirror the operator-facing recipes in ``just/self-hosted/``
+# so we have cross-target parity by construction (see ADR section 1).
+# Today they print a "not yet implemented" notice and exit non-zero.
+# This makes the parity surface visible in ``just gcp --list`` and
+# lets cross-target parity tests work today.
+#
+# GCP recipes take an explicit stage (dev/staging/prod) — see ADR
+# section 4. This is the one intentional asymmetry between
+# ``just self-hosted`` (no stage) and ``just gcp`` (stage required).
+#
+# The full implementations land in later ADR phases:
+#   - doctor: Phase 1 (target-aware health diagnostic)
+#   - smoke-test: Phase 2 (end-to-end demo workflow)
+#   - backup, restore: Phase 3 (Cloud SQL export + GCS export)
+#   - validators: Phase 5 (Cloud Run Job inventory)
+#   - collect-support-bundle: Phase 6 (redacted support archive)
+
+[private]
+_phase0-stub recipe stage:
+    #!/usr/bin/env bash
+    echo "just gcp {{recipe}} {{stage}}: not yet implemented (Phase 0 stub)." >&2
+    echo "" >&2
+    echo "Implementation lands in a later phase per ADR-2026-04-27" >&2
+    echo "(Boring Self-Hosting and Operator Experience)." >&2
+    exit 64
+
+# Health diagnostic — same JSON schema as ``just self-hosted doctor``,
+# with GCP-specific checks (Cloud Run revision, Cloud SQL instance,
+# Cloud Tasks queue, GCS IAM bindings).
+#
+# Phase 1 Session 1 status: ``check_validibot`` itself is target-aware
+# and emits the v1 JSON schema, but the GCP-specific wiring (running it
+# remotely via Cloud Run job, mapping output back) lands in Session 2.
+# For now, this recipe explains how to invoke it manually.
+doctor stage *args:
+    @echo "GCP doctor wiring lands in Phase 1 Session 2."
+    @echo ""
+    @echo "For now, run check_validibot manually against the deployed service:"
+    @echo ""
+    @echo "  gcloud run jobs execute validibot-doctor-{{stage}} \\"
+    @echo "    --region <region> --project <project>"
+    @echo ""
+    @echo "Or shell into a worker and run:"
+    @echo ""
+    @echo "  python manage.py check_validibot --target gcp --stage {{stage}} {{args}}"
+    @echo ""
+    @echo "The check_validibot command itself is fully target-aware as of"
+    @echo "Phase 1 Session 1 — see validibot/core/management/commands/check_validibot.py"
+    @echo "and docs/operations/self-hosting/doctor-check-ids.md."
+    @exit 64
+
+# Show recent ERROR / EXCEPTION lines from Cloud Run logs.
+#
+# Phase 1 Session 1 stub. Session 2 wires this up to gcloud logging.
+errors-since stage duration="1h":
+    @just gcp _phase0-stub errors-since {{stage}}
+
+# End-to-end smoke test — creates demo data, runs a small validation,
+# exports an evidence bundle, cleans up.
+smoke-test stage:
+    @just gcp _phase0-stub smoke-test {{stage}}
+
+# Application-level backup — Cloud SQL export + GCS media export +
+# manifest with Validibot version and migration state. Same schema as
+# self-hosted backup manifests.
+backup stage:
+    @just gcp _phase0-stub backup {{stage}}
+
+# Restore from a backup. Same path semantics as self-hosted restore.
+restore stage path="":
+    @just gcp _phase0-stub restore {{stage}}
+
+# Redacted support bundle. Substitutes Cloud Run logs, Cloud SQL
+# state, etc. for the self-hosted log sources, but keeps the same
+# schema and redaction rules.
+collect-support-bundle stage:
+    @just gcp _phase0-stub collect-support-bundle {{stage}}
+
+# Validator inventory — Cloud Run Job state and image digests.
+validators stage:
+    @just gcp _phase0-stub validators {{stage}}

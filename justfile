@@ -20,8 +20,8 @@
 #   │   └── mod.just      <- Google Cloud Platform deployment
 #   ├── aws/
 #   │   └── mod.just      <- AWS deployment (stub)
-#   └── docker-compose/
-#       └── mod.just      <- Docker Compose deployment
+#   └── self-hosted/
+#       └── mod.just      <- Self-hosted deployment (Docker Compose on a VM)
 #
 # USAGE
 # =====
@@ -38,7 +38,7 @@
 #   just gcp deploy prod          # Deploy to GCP production
 #   just gcp logs dev             # View GCP dev logs
 #   just aws deploy prod          # Deploy to AWS (not yet implemented)
-#   just docker-compose deploy    # Deploy Docker Compose production
+#   just self-hosted deploy       # Deploy a self-hosted instance (single VM)
 #
 # Platform modules use namespaced commands to avoid conflicts and make it
 # clear which platform you're operating on.
@@ -140,13 +140,21 @@ mod mcp 'just/mcp'
 # Status: Commands show "not implemented" message with implementation guidance
 mod aws 'just/aws'
 
-# Docker Compose production deployment
-# Usage: just docker-compose <command>
+# Self-hosted deployment (Docker Compose on a single VM)
+#
+# This is the customer-operated target — the same substrate as
+# ``just local`` but deployed to a customer's VM (DigitalOcean, AWS EC2,
+# Hetzner, on-prem, etc.) for production use. Self-hosted is single-stage
+# per VM (see ADR-2026-04-27 section 4); recipes do not take a stage
+# argument.
+#
+# Usage: just self-hosted <command>
 # Examples:
-#   just docker-compose deploy
-#   just docker-compose backup-db
-#   just docker-compose health-check
-mod docker-compose 'just/docker-compose'
+#   just self-hosted deploy
+#   just self-hosted doctor
+#   just self-hosted backup-db
+#   just self-hosted health-check
+mod self-hosted 'just/self-hosted'
 
 # Pro version local development (community + validibot-pro, no cloud layer)
 # Usage: just local-pro up
@@ -182,7 +190,7 @@ default:
     @echo "    just gcp mcp <command>         # MCP-only GCP ops (secrets, deploy, ...)"
     @echo "    just mcp <command>             # MCP operations (alias; also: local tests)"
     @echo "    just aws <command>             # AWS (not implemented)"
-    @echo "    just docker-compose <command>  # Docker Compose production"
+    @echo "    just self-hosted <command>     # Self-hosted (Docker Compose on a VM)"
     @echo ""
     @echo "Examples:"
     @echo "    just local up             # Start community dev stack"
@@ -207,7 +215,7 @@ default:
 # =============================================================================
 
 # Show deployment status for a platform and stage
-# Usage: just status gcp prod | just status docker-compose
+# Usage: just status gcp prod | just status self-hosted
 [no-cd]
 platform-status platform stage="":
     #!/usr/bin/env bash
@@ -219,15 +227,15 @@ platform-status platform stage="":
                 just gcp status {{stage}}
             fi
             ;;
-        docker-compose)
-            just docker-compose status
+        self-hosted)
+            just self-hosted status
             ;;
         aws)
             just aws status {{stage}}
             ;;
         *)
             echo "Unknown platform: {{platform}}"
-            echo "Supported: gcp, aws, docker-compose"
+            echo "Supported: gcp, aws, self-hosted"
             exit 1
             ;;
     esac

@@ -1,0 +1,275 @@
+# =============================================================================
+# Validibot — Self-Hosted Django Configuration
+# =============================================================================
+#
+# Copy this file to .envs/.production/.self-hosted/.django and fill in
+# values for your deployment. Also copy .postgres alongside.
+#
+# Self-hosted means a customer-operated single-VM deployment using
+# Docker Compose (typically DigitalOcean, AWS EC2, Hetzner, on-prem).
+# See ADR-2026-04-27 (Boring Self-Hosting and Operator Experience) and
+# docs/operations/self-hosting/overview.md.
+#
+# Sections (matching the ADR's eight groups):
+#
+#   1. REQUIRED                — change before every install
+#   2. URLs / SECURITY         — public URL, cookies, MFA, admin URL
+#   3. DATABASE / CACHE        — Redis (Postgres lives in .postgres)
+#   4. STORAGE                 — where uploaded files and evidence live
+#   5. EMAIL                   — outbound email provider
+#   6. VALIDATORS              — advanced (Docker) validator runner
+#   7. PRO / SIGNING           — package activation, signed credentials, MCP
+#   8. OPTIONAL TELEMETRY      — Sentry, opt-in usage reporting
+#
+# Group 8 is OFF by default. Validibot self-hosted does not phone home
+# for product analytics, license verification, or update checks unless
+# you turn it on. See docs/operations/self-hosting/overview.md for the
+# full list of outbound calls the default install makes.
+# =============================================================================
+
+
+# -- 1. REQUIRED ------------------------------------------------------------
+#
+# Pick the settings module that matches your edition:
+#   config.settings.production      — community only
+#   config.settings.production_pro  — community + validibot-pro (adds
+#                                     validibot_pro to INSTALLED_APPS, which
+#                                     activates Pro at import time)
+#
+# Both modules honour the same DJANGO_* and OIDC env vars in this file.
+DJANGO_SETTINGS_MODULE=config.settings.production
+DEPLOYMENT_TARGET=self_hosted
+
+# Django secret key. Generate a fresh one with:
+#
+#   python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+#
+# Treat this like a database password. Rotating invalidates all current
+# sessions and password-reset tokens.
+DJANGO_SECRET_KEY=your-secret-key-here-change-this
+
+# Comma-separated list of host headers Django will accept. Add every
+# public hostname that resolves to this server.
+DJANGO_ALLOWED_HOSTS=validibot.example.com,localhost
+
+# Initial superuser created on first run. Change the password before
+# exposing the install to the network.
+SUPERUSER_USERNAME=admin
+SUPERUSER_PASSWORD=change-this-password
+SUPERUSER_EMAIL=admin@example.com
+SUPERUSER_NAME=Admin User
+
+
+# -- 2. URLs / SECURITY -----------------------------------------------------
+#
+# Public origin used for emails, signed credentials, and OIDC discovery.
+# Must be reachable from end users.
+SITE_URL=https://validibot.example.com
+
+# SSL redirect — leave on unless your reverse proxy already terminates
+# TLS AND strips the headers Django relies on for proxy detection.
+DJANGO_SECURE_SSL_REDIRECT=true
+
+# Rename the admin URL to a non-obvious path. This raises the bar for
+# automated /admin/ login scrapers. Generate with:
+#
+#   python -c "import secrets; print(secrets.token_urlsafe(16) + '/')"
+DJANGO_ADMIN_URL=admin/
+
+# DJANGO_ADMIN_FORCE_ALLAUTH routes Django's built-in /admin/login/
+# view through the django-allauth flow, so admin sign-in inherits
+# allauth's rate limiting, session rotation, and MFA enforcement on
+# users who have enrolled a second factor. Without this flag, admin
+# logs in via a plain Django form that bypasses allauth entirely.
+#
+# Leave True in production. Flip to False ONLY as a break-glass when
+# allauth itself is broken. A container restart is required for the
+# change to take effect — see docs/dev_docs/how-to/configure-mfa.md.
+DJANGO_ADMIN_FORCE_ALLAUTH=True
+
+# Multi-factor authentication. MFA_TOTP_ISSUER is the label shown in
+# users' authenticator apps. Use something like "Acme Corp Validibot
+# Self-Hosted" so multiple Validibot instances on the same phone are
+# distinguishable.
+MFA_TOTP_ISSUER=your-mfa-issuer-name
+
+# DJANGO_MFA_ENCRYPTION_KEY is REQUIRED in production — the app
+# refuses to start without it. TOTP secrets and recovery-code seeds
+# are stored encrypted in the database via Fernet (AES-128-CBC +
+# HMAC-SHA256). Without encryption, database read access would let an
+# attacker compute any enrolled user's second-factor codes.
+#
+# Generate a fresh key with:
+#
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+#
+# DO NOT reuse the dev key. DO NOT commit a real key to git.
+# See docs/dev_docs/how-to/configure-mfa.md for rotation procedure.
+DJANGO_MFA_ENCRYPTION_KEY=replace-with-generated-fernet-key
+
+# Worker API shared secret. The web container uses this to authenticate
+# to internal worker endpoints over the Compose network. Without it an
+# SSRF in the web tier could reach the worker's internal API.
+#
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+WORKER_API_KEY=change-this-to-a-random-secret
+
+# Registration and login feature toggles
+DJANGO_ACCOUNT_ALLOW_REGISTRATION=true
+DJANGO_ACCOUNT_ALLOW_LOGIN=true
+
+
+# -- 3. DATABASE / CACHE ----------------------------------------------------
+#
+# DATABASE_URL is automatically constructed by the entrypoint script
+# from POSTGRES_* values in .envs/.production/.self-hosted/.postgres.
+# No need to set it here.
+
+REDIS_URL=redis://redis:6379/0
+
+# Cache key prefix — only necessary when this Redis instance is
+# shared with another environment. Django prepends this to every cache
+# key, so shared-instance deployments can't silently leak state
+# between environments. Safe to leave unset for single-tenant Redis
+# (the default self-hosted setup); Django warns on boot if it looks
+# risky.
+#DJANGO_CACHE_KEY_PREFIX=prod
+
+
+# -- 4. STORAGE -------------------------------------------------------------
+#
+# By default, files are stored on the local filesystem inside the web
+# and worker containers (mounted from a named Docker volume).
+# Optionally configure cloud storage if the customer already operates
+# S3 or GCS:
+#
+# For AWS S3:
+#DATA_STORAGE_BACKEND=s3
+#STORAGE_BUCKET=your-bucket-name
+#AWS_S3_REGION_NAME=us-east-1
+#AWS_ACCESS_KEY_ID=your-access-key
+#AWS_SECRET_ACCESS_KEY=your-secret-key
+#
+# For Google Cloud Storage:
+#DATA_STORAGE_BACKEND=gcs
+#STORAGE_BUCKET=your-bucket-name
+#GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+
+
+# -- 5. EMAIL ---------------------------------------------------------------
+#
+# Without an email provider configured, Validibot logs emails to
+# stdout. That's fine for evaluation. Configure ONE of the following
+# providers for real users:
+
+# Postmark (recommended):
+#POSTMARK_SERVER_TOKEN=your-postmark-server-token
+
+# Mailgun:
+#MAILGUN_API_KEY=your-mailgun-api-key
+#MAILGUN_SENDER_DOMAIN=mg.yourdomain.com
+
+# SendGrid:
+#SENDGRID_API_KEY=your-sendgrid-api-key
+
+# Generic SMTP relay:
+#EMAIL_HOST=smtp.example.com
+#EMAIL_PORT=587
+#EMAIL_USE_TLS=true
+#EMAIL_HOST_USER=your-smtp-user
+#EMAIL_HOST_PASSWORD=your-smtp-password
+
+
+# -- 6. VALIDATORS ----------------------------------------------------------
+#
+# Advanced validators (EnergyPlus, FMU, custom) run as run-scoped
+# Docker containers spawned by the worker. The worker needs access to
+# the host Docker socket — see docker-compose.production.yml.
+
+# Per-validator container resource limits. Tune based on the simulation
+# workloads your operators expect.
+VALIDATOR_MEMORY_LIMIT=4g
+VALIDATOR_CPU_LIMIT=2.0
+
+
+# -- 7. PRO / SIGNING -------------------------------------------------------
+#
+# Pro is activated by installing the validibot-pro package into the
+# image AND switching DJANGO_SETTINGS_MODULE above to
+# config.settings.production_pro. The community wheel does not include
+# Pro features.
+#
+# To enable Pro:
+#   1. Buy a license at https://validibot.com — receive a private
+#      package-index URL and an exact wheel reference.
+#   2. Set VALIDIBOT_COMMERCIAL_PACKAGE and VALIDIBOT_PRIVATE_INDEX_URL
+#      in the sibling .build file.
+#   3. Switch DJANGO_SETTINGS_MODULE above to production_pro.
+#   4. Run ``just self-hosted deploy`` to rebuild the image and restart.
+#
+# The runtime never phones home to verify the license. Package-index
+# authentication is the enforcement point at install/update time.
+# See docs/operations/self-hosting/overview.md for the full Pro
+# activation walkthrough.
+
+# Signed credentials (Pro). Create a private key on the host outside
+# version control:
+#
+#   mkdir -p .envs/.production/.self-hosted/keys
+#   openssl ecparam -name prime256v1 -genkey -noout \
+#     -out .envs/.production/.self-hosted/keys/credential-signing.pem
+#   chmod 600 .envs/.production/.self-hosted/keys/credential-signing.pem
+#
+# docker-compose.production.yml mounts that directory into the web
+# and worker containers at /run/validibot-keys.
+SIGNING_KEY_PATH=
+# Example: SIGNING_KEY_PATH=/run/validibot-keys/credential-signing.pem
+
+# Optional explicit issuer URL for credential payloads. Leave empty
+# to reuse SITE_URL.
+CREDENTIAL_ISSUER_URL=
+
+# Override only if needed. ES256 is currently the only supported
+# algorithm.
+SIGNING_ALGORITHM=ES256
+
+# MCP helper API service-to-service auth. Required if the MCP server
+# is enabled (ENABLE_MCP_SERVER=true in .build). Generate with:
+#
+#   python -c "import secrets; print(secrets.token_urlsafe(32))"
+#
+# MUST match VALIDIBOT_MCP_SERVICE_KEY in
+# .envs/.production/.self-hosted/.mcp on the MCP side. Without this,
+# every MCP tool call 401s at the Django helper API.
+VALIDIBOT_MCP_SERVICE_KEY=replace-with-a-long-random-string
+
+# MCP OAuth (required for Claude Desktop support). Leave commented to
+# disable the OAuth path — the legacy API-token flow still works.
+#
+# IDP_OIDC_MCP_SERVER_CLIENT_SECRET — confidential client secret.
+#IDP_OIDC_MCP_SERVER_CLIENT_SECRET=
+#
+# IDP_OIDC_PRIVATE_KEY_B64 — base64-encoded PEM. Generate with:
+#   openssl genrsa -out oidc-key.pem 2048 \
+#     && base64 < oidc-key.pem | tr -d '\n'
+#IDP_OIDC_PRIVATE_KEY_B64=
+#
+# VALIDIBOT_MCP_BASE_URL — public URL of the MCP server. The OIDC
+# audience and confidential redirect URI default to {BASE}/mcp and
+# {BASE}/auth/callback respectively, so setting this one var lines up
+# both Django and the MCP container.
+#VALIDIBOT_MCP_BASE_URL=https://mcp.your-domain.example
+
+
+# -- 8. OPTIONAL TELEMETRY (off by default) --------------------------------
+#
+# Self-hosted Validibot does not send telemetry by default. Uncomment
+# to opt in. None of these are required for the application to
+# validate, sign, back up, restore, or export evidence.
+
+# Sentry error reporting. Uses the operator's own DSN; never sent to
+# Validibot infrastructure.
+#SENTRY_DSN=https://your-sentry-dsn
+
+# Future opt-in usage reporting. Reserved for support sessions.
+#VALIDIBOT_TELEMETRY=off

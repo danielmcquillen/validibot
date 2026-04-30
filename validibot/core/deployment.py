@@ -43,7 +43,7 @@ def get_deployment_target() -> DeploymentTarget:
     if not deployment_target:
         msg = (
             "DEPLOYMENT_TARGET setting is required. "
-            "Valid values: test, local_docker_compose, docker_compose, gcp, aws. "
+            "Valid values: test, local_docker_compose, self_hosted, gcp, aws. "
             "Set this in your settings file or DEPLOYMENT_TARGET environment variable."
         )
         raise ValueError(msg)

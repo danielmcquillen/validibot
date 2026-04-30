@@ -207,23 +207,23 @@ Commands are prefixed with `docker-compose`:
 just --list docker-compose
 
 # Deployment
-just docker-compose bootstrap    # First-time self-host install
-just docker-compose deploy       # Build and start all services
-just docker-compose update       # Full update with backup
+just self-hosted bootstrap    # First-time self-host install
+just self-hosted deploy       # Build and start all services
+just self-hosted update       # Full update with backup
 
 # Operations
-just docker-compose status       # Check container status
-just docker-compose logs         # Follow logs
-just docker-compose health-check # Verify services are running
+just self-hosted status       # Check container status
+just self-hosted logs         # Follow logs
+just self-hosted health-check # Verify services are running
 
 # Database
-just docker-compose migrate              # Run migrations
-just docker-compose backup-db            # Create database backup
-just docker-compose restore-db file.gz   # Restore from backup
+just self-hosted migrate              # Run migrations
+just self-hosted backup-db            # Create database backup
+just self-hosted restore-db file.gz   # Restore from backup
 
 # Maintenance
-just docker-compose maintenance-on       # Enter maintenance mode
-just docker-compose maintenance-off      # Exit maintenance mode
+just self-hosted maintenance-on       # Enter maintenance mode
+just self-hosted maintenance-off      # Exit maintenance mode
 ```
 
 ### AWS (Stub)
@@ -265,7 +265,7 @@ just gcp deploy-all prod
 just gcp deploy prod
 
 # Docker Compose: Single command update
-just docker-compose update
+just self-hosted update
 ```
 
 Migrations run automatically as part of `deploy-all` and `deploy`
@@ -281,7 +281,7 @@ just gcp logs prod
 just gcp logs-follow prod
 
 # Docker Compose: Follow container logs
-just docker-compose logs
+just self-hosted logs
 ```
 
 ### Running Django Commands
@@ -295,7 +295,7 @@ just local manage "shell_plus"
 just gcp management-cmd prod "createsuperuser"
 
 # Docker Compose
-just docker-compose manage "createsuperuser"
+just self-hosted manage "createsuperuser"
 ```
 
 ### Checking Status
@@ -308,7 +308,7 @@ just gcp status-all
 just gcp status dev
 
 # Docker Compose
-just docker-compose health-check
+just self-hosted health-check
 ```
 
 ## Tips & Tricks

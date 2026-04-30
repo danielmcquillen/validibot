@@ -44,7 +44,7 @@ def get_task_dispatcher() -> TaskDispatcher:
         DeploymentTarget.TEST: TestDispatcher,
         # Uses Celery via Redis
         DeploymentTarget.LOCAL_DOCKER_COMPOSE: CeleryDispatcher,
-        DeploymentTarget.DOCKER_COMPOSE: CeleryDispatcher,
+        DeploymentTarget.SELF_HOSTED: CeleryDispatcher,
         DeploymentTarget.GCP: GoogleCloudTasksDispatcher,
         # AWS not yet implemented
     }

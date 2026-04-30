@@ -6,7 +6,7 @@ scheduled-task triggers — are invoked by infrastructure (task queues,
 schedulers, validator sidecars), never by end users. What counts as
 "trusted infrastructure" depends on ``DEPLOYMENT_TARGET``:
 
-``TEST`` / ``LOCAL_DOCKER_COMPOSE`` / ``DOCKER_COMPOSE``
+``TEST`` / ``LOCAL_DOCKER_COMPOSE`` / ``SELF_HOSTED``
     Caller is the Django test client or a Celery worker.
     Verification: :class:`WorkerKeyAuthentication` (shared secret).
 
@@ -377,6 +377,6 @@ def get_worker_auth_classes() -> list[type[BaseAuthentication]]:
     if target == DeploymentTarget.GCP:
         return [CloudTasksOIDCAuthentication]
 
-    # TEST / LOCAL_DOCKER_COMPOSE / DOCKER_COMPOSE / AWS → shared secret.
+    # TEST / LOCAL_DOCKER_COMPOSE / SELF_HOSTED / AWS → shared secret.
     # This preserves the exact pre-fix behaviour for every non-GCP path.
     return [WorkerKeyAuthentication]

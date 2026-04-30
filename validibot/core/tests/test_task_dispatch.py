@@ -42,9 +42,15 @@ class TaskDispatcherRegistryTests(TestCase):
         self.assertEqual(dispatcher.dispatcher_name, "celery")
         self.assertFalse(dispatcher.is_sync)
 
-    @override_settings(DEPLOYMENT_TARGET="docker_compose")
-    def test_docker_compose_deployment_target(self):
-        """DEPLOYMENT_TARGET=docker_compose should use CeleryDispatcher."""
+    @override_settings(DEPLOYMENT_TARGET="self_hosted")
+    def test_self_hosted_deployment_target(self):
+        """DEPLOYMENT_TARGET=self_hosted should use CeleryDispatcher.
+
+        Self-hosted (renamed from the historical ``docker_compose``)
+        is the customer-operated single-VM Compose deployment target.
+        See ADR-2026-04-27 (Boring Self-Hosting and Operator Experience)
+        for the audience-named taxonomy.
+        """
         dispatcher = get_task_dispatcher()
         self.assertEqual(dispatcher.dispatcher_name, "celery")
         self.assertFalse(dispatcher.is_sync)

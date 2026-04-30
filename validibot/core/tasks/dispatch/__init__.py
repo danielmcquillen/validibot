@@ -55,7 +55,7 @@ The dispatcher is selected based on the `DEPLOYMENT_TARGET` setting:
 
 - `"test"` → TestDispatcher (synchronous inline)
 - `"local_docker_compose"` → CeleryDispatcher (Redis queue)
-- `"docker_compose"` → CeleryDispatcher (Redis queue)
+- `"self_hosted"` → CeleryDispatcher (Redis queue)
 - `"gcp"` → GoogleCloudTasksDispatcher (Cloud Tasks)
 - `"aws"` → Not yet implemented
 

@@ -10,7 +10,7 @@ There are exactly four settings files:
 |------|---------|
 | `base.py` | Shared settings inherited by all environments |
 | `local.py` | Local development (DEBUG=True, console email, etc.) |
-| `production.py` | All production deployments (GCP, AWS, Docker Compose) |
+| `production.py` | All production deployments (GCP, AWS, self-hosted) |
 | `test.py` | Test runner configuration |
 
 ## Local Development
@@ -37,17 +37,20 @@ environment-specific settings module instead.
 The `production.py` file handles **all** production deployment targets. Platform-specific
 configuration is controlled via the `DEPLOYMENT_TARGET` environment variable:
 
-| `DEPLOYMENT_TARGET` | Infrastructure |
-|---------------------|----------------|
-| `docker_compose` | Docker Compose production Docker Compose (Celery, Docker socket, local/S3/GCS storage) |
-| `gcp` | Google Cloud Platform (Cloud Run, Cloud Tasks, GCS) |
-| `aws` | Amazon Web Services (future: ECS/Batch, SQS, S3) |
+| `DEPLOYMENT_TARGET` | Audience | Infrastructure |
+|---------------------|----------|----------------|
+| `self_hosted` | Customer-operated | Single-VM Docker Compose (Celery, Docker socket, local/S3/GCS storage) |
+| `gcp` | Validibot's hosted offering | Google Cloud Platform (Cloud Run, Cloud Tasks, GCS) |
+| `aws` | Future | Amazon Web Services (future: ECS/Batch, SQS, S3) |
+
+See ADR-2026-04-27 (Boring Self-Hosting and Operator Experience) for
+the audience-named taxonomy.
 
 The settings file reads `DEPLOYMENT_TARGET` and branches accordingly to configure:
 
 - Storage backends (local filesystem, GCS, or S3)
 - Validator runner (Docker socket, Cloud Run Jobs, or AWS Batch)
-- Task queue (Celery for docker_compose, Cloud Tasks for GCP)
+- Task queue (Celery for self_hosted, Cloud Tasks for GCP)
 - Platform-specific integrations
 
 ## Environment Files
@@ -62,7 +65,7 @@ Platform-specific values live in environment files, not in separate settings mod
 │   ├── .django
 │   └── .postgres
 └── .production/
-    ├── .docker-compose/
+    ├── .self-hosted/
     │   ├── .build
     │   ├── .django
     │   └── .postgres
@@ -81,9 +84,9 @@ Platform-specific values live in environment files, not in separate settings mod
 │   ├── .django
 │   └── .postgres
 └── .production/
-    ├── .docker-compose/
+    ├── .self-hosted/
     │   ├── .build       # optional commercial package build settings only
-    │   ├── .django          # DEPLOYMENT_TARGET=docker_compose
+    │   ├── .django          # DEPLOYMENT_TARGET=self_hosted
     │   └── .postgres
     ├── .google-cloud/
     │   └── .django          # DEPLOYMENT_TARGET=gcp
@@ -97,7 +100,7 @@ Each production env file must set:
 
 ```bash
 DJANGO_SETTINGS_MODULE=config.settings.production
-DEPLOYMENT_TARGET=docker_compose  # or gcp, aws
+DEPLOYMENT_TARGET=self_hosted  # or gcp, aws
 ```
 
 ## Why This Structure?

@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# bootstrap-digitalocean — DigitalOcean-tuned wrapper around bootstrap-host.
+#
+# This is a STUB. Phase 0 of ADR-2026-04-27 ships the script's shape and
+# --help text; the actual implementation lands in a later phase.
+#
+# When implemented, this script will detect a DigitalOcean Droplet
+# (via the metadata service at 169.254.169.254), confirm the OS is
+# Ubuntu LTS, look for an attached block-storage volume, and then
+# delegate to bootstrap-host with the right defaults:
+#
+#   - --data-root /srv/validibot (matches the recommended volume mount)
+#   - --skip-firewall (DO Cloud Firewall is configured at the control
+#     panel, not on the host — see the DigitalOcean tutorial)
+#
+# It also offers to install the optional DigitalOcean monitoring agent.
+
+set -euo pipefail
+
+PROG=$(basename "$0")
+
+usage() {
+    cat <<EOF
+${PROG} — DigitalOcean-tuned bootstrap for Validibot self-hosting (STUB)
+
+USAGE:
+    ${PROG} [OPTIONS]
+
+OPTIONS:
+    --data-root PATH        Where Validibot data and evidence will live.
+                            Default: /srv/validibot (recommended for
+                            paid pilots that have an attached volume).
+    --install-monitoring    Install DigitalOcean's Monitoring agent.
+                            Default: do not install. The agent reports
+                            host metrics back to DO; some operators may
+                            prefer to keep telemetry off.
+    -h, --help              Show this help and exit.
+
+WHAT IT DOES:
+    Confirms the host looks like a DigitalOcean Droplet (Ubuntu LTS,
+    DO metadata service reachable). Detects an attached block-storage
+    volume mounted at /srv/validibot. Delegates host setup to
+    \`bootstrap-host\` with DigitalOcean-aware defaults. Optionally
+    installs the DO monitoring agent.
+
+WHEN TO USE:
+    Use this on the freshly-created Droplet, after attaching your
+    block-storage volume but before installing Validibot.
+
+NEXT STEPS:
+    See docs/operations/self-hosting/providers/digitalocean.md for the
+    full ten-step tutorial.
+
+STATUS:
+    Phase 0 stub. Implementation lands in a later phase per
+    ADR-2026-04-27 (Boring Self-Hosting and Operator Experience).
+EOF
+}
+
+case "${1:-}" in
+    -h|--help|"")
+        usage
+        exit 0
+        ;;
+esac
+
+echo "${PROG}: not yet implemented (Phase 0 stub)." >&2
+echo "Run \`${PROG} --help\` for the planned interface." >&2
+exit 64

@@ -267,13 +267,15 @@ class TestBackendFactory:
         assert backend.is_async is False
 
     def test_deployment_target_docker_compose_uses_docker(self, settings):
-        """``DEPLOYMENT_TARGET=docker_compose`` should also select Docker.
+        """``DEPLOYMENT_TARGET=self_hosted`` should also select Docker.
 
-        This is the explicit name used in ``docker-compose.yml`` deployments
-        (as opposed to the shorthand ``test``).
+        Self-hosted (renamed from the historical ``docker_compose``)
+        is the customer-operated single-VM Compose deployment that
+        uses the same Docker-socket validator runner as local dev.
+        See ADR-2026-04-27 for the rename rationale.
         """
         settings.VALIDATOR_RUNNER = None
-        settings.DEPLOYMENT_TARGET = "docker_compose"
+        settings.DEPLOYMENT_TARGET = "self_hosted"
 
         backend = get_execution_backend()
 

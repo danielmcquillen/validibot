@@ -179,7 +179,7 @@ else:
 ### Configuration
 
 ```python
-# config/settings/production.py (when DEPLOYMENT_TARGET=docker_compose)
+# config/settings/production.py (when DEPLOYMENT_TARGET=self_hosted)
 VALIDATOR_RUNNER = "docker"
 VALIDATOR_RUNNER_OPTIONS = {
     "memory_limit": "4g",
@@ -292,7 +292,7 @@ gcloud auth configure-docker
 Configure the validator image registry in your environment:
 
 ```bash
-# .envs/.production/.docker-compose/.django
+# .envs/.production/.self-hosted/.django
 VALIDATOR_IMAGE_REGISTRY=ghcr.io/your-org
 VALIDATOR_IMAGE_TAG=v1.2.0
 ```

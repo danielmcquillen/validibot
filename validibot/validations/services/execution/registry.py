@@ -63,7 +63,7 @@ def get_execution_backend() -> ExecutionBackend:
         backends: dict[DeploymentTarget, type[ExecutionBackend]] = {
             DeploymentTarget.TEST: DockerComposeExecutionBackend,
             DeploymentTarget.LOCAL_DOCKER_COMPOSE: DockerComposeExecutionBackend,
-            DeploymentTarget.DOCKER_COMPOSE: DockerComposeExecutionBackend,
+            DeploymentTarget.SELF_HOSTED: DockerComposeExecutionBackend,
             DeploymentTarget.GCP: GCPExecutionBackend,
             # AWS not yet implemented
         }

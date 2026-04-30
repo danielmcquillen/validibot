@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# bootstrap-host — prepare a fresh Linux VM for Validibot self-hosting.
+#
+# This is a STUB. Phase 0 of ADR-2026-04-27 ships the script's shape and
+# --help text; the actual implementation lands in a later phase.
+#
+# When implemented, this script will:
+#
+#   1. Install Docker Engine + Docker Compose plugin from the official
+#      Docker repository (NOT from the OS package manager — those
+#      versions tend to lag and conflict with the Compose plugin).
+#   2. Create a non-root ``validibot`` user that owns the data volume
+#      and runs Compose without sudo.
+#   3. Create /srv/validibot/data with the right permissions.
+#   4. Configure the firewall to allow 22, 80, 443 only.
+#   5. Print a summary of what it changed and the next command to run.
+#
+# Idempotent: safe to re-run. Detects when each step is already done
+# and skips it.
+
+set -euo pipefail
+
+PROG=$(basename "$0")
+
+usage() {
+    cat <<EOF
+${PROG} — prepare a fresh Linux VM for Validibot self-hosting (STUB)
+
+USAGE:
+    ${PROG} [OPTIONS]
+
+OPTIONS:
+    --data-root PATH    Where Validibot data and evidence will live.
+                        Default: /srv/validibot
+    --user USER         Username for the validibot system user.
+                        Default: validibot
+    --skip-firewall     Don't touch firewall rules (assumes you'll
+                        configure your hosting provider's cloud
+                        firewall instead).
+    -h, --help          Show this help and exit.
+
+WHAT IT DOES:
+    Installs Docker, creates the validibot system user, creates the
+    data directory with correct permissions, and (optionally) configures
+    a basic ufw firewall. Idempotent — safe to re-run on an already-
+    bootstrapped host.
+
+NEXT STEPS:
+    After bootstrap, configure your env files and run:
+
+        cp .envs.example/.production/.self-hosted/.django \\
+           .envs/.production/.self-hosted/.django
+        cp .envs.example/.production/.self-hosted/.postgres \\
+           .envs/.production/.self-hosted/.postgres
+        \$EDITOR .envs/.production/.self-hosted/.django
+        just self-hosted check-env
+        just self-hosted bootstrap
+
+STATUS:
+    Phase 0 stub. Implementation lands in a later phase per
+    ADR-2026-04-27 (Boring Self-Hosting and Operator Experience).
+
+SEE ALSO:
+    docs/operations/self-hosting/overview.md
+    docs/operations/self-hosting/providers/digitalocean.md
+EOF
+}
+
+case "${1:-}" in
+    -h|--help|"")
+        usage
+        exit 0
+        ;;
+esac
+
+echo "${PROG}: not yet implemented (Phase 0 stub)." >&2
+echo "Run \`${PROG} --help\` for the planned interface." >&2
+exit 64

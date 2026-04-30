@@ -10,14 +10,15 @@ def should_run_startup_cleanup() -> bool:
     """
     Determine if startup container cleanup should run.
 
-    Only runs in Celery worker processes on Docker Compose deployments.
-    Skips in web servers, management commands, and tests.
+    Only runs in Celery worker processes on Compose-based deployments
+    (self-hosted production or local-dev). Skips in web servers,
+    management commands, and tests.
     """
     from django.conf import settings
 
-    # Only run on Docker Compose deployments
+    # Only run on Compose-based deployments
     deployment_target = getattr(settings, "DEPLOYMENT_TARGET", "")
-    if deployment_target not in ("docker_compose", "local_docker_compose"):
+    if deployment_target not in ("self_hosted", "local_docker_compose"):
         return False
 
     # Check if we're in a Celery worker process

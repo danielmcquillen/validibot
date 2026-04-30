@@ -1,6 +1,6 @@
-# PostgreSQL (Docker Compose Production)
+# PostgreSQL (Self-Hosted)
 # ------------------------------------------------------------------------------
-# Copy this file to .envs/.production/.docker-compose/.postgres
+# Copy this file to .envs/.production/.self-hosted/.postgres
 #
 # These credentials are used by both the postgres container (to create the database
 # and user on first run) and the django container (to connect to the database).

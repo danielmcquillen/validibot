@@ -13,7 +13,7 @@ Most self-hosters already have a reverse proxy in their infrastructure (Traefik 
 Make sure Validibot is running and accessible on its default port:
 
 ```bash
-just docker-compose bootstrap
+just self-hosted bootstrap
 curl http://localhost:8000/health/
 ```
 
@@ -31,7 +31,7 @@ Whichever proxy you choose, ensure:
 Update your Validibot environment variables:
 
 ```bash
-# .envs/.production/.docker-compose/.django
+# .envs/.production/.self-hosted/.django
 DJANGO_ALLOWED_HOSTS=validibot.example.com
 SITE_URL=https://validibot.example.com
 DJANGO_SECURE_SSL_REDIRECT=False  # Proxy handles TLS
@@ -116,7 +116,7 @@ Run both compose files:
 
 ```bash
 # Start Validibot
-just docker-compose bootstrap
+just self-hosted bootstrap
 
 # Start Caddy (after the validibot network exists)
 VALIDIBOT_DOMAIN=validibot.example.com docker compose -f docker-compose.caddy.yml up -d

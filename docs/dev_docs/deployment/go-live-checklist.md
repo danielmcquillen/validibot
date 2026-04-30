@@ -165,13 +165,17 @@ Choose one of the two approaches below. See the [deployment guide](../google_clo
   python manage.py check --deploy
   ```
 
-- [ ] **Run Validibot's health check** to verify all components
+- [ ] **Run Validibot's doctor command** to verify all components
 
   ```bash
+  # Self-hosted (run on the VM):
+  just self-hosted doctor --verbose
+
+  # Or, for the underlying management command:
   python manage.py check_validibot --verbose
   ```
 
-  This checks database, migrations, cache, storage, site configuration, roles/permissions, validators, background tasks, Docker, email, and security settings. See [Post-Deployment Verification](./post-deployment-verification.md) for details.
+  This checks database, migrations, cache, storage, site configuration, roles/permissions, validators, background tasks, Docker, email, and security settings. Each finding includes a stable check ID (e.g. `VB101`) that maps to a documented fix in [doctor-check-ids.md](../../operations/self-hosting/doctor-check-ids.md). See [Post-Deployment Verification](./post-deployment-verification.md) for details.
 
 - [ ] **Verify `DEBUG=False`** in production
 
@@ -203,13 +207,15 @@ Choose one of the two approaches below. See the [deployment guide](../google_clo
 
   This runs smoke tests to verify critical functionality. See [Post-Deployment Verification](./post-deployment-verification.md) for details.
 
-- [ ] **Run health check and address any warnings**
+- [ ] **Run doctor and address any warnings**
 
   ```bash
-  python manage.py check_validibot --verbose
+  just self-hosted doctor --verbose --strict
   ```
 
-  Use `--fix` to automatically resolve fixable issues (like missing default roles).
+  Use `--strict` to fail on warnings (good for CI). Use `--fix` (via
+  the underlying `python manage.py check_validibot --fix`) to
+  automatically resolve fixable issues like missing default roles.
 
 - [ ] **Monitor error rates** for first 24 hours
 

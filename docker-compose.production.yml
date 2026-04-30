@@ -1,16 +1,27 @@
-# Validibot Production Docker Compose
+# Validibot self-hosted Compose stack
 #
-# This compose file runs Validibot in a production Docker Compose environment.
-# Suitable for any cloud provider, VPS, or on-premises infrastructure.
+# This compose file runs Validibot in a customer-operated single-VM
+# deployment using Docker Compose — typically on DigitalOcean, AWS EC2,
+# Hetzner, or on-prem. See ADR-2026-04-27 (Boring Self-Hosting and
+# Operator Experience) for the full operator experience.
 #
 # Usage:
-#   1. Copy .envs.example/.production/.docker-compose/.django to .envs/.production/.docker-compose/.django
-#   2. Copy .envs.example/.production/.docker-compose/.postgres to .envs/.production/.docker-compose/.postgres
+#   1. Copy .envs.example/.production/.self-hosted/.django to .envs/.production/.self-hosted/.django
+#   2. Copy .envs.example/.production/.self-hosted/.postgres to .envs/.production/.self-hosted/.postgres
 #   3. Edit the env files with your configuration
-#   4. First install: just docker-compose bootstrap
-#   5. Later updates: just docker-compose deploy
+#   4. First install: just self-hosted bootstrap
+#   5. Later updates: just self-hosted deploy
 #
-# For SSL/HTTPS, place this behind a reverse proxy (nginx, Traefik, Caddy).
+# For SSL/HTTPS, place this behind a reverse proxy. The Compose stack
+# includes an opt-in Caddy service via the ``caddy`` profile (off by
+# default — see the caddy service below). If you already run nginx,
+# Traefik, Cloudflare Tunnel, or your hosting provider's load balancer,
+# leave the caddy profile off and wire your existing proxy to the
+# ``web`` service on port 8000.
+#
+# To enable bundled Caddy (auto-TLS via Let's Encrypt):
+#
+#   COMPOSE_PROFILES=caddy just self-hosted deploy
 #
 # Architecture:
 #   - web: Main web application (Gunicorn)
@@ -18,6 +29,8 @@
 #   - scheduler: Periodic task scheduler (Celery Beat)
 #   - postgres: Database
 #   - redis: Task queue broker
+#   - caddy: (profile: caddy) optional reverse proxy with auto-TLS
+#   - mcp: (profile: mcp) optional FastMCP server (Pro feature)
 #
 # Advanced validators run as sibling containers via Docker socket.
 
@@ -26,6 +39,8 @@ volumes:
   validibot_postgres_data:
   validibot_postgres_backups:
   validibot_redis_data:
+  caddy_data:             # Caddy's auto-issued TLS certs (used only when the caddy profile is on)
+  caddy_config:           # Caddy's runtime config
 
 networks:
   validibot:
@@ -49,17 +64,17 @@ services:
     volumes:
       # Persistent storage for files
       - validibot_storage:/app/storage
-      - ./.envs/.production/.docker-compose/keys:/run/validibot-keys:ro
+      - ./.envs/.production/.self-hosted/keys:/run/validibot-keys:ro
     env_file:
-      - .envs/.production/.docker-compose/.django
-      - .envs/.production/.docker-compose/.postgres
+      - .envs/.production/.self-hosted/.django
+      - .envs/.production/.self-hosted/.postgres
     environment:
       # Defaults to community production settings. Self-hosted Pro
       # operators override this to config.settings.production_pro in
-      # their .envs/.production/.docker-compose/.django to activate
+      # their .envs/.production/.self-hosted/.django to activate
       # the Pro app + license.
       - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
-      # Configure advanced validator runner for Docker Compose
+      # Configure advanced validator runner for the self-hosted stack
       - VALIDATOR_RUNNER=docker
       # Advanced validators run with no network by default (most secure)
       # Uncomment to enable network access if validators need external URLs:
@@ -80,7 +95,7 @@ services:
 
   worker:
     # Background task processor (validation execution, etc.)
-    # For Docker Compose: Celery worker pulling from Redis
+    # For self-hosted: Celery worker pulling from Redis
     <<: *django
     depends_on:
       web:
@@ -89,12 +104,12 @@ services:
     command: ["celery", "-A", "config", "worker", "--loglevel=info", "--concurrency=1"]
     volumes:
       - validibot_storage:/app/storage
-      - ./.envs/.production/.docker-compose/keys:/run/validibot-keys:ro
+      - ./.envs/.production/.self-hosted/keys:/run/validibot-keys:ro
       # Only the worker needs Docker socket access to spawn validator containers.
       - /var/run/docker.sock:/var/run/docker.sock
     env_file:
-      - .envs/.production/.docker-compose/.django
-      - .envs/.production/.docker-compose/.postgres
+      - .envs/.production/.self-hosted/.django
+      - .envs/.production/.self-hosted/.postgres
     environment:
       - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
       - APP_ROLE=worker
@@ -124,8 +139,8 @@ services:
     ports: []
     command: ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
     env_file:
-      - .envs/.production/.docker-compose/.django
-      - .envs/.production/.docker-compose/.postgres
+      - .envs/.production/.self-hosted/.django
+      - .envs/.production/.self-hosted/.postgres
     environment:
       - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
       - APP_ROLE=scheduler
@@ -146,7 +161,7 @@ services:
     networks:
       - validibot
     env_file:
-      - .envs/.production/.docker-compose/.postgres
+      - .envs/.production/.self-hosted/.postgres
     volumes:
       - validibot_postgres_data:/var/lib/postgresql/data
       - validibot_postgres_backups:/backups
@@ -171,11 +186,56 @@ services:
       retries: 5
     restart: unless-stopped
 
+  caddy:
+    # Optional reverse proxy with automatic Let's Encrypt TLS.
+    #
+    # Off by default — most operators already run a reverse proxy
+    # (nginx, Traefik, Cloudflare Tunnel, hosting-provider load
+    # balancer). Enable only if you need a bundled TLS terminator.
+    #
+    # To enable:
+    #   COMPOSE_PROFILES=caddy just self-hosted deploy
+    #
+    # Caddy auto-issues a Let's Encrypt cert for the hostname declared
+    # in deploy/self-hosted/caddy/Caddyfile. That hostname must
+    # already resolve to this host's public IP (run
+    # ./deploy/self-hosted/scripts/check-dns to verify before first
+    # boot). See ADR-2026-04-27 section 21 for the rationale behind
+    # off-by-default + opt-in.
+    profiles: ["caddy"]
+    image: caddy:2-alpine
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - validibot
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/self-hosted/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      # The Caddyfile reads SITE_URL to know which hostname to terminate
+      # TLS for. Pulled from the same .django env file as the rest of
+      # the stack.
+      - SITE_URL=${SITE_URL:-}
+    env_file:
+      - .envs/.production/.self-hosted/.django
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   mcp:
     # Validibot MCP server — exposes validation workflows to AI agents.
     #
     # Opt-in via the ``mcp`` Compose profile (set ENABLE_MCP_SERVER=true and
-    # `just docker-compose up` will enable it). MCP is a Pro feature: the
+    # `just self-hosted up` will enable it). MCP is a Pro feature: the
     # server boots only if the deployment's license advertises the
     # ``mcp_server`` feature, so self-hosted users without validibot-pro
     # will see the container fail its startup license check even if the
@@ -193,7 +253,7 @@ services:
     networks:
       - validibot
     env_file:
-      - .envs/.production/.docker-compose/.mcp
+      - .envs/.production/.self-hosted/.mcp
     ports:
       - "8001:8080"
     healthcheck:
@@ -203,25 +263,3 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
-
-# Optional services (uncomment as needed):
-#
-#  # Reverse proxy with automatic SSL (alternative to nginx)
-#  traefik:
-#    image: traefik:v2.11
-#    command:
-#      - "--api.insecure=true"
-#      - "--providers.docker=true"
-#      - "--entrypoints.web.address=:80"
-#      - "--entrypoints.websecure.address=:443"
-#      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
-#      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
-#      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-#    ports:
-#      - "80:80"
-#      - "443:443"
-#    volumes:
-#      - /var/run/docker.sock:/var/run/docker.sock:ro
-#      - traefik_letsencrypt:/letsencrypt
-#    networks:
-#      - validibot

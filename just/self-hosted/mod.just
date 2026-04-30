@@ -1,35 +1,44 @@
 # =============================================================================
-# Validibot - Docker Compose Production Deployment
+# Validibot - Self-Hosted Deployment
 # =============================================================================
 #
-# Commands for deploying and managing Validibot using Docker Compose.
-# This is the recommended approach for:
+# Commands for deploying and managing a self-hosted Validibot instance.
+# Self-hosted means a customer-operated single-VM deployment using
+# Docker Compose — typically on DigitalOcean, AWS EC2, Hetzner, or
+# on-prem. See ADR-2026-04-27 (Boring Self-Hosting and Operator
+# Experience) for the full self-hosted operator experience.
 #
+# This module is the operator-facing entry point. The same recipes are
+# mirrored in ``just/gcp/`` for cross-target parity (where applicable);
+# the only intentional asymmetry is stage handling — self-hosted is
+# single-stage per VM (no stage argument), while GCP is multi-stage.
+#
+# When to use self-hosted:
+#   - Customers running their own copy on DigitalOcean / EC2 / Hetzner
 #   - On-premises deployments
-#   - Single-server deployments
-#   - Development/staging environments
 #   - Air-gapped or restricted network environments
-#   - Cost-sensitive deployments (no cloud provider fees)
+#   - Data-custody-sensitive evaluations
 #
 # Architecture:
-#   - Docker Compose for container orchestration
+#   - Docker Compose for container orchestration (docker-compose.production.yml)
 #   - PostgreSQL for the database (containerized or external)
 #   - Celery + Redis for background tasks
-#   - Nginx or Traefik for reverse proxy/SSL termination
+#   - Optional Caddy reverse proxy via the ``caddy`` Compose profile
+#     (off by default; bring your own proxy or set COMPOSE_PROFILES=caddy)
 #   - Local filesystem or S3-compatible storage for files
 #
 # Prerequisites:
 #   - Docker and Docker Compose installed
 #   - Sufficient disk space for database and uploads
-#   - SSL certificate (Let's Encrypt recommended)
+#   - SSL certificate (Let's Encrypt via Caddy or your own proxy)
 #
 # Quick start:
-#   1. Copy .envs.example/.production/.docker-compose/.django to .envs/.production/.docker-compose/.django
-#   2. Copy .envs.example/.production/.docker-compose/.postgres to .envs/.production/.docker-compose/.postgres
-#   3. Optional: copy .envs.example/.production/.docker-compose/.build for Pro/Enterprise
+#   1. Copy .envs.example/.production/.self-hosted/.django to .envs/.production/.self-hosted/.django
+#   2. Copy .envs.example/.production/.self-hosted/.postgres to .envs/.production/.self-hosted/.postgres
+#   3. Optional: copy .envs.example/.production/.self-hosted/.build for Pro/Enterprise
 #   4. Edit the environment files with your settings
-#   5. just docker-compose check-env
-#   6. just docker-compose bootstrap
+#   5. just self-hosted check-env
+#   6. just self-hosted bootstrap
 #
 # =============================================================================
 
@@ -48,10 +57,10 @@ compose_file := "docker-compose.production.yml"
 compose_project := "validibot"
 
 # Environment files for the Docker Compose production deployment
-django_env_file := ".envs/.production/.docker-compose/.django"
-postgres_env_file := ".envs/.production/.docker-compose/.postgres"
-build_env_file := ".envs/.production/.docker-compose/.build"
-compose_env_args := `bash -lc 'if [ -f ".envs/.production/.docker-compose/.build" ]; then printf -- "--env-file .envs/.production/.docker-compose/.build"; fi'`
+django_env_file := ".envs/.production/.self-hosted/.django"
+postgres_env_file := ".envs/.production/.self-hosted/.postgres"
+build_env_file := ".envs/.production/.self-hosted/.build"
+compose_env_args := `bash -lc 'if [ -f ".envs/.production/.self-hosted/.build" ]; then printf -- "--env-file .envs/.production/.self-hosted/.build"; fi'`
 
 # Git SHA for image tagging
 git_sha := `git rev-parse --short HEAD`
@@ -75,7 +84,7 @@ _mcp-profile-env:
             ;;
     esac
 
-# Source recipe-level knobs from .envs/.production/.docker-compose/.build
+# Source recipe-level knobs from .envs/.production/.self-hosted/.build
 # if present. Kept as a helper so every lifecycle recipe (up, build,
 # build-only) picks up the same variables. The file's build-time vars
 # (VALIDIBOT_COMMERCIAL_PACKAGE, etc) are separately passed to docker
@@ -83,22 +92,22 @@ _mcp-profile-env:
 [private]
 _load-build-env:
     #!/usr/bin/env bash
-    if [ -f .envs/.production/.docker-compose/.build ]; then
+    if [ -f .envs/.production/.self-hosted/.build ]; then
         echo "set -a"
         # shellcheck disable=SC1091
-        echo "source .envs/.production/.docker-compose/.build"
+        echo "source .envs/.production/.self-hosted/.build"
         echo "set +a"
     fi
 
 # Start all services in production mode.
 # Brings up web, worker, database, redis, and any other services. When
 # ENABLE_MCP_SERVER=true (set inline or in .envs/.production/
-# .docker-compose/.build), also starts the MCP container (profile: mcp).
+# .self-hosted/.build), also starts the MCP container (profile: mcp).
 up:
     #!/usr/bin/env bash
     set -euo pipefail
-    eval "$(just docker-compose _load-build-env)"
-    eval "$(just docker-compose _mcp-profile-env)"
+    eval "$(just self-hosted _load-build-env)"
+    eval "$(just self-hosted _mcp-profile-env)"
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} up -d
 
 # Stop all services (containers remain, data persists)
@@ -113,13 +122,13 @@ down:
 # Build images and start services.
 # Use this after code changes or dependency updates. Honours
 # ENABLE_MCP_SERVER=true (inline or from
-# .envs/.production/.docker-compose/.build) to include the MCP
+# .envs/.production/.self-hosted/.build) to include the MCP
 # container in the build.
 build:
     #!/usr/bin/env bash
     set -euo pipefail
-    eval "$(just docker-compose _load-build-env)"
-    eval "$(just docker-compose _mcp-profile-env)"
+    eval "$(just self-hosted _load-build-env)"
+    eval "$(just self-hosted _mcp-profile-env)"
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} up -d --build
 
 # Build images without starting (useful for CI/CD).
@@ -127,8 +136,8 @@ build:
 build-only:
     #!/usr/bin/env bash
     set -euo pipefail
-    eval "$(just docker-compose _load-build-env)"
-    eval "$(just docker-compose _mcp-profile-env)"
+    eval "$(just self-hosted _load-build-env)"
+    eval "$(just self-hosted _mcp-profile-env)"
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} build
 
 # Wait until the web container accepts management commands
@@ -144,7 +153,7 @@ _wait-web:
         sleep 2
     done
     echo "Web container did not become ready in time."
-    echo "Check logs with: just docker-compose logs-service web"
+    echo "Check logs with: just self-hosted logs-service web"
     exit 1
 
 # First-time install for self-hosted customers
@@ -177,7 +186,7 @@ logs:
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} logs -f
 
 # Follow logs from a specific service
-# Usage: just docker-compose logs-service web
+# Usage: just self-hosted logs-service web
 logs-service service:
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} logs -f {{service}}
 
@@ -185,7 +194,7 @@ logs-service service:
 restart: down up
 
 # Restart a specific service
-# Usage: just docker-compose restart-service web
+# Usage: just self-hosted restart-service web
 restart-service service:
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} restart {{service}}
 
@@ -242,9 +251,9 @@ setup-data:
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py setup_validibot --noinput
 
 # Run any Django management command
-# Usage: just docker-compose manage "createsuperuser"
-# Usage: just docker-compose manage "shell"
-# Usage: just docker-compose manage "collectstatic --noinput"
+# Usage: just self-hosted manage "createsuperuser"
+# Usage: just self-hosted manage "shell"
+# Usage: just self-hosted manage "collectstatic --noinput"
 manage command:
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec web python manage.py {{command}}
 
@@ -279,7 +288,7 @@ backup-db:
     ls -lh "$BACKUP_FILE"
 
 # Restore database from a backup file
-# Usage: just docker-compose restore-db backups/validibot_db_20240101_120000.sql.gz
+# Usage: just self-hosted restore-db backups/validibot_db_20240101_120000.sql.gz
 restore-db backup_file:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -407,7 +416,7 @@ maintenance-on:
     echo "Maintenance mode enabled."
     echo "Database and Redis are still running for maintenance tasks."
     echo ""
-    echo "To exit maintenance mode: just docker-compose maintenance-off"
+    echo "To exit maintenance mode: just self-hosted maintenance-off"
 
 # Exit maintenance mode (restart web and worker)
 maintenance-off:
@@ -430,7 +439,7 @@ update:
     echo "Updating Validibot..."
     echo ""
     echo "1. Creating database backup..."
-    just docker-compose backup-db
+    just self-hosted backup-db
     echo ""
     echo "2. Pulling latest code..."
     if ! git diff --quiet HEAD 2>/dev/null; then
@@ -496,7 +505,7 @@ update:
 # =============================================================================
 
 # Scale worker containers
-# Usage: just docker-compose scale-workers 3
+# Usage: just self-hosted scale-workers 3
 scale-workers count:
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} up -d --scale worker={{count}}
     @echo "Worker count scaled to {{count}}"
@@ -518,7 +527,7 @@ events:
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} events --since 1h
 
 # Inspect a service's configuration
-# Usage: just docker-compose inspect web
+# Usage: just self-hosted inspect web
 inspect service:
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} config --services | grep -q {{service}} && \
         docker inspect $(docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} ps -q {{service}}) | jq '.[0]' || \
@@ -541,8 +550,8 @@ check-env:
             echo "ERROR: Environment file not found: $env_file"
             echo ""
             echo "Create it from the examples:"
-            echo "  cp .envs.example/.production/.docker-compose/.django $DJANGO_ENV_FILE"
-            echo "  cp .envs.example/.production/.docker-compose/.postgres $POSTGRES_ENV_FILE"
+            echo "  cp .envs.example/.production/.self-hosted/.django $DJANGO_ENV_FILE"
+            echo "  cp .envs.example/.production/.self-hosted/.postgres $POSTGRES_ENV_FILE"
             exit 1
         fi
     done
@@ -663,8 +672,207 @@ validator-build name:
 
 # Build all validator images
 validators-build-all:
-    just docker-compose validator-build energyplus
-    just docker-compose validator-build fmu
+    just self-hosted validator-build energyplus
+    just self-hosted validator-build fmu
+
+# =============================================================================
+# Operator-Facing Stub Recipes (Phase 0 of ADR-2026-04-27)
+# =============================================================================
+#
+# These recipes are operator-facing entry points with the same names
+# they will eventually have. Today they print a "not yet implemented"
+# notice and exit non-zero. This makes the operator surface visible
+# in ``just self-hosted --list`` and lets cross-target parity tests
+# in ``just/gcp/mod.just`` work today.
+#
+# The full implementations land in later ADR phases:
+#   - doctor: Phase 1 (target-aware health diagnostic)
+#   - smoke-test: Phase 2 (end-to-end demo workflow)
+#   - backup, restore: Phase 3 (application-level backup MVP)
+#   - upgrade: Phase 4 (versioned upgrade ritual)
+#   - validators (operator surface): Phase 5
+#   - collect-support-bundle: Phase 6 (redacted support archive)
+#
+# Self-hosted is single-stage per VM (see ADR section 4) — these
+# recipes do not take a stage argument. The mirrored ``just/gcp/``
+# recipes do.
+
+[private]
+_phase0-stub recipe:
+    #!/usr/bin/env bash
+    echo "just self-hosted {{recipe}}: not yet implemented (Phase 0 stub)." >&2
+    echo "" >&2
+    echo "Implementation lands in a later phase per ADR-2026-04-27" >&2
+    echo "(Boring Self-Hosting and Operator Experience). See:" >&2
+    echo "  docs/operations/self-hosting/overview.md" >&2
+    echo "" >&2
+    echo "For now, these existing recipes work today:" >&2
+    echo "  just self-hosted bootstrap     # first-time install" >&2
+    echo "  just self-hosted deploy        # deploy or upgrade" >&2
+    echo "  just self-hosted check-env     # validate env files" >&2
+    echo "  just self-hosted check-dns     # verify SITE_URL DNS before TLS" >&2
+    echo "  just self-hosted health-check  # quick service health" >&2
+    echo "  just self-hosted backup-db     # database-only backup" >&2
+    echo "  just self-hosted update        # update with backup + migrations" >&2
+    exit 64
+
+# Verify SITE_URL resolves to this host's public IP before TLS issuance.
+#
+# Caddy requests a Let's Encrypt certificate on first boot via the ACME
+# HTTP-01 challenge. If DNS doesn't yet point at this host, the
+# challenge fails AND counts against the Let's Encrypt rate limit
+# (currently 50 certs per registered domain per week, with stricter
+# limits on duplicate failures). Running this once before enabling the
+# caddy Compose profile prevents wasted attempts.
+#
+# Reads SITE_URL from .envs/.production/.self-hosted/.django, resolves
+# the hostname via dig, and compares to this host's public IP detected
+# via api.ipify.org. Exit codes:
+#   0  — DNS resolves to this host. Safe to issue certificates.
+#   1  — DNS resolves elsewhere or the env file isn't ready. Fix first.
+#   2  — Could not determine this host's public IP. Verify manually.
+check-dns:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    ENV_FILE=".envs/.production/.self-hosted/.django"
+    if [ ! -f "$ENV_FILE" ]; then
+        echo "ERROR: $ENV_FILE not found." >&2
+        echo "       Copy it from .envs.example/.production/.self-hosted/.django" >&2
+        echo "       and edit SITE_URL before running check-dns." >&2
+        exit 1
+    fi
+
+    SITE_URL=$(grep -E '^SITE_URL=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+    if [ -z "$SITE_URL" ]; then
+        echo "ERROR: SITE_URL is empty in $ENV_FILE." >&2
+        exit 1
+    fi
+
+    # Extract hostname (strip protocol, port, trailing path)
+    HOSTNAME=$(echo "$SITE_URL" | sed -E 's|^https?://||; s|/.*||; s|:.*||')
+    if [ -z "$HOSTNAME" ]; then
+        echo "ERROR: Could not extract hostname from SITE_URL=$SITE_URL." >&2
+        exit 1
+    fi
+
+    echo "Checking DNS for: $HOSTNAME"
+
+    # Resolve the hostname via dig if available, fall back to host
+    if command -v dig >/dev/null 2>&1; then
+        RESOLVED_IP=$(dig +short "$HOSTNAME" A | tail -1)
+    elif command -v host >/dev/null 2>&1; then
+        RESOLVED_IP=$(host -t A "$HOSTNAME" | awk '/has address/ {print $NF; exit}')
+    else
+        echo "ERROR: Neither dig nor host is installed. Install one and retry." >&2
+        exit 1
+    fi
+
+    if [ -z "$RESOLVED_IP" ]; then
+        echo "FAIL: $HOSTNAME does not resolve to any A record." >&2
+        echo "      Add a DNS A-record pointing $HOSTNAME at this host." >&2
+        exit 1
+    fi
+    echo "DNS resolves: $HOSTNAME -> $RESOLVED_IP"
+
+    # Detect this host's public IP via a public service
+    PUBLIC_IP=$(curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null || echo "")
+    if [ -z "$PUBLIC_IP" ]; then
+        echo "WARN: Could not detect this host's public IP." >&2
+        echo "      Manually verify that $HOSTNAME points at this host." >&2
+        exit 2
+    fi
+    echo "Host public IP: $PUBLIC_IP"
+
+    if [ "$RESOLVED_IP" = "$PUBLIC_IP" ]; then
+        echo ""
+        echo "OK: DNS for $HOSTNAME points at this host."
+        echo "    Safe to enable the caddy profile and let it request a TLS cert."
+        exit 0
+    else
+        echo "" >&2
+        echo "FAIL: DNS for $HOSTNAME points at $RESOLVED_IP," >&2
+        echo "      but this host is at $PUBLIC_IP." >&2
+        echo "      Fix DNS before issuing TLS certificates." >&2
+        exit 1
+    fi
+
+# Build a local Pro image from an exact wheel reference.
+#
+# Pro images are NOT published to public registries (see ADR section
+# 20). Operators always build locally from a wheel they fetched with
+# their license credentials. This recipe wraps ``docker build`` with
+# BuildKit secrets so the private PyPI credentials never end up in
+# image layers, Compose files, logs, or support bundles.
+#
+# Usage:
+#   just self-hosted build-pro-image VALIDIBOT_COMMERCIAL_PACKAGE
+#
+# where the argument is one of:
+#   - validibot-pro==0.1.0 (exact-pinned name+version)
+#   - https://...@pypi.validibot.com/.../*.whl#sha256=... (full URL)
+#
+# Ranges (>=, ~=, ^) are rejected. The recipe reads
+# VALIDIBOT_PRIVATE_INDEX_URL from the environment.
+#
+# Phase 0 status: stub. The wheel-validation logic and BuildKit secret
+# wiring land in a later phase.
+build-pro-image package="":
+    @just self-hosted _phase0-stub build-pro-image
+
+# Health diagnostic — settings, db, cache, storage, validators, signing.
+#
+# Runs ``python manage.py check_validibot --target self_hosted`` inside
+# the web container. Forwards any extra args through to the management
+# command, so ``just self-hosted doctor --json --strict`` works as
+# expected. See docs/operations/self-hosting/doctor-check-ids.md for
+# the table of check IDs and their fixes.
+#
+# Self-hosted is single-stage per VM (ADR section 4); no stage arg.
+doctor *args:
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py check_validibot --target self_hosted {{args}}
+
+# Show recent ERROR / EXCEPTION / TRACEBACK lines from all services.
+#
+# Useful during incident response. Default window is the last hour;
+# pass an explicit duration like ``just self-hosted errors-since 24h``
+# or ``just self-hosted errors-since 10m``. Accepts whatever
+# ``docker compose logs --since`` accepts.
+errors-since duration="1h":
+    @echo "Errors / exceptions / tracebacks since {{duration}}:"
+    @echo "---"
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} logs --since {{duration}} 2>&1 | grep -i -E "(error|exception|traceback|failed)" || echo "(no errors found)"
+
+# End-to-end smoke test — creates demo data, runs a small validation,
+# exports an evidence bundle, marks the demo data clearly.
+smoke-test:
+    @just self-hosted _phase0-stub smoke-test
+
+# Application-level backup (Postgres dump + DATA_STORAGE_ROOT archive
+# + manifest with Validibot version and migration state).
+backup:
+    @just self-hosted _phase0-stub backup
+
+# Restore from a backup directory. Refuses to overwrite existing data
+# without --force.
+restore path="":
+    @just self-hosted _phase0-stub restore
+
+# Versioned upgrade — backs up, pulls new images, runs migrations,
+# restarts services, re-runs doctor and smoke-test, records the event.
+upgrade:
+    @just self-hosted _phase0-stub upgrade
+
+# Redacted support bundle for paid support sessions. Includes doctor
+# output, recent logs, migration state. Excludes secrets, signing
+# keys, and raw submission contents.
+collect-support-bundle:
+    @just self-hosted _phase0-stub collect-support-bundle
+
+# Validator inventory and health — list installed validator images,
+# their tags, digests, and smoke-test status.
+validators:
+    @just self-hosted _phase0-stub validators
 
 # =============================================================================
 # Quick Reference
@@ -672,29 +880,29 @@ validators-build-all:
 #
 # Common operations:
 #
-#   just docker-compose bootstrap     # First-time install
-#   just docker-compose deploy        # Deploy/update the application
-#   just docker-compose status        # Check if services are running
-#   just docker-compose logs          # View logs
-#   just docker-compose backup-db     # Create database backup
-#   just docker-compose manage "..."  # Run Django management command
+#   just self-hosted bootstrap     # First-time install
+#   just self-hosted deploy        # Deploy/update the application
+#   just self-hosted status        # Check if services are running
+#   just self-hosted logs          # View logs
+#   just self-hosted backup-db     # Create database backup
+#   just self-hosted manage "..."  # Run Django management command
 #
 # First-time setup:
 #
-#   1. cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-compose/.django
-#   2. cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
+#   1. cp .envs.example/.production/.self-hosted/.django .envs/.production/.self-hosted/.django
+#   2. cp .envs.example/.production/.self-hosted/.postgres .envs/.production/.self-hosted/.postgres
 #   3. Edit both files with your settings
-#   4. just docker-compose check-env
-#   5. just docker-compose bootstrap
+#   4. just self-hosted check-env
+#   5. just self-hosted bootstrap
 #
 # Updating:
 #
-#   just docker-compose update        # Full update with backup and migrations
+#   just self-hosted update        # Full update with backup and migrations
 #
 # Troubleshooting:
 #
-#   just docker-compose health-check  # Check service status
-#   just docker-compose errors        # View recent errors
-#   just docker-compose resources     # Check resource usage
+#   just self-hosted health-check  # Check service status
+#   just self-hosted errors        # View recent errors
+#   just self-hosted resources     # Check resource usage
 #
 # =============================================================================

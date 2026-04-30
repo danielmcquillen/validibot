@@ -1,18 +1,21 @@
 """
 Production settings for Validibot.
 
-This settings file handles all production deployments. The specific infrastructure
-is determined by the DEPLOYMENT_TARGET environment variable:
+This settings file handles all production deployments. The specific
+infrastructure is determined by the DEPLOYMENT_TARGET environment
+variable:
 
     - "gcp": Google Cloud Platform (Cloud Run, Cloud Tasks, GCS)
-    - "docker_compose": Docker Compose (Docker socket, Celery, local/GCS)
+    - "self_hosted": Customer-operated single-VM deployment using
+      Docker Compose (typically DigitalOcean, AWS EC2, Hetzner, on-prem).
+      See ADR-2026-04-27 (Boring Self-Hosting and Operator Experience).
     - "aws": Reserved for future support and not yet implemented
 
 Required environment variables (all targets):
     DJANGO_SECRET_KEY: Secure secret key for Django
     DATABASE_URL: PostgreSQL connection string
     DJANGO_ALLOWED_HOSTS: Comma-separated list of allowed hosts
-    DEPLOYMENT_TARGET: One of "gcp", "docker_compose", "aws"
+    DEPLOYMENT_TARGET: One of "gcp", "self_hosted", "aws"
 
 Target-specific requirements:
     GCP:
@@ -21,7 +24,7 @@ Target-specific requirements:
         SENTRY_DSN: Sentry error tracking
         DJANGO_ADMIN_URL: Admin URL path
 
-    Docker Compose:
+    Self-hosted:
         REDIS_URL: Redis connection string (for Celery)
         (STORAGE_BUCKET optional - uses local filesystem if not set)
 
@@ -46,9 +49,9 @@ from .base import env
 # DEPLOYMENT TARGET
 # ------------------------------------------------------------------------------
 # Determines which infrastructure backend to use for task queue and validators.
-DEPLOYMENT_TARGET = env("DEPLOYMENT_TARGET", default="docker_compose")
+DEPLOYMENT_TARGET = env("DEPLOYMENT_TARGET", default="self_hosted")
 
-VALID_DEPLOYMENT_TARGETS = {"gcp", "docker_compose", "aws"}
+VALID_DEPLOYMENT_TARGETS = {"gcp", "self_hosted", "aws"}
 if DEPLOYMENT_TARGET not in VALID_DEPLOYMENT_TARGETS:
     raise ImproperlyConfigured(
         f"DEPLOYMENT_TARGET must be one of {VALID_DEPLOYMENT_TARGETS}, "
@@ -58,7 +61,7 @@ if DEPLOYMENT_TARGET not in VALID_DEPLOYMENT_TARGETS:
 if DEPLOYMENT_TARGET == "aws":
     raise NotImplementedError(
         "DEPLOYMENT_TARGET='aws' is not implemented yet. "
-        "Use DEPLOYMENT_TARGET='docker_compose' or DEPLOYMENT_TARGET='gcp'."
+        "Use DEPLOYMENT_TARGET='self_hosted' or DEPLOYMENT_TARGET='gcp'."
     )
 
 # GENERAL

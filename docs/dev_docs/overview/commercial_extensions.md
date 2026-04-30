@@ -54,7 +54,7 @@ Restart the application after updating settings.
 For Docker-based installs, bake the package into the image using the optional `.build` file:
 
 ```bash
-cp .envs.example/.production/.docker-compose/.build .envs/.production/.docker-compose/.build
+cp .envs.example/.production/.self-hosted/.build .envs/.production/.self-hosted/.build
 ```
 
 Then set:
@@ -85,7 +85,7 @@ For Enterprise, use `validibot-enterprise` instead and add both Django apps:
 INSTALLED_APPS += ["validibot_pro", "validibot_enterprise"]
 ```
 
-After that, rebuild with `just docker-compose bootstrap` on first install or `just docker-compose deploy` for later rebuilds.
+After that, rebuild with `just self-hosted bootstrap` on first install or `just self-hosted deploy` for later rebuilds.
 
 ## What you'll see in the codebase
 

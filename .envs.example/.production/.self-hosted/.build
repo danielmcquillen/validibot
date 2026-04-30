@@ -1,9 +1,9 @@
 # =============================================================================
-# Production Docker Compose build + recipe configuration
+# Self-hosted build + recipe configuration
 # =============================================================================
 #
-# Copy this file to ``.envs/.production/.docker-compose/.build`` before
-# your first ``just docker-compose build``. The just docker-compose
+# Copy this file to ``.envs/.production/.self-hosted/.build`` before
+# your first ``just self-hosted build``. The just self-hosted
 # module sources this file at the top of every recipe that might need
 # recipe-level knobs (e.g. ``up``, ``build``, ``bootstrap``), and Docker
 # Compose itself reads it via ``--env-file`` for YAML interpolation.
@@ -29,8 +29,8 @@ VALIDIBOT_PRIVATE_INDEX_URL=
 #
 # ENABLE_MCP_SERVER
 # -----------------
-# The production Docker Compose stack defines the MCP service behind
-# the ``mcp`` Compose profile. ``just docker-compose`` recipes read
+# The self-hosted Compose stack defines the MCP service behind the
+# ``mcp`` Compose profile. ``just self-hosted`` recipes read
 # this variable to decide whether to include the container in ``build``,
 # ``up``, and related lifecycle commands.
 #

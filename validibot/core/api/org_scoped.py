@@ -1,8 +1,8 @@
 """
 Mixin and permission classes for org-scoped API viewsets.
 
-This module provides automatic org resolution from URL kwargs and enforces
-org membership for API endpoints (ADR-2026-01-06).
+This module provides automatic org resolution from URL kwargs and
+enforces org membership for API endpoints.
 """
 
 from __future__ import annotations

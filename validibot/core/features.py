@@ -54,11 +54,11 @@ class CommercialFeature(TextChoices):
     GUEST_MANAGEMENT = "guest_management", _("Guest Management")
     BILLING = "billing", _("Billing")
     # ``ADVANCED_ANALYTICS`` and ``AUDIT_LOG`` are deliberately separate
-    # flags — the ADR's four-pillar taxonomy treats product analytics
-    # and the audit log as distinct concerns with different retention,
-    # models, and UI surfaces. Pro today advertises both; down the line
-    # we can ship standalone analytics dashboards without re-using the
-    # audit log's flag and vice versa.
+    # flags — the four-pillar observability taxonomy treats product
+    # analytics and the audit log as distinct concerns with different
+    # retention, models, and UI surfaces. Pro today advertises both;
+    # down the line we can ship standalone analytics dashboards without
+    # re-using the audit log's flag and vice versa.
     ADVANCED_ANALYTICS = "advanced_analytics", _("Advanced Analytics")
     AUDIT_LOG = "audit_log", _("Audit Log")
     SIGNED_CREDENTIALS = "signed_credentials", _("Signed Credentials")

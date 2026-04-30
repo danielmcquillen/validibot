@@ -317,8 +317,8 @@ class TestEnergyPlusTemplateE2E:
         """Verify the full-size demo template (window glazing shoebox model)
         resolves correctly through the pipeline.
 
-        This uses the ``window_glazing_template.idf`` asset — the same
-        template described in the ADR Section 10 demo scenario.
+        This uses the ``window_glazing_template.idf`` asset — the
+        canonical demo template for window-glazing simulations.
         """
         captured = []
         mock_get_backend.return_value = _make_mock_backend(capture_request=captured)

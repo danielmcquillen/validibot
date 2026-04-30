@@ -58,9 +58,9 @@ def sync_step_fmu_signals(
     user re-uploads an FMU where a variable was renamed (e.g.,
     ``T_outdoor`` → ``T_ambient``), the old signal is deleted and a new
     one is created — which breaks any assertions targeting the old key.
-    The ADR calls for stable contract_key preservation via FMI
-    ``value_reference`` matching. Until then, renamed variables are
-    treated as new signals. See ADR-2026-03-18, Phase 6.
+    Stable ``contract_key`` preservation via FMI ``value_reference``
+    matching is planned follow-up; until then, renamed variables are
+    treated as new signals.
 
     Args:
         step: The workflow step that owns these signals. Must be saved

@@ -2,14 +2,12 @@
 
 The ``AuditAction`` enum lists every kind of event the audit log
 recognises. Each action maps onto a category with a retention policy
-(see ``retention_for_action()`` below and
-``validibot-project/docs/observability/logging-taxonomy.md``).
+(see ``retention_for_action()`` below).
 
 ``AUDITABLE_FIELDS`` declares which fields the audit log is allowed to
 snapshot into the ``changes`` JSON blob. Anything not in the whitelist
 is recorded as ``{"<field>": "<redacted>"}`` so operators see the *fact*
-of a change without leaking secrets. ADR-2026-04-16 §4 (field-level
-data sanitisation) spells out the rules.
+of a change without leaking secrets — field-level data sanitisation.
 """
 
 from __future__ import annotations
@@ -23,7 +21,7 @@ class AuditAction(TextChoices):
 
     Start narrow. Every action has a per-capture-path hook and a
     retention commitment; adding one is not free. The three categories
-    here match the ADR's Phase 1 scope.
+    here match the initial-rollout scope.
     """
 
     # ── Configuration changes (table stakes) ───────────────────────

@@ -70,7 +70,7 @@ class ValidationRunSerializer(serializers.ModelSerializer):
     def get_state(self, obj: ValidationRun) -> str:
         # Delegated to ``project_run_state`` so this projection has one
         # implementation across the community API and the cloud agent
-        # endpoints (ADR-2026-04-27 [trust-#6]).
+        # endpoints.
         return project_run_state(obj.status)
 
     def get_result(self, obj: ValidationRun) -> str:

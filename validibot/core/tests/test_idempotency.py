@@ -89,7 +89,7 @@ def workflow(db, org, user):
 
 
 def start_url(workflow) -> str:
-    # Use org-scoped route (ADR-2026-01-06)
+    # Use the org-scoped route.
     return f"/api/v1/orgs/{workflow.org.slug}/workflows/{workflow.pk}/runs/"
 
 

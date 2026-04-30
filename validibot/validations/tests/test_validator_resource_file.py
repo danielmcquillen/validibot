@@ -431,6 +431,149 @@ class TestResolveStepResources:
 
         assert result == []
 
+    # ── Workspace-aware URI overrides ───────────────────────────────────
+    #
+    # The local Docker dispatch path materialises resource files into a
+    # per-run workspace and needs the envelope to reference the
+    # container-visible mount path, not the host MEDIA_ROOT path. The
+    # ``resource_uri_overrides`` parameter is the rewriting hook. Cloud
+    # Run leaves it unset and gets the original gs:// URIs unchanged.
+
+    def test_resolve_with_uri_override_substitutes_container_path(self):
+        """When ``resource_uri_overrides`` contains an entry for a
+        resource's id, that URI replaces the one ``get_storage_uri()``
+        would have returned. This is what lets the local Docker dispatch
+        emit ``file:///validibot/input/resources/<filename>`` instead of
+        the host ``MEDIA_ROOT`` path that lives outside the container's
+        mount namespace."""
+        from validibot.validations.services.cloud_run.envelope_builder import (
+            resolve_step_resources,
+        )
+        from validibot.workflows.models import WorkflowStepResource
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
+        vrf = ValidatorResourceFile.objects.create(
+            validator=validator,
+            name="Weather",
+            filename="weather.epw",
+            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+            file=SimpleUploadedFile("weather.epw", b"LOCATION,Test"),
+        )
+        step = WorkflowStepFactory(validator=validator)
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.WEATHER_FILE,
+            validator_resource_file=vrf,
+        )
+
+        container_uri = "file:///validibot/input/resources/weather.epw"
+        items = resolve_step_resources(
+            step,
+            resource_uri_overrides={str(vrf.id): container_uri},
+        )
+
+        assert len(items) == 1
+        assert items[0].uri == container_uri, (
+            "override must replace the model-derived URI"
+        )
+        # The id and type are unchanged — they identify the resource,
+        # while the URI carries the container-visible path.
+        assert items[0].id == str(vrf.id)
+        assert items[0].type == ResourceFileType.ENERGYPLUS_WEATHER
+
+    def test_resolve_without_overrides_uses_storage_uri_unchanged(self):
+        """Cloud Run regression: when ``resource_uri_overrides`` is None
+        or empty, the URI must come from ``get_storage_uri()`` exactly
+        as before. Cloud Run dispatch never passes overrides — it relies
+        on this fall-through path to produce ``gs://`` URIs."""
+        from validibot.validations.services.cloud_run.envelope_builder import (
+            resolve_step_resources,
+        )
+        from validibot.workflows.models import WorkflowStepResource
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
+        vrf = ValidatorResourceFile.objects.create(
+            validator=validator,
+            name="Weather",
+            filename="weather.epw",
+            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+            file=SimpleUploadedFile("weather.epw", b"LOCATION,Test"),
+        )
+        step = WorkflowStepFactory(validator=validator)
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.WEATHER_FILE,
+            validator_resource_file=vrf,
+        )
+
+        # Both ``None`` and ``{}`` must behave identically: fall through
+        # to ``get_storage_uri()`` so the Cloud Run path is unaffected.
+        for overrides in (None, {}):
+            items = resolve_step_resources(step, resource_uri_overrides=overrides)
+            assert len(items) == 1
+            # The default URI is what get_storage_uri() returns —
+            # file:// for local dev tests, gs:// in production GCS.
+            assert items[0].uri == vrf.get_storage_uri()
+
+    def test_resolve_partial_overrides_only_replaces_matching_ids(self):
+        """When the override dict has entries for some but not all
+        resources, the listed ids get the override and the rest fall
+        through to ``get_storage_uri()``. This guards against an override
+        accidentally suppressing untouched resources."""
+        from validibot.validations.services.cloud_run.envelope_builder import (
+            resolve_step_resources,
+        )
+        from validibot.workflows.models import WorkflowStepResource
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
+        vrf_overridden = ValidatorResourceFile.objects.create(
+            validator=validator,
+            name="Weather A",
+            filename="weather_a.epw",
+            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+            file=SimpleUploadedFile("weather_a.epw", b"a"),
+        )
+        vrf_passthrough = ValidatorResourceFile.objects.create(
+            validator=validator,
+            name="Weather B",
+            filename="weather_b.epw",
+            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+            file=SimpleUploadedFile("weather_b.epw", b"b"),
+        )
+        step = WorkflowStepFactory(validator=validator)
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.WEATHER_FILE,
+            validator_resource_file=vrf_overridden,
+        )
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.WEATHER_FILE,
+            validator_resource_file=vrf_passthrough,
+        )
+
+        items = resolve_step_resources(
+            step,
+            resource_uri_overrides={
+                str(
+                    vrf_overridden.id
+                ): "file:///validibot/input/resources/weather_a.epw",
+            },
+        )
+
+        # Sort by URI so the assertion order is independent of QuerySet
+        # iteration order, which depends on insertion order and PK order.
+        items_by_id = {item.id: item for item in items}
+        assert items_by_id[str(vrf_overridden.id)].uri == (
+            "file:///validibot/input/resources/weather_a.epw"
+        )
+        assert items_by_id[str(vrf_passthrough.id)].uri == (
+            vrf_passthrough.get_storage_uri()
+        ), "passthrough resource must keep its model-derived URI"
+
 
 class TestStepConfigIntegration:
     """Tests for resource file integration with step configuration."""

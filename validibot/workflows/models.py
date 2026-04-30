@@ -1202,8 +1202,8 @@ class WorkflowStep(TimeStampedModel):
             self.display_schema = False
 
         # ── Credential step placement rules ──
-        # Per ADR-2025-11-25: at most one SignedCredentialAction per
-        # workflow, and it must come after all blocking steps.
+        # At most one SignedCredentialAction per workflow, and it must
+        # come after all blocking steps.
         if self.action_id:
             self._validate_credential_step_placement()
 
@@ -1225,7 +1225,7 @@ class WorkflowStep(TimeStampedModel):
     def _validate_credential_step_placement(self):
         """Enforce credential step uniqueness and ordering rules.
 
-        Per ADR-2025-11-25 §4:
+        Rules:
             - At most one SignedCredentialAction step per workflow.
             - The credential step must come after all validator steps
               and all BLOCKING action steps.

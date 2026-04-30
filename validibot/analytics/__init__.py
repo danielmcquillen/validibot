@@ -10,7 +10,7 @@ at the mixin level with ``FeatureRequiredMixin(ADVANCED_ANALYTICS)``,
 so community-only deployments 404 every URL in this app. Pro
 deployments that advertise ``ADVANCED_ANALYTICS`` see the dashboard.
 
-**Why not reuse the audit log's feature flag?** The ADR-2026-04-16
+**Why not reuse the audit log's feature flag?** The four-pillar
 observability taxonomy treats product analytics (Pillar 2, this app)
 and the audit log (Pillar 3) as distinct concerns — different
 models, retention, consumers. Keeping the flags separate lets a

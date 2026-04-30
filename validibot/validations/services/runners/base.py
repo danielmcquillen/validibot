@@ -125,6 +125,7 @@ class ValidatorRunner(ABC):
         timeout_seconds: int | None = None,
         run_id: str | None = None,
         validator_slug: str | None = None,
+        workspace: object | None = None,
     ) -> ExecutionResult:
         """
         Run a validator container and wait for completion.
@@ -141,6 +142,16 @@ class ValidatorRunner(ABC):
                 (implementation-specific default if None)
             run_id: Validation run ID for tracking/labeling purposes
             validator_slug: Validator slug for tracking/labeling purposes
+            workspace: Optional per-run workspace
+                (:class:`~validibot.validations.services.run_workspace.RunWorkspace`)
+                used by sync runners to derive per-run mounts instead of
+                a global storage mount. Async runners (Cloud Run Jobs)
+                ignore this parameter and rely on per-job ``gs://``
+                prefixes for isolation. Typed as ``object`` here to
+                keep the base ``runners`` package independent of the
+                ``run_workspace`` module; concrete sync runners narrow
+                the type. Optional so async runners that don't
+                materialise a host workspace remain compatible.
 
         Returns:
             ExecutionResult with exit_code, output_uri, and optional logs

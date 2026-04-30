@@ -38,9 +38,8 @@ A backend's ``archive(entries)`` call:
 The caller (``enforce_audit_retention`` command) only deletes
 ``receipt.archived_ids`` from the DB. Rows not in the receipt stay
 put and get retried on the next run — that's the "verified upload
-before delete" invariant the ADR requires, enforced by the contract
-shape. There's no way to accidentally delete a row whose archive
-failed.
+before delete" invariant, enforced by the contract shape. There's
+no way to accidentally delete a row whose archive failed.
 
 ### Error handling
 

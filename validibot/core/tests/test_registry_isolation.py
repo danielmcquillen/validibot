@@ -1,9 +1,6 @@
 """
 Tests that prove the autouse license-isolation fixture works.
 
-Covers refactor-step item ``[review-#10]`` from
-`validibot-project/docs/adr/2026-04-18-architecture-refactor-step.md`.
-
 ### What we're guarding against
 
 The active :class:`~validibot.core.license.License` is held in a

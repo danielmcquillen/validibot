@@ -1,7 +1,7 @@
 """
 Tests for credential step placement rules and feature gating.
 
-These tests verify the ADR's workflow authoring constraints:
+These tests verify the workflow-authoring constraints:
     - A credential step must come after all validator steps
     - A credential step must come after all BLOCKING action steps
     - The reorder UI enforces these rules (not just model clean)

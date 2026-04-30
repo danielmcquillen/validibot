@@ -14,8 +14,9 @@ The unified signal model stores those concerns separately:
 - ``StepSignalBinding`` holds per-step submission sourcing defaults
 
 These helpers translate the legacy mixed mapping into those two
-representations so the database stays aligned with ADR-2026-03-18
-without forcing every validator config to change at once.
+representations so the database stays aligned with the unified
+signal model without forcing every validator config to change at
+once.
 """
 
 from __future__ import annotations

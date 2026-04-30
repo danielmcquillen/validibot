@@ -1393,11 +1393,10 @@ class TestDisplaySignals:
 # ══════════════════════════════════════════════════════════════════════════════
 # Unified signals — build_unified_signals_from_definitions() helper
 # ══════════════════════════════════════════════════════════════════════════════
-# ADR-2026-03-10 introduced a unified "Inputs and Outputs" card that merges
-# validator-owned signals (from SignalDefinition rows) with step-owned
-# template/FMU signals into a single view.
-# ``build_unified_signals_from_definitions()`` is the view-layer helper
-# that builds this merged representation.
+# The unified "Inputs and Outputs" card merges validator-owned signals
+# (from SignalDefinition rows) with step-owned template/FMU signals into
+# a single view. ``build_unified_signals_from_definitions()`` is the
+# view-layer helper that builds this merged representation.
 # ══════════════════════════════════════════════════════════════════════════════
 
 

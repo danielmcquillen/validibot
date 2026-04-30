@@ -9,8 +9,6 @@ requests instead of processing them again.
 Usage:
     class MyViewSet(IdempotencyMixin, viewsets.ModelViewSet):
         idempotent_actions = ["create", "start_validation"]
-
-See ADR-2025-11-27 for design rationale and implementation details.
 """
 
 import hashlib

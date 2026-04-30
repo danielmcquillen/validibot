@@ -17,8 +17,6 @@ Django's agent endpoint for replay-protected run creation.
 Protocol version: x402 v2 (Linux Foundation / x402 Foundation, April 2026).
 Headers: ``PAYMENT-REQUIRED``, ``PAYMENT-SIGNATURE``, ``PAYMENT-RESPONSE``.
 Network identifiers: CAIP-2 (e.g. ``eip155:8453`` for Base mainnet).
-
-See ADR-2026-03-03 for the full x402 integration design.
 """
 
 from __future__ import annotations

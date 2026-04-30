@@ -32,14 +32,12 @@ if TYPE_CHECKING:
 
 # States that indicate the run is finished (no more polling needed).
 #
-# Both backends now emit the projected lifecycle state under ``state``:
-# ``PENDING`` → ``RUNNING`` → ``COMPLETED``. The terminal outcome travels
-# in the separate ``result`` field (PASS / FAIL / ERROR / CANCELED /
-# TIMED_OUT / UNKNOWN). ADR-2026-04-27 ``[trust-#6]`` removed the earlier
-# vocabulary drift where the anonymous x402 status endpoint returned the
-# raw ``ValidationRunStatus`` here too. Follow-up still pending: move the
+# Both backends emit the projected lifecycle state under ``state``:
+# ``PENDING`` → ``RUNNING`` → ``COMPLETED``. The terminal outcome
+# travels in the separate ``result`` field (PASS / FAIL / ERROR /
+# CANCELED / TIMED_OUT / UNKNOWN). Follow-up still pending: move the
 # enum constants to ``validibot-shared`` so MCP, CLI, and Django stop
-# encoding it independently (ADR section 6).
+# encoding the same vocabulary independently.
 _TERMINAL_STATES = {"COMPLETED"}
 
 _DEFAULT_TIMEOUT = 300  # 5 minutes

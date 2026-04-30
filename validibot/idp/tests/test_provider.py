@@ -190,7 +190,7 @@ class ValidibotOIDCProviderTests(TestCase):
         self.assertIn("refresh_token", payload)
 
     def _create_public_client(self, *, skip_consent: bool) -> OIDCClient:
-        """Create the Claude-style public OIDC client used in the ADR."""
+        """Create the Claude-style public OIDC client used by the MCP flow."""
 
         oidc_client = OIDCClient.objects.create(
             name="Claude Desktop",

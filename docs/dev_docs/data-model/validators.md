@@ -204,10 +204,10 @@ column via `StepEditorCardSpec` objects in the config's `step_editor_cards` list
 point is available for future use, but no validators currently declare custom cards.
 
 !!! note "Template variables use the unified signals card"
-    Since ADR-2026-03-10, template variable editing is handled by the unified "Inputs and
-    Outputs" card that appears on every step detail page. Template variables are treated as
-    input signals with `source="template"`, alongside catalog entries with `source="catalog"`.
-    Each template variable has a per-variable edit modal for annotations (label, default,
+    Template variable editing is handled by the unified "Inputs and Outputs" card that
+    appears on every step detail page. Template variables are treated as input signals
+    with `source="template"`, alongside catalog entries with `source="catalog"`. Each
+    template variable has a per-variable edit modal for annotations (label, default,
     type, constraints). This replaced the earlier `StepEditorCardSpec`-based approach.
 
 Each card spec has the following fields:
@@ -287,8 +287,8 @@ config = ValidatorConfig(
         ),
         # ... more signals, derivations ...
     ],
-    # Template variable editing is handled by the unified signals card
-    # (ADR-2026-03-10), not by step_editor_cards.
+    # Template variable editing is handled by the unified signals card,
+    # not by step_editor_cards.
 )
 ```
 

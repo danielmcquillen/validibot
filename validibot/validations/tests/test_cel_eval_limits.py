@@ -1,9 +1,6 @@
 """
 Tests for the resource limits enforced by ``evaluate_cel_expression``.
 
-Covers refactor-step item ``[review-#4]`` from
-`validibot-project/docs/adr/2026-04-18-architecture-refactor-step.md`.
-
 ### What we're guarding against
 
 The CEL evaluator accepts expression strings and a context dict from

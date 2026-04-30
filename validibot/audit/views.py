@@ -5,9 +5,9 @@ of an organisation, gated by ``CommercialFeature.AUDIT_LOG``. That
 feature flag is part of the Pro and Enterprise bundles.
 
 ``AUDIT_LOG`` is deliberately separate from ``ADVANCED_ANALYTICS``;
-the ADR-2026-04-16 four-pillar taxonomy treats product analytics
-and the audit log as distinct concerns with different models,
-retention, and UI surfaces. Pro currently ships both.
+the four-pillar observability taxonomy treats product analytics and
+the audit log as distinct concerns with different models, retention,
+and UI surfaces. Pro currently ships both.
 
 Three access controls stack here, in decreasing order of abstraction:
 

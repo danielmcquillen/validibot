@@ -1243,11 +1243,9 @@ class FMUValidatorStepConfigForm(BaseStepConfigForm):
       come from the validator's SignalDefinition rows.
 
     - **System FMU validator (step-level upload)**: The author uploads
-      an FMU directly in the step form.  The system introspects the FMU
-      and stores discovered variables as ``SignalDefinition`` rows
+      an FMU directly in the step form. The system introspects the
+      FMU and stores discovered variables as ``SignalDefinition`` rows
       and simulation defaults in ``step.config["fmu_simulation"]``.
-
-    See ADR-2026-03-12: Step-Level FMU Upload for Workflow Authors.
     """
 
     # ── FMU upload ────────────────────────────────────────────────
@@ -2179,11 +2177,10 @@ class TemplateVariableAnnotationForm(forms.Form):
 class SingleTemplateVariableForm(forms.Form):
     """Form for editing a single template variable's annotations via modal.
 
-    Unlike ``TemplateVariableAnnotationForm`` which creates dynamic fields
-    for all variables at once, this form handles one variable at a time.
-    Used by the per-variable edit modal in the unified signals card.
-
-    See ADR-2026-03-10: Unified Input/Output Signals UI.
+    Unlike ``TemplateVariableAnnotationForm`` which creates dynamic
+    fields for all variables at once, this form handles one variable
+    at a time. Used by the per-variable edit modal in the unified
+    signals card.
     """
 
     description = forms.CharField(
@@ -2527,13 +2524,11 @@ class BasicStepConfigForm(BaseStepConfigForm):
 class SignalBindingEditForm(forms.Form):
     """Edit form for signal definition and binding fields.
 
-    Supports editing both ``SignalDefinition`` metadata (label, description,
-    unit) and ``StepSignalBinding`` configuration (source_data_path,
-    default_value, is_required). For library-owned signals, definition
-    fields are rendered as read-only; for step-owned signals, all fields
-    are editable.
-
-    See ADR-2026-03-18, Phase 5, Item 28.
+    Supports editing both ``SignalDefinition`` metadata (label,
+    description, unit) and ``StepSignalBinding`` configuration
+    (source_data_path, default_value, is_required). For library-owned
+    signals, definition fields are rendered as read-only; for
+    step-owned signals, all fields are editable.
     """
 
     # Definition fields (read-only for library signals)

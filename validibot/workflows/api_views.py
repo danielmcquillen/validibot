@@ -1,7 +1,7 @@
 """
 Org-scoped API viewsets for workflows.
 
-These viewsets implement the org-scoped routing pattern from ADR-2026-01-06:
+These viewsets implement the org-scoped routing pattern:
     /api/v1/orgs/<org_slug>/workflows/
     /api/v1/orgs/<org_slug>/workflows/<identifier>/
     /api/v1/orgs/<org_slug>/workflows/<slug>/versions/
@@ -59,15 +59,16 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         """
         Return workflows the caller may see in this org.
 
-        Per ADR-2026-04-27 ``[trust-#1]``: ``OrgMembershipPermission`` only
-        proves the caller has *some* relationship to the org (membership or
-        a guest grant on at least one workflow). It is not enough to scope
-        the queryset, because a guest invited to one workflow could otherwise
-        list every workflow in the org. Object-level scoping is delegated to
-        ``Workflow.objects.for_user(...)`` which intersects org-membership,
-        creator-of, and active ``WorkflowAccessGrant`` rows. Superusers keep
-        the broad org view for debugging — this matches the existing
-        permission carve-out in ``OrgMembershipPermission``.
+        ``OrgMembershipPermission`` only proves the caller has *some*
+        relationship to the org (membership or a guest grant on at
+        least one workflow). That isn't enough to scope the queryset,
+        because a guest invited to one workflow could otherwise list
+        every workflow in the org. Object-level scoping is delegated
+        to ``Workflow.objects.for_user(...)`` which intersects
+        org-membership, creator-of, and active ``WorkflowAccessGrant``
+        rows. Superusers keep the broad org view for debugging — this
+        matches the existing permission carve-out in
+        ``OrgMembershipPermission``.
         """
         org = self.get_org()
         user = self.request.user
@@ -217,11 +218,11 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         """
         Return versions of the workflow family the caller may see.
 
-        Per ADR-2026-04-27 ``[trust-#1]``: a guest with a grant on a
-        different workflow in the same org must not be able to enumerate
-        versions of this workflow family. ``Workflow.objects.for_user(...)``
-        applies the same object-level scoping used by the latest-version
-        viewset, so version-pinned routes share one access policy.
+        A guest with a grant on a different workflow in the same org
+        must not be able to enumerate versions of this workflow
+        family. ``Workflow.objects.for_user(...)`` applies the same
+        object-level scoping used by the latest-version viewset, so
+        version-pinned routes share one access policy.
         """
         workflow_slug = self.kwargs.get("workflow_slug")
         org = self.get_org()

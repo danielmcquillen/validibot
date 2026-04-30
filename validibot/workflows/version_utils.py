@@ -1,8 +1,8 @@
 """
 Utilities for workflow version resolution and comparison.
 
-This module provides version parsing, comparison, and resolution logic
-for the org-scoped API (ADR-2026-01-06).
+This module provides version parsing, comparison, and resolution
+logic for the org-scoped API.
 """
 
 from __future__ import annotations

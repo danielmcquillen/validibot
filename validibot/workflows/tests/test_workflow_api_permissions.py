@@ -1,17 +1,17 @@
 """
 Tests for workflow API permissions.
 
-The WorkflowViewSet is read-only per ADR-2025-12-22 to minimize API attack
-surface during the initial CLI rollout. Write operations (create, update,
-delete) are only available through the web interface.
+The WorkflowViewSet is read-only to minimize API attack surface during
+the initial CLI rollout. Write operations (create, update, delete)
+are only available through the web interface.
 
-Updated for ADR-2026-01-06: Uses org-scoped API routes.
+Uses org-scoped API routes.
 
 These tests verify that:
-1. Read operations (list, retrieve) work correctly with proper permissions
-2. Write operations return 405 Method Not Allowed for all users
-3. Guests with a workflow grant cannot enumerate other workflows in the same
-   org (ADR-2026-04-27 ``[trust-#1]``).
+1. Read operations (list, retrieve) work correctly with proper permissions.
+2. Write operations return 405 Method Not Allowed for all users.
+3. Guests with a workflow grant cannot enumerate other workflows in the
+   same org.
 """
 
 import json
@@ -128,7 +128,7 @@ def test_viewer_can_retrieve_workflow(api_client: APIClient, viewer, workflow, o
 
 
 # ---------------------------------------------------------------------------
-# Guest scoping regression tests for ADR-2026-04-27 [trust-#1].
+# Guest scoping regression tests.
 #
 # The bug: ``OrgMembershipPermission`` admitted any authenticated user with at
 # least one active ``WorkflowAccessGrant`` in the org, and the viewset queryset
@@ -169,11 +169,12 @@ def test_guest_list_returns_only_granted_workflow(
     """
     A guest must see only workflows they have an active grant for.
 
-    Without the [trust-#1] fix the list returned every non-archived workflow in
-    the org because ``OrgScopedWorkflowViewSet.get_queryset`` used a broad
-    ``filter(org=...)`` rather than ``Workflow.objects.for_user(...)``. We
-    assert here that the response contains the granted workflow but not the
-    other one — so the regression would fail this test before the fix.
+    Without the access-scoping fix the list returned every non-archived
+    workflow in the org because ``OrgScopedWorkflowViewSet.get_queryset``
+    used a broad ``filter(org=...)`` rather than
+    ``Workflow.objects.for_user(...)``. We assert here that the response
+    contains the granted workflow but not the other one — so the
+    regression would fail this test before the fix.
     """
     api_client.force_authenticate(user=guest_with_grant)
 

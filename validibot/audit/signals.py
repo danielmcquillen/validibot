@@ -1,6 +1,6 @@
 """Signal receivers that translate auth + model events into audit entries.
 
-The receivers are the ADR Phase 1 "initial capture points" slice:
+The receivers are the initial capture-points slice:
 
 * **Login succeeded** — Django's ``user_logged_in`` → ``LOGIN_SUCCEEDED``.
 * **Login failed** — Django's ``user_login_failed`` → ``LOGIN_FAILED``.

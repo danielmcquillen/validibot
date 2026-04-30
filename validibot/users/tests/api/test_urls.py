@@ -2,7 +2,7 @@
 Tests for User API URL routing.
 
 The UserViewSet only exposes the 'me' action. List and detail views
-are not available via API. See ADR-2025-12-22 for rationale.
+are not available via API — the surface is intentionally minimal.
 """
 
 import pytest

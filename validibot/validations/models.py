@@ -1167,10 +1167,10 @@ class Validator(TimeStampedModel):
 
 # ── Unified Signal Model ────────────────────────────────────────────
 #
-# These four models implement the unified signal architecture described
-# in ADR-2026-03-18. They provide a single relational model for signal
-# metadata that supports contract definition, per-step binding, computed
-# derivations, and runtime audit tracing.
+# These four models implement the unified signal architecture: a
+# single relational model for signal metadata supporting contract
+# definition, per-step binding, computed derivations, and runtime
+# audit tracing.
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -1227,8 +1227,6 @@ class SignalDefinition(TimeStampedModel):
     ``value_reference``, and ``variability``. For EnergyPlus template
     signals this includes ``variable_type``, ``min``, ``max``, and
     ``choices``. Typed access is provided by Pydantic accessor models.
-
-    See ADR-2026-03-18 for the full design rationale.
     """
 
     contract_key = models.SlugField(
@@ -1447,8 +1445,6 @@ class StepSignalBinding(TimeStampedModel):
       nothing and the input is not required.
     - ``is_required``: If True, a missing value with no default raises a
       structured error before validator execution.
-
-    See ADR-2026-03-18 for the full binding and resolution design.
     """
 
     workflow_step = models.ForeignKey(
@@ -1535,8 +1531,6 @@ class Derivation(TimeStampedModel):
     The ``data_type`` is limited to scalar types (number, string, boolean)
     since derivations produce single computed values, not complex objects
     or timeseries.
-
-    See ADR-2026-03-18 section on derivations for the full design.
     """
 
     contract_key = models.SlugField(
@@ -1669,8 +1663,6 @@ class ResolvedInputTrace(TimeStampedModel):
 
     The ``upstream_step_key`` is populated when ``source_scope_used`` is
     ``upstream_step``, recording which step's output was consulted.
-
-    See ADR-2026-03-18 for the full resolution and audit design.
     """
 
     step_run = models.ForeignKey(

@@ -306,9 +306,7 @@ For a complete list of environment variables and their descriptions, see:
 Validibot's worker service exposes internal API endpoints for validation
 execution, callbacks, and scheduled tasks. These endpoints need protection
 against unauthorized access. The authentication backend is selected
-automatically based on `DEPLOYMENT_TARGET` — see
-[ADR-2026-04-18](https://github.com/mcquilleninteractive/validibot-project/blob/main/docs/adr/completed/2026-04-18-worker-endpoint-auth-platform-agnostic.md)
-for the full design.
+automatically based on `DEPLOYMENT_TARGET`.
 
 | Deployment target | Primary auth | Application-layer auth |
 |---|---|---|

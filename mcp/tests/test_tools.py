@@ -347,24 +347,25 @@ class TestRunTools:
 
     async def test_wait_for_run_returns_when_server_reports_timed_out(self, monkeypatch, mock_api):
         """
-        ADR-2026-04-27 [trust-#6]: when the server reports a terminal run
-        whose result is ``TIMED_OUT``, ``wait_for_run`` must return the
-        snapshot immediately rather than polling until the client-side
-        budget expires.
+        When the server reports a terminal run whose result is
+        ``TIMED_OUT``, ``wait_for_run`` must return the snapshot
+        immediately rather than polling until the client-side budget
+        expires.
 
-        After the wire-format unification, both the authenticated MCP path
-        and the anonymous x402 path emit ``state="COMPLETED"`` for any
-        terminal status, with the granular outcome in ``result``. This
-        test exercises that contract on the x402 path: the server says
-        the run is done (``state="COMPLETED", result="TIMED_OUT"``) and
-        the tool must surface that snapshot without idling for the
-        client-side ``timeout_seconds`` budget.
+        After the wire-format unification, both the authenticated MCP
+        path and the anonymous x402 path emit ``state="COMPLETED"``
+        for any terminal status, with the granular outcome in
+        ``result``. This test exercises that contract on the x402
+        path: the server says the run is done
+        (``state="COMPLETED", result="TIMED_OUT"``) and the tool must
+        surface that snapshot without idling for the client-side
+        ``timeout_seconds`` budget.
 
-        Before [trust-#6] the x402 endpoint emitted ``state="TIMED_OUT"``
-        and the MCP terminal-state set didn't include it, so an agent
+        Previously the x402 endpoint emitted ``state="TIMED_OUT"`` and
+        the MCP terminal-state set didn't include it, so an agent
         calling ``wait_for_run(timeout_seconds=300)`` after a server
-        timeout would idle for five minutes and then fabricate its own
-        client-side timeout envelope, hiding the real verdict.
+        timeout would idle for five minutes and then fabricate its
+        own client-side timeout envelope, hiding the real verdict.
         """
 
         monkeypatch.setattr("validibot_mcp.auth.get_api_key_or_none", lambda: None)

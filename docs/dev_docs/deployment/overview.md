@@ -2,7 +2,7 @@
 
 This section helps you choose the right deployment target for Validibot.
 
-These pages are meant for customer-facing self-host deployments. Internal `validibot-cloud` and Daniel-specific operator workflows belong in `validibot-project`.
+These pages are meant for customer-facing self-host deployments. Hosted-cloud operator workflows belong in the private internal docs, not here.
 
 If you are new to Validibot and just want to get it running, start with [Run Validibot Locally](deploy-local.md).
 

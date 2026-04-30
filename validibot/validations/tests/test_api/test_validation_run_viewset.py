@@ -99,12 +99,12 @@ def _add_signed_credential_step(workflow):
 
 
 def runs_list_url(org) -> str:
-    """Return org-scoped runs list URL (ADR-2026-01-06)."""
+    """Return org-scoped runs list URL."""
     return reverse("api:org-runs-list", kwargs={"org_slug": org.slug})
 
 
 def runs_detail_url(org, run) -> str:
-    """Return org-scoped runs detail URL (ADR-2026-01-06)."""
+    """Return org-scoped runs detail URL."""
     return reverse("api:org-runs-detail", kwargs={"org_slug": org.slug, "pk": run.pk})
 
 

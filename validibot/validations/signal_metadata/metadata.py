@@ -21,7 +21,6 @@ Two JSON fields serve different purposes:
   modal, and submission form (e.g., template variable constraints).
 
 See Also:
-    - ADR-2026-03-18: Unified Signal Model and Data Path Resolution
     - ``validations/models.py`` — ``SignalDefinition`` model
 """
 

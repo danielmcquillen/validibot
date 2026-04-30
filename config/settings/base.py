@@ -170,7 +170,7 @@ LOCAL_APPS = [
     "validibot.mcp_api.apps.MCPAPIConfig",
     # Audit log — append-only Pillar-3 observability store. Community-
     # hosted so self-hosted Pro deployments get audit logs too; the
-    # Pro-gated UI is added in Phase 2 (see ADR-2026-04-16).
+    # Pro-gated UI is added in a later phase.
     "validibot.audit.apps.AuditConfig",
     # Advanced analytics dashboards (Pillar 2). Bare-bones today —
     # every view is Pro-gated by FeatureRequiredMixin(ADVANCED_ANALYTICS)
@@ -1204,7 +1204,7 @@ MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS = env.list(
 # For GCP deployments, tasks are dispatched via Google Cloud Tasks instead.
 # See validibot/core/tasks/dispatch/ for the dispatcher abstraction.
 #
-# Design decisions (documented in validibot-project ADRs):
+# Design decisions:
 #   - Fire-and-forget: No result backend; all state lives in Django models
 #   - Single worker process with prefork pool (concurrency=1 default)
 #   - No Celery canvas features (chains, groups, chords) - keep it simple

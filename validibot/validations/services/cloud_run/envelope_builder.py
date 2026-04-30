@@ -185,6 +185,7 @@ def resolve_step_resources(
     step,
     *,
     role: str | None = None,
+    resource_uri_overrides: dict[str, str] | None = None,
 ) -> list[ResourceFileItem]:
     """Resolve a step's ``WorkflowStepResource`` rows to ``ResourceFileItem`` objects.
 
@@ -202,6 +203,19 @@ def resolve_step_resources(
         step: WorkflowStep instance with ``step_resources`` relation.
         role: If provided, only return resources matching this role
               (e.g., ``WorkflowStepResource.WEATHER_FILE``).
+        resource_uri_overrides: Optional mapping of ``resource_id`` to a
+            container-visible URI. When provided and a resource's id is
+            in the dict, the override is used instead of
+            ``WorkflowStepResource.get_storage_uri()``. This is the
+            workspace-aware path used by the local Docker dispatch:
+            ``WorkflowStepResource.get_storage_uri()`` returns
+            ``MEDIA_ROOT``-rooted host paths that are not visible inside
+            the per-run container, so the dispatch layer materialises
+            each resource into the workspace and overrides the URI
+            here to point at
+            ``file:///validibot/input/resources/<filename>``. Cloud Run
+            leaves this argument as ``None`` and gets the original
+            ``gs://`` URI from the model.
 
     Returns:
         List of ``ResourceFileItem`` objects with resolved storage URIs.
@@ -221,11 +235,22 @@ def resolve_step_resources(
             resource_id = str(sr.pk)
             resource_type = sr.resource_type
 
+        # Workspace-aware override: when the local Docker dispatch
+        # materialises the resource into the per-run workspace, it
+        # supplies the container-visible URI here so the validator
+        # backend resolves to the mounted path rather than the host
+        # ``MEDIA_ROOT`` path that lives outside the container's mount
+        # namespace.
+        if resource_uri_overrides and resource_id in resource_uri_overrides:
+            uri = resource_uri_overrides[resource_id]
+        else:
+            uri = sr.get_storage_uri()
+
         items.append(
             ResourceFileItem(
                 id=resource_id,
                 type=resource_type,
-                uri=sr.get_storage_uri(),
+                uri=uri,
             )
         )
     return items
@@ -239,6 +264,7 @@ def build_input_envelope(
     *,
     skip_callback: bool = False,
     input_file_uris: dict[str, str] | None = None,
+    resource_uri_overrides: dict[str, str] | None = None,
 ) -> ValidationInputEnvelope:
     """
     Build the appropriate input envelope based on validator type.
@@ -250,11 +276,26 @@ def build_input_envelope(
         run: ValidationRun Django model instance
         callback_url: Django callback endpoint URL
         callback_id: Unique identifier for idempotent callback processing
-        execution_bundle_uri: Directory URI for this run's files
+        execution_bundle_uri: Directory URI for this run's files. For
+            the local Docker dispatch path, this is the container path
+            (``file:///validibot/output``); for Cloud Run it is the
+            per-job ``gs://`` prefix.
         skip_callback: If True, container won't POST callback after completion.
             Used for synchronous execution where results are read directly.
-        input_file_uris: Optional dict of file role to URI (e.g., {'primary_file_uri': 'file://...'}).
-            If provided, these override values from step.config.
+        input_file_uris: Optional dict of file role to URI (e.g.,
+            ``{'primary_file_uri': 'file:///validibot/input/model.idf'}``).
+            If provided, these override values from ``step.config``. Recognised
+            roles: ``primary_file_uri`` (EnergyPlus model file),
+            ``fmu_model_uri`` (FMU model file). Used by the local Docker
+            dispatch to point input files at the per-run mount path.
+        resource_uri_overrides: Optional mapping of ``resource_id`` to
+            a container-visible URI for resource files (weather data,
+            FMU dependencies, etc.). Used by the local Docker dispatch
+            path so resource files in the envelope point at the
+            workspace's ``input/resources/`` mount instead of the host
+            ``MEDIA_ROOT`` path that the model's ``get_storage_uri()``
+            returns by default. Cloud Run leaves this as ``None`` and
+            gets the original ``gs://`` URIs.
 
     Returns:
         Typed envelope (EnergyPlusInputEnvelope, FMUInputEnvelope, etc.)
@@ -304,7 +345,9 @@ def build_input_envelope(
         from validibot.workflows.models import WorkflowStepResource
 
         resource_files = resolve_step_resources(
-            step, role=WorkflowStepResource.WEATHER_FILE
+            step,
+            role=WorkflowStepResource.WEATHER_FILE,
+            resource_uri_overrides=resource_uri_overrides,
         )
 
         # Validate that we have a weather file for EnergyPlus
@@ -350,11 +393,18 @@ def build_input_envelope(
             role=WorkflowStepResource.FMU_MODEL,
         ).first()
 
+        # Workspace-aware override: the local Docker dispatch passes
+        # the container-visible URI for the FMU model file via
+        # ``input_file_uris["fmu_model_uri"]``. When set, it wins over
+        # any model-derived URI. Cloud Run leaves this unset and falls
+        # through to the gs:// path.
+        overridden_fmu_uri = (input_file_uris or {}).get("fmu_model_uri")
+
         if fmu_resource:
             # Step-level upload — use get_storage_uri() which returns
             # gs:// in production (GCS) or file:// locally, matching
             # what the container runner expects.
-            fmu_uri = fmu_resource.get_storage_uri()
+            fmu_uri = overridden_fmu_uri or fmu_resource.get_storage_uri()
             sim_config = (step.config or {}).get("fmu_simulation") or {}
         else:
             # Library validator — existing behavior
@@ -362,7 +412,11 @@ def build_input_envelope(
             if not fmu_model:
                 msg = f"Validator {validator.id} has no FMU model attached"
                 raise ValueError(msg)
-            fmu_uri = fmu_model.gcs_uri or getattr(fmu_model.file, "path", "")
+            fmu_uri = (
+                overridden_fmu_uri
+                or fmu_model.gcs_uri
+                or getattr(fmu_model.file, "path", "")
+            )
             if not fmu_uri:
                 msg = f"FMU model {fmu_model.id} has no storage URI or file path"
                 raise ValueError(msg)

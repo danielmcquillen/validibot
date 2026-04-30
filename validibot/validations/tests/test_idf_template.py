@@ -1704,8 +1704,8 @@ class TestMergeChoiceValidation:
         text-type values with structural chars are BLOCKED (untrusted user
         input), but choice-type values are ACCEPTED (author-curated).
 
-        This test documents the deliberate design decision from the ADR's
-        "Choice Values with IDF Structural Characters" edge case section.
+        This test documents the deliberate design decision around
+        "Choice Values with IDF Structural Characters".
         """
         variables = [
             _make_var(

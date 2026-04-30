@@ -9,11 +9,8 @@ page covers the moves a developer makes day-to-day:
 * adding audit capture for a new model
 * writing an ad-hoc entry from service code
 
-It does *not* cover the cross-cutting architecture — for that see
-[ADR-2026-04-16: Audit Log and Privacy
-Architecture](../../../validibot-project/docs/adr/2026-04-16-audit-log-and-privacy-architecture.md)
-and the [four-pillar observability
-taxonomy](../../../validibot-project/docs/observability/logging-taxonomy.md).
+It does *not* cover the cross-cutting architecture — that's the
+four-pillar observability taxonomy that the audit log is one Pillar of.
 
 ## Mental model
 
@@ -368,7 +365,5 @@ that follow this pattern.
 
 ## See also
 
-* [ADR-2026-04-16: Audit Log and Privacy Architecture](../../../validibot-project/docs/adr/2026-04-16-audit-log-and-privacy-architecture.md)
-* [Four-pillar observability taxonomy](../../../validibot-project/docs/observability/logging-taxonomy.md)
-* [Privacy and retention policy](../../../validibot-project/docs/observability/privacy-and-retention.md)
-* [Erasure runbook](../../../validibot-project/docs/observability/runbooks/handle-erasure-request.md)
+* [Audit archive (GCS)](audit-archive-gcs.md) — operational guide for the
+  archive backend that complements this how-to.

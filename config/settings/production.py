@@ -446,9 +446,9 @@ WORKER_URL = env("WORKER_URL", default=SITE_URL)
 #
 # If we let Django boot with either resolved to empty, EVERY worker endpoint
 # call would 401 — validator callbacks, Cloud Tasks dispatches, and
-# scheduled tasks would all silently fail. ImproperlyConfigured at boot time
-# surfaces the misconfig in the Cloud Run deploy log instead of in
-# production traffic. See ADR-2026-04-18.
+# scheduled tasks would all silently fail. ImproperlyConfigured at boot
+# time surfaces the misconfig in the Cloud Run deploy log instead of in
+# production traffic.
 if DEPLOYMENT_TARGET == "gcp":
     _oidc_audience = (TASK_OIDC_AUDIENCE or WORKER_URL or "").strip()  # noqa: F405
     if not _oidc_audience:
@@ -473,7 +473,7 @@ if DEPLOYMENT_TARGET == "gcp":
                 "Set TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS (comma-separated "
                 "emails) or CLOUD_TASKS_SERVICE_ACCOUNT. Empty allowlist "
                 "would reject every validator callback and Cloud Tasks "
-                "dispatch. See ADR-2026-04-18."
+                "dispatch."
             )
 
     # MCP service-to-service OIDC on the ``/api/v1/mcp/*`` helper API

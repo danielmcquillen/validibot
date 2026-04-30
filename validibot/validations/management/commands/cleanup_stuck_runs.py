@@ -27,7 +27,6 @@ Environment:
 See also:
     - docs/dev_docs/google_cloud/scheduled-jobs.md for scheduling setup
     - validibot/validations/api/callbacks.py for the normal completion path
-    - ADR-2026-02-26: Container Reconciliation and Backend Interface
 """
 
 import logging

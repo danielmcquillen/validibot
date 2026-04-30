@@ -474,10 +474,10 @@ class CelContextNamespaceTests(TestCase):
 
     def test_validator_inputs_not_in_signals_namespace(self):
         """Validator input signal definitions do NOT appear in the ``s``
-        namespace.  Per the ADR, validator inputs feed the validator
-        (FMU/EnergyPlus parameters), not CEL expressions.  Authors
-        access payload data via ``p.key`` and signals via ``s.name``
-        (from workflow-level signal mappings or promoted outputs).
+        namespace. Validator inputs feed the validator (FMU/EnergyPlus
+        parameters), not CEL expressions. Authors access payload data
+        via ``p.key`` and signals via ``s.name`` (from workflow-level
+        signal mappings or promoted outputs).
         """
         validator = ValidatorFactory(validation_type=ValidationType.BASIC)
         SignalDefinitionFactory(
@@ -602,7 +602,7 @@ class CelContextOutputNamespaceTests(TestCase):
         self.assertIn("output", context)
         self.assertEqual(context["output"], {})
         self.assertIs(context["o"], context["output"])
-        # Validator input NOT in s namespace (per ADR)
+        # Validator input NOT in s namespace.
         self.assertNotIn("weight", context["s"])
         # But payload data IS accessible via p
         self.assertEqual(context["p"]["weight"], 10)

@@ -258,17 +258,17 @@ class TestValidatorClassResolution:
 class TestStepEditorCards:
     """Verify step editor card specs on validator configs.
 
-    Since ADR-2026-03-10 (Unified Input/Output Signals UI), template
-    variable editing is handled by the unified signals card rather than
-    custom step_editor_cards.  No validators currently declare custom
-    cards, but the extension point remains available for future use.
+    Template variable editing is handled by the unified signals card
+    rather than custom step_editor_cards. No validators currently
+    declare custom cards, but the extension point remains available
+    for future use.
     """
 
     def test_energyplus_has_no_step_editor_cards(self):
         """EnergyPlus no longer declares custom step editor cards.
 
         Template variable editing moved to the unified signals card's
-        per-variable edit modal (ADR-2026-03-10).
+        per-variable edit modal.
         """
         cfg = get_config(ValidationType.ENERGYPLUS)
         assert cfg is not None

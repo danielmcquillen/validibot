@@ -10,8 +10,6 @@ These tests verify:
 The facilitator is mocked via respx — no real HTTP calls are made.
 The tests verify that the module correctly handles valid payments,
 invalid payments, facilitator timeouts, and malformed responses.
-
-See ADR-2026-03-03 for the full x402 integration design.
 """
 
 from __future__ import annotations

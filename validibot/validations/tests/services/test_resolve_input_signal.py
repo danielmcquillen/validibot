@@ -194,15 +194,16 @@ class ResolveInputSignalTests(TestCase):
 
     # ── Blank-path fallback to contract_key ──────────────────────────
     #
-    # ADR-2026-03-18: when source_data_path is empty, the resolver
-    # should use contract_key as a top-level key in the scoped data,
-    # NOT return the entire scoped dict.
+    # When source_data_path is empty, the resolver should use
+    # contract_key as a top-level key in the scoped data, NOT return
+    # the entire scoped dict.
 
     def test_blank_path_falls_back_to_contract_key(self):
-        """When source_data_path is empty (''), the resolver should look
-        up the signal's contract_key as a top-level key in the scoped
-        data. This is the ADR-defined fallback: 'When empty, falls back
-        to matching by contract_key as a top-level key in the scoped data.'
+        """When source_data_path is empty (''), the resolver should
+        look up the signal's contract_key as a top-level key in the
+        scoped data. This is the documented fallback: 'When empty,
+        falls back to matching by contract_key as a top-level key in
+        the scoped data.'
         """
         step = WorkflowStepFactory()
         sig = SignalDefinitionFactory(
@@ -515,9 +516,9 @@ class ResolveStepInputSignalsTests(TestCase):
         self.assertTrue(traces[0].resolved)
 
     def test_batch_blank_path_uses_contract_key(self):
-        """The batch resolver should use contract_key as the lookup key
-        when source_data_path is empty — matching the ADR blank-path
-        fallback contract.
+        """The batch resolver should use contract_key as the lookup
+        key when source_data_path is empty — matching the documented
+        blank-path fallback contract.
         """
         step = WorkflowStepFactory()
         run = ValidationRunFactory(workflow=step.workflow)

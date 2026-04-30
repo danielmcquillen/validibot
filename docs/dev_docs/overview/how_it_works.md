@@ -59,7 +59,7 @@ When a client wants to validate content, they trigger the process through the AP
 #### 2.1 Request Processing
 
 ```python
-# Example API call to start validation (org-scoped per ADR-2026-01-06)
+# Example API call to start validation (org-scoped routing).
 POST /api/v1/orgs/{org_slug}/workflows/{workflow_identifier}/runs/
 Content-Type: application/json
 

@@ -1,6 +1,6 @@
 """Audit log schema — two-layer actor/event split for GDPR-friendly erasure.
 
-The schema follows ADR-2026-04-16 §2. Two tables rather than one:
+Two tables rather than one:
 
 * ``AuditActor`` — identifies *who* took the action (user FK, email,
   ip, user-agent). Purgeable: on an erasure request we null the PII

@@ -9,7 +9,7 @@ new tables. It copies data from ValidatorCatalogEntry into the new models
 without deleting the old rows — both old and new coexist during the
 transition period. The old model is removed in a later cleanup phase.
 
-See ADR-2026-03-18: Unified Signal Model and Data Path Resolution.
+Implements the unified signal model and data path resolution.
 """
 
 from django.db import migrations
@@ -56,7 +56,7 @@ def _generate_step_keys(apps, _schema_editor):
 def _migrate_catalog_entries_to_signals(apps, _schema_editor):
     """Copy ValidatorCatalogEntry (SIGNAL) rows to SignalDefinition.
 
-    Maps fields per the ADR:
+    Maps fields per the unified signal model:
     - slug → contract_key
     - slug → native_name (same initially; provider-specific later)
     - run_stage → direction

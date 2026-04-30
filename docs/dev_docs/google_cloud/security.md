@@ -162,7 +162,7 @@ The worker service exposes internal API endpoints (validation execution, callbac
 
 The application-layer OIDC check on GCP is **defence in depth against IAM misconfiguration**, not an optional nicety. If the ingress or invoker bindings are ever loosened by mistake, the application will still reject callers whose token does not match `TASK_OIDC_AUDIENCE` and is not signed by an account in `TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS`.
 
-Validator containers (Cloud Run Jobs) authenticate to the worker service the same way — they fetch an OIDC token from the GCE metadata server with the callback URL's origin as the audience. See [ADR-2026-04-18](https://github.com/mcquilleninteractive/validibot-project/blob/main/docs/adr/completed/2026-04-18-worker-endpoint-auth-platform-agnostic.md) for the full architecture.
+Validator containers (Cloud Run Jobs) authenticate to the worker service the same way — they fetch an OIDC token from the GCE metadata server with the callback URL's origin as the audience.
 
 See [Internal API Security](../deployment/environment-configuration.md#internal-api-security-worker-endpoints) for configuration details.
 

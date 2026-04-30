@@ -16,10 +16,6 @@ model that supports two mutually exclusive modes:
 The DB-level ``ck_step_resource_xor_file`` check constraint ensures exactly
 one mode is populated. Steps CASCADE to their resources; deleting a shared
 catalog file that is still in use is blocked (PROTECT).
-
-See Also
---------
-ADR 2026-03-04: EnergyPlus Parameterized Model Templates — Phase 0
 """
 
 from __future__ import annotations

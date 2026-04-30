@@ -452,6 +452,6 @@ config = ValidatorConfig(
             order=201,
         ),
     ],
-    # Template variable editing is handled by the unified signals card
-    # (ADR-2026-03-10) \u2014 no custom step_editor_cards needed.
+    # Template variable editing is handled by the unified signals card \u2014
+    # no custom step_editor_cards needed.
 )

@@ -1,9 +1,9 @@
 """Tests for step-level FMU upload integration.
 
-This test suite verifies the step-level FMU upload feature introduced by
-ADR-2026-03-12. The feature allows workflow authors to upload an FMU file
-directly in the step configuration form (instead of requiring a pre-built
-library validator), mirroring the EnergyPlus parameterized template pattern.
+This test suite verifies the step-level FMU upload feature, which
+allows workflow authors to upload an FMU file directly in the step
+configuration form (instead of requiring a pre-built library
+validator), mirroring the EnergyPlus parameterized template pattern.
 
 Key areas covered:
 

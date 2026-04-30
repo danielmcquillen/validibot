@@ -51,6 +51,8 @@ import contextlib
 import logging
 from datetime import UTC
 from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 
@@ -58,6 +60,9 @@ from validibot.validations.services.runners.base import ExecutionInfo
 from validibot.validations.services.runners.base import ExecutionResult
 from validibot.validations.services.runners.base import ExecutionStatus
 from validibot.validations.services.runners.base import ValidatorRunner
+
+if TYPE_CHECKING:
+    from validibot.validations.services.run_workspace import RunWorkspace
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +173,7 @@ class DockerValidatorRunner(ValidatorRunner):
         timeout_seconds: int | None = None,
         run_id: str | None = None,
         validator_slug: str | None = None,
+        workspace: RunWorkspace | None = None,
     ) -> ExecutionResult:
         """
         Run a validator container and wait for completion.
@@ -185,6 +191,13 @@ class DockerValidatorRunner(ValidatorRunner):
             timeout_seconds: Maximum execution time (uses default if None)
             run_id: Validation run ID for labeling (enables orphan cleanup)
             validator_slug: Validator slug for labeling
+            workspace: Per-run workspace produced by
+                :class:`RunWorkspaceBuilder`. When provided, the container
+                receives only run-scoped mounts (input ro, output rw)
+                instead of the legacy global ``DATA_STORAGE_ROOT`` mount.
+                Required for cross-run isolation; when omitted the runner
+                falls back to the legacy mount and logs a warning so the
+                regression is visible.
 
         Returns:
             ExecutionResult with exit_code, output_uri, and logs
@@ -199,7 +212,7 @@ class DockerValidatorRunner(ValidatorRunner):
         timeout = timeout_seconds or self.timeout_seconds
         start_time = time.time()
 
-        # Build environment variables per ADR spec
+        # Build environment variables the validator backends look for.
         env = {
             "VALIDIBOT_INPUT_URI": input_uri,
             "VALIDIBOT_OUTPUT_URI": output_uri,
@@ -220,21 +233,18 @@ class DockerValidatorRunner(ValidatorRunner):
         if validator_slug:
             labels[LABEL_VALIDATOR] = validator_slug
 
-        # Build volume mounts for storage access
-        volumes = {}
-
-        # If a named volume is configured, use it (for Docker-in-Docker scenarios)
-        if self.storage_volume:
-            volumes[self.storage_volume] = {
-                "bind": self.storage_mount_path,
-                "mode": "rw",
-            }
-        else:
-            # Fall back to host path mounting (for direct Docker usage)
-            storage_root = getattr(settings, "DATA_STORAGE_ROOT", None)
-            if storage_root:
-                # Mount storage root as read-write so validators can write outputs
-                volumes[storage_root] = {"bind": storage_root, "mode": "rw"}
+        # Build volume mounts for storage access.
+        #
+        # When a workspace is provided, mount only the per-run input
+        # (read-only) and output (read-write) directories instead of
+        # the entire ``DATA_STORAGE_ROOT``. This is the runtime
+        # boundary that prevents a buggy or compromised validator from
+        # reading other runs' inputs or mutating their outputs. When
+        # no workspace is provided we fall back to the legacy global
+        # mount and emit a warning — that path remains for tests and
+        # callers that haven't been migrated, but it is not a
+        # supported production configuration.
+        volumes = self._build_mounts(workspace=workspace)
 
         # Container configuration - NOT detached, we wait for completion
         container_config = {
@@ -353,6 +363,122 @@ class DockerValidatorRunner(ValidatorRunner):
                     container.remove(force=True)
                 except Exception as cleanup_err:
                     logger.debug("Could not remove container: %s", cleanup_err)
+
+    # ── Per-run mount strategy ──────────────────────────────────────────
+    #
+    # When a workspace is provided, ``run()`` mounts only the per-run
+    # input directory (read-only) and output directory (read-write) into
+    # the container. This is the runtime boundary that prevents one
+    # validator from accessing another run's files. When no workspace is
+    # provided we fall back to the legacy global mount and emit a
+    # warning so the regression is visible — that path is preserved for
+    # tests and partially-migrated callers but is not a supported
+    # production configuration.
+
+    def _build_mounts(
+        self,
+        *,
+        workspace: RunWorkspace | None,
+    ) -> dict[str, dict[str, str]]:
+        """Compute the ``volumes`` dict for the container.
+
+        Returns the dict format the Docker SDK accepts directly, mapping
+        host source paths to ``{"bind": ..., "mode": ...}`` entries.
+        """
+
+        if workspace is None:
+            return self._build_legacy_mounts()
+
+        if self.storage_volume:
+            host_input = self._resolve_dind_host_path(workspace.host_input_dir)
+            host_output = self._resolve_dind_host_path(workspace.host_output_dir)
+        else:
+            host_input = workspace.host_input_dir
+            host_output = workspace.host_output_dir
+
+        return {
+            str(host_input): {
+                "bind": workspace.container_input_dir,
+                "mode": "ro",
+            },
+            str(host_output): {
+                "bind": workspace.container_output_dir,
+                "mode": "rw",
+            },
+        }
+
+    def _build_legacy_mounts(self) -> dict[str, dict[str, str]]:
+        """Legacy global storage mount.
+
+        Used only when ``run()`` is invoked without a workspace. Logs a
+        warning so the regression is visible during local dev or test
+        runs that haven't been migrated. In production this path
+        should be unused; if a deploy starts seeing this warning it
+        means a caller wasn't updated.
+        """
+
+        logger.warning(
+            "DockerValidatorRunner.run() called without a workspace; "
+            "falling back to legacy global storage mount. This loses "
+            "the per-run isolation guarantee. Update the caller to "
+            "pass a RunWorkspace built by RunWorkspaceBuilder."
+        )
+
+        volumes: dict[str, dict[str, str]] = {}
+        if self.storage_volume:
+            volumes[self.storage_volume] = {
+                "bind": self.storage_mount_path,
+                "mode": "rw",
+            }
+        else:
+            storage_root = getattr(settings, "DATA_STORAGE_ROOT", None)
+            if storage_root:
+                volumes[storage_root] = {"bind": storage_root, "mode": "rw"}
+        return volumes
+
+    def _resolve_dind_host_path(self, worker_path: Path) -> Path:
+        """Translate a worker-side path to a Docker-daemon-side path.
+
+        In Docker-in-Docker setups (the local-pro / local-cloud Compose
+        stacks), the worker container has a named Docker volume
+        bind-mounted at ``self.storage_mount_path`` (typically
+        ``/app/storage``). To bind-mount sub-paths of that same volume
+        into sibling containers, we cannot use the worker-side path —
+        the Docker daemon doesn't see the worker's mount namespace. We
+        introspect the named volume to find its actual host filesystem
+        location (the ``Mountpoint`` attribute, typically under
+        ``/var/lib/docker/volumes/<name>/_data``) and rebase the worker
+        path onto it.
+
+        For direct-Docker setups (no ``storage_volume`` configured),
+        this method is not called — host paths and worker paths are
+        the same filesystem and bind-mount directly.
+
+        Raises:
+            RuntimeError: When the worker path is not under
+                ``self.storage_mount_path``. The Phase 1 dispatch
+                always builds workspaces under ``DATA_STORAGE_ROOT``
+                which lives under the storage mount path; a path
+                that isn't relative to it is a configuration bug.
+        """
+
+        worker_path_resolved = worker_path.resolve()
+        mount_root = Path(self.storage_mount_path).resolve()
+
+        try:
+            rel = worker_path_resolved.relative_to(mount_root)
+        except ValueError as exc:
+            msg = (
+                f"DinD path translation failed: {worker_path_resolved} is "
+                f"not under storage mount path {mount_root}. The runner "
+                f"cannot bind-mount paths outside the configured volume."
+            )
+            raise RuntimeError(msg) from exc
+
+        client = self._get_client()
+        vol = client.volumes.get(self.storage_volume)
+        host_root = Path(vol.attrs["Mountpoint"])
+        return host_root / rel
 
     def get_execution_status(self, execution_id: str) -> ExecutionInfo:
         """

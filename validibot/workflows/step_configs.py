@@ -208,11 +208,10 @@ class FmuStepConfig(BaseStepConfig):
     When the step uses a step-level FMU upload (primary path), the
     ``fmu_simulation`` field stores the discovered simulation defaults.
     FMU variable metadata is stored relationally in ``SignalDefinition``
-    rows rather than in the step config.  When the step uses a library
-    FMU validator (secondary path), this field is empty and the metadata
-    comes from the validator's ``SignalDefinition`` rows and ``FMUModel``.
-
-    See ADR-2026-03-12: Step-Level FMU Upload for Workflow Authors.
+    rows rather than in the step config. When the step uses a library
+    FMU validator (secondary path), this field is empty and the
+    metadata comes from the validator's ``SignalDefinition`` rows and
+    ``FMUModel``.
     """
 
     fmu_simulation: FMUSimulationConfig | None = None

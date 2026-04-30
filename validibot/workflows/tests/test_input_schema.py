@@ -8,8 +8,8 @@ structured input forms on JSON-only workflows:
 - **schema_authoring**: Parsing JSON Schema and restricted Pydantic text, security
   enforcement, resource limits, and error reporting.
 
-These components together implement ADR 2026-03-19 (Schema-Driven Workflow Input
-Contracts for JSON Workflows).
+Together these components implement schema-driven workflow input contracts
+for JSON workflows.
 """
 
 from __future__ import annotations

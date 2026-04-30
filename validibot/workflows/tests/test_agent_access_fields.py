@@ -18,9 +18,9 @@ Constraint hierarchy (enforced via cascades, not validation errors):
 - ``agent_public_discovery=True`` forces ``agent_billing_mode=AGENT_PAYS_X402``
 - ``agent_access_enabled=False`` forces ``agent_public_discovery=False``
 
-History: the two fields were decoupled in April 2026 (ADR-2026-03-03
-Phase 3a revision) and the public discovery field was added to separate
-org-level MCP access from cross-org public catalog visibility.
+History: the two fields were decoupled in April 2026 and the public
+discovery field was added to separate org-level MCP access from
+cross-org public catalog visibility.
 """
 
 import pytest
@@ -42,8 +42,8 @@ pytestmark = pytest.mark.django_db
 class TestAgentBillingModeEnum:
     """Verify that the billing mode enum has the expected values.
 
-    These tests act as a safety net: if someone adds a new billing mode
-    without updating the ADR and the clean() validation, the test suite
+    These tests act as a safety net: if someone adds a new billing
+    mode without updating the ``clean()`` validation, the test suite
     will catch the mismatch.
     """
 

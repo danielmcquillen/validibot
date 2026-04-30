@@ -23,7 +23,7 @@ just deploy-with-docs  # Build and deploy
 - **Published to**: https://dev.validibot.com
 - **Content**: Architecture notes, data models, self-host deployment guides, onboarding for contributors
 
-Deployment guides in this repo should help self-host customers get Validibot running on infrastructure they control. Daniel-specific `validibot-cloud` and GCP operator workflows belong in `validibot-project`.
+Deployment guides in this repo should help self-host customers get Validibot running on infrastructure they control. Hosted-cloud operator workflows belong in the private internal docs, not here.
 
 ### Local Preview
 

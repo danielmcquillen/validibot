@@ -190,11 +190,22 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         """
         Execute a validation synchronously via Docker.
 
-        This method:
-        1. Uploads the submission and input envelope to local storage
-        2. Runs the validator container (blocking until completion)
-        3. Reads the output envelope from local storage
-        4. Returns complete ExecutionResponse
+        Dispatch builds a per-run workspace on the host, materialises
+        only the files this run needs into ``input/``, rewrites
+        envelope URIs to container paths, and runs the container
+        against per-run mounts. No validator backend changes are
+        required — backends are URI-driven and resolve the
+        container-visible URIs directly.
+
+        Steps:
+
+        1. Build the per-run workspace (input/, output/, materialised
+           primary file + resource files).
+        2. Build the input envelope with container-visible URIs.
+        3. Write the envelope into the workspace's input directory.
+        4. Run the validator container with per-run mounts.
+        5. Read the output envelope from the workspace's output
+           directory.
 
         Args:
             request: Execution request with run, validator, submission, step.
@@ -209,69 +220,66 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 error_message="Docker runner is not available",
             )
 
-        # Build storage paths
-        base_path = f"runs/{request.org_id}/{request.run_id}"
-        input_envelope_path = f"{base_path}/input.json"
-        output_envelope_path = f"{base_path}/output.json"
-
-        # Generate a unique execution ID
         execution_id = str(uuid.uuid4())[:12]
 
         try:
-            # 1. Upload submission file(s)
-            input_file_uris = self._upload_submission(request, base_path)
+            # 1. Build the per-run workspace and the envelope override
+            # kwargs that point envelope URIs at container paths.
+            workspace, input_file_uris, resource_uri_overrides = (
+                self._build_workspace_and_envelope_kwargs(request)
+            )
 
-            # 2. Build execution bundle URI
-            execution_bundle_uri = self.storage.get_uri(base_path)
-            input_envelope_uri = self.storage.get_uri(input_envelope_path)
-            output_envelope_uri = self.storage.get_uri(output_envelope_path)
-
-            # 3. Build callback URL and ID (unused for sync, but needed for envelope)
+            # 2. Build callback URL and ID (unused for sync, but the
+            # envelope schema still requires the fields).
             callback_url = self._get_callback_url()
             callback_id = f"step-run-{request.run.current_step_run.id}"
 
-            # 4. Build and upload input envelope
+            # 3. Build the envelope with container-visible URIs.
             envelope = self.build_input_envelope(
                 request,
                 callback_url=callback_url,
                 callback_id=callback_id,
-                execution_bundle_uri=execution_bundle_uri,
+                execution_bundle_uri=workspace.execution_bundle_container_uri,
                 input_file_uris=input_file_uris,
+                resource_uri_overrides=resource_uri_overrides,
             )
-            self.storage.write_envelope(input_envelope_path, envelope)
+
+            # 4. Write the envelope into the workspace's input
+            # directory. The container will read it through the
+            # read-only ``/validibot/input`` mount.
+            envelope_json = envelope.model_dump_json(indent=2)
+            workspace.host_input_envelope_path.write_bytes(
+                envelope_json.encode("utf-8"),
+            )
+            workspace.host_input_envelope_path.chmod(0o644)
 
             logger.info(
-                "Uploaded input envelope for run %s to %s",
+                "Wrote input envelope for run %s to %s",
                 request.run_id,
-                input_envelope_uri,
+                workspace.host_input_envelope_path,
             )
 
-            # 5. Ensure the run directory is writable by the validator
-            # container. The worker creates this directory as root, but the
-            # container runs as UID 1000 (security hardening) and needs to
-            # write output.json back to it.
-            self._ensure_run_dir_writable(base_path)
-
-            # 6. Get container image
+            # 5. Resolve container image.
             container_image = self.get_container_image(request.validator_type)
 
             logger.info(
                 "Executing container: image=%s, input=%s, output=%s",
                 container_image,
-                input_envelope_uri,
-                output_envelope_uri,
+                workspace.input_envelope_container_uri,
+                workspace.output_envelope_container_uri,
             )
 
-            # 7. Run container (blocking)
+            # 6. Run the container with per-run mounts.
             result = self.runner.run(
                 container_image=container_image,
-                input_uri=input_envelope_uri,
-                output_uri=output_envelope_uri,
-                run_id=request.run_id,
+                input_uri=workspace.input_envelope_container_uri,
+                output_uri=workspace.output_envelope_container_uri,
+                run_id=str(request.run_id),
                 validator_slug=request.validator_type.lower(),
+                workspace=workspace,
             )
 
-            # 8. Process result
+            # 7. Process the result.
             if not result.succeeded:
                 # Include truncated container logs in the error message so the
                 # user can see *why* the container failed, not just the exit code.
@@ -297,14 +305,16 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                     execution_id=result.execution_id or execution_id,
                     is_complete=True,
                     error_message=error_msg,
-                    input_uri=input_envelope_uri,
-                    output_uri=output_envelope_uri,
-                    execution_bundle_uri=execution_bundle_uri,
+                    input_uri=workspace.input_envelope_container_uri,
+                    output_uri=workspace.output_envelope_container_uri,
+                    execution_bundle_uri=workspace.execution_bundle_container_uri,
                     duration_seconds=result.duration_seconds,
                 )
 
-            # 9. Read output envelope
-            output_envelope = self._read_output_envelope(output_envelope_path)
+            # 8. Read the output envelope from the workspace.
+            output_envelope = self._read_output_envelope_from_host(
+                workspace.host_output_envelope_path,
+            )
 
             logger.info(
                 "Container execution completed for run %s in %.2fs",
@@ -316,9 +326,9 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 execution_id=result.execution_id or execution_id,
                 is_complete=True,
                 output_envelope=output_envelope,
-                input_uri=input_envelope_uri,
-                output_uri=output_envelope_uri,
-                execution_bundle_uri=execution_bundle_uri,
+                input_uri=workspace.input_envelope_container_uri,
+                output_uri=workspace.output_envelope_container_uri,
+                execution_bundle_uri=workspace.execution_bundle_container_uri,
                 duration_seconds=result.duration_seconds,
             )
 
@@ -338,87 +348,160 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 error_message=f"Execution failed: {e}",
             )
 
-    def _ensure_run_dir_writable(self, base_path: str) -> None:
-        """Make the run directory writable by the validator container.
+    # ── Workspace dispatch helpers ──────────────────────────────────────
 
-        The worker process creates the run directory (and writes input files)
-        as root.  The validator container runs as UID 1000 for security, so
-        it needs write permission to store ``output.json``.  We set the
-        directory to mode 1777 (sticky + world-writable) — the same approach
-        used for ``/tmp``.  This is safe because:
-
-        - Each run gets its own unique directory (UUID-based path).
-        - The directory is cleaned up after the run completes.
-        - The container has no network access and limited capabilities.
-        """
-        if not hasattr(self.storage, "_resolve_path"):
-            return  # Only applies to local filesystem storage
-        try:
-            import stat
-
-            run_dir = self.storage._resolve_path(base_path)
-            if run_dir.is_dir():
-                run_dir.chmod(stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO | stat.S_ISVTX)
-        except OSError:
-            # Log at ERROR because a chmod failure here directly causes the
-            # downstream container to fail with a permission denied error.
-            # Using OSError (not Exception) so unrelated bugs like
-            # AttributeError in the storage backend propagate immediately.
-            logger.exception(
-                "Could not set run directory permissions for %s — "
-                "the container will likely fail with a permission error.",
-                base_path,
-            )
-
-    def _upload_submission(
+    def _build_workspace_and_envelope_kwargs(
         self,
         request: ExecutionRequest,
-        base_path: str,
-    ) -> dict[str, str]:
-        """
-        Upload submission files to storage.
+    ) -> tuple[object, dict[str, str], dict[str, str]]:
+        """Build the per-run workspace and the envelope override kwargs.
 
-        Returns a dict mapping file roles to URIs for the input envelope.
-        """
-        input_file_uris = {}
+        Materialises the primary submission file plus every workflow
+        step resource the envelope will reference (weather files for
+        EnergyPlus, FMU model files for FMU). Returns the workspace
+        plus two dicts that feed straight into ``build_input_envelope``:
 
-        # Upload primary submission file
-        submission_content = request.submission.get_content()
-        if isinstance(submission_content, str):
-            submission_bytes = submission_content.encode("utf-8")
+        - ``input_file_uris``: the primary file URI (and the FMU model
+          URI when applicable) keyed by the role names the envelope
+          builder reads.
+        - ``resource_uri_overrides``: ``resource_id`` →
+          container-visible URI, used by the EnergyPlus envelope to
+          point ``ResourceFileItem.uri`` at the per-run mount instead
+          of the host ``MEDIA_ROOT`` path.
+
+        The translation is local-Docker-specific: it expects every
+        resource's ``get_storage_uri()`` to return ``file://`` URIs
+        (the GCS path is unreachable from inside a local container).
+        Non-file URIs raise an explicit error rather than silently
+        skipping.
+        """
+
+        from pathlib import Path
+
+        from validibot.validations.constants import ValidationType
+        from validibot.validations.services.run_workspace import ResourceFileSpec
+        from validibot.validations.services.run_workspace import RunWorkspaceBuilder
+        from validibot.workflows.models import WorkflowStepResource
+
+        step = request.run.current_step_run.workflow_step
+        validator_type_upper = request.validator_type.upper()
+
+        # Collect resource specs to materialise. Skip MODEL_TEMPLATE —
+        # it's consumed during EnergyPlus preprocessing and would
+        # collide with the resolved primary model file.
+        resource_specs: list[ResourceFileSpec] = []
+        fmu_resource_id: str | None = None
+
+        for sr in step.step_resources.select_related("validator_resource_file").all():
+            if sr.role == WorkflowStepResource.MODEL_TEMPLATE:
+                continue
+
+            if sr.is_catalog_reference:
+                vrf = sr.validator_resource_file
+                resource_id = str(vrf.id)
+                filename = vrf.filename
+                uri = vrf.get_storage_uri()
+            else:
+                resource_id = str(sr.pk)
+                filename = sr.filename or Path(sr.step_resource_file.name).name
+                uri = sr.get_storage_uri()
+
+            if not uri.startswith("file://"):
+                msg = (
+                    f"DockerComposeExecutionBackend cannot materialise "
+                    f"non-file URI: {uri} (resource id {resource_id}). "
+                    f"Local Docker dispatch requires file:// URIs."
+                )
+                raise RuntimeError(msg)
+
+            source_path = Path(uri[len("file://") :])
+
+            resource_specs.append(
+                ResourceFileSpec(
+                    filename=filename,
+                    source_path=source_path,
+                    resource_id=resource_id,
+                ),
+            )
+
+            # Track the FMU model resource so we can override the
+            # envelope's ``input_files[0].uri`` (FMU envelopes use the
+            # special ``input_file_uris["fmu_model_uri"]`` key, not the
+            # generic resource_uri_overrides path).
+            if (
+                validator_type_upper == ValidationType.FMU
+                and sr.role == WorkflowStepResource.FMU_MODEL
+            ):
+                fmu_resource_id = resource_id
+
+        # Build the workspace.
+        builder = RunWorkspaceBuilder(storage=self.storage)
+        primary_content = request.submission.get_content()
+        if isinstance(primary_content, str):
+            primary_bytes = primary_content.encode("utf-8")
         else:
-            submission_bytes = submission_content
+            primary_bytes = primary_content
+        primary_filename = request.submission.original_filename or "submission"
 
-        # Determine file extension from submission
-        submission_filename = request.submission.original_filename or "submission"
-        submission_path = f"{base_path}/{submission_filename}"
-        self.storage.write(submission_path, submission_bytes)
-        input_file_uris["primary_file_uri"] = self.storage.get_uri(submission_path)
+        workspace = builder.build(
+            org_id=str(request.org_id),
+            run_id=str(request.run_id),
+            primary_filename=primary_filename,
+            primary_content=primary_bytes,
+            resource_files=resource_specs,
+        )
 
-        # Note: Weather files and other resource files are resolved from
-        # WorkflowStepResource rows in the envelope builder, not here.
+        # Build override kwargs the envelope builder consumes.
+        resource_uri_overrides = {
+            mf.resource_id: mf.container_uri
+            for mf in workspace.resource_files
+            if mf.resource_id is not None
+        }
 
-        return input_file_uris
+        input_file_uris: dict[str, str] = {
+            "primary_file_uri": workspace.primary_file.container_uri,
+        }
 
-    def _read_output_envelope(
+        if fmu_resource_id is not None:
+            fmu_container_uri = next(
+                (
+                    mf.container_uri
+                    for mf in workspace.resource_files
+                    if mf.resource_id == fmu_resource_id
+                ),
+                None,
+            )
+            if fmu_container_uri is not None:
+                input_file_uris["fmu_model_uri"] = fmu_container_uri
+
+        return workspace, input_file_uris, resource_uri_overrides
+
+    def _read_output_envelope_from_host(
         self,
-        output_path: str,
+        host_path,
     ) -> ValidationOutputEnvelope | None:
-        """
-        Read and parse the output envelope from storage.
+        """Read and parse the output envelope from a host path.
 
-        Returns None if the file doesn't exist or can't be parsed.
+        The container writes ``output.json`` into ``/validibot/output``
+        which the host sees at ``workspace.host_output_envelope_path``.
+        We read it directly from disk rather than through the storage
+        abstraction because the workspace already knows its host path
+        — going through the storage layer would require translating
+        the host path back to a storage-relative path for no benefit.
+
+        Returns ``None`` if the file is missing (which the
+        run-completion contract treats as "container died
+        unexpectedly") or the envelope is unparseable.
         """
+
         try:
-            output_data = self.storage.read(output_path)
-            if output_data is None:
-                logger.error("Output envelope not found at %s", output_path)
+            if not host_path.exists():
+                logger.error("Output envelope not found at %s", host_path)
                 return None
 
-            # Parse as JSON first to get the validator type
-            if isinstance(output_data, bytes):
-                output_data = output_data.decode("utf-8")
-            output_dict = json.loads(output_data)
+            output_data = host_path.read_bytes()
+
+            output_dict = json.loads(output_data.decode("utf-8"))
 
             # Look up the output envelope class from the registry using the
             # validator type embedded in the envelope JSON.
@@ -440,7 +523,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             return envelope_class.model_validate(output_dict)
 
         except Exception:
-            logger.exception("Failed to read output envelope from %s", output_path)
+            logger.exception("Failed to read output envelope from %s", host_path)
             return None
 
     def _get_callback_url(self) -> str:

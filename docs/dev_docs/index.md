@@ -2,7 +2,7 @@
 
 This documentation is for engineers, technical partners, and self-host operators working directly from the `validibot` repository. If you're looking for day-to-day product usage guidance, see the [User Guide](https://docs.validibot.com/) instead.
 
-Deployment pages in this repo are customer-facing for self-hosted installs. Daniel-specific `validibot-cloud` and GCP operator workflows belong in `validibot-project`.
+Deployment pages in this repo are customer-facing for self-hosted installs. Hosted-cloud operator workflows belong in the private internal docs, not here.
 
 ---
 

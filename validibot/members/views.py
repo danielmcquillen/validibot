@@ -481,9 +481,9 @@ class GuestListView(
     """
     Display all guests (users with workflow access but no membership) for the org.
 
-    Note: ADR specifies that Authors should also be able to access this page
-    (scoped to workflows they authored). Currently only Admins/Owners have
-    access. See ADR section 9 for future author permission implementation.
+    Note: future iterations should also let Authors access this page
+    (scoped to workflows they authored). Currently only Admins/Owners
+    have access.
     """
 
     required_commercial_feature = CommercialFeature.GUEST_MANAGEMENT

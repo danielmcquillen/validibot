@@ -147,8 +147,8 @@ class ValidationStepProcessor(ABC):
             resolve_workflow_signals,
         )
 
-        # Let SignalResolutionError propagate — the ADR requires
-        # fail-fast behavior for on_missing=error signals.
+        # Let SignalResolutionError propagate — fail-fast behaviour
+        # is the contract for on_missing=error signals.
         result = resolve_workflow_signals(workflow, submission_data)
         return result.signals
 

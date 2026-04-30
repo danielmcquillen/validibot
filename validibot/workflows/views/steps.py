@@ -1419,8 +1419,6 @@ class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
     GET returns the modal form content for the specified variable.
     POST validates and saves annotations for that single variable,
     then triggers a page reload.
-
-    See ADR-2026-03-10: Unified Input/Output Signals UI.
     """
 
     template_name = "workflows/partials/template_variable_edit_modal_content.html"
@@ -1562,11 +1560,10 @@ class WorkflowStepSignalEditView(WorkflowObjectMixin, FormView):
     step's validator (library-owned). This prevents editing signals from
     other steps or workflows.
 
-    Uses WorkflowObjectMixin (not WorkflowStepAssertionsMixin) because signal
-    editing doesn't require assertion support — that mixin would reject steps
-    whose validators don't support assertions, which is unrelated.
-
-    See ADR-2026-03-18, Phase 5, Item 28.
+    Uses WorkflowObjectMixin (not WorkflowStepAssertionsMixin) because
+    signal editing doesn't require assertion support — that mixin
+    would reject steps whose validators don't support assertions,
+    which is unrelated.
     """
 
     template_name = "workflows/partials/signal_edit_modal_content.html"
@@ -1891,9 +1888,9 @@ def _validate_credential_step_order(
     """Check proposed step order for credential step placement violations.
 
     Returns an error message string if the proposed order violates the
-    ADR's placement rules, or ``None`` if the order is valid.
+    placement rules, or ``None`` if the order is valid.
 
-    Rules (per ADR-2025-11-25 §4):
+    Rules:
         - All validator steps must appear before any credential step.
         - All BLOCKING action steps must appear before any credential step.
         - ADVISORY action steps may appear after the credential step.

@@ -1,7 +1,7 @@
 """
 Org-scoped API viewsets for validation runs.
 
-These viewsets implement the org-scoped routing pattern from ADR-2026-01-06:
+These viewsets implement the org-scoped routing pattern:
     /api/v1/orgs/<org_slug>/runs/
     /api/v1/orgs/<org_slug>/runs/<pk>/
 """

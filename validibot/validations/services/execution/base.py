@@ -221,6 +221,7 @@ class ExecutionBackend(ABC):
         callback_id: str | None = None,
         execution_bundle_uri: str,
         input_file_uris: dict[str, str],
+        resource_uri_overrides: dict[str, str] | None = None,
     ) -> ValidationInputEnvelope:
         """
         Build the input envelope for a validation.
@@ -234,6 +235,12 @@ class ExecutionBackend(ABC):
             callback_id: Unique ID for callback deduplication.
             execution_bundle_uri: URI of the execution bundle directory.
             input_file_uris: Map of file role to URI (e.g., {'primary-model': 'file://...'}).
+            resource_uri_overrides: Optional ``resource_id`` →
+                container-visible URI mapping. Used by the local Docker
+                dispatch to point resource files in the envelope at the
+                per-run mount instead of host ``MEDIA_ROOT`` paths.
+                Cloud Run leaves this as ``None`` and the envelope
+                keeps ``gs://`` URIs.
 
         Returns:
             Typed input envelope (e.g., EnergyPlusInputEnvelope).
@@ -249,4 +256,5 @@ class ExecutionBackend(ABC):
             execution_bundle_uri=execution_bundle_uri,
             skip_callback=not self.is_async,  # Skip callback for sync backends
             input_file_uris=input_file_uris,
+            resource_uri_overrides=resource_uri_overrides,
         )

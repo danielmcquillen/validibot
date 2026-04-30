@@ -148,8 +148,8 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
 ):
     """Test that validation run API correctly reports failures for invalid data.
 
-    Since the workflow API is read-only (ADR-2025-12-22), we create the workflow
-    using factories and then test the validation flow via the start endpoint.
+    Since the workflow API is read-only, we create the workflow using
+    factories and then test the validation flow via the start endpoint.
     """
     user = UserFactory()
     org = OrganizationFactory()
@@ -204,7 +204,7 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
         message_template=message,
     )
 
-    # ADR-2026-01-06: Use org-scoped API route
+    # Use the org-scoped API route.
     start_url = reverse(
         "api:org-workflows-runs",
         kwargs={"org_slug": org.slug, "pk": workflow.pk},

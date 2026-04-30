@@ -15,12 +15,7 @@ carries Python 2 compatibility layers, and weighs 11 MB for ~80 lines
 of needed logic.  We only need regex-based variable detection and
 annotation extraction — not a full IDF model.
 
-Phase: 2 (IDF Parsing Utility and Variable Detection) of the EnergyPlus
-Parameterized Templates ADR.
-
 References:
-    - ADR: ``validibot-project/docs/adr/
-      2026-03-04-energyplus-parameterized-templates.md``
     - EnergyPlus IDD Conventions:
       https://bigladdersoftware.com/epx/docs/22-2/interface-developer/idd-conventions.html
 """
@@ -522,7 +517,7 @@ def validate_idf_template(
     if ext.lower() != ".idf":
         errors.append(
             f"Template files must be IDF format (.idf). epJSON templates "
-            f"are not supported — see the ADR scope note. You uploaded "
+            f"are not supported in this release. You uploaded "
             f"'{filename}'."
         )
         return ValidationResult(errors=errors, warnings=warnings)

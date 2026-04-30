@@ -151,12 +151,20 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
         output_uri: str,
         environment: dict[str, str] | None = None,
         timeout_seconds: int | None = None,
+        run_id: str | None = None,
+        validator_slug: str | None = None,
+        workspace: object | None = None,
     ) -> ExecutionResult:
         """
         Run a Cloud Run Job synchronously.
 
         Cloud Run Jobs are inherently asynchronous, so this method is not
         supported. Use run_async() instead and handle results via callbacks.
+
+        The ``workspace`` parameter is accepted for signature parity
+        with the abstract base but ignored; Cloud Run Jobs achieve
+        per-run isolation through per-job ``gs://`` prefixes rather
+        than host-side workspaces.
 
         Raises:
             NotImplementedError: Always. Use run_async() instead.

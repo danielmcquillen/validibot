@@ -21,7 +21,6 @@ Negative indices are rejected (return not-found). Wildcards, filters,
 and slice notation are not supported.
 
 See Also:
-    - ADR-2026-03-18: Unified Signal Model and Data Path Resolution
     - ``validibot/validations/tests/test_resolve_path.py`` — 60+ tests
 """
 
@@ -221,8 +220,8 @@ def resolve_input_signal(
     scope = binding.source_scope
     path = binding.source_data_path
 
-    # ADR-2026-03-18: when source_data_path is empty, fall back to
-    # matching by contract_key as a top-level key in the scoped data.
+    # When source_data_path is empty, fall back to matching by
+    # contract_key as a top-level key in the scoped data.
     effective_path = path if path else sig.contract_key
 
     result = ResolvedSignal(

@@ -5,7 +5,7 @@ These routes are the regular API surface used by clients to launch workflows,
 manage users, etc. Internal-only endpoints (e.g., validator callbacks) live in
 config/api_internal_router.py and are exposed only on the worker service.
 
-URL structure (ADR-2026-01-06):
+URL structure:
     /api/v1/users/                               - User management (root-level)
     /api/v1/auth/me/                             - Auth verification (root-level)
     /api/v1/orgs/                                - List user's organizations

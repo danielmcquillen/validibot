@@ -328,9 +328,9 @@ class BaseValidator(ABC):
             signals_dict.update(wf_signals)
 
         # NOTE: Step-bound input signals (StepSignalBinding rows) are NOT
-        # injected into the s.* namespace.  Per the ADR, validator inputs
-        # feed the validator (FMU/EnergyPlus parameters), not CEL
-        # expressions.  The s.* namespace only contains:
+        # injected into the s.* namespace.  Validator inputs feed the
+        # validator (FMU/EnergyPlus parameters), not CEL expressions.
+        # The s.* namespace only contains:
         # - Workflow-level signals (from WorkflowSignalMapping)
         # - Promoted validator outputs (from SignalDefinition.signal_name)
         #
@@ -360,8 +360,8 @@ class BaseValidator(ABC):
                 output_dict[sig.contract_key] = value if found else None
 
         # NOTE: Declared input signal definitions are NOT injected into
-        # the s.* namespace.  They are validator inputs, not author-
-        # defined signals.  See ADR-2026-03-31 terminology section.
+        # the s.* namespace. They are validator inputs, not author-
+        # defined signals.
 
         # ── Steps namespace (downstream step outputs) ────────────────
         steps_context: dict[str, Any] = {}

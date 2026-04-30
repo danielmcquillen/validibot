@@ -16,7 +16,7 @@ from validibot.workflows.tests.factories import WorkflowFactory
 
 
 def runs_list_url(org) -> str:
-    """Return org-scoped runs list URL (ADR-2026-01-06)."""
+    """Return org-scoped runs list URL."""
     return reverse("api:org-runs-list", kwargs={"org_slug": org.slug})
 
 

@@ -196,5 +196,3 @@ gcloud run jobs execute validibot-worker-<env> \
 ## See also
 
 * [Extend the audit log → Retention and archival](extend-the-audit-log.md#retention-and-archival) — developer-facing reference for the protocol contract and CLI flags.
-* [validibot-project audit-log design](../../../../validibot-project/docs/observability/audit-log.md) — status matrix + GDPR erasure model.
-* [ADR-2026-04-16: Audit log and privacy architecture](../../../../validibot-project/docs/adr/2026-04-16-audit-log-and-privacy-architecture.md).

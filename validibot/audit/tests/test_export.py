@@ -8,8 +8,8 @@ Three themes:
 2. **Format correctness** — CSV headers, JSONL one-object-per-line,
    Content-Type + Content-Disposition, filename shape. Downstream
    tooling (pandas, ``jq``) relies on this.
-3. **Rate limiting** — 10/hr/org as fixed by the ADR. The 11th
-   request in a window must 429 with a ``Retry-After`` header.
+3. **Rate limiting** — 10/hr/org. The 11th request in a window must
+   429 with a ``Retry-After`` header.
 4. **Filter integration** — list view respects the filter query
    string; export respects the same filter; the "Export current
    view" UX works.

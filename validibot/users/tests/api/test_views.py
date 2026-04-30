@@ -9,9 +9,9 @@ class TestUserViewSet:
     """
     Tests for the UserViewSet API.
 
-    The UserViewSet only exposes the 'me' action to return the current user.
-    List, retrieve, and update operations are not available via API.
-    See ADR-2025-12-22 for rationale on API restrictions.
+    The UserViewSet only exposes the 'me' action to return the
+    current user. List, retrieve, and update operations are not
+    available via API — the API surface is intentionally minimal.
     """
 
     @pytest.fixture

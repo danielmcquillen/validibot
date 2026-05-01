@@ -81,7 +81,7 @@ dependencies = [
   # guerrillamail, tempmail, etc). Used by UserSignupForm when
   # REJECT_DISPOSABLE_EMAILS is enabled — off by default for community/
   # self-hosted deployments, on in cloud to deter free-trial abuse.
-  "disposable-email-domains==0.0.175",
+  "disposable-email-domains==0.0.177",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   "validibot-shared==0.4.4",
   "django-csp==4.0",
@@ -324,5 +324,5 @@ dev = [
   "watchfiles==1.1.1",
   "werkzeug[watchdog]==3.1.8",
   # Documentation
-  "zensical==0.0.37",
+  "zensical==0.0.38",
 ]

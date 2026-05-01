@@ -816,6 +816,56 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         """
         return self.is_locked or self.has_runs()
 
+    def changed_contract_fields(self, proposed: dict) -> set[str]:
+        """Return contract-field names whose proposed value differs from current.
+
+        Pure helper for forms/serializers/scripts that need to detect
+        in-place contract edits before deciding whether to allow them.
+
+        The comparison is done against the *current* in-memory values
+        on this instance — callers that want to compare against the
+        database row should refresh first (``self.refresh_from_db()``).
+        Forms get this for free because Django's ``ModelForm.clean()``
+        runs before ``_post_clean()`` merges ``cleaned_data`` into the
+        instance, so at that point ``self.instance`` still carries the
+        DB values.
+
+        Only fields *present* in ``proposed`` are considered — a caller
+        editing a subset of contract fields (e.g. only ``data_retention``)
+        does not need to pass every contract field. ``ArrayField`` values
+        like ``allowed_file_types`` are compared as sets so re-ordering
+        without a real change isn't flagged.
+
+        Args:
+            proposed: A dict of ``{field_name: proposed_value}``.
+                Typically this is ``cleaned_data`` from a ModelForm or
+                ``serializer.validated_data`` from a DRF serializer.
+
+        Returns:
+            The subset of contract field names whose proposed value is
+            different from the current value. Empty set if everything
+            matches (or if no contract fields appear in ``proposed``).
+        """
+        # Local import: services.versioning imports models, models can't
+        # import services at module-load time without circularity.
+        from validibot.workflows.services.versioning import CONTRACT_FIELDS
+
+        changed: set[str] = set()
+        for field_name in CONTRACT_FIELDS:
+            if field_name not in proposed:
+                continue
+            current = getattr(self, field_name, None)
+            new_value = proposed[field_name]
+            # Order-insensitive comparison for list-shaped fields like
+            # allowed_file_types — reordering checkboxes shouldn't count
+            # as a contract change.
+            if isinstance(current, list) and isinstance(new_value, (list, tuple)):
+                if set(current) != set(new_value):
+                    changed.add(field_name)
+            elif current != new_value:
+                changed.add(field_name)
+        return changed
+
     @transaction.atomic
     def clone_to_new_version(self, user) -> Workflow:
         """

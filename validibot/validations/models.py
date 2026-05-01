@@ -931,6 +931,26 @@ class Validator(TimeStampedModel):
         ),
     )
 
+    # ADR-2026-04-27 Phase 3, tasks 8–9: a stable hash of this
+    # validator's *semantic* fields (the things that change what it
+    # does, excluding cosmetic strings + identity). Populated by
+    # ``sync_validators`` from the ValidatorConfig at deploy time.
+    # Mismatch under the same (slug, version) -> drift; sync fails
+    # unless ``--allow-drift`` is set.
+    # Kept blank=True for: (a) custom org validators that aren't
+    # synced from a config, and (b) the migration backfill window
+    # before the first sync runs.
+    semantic_digest = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=_(
+            "SHA-256 of the semantic config at sync time. Used to "
+            "detect drift when a validator's behavior changes under "
+            "the same (slug, version) without an explicit version bump."
+        ),
+    )
+
     @property
     def card_image_name(self) -> str:
         """Return the card image filename for the validator library UI.

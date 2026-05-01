@@ -668,3 +668,232 @@ class TestWorkflowLaunchFormOptionalFields:
         assert form.cleaned_data["filename"] == ""
         assert form.cleaned_data["metadata"] == {}
         assert form.cleaned_data["short_description"] == ""
+
+
+# ────────────────────────────────────────────────────────────────────
+# WorkflowForm contract-edit gate
+# ────────────────────────────────────────────────────────────────────
+#
+# ADR-2026-04-27 Phase 3, Session B / task 3:
+# Once a workflow is locked or has runs, its launch contract is the
+# rules every past run executed under. Editing those rules in place
+# would silently re-write history. The form must reject contract-field
+# changes and direct the operator to ``clone_to_new_version``.
+#
+# What counts as a "contract field" lives in
+# ``validibot.workflows.services.versioning.CONTRACT_FIELDS`` and is
+# enforced via ``Workflow.changed_contract_fields()``.
+# ────────────────────────────────────────────────────────────────────
+
+
+def _post_payload_for(workflow, **overrides):
+    """Build a minimal valid POST payload for editing ``workflow``.
+
+    Mirrors the existing form-edit helpers above. Defaults all fields
+    to the workflow's current values so the test only has to specify
+    *what changed*.
+    """
+    from validibot.submissions.constants import DataRetention
+
+    payload = {
+        "name": workflow.name,
+        "slug": workflow.slug,
+        "allowed_file_types": list(
+            workflow.allowed_file_types or [SubmissionFileType.JSON]
+        ),
+        "data_retention": workflow.data_retention or DataRetention.DO_NOT_STORE,
+        "output_retention": workflow.output_retention or "STORE_30_DAYS",
+        "version": workflow.version,
+        "is_active": "on" if workflow.is_active else "",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_workflow_form_blocks_contract_edit_on_locked_workflow():
+    """Locked workflow + changed contract field -> form invalid with helpful error.
+
+    Why this matters: ``is_locked`` is the marker that a workflow's
+    launch contract is the source of truth for past or pending runs.
+    Allowing the data_retention field to flip silently from
+    DO_NOT_STORE to STORE_INDEFINITELY would re-write the privacy
+    contract those runs operated under.
+    """
+    from validibot.submissions.constants import DataRetention
+
+    workflow = WorkflowFactory(
+        is_locked=True,
+        data_retention=DataRetention.DO_NOT_STORE,
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    workflow.user.set_current_org(workflow.org)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            data_retention=DataRetention.STORE_PERMANENTLY,
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert not form.is_valid()
+    assert "data_retention" in form.errors
+    # The error message should direct the user to clone-to-new-version
+    # rather than just saying "no, can't change."
+    error_text = " ".join(form.errors["data_retention"]).lower()
+    assert "new version" in error_text
+
+
+def test_workflow_form_blocks_contract_edit_on_workflow_with_runs():
+    """Used workflow + changed contract field -> form invalid.
+
+    A workflow that has even a single run is "in use" — the runs were
+    launched against a specific contract and re-writing it in place
+    would silently mutate the rules retroactively. Same gate as
+    ``is_locked``; documents the parity explicitly.
+    """
+    from validibot.submissions.tests.factories import SubmissionFactory
+    from validibot.validations.tests.factories import ValidationRunFactory
+
+    workflow = WorkflowFactory(
+        is_locked=False,
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    workflow.user.set_current_org(workflow.org)
+
+    # Give the workflow a run so has_runs() returns True. The factory
+    # wires a Submission + ValidationRun pair appropriately.
+    submission = SubmissionFactory(workflow=workflow)
+    ValidationRunFactory(workflow=workflow, submission=submission)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            allowed_file_types=[SubmissionFileType.XML],
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert not form.is_valid()
+    assert "allowed_file_types" in form.errors
+
+
+def test_workflow_form_allows_non_contract_edit_on_locked_workflow():
+    """Locked workflow + name/description change -> form is valid.
+
+    The gate is *contract-scoped* — the operator can still rename a
+    workflow, fix typos in its description, or toggle ``is_active`` on
+    a locked workflow. Without this we'd be locking the entire row,
+    not just the launch contract, which is more restrictive than the
+    ADR intends.
+    """
+    workflow = WorkflowFactory(
+        is_locked=True,
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    workflow.user.set_current_org(workflow.org)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            name="Renamed but contract unchanged",
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert form.is_valid(), form.errors
+
+
+def test_workflow_form_allows_no_op_save_on_locked_workflow():
+    """Re-submitting a form with no contract changes -> still valid.
+
+    Subtle but important: the gate must compare *proposals against
+    current values*, not "is the field present?" — otherwise hitting
+    Save twice on a locked workflow would falsely fail the second
+    time even though nothing changed.
+    """
+    from validibot.submissions.constants import DataRetention
+
+    workflow = WorkflowFactory(
+        is_locked=True,
+        data_retention=DataRetention.DO_NOT_STORE,
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    workflow.user.set_current_org(workflow.org)
+
+    form = WorkflowForm(
+        data=_post_payload_for(workflow),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert form.is_valid(), form.errors
+
+
+def test_workflow_form_allows_contract_edit_on_unused_unlocked_workflow():
+    """Fresh workflow + changed contract field -> form is valid.
+
+    The whole point of the gate is to fire only when the workflow is
+    "in use" (has runs OR is locked). A fresh workflow author should
+    be free to iterate on the contract until the first run lands.
+    """
+    from validibot.submissions.constants import DataRetention
+
+    workflow = WorkflowFactory(
+        is_locked=False,
+        data_retention=DataRetention.DO_NOT_STORE,
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    workflow.user.set_current_org(workflow.org)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            data_retention=DataRetention.STORE_PERMANENTLY,
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert form.is_valid(), form.errors
+
+
+def test_workflow_form_blocks_allowed_file_types_set_change_on_locked():
+    """Set-equality semantics: reordering doesn't trigger, real changes do.
+
+    ``allowed_file_types`` is an ArrayField. The gate compares as sets
+    so ``[JSON, XML] -> [XML, JSON]`` is a no-op (same accepted types,
+    different render order). But ``[JSON]`` -> ``[XML]`` is a real
+    contract change.
+    """
+    workflow = WorkflowFactory(
+        is_locked=True,
+        allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.XML],
+    )
+    workflow.user.set_current_org(workflow.org)
+
+    # Reorder only — should still be valid because the *set* is unchanged.
+    form_reorder = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            allowed_file_types=[SubmissionFileType.XML, SubmissionFileType.JSON],
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+    assert form_reorder.is_valid(), form_reorder.errors
+
+    # Real removal — gate should fire.
+    form_real_change = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            allowed_file_types=[SubmissionFileType.JSON],
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+    assert not form_real_change.is_valid()
+    assert "allowed_file_types" in form_real_change.errors

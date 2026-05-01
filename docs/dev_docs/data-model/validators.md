@@ -190,12 +190,32 @@ python manage.py sync_validators
 This command reads from the config registry and creates or updates `Validator` rows and their
 catalog entries. It is idempotent and runs automatically at container startup.
 
-**Versioning (current approach):** The `version` field tracks the overall validator version. When
-signals change significantly, bump this version. The sync command updates existing validators but
-uses `get_or_create` for catalog entries (existing entries are preserved). For now, if you need
-to change existing catalog entries, manually update them in the database or delete and re-sync.
-A more sophisticated versioning system is planned for the future
-([GitHub issue #92](https://github.com/danielmcquillen/validibot/issues/92)).
+**Versioning:** The `version` field tracks the validator version, and `sync_validators` keys
+validator rows by `(slug, version)`. Bumping the version in a config creates a *new* `Validator`
+row instead of mutating the existing one — preserving the launch contract that workflows pinned
+to the old version were running under.
+
+**Drift detection:** Each validator row stores a `semantic_digest` — a SHA-256 of the
+behavior-defining fields (`validation_type`, `processor_name`, `validator_class`,
+`supported_file_types`, `catalog_entries`, etc.; see
+`validibot/validations/services/validator_digest.py` for the full allowlist). On every sync, the
+command re-computes the digest from the config and compares it against the stored value:
+
+- **Same digest** → no-op idempotent update.
+- **Different digest under the same `(slug, version)`** → `CommandError` ("semantic drift
+  detected"). Either bump the config's `version` to declare a new validator row, or pass
+  `--allow-drift` (development override only) to overwrite the existing row's digest.
+
+The drift gate exists because a deploy that swaps a validator's processor or class without a
+version bump would silently re-write the rules of every workflow that locked onto the old version.
+Sync's job is to make that loud at deploy time.
+
+Catalog entries (signals + derivations) are still updated in place via `update_or_create` on
+`(validator, contract_key, direction)`, with stale entries pruned at the end of each sync. If you
+need to drop or restructure catalog entries, edit the config and re-run sync.
+
+The drift detection itself was introduced in
+[ADR-2026-04-27 Phase 3 Session B](https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md).
 
 ### Step editor cards
 

@@ -102,6 +102,93 @@ class WorkflowRequiresNewVersionTests(TestCase):
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Workflow.changed_contract_fields
+# ──────────────────────────────────────────────────────────────────────
+#
+# The model-level helper that forms / serializers / scripts use to
+# detect contract drift between current and proposed values. Pure
+# data-in/data-out: no DB queries, no side effects. Tested in
+# isolation here so changes to the comparison semantics (e.g. the
+# set-equality treatment of list-shaped fields) are caught at the
+# model layer, not just incidentally via the form.
+
+
+class WorkflowChangedContractFieldsTests(TestCase):
+    """``changed_contract_fields`` is the contract-drift comparator.
+
+    The form / serializer / admin gates all funnel through this
+    method. It returns the *names* of contract fields whose proposed
+    value differs from the workflow's current value.
+    """
+
+    def test_returns_empty_set_when_proposed_matches_current(self):
+        """Identical proposal -> no drift."""
+        from validibot.submissions.constants import SubmissionRetention
+
+        workflow = WorkflowFactory(
+            data_retention=SubmissionRetention.DO_NOT_STORE,
+            allowed_file_types=[SubmissionFileType.JSON],
+        )
+        proposed = {
+            "data_retention": SubmissionRetention.DO_NOT_STORE,
+            "allowed_file_types": [SubmissionFileType.JSON],
+        }
+        assert workflow.changed_contract_fields(proposed) == set()
+
+    def test_detects_simple_value_change(self):
+        """A single contract field changing -> set with that name."""
+        from validibot.submissions.constants import SubmissionRetention
+
+        workflow = WorkflowFactory(
+            data_retention=SubmissionRetention.DO_NOT_STORE,
+        )
+        proposed = {
+            "data_retention": SubmissionRetention.STORE_PERMANENTLY,
+        }
+        assert workflow.changed_contract_fields(proposed) == {"data_retention"}
+
+    def test_list_field_uses_set_equality(self):
+        """``allowed_file_types`` ignores ordering (it's a set semantically)."""
+        workflow = WorkflowFactory(
+            allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.XML],
+        )
+        # Same items, different order -> not a change.
+        proposed = {
+            "allowed_file_types": [SubmissionFileType.XML, SubmissionFileType.JSON],
+        }
+        assert workflow.changed_contract_fields(proposed) == set()
+
+    def test_list_field_detects_real_membership_change(self):
+        """Removing an item from ``allowed_file_types`` IS a change."""
+        workflow = WorkflowFactory(
+            allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.XML],
+        )
+        proposed = {
+            "allowed_file_types": [SubmissionFileType.JSON],
+        }
+        assert workflow.changed_contract_fields(proposed) == {"allowed_file_types"}
+
+    def test_skips_fields_not_in_proposed_dict(self):
+        """Partial proposals: only consider fields the caller actually passed.
+
+        A serializer for a PATCH request might only include a subset
+        of contract fields. Treating absent keys as "changed to None"
+        would falsely flag every PATCH on a locked workflow.
+        """
+        workflow = WorkflowFactory(
+            allowed_file_types=[SubmissionFileType.JSON],
+        )
+        # No keys at all -> nothing changed.
+        assert workflow.changed_contract_fields({}) == set()
+
+    def test_ignores_non_contract_fields_even_when_changed(self):
+        """``name`` is not a contract field; changing it doesn't show up."""
+        workflow = WorkflowFactory(name="Original")
+        proposed = {"name": "Renamed", "description": "new"}
+        assert workflow.changed_contract_fields(proposed) == set()
+
+
+# ──────────────────────────────────────────────────────────────────────
 # CONTRACT_FIELDS
 # ──────────────────────────────────────────────────────────────────────
 

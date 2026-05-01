@@ -744,6 +744,40 @@ class WorkflowForm(forms.ModelForm):
         if cleaned.get("agent_public_discovery"):
             cleaned["agent_billing_mode"] = AgentBillingMode.AGENT_PAYS_X402
 
+        # ── Contract-edit gate (ADR-2026-04-27 Phase 3) ───────────────
+        # A workflow that has runs, or is locked, has a frozen launch
+        # contract: anyone who launched a run did so under a specific
+        # set of file-type / retention / agent-publication rules.
+        # Editing those rules in place would silently re-write history.
+        # The policy is: the user must clone-to-new-version instead.
+        #
+        # We run this gate AFTER the cascade above so the user gets one
+        # clear error per affected field rather than mysteriously seeing
+        # agent_billing_mode flagged when they only touched
+        # agent_public_discovery. ``self.instance`` still carries the DB
+        # values here because ``_post_clean()`` hasn't merged
+        # ``cleaned_data`` into it yet.
+        if (
+            self.instance
+            and self.instance.pk
+            and self.instance.requires_new_version_for_contract_edits()
+        ):
+            changed = self.instance.changed_contract_fields(cleaned)
+            for field_name in changed:
+                self.add_error(
+                    field_name,
+                    ValidationError(
+                        _(
+                            "This workflow already has runs (or is locked). "
+                            "Launch-contract fields like this one are part of "
+                            "the rules every past run executed under, so they "
+                            "cannot change in place. Create a new version of "
+                            "the workflow to modify them."
+                        ),
+                        code="contract_field_locked",
+                    ),
+                )
+
         # ── Public discovery requires agent access ────────���───────────
         if cleaned.get("agent_public_discovery") and not cleaned.get(
             "agent_access_enabled"

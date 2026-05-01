@@ -22,6 +22,7 @@ Typical usage::
     checksum = sha256_hexdigest(file_bytes)
 """
 
+import contextlib
 import hashlib
 import re
 import unicodedata
@@ -239,4 +240,76 @@ def sha256_hexdigest(data: bytes) -> str:
     """
     h = hashlib.sha256()
     h.update(data)
+    return h.hexdigest()
+
+
+# Default chunk size when streaming file content into a hash. 64 KiB
+# strikes a balance between syscall overhead (smaller chunks = more
+# read calls) and memory pressure (larger chunks = bigger transient
+# buffer). Most validator resource files are sub-megabyte; weather
+# files (EPW) are a few MB; this size processes either in tens of
+# chunks.
+_HASH_CHUNK_SIZE = 64 * 1024
+
+
+def sha256_field_file(field_file) -> str:
+    """Compute the SHA-256 hex digest of a Django ``FieldFile``'s contents.
+
+    Streams the file in chunks rather than reading the whole thing
+    into memory — important for the 10+ MiB resource files that
+    EnergyPlus weather data and FMU bundles can produce.
+
+    The function is content-only: file metadata (storage path,
+    upload timestamp) does not contribute to the hash, so re-saving
+    the same bytes at a different storage path produces the same
+    digest.
+
+    Important: this function does NOT close the file. ``FieldFile``
+    objects passed during ``Model.save()`` may be ``UploadedFile``
+    instances backed by an in-memory buffer that becomes unusable
+    once closed — closing here would leave Django's later
+    ``storage.save()`` reading from a dead handle. Instead, we
+    save the file's current position, read from the start, and
+    restore the position so the caller's subsequent operations see
+    the file in the same state we found it.
+
+    Args:
+        field_file: Any Django ``FieldFile``-like object. An
+            empty/unset FieldFile produces the SHA-256 of empty bytes.
+
+    Returns:
+        Lowercase hex string (64 characters).
+    """
+    if not field_file or not getattr(field_file, "name", ""):
+        return sha256_hexdigest(b"")
+
+    # Save current position to restore after hashing. Some file-like
+    # objects (older custom storages, unseekable streams) don't
+    # support tell(); we tolerate that by setting pos=None.
+    try:
+        pos = field_file.tell()
+    except (AttributeError, OSError, ValueError):
+        pos = None
+
+    # Couldn't rewind — the hash will reflect whatever bytes the
+    # current position yields. Better than crashing.
+    with contextlib.suppress(AttributeError, OSError, ValueError):
+        field_file.seek(0)
+
+    h = hashlib.sha256()
+    while True:
+        chunk = field_file.read(_HASH_CHUNK_SIZE)
+        if not chunk:
+            break
+        h.update(chunk)
+
+    if pos is not None:
+        try:
+            field_file.seek(pos)
+        except (AttributeError, OSError, ValueError):
+            # Best-effort: try seeking back to zero so the next
+            # read() doesn't return EOF unexpectedly.
+            with contextlib.suppress(AttributeError, OSError, ValueError):
+                field_file.seek(0)
+
     return h.hexdigest()

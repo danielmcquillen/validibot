@@ -279,6 +279,22 @@ class Ruleset(TimeStampedModel):
                     },
                 )
 
+        # ── Phase 3 task 10: ruleset immutability ───────────────────
+        # A ruleset that's referenced by any step on a locked or used
+        # workflow is part of those workflows' launch contract. Editing
+        # its rules in place would silently re-write what previously-
+        # launched runs were checking against. The policy mirrors
+        # ``Workflow.requires_new_version_for_contract_edits`` — once
+        # the contract is "in use", you must clone-to-new-version
+        # rather than mutate.
+        #
+        # This gate runs LAST so the existing canonicalization above
+        # (e.g. metadata['schema_type'] -> uppercase) settles before
+        # we compare against the DB row. A no-op canonicalization
+        # produces the same bytes either way and won't trip the gate.
+        if self.pk and self.is_used_by_locked_workflow():
+            self._raise_if_immutable_fields_changed()
+
     @property
     def rules(self) -> str:
         """
@@ -316,6 +332,87 @@ class Ruleset(TimeStampedModel):
         )
         validator = getattr(step, "validator", None)
         return validator
+
+    # ADR-2026-04-27 Phase 3 task 10: fields whose mutation changes
+    # what the ruleset actually checks against. Editing any of these
+    # on a ruleset used by a locked workflow is silently rewriting
+    # the rules a previously-launched run was operating under.
+    #
+    # Excluded (deliberately mutable):
+    # - ``name``, ``version`` — cosmetic / identity. Renaming doesn't
+    #   change rule meaning.
+    # - ``user``, ``org`` — ownership; shouldn't change by edit but
+    #   not part of "what's checked".
+    IMMUTABLE_RULESET_FIELDS = (
+        "rules_text",
+        "rules_file",
+        "metadata",
+        "ruleset_type",
+    )
+
+    def is_used_by_locked_workflow(self) -> bool:
+        """Return True if any step on a locked or run-having workflow uses this ruleset.
+
+        Only considers the *direct* ``WorkflowStep.ruleset`` linkage —
+        system validators' ``default_ruleset`` rows are managed by
+        ``sync_validators`` and are protected by the ``semantic_digest``
+        drift gate (Phase 3 Session B), so they're out of scope for
+        this check.
+        """
+        # Local import — workflows.models imports validations.models,
+        # so importing the other way at module-load time would cycle.
+        from validibot.workflows.models import WorkflowStep
+
+        return (
+            WorkflowStep.objects.filter(
+                ruleset=self,
+            )
+            .filter(
+                Q(workflow__is_locked=True)
+                | Q(workflow__validation_runs__isnull=False),
+            )
+            .exists()
+        )
+
+    def _raise_if_immutable_fields_changed(self) -> None:
+        """Compare against the DB row; raise ``ValidationError`` on diff.
+
+        Called from :meth:`clean` only when ``is_used_by_locked_workflow``
+        is true. The fresh DB fetch is the single extra query per save
+        attempt — fine vs the trust value of catching silent mutation.
+
+        FieldFile equality compares by ``name`` (the storage path), so
+        replacing the file at a new path triggers the gate. Replacing
+        bytes at the same path silently does not — that's the
+        ``content_hash`` story addressed by task 11 below.
+        """
+        try:
+            original = type(self).objects.get(pk=self.pk)
+        except type(self).DoesNotExist:
+            # Race: the row was deleted between clean() and the fetch.
+            # Treat as no-op; the save will fail in its own right.
+            return
+
+        changed: list[str] = []
+        for field in self.IMMUTABLE_RULESET_FIELDS:
+            new = getattr(self, field, None)
+            old = getattr(original, field, None)
+            # Special case: FieldFile compares by .name — direct ==
+            # works because FieldFile.__eq__ defers to the path.
+            if new != old:
+                changed.append(field)
+
+        if changed:
+            errors = {
+                field: _(
+                    "This ruleset is referenced by a workflow that has runs "
+                    "(or is locked); its rules cannot change in place. "
+                    "Create a new ruleset (or a new workflow version) to "
+                    "modify them."
+                )
+                for field in changed
+            }
+            raise ValidationError(errors)
 
 
 class RulesetAssertion(TimeStampedModel):
@@ -494,6 +591,77 @@ class RulesetAssertion(TimeStampedModel):
                     )
                 },
             )
+
+        # ── Phase 3 task 10: assertion immutability ─────────────────
+        # Adding, removing, or editing an assertion all change what
+        # the parent ruleset checks. If that ruleset is referenced by
+        # any step on a locked or used workflow, every previously-
+        # launched run was operating WITHOUT the new assertion (or
+        # WITH the old one). Treat the assertion's semantic fields the
+        # same way as the parent ruleset's: locked once the contract is
+        # in use.
+        if self.ruleset_id and self.ruleset.is_used_by_locked_workflow():
+            if self.pk:
+                self._raise_if_immutable_fields_changed()
+            else:
+                # Adding a brand-new assertion to a locked ruleset.
+                raise ValidationError(
+                    _(
+                        "Cannot add a new assertion to this ruleset: it "
+                        "is referenced by a workflow that has runs (or is "
+                        "locked). Add the assertion to a new ruleset or a "
+                        "new workflow version instead.",
+                    ),
+                )
+
+    # ADR-2026-04-27 Phase 3 task 10: fields whose mutation changes
+    # how the assertion fires or how its result classifies. Editing
+    # any of these on a locked ruleset would silently re-write what
+    # past runs were checking against, or how their results were
+    # categorised.
+    #
+    # Excluded (deliberately mutable):
+    # - ``order`` — display position in the UI; doesn't change logic.
+    # - ``message_template`` / ``success_message`` — operator-facing
+    #   text. Improving wording shouldn't be blocked.
+    # - ``cel_cache`` — compiled-CEL cache, recomputed lazily.
+    IMMUTABLE_ASSERTION_FIELDS = (
+        "assertion_type",
+        "operator",
+        "target_signal_definition_id",
+        "target_data_path",
+        "rhs",
+        "options",
+        "when_expression",
+        "severity",
+        "spec_version",
+    )
+
+    def _raise_if_immutable_fields_changed(self) -> None:
+        """Compare against the DB row; raise on diff. See ``Ruleset`` twin."""
+        try:
+            original = type(self).objects.get(pk=self.pk)
+        except type(self).DoesNotExist:
+            return
+
+        changed: list[str] = []
+        for field in self.IMMUTABLE_ASSERTION_FIELDS:
+            new = getattr(self, field, None)
+            old = getattr(original, field, None)
+            if new != old:
+                changed.append(field)
+
+        if changed:
+            errors = {
+                field: _(
+                    "This assertion belongs to a ruleset used by a workflow "
+                    "that has runs (or is locked); its rule cannot change "
+                    "in place. Edit a copy on a new ruleset or workflow "
+                    "version."
+                )
+                for field in changed
+            }
+            raise ValidationError(errors)
 
     @property
     def target_display(self) -> str:
@@ -2599,12 +2767,92 @@ class ValidatorResourceFile(TimeStampedModel):
         help_text=_("Validator-specific metadata (e.g., location info for weather)."),
     )
 
+    # ADR-2026-04-27 Phase 3, task 11: SHA-256 of the file's bytes.
+    # Computed on save, used to detect drift on resources referenced
+    # by locked workflows. Empty until the first save; subsequent
+    # saves recompute and (for catalog files used by locked
+    # workflows) refuse to overwrite a different content hash.
+    content_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=_(
+            "SHA-256 of the file's content, computed on save. Used to "
+            "detect drift when a catalog file referenced by a locked "
+            "workflow tries to mutate."
+        ),
+    )
+
     class Meta:
         ordering = ["-is_default", "name"]
         indexes = [
             models.Index(fields=["validator", "resource_type"]),
             models.Index(fields=["org", "resource_type"]),
         ]
+
+    def is_used_by_locked_workflow(self) -> bool:
+        """Return True if any locked/used workflow's step references this file.
+
+        Catalog files are referenced from a workflow step via
+        ``WorkflowStepResource.validator_resource_file``. The check
+        walks that one FK and gates on the same workflow signal as
+        Ruleset (locked OR has-runs).
+        """
+        # Local import to avoid the circular workflows<->validations
+        # module load.
+        from validibot.workflows.models import WorkflowStepResource
+
+        return (
+            WorkflowStepResource.objects.filter(
+                validator_resource_file=self,
+            )
+            .filter(
+                Q(step__workflow__is_locked=True)
+                | Q(step__workflow__validation_runs__isnull=False),
+            )
+            .exists()
+        )
+
+    def _check_content_drift_or_raise(self, new_hash: str) -> None:
+        """Raise if our stored hash differs from ``new_hash`` AND we're locked.
+
+        Called from save() when there's a chance we're persisting a
+        different file. The first-ever save populates the hash from
+        empty; that's not drift.
+        """
+        if not self.pk or not self.content_hash:
+            return  # uninitialised → nothing to drift from
+        if new_hash == self.content_hash:
+            return  # bytes unchanged
+        # Hash changed — only block if a locked workflow depends on us.
+        if self.is_used_by_locked_workflow():
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError(
+                {
+                    "file": _(
+                        "This catalog resource file is referenced by a "
+                        "workflow that has runs (or is locked); its "
+                        "bytes cannot change in place. Upload a new "
+                        "ValidatorResourceFile entry instead."
+                    ),
+                },
+            )
+
+    def save(self, *args, **kwargs):
+        """Compute and persist ``content_hash`` on every save.
+
+        Performs the drift check before the row is written, so a
+        rejected mutation never reaches the DB. Hash is read from
+        storage, so the value reflects on-disk bytes after upload
+        handlers have settled.
+        """
+        from validibot.core.filesafety import sha256_field_file
+
+        new_hash = sha256_field_file(self.file)
+        self._check_content_drift_or_raise(new_hash)
+        self.content_hash = new_hash
+        super().save(*args, **kwargs)
 
     def clean(self):
         from validibot.validations.constants import get_resource_type_config

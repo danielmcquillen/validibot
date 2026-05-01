@@ -126,6 +126,7 @@ nav:
       - Results: data-model/results.md
       - Users & Roles: data-model/users_roles.md
       - Deletions: data-model/deletions.md
+      - Workflow Versioning & Trust: data-model/workflow-versioning.md
   - Deployment:
       - Deployment Overview: deployment/overview.md
       - Run Validibot Locally: deployment/deploy-local.md

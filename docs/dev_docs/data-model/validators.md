@@ -97,6 +97,16 @@ integrity and eliminates the stale-UUID problem of the earlier JSON-based approa
 delete them (uses `ADMIN_MANAGE_ORG` permission). Deletion is blocked if the file is referenced
 by any active workflow step (checked via `WorkflowStepResource` FK query).
 
+**Content immutability** (ADR-2026-04-27 Phase 3 task 11): every `ValidatorResourceFile` and
+step-owned `WorkflowStepResource` row stores a SHA-256 `content_hash` of its file's bytes,
+computed in `save()` via `validibot.core.filesafety.sha256_field_file`. If a save would change
+the hash AND the file is referenced by any step on a locked or used workflow, `save()` raises
+`ValidationError`. Operators must upload a fresh row (new `ValidatorResourceFile` entry, or
+clone the workflow to a new version) rather than overwriting bytes in place. This protects
+the launch contract that previously-launched runs were operating under: a weather file
+labelled "TMY3 SFO 2018" cannot be silently swapped to a 2024 dataset and have past runs
+retroactively change meaning.
+
 ## Validator detail page (UI)
 
 The validator detail page uses link-based tabs (separate URLs, server-rendered) rather than

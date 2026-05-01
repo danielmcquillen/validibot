@@ -183,10 +183,18 @@ class SyncValidatorsCommandTests(TestCase):
             )
 
     def test_command_updates_existing_validator(self):
-        """Test that command updates existing validator fields."""
-        # Create a validator with different name
+        """Test that command updates existing validator fields.
+
+        Phase 3 Session B (ADR-2026-04-27 task 7): sync_validators
+        keys by ``(slug, version)`` rather than slug alone, so the
+        seed row must declare the same ``version`` the config
+        advertises (``"1.0"``) — otherwise sync would CREATE a new
+        row alongside instead of updating the seed.
+        """
+        # Create a validator with different name but matching (slug, version).
         Validator.objects.create(
             slug="energyplus-idf-validator",
+            version="1.0",
             name="Old Name",
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,

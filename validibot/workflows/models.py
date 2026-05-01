@@ -1389,6 +1389,23 @@ class WorkflowStepResource(models.Model):
         help_text="Resource type identifier for step-owned files.",
     )
 
+    # ADR-2026-04-27 Phase 3, task 11: SHA-256 of the step-owned
+    # file's content (only meaningful in step-owned mode; catalog
+    # references inherit the hash from their ValidatorResourceFile).
+    # Auto-populated on save. Mutation gating happens at save time:
+    # if this resource's step lives on a locked workflow and the
+    # bytes change, save() raises.
+    content_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=(
+            "SHA-256 of step_resource_file content. Only used for "
+            "step-owned files; catalog references look up the hash "
+            "via validator_resource_file.content_hash."
+        ),
+    )
+
     class Meta:
         constraints = [
             models.CheckConstraint(
@@ -1414,6 +1431,46 @@ class WorkflowStepResource(models.Model):
             )
         return f"StepResource({self.step_id}, {self.role}, file={self.filename})"
 
+    def save(self, *args, **kwargs):
+        """Compute ``content_hash`` for step-owned files, gate drift on lock.
+
+        Catalog references (``validator_resource_file`` set) are
+        immutable links to another row — their hash story belongs to
+        ``ValidatorResourceFile.content_hash``; we leave
+        ``self.content_hash`` empty in that mode.
+
+        For step-owned files, the on-save hash recompute is the
+        choke point: a different hash than what's stored, AND a
+        locked workflow on the other side, raises before persistence.
+        """
+        from validibot.core.filesafety import sha256_field_file
+
+        if self.is_step_owned:
+            new_hash = sha256_field_file(self.step_resource_file)
+            if (
+                self.pk
+                and self.content_hash
+                and new_hash != self.content_hash
+                and self.is_used_by_locked_workflow()
+            ):
+                from django.core.exceptions import ValidationError
+
+                raise ValidationError(
+                    {
+                        "step_resource_file": (
+                            "This step-owned file is part of a locked "
+                            "workflow's contract; its bytes cannot "
+                            "change in place. Clone the workflow to a "
+                            "new version to upload a different file."
+                        ),
+                    },
+                )
+            self.content_hash = new_hash
+        else:
+            # Catalog reference: leave hash blank, the source row owns it.
+            self.content_hash = ""
+        super().save(*args, **kwargs)
+
     @property
     def is_catalog_reference(self) -> bool:
         """True when this resource points to a shared ValidatorResourceFile."""
@@ -1423,6 +1480,18 @@ class WorkflowStepResource(models.Model):
     def is_step_owned(self) -> bool:
         """True when this resource stores a file directly on this record."""
         return self.validator_resource_file_id is None
+
+    def is_used_by_locked_workflow(self) -> bool:
+        """Return True if our step lives on a locked or used workflow.
+
+        Step-owned resources are scoped to a single step (one row,
+        one workflow). The check therefore walks ``step.workflow``
+        and applies the standard locked-or-has-runs gate.
+        """
+        if not self.step_id:
+            return False
+        workflow = self.step.workflow
+        return workflow.is_locked or workflow.has_runs()
 
     def get_storage_uri(self) -> str:
         """Return the storage URI for this resource, regardless of mode.

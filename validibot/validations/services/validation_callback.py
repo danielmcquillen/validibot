@@ -647,6 +647,16 @@ class ValidationCallbackService:
 
         safe_stamp_output_hash(run)
 
+        # ADR-2026-04-27 Phase 4 Session A: stamp the evidence
+        # manifest after the run reaches its terminal state. Best-
+        # effort — a manifest-generation failure does not change
+        # the run's outcome. Sibling call lives in
+        # step_orchestrator.execute_workflow_steps for the sync
+        # path; both are idempotent (re-stamping replaces in place).
+        from validibot.validations.services.evidence import stamp_evidence_manifest
+
+        stamp_evidence_manifest(run)
+
         logger.info(
             "Finalized run %s with status %s",
             run.id,

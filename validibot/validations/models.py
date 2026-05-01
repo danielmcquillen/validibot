@@ -2658,6 +2658,153 @@ class CallbackReceipt(models.Model):
         return f"CallbackReceipt({short_id}... for run {self.validation_run_id})"
 
 
+class RunEvidenceArtifactAvailability(models.TextChoices):
+    """Lifecycle states for an evidence-manifest artifact.
+
+    ADR-2026-04-27 Phase 4 Session A. Tracks whether the manifest's
+    bytes are currently retrievable from storage. The state is
+    decoupled from "was the manifest ever generated?" because runs
+    can have manifests that get purged later (retention sweeps,
+    storage backend rotations).
+    """
+
+    GENERATED = "GENERATED", _("Manifest generated and bytes available")
+    PURGED = "PURGED", _("Manifest bytes purged; only hash remains")
+    FAILED = "FAILED", _("Manifest generation failed; row records the gap")
+
+
+def _evidence_manifest_upload_path(instance, filename):
+    """Generate the storage path for an evidence manifest.
+
+    Format: ``evidence/<org_id>/<run_id>/<filename>``. Per-org
+    partition mirrors the run-workspace layout introduced in Phase 1
+    so future bulk-delete-by-org operations don't have to walk every
+    run dir individually.
+    """
+    return f"evidence/{instance.run.org_id}/{instance.run_id}/{filename}"
+
+
+class RunEvidenceArtifact(TimeStampedModel):
+    """Per-run evidence-manifest record.
+
+    ADR-2026-04-27 Phase 4 Session A: every completed validation run
+    gets exactly one ``RunEvidenceArtifact`` row pointing at the
+    canonical-JSON manifest serialised to storage. The row is the
+    DB index — manifest bytes live in storage, ``manifest_hash``
+    pins them.
+
+    Session B will use this row to record retention-class state and
+    Session C will use ``cached_bundle_path`` to point at exported
+    tarballs (the manifest plus optional inputs / outputs / signed
+    credential).
+
+    Why one-to-one with ``ValidationRun``
+    -------------------------------------
+
+    A run has one canonical manifest. Re-running the manifest builder
+    (e.g. after a backend bug fix that changed the redaction policy)
+    produces a *different* manifest with a different hash; that's a
+    new artifact for a new audit row, not an update to this one. We
+    do NOT track manifest history here — re-emission is a Phase 4
+    Session B / C concern.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    run = models.OneToOneField(
+        "validations.ValidationRun",
+        on_delete=models.CASCADE,
+        related_name="evidence_artifact",
+        help_text=_("The validation run this manifest documents."),
+    )
+
+    schema_version = models.CharField(
+        max_length=64,
+        help_text=_(
+            "The validibot.evidence.vN schema string the manifest was "
+            "produced under. Verifiers parse the manifest's "
+            "schema_version field at read time, but storing it here "
+            "lets the auditor query for runs on stale schemas without "
+            "fetching the bytes."
+        ),
+    )
+
+    manifest_path = models.FileField(
+        upload_to=_evidence_manifest_upload_path,
+        max_length=500,
+        blank=True,
+        help_text=_(
+            "Path to the canonical-JSON manifest in default storage. "
+            "Empty when availability is FAILED (generation never "
+            "produced bytes)."
+        ),
+    )
+
+    manifest_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=_(
+            "SHA-256 of the manifest's canonical-JSON bytes. Empty "
+            "when availability is FAILED. Future signed credentials "
+            "(Phase 4 Session C) cite this hash, so a re-fetch + "
+            "re-hash detects tampering."
+        ),
+    )
+
+    cached_bundle_path = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=_(
+            "Phase 4 Session C: path to a cached export-bundle tarball "
+            "(manifest + inputs + outputs + signature). Empty until "
+            "the operator triggers an export."
+        ),
+    )
+
+    retention_class = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text=_(
+            "Workflow.data_retention at the time the manifest was "
+            "generated. Mirrored here so retention-sweep code can "
+            "filter without joining to Workflow."
+        ),
+    )
+
+    availability = models.CharField(
+        max_length=16,
+        choices=RunEvidenceArtifactAvailability,
+        default=RunEvidenceArtifactAvailability.GENERATED,
+        help_text=_(
+            "Lifecycle state: GENERATED (bytes in storage), PURGED "
+            "(only hash remains), or FAILED (generation aborted)."
+        ),
+    )
+
+    generation_error = models.TextField(
+        blank=True,
+        default="",
+        help_text=_(
+            "When availability is FAILED, the exception message from "
+            "the manifest builder. Empty otherwise."
+        ),
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["availability", "created"]),
+            models.Index(fields=["schema_version"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"RunEvidenceArtifact(run={self.run_id}, availability={self.availability})"
+        )
+
+
 def _resource_file_upload_path(instance: ValidatorResourceFile, filename: str) -> str:
     """Generate upload path for validator resource files."""
     # Use resource file's own UUID for uniqueness (shorter path than nested UUID)

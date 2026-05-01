@@ -17,6 +17,7 @@ contract:
 from __future__ import annotations
 
 import json
+from datetime import UTC
 from io import StringIO
 
 import pytest
@@ -372,3 +373,140 @@ class TestExitCode:
         with pytest.raises(SystemExit) as exc:
             call_command("audit_workflow_versions", strict=True, stdout=out)
         assert exc.value.code == 1
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase 4 Session A: manifest findings
+# ──────────────────────────────────────────────────────────────────────
+#
+# The audit command extends to surface evidence-manifest gaps so
+# operators see "this run completed before the manifest stamper
+# existed" or "manifest generation FAILED for this run" loudly.
+
+
+class TestManifestFindings:
+    """Per-run manifest coverage findings."""
+
+    def test_completed_run_without_artifact_emits_manifest_missing(self):
+        """A terminal-state run with no RunEvidenceArtifact -> warn."""
+        from validibot.submissions.tests.factories import SubmissionFactory
+        from validibot.validations.constants import ValidationRunStatus
+        from validibot.validations.tests.factories import ValidationRunFactory
+
+        # Cover the validator digest so the manifest finding is the
+        # ONLY thing the audit reports for this workflow.
+        validator = ValidatorFactory(semantic_digest="a" * 64)
+        workflow = WorkflowFactory(is_locked=True)
+        WorkflowStepFactory(workflow=workflow, validator=validator)
+        submission = SubmissionFactory(workflow=workflow)
+        # Run is SUCCEEDED but has no manifest - simulates pre-Phase-4
+        # state, or a manifest that was lost.
+        ValidationRunFactory(
+            workflow=workflow,
+            submission=submission,
+            status=ValidationRunStatus.SUCCEEDED,
+        )
+
+        report = _run_audit()
+        codes = {f["code"] for w in report["workflows"] for f in w["findings"]}
+        assert "MANIFEST_MISSING" in codes
+        finding = next(
+            f
+            for w in report["workflows"]
+            for f in w["findings"]
+            if f["code"] == "MANIFEST_MISSING"
+        )
+        assert finding["severity"] == "warn"
+
+    def test_pending_run_does_not_emit_manifest_missing(self):
+        """In-flight runs are not flagged - they haven't reached the stamp yet."""
+        from validibot.submissions.tests.factories import SubmissionFactory
+        from validibot.validations.constants import ValidationRunStatus
+        from validibot.validations.tests.factories import ValidationRunFactory
+
+        validator = ValidatorFactory(semantic_digest="a" * 64)
+        workflow = WorkflowFactory(is_locked=True)
+        WorkflowStepFactory(workflow=workflow, validator=validator)
+        submission = SubmissionFactory(workflow=workflow)
+        ValidationRunFactory(
+            workflow=workflow,
+            submission=submission,
+            status=ValidationRunStatus.PENDING,
+        )
+
+        report = _run_audit()
+        codes = {f["code"] for w in report["workflows"] for f in w["findings"]}
+        assert "MANIFEST_MISSING" not in codes
+
+    def test_failed_artifact_emits_manifest_generation_failed_error(self):
+        """Run with a FAILED RunEvidenceArtifact -> error severity."""
+        from validibot_shared.evidence import SCHEMA_VERSION
+
+        from validibot.submissions.tests.factories import SubmissionFactory
+        from validibot.validations.constants import ValidationRunStatus
+        from validibot.validations.models import RunEvidenceArtifact
+        from validibot.validations.models import RunEvidenceArtifactAvailability
+        from validibot.validations.tests.factories import ValidationRunFactory
+
+        validator = ValidatorFactory(semantic_digest="a" * 64)
+        workflow = WorkflowFactory(is_locked=True)
+        WorkflowStepFactory(workflow=workflow, validator=validator)
+        submission = SubmissionFactory(workflow=workflow)
+        run = ValidationRunFactory(
+            workflow=workflow,
+            submission=submission,
+            status=ValidationRunStatus.SUCCEEDED,
+        )
+        RunEvidenceArtifact.objects.create(
+            run=run,
+            schema_version=SCHEMA_VERSION,
+            availability=RunEvidenceArtifactAvailability.FAILED,
+            generation_error="storage IOError: disk full",
+        )
+
+        out = StringIO()
+        with pytest.raises(SystemExit):
+            call_command(
+                "audit_workflow_versions",
+                emit_json=True,
+                stdout=out,
+            )
+        report = json.loads(out.getvalue())
+        finding = next(
+            f
+            for w in report["workflows"]
+            for f in w["findings"]
+            if f["code"] == "MANIFEST_GENERATION_FAILED"
+        )
+        assert finding["severity"] == "error"
+
+    def test_run_with_generated_artifact_emits_no_manifest_finding(self):
+        """A run with a populated artifact -> no manifest finding."""
+        from validibot.submissions.tests.factories import SubmissionFactory
+        from validibot.validations.constants import ValidationRunStatus
+        from validibot.validations.services.evidence import stamp_evidence_manifest
+        from validibot.validations.tests.factories import ValidationRunFactory
+
+        validator = ValidatorFactory(semantic_digest="a" * 64)
+        workflow = WorkflowFactory(is_locked=True)
+        WorkflowStepFactory(workflow=workflow, validator=validator)
+        submission = SubmissionFactory(workflow=workflow)
+        run = ValidationRunFactory(
+            workflow=workflow,
+            submission=submission,
+            status=ValidationRunStatus.SUCCEEDED,
+        )
+        # Need ended_at for the manifest builder.
+        from datetime import datetime
+
+        run.ended_at = datetime(2026, 5, 1, tzinfo=UTC)
+        run.save(update_fields=["ended_at"])
+
+        # Stamp the manifest (this is what step_orchestrator /
+        # validation_callback do at run completion).
+        stamp_evidence_manifest(run)
+
+        report = _run_audit()
+        codes = {f["code"] for w in report["workflows"] for f in w["findings"]}
+        assert "MANIFEST_MISSING" not in codes
+        assert "MANIFEST_GENERATION_FAILED" not in codes

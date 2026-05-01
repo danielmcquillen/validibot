@@ -482,6 +482,15 @@ class StepOrchestrator:
                 )
         safe_stamp_output_hash(validation_run)
 
+        # ADR-2026-04-27 Phase 4 Session A: stamp the evidence manifest.
+        # Best-effort — a manifest-generation failure does not fail
+        # the run. The auditor surfaces gaps as MANIFEST_MISSING.
+        # Same call lives in the async callback path
+        # (validation_callback._finalise_run_for_status).
+        from validibot.validations.services.evidence import stamp_evidence_manifest
+
+        stamp_evidence_manifest(validation_run)
+
         result = ValidationRunTaskResult(
             run_id=validation_run.id,
             status=validation_run.status,

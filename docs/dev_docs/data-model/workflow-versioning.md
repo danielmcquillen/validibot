@@ -114,6 +114,13 @@ finding has a code, a severity, and a human-readable message:
 - `STEP_RESOURCE_READ_ERROR` — the file couldn't be read at audit
   time. Severity `warn`. Suggests storage misconfiguration; the drift
   check couldn't run.
+- `MANIFEST_MISSING` — a completed run (terminal status) has no
+  `RunEvidenceArtifact` row. Either the run finished before Phase 4
+  Session A's manifest stamper deployed, or stamping silently failed
+  before the FAILED row could be recorded. Severity `warn`.
+- `MANIFEST_GENERATION_FAILED` — a run has a `RunEvidenceArtifact`
+  in `availability=FAILED` state. The `generation_error` column
+  records why. Severity `error`.
 
 ### Useful flags
 
@@ -152,6 +159,8 @@ that pipes into your observability pipeline. `error` findings page;
 | `CATALOG_RESOURCE_HASH_MISSING` | Re-save the `ValidatorResourceFile` row (e.g. via the admin). The save triggers `content_hash` population. |
 | `STEP_RESOURCE_HASH_MISSING` | Re-save the `WorkflowStepResource` (often by editing the parent step). |
 | `STEP_RESOURCE_HASH_DRIFT` | Same as `VALIDATOR_DIGEST_DRIFT`: investigate the source of the bytes change. The workflow's launch contract is provably broken; the workflow should be cloned to a new version with the corrected file before any new runs land on it. |
+| `MANIFEST_MISSING` | Re-finalise the run via the admin or a management script — that triggers the manifest stamper and the row appears. For very old runs (years) where the original workflow has been mutated since, accept legacy versioning and document. |
+| `MANIFEST_GENERATION_FAILED` | Read `RunEvidenceArtifact.generation_error` on the row. Common causes: storage backend unreachable, schema validation failure (rare bug). Fix the underlying issue and re-stamp via `EvidenceManifestBuilder.persist(run, EvidenceManifestBuilder.build(run))`. |
 
 ## Adding a new contract field
 
@@ -176,6 +185,40 @@ Future ADR adds a behavior-defining field to `ValidatorConfig`:
    `validibot.validations.services.validator_digest.SEMANTIC_FIELDS`.
 3. Run `sync_validators --allow-drift` once on each deployment to
    re-populate digests; CI will then enforce on the new field.
+
+## Evidence manifests (Phase 4 Session A)
+
+A completed run also gets a *manifest* — a canonical-JSON document
+that snapshots "what rules and inputs run X was operating under."
+The manifest is hashed, written to default storage, and indexed by a
+`RunEvidenceArtifact` row pointing at the file.
+
+The schema is `validibot.evidence.v1` (see
+`validibot_shared.evidence` in the published `validibot-shared`
+package — version 0.5.0+). It lives in shared so external verifiers
+(validibot-pro, third-party tools) can consume it without pulling in
+the Django stack. For Session A it includes:
+
+- Run identity: run UUID, workflow slug + version, org, executed at.
+- Workflow contract snapshot: every field in `CONTRACT_FIELDS` at the
+  moment the run completed.
+- Per-step validator records: slug, version, and `semantic_digest`
+  pulled directly from each step's validator row.
+- Input schema: the workflow's structured input contract if any.
+- Retention class: a placeholder for Session B's redaction policy.
+- Payload digests: `None` for now; Session B fills in input/output
+  hashes including the always-on input hash that survives
+  `DO_NOT_STORE` purges.
+
+The stamper lives at
+`validibot/validations/services/evidence.py`. Both run-completion
+paths (`step_orchestrator.execute_workflow_steps` for sync runs and
+`validation_callback._finalise_run_for_status` for async) call
+`stamp_evidence_manifest(run)`. The function is best-effort: any
+exception is caught, logged, recorded as
+`availability=FAILED` on the row, and swallowed so the run's outcome
+is unaffected. The auditor then surfaces the gap.
+
 
 ## Related ADRs
 

@@ -255,6 +255,71 @@ class Command(BaseCommand):
             )
             for resource in step.step_resources.all():
                 findings.extend(self._audit_resource(resource, gap_severity))
+
+        # Phase 4 Session A: surface runs that have no evidence
+        # manifest. We walk the workflow's runs and report any whose
+        # ``RunEvidenceArtifact`` is missing or in FAILED state.
+        # Severity is always ``warn`` because by definition we only
+        # see this for runs that DID happen (gap_severity logic
+        # above doesn't apply — a run is by definition more concrete
+        # than "has-runs at workflow level").
+        findings.extend(self._audit_run_manifests(workflow))
+        return findings
+
+    def _audit_run_manifests(self, workflow) -> list[dict[str, Any]]:
+        """Emit findings for runs whose evidence manifest is missing or failed."""
+        from validibot.validations.models import RunEvidenceArtifactAvailability
+
+        findings: list[dict[str, Any]] = []
+        # ``select_related("evidence_artifact")`` would be a left
+        # join — but the OneToOneField on the artifact side means
+        # we need to walk runs and check via the related manager.
+        # We only care about completed runs (status terminal); a
+        # PENDING / RUNNING run hasn't reached the manifest stamp
+        # yet and shouldn't be flagged.
+        from validibot.validations.constants import ValidationRunStatus
+
+        terminal_statuses = {
+            ValidationRunStatus.SUCCEEDED,
+            ValidationRunStatus.FAILED,
+            ValidationRunStatus.CANCELED,
+        }
+
+        for run in workflow.validation_runs.filter(status__in=terminal_statuses):
+            try:
+                artifact = run.evidence_artifact
+            except Exception:
+                artifact = None
+
+            if artifact is None:
+                findings.append(
+                    {
+                        "severity": SEVERITY_WARN,
+                        "code": "MANIFEST_MISSING",
+                        "run_id": str(run.id),
+                        "message": (
+                            f"Run {run.id} (status={run.status}) has no "
+                            f"RunEvidenceArtifact. The run completed before "
+                            f"Phase 4 Session A's manifest stamper, OR "
+                            f"manifest generation silently failed before "
+                            f"the FAILED row could be recorded."
+                        ),
+                    },
+                )
+            elif artifact.availability == RunEvidenceArtifactAvailability.FAILED:
+                findings.append(
+                    {
+                        "severity": SEVERITY_ERROR,
+                        "code": "MANIFEST_GENERATION_FAILED",
+                        "run_id": str(run.id),
+                        "message": (
+                            f"Run {run.id} has a FAILED manifest artifact: "
+                            f"{(artifact.generation_error or '')[:200]!r}. "
+                            f"Re-stamp the manifest by re-finalising the "
+                            f"run, or accept legacy versioning."
+                        ),
+                    },
+                )
         return findings
 
     def _audit_validator(

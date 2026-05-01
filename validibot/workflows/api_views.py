@@ -26,6 +26,7 @@ from validibot.validations.serializers import ValidationRunStartSerializer
 from validibot.workflows.models import Workflow
 from validibot.workflows.serializers import WorkflowFullSerializer
 from validibot.workflows.serializers import WorkflowSlimSerializer
+from validibot.workflows.services.access import WorkflowAccessResolver
 from validibot.workflows.version_utils import get_latest_workflow
 from validibot.workflows.version_utils import get_latest_workflow_ids
 from validibot.workflows.views_helpers import resolve_project
@@ -63,12 +64,14 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         relationship to the org (membership or a guest grant on at
         least one workflow). That isn't enough to scope the queryset,
         because a guest invited to one workflow could otherwise list
-        every workflow in the org. Object-level scoping is delegated
-        to ``Workflow.objects.for_user(...)`` which intersects
-        org-membership, creator-of, and active ``WorkflowAccessGrant``
-        rows. Superusers keep the broad org view for debugging — this
-        matches the existing permission carve-out in
-        ``OrgMembershipPermission``.
+        every workflow in the org.
+
+        Object-level scoping is delegated to
+        :class:`WorkflowAccessResolver` (Phase 2 of ADR-2026-04-27)
+        which combines org-membership, creator-of, and active
+        ``WorkflowAccessGrant`` rows under one canonical decision
+        point. Superusers keep the broad org view for debugging,
+        matching the existing carve-out in ``OrgMembershipPermission``.
         """
         org = self.get_org()
         user = self.request.user
@@ -78,11 +81,7 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
                 is_archived=False,
                 is_tombstoned=False,
             )
-        return Workflow.objects.for_user(user).filter(
-            org=org,
-            is_archived=False,
-            is_tombstoned=False,
-        )
+        return WorkflowAccessResolver.list_for_user(user, org_id=org.id)
 
     def get_object(self) -> Workflow:
         """

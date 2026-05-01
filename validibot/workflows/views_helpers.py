@@ -87,33 +87,49 @@ def describe_workflow_file_type_violation(
 ) -> str | None:
     """
     Describe why the given workflow cannot accept submissions of the given file type.
+
+    Phase 2 of ADR-2026-04-27: this helper now delegates to
+    :class:`validibot.workflows.services.launch_contract.LaunchContract`
+    so the web view, REST API, and MCP helper API (all callers of
+    this helper) share their file-type/step-compatibility decisions
+    with the x402 cloud agent (which calls ``LaunchContract.validate``
+    directly).
+
+    Why this signature stays string-returning: the existing callers
+    (form ``clean_*`` methods, API serializers, MCP helper) all expect
+    a translatable error string for direct display. Changing them
+    all to consume a structured ``LaunchContractViolation`` is the
+    next refactor — for now, this delegation gets the unification at
+    the decision-logic layer and leaves the rendering shape unchanged.
     """
+    # Local import to avoid a circular import (services import models;
+    # models indirectly import this module via signals).
+    from validibot.workflows.services.launch_contract import LaunchContract
 
     if not file_type:
-        return _("Select a file type before launching the workflow.")
-    if not workflow.supports_file_type(file_type):
-        allowed = workflow.allowed_file_type_labels()
-        allowed_display = ", ".join(allowed) if allowed else _("no file types")
-        return _("This workflow accepts %(allowed)s submissions.") % {
-            "allowed": allowed_display
-        }
-    blocking_step = workflow.first_incompatible_step(file_type)
-    if blocking_step:
-        validator_name = getattr(blocking_step.validator, "name", "")
-        label = file_type_label(file_type)
-        if validator_name:
-            return _(
-                "Step %(step)s (%(validator)s) does not support %(file_type)s files."
-            ) % {
-                "step": blocking_step.step_number_display,
-                "validator": validator_name,
-                "file_type": label,
-            }
-        return _("Step %(step)s does not support %(file_type)s files.") % {
-            "step": blocking_step.step_number_display,
-            "file_type": label,
-        }
-    return None
+        # The contract treats missing file_type as "skip the check"
+        # rather than a violation — so we keep the existing helper's
+        # explicit "select a file type" message here for callers
+        # that want it. Web forms in particular need this prompt;
+        # API callers usually have a known file_type by the time
+        # they reach this helper.
+        return str(_("Select a file type before launching the workflow."))
+
+    violation = LaunchContract.validate(
+        workflow=workflow,
+        file_type=file_type,
+    )
+    if violation is None:
+        return None
+    # Workflow-state violations (inactive / no_steps) shouldn't surface
+    # through this helper because callers pre-check workflow state via
+    # ``ensure_workflow_ready_for_launch``. If they slip through, fall
+    # through to ``None`` rather than emitting a confusing file-type
+    # message — the caller's other checks will catch the underlying
+    # problem.
+    if violation.code.startswith("workflow_") or violation.code == "no_steps":
+        return None
+    return violation.message
 
 
 def resolve_submission_file_type(

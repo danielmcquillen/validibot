@@ -72,16 +72,34 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         ``WorkflowAccessGrant`` rows under one canonical decision
         point. Superusers keep the broad org view for debugging,
         matching the existing carve-out in ``OrgMembershipPermission``.
+
+        Inactive workflows are hidden from list/retrieve by the
+        resolver's default ``is_active=True`` filter. The ``runs``
+        action lifts that filter so the :class:`LaunchContract` can
+        surface a 409 ``workflow_inactive`` violation instead of a
+        bare 404 — keeping parity with the web view, MCP helper API,
+        and x402 paths which all return the structured violation.
+        Visibility is still gated by the resolver's role / grant /
+        creator checks, so this only widens the launch path for
+        users who could already see the workflow.
         """
         org = self.get_org()
         user = self.request.user
+        # The launch action needs to see inactive workflows so the
+        # contract can return a 409, not so unauthorised users can
+        # discover them. Access checks below remain unchanged.
+        include_inactive = getattr(self, "action", None) == "runs"
         if user.is_authenticated and user.is_superuser:
             return Workflow.objects.filter(
                 org=org,
                 is_archived=False,
                 is_tombstoned=False,
             )
-        return WorkflowAccessResolver.list_for_user(user, org_id=org.id)
+        return WorkflowAccessResolver.list_for_user(
+            user,
+            org_id=org.id,
+            include_inactive=include_inactive,
+        )
 
     def get_object(self) -> Workflow:
         """

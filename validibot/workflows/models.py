@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
-from django.core.files.base import ContentFile
 from django.core.files.storage import storages
 from django.db import models
 from django.db import transaction
@@ -787,80 +786,56 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                     return step
         return None
 
+    def has_runs(self) -> bool:
+        """Return True if any validation run targets this workflow.
+
+        A workflow with runs is "in use" — its launch contract is
+        the rules that those runs ran under, and any contract edit
+        from this point should produce a new version rather than
+        silently mutating in place.
+
+        See :meth:`requires_new_version_for_contract_edits`.
+        """
+        return self.validation_runs.exists()
+
+    def requires_new_version_for_contract_edits(self) -> bool:
+        """Return True if contract-field edits require a new version.
+
+        Contract fields are listed in
+        :data:`validibot.workflows.services.versioning.CONTRACT_FIELDS`
+        — they're the fields that change *what* a workflow does
+        when launched (allowed file types, retention, agent
+        publication state, etc.). Non-contract fields (name,
+        description, lifecycle flags) can always be edited in place.
+
+        Once a workflow is locked OR has runs, contract-field
+        edits should be rejected by forms / API serializers, and the
+        operator should be directed to clone the workflow to a new
+        version using
+        :meth:`WorkflowVersioningService.clone`.
+        """
+        return self.is_locked or self.has_runs()
+
     @transaction.atomic
     def clone_to_new_version(self, user) -> Workflow:
         """
         Create an identical workflow with version+1 and copied steps.
         Locks old version.
+
+        Phase 3 of ADR-2026-04-27: this method now delegates to
+        :class:`validibot.workflows.services.versioning.WorkflowVersioningService`
+        so the clone copies the **complete** workflow contract
+        (steps + step resources + public info + role access + signal
+        mappings), not just steps and resources. The service returns
+        a structured :class:`CloneReport` that callers can inspect;
+        for backward compatibility this method continues to return
+        just the new ``Workflow`` row.
         """
-        sibling_versions = list(
-            Workflow.objects.filter(org=self.org, slug=self.slug)
-            .exclude(pk=self.pk)
-            .values_list("version", flat=True),
-        )
-        sibling_versions.append(self.version)
+        # Local import to avoid circular dependency at module load.
+        from validibot.workflows.services.versioning import WorkflowVersioningService
 
-        next_version = self._determine_next_version_label(sibling_versions)
-
-        new = Workflow.objects.create(
-            org=self.org,
-            user=user,
-            name=self.name,
-            slug=self.slug,
-            version=next_version,
-            is_locked=False,
-            is_active=self.is_active,
-            allowed_file_types=list(self.allowed_file_types or []),
-            data_retention=self.data_retention,
-            output_retention=self.output_retention,
-        )
-        # Capture original step PKs and resources before cloning.
-        # We must snapshot these before mutating pk=None on the step objects,
-        # because prefetch_related results are cached on the Python objects.
-        original_steps = list(
-            self.steps.prefetch_related("step_resources").order_by("order"),
-        )
-        old_pks = [step.pk for step in original_steps]
-        step_resource_map = {
-            step.pk: list(step.step_resources.all()) for step in original_steps
-        }
-
-        # Clone steps (bulk_create sets .pk on PostgreSQL)
-        for step in original_steps:
-            step.pk = None
-            step.workflow = new
-        WorkflowStep.objects.bulk_create(original_steps)
-
-        # Clone step resources for each new step.
-        # Catalog references point to the same shared ValidatorResourceFile.
-        # Step-owned files get a fresh copy of the file content.
-        for old_pk, new_step in zip(old_pks, original_steps, strict=True):
-            for old_res in step_resource_map.get(old_pk, []):
-                if old_res.is_catalog_reference:
-                    WorkflowStepResource.objects.create(
-                        step=new_step,
-                        role=old_res.role,
-                        validator_resource_file=old_res.validator_resource_file,
-                    )
-                else:
-                    # Use a context manager to prevent file handle leaks
-                    # if read() or the subsequent create() raises.
-                    with old_res.step_resource_file.open("rb") as f:
-                        file_content = f.read()
-                    WorkflowStepResource.objects.create(
-                        step=new_step,
-                        role=old_res.role,
-                        step_resource_file=ContentFile(
-                            file_content,
-                            name=old_res.filename or "file",
-                        ),
-                        filename=old_res.filename,
-                        resource_type=old_res.resource_type,
-                    )
-
-        self.is_locked = True
-        self.save(update_fields=["is_locked"])
-        return new
+        report = WorkflowVersioningService.clone(self, user=user)
+        return Workflow.objects.get(pk=report.new_workflow_id)
 
     def _determine_next_version_label(self, versions) -> str:
         """

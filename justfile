@@ -145,8 +145,7 @@ mod aws 'just/aws'
 # This is the customer-operated target — the same substrate as
 # ``just local`` but deployed to a customer's VM (DigitalOcean, AWS EC2,
 # Hetzner, on-prem, etc.) for production use. Self-hosted is single-stage
-# per VM (see ADR-2026-04-27 section 4); recipes do not take a stage
-# argument.
+# per VM (one VM = one stage); recipes do not take a stage argument.
 #
 # Usage: just self-hosted <command>
 # Examples:
@@ -239,3 +238,76 @@ platform-status platform stage="":
             exit 1
             ;;
     esac
+
+# =============================================================================
+# Release
+# =============================================================================
+#
+# Cuts a signed-tag release for the validibot Django app. CI then
+# verifies the signature, generates a CycloneDX SBOM, and creates a
+# GitHub release with the SBOM attached.
+#
+# Operator verification (after clone): see RELEASING.md.
+
+# Release a new version: signs the tag, pushes, CI publishes the GitHub release.
+# Usage: just release 0.4.0
+release VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate version format.
+    if [[ ! "{{VERSION}}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "✗ Version must be in format X.Y.Z (e.g., 0.4.0). Got: {{VERSION}}"
+        exit 1
+    fi
+
+    # Refuse if working tree is dirty.
+    if [[ -n $(git status --porcelain) ]]; then
+        echo "✗ Working tree has uncommitted changes. Commit or stash first."
+        git status --short
+        exit 1
+    fi
+
+    # Refuse if not on main.
+    BRANCH=$(git branch --show-current)
+    if [[ "$BRANCH" != "main" ]]; then
+        echo "✗ Not on main branch (currently on '$BRANCH')."
+        echo "  Releases are cut from main only. Switch with: git checkout main"
+        exit 1
+    fi
+
+    # Refuse if tag already exists locally or remotely.
+    TAG="v{{VERSION}}"
+    if git rev-parse "$TAG" >/dev/null 2>&1; then
+        echo "✗ Tag $TAG already exists locally."
+        exit 1
+    fi
+    if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+        echo "✗ Tag $TAG already exists on origin."
+        exit 1
+    fi
+
+    # Confirm we're up-to-date with origin.
+    git fetch origin main
+    if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+        echo "✗ Local main is not in sync with origin/main."
+        echo "  Run: git pull"
+        exit 1
+    fi
+
+    echo ""
+    echo "About to sign and push tag $TAG."
+    echo "Press Enter to continue, Ctrl+C to abort..."
+    read -r
+
+    # Sign the tag. Requires `git config --global tag.gpgsign true`
+    # and a signing key configured. The CI workflow at
+    # .github/workflows/release.yml verifies the signature and
+    # publishes the GitHub release with the SBOM.
+    git tag -s "$TAG" -m "$TAG"
+    git push origin "$TAG"
+
+    echo ""
+    echo "✓ Pushed $TAG"
+    echo "  CI will verify the signature and publish the release."
+    echo "  Monitor: gh run watch"

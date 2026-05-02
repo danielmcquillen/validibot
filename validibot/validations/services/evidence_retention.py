@@ -1,7 +1,7 @@
 """Retention-aware policy for what enters an evidence manifest.
 
 ADR-2026-04-27 Phase 4 Session B: a workflow that signed up for
-``data_retention=DO_NOT_STORE`` agreed not to keep submission bytes
+``input_retention=DO_NOT_STORE`` agreed not to keep submission bytes
 after validation. The evidence manifest must respect that agreement
 — no payload-derived content lands in the manifest, even though
 identity / contract / hash content does.
@@ -20,7 +20,7 @@ Centralising the rules here means:
 
 1. The builder is a thin caller that asks the policy what's safe.
 2. New retention tiers extend ``RetentionPolicy`` rather than
-   sprinkling ``if data_retention == ...`` branches through the
+   sprinkling ``if input_retention == ...`` branches through the
    builder.
 3. A single ``redactions_applied`` summary at the bottom of the
    manifest reflects every decision the policy made.

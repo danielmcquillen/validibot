@@ -83,7 +83,7 @@ dependencies = [
   # self-hosted deployments, on in cloud to deter free-trial abuse.
   "disposable-email-domains==0.0.175",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
-  "validibot-shared==0.5.1",
+  "validibot-shared==0.6.0",
   "django-csp==4.0",
   "django-permissions-policy==4.29.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in

@@ -49,7 +49,7 @@ SAMPLE_WORKFLOW_FULL = {
     "allow_submission_name": True,
     "allow_submission_meta_data": False,
     "allow_submission_short_description": False,
-    "data_retention": "90 days",
+    "input_retention": "90 days",
     "output_retention": "90 days",
     "success_message": "",
     "description": "Validates EnergyPlus models against best practices.",

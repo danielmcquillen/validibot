@@ -519,7 +519,7 @@ class AgentResolverDefensivePredicateTests(TestCase):
             "agent_access_enabled": True,
             "agent_billing_mode": AgentBillingMode.AGENT_PAYS_X402,
             "agent_price_cents": 10,
-            "data_retention": SubmissionRetention.DO_NOT_STORE,
+            "input_retention": SubmissionRetention.DO_NOT_STORE,
             "is_active": True,
         }
         defaults.update(overrides)
@@ -577,7 +577,7 @@ class AgentResolverDefensivePredicateTests(TestCase):
         assert wf not in result
 
     def test_workflow_with_wrong_retention_is_excluded(self):
-        """data_retention != DO_NOT_STORE -> not in public x402 catalog.
+        """input_retention != DO_NOT_STORE -> not in public x402 catalog.
 
         x402 anonymous payment + storing input bytes is incompatible
         — that's the privacy-invariant the form's clean() enforces.
@@ -589,7 +589,7 @@ class AgentResolverDefensivePredicateTests(TestCase):
         org = OrganizationFactory()
         wf = self._make_published_workflow(org)
         Workflow.objects.filter(pk=wf.pk).update(
-            data_retention=SubmissionRetention.STORE_30_DAYS,
+            input_retention=SubmissionRetention.STORE_30_DAYS,
         )
 
         result = AgentWorkflowResolver.list_published()

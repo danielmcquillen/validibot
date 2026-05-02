@@ -64,7 +64,7 @@ def test_workflow_form_saves_selected_project():
             "slug": "compliance-checks",
             "project": str(default_project.pk),
             "allowed_file_types": [SubmissionFileType.JSON],
-            "data_retention": DataRetention.DO_NOT_STORE,
+            "input_retention": DataRetention.DO_NOT_STORE,
             "output_retention": "STORE_30_DAYS",
             "version": "1.0",
             "is_active": "on",
@@ -96,7 +96,7 @@ def test_workflow_form_allows_switching_projects_within_org():
             "slug": workflow.slug,
             "project": str(second_project.pk),
             "allowed_file_types": [SubmissionFileType.JSON],
-            "data_retention": DataRetention.DO_NOT_STORE,
+            "input_retention": DataRetention.DO_NOT_STORE,
             "output_retention": "STORE_30_DAYS",
             "version": workflow.version,
             "is_active": "on",
@@ -125,7 +125,7 @@ def test_workflow_form_rejects_project_from_other_org():
             "slug": workflow.slug,
             "project": str(other_project.pk),
             "allowed_file_types": [SubmissionFileType.JSON],
-            "data_retention": DataRetention.DO_NOT_STORE,
+            "input_retention": DataRetention.DO_NOT_STORE,
             "output_retention": "STORE_30_DAYS",
             "version": workflow.version,
             "is_active": "on",
@@ -160,7 +160,7 @@ def test_workflow_form_requires_mode_when_schema_text_is_present():
                     sku: str = Field(description="Product SKU")
                 """,
             ),
-            "data_retention": DataRetention.DO_NOT_STORE,
+            "input_retention": DataRetention.DO_NOT_STORE,
             "output_retention": "STORE_30_DAYS",
             "version": "1.0",
             "is_active": "on",
@@ -198,7 +198,7 @@ def test_workflow_form_round_trips_pydantic_source_text():
             "allowed_file_types": [SubmissionFileType.JSON],
             "input_schema_mode": "pydantic",
             "input_schema_pydantic": source_text,
-            "data_retention": DataRetention.DO_NOT_STORE,
+            "input_retention": DataRetention.DO_NOT_STORE,
             "output_retention": "STORE_30_DAYS",
             "version": "1.0",
             "is_active": "on",
@@ -701,7 +701,7 @@ def _post_payload_for(workflow, **overrides):
         "allowed_file_types": list(
             workflow.allowed_file_types or [SubmissionFileType.JSON]
         ),
-        "data_retention": workflow.data_retention or DataRetention.DO_NOT_STORE,
+        "input_retention": workflow.input_retention or DataRetention.DO_NOT_STORE,
         "output_retention": workflow.output_retention or "STORE_30_DAYS",
         "version": workflow.version,
         "is_active": "on" if workflow.is_active else "",
@@ -715,7 +715,7 @@ def test_workflow_form_blocks_contract_edit_on_locked_workflow():
 
     Why this matters: ``is_locked`` is the marker that a workflow's
     launch contract is the source of truth for past or pending runs.
-    Allowing the data_retention field to flip silently from
+    Allowing the input_retention field to flip silently from
     DO_NOT_STORE to STORE_INDEFINITELY would re-write the privacy
     contract those runs operated under.
     """
@@ -723,7 +723,7 @@ def test_workflow_form_blocks_contract_edit_on_locked_workflow():
 
     workflow = WorkflowFactory(
         is_locked=True,
-        data_retention=DataRetention.DO_NOT_STORE,
+        input_retention=DataRetention.DO_NOT_STORE,
         allowed_file_types=[SubmissionFileType.JSON],
     )
     workflow.user.set_current_org(workflow.org)
@@ -731,17 +731,17 @@ def test_workflow_form_blocks_contract_edit_on_locked_workflow():
     form = WorkflowForm(
         data=_post_payload_for(
             workflow,
-            data_retention=DataRetention.STORE_PERMANENTLY,
+            input_retention=DataRetention.STORE_PERMANENTLY,
         ),
         instance=workflow,
         user=workflow.user,
     )
 
     assert not form.is_valid()
-    assert "data_retention" in form.errors
+    assert "input_retention" in form.errors
     # The error message should direct the user to clone-to-new-version
     # rather than just saying "no, can't change."
-    error_text = " ".join(form.errors["data_retention"]).lower()
+    error_text = " ".join(form.errors["input_retention"]).lower()
     assert "new version" in error_text
 
 
@@ -819,7 +819,7 @@ def test_workflow_form_allows_no_op_save_on_locked_workflow():
 
     workflow = WorkflowFactory(
         is_locked=True,
-        data_retention=DataRetention.DO_NOT_STORE,
+        input_retention=DataRetention.DO_NOT_STORE,
         allowed_file_types=[SubmissionFileType.JSON],
     )
     workflow.user.set_current_org(workflow.org)
@@ -844,7 +844,7 @@ def test_workflow_form_allows_contract_edit_on_unused_unlocked_workflow():
 
     workflow = WorkflowFactory(
         is_locked=False,
-        data_retention=DataRetention.DO_NOT_STORE,
+        input_retention=DataRetention.DO_NOT_STORE,
         allowed_file_types=[SubmissionFileType.JSON],
     )
     workflow.user.set_current_org(workflow.org)
@@ -852,7 +852,7 @@ def test_workflow_form_allows_contract_edit_on_unused_unlocked_workflow():
     form = WorkflowForm(
         data=_post_payload_for(
             workflow,
-            data_retention=DataRetention.STORE_PERMANENTLY,
+            input_retention=DataRetention.STORE_PERMANENTLY,
         ),
         instance=workflow,
         user=workflow.user,

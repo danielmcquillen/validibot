@@ -81,7 +81,7 @@ def _public_x402_predicate() -> Q:
     5. Price is set (positive): ``agent_price_cents > 0``. A
        price of 0 or null means the row was created mid-config and
        doesn't yet describe a paying transaction.
-    6. Retention invariant for x402: ``data_retention=DO_NOT_STORE``.
+    6. Retention invariant for x402: ``input_retention=DO_NOT_STORE``.
        x402 is anonymous per-call payment; storing the input would
        undermine the privacy model the operator agreed to. The
        form-level cascade enforces this for human-driven edits;
@@ -101,7 +101,7 @@ def _public_x402_predicate() -> Q:
         & Q(agent_access_enabled=True)
         & Q(agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402)
         & Q(agent_price_cents__gt=0)
-        & Q(data_retention=SubmissionRetention.DO_NOT_STORE)
+        & Q(input_retention=SubmissionRetention.DO_NOT_STORE)
         & (Q(is_tombstoned=False) | Q(is_tombstoned__isnull=True))
         & (Q(is_archived=False) | Q(is_archived__isnull=True))
     )

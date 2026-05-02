@@ -2768,7 +2768,7 @@ class RunEvidenceArtifact(TimeStampedModel):
         blank=True,
         default="",
         help_text=_(
-            "Workflow.data_retention at the time the manifest was "
+            "Workflow.input_retention at the time the manifest was "
             "generated. Mirrored here so retention-sweep code can "
             "filter without joining to Workflow."
         ),

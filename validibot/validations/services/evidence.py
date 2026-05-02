@@ -106,7 +106,7 @@ class EvidenceManifestBuilder:
         workflow = run.workflow
         contract = WorkflowContractSnapshot(
             allowed_file_types=list(workflow.allowed_file_types or []),
-            data_retention=workflow.data_retention or "",
+            input_retention=workflow.input_retention or "",
             output_retention=workflow.output_retention or "",
             agent_billing_mode=workflow.agent_billing_mode or "",
             agent_price_cents=workflow.agent_price_cents,
@@ -142,7 +142,7 @@ class EvidenceManifestBuilder:
         # ``redactions_applied`` is the externally-visible audit trail
         # of "the policy stripped these fields" so verifiers know what
         # to expect in the manifest's shape.
-        retention_class = workflow.data_retention or ""
+        retention_class = workflow.input_retention or ""
         retention = ManifestRetentionInfo(
             retention_class=retention_class,
             redactions_applied=RetentionPolicy.redactions_for(retention_class),

@@ -131,6 +131,7 @@ def _mark_validation_run_failed(
     This function catches all exceptions to ensure the calling code can
     still re-raise the original exception.
     """
+    from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
     from validibot.validations.constants import ValidationRunErrorCategory
     from validibot.validations.constants import ValidationRunStatus
     from validibot.validations.models import ValidationRun
@@ -144,12 +145,12 @@ def _mark_validation_run_failed(
             )
             return
 
-        # Only update if not already in a terminal state
-        if run.status in (
-            ValidationRunStatus.SUCCEEDED,
-            ValidationRunStatus.FAILED,
-            ValidationRunStatus.CANCELED,
-        ):
+        # Only update if not already in a terminal state. Use the
+        # canonical set so TIMED_OUT (and any future terminal states)
+        # are correctly recognised — without this, a timed-out run
+        # would be silently re-marked as FAILED, losing its real
+        # outcome.
+        if run.status in VALIDATION_RUN_TERMINAL_STATUSES:
             logger.info(
                 "ValidationRun already in terminal state %s, not updating: %s",
                 run.status,

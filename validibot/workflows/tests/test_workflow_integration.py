@@ -91,7 +91,7 @@ def test_create_workflow_with_custom_step_and_assertion(client):
             "is_active": "on",
             "project": str(project.pk),
             "allowed_file_types": [SubmissionFileType.JSON],
-            "data_retention": DataRetention.DO_NOT_STORE,
+            "input_retention": DataRetention.DO_NOT_STORE,
             "output_retention": "STORE_30_DAYS",
         },
     )

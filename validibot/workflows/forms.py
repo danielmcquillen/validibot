@@ -335,7 +335,7 @@ class WorkflowForm(forms.ModelForm):
             "input_schema",
             "input_schema_source_mode",
             "input_schema_source_text",
-            "data_retention",
+            "input_retention",
             "output_retention",
             "success_message",
             "allow_submission_name",
@@ -354,7 +354,7 @@ class WorkflowForm(forms.ModelForm):
                 "Choose the submission file types this workflow accepts. "
                 "Launchers can only upload/run content using these formats."
             ),
-            "data_retention": _(
+            "input_retention": _(
                 "Controls how long the user's submission data is kept after "
                 "validation. The submission record is always preserved for "
                 "audit purposes."
@@ -388,10 +388,10 @@ class WorkflowForm(forms.ModelForm):
             allowed_field.initial = list(self.instance.allowed_file_types or [])
         elif not allowed_field.initial:
             allowed_field.initial = [SubmissionFileType.JSON]
-        # Configure data retention field
-        self.fields["data_retention"].label = _("Data retention")
-        self.fields["data_retention"].widget.attrs.update({"class": "form-select"})
-        # Configure output retention field (parallel to data_retention)
+        # Configure input retention field
+        self.fields["input_retention"].label = _("Input retention")
+        self.fields["input_retention"].widget.attrs.update({"class": "form-select"})
+        # Configure output retention field (parallel to input_retention)
         self.fields["output_retention"].label = _("Output retention")
         self.fields["output_retention"].widget.attrs.update({"class": "form-select"})
         # Configure success message field
@@ -556,7 +556,7 @@ class WorkflowForm(forms.ModelForm):
                     ),
                 ),
                 Field("allowed_file_types"),
-                Field("data_retention"),
+                Field("input_retention"),
                 Field("output_retention"),
                 Field("success_message"),
                 Field("allow_submission_name"),
@@ -803,13 +803,13 @@ class WorkflowForm(forms.ModelForm):
         # through harmlessly.
         if (
             cleaned.get("agent_billing_mode") == AgentBillingMode.AGENT_PAYS_X402
-            and cleaned.get("data_retention") != SubmissionRetention.DO_NOT_STORE
+            and cleaned.get("input_retention") != SubmissionRetention.DO_NOT_STORE
         ):
             self.add_error(
-                "data_retention",
+                "input_retention",
                 ValidationError(
                     _(
-                        "Data retention must be 'Do not store' when agents "
+                        "Input retention must be 'Do not store' when agents "
                         "pay via x402 micropayments — x402 is anonymous "
                         "per-call access and storing submissions is "
                         "incompatible with its privacy model."

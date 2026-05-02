@@ -90,7 +90,7 @@ logger = logging.getLogger(__name__)
 CONTRACT_FIELDS = frozenset(
     {
         "allowed_file_types",
-        "data_retention",
+        "input_retention",
         "output_retention",
         "agent_billing_mode",
         "agent_price_cents",
@@ -211,7 +211,7 @@ class WorkflowVersioningService:
             is_locked=False,
             is_active=workflow.is_active,
             allowed_file_types=list(workflow.allowed_file_types or []),
-            data_retention=workflow.data_retention,
+            input_retention=workflow.input_retention,
             output_retention=workflow.output_retention,
             # Phase 3: copy the agent-launch contract too. The
             # historical clone_to_new_version omitted these,

@@ -186,11 +186,11 @@ class TestX402RequiresDoNotStore:
         wf = WorkflowFactory.build(
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=10,
-            data_retention=SubmissionRetention.STORE_7_DAYS,
+            input_retention=SubmissionRetention.STORE_7_DAYS,
         )
         with pytest.raises(ValidationError) as exc_info:
             wf.clean()
-        assert "data_retention" in exc_info.value.message_dict
+        assert "input_retention" in exc_info.value.message_dict
 
     def test_x402_with_store_permanently_raises(self):
         """Permanent storage is the most privacy-hostile pairing with
@@ -200,11 +200,11 @@ class TestX402RequiresDoNotStore:
         wf = WorkflowFactory.build(
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=10,
-            data_retention=SubmissionRetention.STORE_PERMANENTLY,
+            input_retention=SubmissionRetention.STORE_PERMANENTLY,
         )
         with pytest.raises(ValidationError) as exc_info:
             wf.clean()
-        assert "data_retention" in exc_info.value.message_dict
+        assert "input_retention" in exc_info.value.message_dict
 
     def test_x402_with_do_not_store_is_valid(self):
         """The only retention allowed alongside x402: immediate deletion
@@ -214,7 +214,7 @@ class TestX402RequiresDoNotStore:
         wf = WorkflowFactory.build(
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=10,
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
         )
         wf.clean()  # should not raise
 
@@ -225,7 +225,7 @@ class TestX402RequiresDoNotStore:
 
         wf = WorkflowFactory.build(
             agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
-            data_retention=SubmissionRetention.STORE_PERMANENTLY,
+            input_retention=SubmissionRetention.STORE_PERMANENTLY,
         )
         wf.clean()  # should not raise
 
@@ -347,7 +347,7 @@ class TestWorkflowFormAgentFields:
     def test_form_rejects_x402_without_do_not_store(self):
         """A superuser-submitted form that pairs x402 billing with a
         non-DO_NOT_STORE retention should fail validation with the
-        error attached to the ``data_retention`` field.
+        error attached to the ``input_retention`` field.
 
         This mirrors the model-level rule but surfaces the error on
         the form field so the UI can highlight the right control."""
@@ -370,7 +370,7 @@ class TestWorkflowFormAgentFields:
                 "slug": "anon-agent",
                 "project": str(default_project.pk),
                 "allowed_file_types": [SubmissionFileType.JSON],
-                "data_retention": SubmissionRetention.STORE_7_DAYS,
+                "input_retention": SubmissionRetention.STORE_7_DAYS,
                 "output_retention": "STORE_30_DAYS",
                 "version": "1.0",
                 "is_active": "on",
@@ -381,7 +381,7 @@ class TestWorkflowFormAgentFields:
             user=user,
         )
         assert not form.is_valid()
-        assert "data_retention" in form.errors
+        assert "input_retention" in form.errors
 
     def test_form_accepts_x402_with_do_not_store(self):
         """The valid combination: x402 billing + DO_NOT_STORE retention."""
@@ -404,7 +404,7 @@ class TestWorkflowFormAgentFields:
                 "slug": "anon-agent",
                 "project": str(default_project.pk),
                 "allowed_file_types": [SubmissionFileType.JSON],
-                "data_retention": SubmissionRetention.DO_NOT_STORE,
+                "input_retention": SubmissionRetention.DO_NOT_STORE,
                 "output_retention": "STORE_30_DAYS",
                 "version": "1.0",
                 "is_active": "on",
@@ -442,7 +442,7 @@ class TestWorkflowFormAgentFields:
                 "slug": "bad-config",
                 "project": str(default_project.pk),
                 "allowed_file_types": [SubmissionFileType.JSON],
-                "data_retention": SubmissionRetention.DO_NOT_STORE,
+                "input_retention": SubmissionRetention.DO_NOT_STORE,
                 "output_retention": "STORE_30_DAYS",
                 "version": "1.0",
                 "is_active": "on",
@@ -480,7 +480,7 @@ class TestWorkflowFormAgentFields:
                 "slug": "public-disc",
                 "project": str(default_project.pk),
                 "allowed_file_types": [SubmissionFileType.JSON],
-                "data_retention": SubmissionRetention.DO_NOT_STORE,
+                "input_retention": SubmissionRetention.DO_NOT_STORE,
                 "output_retention": "STORE_30_DAYS",
                 "version": "1.0",
                 "is_active": "on",
@@ -572,7 +572,7 @@ class TestAgentPublicDiscoveryConstraints:
             agent_public_discovery=True,
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=10,
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
         )
         wf.clean()
         assert wf.agent_public_discovery is False
@@ -588,7 +588,7 @@ class TestAgentPublicDiscoveryConstraints:
             agent_public_discovery=True,
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=50,
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
         )
         wf.clean()  # should not raise
         assert wf.agent_public_discovery is True
@@ -630,7 +630,7 @@ class TestTombstoneClearsPublicDiscovery:
             agent_public_discovery=True,
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=50,
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
         )
         user = UserFactory()
         wf.tombstone(deleted_by=user, reason="test cleanup")

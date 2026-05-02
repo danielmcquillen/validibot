@@ -199,7 +199,7 @@ class TestWorkflowDetailShape:
             "allow_submission_name",
             "allow_submission_meta_data",
             "allow_submission_short_description",
-            "data_retention",
+            "input_retention",
             "output_retention",
             "success_message",
             "steps",

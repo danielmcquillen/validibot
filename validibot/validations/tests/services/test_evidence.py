@@ -57,7 +57,7 @@ def _completed_run(workflow=None, **run_overrides):
     if workflow is None:
         workflow = WorkflowFactory(
             allowed_file_types=[SubmissionFileType.JSON],
-            data_retention=SubmissionRetention.STORE_30_DAYS,
+            input_retention=SubmissionRetention.STORE_30_DAYS,
         )
         WorkflowStepFactory(workflow=workflow)
 
@@ -105,7 +105,7 @@ class TestBuildManifest:
                 SubmissionFileType.JSON,
                 SubmissionFileType.XML,
             ],
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
             agent_access_enabled=True,
         )
         WorkflowStepFactory(workflow=workflow)
@@ -117,7 +117,7 @@ class TestBuildManifest:
             SubmissionFileType.JSON,
             SubmissionFileType.XML,
         }
-        assert contract.data_retention == SubmissionRetention.DO_NOT_STORE
+        assert contract.input_retention == SubmissionRetention.DO_NOT_STORE
         assert contract.agent_access_enabled is True
 
     def test_build_records_validator_per_step(self):

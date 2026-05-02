@@ -49,14 +49,14 @@ pytestmark = pytest.mark.django_db
 
 def _completed_run_with_hashes(
     *,
-    data_retention: str,
+    input_retention: str,
     input_hash: str = "a" * 64,
     output_hash: str = "b" * 64,
 ):
     """Build a run with a submission, an output hash, and a chosen retention."""
     workflow = WorkflowFactory(
         allowed_file_types=[SubmissionFileType.JSON],
-        data_retention=data_retention,
+        input_retention=input_retention,
     )
     WorkflowStepFactory(workflow=workflow)
     submission = SubmissionFactory(
@@ -139,7 +139,7 @@ class TestBuilderUnderDoNotStore:
         themselves are purged.
         """
         run = _completed_run_with_hashes(
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
             input_hash="c" * 64,
         )
         manifest = EvidenceManifestBuilder.build(run)
@@ -148,7 +148,7 @@ class TestBuilderUnderDoNotStore:
     def test_do_not_store_run_omits_output_hash(self):
         """The output hash is dropped under DO_NOT_STORE."""
         run = _completed_run_with_hashes(
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
             output_hash="d" * 64,
         )
         manifest = EvidenceManifestBuilder.build(run)
@@ -163,7 +163,7 @@ class TestBuilderUnderDoNotStore:
         whether the hash is missing because of policy or bug.
         """
         run = _completed_run_with_hashes(
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
         )
         manifest = EvidenceManifestBuilder.build(run)
         assert PAYLOAD_DIGEST_OUTPUT in manifest.retention.redactions_applied
@@ -177,12 +177,12 @@ class TestBuilderUnderDoNotStore:
         rules, and consumed an input matching the recorded hash.
         """
         run = _completed_run_with_hashes(
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
         )
         manifest = EvidenceManifestBuilder.build(run)
         assert manifest.run_id == str(run.id)
         assert manifest.workflow_slug == run.workflow.slug
-        assert manifest.workflow_contract.data_retention == "DO_NOT_STORE"
+        assert manifest.workflow_contract.input_retention == "DO_NOT_STORE"
         assert len(manifest.steps) == 1
 
 
@@ -192,7 +192,7 @@ class TestBuilderUnderPermissiveRetention:
     def test_store_30_days_includes_both_hashes(self):
         """Both input and output hashes land in the manifest."""
         run = _completed_run_with_hashes(
-            data_retention=SubmissionRetention.STORE_30_DAYS,
+            input_retention=SubmissionRetention.STORE_30_DAYS,
             input_hash="e" * 64,
             output_hash="f" * 64,
         )
@@ -203,7 +203,7 @@ class TestBuilderUnderPermissiveRetention:
     def test_permissive_retention_has_empty_redactions_list(self):
         """Nothing was stripped -> redactions_applied stays empty."""
         run = _completed_run_with_hashes(
-            data_retention=SubmissionRetention.STORE_PERMANENTLY,
+            input_retention=SubmissionRetention.STORE_PERMANENTLY,
         )
         manifest = EvidenceManifestBuilder.build(run)
         assert manifest.retention.redactions_applied == []
@@ -220,7 +220,7 @@ class TestManifestHashStabilityWithDigests:
     def test_serialised_manifest_with_digests_is_deterministic(self):
         """Same input -> same canonical bytes -> same hash, with digests populated."""
         run = _completed_run_with_hashes(
-            data_retention=SubmissionRetention.STORE_30_DAYS,
+            input_retention=SubmissionRetention.STORE_30_DAYS,
             input_hash="1" * 64,
             output_hash="2" * 64,
         )
@@ -239,10 +239,10 @@ class TestManifestHashStabilityWithDigests:
         redaction.
         """
         run_dns = _completed_run_with_hashes(
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
         )
         run_30 = _completed_run_with_hashes(
-            data_retention=SubmissionRetention.STORE_30_DAYS,
+            input_retention=SubmissionRetention.STORE_30_DAYS,
         )
         m_dns = EvidenceManifestBuilder.build(run_dns)
         m_30 = EvidenceManifestBuilder.build(run_30)

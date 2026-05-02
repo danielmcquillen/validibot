@@ -49,6 +49,7 @@ from rest_framework import status
 
 from validibot.submissions.constants import get_output_retention_timedelta
 from validibot.tracking.services import TrackingEventService
+from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import ValidationRun
@@ -292,13 +293,13 @@ class ValidationRunService:
         validation_run.refresh_from_db()
 
         # Return appropriate HTTP status based on run state:
-        # - 201 Created if execution completed (SUCCEEDED, FAILED, CANCELED)
+        # - 201 Created if execution reached any terminal state
         # - 202 Accepted if still processing (PENDING, RUNNING)
-        if validation_run.status in {
-            ValidationRunStatus.SUCCEEDED,
-            ValidationRunStatus.FAILED,
-            ValidationRunStatus.CANCELED,
-        }:
+        # Use the canonical terminal-status set so TIMED_OUT (and
+        # any future terminal additions) get the right HTTP code —
+        # without this a timed-out synchronous run would return 202
+        # Accepted, misleading the caller into polling.
+        if validation_run.status in VALIDATION_RUN_TERMINAL_STATUSES:
             http_status = status.HTTP_201_CREATED
         else:
             http_status = status.HTTP_202_ACCEPTED

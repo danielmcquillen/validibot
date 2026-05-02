@@ -126,11 +126,11 @@ class WorkflowChangedContractFieldsTests(TestCase):
         from validibot.submissions.constants import SubmissionRetention
 
         workflow = WorkflowFactory(
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
             allowed_file_types=[SubmissionFileType.JSON],
         )
         proposed = {
-            "data_retention": SubmissionRetention.DO_NOT_STORE,
+            "input_retention": SubmissionRetention.DO_NOT_STORE,
             "allowed_file_types": [SubmissionFileType.JSON],
         }
         assert workflow.changed_contract_fields(proposed) == set()
@@ -140,12 +140,12 @@ class WorkflowChangedContractFieldsTests(TestCase):
         from validibot.submissions.constants import SubmissionRetention
 
         workflow = WorkflowFactory(
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
         )
         proposed = {
-            "data_retention": SubmissionRetention.STORE_PERMANENTLY,
+            "input_retention": SubmissionRetention.STORE_PERMANENTLY,
         }
-        assert workflow.changed_contract_fields(proposed) == {"data_retention"}
+        assert workflow.changed_contract_fields(proposed) == {"input_retention"}
 
     def test_list_field_uses_set_equality(self):
         """``allowed_file_types`` ignores ordering (it's a set semantically)."""
@@ -209,7 +209,7 @@ class ContractFieldsTests(TestCase):
         # contract a previously-launched run was operating under.
         expected = {
             "allowed_file_types",
-            "data_retention",
+            "input_retention",
             "output_retention",
             "agent_billing_mode",
             "agent_price_cents",
@@ -317,7 +317,7 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             # x402-published workflows must use DO_NOT_STORE retention
             # for submissions (anonymous-per-call access incompatible
             # with persistent storage).
-            data_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
             output_retention=OutputRetention.STORE_30_DAYS,
             agent_public_discovery=True,
             agent_access_enabled=True,

@@ -426,15 +426,21 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         ),
     )
 
-    # Submission retention: how long to keep user-uploaded files
-    data_retention = models.CharField(
+    # Input retention: how long to keep user-uploaded input files.
+    # Mirrors ``output_retention`` below — both fields carry the
+    # workflow author's retention choice for one of the two data
+    # streams a run touches. Renamed from ``input_retention`` in
+    # the trust ADR's Phase 4 closing housekeeping (the old name
+    # was ambiguous: "data" could mean input or output).
+    input_retention = models.CharField(
         max_length=32,
         choices=SubmissionRetention.choices,
         default=SubmissionRetention.DO_NOT_STORE,
         help_text=_(
-            "How long to keep user-submitted files after validation completes. "
-            "DO_NOT_STORE deletes the submission immediately after successful "
-            "completion. The submission record is preserved for audit."
+            "How long to keep user-submitted input files after validation "
+            "completes. DO_NOT_STORE deletes the submission immediately "
+            "after successful completion. The submission record is "
+            "preserved for audit."
         ),
     )
 
@@ -597,11 +603,11 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         # bypass it.
         if (
             self.agent_billing_mode == AgentBillingMode.AGENT_PAYS_X402
-            and self.data_retention != SubmissionRetention.DO_NOT_STORE
+            and self.input_retention != SubmissionRetention.DO_NOT_STORE
         ):
             raise ValidationError(
                 {
-                    "data_retention": _(
+                    "input_retention": _(
                         "Data retention must be 'Do not store' when agents "
                         "pay via x402 micropayments — x402 is anonymous "
                         "per-call access and storing submissions is "
@@ -843,7 +849,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         DB values.
 
         Only fields *present* in ``proposed`` are considered — a caller
-        editing a subset of contract fields (e.g. only ``data_retention``)
+        editing a subset of contract fields (e.g. only ``input_retention``)
         does not need to pass every contract field. ``ArrayField`` values
         like ``allowed_file_types`` are compared as sets so re-ordering
         without a real change isn't flagged.

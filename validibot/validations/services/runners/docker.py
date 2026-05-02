@@ -56,6 +56,8 @@ from typing import TYPE_CHECKING
 
 from django.conf import settings
 
+from validibot.validations.services.cosign import CosignVerifyOutcome
+from validibot.validations.services.cosign import verify_image_signature
 from validibot.validations.services.runners.base import ExecutionInfo
 from validibot.validations.services.runners.base import ExecutionResult
 from validibot.validations.services.runners.base import ExecutionStatus
@@ -65,6 +67,54 @@ if TYPE_CHECKING:
     from validibot.validations.services.run_workspace import RunWorkspace
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_container_image_digest(container: object) -> str | None:
+    """Best-effort resolution of a Docker container's image digest.
+
+    Trust ADR Phase 5 Session A — captures the immutable
+    content-addressed identifier of the validator backend image that
+    just started. Two surfaces, in preference order:
+
+    1. ``container.image.attrs["RepoDigests"][0]`` — the
+       ``registry/name@sha256:...`` reference. Available only when
+       the image was pulled from a registry. This is the form a
+       verifier can independently re-pull and confirm.
+    2. ``container.attrs["Image"]`` — the local image ID
+       (``sha256:...``). Always populated. Useful for locally-built
+       dev images that have no registry-anchored reference.
+
+    Returns ``None`` when both inspection paths fail. The runner
+    must never let digest capture break a run, so all exceptions
+    are caught and logged at debug level.
+
+    The argument is typed as ``object`` because the docker-py
+    ``Container`` type is not in our typing surface; callers pass a
+    live ``docker.models.containers.Container``.
+    """
+    try:
+        image = getattr(container, "image", None)
+        if image is not None:
+            attrs = getattr(image, "attrs", None) or {}
+            repo_digests = attrs.get("RepoDigests") or []
+            if repo_digests:
+                # Use the first registry-anchored digest reference.
+                # Docker can list multiple when an image has been
+                # tagged into several registries; any one is a
+                # cryptographically valid reference.
+                return str(repo_digests[0])
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("RepoDigests lookup failed: %s", exc)
+
+    try:
+        local_image_id = (getattr(container, "attrs", None) or {}).get("Image")
+        if local_image_id:
+            return str(local_image_id)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("Local image ID lookup failed: %s", exc)
+
+    return None
+
 
 # Default resource limits for validator containers
 DEFAULT_MEMORY_LIMIT = "4g"
@@ -283,6 +333,28 @@ class DockerValidatorRunner(ValidatorRunner):
             container_config["network_mode"] = "none"
 
         container = None
+        # Trust ADR Phase 5 Session A.2 — refuse to launch images
+        # that aren't cosign-signed when the deployment opted in.
+        # Performed *outside* the launch try/except below so the
+        # cosign-rejection error doesn't get swallowed by the
+        # generic "container failed to start" handler.
+        cosign_result = verify_image_signature(container_image)
+        if not cosign_result.should_proceed:
+            logger.warning(
+                "Refusing to launch validator backend image (%s): %s",
+                container_image,
+                cosign_result.message,
+            )
+            msg = (
+                f"Validator backend image not cosign-verified: {cosign_result.message}"
+            )
+            raise RuntimeError(msg)
+        if cosign_result.outcome == CosignVerifyOutcome.VERIFIED:
+            logger.info(
+                "Cosign verification passed for %s",
+                container_image,
+            )
+
         try:
             logger.info(
                 "Starting Docker container: image=%s, input_uri=%s, output_uri=%s",
@@ -299,6 +371,29 @@ class DockerValidatorRunner(ValidatorRunner):
                 container_id,
                 container_image,
             )
+
+            # Trust ADR Phase 5 Session A — capture the resolved image
+            # digest of the container that just started. We do this
+            # immediately after launch so the digest is recorded even
+            # if the container later crashes. The Docker SDK exposes
+            # two surfaces:
+            #
+            #   1. ``container.image.attrs["RepoDigests"]`` is a list
+            #      of ``registry/name@sha256:...`` references — these
+            #      are populated only when the image was pulled from a
+            #      registry (the registry-anchored, verifiable form).
+            #   2. ``container.attrs["Image"]`` is the local image ID
+            #      (a ``sha256:...`` string with no registry path) —
+            #      always populated, but only useful as a content
+            #      fingerprint for locally-built dev images.
+            #
+            # We prefer (1) when available because a verifier can
+            # `docker pull` the same reference and confirm bit-for-bit
+            # equivalence. We fall back to (2) for development images
+            # that were never pulled. ``None`` if both are missing or
+            # the inspection fails (we never want digest capture to
+            # break a run).
+            resolved_image_digest = _resolve_container_image_digest(container)
 
             # Wait for container to complete
             result = container.wait(timeout=timeout)
@@ -338,6 +433,7 @@ class DockerValidatorRunner(ValidatorRunner):
                 logs=logs,
                 error_message=error_message,
                 duration_seconds=duration,
+                validator_backend_image_digest=resolved_image_digest,
             )
 
         except Exception as e:

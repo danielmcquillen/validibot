@@ -309,6 +309,9 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                     output_uri=workspace.output_envelope_container_uri,
                     execution_bundle_uri=workspace.execution_bundle_container_uri,
                     duration_seconds=result.duration_seconds,
+                    validator_backend_image_digest=(
+                        result.validator_backend_image_digest
+                    ),
                 )
 
             # 8. Read the output envelope from the workspace.
@@ -330,6 +333,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 output_uri=workspace.output_envelope_container_uri,
                 execution_bundle_uri=workspace.execution_bundle_container_uri,
                 duration_seconds=result.duration_seconds,
+                validator_backend_image_digest=(result.validator_backend_image_digest),
             )
 
         except TimeoutError as e:

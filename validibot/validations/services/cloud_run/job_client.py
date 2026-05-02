@@ -130,6 +130,48 @@ def run_validator_job(
     return execution_name
 
 
+def get_execution_image_digest(execution_name: str) -> str | None:
+    """Resolve the validator backend image reference from a Cloud Run Execution.
+
+    Trust ADR Phase 5 Session A — captures the content-addressed
+    identifier of the validator backend image that ran (or is running)
+    inside a Cloud Run Job execution.
+
+    Cloud Run exposes the configured image of an executing Job via
+    ``execution.template.containers[0].image``. The string is
+    whatever the Job spec was deployed with:
+
+    - If the operator pinned the Job to a digest
+      (``gcr.io/.../image@sha256:...``), this function returns that
+      reference verbatim — a verifier can re-pull and confirm.
+    - If the operator deployed the Job pinned to a tag
+      (``gcr.io/.../image:v1``), this function returns the tag
+      reference. We do NOT resolve the tag to a digest separately
+      (that would require a registry round-trip with auth concerns);
+      instead, the Phase 5 Session B ``VALIDATOR_BACKEND_IMAGE_POLICY``
+      gate is what enforces "digest-pinned only" deployments.
+
+    Returns ``None`` when the Execution metadata cannot be fetched or
+    has no container image. Digest capture must never break a run, so
+    every failure mode is logged at debug level and yields ``None``.
+    """
+    try:
+        client = run_v2.ExecutionsClient()
+        execution = client.get_execution(name=execution_name)
+        containers = getattr(getattr(execution, "template", None), "containers", None)
+        if not containers:
+            return None
+        image = getattr(containers[0], "image", None)
+        return str(image) if image else None
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug(
+            "Could not resolve image digest for execution %s: %s",
+            execution_name,
+            exc,
+        )
+        return None
+
+
 def get_execution_status(execution_name: str) -> dict:
     """
     Get the status of a Cloud Run Job execution.

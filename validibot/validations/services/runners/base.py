@@ -81,6 +81,15 @@ class ExecutionResult:
     logs: str | None = None
     error_message: str | None = None
     duration_seconds: float | None = None
+    # Trust ADR Phase 5 Session A — content-addressed identifier for
+    # the image that actually ran. Populated by sync runners (Docker)
+    # from the live container's resolved digest. ``None`` when the
+    # runner could not determine a digest (e.g. local-built dev image
+    # with no RepoDigests AND no local image ID exposed). Async
+    # runners (Cloud Run) leave this on ``ExecutionResult`` set by the
+    # callback path rather than the launch path, since digest
+    # resolution happens once the job has actually started.
+    validator_backend_image_digest: str | None = None
 
     @property
     def succeeded(self) -> bool:

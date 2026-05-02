@@ -106,6 +106,14 @@ class ExecutionResponse:
     duration_seconds: float | None = None
     """Execution duration in seconds (if completed)."""
 
+    validator_backend_image_digest: str | None = None
+    """Resolved sha256 digest of the validator backend image that ran.
+
+    Trust ADR Phase 5 Session A — sync backends populate this from
+    the runner's :class:`ExecutionResult`; async backends persist it
+    on the step run directly at launch time and leave this ``None``.
+    """
+
 
 class ExecutionBackend(ABC):
     """

@@ -37,6 +37,9 @@ from validibot.validations.services.cloud_run.envelope_builder import (
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope_local
 from validibot.validations.services.cloud_run.gcs_client import upload_file
+from validibot.validations.services.cloud_run.job_client import (
+    get_execution_image_digest,
+)
 from validibot.validations.services.cloud_run.job_client import run_validator_job
 from validibot.validations.validators.base import ValidationIssue
 from validibot.validations.validators.base import ValidationResult
@@ -110,8 +113,15 @@ def _check_already_launched(step_run) -> ValidationResult | None:
     return None
 
 
-def _mark_step_run_running(step_run) -> None:
-    """Mark a step run as RUNNING with the current timestamp."""
+def _mark_step_run_running(step_run, *, image_digest: str | None = None) -> None:
+    """Mark a step run as RUNNING with the current timestamp.
+
+    Trust ADR Phase 5 Session A — when ``image_digest`` is provided,
+    the validator backend image reference is persisted at launch time
+    on the same save. ``None`` leaves the field at its default empty
+    string (e.g. when digest resolution failed; we never want capture
+    failures to break a run).
+    """
     from datetime import UTC
     from datetime import datetime
 
@@ -119,7 +129,11 @@ def _mark_step_run_running(step_run) -> None:
 
     step_run.status = StepStatus.RUNNING
     step_run.started_at = datetime.now(UTC)
-    step_run.save(update_fields=["status", "started_at"])
+    update_fields = ["status", "started_at"]
+    if image_digest:
+        step_run.validator_backend_image_digest = image_digest
+        update_fields.append("validator_backend_image_digest")
+    step_run.save(update_fields=update_fields)
 
 
 def launch_energyplus_validation(
@@ -238,12 +252,20 @@ def launch_energyplus_validation(
             input_uri=input_envelope_uri,
         )
 
-        # 6.5. Update step run status to RUNNING
-        _mark_step_run_running(current_step_run)
+        # 6.5. Resolve validator backend image digest from the
+        # Execution's metadata (Trust ADR Phase 5 Session A) and mark
+        # the step as RUNNING. Digest capture is best-effort: if the
+        # lookup fails, we still mark RUNNING and proceed.
+        backend_image_digest = get_execution_image_digest(execution_name)
+        _mark_step_run_running(
+            current_step_run,
+            image_digest=backend_image_digest,
+        )
         logger.info(
-            "Marked step run %s as RUNNING for run %s",
+            "Marked step run %s as RUNNING for run %s (image digest: %s)",
             current_step_run.id,
             run.id,
+            backend_image_digest or "unresolved",
         )
 
         # 7. Return pending ValidationResult
@@ -367,11 +389,19 @@ def launch_fmu_validation(
             input_uri=input_envelope_uri,
         )
 
+        # Resolve validator backend image digest from the Execution's
+        # metadata (Trust ADR Phase 5 Session A) before marking RUNNING.
+        # Best-effort: failures yield None and the field stays empty.
+        backend_image_digest = get_execution_image_digest(execution_name)
+
         # Mark step run as RUNNING
         # Note: run.status and run.started_at are already set by
         # execute_workflow_steps() when the run transitions from PENDING
         # to RUNNING. We only need to mark the step run as running here.
-        _mark_step_run_running(current_step_run)
+        _mark_step_run_running(
+            current_step_run,
+            image_digest=backend_image_digest,
+        )
 
         stats = {
             "job_status": CloudRunJobStatus.PENDING,

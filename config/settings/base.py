@@ -909,6 +909,31 @@ VALIDATOR_RUNNER_OPTIONS = {
     "storage_mount_path": env("VALIDATOR_STORAGE_MOUNT_PATH", default="/app/storage"),
 }
 
+# Validator backend image cosign verification (Trust ADR Phase 5
+# Session A.2)
+# ------------------------------------------------------------------------------
+# When ``COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES=True``, the runner
+# shells out to the ``cosign`` CLI before launching each validator
+# backend container and aborts the run if the image isn't signed by
+# the configured key. Disabled by default for community quick-start
+# parity. Production deployments that require signed images should
+# enable this AND pin to ``signed-digest`` policy in Phase 5
+# Session B (when that ships).
+COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES = env.bool(
+    "COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES",
+    default=False,
+)
+# Path to the cosign public key used to verify validator backend
+# image signatures. Required when verification is enabled.
+COSIGN_VERIFY_PUBLIC_KEY_PATH = env(
+    "COSIGN_VERIFY_PUBLIC_KEY_PATH",
+    default="",
+)
+# Path to the cosign binary. Empty string means "look up on PATH"
+# which is the right default for most deployments. Override when
+# the binary lives in a non-standard location.
+COSIGN_BINARY_PATH = env("COSIGN_BINARY_PATH", default="cosign")
+
 # Cloud Run Job Validator Settings (overridden in production.py)
 # ------------------------------------------------------------------------------
 # These defaults allow local development without Cloud Run Jobs

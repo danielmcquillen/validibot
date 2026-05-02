@@ -2328,6 +2328,31 @@ class ValidationStepRun(TimeStampedModel):
 
     error = models.TextField(blank=True, default="")
 
+    # Trust ADR Phase 5 Session A — content-addressed identifier for
+    # the validator backend container image that ran this step.
+    # Populated by the runner from Docker's RepoDigests (preferred,
+    # registry-anchored) or local image ID (fallback for dev images
+    # not pulled from a registry). Empty string when there's no
+    # backend (simple-validator steps run inline in the Django
+    # process, so they have no container to digest). Stored as a
+    # dedicated column rather than a key in ``output`` JSON because
+    # it's part of the universal trust contract — auditors query it
+    # for coverage gaps independently of validator-specific output.
+    validator_backend_image_digest = models.CharField(
+        max_length=256,
+        blank=True,
+        default="",
+        help_text=(
+            "Resolved sha256 digest of the validator backend image that "
+            "executed this step (e.g. 'sha256:abc...' or "
+            "'registry/path/...@sha256:abc...'). Empty for "
+            "simple-validator steps that run inline without a container. "
+            "256 chars accommodates registry-anchored references "
+            "(registry path + image name + '@sha256:' + 64 hex), which "
+            "commonly run 100+ chars for nested GCS / GAR paths."
+        ),
+    )
+
     def __str__(self) -> str:
         if self.workflow_step:
             name = (

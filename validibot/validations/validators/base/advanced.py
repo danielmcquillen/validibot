@@ -588,6 +588,22 @@ class AdvancedValidator(BaseValidator):
         if response.duration_seconds is not None:
             stats["duration_seconds"] = response.duration_seconds
 
+        # Trust ADR Phase 5 Session A — propagate the resolved
+        # validator backend image digest (sync backends only). Async
+        # backends persist this directly on the step run at launch
+        # time, so they leave ``response.validator_backend_image_digest``
+        # as ``None`` and the step processor reads from the column
+        # later. Carrying it in ``stats`` lets the step processor
+        # write the typed column without needing an extra parameter
+        # on the validate() return path.
+        backend_image_digest = getattr(
+            response,
+            "validator_backend_image_digest",
+            None,
+        )
+        if backend_image_digest:
+            stats["validator_backend_image_digest"] = backend_image_digest
+
         # Async execution — return pending result
         if is_async and not response.is_complete:
             return ValidationResult(passed=None, issues=[], stats=stats)

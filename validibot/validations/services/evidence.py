@@ -119,6 +119,22 @@ class EvidenceManifestBuilder:
         # mirrors what the run actually did. Pre-fetch the validator
         # so we don't generate N+1 queries here.
         steps_qs = workflow.steps.select_related("validator").order_by("order")
+
+        # Trust ADR Phase 5 Session A — per-step validator backend
+        # image digest, sourced from the ``ValidationStepRun`` rows
+        # the runner persisted at execution / launch time. We index
+        # by ``workflow_step_id`` so the workflow-step walk below
+        # can attach the matching digest in O(1) without N+1
+        # queries. Async (Cloud Run) runs persisted the digest at
+        # launch time; sync (Docker) runs persisted it at finalize
+        # via the validator's stats bag. Either way, by the time
+        # we're building a manifest, ``validator_backend_image_digest``
+        # is the authoritative column.
+        step_run_digests: dict[int, str] = {
+            step_run.workflow_step_id: (step_run.validator_backend_image_digest or "")
+            for step_run in run.step_runs.all()
+        }
+
         step_records: list[StepValidatorRecord] = []
         for step in steps_qs:
             validator = step.validator
@@ -127,6 +143,7 @@ class EvidenceManifestBuilder:
                 # contribute nothing to the validator-trust story.
                 # Skip rather than emit an empty record.
                 continue
+            backend_digest = step_run_digests.get(step.pk, "")
             step_records.append(
                 StepValidatorRecord(
                     step_id=step.pk,
@@ -134,6 +151,7 @@ class EvidenceManifestBuilder:
                     validator_slug=validator.slug,
                     validator_version=validator.version,
                     validator_semantic_digest=(validator.semantic_digest or None),
+                    validator_backend_image_digest=(backend_digest or None),
                 ),
             )
 

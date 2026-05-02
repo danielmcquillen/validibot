@@ -3280,7 +3280,7 @@ requires-dist = [
     { name = "stripe", marker = "extra == 'cloud'", specifier = "==15.1.0" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.46.0" },
     { name = "uvicorn-worker", specifier = "==0.4.0" },
-    { name = "validibot-shared", specifier = "==0.6.0" },
+    { name = "validibot-shared", specifier = "==0.7.0" },
     { name = "whitenoise", specifier = "==6.12.0" },
 ]
 
@@ -3309,14 +3309,14 @@ dev = [
 
 [[package]]
 name = "validibot-shared"
-version = "0.6.0"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/25/7e/28b7e0c0880f2a9ede2a16e08b462743fa5ebdee8c1035d5bf97e553a270/validibot_shared-0.6.0.tar.gz", hash = "sha256:367c6b6eb4d7c5f066ab4dfdb209642a8051f6b8484f0b4d456b310c89d07f82", size = 26986 }
+sdist = { url = "https://files.pythonhosted.org/packages/cf/7e/040793467f3192b15845a78a1ab475901241d9cba039790be59137647226/validibot_shared-0.7.0.tar.gz", hash = "sha256:cbb4b1a6813b3f774d44baa1312951f85bc11e3938df19f506baa0165aac257c", size = 27392 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/f3/24118e67076dd2b241b23c90cc178fa1927d8b19da40ad12a02dad57294c/validibot_shared-0.6.0-py3-none-any.whl", hash = "sha256:cb9e71eda3d670fc4e7781cbdc814647a059a824749ad1f88ceaa6a483b19395", size = 27517 },
+    { url = "https://files.pythonhosted.org/packages/26/b4/e5aaf7b66d827142ea9586e493ccdab8907f57e1ac28d0cff08adc7bbdff/validibot_shared-0.7.0-py3-none-any.whl", hash = "sha256:3a8786b28d65eb50f51643d18dcb1597f1bd86c9118ef1da50173ed722dee24d", size = 27842 },
 ]
 
 [[package]]

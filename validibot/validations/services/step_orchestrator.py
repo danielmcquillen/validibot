@@ -626,15 +626,30 @@ class StepOrchestrator:
             step_run.duration_ms = 0
         step_run.output = stats or {}
         step_run.error = error or ""
-        step_run.save(
-            update_fields=[
-                "status",
-                "ended_at",
-                "duration_ms",
-                "output",
-                "error",
-            ],
-        )
+
+        update_fields = [
+            "status",
+            "ended_at",
+            "duration_ms",
+            "output",
+            "error",
+        ]
+
+        # Trust ADR Phase 5 Session A — promote the validator backend
+        # image digest from the validator's stats bag onto the typed
+        # column so trust auditors can query it directly. The Cloud
+        # Run launcher writes the column at job-launch time and
+        # leaves stats unset; the Docker runner threads the digest
+        # through ``stats``. We only overwrite the column when stats
+        # carries a non-empty digest, so the launch-time write isn't
+        # clobbered by an async finalize whose stats bag never had
+        # the field.
+        backend_digest = (stats or {}).get("validator_backend_image_digest")
+        if backend_digest:
+            step_run.validator_backend_image_digest = str(backend_digest)
+            update_fields.append("validator_backend_image_digest")
+
+        step_run.save(update_fields=update_fields)
         return step_run
 
     def _is_signed_credential_step(self, workflow_step: WorkflowStep) -> bool:

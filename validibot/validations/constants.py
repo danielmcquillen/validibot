@@ -254,6 +254,39 @@ class ValidatorWeight(models.IntegerChoices):
     EXTREME = 5, _("Extreme (5x)")
 
 
+class ValidatorTrustTier(models.TextChoices):
+    """Trust tier of the validator backend a validator dispatches to.
+
+    Trust ADR Phase 5 Session C — first-party validator backends
+    (everything that ships in the open-source repo today) ride the
+    Phase 1 hardening profile because we built and audit the images.
+    Once user-added or partner-authored backends become a registration
+    flow, those need a stricter sandbox by default.
+
+    The two tiers map to different `ValidatorRunner` configurations:
+
+    - `TIER_1` keeps the existing Phase 1 defaults: UID 1000,
+      cap_drop=ALL, no-new-privileges, read-only rootfs, network
+      disabled, ro input mount, rw output mount, tmpfs at /tmp,
+      memory/CPU/timeout limits.
+    - `TIER_2` adds: explicit egress allowlist or network=none,
+      tighter CPU/memory caps, gVisor or Kata runtime when
+      available, cosign-signed image required, pre-flight scan on
+      registration. The tier-2 profile is what the runner applies
+      when it sees a `Validator.trust_tier == TIER_2` row.
+
+    Field name vs. semantics: the column lives on `Validator`
+    because that's the registered, addressable row a workflow step
+    references — but its *meaning* is the trust rating of the
+    **validator backend** that validator dispatches to. Simple
+    validators (no backend, run inline in Django) take TIER_1 by
+    construction; the field is irrelevant for them.
+    """
+
+    TIER_1 = "TIER_1", _("Tier 1 (first-party)")
+    TIER_2 = "TIER_2", _("Tier 2 (user-added or partner-authored)")
+
+
 # Default compute tier by validation type. LOW-compute validators are metered
 # by launch count; HIGH-compute validators are metered by credit consumption.
 DEFAULT_COMPUTE_TIERS: dict[str, str] = {

@@ -56,6 +56,7 @@ from typing import TYPE_CHECKING
 
 from django.conf import settings
 
+from validibot.validations.constants import ValidatorTrustTier
 from validibot.validations.services.cosign import CosignVerifyOutcome
 from validibot.validations.services.cosign import verify_image_signature
 from validibot.validations.services.image_policy import enforce_image_policy
@@ -68,6 +69,58 @@ if TYPE_CHECKING:
     from validibot.validations.services.run_workspace import RunWorkspace
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_tier_2_hardening(container_config: dict) -> dict:
+    """Apply Trust ADR Phase 5 Session C tier-2 sandbox overrides.
+
+    Tier 2 is for user-added or partner-authored validator backends
+    where the runner can't trust the image vendor the way it can
+    for first-party backends. The hardening ratchets:
+
+    1. **Network**: forced to ``none`` regardless of how the
+       deployment configured Tier-1 network access. A partner image
+       has no business reaching out to the network, ever — the
+       envelope contract delivers everything it needs via shared
+       storage.
+    2. **Resource caps**: defaults to half the Tier-1 memory/CPU
+       budget so a runaway partner image can't starve the host.
+       Override via ``VALIDATOR_TIER_2_MEMORY_LIMIT`` /
+       ``VALIDATOR_TIER_2_CPU_LIMIT`` for deployments that need a
+       different ratio.
+    3. **Runtime**: optional gVisor (``runsc``) or Kata sandbox via
+       ``VALIDATOR_TIER_2_CONTAINER_RUNTIME``. Empty string (the
+       default) leaves the host runtime alone — this is the right
+       posture for deployments that haven't installed gVisor;
+       breaking every Tier-2 launch on a missing runtime would be
+       worse than running under the standard runc isolation.
+
+    The function returns a *new* dict rather than mutating in place
+    so call-site reasoning stays clean: the Tier-1 dict is built,
+    Tier-2 overrides are layered on top, and the result is what
+    Docker sees.
+    """
+    hardened = dict(container_config)
+
+    # 1. Force network=none for Tier-2. Drop any explicit network
+    # configuration the Tier-1 path may have set.
+    hardened.pop("network", None)
+    hardened["network_mode"] = "none"
+
+    # 2. Tighter resource caps via settings (defaults halve the
+    # Tier-1 budget).
+    tier_2_mem = getattr(settings, "VALIDATOR_TIER_2_MEMORY_LIMIT", "2g") or "2g"
+    tier_2_cpu = getattr(settings, "VALIDATOR_TIER_2_CPU_LIMIT", "1.0") or "1.0"
+    hardened["mem_limit"] = tier_2_mem
+    hardened["nano_cpus"] = int(float(tier_2_cpu) * 1e9)
+
+    # 3. gVisor / Kata runtime when configured. Empty string =
+    # don't touch the host runtime.
+    tier_2_runtime = getattr(settings, "VALIDATOR_TIER_2_CONTAINER_RUNTIME", "")
+    if tier_2_runtime:
+        hardened["runtime"] = str(tier_2_runtime)
+
+    return hardened
 
 
 def _resolve_container_image_digest(container: object) -> str | None:
@@ -225,6 +278,7 @@ class DockerValidatorRunner(ValidatorRunner):
         run_id: str | None = None,
         validator_slug: str | None = None,
         workspace: RunWorkspace | None = None,
+        trust_tier: str | None = None,
     ) -> ExecutionResult:
         """
         Run a validator container and wait for completion.
@@ -332,6 +386,22 @@ class DockerValidatorRunner(ValidatorRunner):
         else:
             # No network = maximum isolation (cannot reach other containers or internet)
             container_config["network_mode"] = "none"
+
+        # Trust ADR Phase 5 Session C — when the validator backend
+        # is Tier-2 (user-added or partner-authored), layer the
+        # tighter sandbox profile on top of the Tier-1 defaults
+        # built above. Tier-1 (the default for everything we ship
+        # today) keeps the existing config unchanged.
+        if trust_tier == ValidatorTrustTier.TIER_2:
+            container_config = _apply_tier_2_hardening(container_config)
+            logger.info(
+                "Applied Tier-2 hardening profile to %s "
+                "(network=none, runtime=%s, mem=%s, cpu=%s)",
+                container_image,
+                container_config.get("runtime", "default"),
+                container_config.get("mem_limit"),
+                container_config.get("nano_cpus"),
+            )
 
         container = None
         # Trust ADR Phase 5 Session B — refuse to launch images that

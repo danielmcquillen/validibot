@@ -1,0 +1,95 @@
+# Trust ADR Phase 5 Session D — OpenSSF Scorecard health checks.
+#
+# Scorecard inspects this repo's open-source security hygiene
+# (branch protection, dependency update cadence, signed releases,
+# token permissions, dangerous-workflow patterns, etc.) and publishes
+# a score to the public OSSF Scorecard dashboard. The README embeds
+# a badge linking to the dashboard so community users see the score.
+#
+# Why we run this:
+#
+# - **Public signal of project hygiene** — anyone evaluating Validibot
+#   for production can see whether we follow OSS security best
+#   practices.
+# - **Catches regressions early** — disabling branch protection,
+#   adding a hand-rolled token without `pull-requests: write`-only
+#   scope, or shipping a release without a signed tag will all show
+#   up as a score drop the next time the cron runs.
+# - **Matches what the upstream OSSF documents** — see
+#   <https://github.com/ossf/scorecard-action> for the canonical
+#   workflow shape. This file mirrors the documented template with
+#   SHA-pinned actions per Validibot's supply-chain rules.
+#
+# The workflow runs:
+# 1. Weekly (Sunday 02:00 UTC) so the score reflects current repo
+#    state rather than the last push.
+# 2. On push to ``main`` so significant changes (e.g. a new branch
+#    protection setting) get reflected immediately.
+# 3. On manual dispatch for ad-hoc inspection.
+#
+# Scorecard publishes results to:
+# - GitHub's code scanning UI (visible under the Security tab)
+# - The OSSF Scorecard public dashboard
+#   (https://scorecard.dev/viewer/?uri=github.com/<owner>/<repo>)
+
+name: Scorecard supply-chain security
+
+on:
+  branch_protection_rule:
+  schedule:
+    - cron: '0 2 * * 0'  # 02:00 UTC every Sunday
+  push:
+    branches: ['main']
+  workflow_dispatch:
+
+# Declare default permissions as read only; the Scorecard analysis
+# job below grants the narrower writes it needs (security-events,
+# id-token) explicitly.
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Needed to upload the SARIF results to GitHub's code-scanning
+      # UI so the Security tab shows the findings.
+      security-events: write
+      # Needed for OIDC token used by the publish_results step to
+      # post the score to the public Scorecard dashboard.
+      id-token: write
+      # Needed for fetching repository metadata.
+      contents: read
+      # Needed to read GitHub Actions workflow files for the
+      # Dangerous-Workflow check.
+      actions: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Run Scorecard analysis
+        uses: ossf/scorecard-action@f49aabe0b5af0936a0987cfb85d86b75731b0186  # v2.4.1
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Publish results to the public dashboard so the badge
+          # works. Set to false on private forks; this repo is
+          # public so we want maximum signal.
+          publish_results: true
+
+      # Upload the raw SARIF as a build artifact so debugging a
+      # score drop doesn't require re-running the action.
+      - name: Upload Scorecard artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@e296a935590eb16afc0c0108289f68c87e2a89a5  # v4.31.7
+        with:
+          sarif_file: results.sarif

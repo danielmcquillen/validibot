@@ -269,7 +269,12 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 workspace.output_envelope_container_uri,
             )
 
-            # 6. Run the container with per-run mounts.
+            # 6. Run the container with per-run mounts. Trust ADR
+            # Phase 5 Session C — pass through ``trust_tier`` from
+            # the validator row so the runner can apply tier-aware
+            # hardening for partner-authored backends. Tier-1 is the
+            # default for everything we ship today; Tier-2 layers
+            # tighter caps + optional gVisor runtime on top.
             result = self.runner.run(
                 container_image=container_image,
                 input_uri=workspace.input_envelope_container_uri,
@@ -277,6 +282,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 run_id=str(request.run_id),
                 validator_slug=request.validator_type.lower(),
                 workspace=workspace,
+                trust_tier=request.validator.trust_tier,
             )
 
             # 7. Process the result.

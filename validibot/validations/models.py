@@ -43,6 +43,7 @@ from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorReleaseState
+from validibot.validations.constants import ValidatorTrustTier
 from validibot.validations.constants import ValidatorWeight
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.constants import get_resource_types_for_validator
@@ -1116,6 +1117,32 @@ class Validator(TimeStampedModel):
             "SHA-256 of the semantic config at sync time. Used to "
             "detect drift when a validator's behavior changes under "
             "the same (slug, version) without an explicit version bump."
+        ),
+    )
+
+    # ADR-2026-04-27 Phase 5 Session C: trust tier of the validator
+    # backend container this validator dispatches to. TIER_1 (default)
+    # is the first-party hardening profile we ship today. TIER_2 is
+    # the stricter sandbox the runner applies for user-added or
+    # partner-authored backends — egress allowlist or no-network,
+    # tighter caps, gVisor/Kata runtime when available, cosign-signed
+    # image required.
+    #
+    # The field lives on Validator (not on a separate ValidatorBackend
+    # row) because the workflow-step → validator FK already addresses
+    # what we need, and there's no separate backend table today. The
+    # *meaning* is "the backend this validator points at" — simple
+    # validators (no backend) keep TIER_1 by construction.
+    trust_tier = models.CharField(
+        max_length=16,
+        choices=ValidatorTrustTier.choices,
+        default=ValidatorTrustTier.TIER_1,
+        help_text=_(
+            "Trust tier of the validator backend container this validator "
+            "dispatches to. TIER_1 is the first-party hardening profile "
+            "(default); TIER_2 applies a stricter sandbox for user-added "
+            "or partner-authored backends. Simple validators (no backend) "
+            "stay at TIER_1 by construction."
         ),
     )
 

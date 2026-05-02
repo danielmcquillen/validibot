@@ -186,6 +186,17 @@ class ValidatorConfig(BaseModel):
     # --- Compute ---
     compute_tier: str = ComputeTier.LOW
 
+    # --- Trust ---
+    # ADR-2026-04-27 Phase 5 Session C — first-party validator
+    # backends (everything we ship today) ride the Phase 1 hardening
+    # profile under TIER_1. Future user-added or partner-authored
+    # backends declare TIER_2 to opt into the stricter sandbox
+    # (egress allowlist, gVisor runtime when available, etc.).
+    # Simple validators that don't dispatch to a container backend
+    # leave this at TIER_1 by construction; the runner doesn't apply
+    # tier-aware hardening for them.
+    trust_tier: str = "TIER_1"
+
     # --- Display ---
     icon: str = "bi-journal-bookmark"
     card_image: str = "default_card_img_small.png"

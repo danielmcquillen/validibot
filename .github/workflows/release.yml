@@ -1,0 +1,163 @@
+# Trust ADR Phase 5 Session D — Release workflow for the validibot
+# Django app.
+#
+# Validibot itself is distributed via ``git clone`` rather than PyPI
+# (per the open-core distribution model — see the trust ADR's
+# Phase 5 Session D table). That means our provenance story for
+# downstream operators rests on **signed git tags**, not wheel
+# attestations. This workflow:
+#
+# 1. Verifies the triggering tag carries a valid signature
+#    (``git verify-tag``). Refuses to publish a release for an
+#    unsigned tag — the signature is what proves a maintainer made
+#    the release rather than someone with stale push credentials.
+# 2. Generates a CycloneDX SBOM of the resolved Python dependency
+#    tree and attaches it to the GitHub release. Operators who pull
+#    the source tarball can audit dependencies without re-resolving.
+# 3. Creates the release object on GitHub if one doesn't already
+#    exist for this tag.
+#
+# Why we don't push a wheel: ``validibot/`` is the Django
+# application, not a library. Self-hosted operators clone the repo
+# and build images via Docker Compose; cloud operators do the same
+# via a higher-level deploy pipeline. Both paths verify integrity
+# via the signed tag, not a pip install.
+#
+# How an operator verifies a release after cloning:
+#
+#     git fetch --tags
+#     git verify-tag v1.2.3
+#     git checkout v1.2.3
+#
+# Required configuration:
+#
+# - The maintainer's GPG / SSH signing public key must be configured
+#   in the repo's ``.allowed_signers`` (for SSH signatures) or
+#   imported into the runner's GPG keyring. ``actions/checkout``
+#   doesn't do this by default; see the "Configure git for signature
+#   verification" step below for how this workflow handles SSH keys.
+
+name: Release validibot
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.2.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Verify signed tag and publish release
+    runs-on: ubuntu-latest
+    permissions:
+      # Required to create the GitHub release and upload SBOM.
+      contents: write
+      # Required for OIDC if/when this workflow grows to attest the
+      # tarball contents in addition to the SBOM.
+      id-token: write
+      # Required for ``actions/attest-build-provenance`` to write
+      # to the repo's transparency log.
+      attestations: write
+
+    steps:
+      - name: Checkout (full history for tag verification)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+
+      # Trust ADR Phase 5 Session D — refuse to publish unsigned
+      # tags. The check fails when ``git verify-tag`` exits non-zero,
+      # which happens for unsigned tags or tags signed by a key
+      # that isn't in the repo's allowed-signers config.
+      #
+      # SSH-signed tags require the ``.allowed_signers`` file at
+      # the repo root listing the maintainer's public keys. GPG-
+      # signed tags require the public key to be imported into the
+      # runner's GPG keyring (see RELEASING.md for the full setup).
+      - name: Configure git for signature verification
+        run: |
+          # Use repo-rooted allowed_signers for SSH-signed tags. If
+          # this file is missing, ``git verify-tag`` falls back to
+          # GPG keyring lookup.
+          if [ -f .allowed_signers ]; then
+            git config gpg.ssh.allowedSignersFile "$PWD/.allowed_signers"
+            git config gpg.format ssh
+          fi
+
+      # ``TAG_REF`` is bound via env (not interpolated into the
+      # script body) — recommended practice for any input from a
+      # GitHub event payload.
+      - name: Verify tag is signed
+        env:
+          TAG_REF: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if ! git verify-tag "$TAG_REF" 2>&1; then
+            echo "::error::Tag '$TAG_REF' is not signed."
+            echo ""
+            echo "Sign with: git tag -s '$TAG_REF' -m 'release notes'"
+            echo "See RELEASING.md for the full release recipe."
+            exit 1
+          fi
+          echo "Tag '$TAG_REF' signature verified."
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@6ee6290f1cbc4156c0bdd66691b2c144ef8df19a  # v7.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@61a6322f88396a6271a6ee3565807d608ecaddd1  # v6.0.0
+        with:
+          python-version-file: '.python-version'
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Generate CycloneDX SBOM (JSON)
+        run: |
+          uvx --from cyclonedx-bom cyclonedx-py environment \
+            --output-format JSON \
+            --output-file validibot.cdx.json
+
+      - name: Generate CycloneDX SBOM (XML)
+        run: |
+          uvx --from cyclonedx-bom cyclonedx-py environment \
+            --output-format XML \
+            --output-file validibot.cdx.xml
+
+      - name: Upload SBOM as workflow artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
+        with:
+          name: validibot-sbom
+          path: |
+            validibot.cdx.json
+            validibot.cdx.xml
+          retention-days: 90
+
+      # Create the GitHub release if one doesn't already exist for
+      # this tag (workflow_dispatch path), then upload the SBOM
+      # files. ``--clobber`` overwrites stale SBOMs from prior
+      # workflow runs against the same tag.
+      - name: Create or update GitHub Release with SBOM
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$RELEASE_TAG" \
+              --generate-notes \
+              --verify-tag
+          fi
+          gh release upload "$RELEASE_TAG" \
+            validibot.cdx.json \
+            validibot.cdx.xml \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

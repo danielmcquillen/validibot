@@ -9,6 +9,7 @@
 **Open-source data validation engine**
 
 [![Build Status](https://github.com/danielmcquillen/validibot/actions/workflows/ci.yml/badge.svg)](https://github.com/danielmcquillen/validibot/actions)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/danielmcquillen/validibot/badge)](https://scorecard.dev/viewer/?uri=github.com/danielmcquillen/validibot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
 [![Django 5.2](https://img.shields.io/badge/django-5.2-green.svg)](https://djangoproject.com/)

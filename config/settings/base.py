@@ -909,6 +909,37 @@ VALIDATOR_RUNNER_OPTIONS = {
     "storage_mount_path": env("VALIDATOR_STORAGE_MOUNT_PATH", default="/app/storage"),
 }
 
+# Validator backend trust-tier hardening overrides (Trust ADR
+# Phase 5 Session C)
+# ------------------------------------------------------------------------------
+# These settings tune the Tier-2 sandbox profile the runner applies
+# when a Validator row's ``trust_tier`` column is ``TIER_2`` (i.e.
+# user-added or partner-authored backend, future feature). Tier 1
+# (the default for everything we ship today) keeps the existing
+# Phase 1 hardening — these settings have no effect on Tier 1 runs.
+#
+# ``VALIDATOR_TIER_2_CONTAINER_RUNTIME``: Docker runtime name for
+# tier-2 containers. Set to ``"runsc"`` if gVisor is installed on
+# the worker, ``"kata"`` for Kata Containers, or leave empty to use
+# the host's default runtime. The runner does *not* check
+# availability — misconfigured deployments produce launch errors,
+# which the doctor command flags.
+VALIDATOR_TIER_2_CONTAINER_RUNTIME = env(
+    "VALIDATOR_TIER_2_CONTAINER_RUNTIME",
+    default="",
+)
+# Tighter resource caps for tier-2 containers. Defaults are roughly
+# half the tier-1 limits — partner code shouldn't get more than the
+# minimum it needs.
+VALIDATOR_TIER_2_MEMORY_LIMIT = env(
+    "VALIDATOR_TIER_2_MEMORY_LIMIT",
+    default="2g",
+)
+VALIDATOR_TIER_2_CPU_LIMIT = env(
+    "VALIDATOR_TIER_2_CPU_LIMIT",
+    default="1.0",
+)
+
 # Validator backend image policy (Trust ADR Phase 5 Session B)
 # ------------------------------------------------------------------------------
 # Three-rung ladder controlling how strictly validator backend

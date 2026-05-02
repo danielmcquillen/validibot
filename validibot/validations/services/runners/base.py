@@ -135,6 +135,7 @@ class ValidatorRunner(ABC):
         run_id: str | None = None,
         validator_slug: str | None = None,
         workspace: object | None = None,
+        trust_tier: str | None = None,
     ) -> ExecutionResult:
         """
         Run a validator container and wait for completion.
@@ -161,6 +162,16 @@ class ValidatorRunner(ABC):
                 ``run_workspace`` module; concrete sync runners narrow
                 the type. Optional so async runners that don't
                 materialise a host workspace remain compatible.
+            trust_tier: Trust tier of the validator backend image, as a
+                string from :class:`~validibot.validations.constants.ValidatorTrustTier`
+                (``"TIER_1"`` or ``"TIER_2"``). Trust ADR Phase 5
+                Session C — when ``"TIER_2"``, the runner applies a
+                stricter sandbox profile (egress allowlist, gVisor
+                runtime when available, tighter resource caps).
+                ``None`` or unrecognised values fall through to
+                ``TIER_1`` for safety — never tighter than the
+                operator configured but never looser than the
+                default.
 
         Returns:
             ExecutionResult with exit_code, output_uri, and optional logs

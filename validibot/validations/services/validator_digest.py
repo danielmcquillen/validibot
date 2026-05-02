@@ -91,6 +91,16 @@ SEMANTIC_FIELDS: frozenset[str] = frozenset(
         "resource_types",
         "compute_tier",
         "catalog_entries",
+        # Trust ADR Phase 5 Session C — trust_tier is semantic
+        # because it determines the sandbox profile the runner
+        # applies, which is observable behavior. A change from
+        # TIER_1 to TIER_2 (or vice versa) under the same (slug,
+        # version) would silently change how the validator's
+        # backend container is locked down. The contract that
+        # workflows lock onto includes "what sandbox enforces this
+        # validator's runs," so flipping the tier is exactly the
+        # kind of drift the semantic_digest is designed to catch.
+        "trust_tier",
     },
 )
 

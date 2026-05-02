@@ -12,7 +12,7 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/danielmcquillen/validibot/badge)](https://scorecard.dev/viewer/?uri=github.com/danielmcquillen/validibot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
-[![Django 5.2](https://img.shields.io/badge/django-5.2-green.svg)](https://djangoproject.com/)
+[![Django 6.0](https://img.shields.io/badge/django-6.0-green.svg)](https://djangoproject.com/)
 
 [User Documentation](https://docs.validibot.com/) •
 [Developer Documentation](https://dev.validibot.com/) •
@@ -33,7 +33,7 @@ Validibot is composed of several repositories that work together:
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------- |
 | **[validibot](https://github.com/danielmcquillen/validibot)**                       | Core platform (this repo) — Django web application, REST API, workflow engine, and built-in validators | AGPL-3.0 |
 | **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)**               | Command-line interface for running validations from terminals and scripts                              | MIT      |
-| **[validibot-validator-backends](https://github.com/danielmcquillen/validibot-validator-backends)** | Advanced validator backends (EnergyPlus™, FMU) that run as isolated Docker containers                  | MIT      |
+| **[validibot-validator-backends](https://github.com/danielmcquillen/validibot-validator-backends)** | Validator backends for advanced validators (EnergyPlus™, FMU) — run as isolated Docker containers      | MIT      |
 | **[validibot-shared](https://github.com/danielmcquillen/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators                | MIT      |
 
 ---
@@ -68,9 +68,9 @@ These validators include backends that run as isolated Docker containers for com
 
 - **EnergyPlus™**: Validate IDF and epJSON building energy models
 - **FMU**: Validate Functional Mock-up Units via OpenModelica simulation
-- **Custom**: Bring your own validator containers
+- **Custom**: Bring your own validator backends
 
-Validibot defines a simple container interface for advanced validators: read an input envelope, perform validation, write an output envelope. This makes it straightforward to package any validation logic as a container. See the [Container Interface Guide](https://dev.validibot.com/overview/validator_architecture/) for the full specification.
+Validibot defines a simple container interface for validator backends: read an input envelope, perform validation, write an output envelope. This makes it straightforward to package any validation logic as a backend. See the [Container Interface Guide](https://dev.validibot.com/overview/validator_architecture/) for the full specification.
 
 ### Workflow Engine
 
@@ -163,16 +163,16 @@ See the [Reverse Proxy Guide](https://dev.validibot.com/deployment/reverse-proxy
 > Docker socket access grants root-equivalent privileges on the host. For production deployments, we recommend using [Podman](https://podman.io/) which is rootless by default, or running Docker in rootless mode.
 
 > [!WARNING]
-> **Only run advanced validator containers that you have built and control yourself.** Never run third-party or untrusted container images as validators—they execute with access to your validation data and could potentially compromise your system.
+> **Only run validator backend images that you have built and control yourself.** Never run third-party or untrusted container images as validator backends—they execute with access to your validation data and could potentially compromise your system.
 
 Key security features:
 
-- **Network isolation**: Validator containers run with `network_mode='none'`
+- **Network isolation**: Validator backend containers run with `network_mode='none'`
 - **Dropped capabilities**: All Linux capabilities are dropped (`cap_drop=ALL`)
 - **No privilege escalation**: `no-new-privileges` prevents setuid/setgid abuse
 - **Read-only filesystem**: Root filesystem is read-only with writable tmpfs on `/tmp`
-- **Non-root execution**: Validator containers run as UID 1000, not root
-- **Resource limits**: CPU, memory, PID, and timeout limits on all validator containers
+- **Non-root execution**: Validator backend containers run as UID 1000, not root
+- **Resource limits**: CPU, memory, PID, and timeout limits on all validator backend containers
 - **Automatic cleanup**: Orphaned containers are cleaned up via the Ryuk pattern
 - **Non-root processes**: Web and worker containers run as non-root users
 
@@ -189,7 +189,7 @@ See [Pricing](https://validibot.com/pricing) for commercial product details. Nee
 | Repository              | License    | Purpose                         |
 | ----------------------- | ---------- | ------------------------------- |
 | `validibot` (this repo) | AGPL-3.0   | Core platform                   |
-| `validibot-validator-backends` | MIT | Advanced validator backend containers |
+| `validibot-validator-backends` | MIT | Validator backend container images    |
 | `validibot-cli`         | MIT        | Command-line interface          |
 | `validibot-shared`      | MIT        | Shared library for integrations |
 | `validibot-pro`         | Commercial | Pro tier features               |

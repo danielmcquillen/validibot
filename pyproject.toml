@@ -9,7 +9,7 @@ allow-direct-references = true
 
 [project]
 name = "validibot"
-version = "0.3.5"
+version = "0.4.0"
 description = "Open-source data validation platform for energy models, simulations, and structured data"
 requires-python = ">=3.13"
 license = { text = "AGPL-3.0-only" }
@@ -84,7 +84,9 @@ dependencies = [
   "disposable-email-domains==0.0.178",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # Trust ADR Phase 5 Session A — 0.7.0 adds StepValidatorRecord.validator_backend_image_digest.
-  "validibot-shared==0.7.0",
+  # Subsequent patches (0.7.1–0.7.3) shipped publish workflow fixes; pinning to 0.7.3
+  # gets the cleanest PyPI provenance attestation.
+  "validibot-shared==0.7.3",
   "django-csp==4.0",
   "django-permissions-policy==4.29.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in

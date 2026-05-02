@@ -57,7 +57,7 @@ dependencies = [
   "markdown2==2.5.5",
   "nh3==0.3.5",
   "pillow==12.2.0",
-  "psycopg[c]==3.3.3",
+  "psycopg[c]==3.3.4",
   "pydantic==2.13.3",
   "python-jsonpath==2.0.2",
   "python-slugify==8.0.4",
@@ -81,7 +81,7 @@ dependencies = [
   # guerrillamail, tempmail, etc). Used by UserSignupForm when
   # REJECT_DISPOSABLE_EMAILS is enabled — off by default for community/
   # self-hosted deployments, on in cloud to deter free-trial abuse.
-  "disposable-email-domains==0.0.175",
+  "disposable-email-domains==0.0.178",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # Trust ADR Phase 5 Session A — 0.7.0 adds StepValidatorRecord.validator_backend_image_digest.
   "validibot-shared==0.7.0",
@@ -325,5 +325,5 @@ dev = [
   "watchfiles==1.1.1",
   "werkzeug[watchdog]==3.1.8",
   # Documentation
-  "zensical==0.0.37",
+  "zensical==0.0.39",
 ]

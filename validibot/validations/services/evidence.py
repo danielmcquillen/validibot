@@ -1,10 +1,18 @@
 """``EvidenceManifestBuilder`` — build + persist evidence manifests for runs.
 
-ADR-2026-04-27 Phase 4 Session A (tasks 3-4): the single decision
-point for "what goes in a manifest, in what shape." Mirrors the
-service-class pattern from
+ADR-2026-04-27 Phase 4 Sessions A + B: the single decision point for
+"what goes in a manifest, in what shape." Mirrors the service-class
+pattern from
 :class:`validibot.workflows.services.versioning.WorkflowVersioningService`:
 stateless, static methods, central place to evolve policy.
+
+Session B addition (tasks 5-7):
+:mod:`validibot.validations.services.evidence_retention` provides a
+``RetentionPolicy`` consulted here. Input hashes always land in the
+manifest (preimage-resistant; safe even under ``DO_NOT_STORE``);
+output hashes are stripped under ``DO_NOT_STORE``. Stripped fields
+are recorded in ``retention.redactions_applied`` so verifiers see
+what the policy did.
 
 Responsibilities
 ================
@@ -54,11 +62,13 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from validibot_shared.evidence import SCHEMA_VERSION
 from validibot_shared.evidence import EvidenceManifest
+from validibot_shared.evidence import ManifestPayloadDigests
 from validibot_shared.evidence import ManifestRetentionInfo
 from validibot_shared.evidence import StepValidatorRecord
 from validibot_shared.evidence import WorkflowContractSnapshot
 
 from validibot.core.filesafety import sha256_hexdigest
+from validibot.validations.services.evidence_retention import RetentionPolicy
 
 if TYPE_CHECKING:
     from validibot.validations.models import RunEvidenceArtifact
@@ -127,9 +137,32 @@ class EvidenceManifestBuilder:
                 ),
             )
 
+        # Phase 4 Session B: populate retention info + payload digests.
+        # The retention policy decides what's safe per retention class.
+        # ``redactions_applied`` is the externally-visible audit trail
+        # of "the policy stripped these fields" so verifiers know what
+        # to expect in the manifest's shape.
+        retention_class = workflow.data_retention or ""
         retention = ManifestRetentionInfo(
-            retention_class=workflow.data_retention or "",
-            redactions_applied=[],  # Session B fills this
+            retention_class=retention_class,
+            redactions_applied=RetentionPolicy.redactions_for(retention_class),
+        )
+
+        # Input hash is always populated (preimage-resistant; doesn't
+        # leak DO_NOT_STORE bytes). Output hash is gated by retention.
+        # Both fields are sourced from columns already populated at
+        # run time: Submission.checksum_sha256 and ValidationRun.output_hash.
+        input_hash = ""
+        if run.submission and run.submission.checksum_sha256:
+            input_hash = run.submission.checksum_sha256
+
+        output_hash = ""
+        if RetentionPolicy.includes_output_hash(retention_class):
+            output_hash = run.output_hash or ""
+
+        payload_digests = ManifestPayloadDigests(
+            input_sha256=input_hash or None,
+            output_envelope_sha256=output_hash or None,
         )
 
         # The schema's ``executed_at`` is a string (ISO 8601 UTC) so
@@ -154,7 +187,7 @@ class EvidenceManifestBuilder:
             steps=step_records,
             input_schema=workflow.input_schema or None,
             retention=retention,
-            # payload_digests defaults to all-None in Session A.
+            payload_digests=payload_digests,
         )
 
     @staticmethod

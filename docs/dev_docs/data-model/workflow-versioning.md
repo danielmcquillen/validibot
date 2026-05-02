@@ -195,9 +195,9 @@ The manifest is hashed, written to default storage, and indexed by a
 
 The schema is `validibot.evidence.v1` (see
 `validibot_shared.evidence` in the published `validibot-shared`
-package — version 0.5.0+). It lives in shared so external verifiers
+package — version 0.5.1+). It lives in shared so external verifiers
 (validibot-pro, third-party tools) can consume it without pulling in
-the Django stack. For Session A it includes:
+the Django stack. The manifest contains:
 
 - Run identity: run UUID, workflow slug + version, org, executed at.
 - Workflow contract snapshot: every field in `CONTRACT_FIELDS` at the
@@ -205,10 +205,13 @@ the Django stack. For Session A it includes:
 - Per-step validator records: slug, version, and `semantic_digest`
   pulled directly from each step's validator row.
 - Input schema: the workflow's structured input contract if any.
-- Retention class: a placeholder for Session B's redaction policy.
-- Payload digests: `None` for now; Session B fills in input/output
-  hashes including the always-on input hash that survives
-  `DO_NOT_STORE` purges.
+- Retention info: `retention_class` plus `redactions_applied` — a
+  list of field names the Session B retention policy stripped from
+  this manifest.
+- Payload digests: `input_sha256` (always; preimage-resistant and
+  safe even under `DO_NOT_STORE`) and `output_envelope_sha256`
+  (gated by retention — present for `STORE_*` runs, omitted for
+  `DO_NOT_STORE` and recorded as a redaction).
 
 The stamper lives at
 `validibot/validations/services/evidence.py`. Both run-completion
@@ -218,6 +221,35 @@ paths (`step_orchestrator.execute_workflow_steps` for sync runs and
 exception is caught, logged, recorded as
 `availability=FAILED` on the row, and swallowed so the run's outcome
 is unaffected. The auditor then surfaces the gap.
+
+### Retention policy (Phase 4 Session B)
+
+The decision of *what* to include is centralised in
+`validibot/validations/services/evidence_retention.py`. The
+`RetentionPolicy` class exposes static methods like
+`includes_input_hash(retention_class)` and
+`includes_output_hash(retention_class)`; the builder consults them
+when populating `payload_digests`. Stripped fields are recorded in
+`retention.redactions_applied` so verifiers see "the policy
+deliberately omitted these" rather than guessing whether absence
+means policy or bug.
+
+Why the input hash is always included (even under `DO_NOT_STORE`):
+SHA-256 is preimage-resistant — recipients of the manifest cannot
+reconstruct the original bytes from the hash, so retaining the hash
+doesn't violate the privacy promise. It IS the proof "this run
+consumed *this exact input*" that makes the manifest meaningful.
+Withholding it would break that property. The submission row's
+`checksum_sha256` is computed at upload time and explicitly
+preserved through `Submission.purge_content()`.
+
+Curated runtime logs in the manifest (e.g. step start/end events,
+finding emit events) are deferred to a Session B follow-up. Adding
+them requires new optional fields in the
+`validibot.evidence.v1` schema, which is a separate
+`validibot-shared` release. The current shape already meets the
+DO_NOT_STORE acceptance criteria — no payload bytes leak through
+any field that exists today.
 
 
 ## Related ADRs

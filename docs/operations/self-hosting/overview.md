@@ -24,9 +24,6 @@ the substrate (where containers actually run) and the operational
 expectations (developer testing vs production data custody vs cloud
 SaaS).
 
-See ADR-2026-04-27 (Boring Self-Hosting and Operator Experience) for
-the full architecture rationale.
-
 ## What's on the VM
 
 ```text
@@ -168,9 +165,8 @@ just self-hosted update        # pull, rebuild, migrate, restart
 ```
 
 The fuller operator interface (`doctor`, `smoke-test`, `backup`,
-`restore`, `upgrade`, `collect-support-bundle`) lands in later phases
-of ADR-2026-04-27. The names exist today; the implementations are
-phased.
+`restore`, `upgrade`, `collect-support-bundle`) lands in later phases.
+The names exist today; the implementations are phased.
 
 ## Reverse proxy: bring your own, or use bundled Caddy
 
@@ -222,10 +218,6 @@ just self-hosted collect-support-bundle
 The bundle includes versions, doctor output, recent logs, migration
 state, and validator manifests. It excludes secrets, signing keys,
 API tokens, and raw submission contents.
-
-For the design rationale behind every choice on this page, see
-[ADR-2026-04-27: Boring Self-Hosting and Operator
-Experience](https://github.com/validibot/validibot-project/blob/main/docs/adr/2026-04-27-boring-self-hosting-and-operator-experience.md).
 
 ## What's not yet implemented
 

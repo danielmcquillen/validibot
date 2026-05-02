@@ -427,4 +427,3 @@ release notes.
 
 - [Self-hosting overview](overview.md)
 - [DigitalOcean tutorial](providers/digitalocean.md)
-- [ADR-2026-04-27 section 6](https://github.com/validibot/validibot-project/blob/main/docs/adr/2026-04-27-boring-self-hosting-and-operator-experience.md) — the doctor command's design rationale

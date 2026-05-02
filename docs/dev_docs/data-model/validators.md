@@ -97,7 +97,7 @@ integrity and eliminates the stale-UUID problem of the earlier JSON-based approa
 delete them (uses `ADMIN_MANAGE_ORG` permission). Deletion is blocked if the file is referenced
 by any active workflow step (checked via `WorkflowStepResource` FK query).
 
-**Content immutability** (ADR-2026-04-27 Phase 3 task 11): every `ValidatorResourceFile` and
+**Content immutability**: every `ValidatorResourceFile` and
 step-owned `WorkflowStepResource` row stores a SHA-256 `content_hash` of its file's bytes,
 computed in `save()` via `validibot.core.filesafety.sha256_field_file`. If a save would change
 the hash AND the file is referenced by any step on a locked or used workflow, `save()` raises
@@ -223,9 +223,6 @@ Sync's job is to make that loud at deploy time.
 Catalog entries (signals + derivations) are still updated in place via `update_or_create` on
 `(validator, contract_key, direction)`, with stale entries pruned at the end of each sync. If you
 need to drop or restructure catalog entries, edit the config and re-run sync.
-
-The drift detection itself was introduced in
-[ADR-2026-04-27 Phase 3 Session B](https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md).
 
 ### Step editor cards
 

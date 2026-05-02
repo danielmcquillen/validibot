@@ -17,8 +17,6 @@ The default self-hosted profile assumes:
 - **admins may install additional validator images** — once self-service registration ships, those go through tier-2 hardening;
 - **outbound internet may be restricted** — Validibot does not phone home by default.
 
-For the architectural rationale, see the [Trust Boundary Hardening ADR](https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md).
-
 ## Recommended hardening
 
 ### 1. Run behind HTTPS
@@ -197,4 +195,3 @@ The support bundle is the trust contract: if a customer can't trust that sending
 - [Support Bundle](support-bundle.md) — what's redacted
 - [Doctor Check IDs](doctor-check-ids.md) — security-relevant checks
 - [Trust Architecture (developer-facing)](../../dev_docs/overview/trust-architecture.md)
-- [Trust Boundary Hardening ADR](https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md)

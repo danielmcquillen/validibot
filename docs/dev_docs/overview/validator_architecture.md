@@ -657,7 +657,7 @@ A future `trust_tier` field on `Validator` will select a hardening profile:
 - **Tier 1 — first-party** (EnergyPlus, FMU, future Validibot-built backends): current Phase 1 hardening.
 - **Tier 2 — user-added or partner-authored**: tier 1 + explicit egress allowlist (or `network=none`), tighter resource caps, gVisor or Kata runtime when available, cosign-signed image required, pre-flight scan on registration.
 
-Tier 1 defaults are sufficient for first-party containers Validibot builds itself. Tier 2 becomes load-bearing when self-service validator registration ships. See the [Trust Boundary Hardening ADR](https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md) Phase 5.
+Tier 1 defaults are sufficient for first-party containers Validibot builds itself. Tier 2 becomes load-bearing when self-service validator registration ships.
 
 ## See also
 

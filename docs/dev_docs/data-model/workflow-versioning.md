@@ -5,12 +5,9 @@ counts as a "launch contract", how the platform proves that contract is
 immutable once a run has happened, and what to do about workflows that
 predate this enforcement.
 
-The work was delivered in [ADR-2026-04-27 "Trust-boundary hardening
-and evidence-first validation"][adr], specifically Phase 3 (Sessions
-A-D). This page is the developer-facing companion: it summarises what
-shipped, how to extend it, and how to run the auditor in production.
-
-[adr]: https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md
+This is the developer-facing reference: it summarises how the trust
+contract is enforced, how to extend it, and how to run the auditor in
+production.
 
 ## Why trust matters here
 
@@ -317,9 +314,3 @@ public key, recomputes SHA-256 of `manifest.json` bytes, and
 compares to the credential's `manifestHash` claim.
 
 
-## Related ADRs
-
-- [ADR-2026-04-27 — Trust-boundary hardening and evidence-first
-  validation][adr]: the whole story.
-- ADR-2026-03-04 — EnergyPlus parameterized model templates: defines
-  the `WorkflowStepResource` shape that Session C added hashing to.

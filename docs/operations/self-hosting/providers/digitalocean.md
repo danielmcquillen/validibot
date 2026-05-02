@@ -1,10 +1,9 @@
 # Self-Hosting Validibot on DigitalOcean
 
-> **Status:** Phase 0 outline. The full ten-step tutorial lands in
-> Phase 1 of ADR-2026-04-27 (Boring Self-Hosting and Operator
-> Experience). Today this page documents the structure and the
-> commands the tutorial will end on, so operators can see what they're
-> committing to before Phase 1 ships.
+> **Status:** Phase 0 outline. The full ten-step tutorial is in
+> progress. Today this page documents the structure and the commands
+> the tutorial will end on, so operators can see what they're
+> committing to before the full guide ships.
 
 ## Goal
 
@@ -220,10 +219,3 @@ Record these on completion (paste them into your team's wiki):
 
 (Phase 1 work — placeholder.) Common issues will be documented after
 the first DigitalOcean install walkthrough with a real operator.
-
-## ADR reference
-
-[ADR-2026-04-27: Boring Self-Hosting and Operator
-Experience](https://github.com/validibot/validibot-project/blob/main/docs/adr/2026-04-27-boring-self-hosting-and-operator-experience.md)
-section 15 has the full design rationale for picking DigitalOcean as
-the first provider quickstart.

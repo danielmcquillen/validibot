@@ -4,8 +4,6 @@ This page describes how Validibot's trust boundaries work — the four invariant
 
 If you're reading this as a developer or self-host operator, the takeaway is: every launch path goes through the same gates, and those gates are services with names you can grep for.
 
-The architectural decisions here come from [ADR-2026-04-27 — Trust Boundary Hardening and Evidence-First Validation](https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md). This page is the developer-facing reference.
-
 ## Why trust matters
 
 A validation run is a fact: "submission X passed workflow Y at time T." For that fact to mean anything later, it has to be backed by:
@@ -232,4 +230,3 @@ Specific events feed the audit log:
 - [Workflow Versioning](../data-model/workflow-versioning.md) — how the trust contract is preserved across versions
 - [Evidence Bundles](evidence-bundles.md) — the manifest schema and retention policy
 - [Self-Hosting Overview](../../operations/self-hosting/overview.md) — how trust shows up to the operator
-- [Trust Boundary Hardening ADR](https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md) — the decision history

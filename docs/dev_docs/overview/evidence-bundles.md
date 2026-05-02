@@ -2,7 +2,7 @@
 
 Every completed validation run can produce an **evidence bundle** — a portable artifact that documents what was checked, against what rules, by whom, with what verdict. This page is the developer-facing reference: schema, generation, retention rules, and how the manifest links to signed credentials.
 
-The architectural decisions come from [ADR-2026-04-27 — Trust Boundary Hardening and Evidence-First Validation](https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md), Decision §10. Workflow-versioning trust columns (validator semantic digests, resource content hashes) come from Phase 3 of the same ADR; evidence is the Phase 4 deliverable that turns them into an operator-facing artifact.
+Workflow-versioning trust columns (validator semantic digests, resource content hashes) and the evidence bundle that wraps them are the operator-facing layer of Validibot's trust model.
 
 ## What an evidence bundle proves
 
@@ -275,4 +275,3 @@ The `RunEvidenceArtifact` rows + the evidence storage directory are part of the 
 - [Workflow Versioning](../data-model/workflow-versioning.md) — how the trust columns evidence cites are populated and audited
 - [Validator Architecture](validator_architecture.md) — the input/output envelopes evidence references
 - [Terminology](terminology.md) — the validator vs validator backend distinction the manifest records
-- [Trust Boundary Hardening ADR](https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md)

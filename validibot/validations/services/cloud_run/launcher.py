@@ -40,7 +40,9 @@ from validibot.validations.services.cloud_run.gcs_client import upload_file
 from validibot.validations.services.cloud_run.job_client import (
     get_execution_image_digest,
 )
+from validibot.validations.services.cloud_run.job_client import get_job_configured_image
 from validibot.validations.services.cloud_run.job_client import run_validator_job
+from validibot.validations.services.image_policy import enforce_image_policy
 from validibot.validations.validators.base import ValidationIssue
 from validibot.validations.validators.base import ValidationResult
 
@@ -244,6 +246,34 @@ def launch_energyplus_validation(
         # 6. Trigger Cloud Run Job directly via Jobs API
         job_name = settings.GCS_ENERGYPLUS_JOB_NAME
 
+        # Trust ADR Phase 5 Session B — refuse to launch when the
+        # Job's configured image violates VALIDATOR_BACKEND_IMAGE_POLICY.
+        # ``tag`` policy is always allowed (the default for community
+        # quick-start); ``digest`` requires the Job spec to pin the
+        # backend image by ``@sha256:...``; ``signed-digest`` adds
+        # the cosign-opt-in prerequisite. The lookup is best-effort —
+        # if we can't fetch the configured image we let the launch
+        # proceed and rely on the doctor command to flag broken
+        # configuration separately.
+        configured_image = get_job_configured_image(
+            project_id=settings.GCP_PROJECT_ID,
+            region=settings.GCP_REGION,
+            job_name=job_name,
+        )
+        if configured_image:
+            policy_result = enforce_image_policy(configured_image)
+            if not policy_result.should_proceed:
+                logger.warning(
+                    "Refusing to trigger Cloud Run Job %s: %s",
+                    job_name,
+                    policy_result.message,
+                )
+                msg = (
+                    f"Cloud Run Job '{job_name}' violates "
+                    f"VALIDATOR_BACKEND_IMAGE_POLICY: {policy_result.message}"
+                )
+                raise RuntimeError(msg)  # noqa: TRY301
+
         logger.info("Triggering Cloud Run Job: %s", job_name)
         execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,
@@ -381,6 +411,27 @@ def launch_fmu_validation(
         if not job_name:
             msg = "GCS_FMU_JOB_NAME is not configured."
             raise ValueError(msg)  # noqa: TRY301
+
+        # Trust ADR Phase 5 Session B — same policy gate as the
+        # EnergyPlus path. See that branch for rationale.
+        configured_image = get_job_configured_image(
+            project_id=settings.GCP_PROJECT_ID,
+            region=settings.GCP_REGION,
+            job_name=job_name,
+        )
+        if configured_image:
+            policy_result = enforce_image_policy(configured_image)
+            if not policy_result.should_proceed:
+                logger.warning(
+                    "Refusing to trigger Cloud Run Job %s: %s",
+                    job_name,
+                    policy_result.message,
+                )
+                msg = (
+                    f"Cloud Run Job '{job_name}' violates "
+                    f"VALIDATOR_BACKEND_IMAGE_POLICY: {policy_result.message}"
+                )
+                raise RuntimeError(msg)  # noqa: TRY301
 
         execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,

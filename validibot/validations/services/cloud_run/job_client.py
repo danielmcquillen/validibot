@@ -130,6 +130,57 @@ def run_validator_job(
     return execution_name
 
 
+def get_job_configured_image(
+    *,
+    project_id: str,
+    region: str,
+    job_name: str,
+) -> str | None:
+    """Resolve the *configured* container image of a Cloud Run Job.
+
+    Trust ADR Phase 5 Session B — used by the policy gate to inspect
+    a Job's image reference *before* triggering an Execution. Unlike
+    :func:`get_execution_image_digest` (which reads from a started
+    Execution), this fetches the Job spec itself so the policy can
+    refuse to enqueue runs against floating-tag images.
+
+    Returns the first container's image string verbatim — could be a
+    tag reference (``gcr.io/.../image:v1``) or a digest reference
+    (``gcr.io/.../image@sha256:...``) depending on how the Job was
+    deployed. Returns ``None`` when the Job can't be fetched (the
+    runner falls back to launching anyway; the launch itself will
+    fail with a clearer error and the doctor command flags the
+    misconfiguration separately).
+
+    Arguments mirror :func:`run_validator_job` so the launcher can
+    reuse the same project/region/job_name triple.
+    """
+    job_path: str
+    if job_name.startswith("projects/"):
+        job_path = job_name
+    else:
+        job_path = f"projects/{project_id}/locations/{region}/jobs/{job_name}"
+
+    try:
+        client = run_v2.JobsClient()
+        job = client.get_job(name=job_path)
+        containers = getattr(getattr(job, "template", None), "template", None)
+        # Cloud Run Job structure: Job.template (ExecutionTemplate) →
+        # template (TaskTemplate) → containers[0].image
+        containers = getattr(containers, "containers", None)
+        if not containers:
+            return None
+        image = getattr(containers[0], "image", None)
+        return str(image) if image else None
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug(
+            "Could not fetch configured image for Cloud Run job %s: %s",
+            job_name,
+            exc,
+        )
+        return None
+
+
 def get_execution_image_digest(execution_name: str) -> str | None:
     """Resolve the validator backend image reference from a Cloud Run Execution.
 

@@ -293,6 +293,10 @@ class Command(BaseCommand):
             ("Site Configuration", self._check_site),
             ("Roles & Permissions", self._check_roles_permissions),
             ("Validators", self._check_validators),
+            (
+                "Validator backend image policy",
+                self._check_validator_backend_image_policy,
+            ),
             ("Background Tasks", self._check_celery),
             ("Docker", self._check_docker),
             ("Email", self._check_email),
@@ -791,6 +795,83 @@ class Command(BaseCommand):
     # =========================================================================
     # Validators Checks (VB7xx)
     # =========================================================================
+
+    def _check_validator_backend_image_policy(self):
+        """Surface the deployment's image-pinning policy.
+
+        Trust ADR Phase 5 Session B — operators choose between
+        ``tag`` (default community), ``digest`` (production
+        recommended), and ``signed-digest`` (high-trust). The doctor
+        flags configurations that are loose for the deployment's
+        target stage and inconsistent ``signed-digest`` setups
+        where cosign verification isn't enabled.
+        """
+        from validibot.validations.services.image_policy import (
+            ValidatorBackendImagePolicy,
+        )
+        from validibot.validations.services.image_policy import get_current_policy
+
+        policy = get_current_policy()
+        cosign_enabled = bool(
+            getattr(settings, "COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES", False),
+        )
+
+        # Stage-aware advisory: ``tag`` is fine for self-hosted
+        # quick-start but a warn for production. We don't know the
+        # deployment's intent here precisely, so pick a conservative
+        # mapping: tag in any non-self_hosted target → warn. Target
+        # is a string literal, not an enum (see ``self.target``).
+        is_production_target = self.target not in (
+            "self_hosted",
+            "self_hosted_hardened",
+        )
+
+        if policy == ValidatorBackendImagePolicy.TAG:
+            severity = CheckStatus.WARN if is_production_target else CheckStatus.INFO
+            self._add_result(
+                "VB712",
+                "validators",
+                "Validator backend image policy",
+                severity,
+                f"Policy is '{policy.value}' (floating tags permitted)",
+                fix_hint=(
+                    "Set VALIDATOR_BACKEND_IMAGE_POLICY=digest for "
+                    "production self-hosted deployments. Pin validator "
+                    "backend images via '@sha256:<hex>' in the deployment "
+                    "config."
+                )
+                if is_production_target
+                else None,
+            )
+            return
+
+        # digest / signed-digest
+        if policy == ValidatorBackendImagePolicy.SIGNED_DIGEST and not cosign_enabled:
+            self._add_result(
+                "VB713",
+                "validators",
+                "Validator backend image policy",
+                CheckStatus.ERROR,
+                (
+                    "Policy is 'signed-digest' but "
+                    "COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES is False. "
+                    "Every launch will be refused."
+                ),
+                fix_hint=(
+                    "Set COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES=True and "
+                    "configure COSIGN_VERIFY_PUBLIC_KEY_PATH, or relax "
+                    "VALIDATOR_BACKEND_IMAGE_POLICY to 'digest'."
+                ),
+            )
+            return
+
+        self._add_result(
+            "VB712",
+            "validators",
+            "Validator backend image policy",
+            CheckStatus.OK,
+            f"Policy is '{policy.value}'",
+        )
 
     def _check_validators(self):
         """Check that default validators exist."""

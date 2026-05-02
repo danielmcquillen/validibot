@@ -909,6 +909,20 @@ VALIDATOR_RUNNER_OPTIONS = {
     "storage_mount_path": env("VALIDATOR_STORAGE_MOUNT_PATH", default="/app/storage"),
 }
 
+# Validator backend image policy (Trust ADR Phase 5 Session B)
+# ------------------------------------------------------------------------------
+# Three-rung ladder controlling how strictly validator backend
+# images must be pinned. ``tag`` (default) permits floating tags
+# like ``:latest`` — the community quick-start posture. ``digest``
+# requires sha256 digest pinning (``registry/path@sha256:...``) and
+# rejects tag-only references at launch time — recommended for
+# production self-hosted deployments. ``signed-digest`` adds cosign
+# verification on top of digest pinning.
+VALIDATOR_BACKEND_IMAGE_POLICY = env(
+    "VALIDATOR_BACKEND_IMAGE_POLICY",
+    default="tag",
+)
+
 # Validator backend image cosign verification (Trust ADR Phase 5
 # Session A.2)
 # ------------------------------------------------------------------------------

@@ -58,6 +58,7 @@ from django.conf import settings
 
 from validibot.validations.services.cosign import CosignVerifyOutcome
 from validibot.validations.services.cosign import verify_image_signature
+from validibot.validations.services.image_policy import enforce_image_policy
 from validibot.validations.services.runners.base import ExecutionInfo
 from validibot.validations.services.runners.base import ExecutionResult
 from validibot.validations.services.runners.base import ExecutionStatus
@@ -333,6 +334,24 @@ class DockerValidatorRunner(ValidatorRunner):
             container_config["network_mode"] = "none"
 
         container = None
+        # Trust ADR Phase 5 Session B — refuse to launch images that
+        # don't satisfy the deployment's pinning policy. Cheap string
+        # check (digest pinning) runs *before* the expensive cosign
+        # registry round-trip so misconfigurations fail fast with a
+        # clearer error message.
+        policy_result = enforce_image_policy(container_image)
+        if not policy_result.should_proceed:
+            logger.warning(
+                "Refusing to launch validator backend image (%s): %s",
+                container_image,
+                policy_result.message,
+            )
+            msg = (
+                f"Validator backend image violates "
+                f"VALIDATOR_BACKEND_IMAGE_POLICY: {policy_result.message}"
+            )
+            raise RuntimeError(msg)
+
         # Trust ADR Phase 5 Session A.2 — refuse to launch images
         # that aren't cosign-signed when the deployment opted in.
         # Performed *outside* the launch try/except below so the

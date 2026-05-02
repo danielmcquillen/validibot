@@ -295,6 +295,41 @@ release VERSION:
         exit 1
     fi
 
+    # Verify the cross-repo dependency on validibot-shared is at the
+    # latest published version. Catches the "I forgot to bump
+    # validibot-shared after publishing a new shared release"
+    # failure mode — easy to miss, hard to debug after the release
+    # is out (deployed code uses an older shared schema).
+    #
+    # Override with VALIDIBOT_RELEASE_ALLOW_STALE_SHARED=1 for
+    # emergencies (e.g. PyPI is down, or you intentionally want to
+    # pin to an older shared release).
+    if [[ "${VALIDIBOT_RELEASE_ALLOW_STALE_SHARED:-0}" != "1" ]]; then
+        SHARED_PINNED=$(grep -E '"validibot-shared==' pyproject.toml | head -1 | sed -E 's/.*"validibot-shared==([^"]+)".*/\1/')
+        if [[ -z "$SHARED_PINNED" ]]; then
+            echo "⚠ Could not detect validibot-shared pin in pyproject.toml; skipping freshness check."
+        else
+            SHARED_LATEST=$(curl -s --max-time 10 https://pypi.org/pypi/validibot-shared/json 2>/dev/null | jq -r '.info.version' 2>/dev/null)
+            if [[ -z "$SHARED_LATEST" ]] || [[ "$SHARED_LATEST" == "null" ]]; then
+                echo "⚠ Could not query PyPI for latest validibot-shared. Currently pinned: $SHARED_PINNED."
+                echo "  Press Enter to continue anyway, Ctrl+C to abort..."
+                read -r
+            elif [[ "$SHARED_PINNED" != "$SHARED_LATEST" ]]; then
+                echo "✗ validibot-shared is pinned to $SHARED_PINNED but latest on PyPI is $SHARED_LATEST."
+                echo ""
+                echo "  Update pyproject.toml so the line reads:"
+                echo "      \"validibot-shared==$SHARED_LATEST\","
+                echo ""
+                echo "  Then commit + push, and re-run: just release {{VERSION}}"
+                echo ""
+                echo "  Override (emergencies only): VALIDIBOT_RELEASE_ALLOW_STALE_SHARED=1 just release {{VERSION}}"
+                exit 1
+            else
+                echo "✓ validibot-shared is at latest ($SHARED_LATEST)"
+            fi
+        fi
+    fi
+
     echo ""
     echo "About to sign and push tag $TAG."
     echo "Press Enter to continue, Ctrl+C to abort..."

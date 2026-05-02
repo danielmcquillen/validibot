@@ -251,6 +251,23 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
             signal for signals in step_signals.values() for signal in signals
         ]
 
+        # Phase 4 Session C/1: surface the evidence manifest, when
+        # one exists, so the run-detail template can offer a download.
+        # Only GENERATED artifacts are downloadable; FAILED rows
+        # produce no download button (the auditor's
+        # MANIFEST_GENERATION_FAILED finding is where operators see
+        # those).
+        evidence_artifact = None
+        try:
+            artifact = run.evidence_artifact
+        except Exception:
+            artifact = None
+        if artifact is not None:
+            from validibot.validations.models import RunEvidenceArtifactAvailability
+
+            if artifact.availability == RunEvidenceArtifactAvailability.GENERATED:
+                evidence_artifact = artifact
+
         context.update(
             {
                 "step_runs": step_runs,
@@ -262,6 +279,7 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
                 "step_params": step_params,
                 "step_template_warnings": step_template_warnings,
                 "submission_content": submission_content,
+                "evidence_artifact": evidence_artifact,
             },
         )
         context.update(

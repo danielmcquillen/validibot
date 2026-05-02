@@ -51,6 +51,7 @@
       <div class="col-12 col-xl-5 order-first order-xl-last mb-3">
         {% include "workflows/results/partials/block_validation_run_summary.html" with run=run step_runs=step_runs %}
         {% include "workflows/results/partials/block_validation_run_credential.html" with issued_credential=issued_credential credential_download_url=credential_download_url %}
+        {% include "workflows/results/partials/block_validation_run_evidence.html" with run=run evidence_artifact=evidence_artifact %}
       </div>
     </div>
   </div>

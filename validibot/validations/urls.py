@@ -156,6 +156,11 @@ urlpatterns = [
         name="credential_download",
     ),
     path(
+        "<uuid:pk>/evidence/manifest/",
+        views.EvidenceManifestDownloadView.as_view(),
+        name="evidence_manifest_download",
+    ),
+    path(
         "catalog-entry/<int:entry_pk>/",
         views.CatalogEntryDetailView.as_view(),
         name="catalog_entry_detail",

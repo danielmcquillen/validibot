@@ -251,6 +251,32 @@ them requires new optional fields in the
 DO_NOT_STORE acceptance criteria — no payload bytes leak through
 any field that exists today.
 
+### Operator export (Phase 4 Session C/1)
+
+The run-detail page exposes a "Download manifest.json" action
+backed by `EvidenceManifestDownloadView` at
+`validations:evidence_manifest_download`. The endpoint streams the
+canonical-JSON bytes that `RunEvidenceArtifact.manifest_path`
+points at and includes two helpful headers for CLI consumers:
+
+- `X-Validibot-Manifest-Sha256` — the stored manifest hash, so
+  CLI tools can verify the body without re-parsing the JSON.
+- `X-Validibot-Schema-Version` — the schema string the manifest
+  was produced under (currently `validibot.evidence.v1`).
+
+`Cache-Control: no-store` is set so re-stamping a manifest (e.g.
+after a builder fix) surfaces fresh bytes on the next download.
+
+Permissions piggyback on the run-detail view: if a user can see
+the run, they can download its manifest. Cross-org and FAILED-
+artifact accesses both return `404` (consistent with the existing
+"don't leak run existence" convention on the run-detail surface).
+
+Future bundle export (Session C/2 + signed-credential link) will
+extend this endpoint or add a sibling that returns a tarball with
+`manifest.json` plus `manifest.sig` (when a signed credential
+exists) plus optional input/output bytes per retention policy.
+
 
 ## Related ADRs
 

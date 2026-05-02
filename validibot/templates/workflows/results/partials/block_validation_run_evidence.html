@@ -1,0 +1,59 @@
+{% load i18n %}
+
+{% comment %}
+  Evidence-manifest card for the run detail sidebar.
+
+  ADR-2026-04-27 Phase 4 Session C/1: when the run has a GENERATED
+  RunEvidenceArtifact, show the manifest hash + a download link.
+  Hidden entirely when there's no usable artifact (FAILED / missing
+  manifests are surfaced by the audit_workflow_versions command,
+  not in the per-run UI).
+
+  Context variables:
+    run                — the ValidationRun being displayed
+    evidence_artifact  — the GENERATED RunEvidenceArtifact, or None
+{% endcomment %}
+{% if evidence_artifact %}
+  <div class="card validation-info-card mt-3">
+    <div class="card-header">
+      <div class="card-title">
+        <i class="bi-file-earmark-check me-1"></i>{% trans "Evidence Manifest" %}
+      </div>
+    </div>
+    <div class="card-body">
+      <p class="small text-muted mb-2">
+        {% blocktrans trimmed %}
+          A canonical record of the rules and inputs this run was operating under.
+          Download it for archival, external verification, or audit.
+        {% endblocktrans %}
+      </p>
+      <dl class="row small mb-3">
+        <dt class="col-5 col-lg-4">
+          {% trans "Schema" %}
+        </dt>
+        <dd class="col-7 col-lg-8 font-monospace">
+          {{ evidence_artifact.schema_version }}
+        </dd>
+        <dt class="col-5 col-lg-4">
+          {% trans "SHA-256" %}
+        </dt>
+        <dd class="col-7 col-lg-8 font-monospace text-truncate"
+            title="{{ evidence_artifact.manifest_hash }}">
+          {{ evidence_artifact.manifest_hash|slice:":16" }}…
+        </dd>
+        {% if evidence_artifact.retention_class %}
+          <dt class="col-5 col-lg-4">
+            {% trans "Retention" %}
+          </dt>
+          <dd class="col-7 col-lg-8">
+            <span class="font-monospace small">{{ evidence_artifact.retention_class }}</span>
+          </dd>
+        {% endif %}
+      </dl>
+      <a href="{% url 'validations:evidence_manifest_download' pk=run.id %}"
+         class="btn btn-sm btn-outline-primary">
+        <i class="bi-download me-1"></i>{% trans "Download manifest.json" %}
+      </a>
+    </div>
+  </div>
+{% endif %}

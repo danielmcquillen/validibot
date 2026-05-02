@@ -235,12 +235,29 @@ lands across ADR phases 0-6:
 | Phase | Status | Scope |
 |---|---|---|
 | Phase 0 | ✓ Done | Naming/terminology rename, kit skeleton, stub recipes, this overview |
-| Phase 1 | Planned | `doctor` command, JSON output, provider overlays |
+| Phase 1 | Sessions 1-2 done | `doctor` command, JSON output, provider overlays, compatibility matrix |
 | Phase 2 | Planned | `smoke-test` command, demo workflow |
 | Phase 3 | Planned | `backup` and `restore` commands, manifest schema |
 | Phase 4 | Planned | `upgrade` workflow with versioned images |
-| Phase 5 | Planned | Validator operations (`validators list-images`, etc.) |
+| Phase 5 | Planned | Validator operations (`validators list-images`, etc.), `cleanup` |
 | Phase 6 | Planned | Support bundle and pilot kit |
 
 Run `just self-hosted --list` to see which recipes exist today (some
 work, some print a Phase 0 stub message — that's expected).
+
+## Detailed guides
+
+The fuller operator documentation:
+
+- **[Install](install.md)** — substrate-generic install steps that work on any Linux + Docker host.
+- **[Configuration](configuration.md)** — env file reference, the eight grouped sections of `.django`, settings module switching, deployment profiles.
+- **[Backups](backups.md)** — backup architecture, manifest schema, off-host recommendations.
+- **[Restore](restore.md)** — restore drills, component selection, recovery patterns.
+- **[Upgrades](upgrades.md)** — upgrade lifecycle, pre-flight checks, strict upgrade-path enforcement, in-flight run handling.
+- **[Validator Images](validator-images.md)** — what's installed, run-scoped isolation, image pinning, cleanup, future trust tiers.
+- **[Security Hardening](security-hardening.md)** — the recommended hardening checklist.
+- **[Support Bundle](support-bundle.md)** — what's in the redacted bundle, what's excluded, support workflow contract.
+- **[Troubleshooting](troubleshooting.md)** — common issues and how to diagnose them.
+- **[Release Notes Policy](release-notes-policy.md)** — what every release announces.
+- **[Operator Recipes](operator-recipes.md)** — full reference for `just self-hosted` recipes.
+- **[Doctor Check IDs](doctor-check-ids.md)** — every check ID and its fix.

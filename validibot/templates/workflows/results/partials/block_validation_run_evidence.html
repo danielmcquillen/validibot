@@ -50,10 +50,17 @@
           </dd>
         {% endif %}
       </dl>
-      <a href="{% url 'validations:evidence_manifest_download' pk=run.id %}"
-         class="btn btn-sm btn-outline-primary">
-        <i class="bi-download me-1"></i>{% trans "Download manifest.json" %}
-      </a>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'validations:evidence_manifest_download' pk=run.id %}"
+           class="btn btn-sm btn-outline-primary">
+          <i class="bi-download me-1"></i>{% trans "Download manifest.json" %}
+        </a>
+        <a href="{% url 'validations:evidence_bundle_download' pk=run.id %}"
+           class="btn btn-sm btn-outline-primary"
+           title="{% trans 'Tarball with manifest, signature (if signed), and README' %}">
+          <i class="bi-file-earmark-zip me-1"></i>{% trans "Download bundle (.tar.gz)" %}
+        </a>
+      </div>
     </div>
   </div>
 {% endif %}

@@ -6,6 +6,7 @@ followed by ``views.ValidationRunListView`` continues to work.
 
 from validibot.validations.api.viewsets import ValidationRunFilter
 from validibot.validations.api.viewsets import ValidationRunViewSet
+from validibot.validations.views.evidence import EvidenceBundleDownloadView
 from validibot.validations.views.evidence import EvidenceManifestDownloadView
 from validibot.validations.views.library import CatalogEntryDetailView
 from validibot.validations.views.library import ValidationLibraryView
@@ -53,6 +54,7 @@ __all__ = [
     "CustomValidatorDeleteView",
     "CustomValidatorManageMixin",
     "CustomValidatorUpdateView",
+    "EvidenceBundleDownloadView",
     "EvidenceManifestDownloadView",
     "FMUProbeStartView",
     "FMUProbeStatusView",

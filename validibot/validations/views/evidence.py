@@ -1,29 +1,28 @@
 """Evidence-bundle export views.
 
-ADR-2026-04-27 Phase 4 Session C/1: operator-facing endpoint that
-downloads the canonical-JSON manifest for a completed validation
-run.
+ADR-2026-04-27 Phase 4 Sessions C/1 + C/3: operator-facing
+endpoints that download evidence for a completed validation run.
 
-Why this is just the manifest, not a tarball
-============================================
+Two endpoints, two granularities:
 
-The ADR's Session C end-state is a multi-file bundle (manifest +
-signature + optional input/output) packaged as a tarball. That
-shape requires:
+- ``EvidenceManifestDownloadView`` (Session C/1): just the
+  ``manifest.json`` bytes. Fast, single-file, useful when an
+  operator only needs the canonical record for hashing or audit.
+- ``EvidenceBundleDownloadView`` (Session C/3): a ``.tar.gz``
+  bundle with ``manifest.json`` + (when pro is installed and a
+  credential exists) ``manifest.sig`` + ``README.txt``. The
+  bundle is what the verify flow (Session C/4) consumes.
 
-1. The pro-side credential schema to grow a ``manifest_hash`` field
-   so the signed credential can sit alongside the manifest in the
-   bundle and verifiers can re-derive the link.
-2. A retention-aware decision about whether input / output bytes
-   ride along (we already have the policy infrastructure from
-   Session B for the manifest's own redactions; the bundle-level
-   inclusion list is a parallel concern).
+Both endpoints share permission gating via
+``ValidationRunAccessMixin``: if a user can see the run-detail
+view, they can download both artefacts. No separate permission
+needed (the bundle is just a structured view of the run that the
+user could already read).
 
-Both are deferred to Session C/2. Session C/1 ships the most
-useful concrete artefact today: the canonical-JSON manifest as a
-download. Operators can save it, pass it to external systems, or
-hash-verify it manually. The API surface is intentionally thin so
-Session C/2 can extend without breaking it.
+Future Session C/3 extension: when the bundle grows raw
+``input/`` and ``output/`` bytes (deferred this session per the
+trust ADR Session C/3 scoping), the builder gets retention-aware
+inclusion logic. The endpoint signature stays the same.
 """
 
 from __future__ import annotations
@@ -32,11 +31,14 @@ import logging
 
 from django.http import FileResponse
 from django.http import Http404
+from django.http import HttpResponse
 from django.utils.translation import gettext_lazy as _
 from django.views.generic.detail import SingleObjectMixin
 from django.views.generic.detail import View
 
 from validibot.validations.models import RunEvidenceArtifactAvailability
+from validibot.validations.services.evidence_bundle import BundleNotAvailableError
+from validibot.validations.services.evidence_bundle import EvidenceBundleBuilder
 from validibot.validations.views.runs import ValidationRunAccessMixin
 
 logger = logging.getLogger(__name__)
@@ -123,4 +125,71 @@ class EvidenceManifestDownloadView(
         return response
 
 
-__all__ = ["EvidenceManifestDownloadView"]
+class EvidenceBundleDownloadView(
+    ValidationRunAccessMixin,
+    SingleObjectMixin,
+    View,
+):
+    """Download the run's evidence bundle as ``evidence-<run>.tar.gz``.
+
+    Builds a deterministic ``.tar.gz`` containing ``manifest.json``,
+    ``manifest.sig`` (when ``validibot-pro`` is installed and the
+    run has a signed credential), and ``README.txt``. See
+    :mod:`validibot.validations.services.evidence_bundle` for the
+    full spec.
+
+    Permission gating piggybacks on
+    :class:`ValidationRunAccessMixin`, identically to the manifest
+    endpoint — if you can see the run-detail page, you can download
+    the bundle.
+
+    Response:
+
+    - **200**: ``application/gzip`` attachment with a
+      ``evidence-<run-id>.tar.gz`` filename. Manifest hash and
+      schema-version headers carry through so CLI consumers can
+      sanity-check the bundle's manifest without untarring.
+    - **404**: run accessible but has no ``GENERATED`` artifact.
+      Mirrors the manifest endpoint's no-leak convention.
+    """
+
+    context_object_name = "run"
+
+    def get_queryset(self):
+        return self.get_base_queryset()
+
+    def get(self, request, *args, **kwargs):
+        run = self.get_object()
+        try:
+            bundle_bytes = EvidenceBundleBuilder.build(run)
+        except BundleNotAvailableError as exc:
+            logger.debug(
+                "Evidence bundle requested but unavailable",
+                extra={"run_id": str(run.id), "reason": str(exc)},
+            )
+            msg = _("This run's evidence bundle is unavailable.")
+            raise Http404(msg) from None
+
+        # Read artifact metadata for the response headers (no DB
+        # round-trip — the row was just consulted by the builder).
+        artifact = run.evidence_artifact
+
+        response = HttpResponse(
+            bundle_bytes,
+            content_type="application/gzip",
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="evidence-{run.id}.tar.gz"'
+        )
+        response["Cache-Control"] = "no-store, max-age=0"
+        # Mirror the manifest endpoint's headers so a CLI consumer
+        # using either endpoint sees the same bytes-of-truth markers.
+        response["X-Validibot-Manifest-Sha256"] = artifact.manifest_hash
+        response["X-Validibot-Schema-Version"] = artifact.schema_version
+        return response
+
+
+__all__ = [
+    "EvidenceBundleDownloadView",
+    "EvidenceManifestDownloadView",
+]

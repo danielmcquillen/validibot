@@ -21,9 +21,14 @@ New to the codebase? Start here:
 
 Understand how the system is built:
 
+- **[Terminology](overview/terminology.md)** — Canonical glossary: validator, simple validator, advanced validator, validator backend, execution backend, validator runner, plus trust and versioning vocabulary
+- **[Trust Architecture](overview/trust-architecture.md)** — The four trust invariants (caller, contract, isolation, evidence), threat model, and how the platform enforces them across web/API/CLI/MCP/x402
+- **[Evidence Bundles](overview/evidence-bundles.md)** — Manifest schema, retention policy, signed-credential link, export UX
 - **[Workflow Engine](overview/workflow_engine.md)** — How ValidationRunService orchestrates steps
 - **[Step Processor](overview/step_processor.md)** — The processor pattern for validator execution
 - **[Plugin Architecture](overview/plugin_architecture.md)** — The shared registration and sync model for validators and actions
+- **[Validator Architecture](overview/validator_architecture.md)** — The container interface for advanced validators, run-scoped isolation, sentinel run-completion contract
+- **[Execution Backends](overview/execution_backends.md)** — How dispatch to Docker vs Cloud Run is selected
 - **[Submission Modes](overview/request_modes.md)** — How API payload shapes are detected
 - **[Settings Reference](overview/settings.md)** — Environment variables and feature flags
 - **[Dashboard](dashboard.md)** — Architecture and extension points for the dashboard module
@@ -59,6 +64,7 @@ The entities that make up Validibot:
 - **[Signals](data-model/signals.md)** — Concepts and terminology for declared signals and custom data paths
 - **[Signals Tutorial Example](data-model/signals-tutorial-example.md)** — End-to-end walkthrough of signal contracts, step bindings, derivations, and runtime traces
 - **[Results](data-model/results.md)** — Findings, artifacts, and summaries
+- **[Workflow Versioning](data-model/workflow-versioning.md)** — The trust contract: contract fields, validator semantic digests, ruleset/resource immutability, the `audit_workflow_versions` command, evidence manifests
 - **[Users & Roles](data-model/users_roles.md)** — Organization membership
 - **[Deletions](data-model/deletions.md)** — How deletions are managed
 
@@ -68,9 +74,9 @@ The entities that make up Validibot:
 
 Deploy Validibot to production:
 
-- **[Deployment Overview](deployment/overview.md)** — Choose the right deployment target
+- **[Deployment Overview](deployment/overview.md)** — Choose the right deployment target (the three targets: local, self-hosted, GCP)
 - **[Run Validibot Locally](deployment/deploy-local.md)** — Quickest path to a running app
-- **[Deploy with Docker Compose](deployment/deploy-docker-compose.md)** — Single-host self-hosting
+- **[Deploy with Docker Compose](deployment/deploy-docker-compose.md)** — Single-host self-hosting (developer-facing reference)
 - **[Deploy to GCP](deployment/deploy-gcp.md)** — Managed cloud deployment on Google Cloud (`just gcp deploy-all` covers web, worker, scheduler, and optionally MCP)
 - **[Deploy to AWS](deployment/deploy-aws.md)** — Current status and interim guidance
 - **[Google Cloud Run Deep Dive](google_cloud/deployment.md)** — Full Cloud Run runbook
@@ -79,6 +85,24 @@ Deploy Validibot to production:
 - **[Scheduled Tasks (Docker Compose)](how-to/configure-scheduled-tasks.md)** — Celery + Celery Beat
 - **[Go-Live Checklist](deployment/go-live-checklist.md)** — Pre-launch tasks
 - **[Important Notes](deployment/important_notes.md)** — Common deployment gotchas
+
+### Self-hosting (operator-facing)
+
+The customer-facing self-hosting docs live one level up at `docs/operations/self-hosting/`. They're written for someone running their own Validibot install on their own VM, not for someone hacking on the codebase:
+
+- **[Self-Hosting Overview](../operations/self-hosting/overview.md)** — three deployment targets, what's on the VM, recommended sizing, telemetry posture
+- **[Install](../operations/self-hosting/install.md)** — substrate-generic install on any Linux + Docker host
+- **[Configuration](../operations/self-hosting/configuration.md)** — env file reference, deployment profiles, settings module switching
+- **[Backups](../operations/self-hosting/backups.md)** and **[Restore](../operations/self-hosting/restore.md)** — application-level backup/restore with config/data component selection
+- **[Upgrades](../operations/self-hosting/upgrades.md)** — versioned upgrade lifecycle with idempotent retry
+- **[Validator Images](../operations/self-hosting/validator-images.md)** — what's installed, run-scoped isolation, image pinning
+- **[Security Hardening](../operations/self-hosting/security-hardening.md)** — recommended hardening checklist
+- **[Support Bundle](../operations/self-hosting/support-bundle.md)** — what's redacted, support workflow contract
+- **[Troubleshooting](../operations/self-hosting/troubleshooting.md)** — common issues
+- **[Release Notes Policy](../operations/self-hosting/release-notes-policy.md)** — what every release announces
+- **[Operator Recipes](../operations/self-hosting/operator-recipes.md)** — full `just self-hosted` reference
+- **[Doctor Check IDs](../operations/self-hosting/doctor-check-ids.md)** — every check ID and its fix
+- **[DigitalOcean Provider Tutorial](../operations/self-hosting/providers/digitalocean.md)** — first-supported PaaS quickstart
 
 ---
 

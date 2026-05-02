@@ -1,0 +1,235 @@
+# Trust Architecture
+
+This page describes how Validibot's trust boundaries work — the four invariants every validation run must satisfy, the validator/validator-backend distinction, and how the platform enforces those rules consistently across the web UI, REST API, MCP, and x402 agent paths.
+
+If you're reading this as a developer or self-host operator, the takeaway is: every launch path goes through the same gates, and those gates are services with names you can grep for.
+
+The architectural decisions here come from [ADR-2026-04-27 — Trust Boundary Hardening and Evidence-First Validation](https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md). This page is the developer-facing reference.
+
+## Why trust matters
+
+A validation run is a fact: "submission X passed workflow Y at time T." For that fact to mean anything later, it has to be backed by:
+
+- the caller was allowed to launch or view the workflow;
+- the submitted artifact matched the workflow's declared input contract;
+- the exact workflow version was the one intended;
+- the validator could not read or mutate unrelated private data;
+- the output is tied to hashes, versions, and logs;
+- API, CLI, MCP, and x402 paths all behave consistently;
+- a result can later be verified by someone who did not run the job.
+
+These are not academic concerns. The risk-averse customers Validibot serves — energy modeling consultancies, utility reviewers, research labs, university instructors — evaluate trust before features. They self-host because their model files and research artifacts cannot leave their environment. Trust defects are the difference between "interesting project" and "acceptable operational tool."
+
+## The four invariants
+
+Every run, regardless of launch channel, must satisfy four invariants before a validator executes. **If any invariant cannot be established, the run does not start.**
+
+### 1. Caller invariant
+
+The authenticated or paid caller is allowed to see and/or execute the specific workflow version.
+
+**Where it's enforced:**
+
+- **`WorkflowAccessResolver`** at `validibot/workflows/services/access.py` — single decision point for "can this user see this workflow?". Combines org-membership, creator role, and active `WorkflowAccessGrant` access. Methods: `list_for_user`, `get_for_user`, `get_or_404`.
+- **`AgentWorkflowResolver`** at `validibot/workflows/services/agent_workflows.py` — single decision point for latest-version selection on public agent paths. Methods: `list_published`, `get_by_slug`, x402-relaxed `get_by_slug_for_x402`.
+
+The old pattern `Workflow.objects.filter(org=self.get_org(), is_archived=False)` is allowed only inside the resolver or admin-only code. List endpoints return latest workflow versions unless the endpoint is explicitly versioned. Object-level access is checked **before** serializer selection so full serializers cannot expose fields through accidental broad querysets.
+
+**Guest grants** are workflow-family grants by default (organization plus slug, all non-archived non-tombstoned versions). Grantors who need stricter control can pin a grant to a specific version. New workflow versions do not copy external guest-grant rows during cloning; the resolver interprets the existing family grant unless the grant is explicitly pinned.
+
+### 2. Contract invariant
+
+The submitted artifact is accepted by the workflow and all executable steps that will process it.
+
+**Where it's enforced:** **`LaunchContract`** at `validibot/workflows/services/launch_contract.py`, with `LaunchContractViolation` and a `ViolationCode` enum.
+
+The contract checks:
+
+1. workflow is active and runnable;
+2. workflow has steps;
+3. caller can execute the workflow;
+4. file type is supported by the workflow;
+5. each executable validator step supports the selected file type;
+6. content type and extension are normalized through one mapping;
+7. file size limits are enforced before persistence;
+8. suspicious magic bytes are rejected for text-like content;
+9. decoded base64 size is bounded before allocation;
+10. retention policy is snapped from the workflow/channel;
+11. run source is derived from channel, not trusted from user headers.
+
+The web view, REST API, MCP helper API, and x402 run-creation path all consume this contract via the helper `views_helpers.describe_workflow_file_type_violation()`. Channel-specific behavior is expressed as policy, not as a forked implementation. Phase 2 of the trust ADR delivered this convergence with a parity test matrix that pins the wiring at the helper level.
+
+### 3. Isolation invariant
+
+The validator receives only the run-scoped inputs and writable output location needed for that run.
+
+**Where it's enforced:** **`RunWorkspaceBuilder`** at `validibot/validations/services/run_workspace.py`, plus envelope URI rewriting in the Docker dispatch path at `validibot/validations/services/execution/docker_compose.py`.
+
+The per-run workspace layout:
+
+```text
+<DATA_STORAGE_ROOT>/runs/<org_id>/<run_id>/
+  input/                       # mode 755 — readable by container UID 1000
+    input.json                 # mode 644
+    <original_filename>        # mode 644 — primary submission file
+    resources/                 # mode 755
+      <resource_filename>      # workflow resource files (e.g. weather)
+  output/                      # owned 1000:1000, mode 770 — writable by UID 1000 only
+    output.json                # written by container
+    outputs/                   # backend-uploaded artifacts (e.g. eplusout.sql)
+```
+
+Container mounts:
+
+| Host path | Container path | Mode |
+|---|---|---|
+| `runs/<org_id>/<run_id>/input` | `/validibot/input` | read-only |
+| `runs/<org_id>/<run_id>/output` | `/validibot/output` | read-write |
+| (none) | `/tmp` | tmpfs (`size=2g,mode=1777`) |
+
+The container does **not** receive the global storage root, other run directories, Django media paths, database credentials, signing keys, Stripe/x402 credentials, or arbitrary host directories.
+
+**Default container policy** (Phase 1):
+
+- `network_disabled=True` unless the validator manifest explicitly requires network;
+- `cap_drop=["ALL"]`;
+- `security_opt=["no-new-privileges:true"]`;
+- non-root user (UID 1000);
+- read-only root filesystem;
+- explicit tmpfs at `/tmp`;
+- pids, memory, CPU, and timeout limits;
+- container labels for cleanup;
+- image pinned by digest when possible.
+
+Validibot's design closely mirrors Pachyderm's `/pfs/<input>` + `/pfs/out`, Flyte's `/var/inputs` + `/var/outputs`, and Cromwell's `/cromwell-executions/...` patterns — fixed in-container paths owned by the orchestrator. We're stricter than the median (Argo, Nextflow, Pachyderm, Airflow, Cromwell all leave network/caps/UID open by default).
+
+### 4. Evidence invariant
+
+The run records enough immutable metadata to explain what happened later.
+
+**Where it's enforced:** **`EvidenceManifestBuilder`** at `validibot/validations/services/evidence.py`, with results persisted in the `RunEvidenceArtifact` model.
+
+The manifest schema is `validibot.evidence.v1`, defined in `validibot-shared` (the package external verifiers can depend on without pulling in the full Django stack). See [Evidence Bundles](evidence-bundles.md) for the full reference.
+
+## The validator vs. validator backend distinction
+
+The four invariants compose because Validibot draws a clear line between two interfaces:
+
+1. **Workflow/step processor → validator.** Internal Validibot interface. Sees broad run context (workflow, ruleset, signals, retention). Owns launch contract enforcement, assertion evaluation, persistence, evidence, retention, and access-control decisions.
+2. **Advanced validator → validator backend.** Envelope and execution boundary. Sees the minimum data needed to run the domain tool and return typed outputs.
+
+**The advanced validator is the policy boundary; the validator backend is the compute boundary.**
+
+This distinction is why a validator backend running in a sealed container with no network access can still produce trustworthy results: the orchestrator (an advanced validator) holds all the trust decisions, and the backend just runs the simulation.
+
+See [Terminology](terminology.md) for the full vocabulary.
+
+## Run source: trust the path, not the header
+
+`X-Validibot-Source` may remain as client metadata, but it must not set the trusted run source used for billing, audit, quotas, or evidence. Trusted source is derived from the path.
+
+| Path | Trusted source |
+|---|---|
+| Browser launch form | `LAUNCH_PAGE` |
+| REST API bearer token | `API` |
+| CLI token/user agent | `CLI` |
+| MCP helper route | `MCP` |
+| x402 agent route | `X402_AGENT` |
+| Scheduled run | `SCHEDULE` |
+| Internal retry/replay | original source preserved |
+
+If callers want to self-identify, that goes into separate `client_name`, `client_version`, or `client_source_hint` fields — never into the trusted source.
+
+## x402 trust gates
+
+x402 proves a payment was made. It does **not** prove:
+
+- the referenced workflow is public;
+- the workflow version is latest;
+- the submitted file is accepted by the workflow;
+- the payment amount matches current price;
+- the run should retain data;
+- the caller may see prior runs.
+
+x402 run creation must therefore perform:
+
+1. trusted workflow resolution through `AgentWorkflowResolver`;
+2. current price comparison;
+3. idempotent payment lookup;
+4. replay prevention by txhash;
+5. launch-contract validation;
+6. run creation and enqueue inside one transaction where possible;
+7. failure states that do not leave ambiguous paid/no-run outcomes.
+
+MCP clients should perform cheap pre-payment validation where possible (base64 syntax, encoded size, filename presence), but Django remains the source of truth.
+
+## MCP positioning
+
+MCP HTTP/OAuth is the default agent trust path:
+
+- HTTP transport;
+- OAuth/API-token authenticated workflows;
+- resource-scoped tokens;
+- explicit user/org context;
+- no local shell execution.
+
+Anonymous public x402 remains a strategic experiment. It does not drive the core architecture before self-hosted trust is solid.
+
+## Threat model
+
+This is not a formal certification boundary. It is a realistic threat model for early production:
+
+**In scope:**
+
+- a guest user with one workflow grant trying to enumerate other workflows;
+- an authenticated org user reaching for a workflow, run, or artifact they shouldn't see;
+- an anonymous paid x402 agent submitting malformed, oversized, incompatible, or replayed requests;
+- a buggy, compromised, or partner-authored validator backend image trying to read other runs, mutate shared storage, open network connections, or emit sensitive data into logs;
+- operator mistakes such as broad Docker mounts, unsupported dependency versions, missing backups, or stale validator images;
+- semantic drift where a workflow, validator, ruleset, resource file, or validator backend changes while old runs still claim an earlier version.
+
+**Out of scope:**
+
+- root access on the host;
+- a compromised database administrator;
+- a compromised object-storage administrator;
+- a malicious organization owner;
+- a stolen signing key;
+- a malicious Validibot release.
+
+## Database constraints for trust-critical invariants
+
+Model `clean()` is useful but not enough — direct `QuerySet.update()`, data migrations, admin actions, imports, and test fixtures bypass it. Database constraints capture invariants local to one row:
+
+- x402 billing requires positive `agent_price_cents`;
+- public agent discovery requires agent access enabled;
+- public agent discovery requires x402 billing mode;
+- x402 billing requires `data_retention=DO_NOT_STORE`;
+- tombstoned workflows cannot be public agent-discoverable;
+- archived workflows cannot be public agent-discoverable;
+- submission content is either inline or file, not both;
+- purged submissions must have content cleared.
+
+## Audit hooks around trust decisions
+
+Specific events feed the audit log:
+
+- workflow access denied;
+- workflow execution denied;
+- launch rejected by file-type contract;
+- launch rejected by step incompatibility;
+- x402 payment accepted;
+- x402 payment replayed;
+- x402 run creation failed after payment confirmation;
+- validator sandbox policy violation;
+- evidence bundle exported;
+- evidence bundle export omitted raw content due to retention policy.
+
+## See also
+
+- [Terminology](terminology.md) — the full vocabulary
+- [Validator Architecture](validator_architecture.md) — the input/output envelope contract that the isolation invariant rewrites for
+- [Workflow Versioning](../data-model/workflow-versioning.md) — how the trust contract is preserved across versions
+- [Evidence Bundles](evidence-bundles.md) — the manifest schema and retention policy
+- [Self-Hosting Overview](../../operations/self-hosting/overview.md) — how trust shows up to the operator
+- [Trust Boundary Hardening ADR](https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md) — the decision history

@@ -6,12 +6,39 @@ These pages are meant for customer-facing self-host deployments. Hosted-cloud op
 
 If you are new to Validibot and just want to get it running, start with [Run Validibot Locally](deploy-local.md).
 
+## The three deployment targets
+
+Validibot has three deployment targets that share the same Django codebase but have different audiences and substrates:
+
+| Target | Substrate | Driver | Audience | Stages |
+|---|---|---|---|---|
+| **local** | `docker-compose.local.yml` on the developer's laptop | `just local <cmd>` | one Validibot developer testing the app | dev only |
+| **self-hosted** | `docker-compose.production.yml` on a single Linux VM | `just self-hosted <cmd>` | a customer running their own copy on DigitalOcean, AWS EC2, on-prem | single env per VM |
+| **GCP** | Cloud Run, Cloud SQL, Cloud Tasks, GCS | `just gcp <cmd>` | the Validibot team operating its own cloud | dev / staging / prod |
+
+The same operator capabilities (`bootstrap`, `doctor`, `smoke-test`, `backup`, `restore`, `upgrade`, `collect-support-bundle`) exist for **both self-hosted and GCP**. Cross-target parity is a quality gate: if a recipe exists for self-hosted but not GCP (or vice versa), assume the design is wrong until proven otherwise.
+
+For the architectural rationale, see the boring-self-hosting ADR.
+
+## Retired terminology
+
+The `docker-compose` operator label has been retired (Phase 0 of ADR-2026-04-27). Old name → new name:
+
+| Before | After |
+|---|---|
+| `just/docker-compose/mod.just` | `just/self-hosted/mod.just` |
+| `just docker-compose deploy` | `just self-hosted deploy` |
+| `.envs.example/.production/.docker-compose/` | `.envs.example/.production/.self-hosted/` |
+| `DEPLOYMENT_TARGET=docker_compose` | `DEPLOYMENT_TARGET=self_hosted` |
+
+The Compose **file name** stays as `docker-compose.production.yml` because Compose really is the technology. The retirement is of the *audience-facing* labels.
+
 ## Choose a target
 
 | Target | Best for | Start here |
 | --- | --- | --- |
 | Local | first-time evaluation, local sandboxing, development | [Run Validibot Locally](deploy-local.md) |
-| Docker Compose | single-host self-hosting on a VPS, VM, or on-prem server | [Deploy with Docker Compose](deploy-docker-compose.md) |
+| Self-hosted | single-host self-hosting on a VPS, VM, or on-prem server | [Self-Hosting Overview](../../operations/self-hosting/overview.md) (operator-facing) or [Deploy with Docker Compose](deploy-docker-compose.md) (developer-facing) |
 | GCP | managed cloud deployment on Google Cloud | [Deploy to GCP](deploy-gcp.md) |
 | AWS | future target, not yet implemented | [Deploy to AWS](deploy-aws.md) |
 

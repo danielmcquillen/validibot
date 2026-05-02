@@ -272,10 +272,49 @@ the run, they can download its manifest. Cross-org and FAILED-
 artifact accesses both return `404` (consistent with the existing
 "don't leak run existence" convention on the run-detail surface).
 
-Future bundle export (Session C/2 + signed-credential link) will
-extend this endpoint or add a sibling that returns a tarball with
-`manifest.json` plus `manifest.sig` (when a signed credential
-exists) plus optional input/output bytes per retention policy.
+### Operator export — bundle (Phase 4 Session C/3)
+
+A second endpoint at `validations:evidence_bundle_download`
+(`<uuid:pk>/evidence/bundle/`) returns the run's evidence as a
+deterministic `.tar.gz`:
+
+- `manifest.json` — same canonical bytes the manifest endpoint
+  returns; verifiers re-hash this to confirm integrity.
+- `manifest.sig` — the compact-JWS signed credential (only when
+  `validibot-pro` is installed AND the run has an
+  `IssuedCredential`). Carries the
+  `credentialSubject.validationRun.manifestHash` claim that binds
+  the credential to the manifest's exact bytes.
+- `README.txt` — orientation: what's here, how to verify, where
+  the corresponding workflow lives. Uses the run's `ended_at` (not
+  export wall-clock) so re-exporting the same run produces
+  byte-identical bundles — supporting a future "bundle hash"
+  story.
+
+Determinism notes for the tarball: tarfile member metadata (mode,
+mtime, uid, gid, uname, gname) is normalised to constants, and
+the gzip wrapper is built with `GzipFile(mtime=0)` so the gzip
+header's timestamp is fixed. Two builds of the same run produce
+byte-for-byte identical archives.
+
+Pro-aware inclusion: the bundle service uses
+`apps.is_installed("validibot_pro")` (mirroring
+`get_signed_credential_display_context`) to decide whether to
+look up an `IssuedCredential` and include `manifest.sig`. A
+community-only deployment produces a bundle without the
+signature, no feature flag, no separate code path.
+
+What's *not* in the bundle today: raw input or output bytes. The
+manifest's `payload_digests` carry SHA-256 hashes of input and
+(where retention permits) output, so the bundle has the
+*identity* of the payload data without exposing the bytes
+themselves. A future Session C/3 extension may include raw bytes
+for runs whose retention policy permits.
+
+Verify (Session C/4) consumes the bundle: parses the JWS in
+`manifest.sig`, validates the signature against the issuer's
+public key, recomputes SHA-256 of `manifest.json` bytes, and
+compares to the credential's `manifestHash` claim.
 
 
 ## Related ADRs

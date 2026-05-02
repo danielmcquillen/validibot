@@ -547,3 +547,122 @@ envelope = EnergyPlusInputEnvelope(
 envelope = load_input_envelope(EnergyPlusInputEnvelope)
 timestep = envelope.inputs.timestep_per_hour  # IDE knows this is int
 ```
+
+## The validator vs validator backend distinction
+
+This document describes the **validator backend** interface — the external Docker image that does the heavyweight work. The Django-side code that orchestrates around it is an **advanced validator**. The two are different things, with different trust roles:
+
+| Term | Meaning |
+|---|---|
+| **Validator** | The Django-side `BaseValidator` subclass. Sees full Validibot run context. |
+| **Simple validator** | A `SimpleValidator` subclass that runs synchronously inside Django. No container. |
+| **Advanced validator** | An `AdvancedValidator` subclass that orchestrates external compute via an execution backend. |
+| **Validator backend** | The external implementation an advanced validator delegates to. **This page.** |
+| **Validator backend runtime** | The concrete container/job launched for one run. |
+
+**The advanced validator is the policy boundary; the validator backend is the compute boundary.** The advanced validator owns trust decisions (access, contract, retention, evidence). The backend just runs the simulation.
+
+The repository was renamed from `validibot-validators` → `validibot-validator-backends` in March 2026 to make this role unambiguous. The Python package and Docker image prefixes match. See [Terminology](terminology.md) for the full vocabulary.
+
+## Run-scoped isolation (Phase 1 of the trust ADR)
+
+Before April 2026, the local Docker runner mounted the entire `DATA_STORAGE_ROOT` read-write into every validator backend runtime. A buggy or partner-authored backend could read other runs' inputs, mutate other runs' outputs, exhaust shared disk, or leak data between runs.
+
+The trust ADR replaced that with a per-run workspace.
+
+### Per-run workspace layout
+
+```text
+<DATA_STORAGE_ROOT>/runs/<org_id>/<run_id>/
+  input/                       # mode 755 — readable by container UID 1000
+    input.json                 # mode 644
+    <original_filename>        # mode 644 — primary submission file
+    resources/                 # mode 755
+      <resource_filename>      # workflow resource files (e.g. weather)
+  output/                      # owned 1000:1000, mode 770 — writable by UID 1000 only
+    output.json                # written by container
+    outputs/                   # backend-uploaded artifacts
+```
+
+### Container mounts
+
+| Host path | Container path | Mode |
+|---|---|---|
+| `runs/<org_id>/<run_id>/input` | `/validibot/input` | read-only |
+| `runs/<org_id>/<run_id>/output` | `/validibot/output` | read-write |
+| (none) | `/tmp` | tmpfs (`size=2g,mode=1777`) |
+
+The container does **not** receive the global storage root, other run directories, Django media paths, database credentials, signing keys, Stripe/x402 credentials, or arbitrary host directories.
+
+### Envelope URI rewriting (no backend changes required)
+
+The Docker dispatch path **rewrites three URI fields** in the input envelope so the container sees only container-visible paths:
+
+- `input_files[].uri` → `file:///validibot/input/<filename>`
+- `resource_files[].uri` → `file:///validibot/input/resources/<filename>`
+- `context.execution_bundle_uri` → `file:///validibot/output`
+
+Setting `execution_bundle_uri` to `file:///validibot/output` causes the backends' existing artifact-upload logic (which composes `f"{execution_bundle_uri}/outputs"`) to land artifacts at `/validibot/output/outputs/...`. **No validator-backend changes required** — backends already resolve URIs through their storage client.
+
+The Cloud Run dispatch path is unchanged: it keeps `gs://...` URIs because each Cloud Run Job has its own GCS prefix and is naturally run-scoped.
+
+### Workspace materialisation runs after preprocessing
+
+Some advanced validators (notably EnergyPlus) preprocess the submission in-memory — for example, EnergyPlus template resolution rewrites `submission.content` and `submission.original_filename` before dispatch. The run-workspace builder must therefore run **after** the validator's `validate()` preprocessing has completed, i.e. inside `ExecutionBackend.execute()`.
+
+### The implicit sentinel: how completion is detected
+
+Validibot uses the **presence and parseability of `output.json`** as the implicit sentinel that says "the container ran and reported a result." Pattern adopted from Flyte (`_ERROR`), Cromwell (`rc` file), and Argo (exit code + artifact existence).
+
+| State after container exit | Orchestrator interpretation |
+|---|---|
+| `output.json` present, parses, validator reports success | Run succeeded with the validator's verdict |
+| `output.json` present, parses, validator reports validation failure | Run completed; user data did not pass |
+| `output.json` present but unparseable | Backend bug; orchestrator records as `RuntimeError` |
+| `output.json` absent + container exit code 0 | Backend bug; orchestrator records as `RuntimeError` |
+| `output.json` absent + container exit code ≠ 0 | Container died unexpectedly (OOM, segfault, image pull, callback timeout); orchestrator records as `SystemError` |
+
+This makes the boundary between **"validator reported the user's data is bad"** (a `FAIL` result the user can act on) and **"the platform itself had a problem"** (an `ERROR` the platform owner needs to triage) determinable from on-disk state alone, without reading container logs.
+
+We do **not** add a separate `_status.json` file because doing so would require coordinated changes in `validibot-validator-backends`. The output envelope is already the artifact every backend produces; treating its presence/parseability as the sentinel is equivalent with zero coordination cost.
+
+### Hardening posture vs comparable systems
+
+Validibot's design closely mirrors Pachyderm's `/pfs/<input>` + `/pfs/out`, Flyte's `/var/inputs` + `/var/outputs`, and Cromwell's `/cromwell-executions/...` patterns. Validibot is **stricter than the median** on read-only inputs, default-deny network, non-root UID, and dropped capabilities. Most workflow engines (Argo, Flyte, Nextflow, Pachyderm, Airflow, Cromwell) leave these open by default.
+
+## Validator backend metadata as security metadata
+
+Validator backend metadata should describe runtime capabilities, not just UI metadata:
+
+```json
+{
+  "slug": "energyplus",
+  "version": "24.2.0",
+  "supported_file_types": ["text", "json"],
+  "requires_network": false,
+  "requires_writeable_paths": ["/validibot/output", "/tmp"],
+  "default_timeout_seconds": 900,
+  "max_input_bytes": 104857600,
+  "produces_artifacts": true,
+  "evidence_level": "hashes-and-logs"
+}
+```
+
+The runner enforces the deployment policy for capabilities it controls: network, writable paths, mounts, user, privileges, timeout, memory, CPU, root filesystem mode. A self-hosted deployment can choose "no validator network access" globally and refuse validators that request network. The runtime policy must not depend on trusting the image's self-description.
+
+## Trust tiers (Phase 5, future)
+
+A future `trust_tier` field on `Validator` will select a hardening profile:
+
+- **Tier 1 — first-party** (EnergyPlus, FMU, future Validibot-built backends): current Phase 1 hardening.
+- **Tier 2 — user-added or partner-authored**: tier 1 + explicit egress allowlist (or `network=none`), tighter resource caps, gVisor or Kata runtime when available, cosign-signed image required, pre-flight scan on registration.
+
+Tier 1 defaults are sufficient for first-party containers Validibot builds itself. Tier 2 becomes load-bearing when self-service validator registration ships. See the [Trust Boundary Hardening ADR](https://github.com/danielmcquillen/validibot-project/blob/main/docs/adr/2026-04-27-trust-boundary-hardening-and-evidence-first-validation.md) Phase 5.
+
+## See also
+
+- [Terminology](terminology.md) — validator vs validator backend vs execution backend
+- [Trust Architecture](trust-architecture.md) — the four invariants
+- [Execution Backends](execution_backends.md) — Docker vs Cloud Run dispatch
+- [Evidence Bundles](evidence-bundles.md) — what gets recorded about each validator backend run
+

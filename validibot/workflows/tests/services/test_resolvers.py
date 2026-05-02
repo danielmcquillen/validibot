@@ -385,3 +385,242 @@ class AgentWorkflowResolverGetBySlugForX402Tests(TestCase):
             workflow_slug="inactive-x402",
         )
         assert result is None
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Guest grant expansion to (org, slug) family
+# ──────────────────────────────────────────────────────────────────────────
+#
+# ADR-2026-04-27 issue #43: a guest grant targets the workflow family
+# (same org + slug across versions), not a specific version row. The
+# previous resolver matched ``workflow_id=OuterRef("pk")`` exactly,
+# which silently revoked guests' access whenever a workflow got cloned
+# to a new version.
+
+
+class GuestGrantExpansionTests(TestCase):
+    """Grants on v1 should let guests see v2 too — same workflow family."""
+
+    def test_grant_on_v1_grants_access_to_v2(self):
+        """Cloning v1 to v2 must not strip guest access on v2."""
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        org = OrganizationFactory()
+        v1 = WorkflowFactory(org=org, slug="shared-flow", version="1")
+        v2 = WorkflowFactory(org=org, slug="shared-flow", version="2")
+
+        guest = UserFactory()  # no org membership
+        WorkflowAccessGrant.objects.create(
+            workflow=v1,  # grant pinned to v1 row
+            user=guest,
+            is_active=True,
+        )
+
+        result = WorkflowAccessResolver.list_for_user(guest)
+        result_ids = set(result.values_list("pk", flat=True))
+        # Both versions visible — the grant expanded across the family.
+        assert v1.pk in result_ids
+        assert v2.pk in result_ids
+
+    def test_grant_does_not_cross_orgs_with_same_slug(self):
+        """Same slug in different orgs is a different workflow family.
+
+        A guest with a grant in org_a should NOT see workflows in
+        org_b just because they happen to share a slug. The
+        expansion is intersection over (org, slug), not slug alone.
+        """
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        org_a = OrganizationFactory()
+        org_b = OrganizationFactory()
+        wf_a = WorkflowFactory(org=org_a, slug="compliance", version="1")
+        wf_b = WorkflowFactory(org=org_b, slug="compliance", version="1")
+
+        guest = UserFactory()
+        WorkflowAccessGrant.objects.create(workflow=wf_a, user=guest, is_active=True)
+
+        result_ids = set(
+            WorkflowAccessResolver.list_for_user(guest).values_list("pk", flat=True),
+        )
+        assert wf_a.pk in result_ids
+        assert wf_b.pk not in result_ids
+
+    def test_inactive_grant_does_not_expand(self):
+        """A revoked (is_active=False) grant doesn't grant access to any version."""
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        org = OrganizationFactory()
+        v1 = WorkflowFactory(org=org, slug="shared-flow", version="1")
+        v2 = WorkflowFactory(org=org, slug="shared-flow", version="2")
+
+        guest = UserFactory()
+        WorkflowAccessGrant.objects.create(
+            workflow=v1,
+            user=guest,
+            is_active=False,  # revoked
+        )
+
+        result_ids = set(
+            WorkflowAccessResolver.list_for_user(guest).values_list("pk", flat=True),
+        )
+        assert v1.pk not in result_ids
+        assert v2.pk not in result_ids
+
+    def test_grant_on_v2_also_grants_access_to_v1(self):
+        """Bidirectional family expansion — grant on any version grants all.
+
+        Useful because operators may grant on the most recent version
+        for new guests; existing audit/UX paths might still link to
+        v1. The expansion makes both visible regardless of which
+        version row holds the grant.
+        """
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        org = OrganizationFactory()
+        v1 = WorkflowFactory(org=org, slug="shared-flow", version="1")
+        v2 = WorkflowFactory(org=org, slug="shared-flow", version="2")
+
+        guest = UserFactory()
+        WorkflowAccessGrant.objects.create(
+            workflow=v2,  # grant on v2 this time
+            user=guest,
+            is_active=True,
+        )
+
+        result_ids = set(
+            WorkflowAccessResolver.list_for_user(guest).values_list("pk", flat=True),
+        )
+        assert v1.pk in result_ids
+        assert v2.pk in result_ids
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# AgentWorkflowResolver defensive x402-publish predicate
+# ──────────────────────────────────────────────────────────────────────────
+#
+# AgentWorkflowResolver previously trusted Workflow.clean() to enforce
+# the full x402 publish contract (agent_access_enabled, billing_mode,
+# price>0, retention=DO_NOT_STORE, etc.). Because clean() doesn't fire
+# on QuerySet.update / fixtures / admin bulk paths, malformed rows
+# could leak into the public catalog. The resolver now defensively
+# filters the full predicate.
+
+
+class AgentResolverDefensivePredicateTests(TestCase):
+    """Rows that bypass clean() must not appear in the public catalog."""
+
+    def _make_published_workflow(self, org, **overrides):
+        """Build a workflow that satisfies the full x402 publish contract."""
+        from validibot.submissions.constants import SubmissionRetention
+
+        defaults = {
+            "org": org,
+            "agent_public_discovery": True,
+            "agent_access_enabled": True,
+            "agent_billing_mode": AgentBillingMode.AGENT_PAYS_X402,
+            "agent_price_cents": 10,
+            "data_retention": SubmissionRetention.DO_NOT_STORE,
+            "is_active": True,
+        }
+        defaults.update(overrides)
+        return WorkflowFactory(**defaults)
+
+    def test_workflow_without_agent_access_enabled_is_excluded(self):
+        """``agent_access_enabled=False`` -> not in public catalog.
+
+        Even though ``agent_public_discovery=True`` is set, missing
+        the runtime gate means the workflow is broken for x402.
+        """
+        from validibot.workflows.models import Workflow
+
+        org = OrganizationFactory()
+        wf = self._make_published_workflow(org)
+        # Bypass clean() via QuerySet.update — simulates fixtures /
+        # admin bulk paths the real bug surfaces through.
+        Workflow.objects.filter(pk=wf.pk).update(agent_access_enabled=False)
+
+        result = AgentWorkflowResolver.list_published()
+        assert wf not in result
+
+    def test_workflow_with_zero_price_is_excluded(self):
+        """price=0 -> not in public catalog.
+
+        The x402 path requires a positive price. Listing a price-0
+        workflow would mislead agents about what they'd pay.
+        """
+        from validibot.workflows.models import Workflow
+
+        org = OrganizationFactory()
+        wf = self._make_published_workflow(org)
+        Workflow.objects.filter(pk=wf.pk).update(agent_price_cents=0)
+
+        result = AgentWorkflowResolver.list_published()
+        assert wf not in result
+
+    def test_workflow_with_wrong_billing_mode_is_excluded(self):
+        """billing_mode != AGENT_PAYS_X402 -> not in public catalog.
+
+        ``AUTHOR_PAYS`` is the default mode for authenticated-agent
+        access via the author's plan quota; it doesn't belong in the
+        anonymous-x402 catalog because there's no x402 payment flow
+        for anonymous callers under that mode.
+        """
+        from validibot.workflows.models import Workflow
+
+        org = OrganizationFactory()
+        wf = self._make_published_workflow(org)
+        Workflow.objects.filter(pk=wf.pk).update(
+            agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
+        )
+
+        result = AgentWorkflowResolver.list_published()
+        assert wf not in result
+
+    def test_workflow_with_wrong_retention_is_excluded(self):
+        """data_retention != DO_NOT_STORE -> not in public x402 catalog.
+
+        x402 anonymous payment + storing input bytes is incompatible
+        — that's the privacy-invariant the form's clean() enforces.
+        Resolver enforces it for non-form paths.
+        """
+        from validibot.submissions.constants import SubmissionRetention
+        from validibot.workflows.models import Workflow
+
+        org = OrganizationFactory()
+        wf = self._make_published_workflow(org)
+        Workflow.objects.filter(pk=wf.pk).update(
+            data_retention=SubmissionRetention.STORE_30_DAYS,
+        )
+
+        result = AgentWorkflowResolver.list_published()
+        assert wf not in result
+
+    def test_archived_workflow_is_excluded(self):
+        """is_archived=True -> not in public catalog."""
+        from validibot.workflows.models import Workflow
+
+        org = OrganizationFactory()
+        wf = self._make_published_workflow(org)
+        Workflow.objects.filter(pk=wf.pk).update(is_archived=True)
+
+        result = AgentWorkflowResolver.list_published()
+        assert wf not in result
+
+    def test_get_by_slug_applies_same_predicate(self):
+        """get_by_slug enforces the same defensive predicate as list_published."""
+        from validibot.workflows.models import Workflow
+
+        org = OrganizationFactory()
+        wf = self._make_published_workflow(
+            org,
+            slug="defensive-x402",
+        )
+        # Make it inconsistent: keep agent_public_discovery=True but
+        # break a sibling invariant (price=0).
+        Workflow.objects.filter(pk=wf.pk).update(agent_price_cents=0)
+
+        result = AgentWorkflowResolver.get_by_slug(
+            org_slug=org.slug,
+            workflow_slug="defensive-x402",
+        )
+        assert result is None  # filtered out by the predicate

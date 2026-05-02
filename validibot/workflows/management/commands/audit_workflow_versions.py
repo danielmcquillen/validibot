@@ -276,16 +276,16 @@ class Command(BaseCommand):
         # we need to walk runs and check via the related manager.
         # We only care about completed runs (status terminal); a
         # PENDING / RUNNING run hasn't reached the manifest stamp
-        # yet and shouldn't be flagged.
-        from validibot.validations.constants import ValidationRunStatus
+        # yet and shouldn't be flagged. Use the canonical terminal-
+        # statuses constant rather than rolling our own — TIMED_OUT
+        # was previously absent from the local set, which let
+        # timed-out runs slip past MANIFEST_MISSING /
+        # MANIFEST_GENERATION_FAILED detection.
+        from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 
-        terminal_statuses = {
-            ValidationRunStatus.SUCCEEDED,
-            ValidationRunStatus.FAILED,
-            ValidationRunStatus.CANCELED,
-        }
-
-        for run in workflow.validation_runs.filter(status__in=terminal_statuses):
+        for run in workflow.validation_runs.filter(
+            status__in=VALIDATION_RUN_TERMINAL_STATUSES,
+        ):
             try:
                 artifact = run.evidence_artifact
             except Exception:

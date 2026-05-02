@@ -49,8 +49,62 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from django.db.models import Q
+
 if TYPE_CHECKING:
     from validibot.workflows.models import Workflow
+
+
+def _public_x402_predicate() -> Q:
+    """Return the full filter for "publicly discoverable, valid x402 workflow".
+
+    The resolver SHOULD have a defensive filter that enforces every
+    invariant the publishing decision depends on, not just the
+    ``agent_public_discovery`` flag. ``Workflow.clean()`` enforces
+    these as a unit, but ``clean()`` doesn't fire on
+    ``QuerySet.update()``, on fixtures (``loaddata``), or on
+    admin-side bulk paths. The ADR called for matching DB
+    constraints; until those land, the resolver is the next-best
+    guard.
+
+    The full publishing contract (mirroring what
+    ``Workflow.clean()`` enforces):
+
+    1. Lifecycle: ``is_active=True``, not ``is_tombstoned``,
+       not ``is_archived``.
+    2. Public-discovery flag is on: ``agent_public_discovery=True``.
+    3. Agent access is enabled (the runtime gate):
+       ``agent_access_enabled=True``.
+    4. Billing mode is x402: ``agent_billing_mode=AGENT_PAYS_X402``.
+       Other billing modes don't expose anonymous agents to a
+       payment flow, so they shouldn't appear in the public catalog.
+    5. Price is set (positive): ``agent_price_cents > 0``. A
+       price of 0 or null means the row was created mid-config and
+       doesn't yet describe a paying transaction.
+    6. Retention invariant for x402: ``data_retention=DO_NOT_STORE``.
+       x402 is anonymous per-call payment; storing the input would
+       undermine the privacy model the operator agreed to. The
+       form-level cascade enforces this for human-driven edits;
+       the resolver enforces it for every other edit path.
+
+    Some legacy rows may have ``is_archived=NULL`` or
+    ``is_tombstoned=NULL`` — treat both as "not archived" / "not
+    tombstoned" so we don't silently exclude pre-migration rows.
+    """
+    # Local import — see ``AgentWorkflowResolver.list_published``.
+    from validibot.submissions.constants import SubmissionRetention
+    from validibot.workflows.constants import AgentBillingMode
+
+    return (
+        Q(is_active=True)
+        & Q(agent_public_discovery=True)
+        & Q(agent_access_enabled=True)
+        & Q(agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402)
+        & Q(agent_price_cents__gt=0)
+        & Q(data_retention=SubmissionRetention.DO_NOT_STORE)
+        & (Q(is_tombstoned=False) | Q(is_tombstoned__isnull=True))
+        & (Q(is_archived=False) | Q(is_archived__isnull=True))
+    )
 
 
 class AgentWorkflowResolver:
@@ -70,37 +124,28 @@ class AgentWorkflowResolver:
     def list_published() -> list[Workflow]:
         """Return all workflows published for anonymous agent discovery.
 
-        A workflow is published when:
+        A workflow is published when every clause in
+        :func:`_public_x402_predicate` holds AND it's the latest
+        active version of its slug.
 
-        - ``is_active=True``
-        - ``is_tombstoned=False`` (or null)
-        - ``agent_public_discovery=True``
-        - It's the latest active version of its slug
-
-        The "latest active version" filter matters because a workflow
-        family with v1, v2, and v3 should appear once in the listing
-        (as v3), not three times. The latest-version selection
-        reuses ``get_latest_workflow_ids`` from version_utils.
+        ``Workflow.clean()`` enforces those clauses as a unit, but
+        ``clean()`` doesn't fire on ``QuerySet.update()``, fixtures,
+        or admin-side bulk paths. The resolver applies the full
+        predicate as a defensive filter so a row created via one of
+        those paths does NOT leak into the public catalog even
+        though x402 run creation would later reject it.
 
         Returns:
             A list of :class:`Workflow` instances, latest-version
-            only, sorted by org then name. Returns a list (not a
-            queryset) because the latest-version filter requires a
-            secondary query that's awkward to express as a single
-            queryset; the caller usually iterates the result anyway.
+            only, sorted by org then name.
         """
         # Local import — see WorkflowAccessResolver.list_for_user.
         from validibot.workflows.models import Workflow
         from validibot.workflows.version_utils import get_latest_workflow_ids
 
         candidates_qs = Workflow.objects.select_related("org").filter(
-            is_active=True,
-            agent_public_discovery=True,
+            _public_x402_predicate(),
         )
-        # Some legacy rows may have ``is_tombstoned=NULL`` rather than
-        # ``False``. Treat both as "not tombstoned" so we don't
-        # silently exclude pre-migration rows.
-        candidates_qs = candidates_qs.exclude(is_tombstoned=True)
 
         latest_ids = get_latest_workflow_ids(candidates_qs)
         return list(
@@ -122,6 +167,13 @@ class AgentWorkflowResolver:
         rule in both places, so this resolver gives them a single
         source of truth.
 
+        Applies the same defensive predicate as :meth:`list_published`
+        (see :func:`_public_x402_predicate` for the full clause list)
+        so a workflow row that satisfies ``agent_public_discovery=True``
+        but fails any other publishing invariant (e.g. price=0,
+        billing_mode wrong, retention not DO_NOT_STORE) does not
+        appear as a valid x402 target on the detail surface.
+
         Args:
             org_slug: Org slug from the agent context (URL or x402
                 metadata header).
@@ -136,13 +188,11 @@ class AgentWorkflowResolver:
         from validibot.workflows.models import Workflow
         from validibot.workflows.version_utils import get_latest_workflow
 
-        candidates = Workflow.objects.select_related("org").filter(
-            slug=workflow_slug,
-            org__slug=org_slug,
-            is_active=True,
-            agent_public_discovery=True,
+        candidates = (
+            Workflow.objects.select_related("org")
+            .filter(_public_x402_predicate())
+            .filter(slug=workflow_slug, org__slug=org_slug)
         )
-        candidates = candidates.exclude(is_tombstoned=True)
         return get_latest_workflow(candidates)
 
     @staticmethod

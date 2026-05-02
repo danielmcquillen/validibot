@@ -132,10 +132,22 @@ class WorkflowQuerySet(models.QuerySet):
 
         # For non-role-specific queries, also include guest grant access.
         if not required_role_code:
+            # ADR-2026-04-27 fix (issue #43): a guest grant targets the
+            # *workflow family* — every row sharing the granted row's
+            # ``(org, slug)`` pair — not just the exact pinned version
+            # the grant row points at. Without this expansion, cloning
+            # a workflow to v2 silently strips the guest's access until
+            # someone manually re-grants on the new version row.
+            #
+            # The subquery joins ``WorkflowAccessGrant.workflow`` back
+            # to the outer Workflow row by ``(org_id, slug)``, so any
+            # active grant the user holds on ANY version of the family
+            # makes every version of the family visible.
             grant_subq = WorkflowAccessGrant.objects.filter(
-                workflow_id=OuterRef("pk"),
                 user=user,
                 is_active=True,
+                workflow__org_id=OuterRef("org_id"),
+                workflow__slug=OuterRef("slug"),
             )
             qs = qs.annotate(_has_grant=Exists(grant_subq))
             access_filter = access_filter | Q(_has_grant=True)

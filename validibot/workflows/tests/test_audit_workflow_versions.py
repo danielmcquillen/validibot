@@ -510,3 +510,32 @@ class TestManifestFindings:
         codes = {f["code"] for w in report["workflows"] for f in w["findings"]}
         assert "MANIFEST_MISSING" not in codes
         assert "MANIFEST_GENERATION_FAILED" not in codes
+
+    def test_timed_out_run_without_artifact_emits_manifest_missing(self):
+        """TIMED_OUT is a terminal state too — must surface the gap.
+
+        The audit's terminal-statuses set previously listed only
+        SUCCEEDED / FAILED / CANCELED, missing TIMED_OUT. That let
+        timed-out runs slip past MANIFEST_MISSING /
+        MANIFEST_GENERATION_FAILED detection — the same
+        terminal-state drift the trust ADR called out for MCP wait
+        handling. Use VALIDATION_RUN_TERMINAL_STATUSES (canonical)
+        so future status additions land everywhere at once.
+        """
+        from validibot.submissions.tests.factories import SubmissionFactory
+        from validibot.validations.constants import ValidationRunStatus
+        from validibot.validations.tests.factories import ValidationRunFactory
+
+        validator = ValidatorFactory(semantic_digest="a" * 64)
+        workflow = WorkflowFactory(is_locked=True)
+        WorkflowStepFactory(workflow=workflow, validator=validator)
+        submission = SubmissionFactory(workflow=workflow)
+        ValidationRunFactory(
+            workflow=workflow,
+            submission=submission,
+            status=ValidationRunStatus.TIMED_OUT,
+        )
+
+        report = _run_audit()
+        codes = {f["code"] for w in report["workflows"] for f in w["findings"]}
+        assert "MANIFEST_MISSING" in codes

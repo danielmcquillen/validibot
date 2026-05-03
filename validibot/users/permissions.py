@@ -283,7 +283,9 @@ class OrgPermissionBackend(BaseBackend):
 
         This handles cases where a non-member should be able to launch:
         1. Public workflows (is_public=True) - any authenticated user
-        2. Guest grants (WorkflowAccessGrant) - users with active grants
+        2. Guest grants (WorkflowAccessGrant) - users with an active grant
+           on ANY version of this workflow's family (family-grant
+           expansion, see comment below)
         """
         # Import here to avoid circular imports
         from validibot.workflows.models import Workflow
@@ -296,11 +298,27 @@ class OrgPermissionBackend(BaseBackend):
         if getattr(obj, "is_public", False):
             return True
 
-        # Guest grant check: user has an active access grant for this workflow
+        # Guest grant check.
+        #
+        # Trust ADR-2026-04-27 + 2026-05-03 review (P1 #1): family-grant
+        # expansion. Match :meth:`WorkflowQuerySet.for_user` (workflows/
+        # models.py lines 146-153): a grant on ANY version of this
+        # workflow's family (same ``(org_id, slug)`` pair) authorises
+        # launch of every version.
+        #
+        # Without this, a guest granted v1 sees v2 in their catalog
+        # (the queryset expands by family) but ``user.has_perm(
+        # WORKFLOW_LAUNCH, v2)`` returns False because this filter
+        # only matched the exact workflow row. Direct callers of the
+        # permission backend (e.g. ``views_helpers.user_can_launch``)
+        # don't go through ``Workflow.can_execute`` so the model-level
+        # fix alone wasn't sufficient — visibility, model methods, and
+        # the auth backend must all agree on the family-grant rule.
         return WorkflowAccessGrant.objects.filter(
-            workflow=obj,
             user=user,
             is_active=True,
+            workflow__org_id=obj.org_id,
+            workflow__slug=obj.slug,
         ).exists()
 
     def get_all_permissions(

@@ -200,6 +200,46 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                 ],
                 name="uq_workflow_org_slug_version",
             ),
+            # ── Trust ADR-2026-04-27 + 2026-05-03 review (P2 #1) ──
+            #
+            # ``Workflow.clean()`` enforces a set of trust-critical
+            # invariants for the public-x402 publishing contract, but
+            # ``clean()`` does not run on:
+            #   • ``QuerySet.update()`` (admin bulk edits, data fixes)
+            #   • Fixtures and ``loaddata``
+            #   • Raw SQL writes
+            # So a row can be persisted that satisfies
+            # ``agent_public_discovery=True`` while violating the rest
+            # of the publishing predicate. The defensive resolver
+            # filter (``_public_x402_predicate``) hides such rows from
+            # the catalog, but a row that exists in a contradictory
+            # state is still a bug — the constraints below close that
+            # last gap by enforcing each invariant at the database
+            # level for every write path.
+            #
+            # Each constraint mirrors a clause in
+            # ``_public_x402_predicate`` and the corresponding
+            # ValidationError raised in ``clean()``.
+            models.CheckConstraint(
+                condition=(
+                    Q(agent_public_discovery=False) | Q(agent_access_enabled=True)
+                ),
+                name="ck_workflow_public_discovery_requires_agent_access",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402)
+                    | Q(agent_price_cents__gt=0)
+                ),
+                name="ck_workflow_x402_requires_positive_price",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402)
+                    | Q(input_retention=SubmissionRetention.DO_NOT_STORE)
+                ),
+                name="ck_workflow_x402_requires_do_not_store_retention",
+            ),
         ]
         ordering = [
             "slug",
@@ -638,7 +678,8 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
         Access is granted if either:
         - User has WORKFLOW_VIEW permission in the workflow's org (org member), OR
-        - User has an active WorkflowAccessGrant for this workflow (guest)
+        - User has an active WorkflowAccessGrant for ANY version of this
+          workflow's family (guest, family-grant expansion)
         """
         if not user or not user.is_authenticated:
             return False
@@ -647,8 +688,25 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         if user.has_perm(PermissionCode.WORKFLOW_VIEW.value, self):
             return True
 
-        # Guest grant check
-        return self.access_grants.filter(user=user, is_active=True).exists()
+        # Guest grant check.
+        #
+        # Trust ADR-2026-04-27 + 2026-05-03 review (P1 #1): a grant on
+        # ANY version of this workflow's family (same ``(org_id, slug)``
+        # pair) authorises view of every version, matching the
+        # visibility resolver's semantics in
+        # :meth:`WorkflowQuerySet.for_user` (lines 146-153).
+        #
+        # Without this expansion, ``Workflow.objects.for_user(user)``
+        # surfaces v2 in the catalog (correct), then ``can_view()``
+        # rejects v2 on the detail page when only v1 has a grant —
+        # because the FK reverse manager ``self.access_grants`` matches
+        # the exact row only. Visibility and per-row checks must agree.
+        return WorkflowAccessGrant.objects.filter(
+            user=user,
+            is_active=True,
+            workflow__org_id=self.org_id,
+            workflow__slug=self.slug,
+        ).exists()
 
     def can_delete(self, *, user: User) -> bool:
         """
@@ -667,7 +725,8 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         Access is granted if any of these conditions are met:
         - Workflow is public (any authenticated user)
         - User has WORKFLOW_LAUNCH permission in the workflow's org (org member)
-        - User has an active WorkflowAccessGrant for this workflow (guest)
+        - User has an active WorkflowAccessGrant for ANY version of this
+          workflow's family (guest, family-grant expansion)
 
         The workflow must also be active for execution to be allowed.
         """
@@ -684,8 +743,27 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         if user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, self):
             return True
 
-        # Guest grant check
-        return self.access_grants.filter(user=user, is_active=True).exists()
+        # Guest grant check.
+        #
+        # Trust ADR-2026-04-27 + 2026-05-03 review (P1 #1): family-grant
+        # expansion. A grant on ANY version of this workflow's family
+        # (same ``(org_id, slug)`` pair) authorises execution of every
+        # version, matching the visibility resolver's semantics in
+        # :meth:`WorkflowQuerySet.for_user` (lines 146-153).
+        #
+        # Without this expansion: a guest granted v1 sees v2 in their
+        # catalog (the queryset expands by family), clicks Launch on v2,
+        # and gets "permission denied" here — because ``self.access_grants``
+        # only matches the exact row. The colleague's review flagged
+        # the same divergence in :meth:`can_view`. Tightening one
+        # without the other would just shift the bug from "deny on
+        # launch" to "show in catalog -> 404 on click".
+        return WorkflowAccessGrant.objects.filter(
+            user=user,
+            is_active=True,
+            workflow__org_id=self.org_id,
+            workflow__slug=self.slug,
+        ).exists()
 
     def can_edit(self, *, user: User) -> bool:
         """

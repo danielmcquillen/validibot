@@ -31,6 +31,7 @@ from validibot.mcp_api.refs import build_workflow_ref
 from validibot.mcp_api.refs import parse_member_run_ref
 from validibot.mcp_api.refs import parse_workflow_ref
 from validibot.users.models import Membership
+from validibot.validations.constants import ValidationRunSource
 from validibot.validations.models import ValidationRun
 from validibot.validations.serializers import ValidationRunSerializer
 from validibot.validations.serializers import ValidationRunStartSerializer
@@ -446,10 +447,17 @@ class MCPWorkflowRunCreateView(APIView):
                 status_code = HTTPStatus.NOT_FOUND
             _raise_launch_validation_error(exc, status_code=status_code)
 
+        # Trust ADR 2026-05-03 review (P1 #4): source is derived
+        # from the route, not from a caller-controlled header. This
+        # view IS the MCP helper API entry point, so we pass MCP
+        # explicitly. The previous implementation read
+        # X-Validibot-Source from the request, which a regular API
+        # caller could spoof to mint MCP-looking runs.
         response = launch_api_validation_run(
             request=request,
             workflow=workflow,
             submission_build=submission_build,
+            source=ValidationRunSource.MCP,
         )
         if not isinstance(response.data, dict):
             return response

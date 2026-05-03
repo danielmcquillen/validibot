@@ -192,21 +192,39 @@ class EvidenceManifestBuilder:
         # cleanly.
         executed_at_iso = run.ended_at.isoformat() if run.ended_at is not None else ""
 
-        return EvidenceManifest(
-            schema_version=SCHEMA_VERSION,
-            run_id=str(run.id),
-            workflow_id=workflow.pk,
-            workflow_slug=workflow.slug,
-            workflow_version=workflow.version,
-            org_id=run.org_id,
-            executed_at=executed_at_iso,
-            status=str(run.status),
-            workflow_contract=contract,
-            steps=step_records,
-            input_schema=workflow.input_schema or None,
-            retention=retention,
-            payload_digests=payload_digests,
-        )
+        # Trust ADR P2 #2 (2026-05-03 review): record the run's source
+        # in the manifest.  ``run.source`` is populated by the launch
+        # path from the *authenticated route* (see Trust ADR P1 #4 —
+        # never trust a client header).  ``ValidationRunSource`` is a
+        # ``TextChoices`` enum so the column value is already a string;
+        # the manifest stores the raw enum value (e.g. ``"X402_AGENT"``)
+        # so external verifiers can compare it without importing the
+        # Django enum.
+        #
+        # Forward-compat shim: emit ``source=`` only when the installed
+        # ``validibot-shared`` schema accepts the field.  The field was
+        # added in shared 0.7.4; the lockfile bump to 0.7.4 (or later)
+        # activates population.  Without this guard, a transitional
+        # build pinned to 0.7.3 would raise on ``source=``.
+        manifest_kwargs: dict = {
+            "schema_version": SCHEMA_VERSION,
+            "run_id": str(run.id),
+            "workflow_id": workflow.pk,
+            "workflow_slug": workflow.slug,
+            "workflow_version": workflow.version,
+            "org_id": run.org_id,
+            "executed_at": executed_at_iso,
+            "status": str(run.status),
+            "workflow_contract": contract,
+            "steps": step_records,
+            "input_schema": workflow.input_schema or None,
+            "retention": retention,
+            "payload_digests": payload_digests,
+        }
+        if "source" in EvidenceManifest.model_fields:
+            manifest_kwargs["source"] = (run.source or None) or None
+
+        return EvidenceManifest(**manifest_kwargs)
 
     @staticmethod
     def serialise(manifest: EvidenceManifest) -> bytes:

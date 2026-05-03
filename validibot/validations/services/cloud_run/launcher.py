@@ -42,7 +42,9 @@ from validibot.validations.services.cloud_run.job_client import (
 )
 from validibot.validations.services.cloud_run.job_client import get_job_configured_image
 from validibot.validations.services.cloud_run.job_client import run_validator_job
+from validibot.validations.services.image_policy import ValidatorBackendImagePolicy
 from validibot.validations.services.image_policy import enforce_image_policy
+from validibot.validations.services.image_policy import get_current_policy
 from validibot.validations.validators.base import ValidationIssue
 from validibot.validations.validators.base import ValidationResult
 
@@ -246,20 +248,44 @@ def launch_energyplus_validation(
         # 6. Trigger Cloud Run Job directly via Jobs API
         job_name = settings.GCS_ENERGYPLUS_JOB_NAME
 
-        # Trust ADR Phase 5 Session B — refuse to launch when the
-        # Job's configured image violates VALIDATOR_BACKEND_IMAGE_POLICY.
-        # ``tag`` policy is always allowed (the default for community
-        # quick-start); ``digest`` requires the Job spec to pin the
-        # backend image by ``@sha256:...``; ``signed-digest`` adds
-        # the cosign-opt-in prerequisite. The lookup is best-effort —
-        # if we can't fetch the configured image we let the launch
-        # proceed and rely on the doctor command to flag broken
-        # configuration separately.
+        # Trust ADR Phase 5 Session B + 2026-05-03 review (P2 #3):
+        # refuse to launch when the Job's configured image violates
+        # VALIDATOR_BACKEND_IMAGE_POLICY.
+        #
+        # Behaviour by policy:
+        # - ``tag`` (default community): if the lookup succeeds, the
+        #   policy permits anything; if the lookup fails, we proceed
+        #   (best-effort capture is the right default at this tier).
+        # - ``digest`` / ``signed-digest`` (strict): the lookup
+        #   succeeding AND the configured image satisfying the
+        #   policy are both required. A lookup failure here means
+        #   we can't *verify* the configured image — under strict
+        #   intent that's a launch-blocking configuration error,
+        #   not a "let's hope for the best" fallback. The original
+        #   Phase 5 implementation was fail-open here; the review
+        #   correctly flagged that as exploitable.
+        policy = get_current_policy()
         configured_image = get_job_configured_image(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
             job_name=job_name,
         )
+        if policy != ValidatorBackendImagePolicy.TAG and configured_image is None:
+            msg = (
+                f"VALIDATOR_BACKEND_IMAGE_POLICY={policy.value} requires "
+                f"verifying the Cloud Run Job's configured image, but the "
+                f"lookup for '{job_name}' returned no image. Refusing to "
+                f"launch under strict policy. Check that the Cloud Run Job "
+                f"exists, the service account has run.viewer / run.developer "
+                f"on it, and GCP_PROJECT_ID / GCP_REGION are correct."
+            )
+            logger.warning(
+                "Refusing to trigger Cloud Run Job %s: image lookup failed "
+                "under strict policy '%s'",
+                job_name,
+                policy.value,
+            )
+            raise RuntimeError(msg)  # noqa: TRY301
         if configured_image:
             policy_result = enforce_image_policy(configured_image)
             if not policy_result.should_proceed:
@@ -412,13 +438,30 @@ def launch_fmu_validation(
             msg = "GCS_FMU_JOB_NAME is not configured."
             raise ValueError(msg)  # noqa: TRY301
 
-        # Trust ADR Phase 5 Session B — same policy gate as the
-        # EnergyPlus path. See that branch for rationale.
+        # Trust ADR Phase 5 Session B + 2026-05-03 review (P2 #3):
+        # same policy gate as the EnergyPlus path, with the same
+        # fail-closed-under-strict-policy rule. See that branch for
+        # the full rationale.
+        policy = get_current_policy()
         configured_image = get_job_configured_image(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
             job_name=job_name,
         )
+        if policy != ValidatorBackendImagePolicy.TAG and configured_image is None:
+            msg = (
+                f"VALIDATOR_BACKEND_IMAGE_POLICY={policy.value} requires "
+                f"verifying the Cloud Run Job's configured image, but the "
+                f"lookup for '{job_name}' returned no image. Refusing to "
+                f"launch under strict policy."
+            )
+            logger.warning(
+                "Refusing to trigger Cloud Run Job %s: image lookup failed "
+                "under strict policy '%s'",
+                job_name,
+                policy.value,
+            )
+            raise RuntimeError(msg)  # noqa: TRY301
         if configured_image:
             policy_result = enforce_image_policy(configured_image)
             if not policy_result.should_proceed:

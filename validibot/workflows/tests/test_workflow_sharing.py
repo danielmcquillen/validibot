@@ -563,6 +563,139 @@ class TestWorkflowPermissionExtensions:
 
         assert workflow.can_execute(user=guest) is False
 
+    # ────────────────────────────────────────────────────────────────
+    # Family-grant expansion in per-row checks (Trust ADR P1 #1)
+    # ────────────────────────────────────────────────────────────────
+    #
+    # The visibility resolver (``Workflow.objects.for_user``) had been
+    # fixed to expand grants by ``(org_id, slug)`` so a guest granted
+    # v1 sees v2 of the same family in their catalog. But ``can_view``,
+    # ``can_execute``, and the auth backend's ``WORKFLOW_LAUNCH``
+    # special-case still queried the FK reverse manager only —
+    # matching the *exact pinned row* — so v2 was visible in the
+    # listing then rejected at every per-row check (detail page,
+    # launch button, API guard). The colleague's 2026-05-03 review
+    # flagged this divergence.
+    #
+    # These tests pin all three callers to the family-grant rule so
+    # visibility and execution agree. If any caller silently regresses
+    # to exact-row matching, one of these tests fails.
+    def test_can_view_expands_to_family_versions(self):
+        """A grant on v1 lets the guest view v2 of the same family."""
+        org = OrganizationFactory()
+        v1 = WorkflowFactory(org=org, slug="shared-flow", version="1", is_active=True)
+        v2 = WorkflowFactory(org=org, slug="shared-flow", version="2", is_active=True)
+
+        guest = UserFactory(orgs=[])
+        Membership.objects.filter(user=guest).delete()
+
+        WorkflowAccessGrant.objects.create(
+            workflow=v1,  # grant pinned to v1
+            user=guest,
+            is_active=True,
+        )
+
+        # Both versions are visible — same as the queryset resolver.
+        assert v1.can_view(user=guest) is True
+        assert v2.can_view(user=guest) is True
+
+    def test_can_execute_expands_to_family_versions(self):
+        """A grant on v1 lets the guest launch v2 of the same family."""
+        org = OrganizationFactory()
+        v1 = WorkflowFactory(org=org, slug="shared-flow", version="1", is_active=True)
+        v2 = WorkflowFactory(org=org, slug="shared-flow", version="2", is_active=True)
+
+        guest = UserFactory(orgs=[])
+        Membership.objects.filter(user=guest).delete()
+
+        WorkflowAccessGrant.objects.create(
+            workflow=v1,
+            user=guest,
+            is_active=True,
+        )
+
+        assert v1.can_execute(user=guest) is True
+        assert v2.can_execute(user=guest) is True
+
+    def test_family_grant_does_not_cross_orgs(self):
+        """Same slug, different org: grant on org_a does NOT authorise org_b.
+
+        The expansion is over ``(org_id, slug)`` — slug alone would
+        let a grant in one tenant leak into another tenant that
+        happens to share the slug. This guard mirrors
+        ``GuestGrantExpansionTests.test_grant_does_not_cross_orgs_with_same_slug``
+        in the resolver suite to make sure the per-row checks share
+        the same tenancy boundary.
+        """
+        org_a = OrganizationFactory()
+        org_b = OrganizationFactory()
+        wf_a = WorkflowFactory(
+            org=org_a, slug="compliance", version="1", is_active=True
+        )
+        wf_b = WorkflowFactory(
+            org=org_b, slug="compliance", version="1", is_active=True
+        )
+
+        guest = UserFactory(orgs=[])
+        Membership.objects.filter(user=guest).delete()
+
+        WorkflowAccessGrant.objects.create(workflow=wf_a, user=guest, is_active=True)
+
+        assert wf_a.can_view(user=guest) is True
+        assert wf_a.can_execute(user=guest) is True
+        # Different tenant — grant must not leak.
+        assert wf_b.can_view(user=guest) is False
+        assert wf_b.can_execute(user=guest) is False
+
+    def test_inactive_family_grant_does_not_authorise(self):
+        """A revoked (is_active=False) grant must not authorise any version."""
+        org = OrganizationFactory()
+        v1 = WorkflowFactory(org=org, slug="shared-flow", version="1", is_active=True)
+        v2 = WorkflowFactory(org=org, slug="shared-flow", version="2", is_active=True)
+
+        guest = UserFactory(orgs=[])
+        Membership.objects.filter(user=guest).delete()
+
+        WorkflowAccessGrant.objects.create(
+            workflow=v1,
+            user=guest,
+            is_active=False,  # revoked
+        )
+
+        assert v1.can_view(user=guest) is False
+        assert v2.can_view(user=guest) is False
+        assert v1.can_execute(user=guest) is False
+        assert v2.can_execute(user=guest) is False
+
+    def test_has_perm_workflow_launch_expands_to_family_versions(self):
+        """Auth backend: ``user.has_perm(WORKFLOW_LAUNCH, v2)`` honours family grant.
+
+        ``Workflow.can_execute`` is one caller, but a lot of code calls
+        ``user.has_perm(WORKFLOW_LAUNCH, workflow)`` directly via the
+        permission backend (``views_helpers.user_can_launch``, DRF
+        permission classes, template guards). If the backend's
+        special-case path doesn't expand by family, those callers see
+        the catalog-vs-launch divergence even though ``can_execute``
+        was fixed.
+        """
+        from validibot.users.constants import PermissionCode
+
+        org = OrganizationFactory()
+        v1 = WorkflowFactory(org=org, slug="shared-flow", version="1", is_active=True)
+        v2 = WorkflowFactory(org=org, slug="shared-flow", version="2", is_active=True)
+
+        guest = UserFactory(orgs=[])
+        Membership.objects.filter(user=guest).delete()
+
+        WorkflowAccessGrant.objects.create(
+            workflow=v1,
+            user=guest,
+            is_active=True,
+        )
+
+        assert guest.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, v1) is True
+        assert guest.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, v2) is True
+
     def test_for_user_includes_grant_workflows(self):
         """Test that for_user queryset includes grant-accessible workflows."""
         org = OrganizationFactory()

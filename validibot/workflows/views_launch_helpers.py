@@ -17,6 +17,7 @@ from rest_framework.response import Response as APIResponse
 from validibot.core.site_settings import MetadataPolicyError
 from validibot.core.site_settings import get_site_settings
 from validibot.projects.models import Project
+from validibot.submissions.constants import SubmissionRetention
 from validibot.submissions.ingest import prepare_inline_text
 from validibot.submissions.ingest import prepare_uploaded_file
 from validibot.submissions.models import Submission
@@ -70,6 +71,43 @@ class LaunchValidationError(Exception):
         self.status_code = status_code
 
 
+def _resolve_submission_retention(workflow: Workflow) -> str:
+    """Resolve the submission retention policy from the workflow.
+
+    Trust ADR (2026-04-27) + 2026-05-03 review (P1 #2): every
+    Submission row created by a launch path must snapshot the
+    workflow's ``input_retention`` onto its own ``retention_policy``
+    column. The purge job acts on ``submission.retention_policy``,
+    not on the workflow's policy, so without this snapshot a
+    workflow configured to retain inputs would still have its
+    submissions queued for purge — and the evidence manifest
+    (which records the workflow's retention class) would
+    silently diverge from actual storage behaviour.
+
+    This helper is the single source of truth for that mapping.
+    Every Submission constructor in launch helpers must pass
+    ``retention_policy=_resolve_submission_retention(workflow)``.
+
+    Returns the stringified retention value (TextChoices values are
+    strings) so the caller doesn't have to import the enum.
+    Empty/null ``input_retention`` falls back to the privacy-
+    preserving default (DO_NOT_STORE) — losing data is preferable
+    to leaking it.
+    """
+    raw = workflow.input_retention or ""
+    raw = raw.strip()
+    if not raw:
+        return SubmissionRetention.DO_NOT_STORE
+    # Validate against the enum so a typo'd value can't sneak
+    # through. If the workflow has a value the enum doesn't
+    # recognise, that's a workflow-level configuration bug; we
+    # fail closed (DO_NOT_STORE) rather than silently storing.
+    try:
+        return SubmissionRetention(raw)
+    except ValueError:
+        return SubmissionRetention.DO_NOT_STORE
+
+
 def enforce_metadata_policy(metadata, site_settings):
     """Ensure payload metadata abides by the configured policy."""
 
@@ -108,53 +146,48 @@ def launch_web_validation_run(
     )
 
 
-def _resolve_api_source(request: HttpRequest) -> ValidationRunSource:
-    """Determine the run source from the X-Validibot-Source request header.
-
-    API clients can self-identify by sending this header. The value is
-    normalised to uppercase and validated against the ``ValidationRunSource``
-    enum. Invalid or missing values default to ``API``. The ``LAUNCH_PAGE``
-    source is reserved for the web form and cannot be claimed by API callers.
-    """
-    raw_value = request.headers.get("x-validibot-source", "").strip()
-    if not raw_value:
-        return ValidationRunSource.API
-
-    # Normalise to uppercase so agents can send "mcp" or "MCP".
-    normalised = raw_value.upper()
-    try:
-        source = ValidationRunSource(normalised)
-    except ValueError:
-        return ValidationRunSource.API
-    # Don't let API callers claim to be the web launch page.
-    if source == ValidationRunSource.LAUNCH_PAGE:
-        return ValidationRunSource.API
-    return source
-
-
 def launch_api_validation_run(
     *,
     request: HttpRequest,
     workflow: Workflow,
     submission_build: SubmissionBuild,
+    source: ValidationRunSource = ValidationRunSource.API,
 ) -> APIResponse:
     """Launches a workflow run initiated by the REST API.
 
-    The run source defaults to ``API`` but can be overridden via the
-    ``X-Validibot-Source`` header (e.g. ``MCP`` for agent-initiated runs).
-    Only valid ``ValidationRunSource`` values are accepted; invalid
-    values fall back to ``API``.
+    Trust ADR (2026-04-27) + 2026-05-03 review (P1 #4): ``source``
+    must be passed explicitly by the *route* that called this helper.
+    Each entry point (regular REST API, MCP helper API, future CLI
+    helper) knows its own provenance and passes it here. We do NOT
+    derive source from a request header, because headers are
+    caller-controlled and a generic API caller could otherwise mint
+    runs that look MCP-originated.
 
     Args:
         request: DRF/Django request received by the API endpoint.
         workflow: Workflow requested by the caller.
         submission_build: Submission and metadata prepared for launch.
+        source: The trusted source for this launch. Routes that
+            handle the regular REST API pass ``API`` (the default);
+            the MCP helper API route passes ``MCP``; the CLI passes
+            ``CLI`` once that distinction is wired through;
+            scheduled tasks pass ``SCHEDULE``. The ``LAUNCH_PAGE``
+            source is reserved for the web form's helper
+            (``launch_web_validation_run``) and is not accepted here.
 
     Returns:
         APIResponse: Serializer payload, headers, and status for the run request.
     """
 
-    source = _resolve_api_source(request)
+    # Defensive guard: reject the LAUNCH_PAGE source on the API path.
+    # Routes can't accidentally pass it, but mistakes happen.
+    if source == ValidationRunSource.LAUNCH_PAGE:
+        msg = (
+            "launch_api_validation_run does not accept LAUNCH_PAGE as a source; "
+            "the web form should call launch_web_validation_run instead."
+        )
+        raise ValueError(msg)
+
     service = ValidationRunService()
     try:
         launch_result: ValidationRunLaunchResults = service.launch(
@@ -302,6 +335,12 @@ def handle_raw_body_mode(
         name=safe_filename,
         checksum_sha256=ingest.sha256,
         metadata={},
+        # Trust ADR P1 #2: snapshot workflow.input_retention onto
+        # submission.retention_policy so the purge job (which acts
+        # on the submission's policy) honours what the workflow
+        # promised. Without this, the evidence manifest's retention
+        # claim diverges silently from actual storage behaviour.
+        retention_policy=_resolve_submission_retention(workflow),
     )
     submission.set_content(
         inline_text=text_content,
@@ -404,6 +443,8 @@ def process_structured_payload(
             name=safe_filename,
             metadata={},
             checksum_sha256=ingest.sha256,
+            # Trust ADR P1 #2: see _resolve_submission_retention.
+            retention_policy=_resolve_submission_retention(workflow),
         )
         submission.set_content(
             uploaded_file=file_obj,
@@ -464,6 +505,8 @@ def process_structured_payload(
             project=project,
             name=safe_filename,
             metadata=metadata,
+            # Trust ADR P1 #2: see _resolve_submission_retention.
+            retention_policy=_resolve_submission_retention(workflow),
         )
         submission.set_content(
             inline_text=vd["normalized_content"],
@@ -578,6 +621,8 @@ def build_submission_from_form(
         name="",
         metadata=metadata,
         checksum_sha256="",
+        # Trust ADR P1 #2: see _resolve_submission_retention.
+        retention_policy=_resolve_submission_retention(workflow),
     )
 
     run_kwargs: dict[str, Any] = {}

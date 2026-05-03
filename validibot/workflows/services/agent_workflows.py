@@ -196,6 +196,41 @@ class AgentWorkflowResolver:
         return get_latest_workflow(candidates)
 
     @staticmethod
+    def is_valid_public_x402_publish(workflow: Workflow) -> bool:
+        """Return True iff ``workflow`` currently satisfies every public-x402 invariant.
+
+        Trust ADR (2026-04-27) + 2026-05-03 review (P1 #5): the
+        x402 run-creation path was using a relaxed subset of the
+        publishing predicate (only ``agent_public_discovery``,
+        ``agent_access_enabled``, and ``billing_mode``). That
+        meant archived rows, zero-price rows, and rows whose
+        ``input_retention`` was not ``DO_NOT_STORE`` could pass the
+        relaxed gate (when those rows skipped ``clean()``) and
+        create runs against a workflow that wouldn't actually
+        appear in the public catalog.
+
+        This method re-applies the **full**
+        :func:`_public_x402_predicate` against the single workflow's
+        current state at run-create time, closing the gap. Callers
+        in agent run creation should treat ``False`` as "this row
+        is no longer a valid public-x402 publish; do not create
+        runs against it."
+
+        Implementation note: re-runs the predicate as a database
+        filter (rather than evaluating field-by-field on the
+        Python side) so concurrent admin edits to the workflow are
+        observed atomically. The cost is a single PK-bounded
+        query.
+        """
+        # Local import — see WorkflowAccessResolver.list_for_user.
+        from validibot.workflows.models import Workflow
+
+        return Workflow.objects.filter(
+            _public_x402_predicate(),
+            pk=workflow.pk,
+        ).exists()
+
+    @staticmethod
     def get_by_slug_for_x402(
         *,
         org_slug: str,

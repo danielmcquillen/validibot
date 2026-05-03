@@ -28,6 +28,7 @@ from django.core.exceptions import ValidationError
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.workflows.constants import AgentBillingMode
+from validibot.workflows.models import Workflow
 from validibot.workflows.tests.factories import WorkflowFactory
 
 pytestmark = pytest.mark.django_db
@@ -230,75 +231,21 @@ class TestX402RequiresDoNotStore:
         wf.clean()  # should not raise
 
 
-# ── Source resolution ────────────────────────────────────────────────
-# The _resolve_api_source helper normalises the X-Validibot-Source
-# header to uppercase and validates it against the allowed enum values.
-
-
-class TestResolveApiSource:
-    """Verify the source resolution logic in views_launch_helpers.
-
-    Source is an analytics tag, not a security boundary. The main
-    requirement is that it normalises to one of the known uppercase
-    values (LAUNCH_PAGE, API, MCP) and rejects garbage.
-    """
-
-    def test_mcp_uppercase(self):
-        """An uppercase 'MCP' header should resolve to the MCP source."""
-        from django.test import RequestFactory
-
-        from validibot.validations.constants import ValidationRunSource
-        from validibot.workflows.views_launch_helpers import _resolve_api_source
-
-        rf = RequestFactory()
-        request = rf.get("/", HTTP_X_VALIDIBOT_SOURCE="MCP")
-        assert _resolve_api_source(request) == ValidationRunSource.MCP
-
-    def test_mcp_lowercase(self):
-        """A lowercase 'mcp' header should also resolve to MCP after
-        uppercase normalisation."""
-        from django.test import RequestFactory
-
-        from validibot.validations.constants import ValidationRunSource
-        from validibot.workflows.views_launch_helpers import _resolve_api_source
-
-        rf = RequestFactory()
-        request = rf.get("/", HTTP_X_VALIDIBOT_SOURCE="mcp")
-        assert _resolve_api_source(request) == ValidationRunSource.MCP
-
-    def test_invalid_value_defaults_to_api(self):
-        """An unrecognised header value should default to API, not crash."""
-        from django.test import RequestFactory
-
-        from validibot.validations.constants import ValidationRunSource
-        from validibot.workflows.views_launch_helpers import _resolve_api_source
-
-        rf = RequestFactory()
-        request = rf.get("/", HTTP_X_VALIDIBOT_SOURCE="garbage")
-        assert _resolve_api_source(request) == ValidationRunSource.API
-
-    def test_missing_header_defaults_to_api(self):
-        """No header at all should default to API."""
-        from django.test import RequestFactory
-
-        from validibot.validations.constants import ValidationRunSource
-        from validibot.workflows.views_launch_helpers import _resolve_api_source
-
-        rf = RequestFactory()
-        request = rf.get("/")
-        assert _resolve_api_source(request) == ValidationRunSource.API
-
-    def test_launch_page_rejected_from_api(self):
-        """API callers cannot claim to be the launch page — that source
-        is reserved for the web form."""
-        from django.test import RequestFactory
-
-        from validibot.validations.constants import ValidationRunSource
-        from validibot.workflows.views_launch_helpers import _resolve_api_source
-
-        rf = RequestFactory()
-        request = rf.get("/", HTTP_X_VALIDIBOT_SOURCE="LAUNCH_PAGE")
-        assert _resolve_api_source(request) == ValidationRunSource.API
+# ── Source resolution: removed (Trust ADR P1 #4, 2026-05-03) ────────
+#
+# The previous implementation of source resolution accepted an
+# ``X-Validibot-Source`` request header and trusted it.  That made
+# ``ValidationRun.source`` a *caller-controlled* field — an analytics
+# tag any client could spoof to "MCP" while invoking the plain API,
+# polluting trust signals and pricing telemetry.
+#
+# The fix is to derive ``source`` from the authenticated route /
+# auth channel itself (e.g. ``views.launch_api_validation_run``
+# defaults to ``ValidationRunSource.API``, the MCP API view passes
+# ``source=ValidationRunSource.MCP`` explicitly, x402 passes
+# ``ValidationRunSource.X402_AGENT``).  No header read, no caller
+# trust.  See tests in ``mcp_api`` and ``validibot_cloud.agents``
+# for the per-route behaviour.
 
 
 # ── Form: superuser-only agent fields ───────────────────────────────
@@ -638,3 +585,111 @@ class TestTombstoneClearsPublicDiscovery:
         wf.refresh_from_db()
         assert wf.agent_access_enabled is False
         assert wf.agent_public_discovery is False
+
+
+# ──────────────────────────────────────────────────────────────────────
+# DB-level CheckConstraint enforcement (Trust ADR P2 #1, 2026-05-03)
+# ──────────────────────────────────────────────────────────────────────
+#
+# ``Workflow.clean()`` enforces the public-x402 publishing invariants
+# (public-discovery requires agent access, x402 requires positive
+# price, x402 requires DO_NOT_STORE retention), but ``clean()`` does
+# NOT fire on:
+#   • ``QuerySet.update()`` (admin bulk edits)
+#   • Fixtures / ``loaddata``
+#   • Raw SQL writes
+#
+# Migration 0017 lifts these three invariants to DB-level
+# ``CheckConstraint`` rows so the constraint survives every write path.
+# These tests exercise the bypass path (``QuerySet.update``) explicitly:
+# if any constraint regresses, ``IntegrityError`` should NOT be
+# raised — and one of these tests will fail loudly.
+
+
+class TestWorkflowCheckConstraints:
+    """Trust-critical x402 publishing invariants enforced at the DB layer."""
+
+    def test_public_discovery_requires_agent_access_via_update(self):
+        """``QuerySet.update`` cannot persist public-discovery without agent access.
+
+        ``clean()`` blocks this path during normal save, but
+        ``Workflow.objects.filter(...).update(...)`` skips ``clean()``
+        entirely. The DB constraint catches the bypass.
+        """
+        from django.db import IntegrityError
+        from django.db import transaction
+
+        wf = WorkflowFactory(
+            agent_access_enabled=True,
+            agent_public_discovery=False,
+        )
+        # Try to flip public_discovery on while agent_access is off —
+        # the only thing that should stop this at the DB layer is the
+        # CheckConstraint we just added.
+        with transaction.atomic(), pytest.raises(IntegrityError):
+            Workflow.objects.filter(pk=wf.pk).update(
+                agent_access_enabled=False,
+                agent_public_discovery=True,
+            )
+
+    def test_x402_billing_requires_positive_price_via_update(self):
+        """x402 billing mode cannot coexist with a zero / null price."""
+        from django.db import IntegrityError
+        from django.db import transaction
+
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory(
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=100,
+            agent_access_enabled=True,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
+        )
+
+        with transaction.atomic(), pytest.raises(IntegrityError):
+            Workflow.objects.filter(pk=wf.pk).update(agent_price_cents=0)
+
+    def test_x402_billing_requires_do_not_store_retention_via_update(self):
+        """x402 billing mode cannot coexist with retention != DO_NOT_STORE.
+
+        x402 is anonymous per-call payment — storing the input
+        undermines the privacy contract the workflow author agreed to
+        when they enabled x402. The DB constraint guarantees no row
+        ever sits in the contradictory state, regardless of how it
+        was written.
+        """
+        from django.db import IntegrityError
+        from django.db import transaction
+
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory(
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=100,
+            agent_access_enabled=True,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
+        )
+
+        with transaction.atomic(), pytest.raises(IntegrityError):
+            Workflow.objects.filter(pk=wf.pk).update(
+                input_retention=SubmissionRetention.STORE_30_DAYS,
+            )
+
+    def test_non_x402_workflows_can_have_any_retention(self):
+        """The retention constraint only fires when billing_mode = X402.
+
+        AUTHOR_PAYS workflows authenticate the caller and storing
+        their submissions is fine — the constraint must only apply
+        to the x402 (anonymous) path.
+        """
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory(
+            agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
+        )
+        # Should succeed without IntegrityError — no constraint violation.
+        Workflow.objects.filter(pk=wf.pk).update(
+            input_retention=SubmissionRetention.STORE_30_DAYS,
+        )
+        wf.refresh_from_db()
+        assert wf.input_retention == SubmissionRetention.STORE_30_DAYS

@@ -323,9 +323,28 @@ class Severity(TextChoices):
 
 
 class ValidationRunSource(TextChoices):
+    """How a validation run was launched.
+
+    Trust ADR (2026-04-27) + 2026-05-03 review (P1 #4): this value
+    must be derived from the authenticated route / auth channel —
+    NEVER from a caller-controlled header. Each value corresponds to
+    a distinct launch path with a distinct trust profile, and the
+    evidence manifest needs to distinguish them.
+    """
+
     LAUNCH_PAGE = "LAUNCH_PAGE", _("Launch Page")
     API = "API", _("API")
     MCP = "MCP", _("MCP (AI Agent)")
+    # Anonymous x402-paid agent — distinct from MCP because x402 has
+    # no Validibot-side authenticated identity. Run is anonymous,
+    # bound only to a payment receipt.
+    X402_AGENT = "X402_AGENT", _("x402 Anonymous Agent")
+    # CLI (validibot-cli) — distinct from raw API because the CLI
+    # has its own user-agent and may have different conventions
+    # (e.g. interactive auth).
+    CLI = "CLI", _("Command-line Interface")
+    # Scheduled / cron-driven launch from internal automation.
+    SCHEDULE = "SCHEDULE", _("Scheduled / Automation")
 
 
 class XMLSchemaType(TextChoices):

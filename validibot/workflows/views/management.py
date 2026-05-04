@@ -821,7 +821,25 @@ class WorkflowArchiveView(WorkflowObjectMixin, View):
         else:
             workflow.is_archived = True
             workflow.is_active = False
-            workflow.save(update_fields=["is_archived", "is_active"])
+            # Archiving must also withdraw the workflow from every agent
+            # surface.  An archived workflow that retained
+            # ``agent_public_discovery=True`` would simultaneously claim
+            # to be on the public catalog (catalog views would hide it,
+            # but the row itself would still claim that state) and be
+            # unusable for new runs — a contradiction the
+            # ``ck_workflow_public_discovery_requires_alive_row`` DB
+            # constraint refuses to persist.  Clearing both flags here
+            # mirrors what ``tombstone()`` does for the harder removal.
+            workflow.agent_public_discovery = False
+            workflow.agent_access_enabled = False
+            workflow.save(
+                update_fields=[
+                    "is_archived",
+                    "is_active",
+                    "agent_public_discovery",
+                    "agent_access_enabled",
+                ],
+            )
 
             # Cancel any pending workflow invites since the workflow is no longer
             # accessible.

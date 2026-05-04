@@ -22,6 +22,7 @@ from rest_framework.response import Response as APIResponse
 from validibot.core.api.org_scoped import OrgMembershipPermission
 from validibot.core.api.org_scoped import OrgScopedMixin
 from validibot.core.idempotency import idempotent
+from validibot.validations.constants import ValidationRunSource
 from validibot.validations.serializers import ValidationRunStartSerializer
 from validibot.workflows.models import Workflow
 from validibot.workflows.serializers import WorkflowFullSerializer
@@ -210,10 +211,15 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
                 status_code = HTTPStatus.NOT_FOUND
             return APIResponse(exc.payload, status=status_code)
 
+        # ``source`` is explicit at every call site so the route's
+        # intent does not silently depend on the helper's default.
+        # This route is the regular REST API; the MCP helper view
+        # passes ``MCP``; x402 (cloud) passes ``X402_AGENT``.
         return launch_api_validation_run(
             request=request,
             workflow=workflow,
             submission_build=submission_build,
+            source=ValidationRunSource.API,
         )
 
 
@@ -320,8 +326,10 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
                 status_code = HTTPStatus.NOT_FOUND
             return APIResponse(exc.payload, status=status_code)
 
+        # See sibling call above — explicit source per Trust ADR P1 #4.
         return launch_api_validation_run(
             request=request,
             workflow=workflow,
             submission_build=submission_build,
+            source=ValidationRunSource.API,
         )

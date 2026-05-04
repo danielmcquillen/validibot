@@ -18,6 +18,8 @@
 #   GCP_APP_NAME     — resource name prefix (service accounts, services)
 #   VALIDIBOT_MCP_API_BASE_URL
 #                    — URL of the Validibot Django API the MCP proxies to
+#   VALIDIBOT_X402_* — optional non-secret public x402 payment config,
+#                    — sourced from .build and stamped into Cloud Run env
 #
 # Source the config once per shell:
 #
@@ -350,6 +352,9 @@ secrets stage: _require-gcp-config
         echo "  cat > $ENV_FILE << 'EOF'"
         echo "VALIDIBOT_OAUTH_CLIENT_SECRET=<your-generated-secret>"
         echo "VALIDIBOT_LOG_LEVEL=INFO"
+        echo ""
+        echo "# Required only when VALIDIBOT_X402_ENABLED=true in .build"
+        echo "VALIDIBOT_X402_PAY_TO_ADDRESS="
         echo "EOF"
         exit 1
     fi
@@ -377,7 +382,7 @@ secrets stage: _require-gcp-config
 #   - No --add-cloudsql-instances (no database)
 #   - No VPC egress (no private network access needed)
 #   - Secrets mounted from mcp-env Secret Manager secret
-#   - Public config (API URL, MCP enabled) via --set-env-vars
+#   - Public config (API URL, MCP enabled, x402 knobs) via --set-env-vars
 #   - Lower resource limits (lightweight proxy, not a full Django app)
 #
 # Ingress mode is chosen automatically: if an NEG exists for the service
@@ -392,10 +397,11 @@ deploy stage: _require-gcp-config
     {{_mcp_enabled_gate}}
     APP_NAME="{{app_name}}"
 
-    # Source the stage's .build file (if present) to pick up knobs like
-    # VALIDIBOT_MCP_API_BASE_URL. ``set -a`` exports every variable the
-    # file defines so the ``gcloud run deploy`` invocation below inherits
-    # them. Absent file → no-op (inline env vars still work).
+    # Source the stage's .build file (if present) to pick up deploy-time
+    # knobs like VALIDIBOT_MCP_API_BASE_URL and the non-secret x402
+    # settings. ``set -a`` exports every variable the file defines so the
+    # ``gcloud run deploy`` invocation below inherits them. Absent file →
+    # no-op (inline env vars still work).
     if [ "{{stage}}" = "prod" ]; then
         BUILD_FILE=".envs/.production/.google-cloud/.build"
     else
@@ -413,9 +419,17 @@ deploy stage: _require-gcp-config
     # accidentally proxy their users' traffic to a different operator.
     just gcp mcp _require-mcp-api-base-url
 
-    # Re-read the variable now that .build has been sourced and the
-    # check has passed. This is what gets stamped into --set-env-vars.
+    # Re-read variables now that .build has been sourced. These are
+    # stamped into --set-env-vars because they are deploy-time public
+    # config, not Secret Manager values. The receiving wallet remains in
+    # mcp-env as VALIDIBOT_X402_PAY_TO_ADDRESS.
     API_BASE_URL="${VALIDIBOT_MCP_API_BASE_URL}"
+    MCP_ENABLED="${VALIDIBOT_MCP_ENABLED:-true}"
+    X402_ENABLED="${VALIDIBOT_X402_ENABLED:-false}"
+    X402_TEST_MODE="${VALIDIBOT_X402_TEST_MODE:-false}"
+    X402_NETWORK="${VALIDIBOT_X402_NETWORK:-eip155:8453}"
+    X402_ASSET="${VALIDIBOT_X402_ASSET:-0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913}"
+    X402_FACILITATOR_URL="${VALIDIBOT_X402_FACILITATOR_URL:-https://api.cdp.coinbase.com/platform/v2/x402}"
 
     if [ "{{stage}}" = "prod" ]; then
         SERVICE="${APP_NAME}-mcp"
@@ -452,7 +466,7 @@ deploy stage: _require-gcp-config
         --port 8080 \
         --service-account "$SA" \
         --set-secrets=/secrets/.env="$SECRET":latest \
-        --set-env-vars "VALIDIBOT_API_BASE_URL=${API_BASE_URL},VALIDIBOT_MCP_ENABLED=true" \
+        --set-env-vars "VALIDIBOT_API_BASE_URL=${API_BASE_URL},VALIDIBOT_MCP_ENABLED=${MCP_ENABLED},VALIDIBOT_X402_ENABLED=${X402_ENABLED},VALIDIBOT_X402_TEST_MODE=${X402_TEST_MODE},VALIDIBOT_X402_NETWORK=${X402_NETWORK},VALIDIBOT_X402_ASSET=${X402_ASSET},VALIDIBOT_X402_FACILITATOR_URL=${X402_FACILITATOR_URL}" \
         --min-instances $MIN_INSTANCES \
         --max-instances $MAX_INSTANCES \
         --memory 512Mi \

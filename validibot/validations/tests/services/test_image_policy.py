@@ -114,14 +114,36 @@ class TestGetCurrentPolicy:
         assert get_current_policy() == ValidatorBackendImagePolicy.TAG
 
     @override_settings(VALIDATOR_BACKEND_IMAGE_POLICY="garbage-value")
-    def test_unrecognised_value_falls_back_to_tag(self):
-        """Unrecognised value → loose default + doctor flags it.
+    def test_unrecognised_value_raises_improperly_configured(self):
+        """Unrecognised value → fail loud (no silent relax to TAG).
 
-        We deliberately don't crash on misconfiguration; a typo'd
-        setting that locks every launch out would be worse than a
-        too-loose deployment that shows up in the doctor report.
+        A typo in a strict-intent setting (``"strict"`` instead of
+        ``"signed-digest"``, ``"hash"`` instead of ``"digest"``, …)
+        used to silently fall back to ``TAG`` — exactly the opposite
+        of operator intent and a hardening regression.  We now raise
+        so the bug surfaces immediately; the doctor command catches
+        the exception and reports it as a check failure.
         """
-        assert get_current_policy() == ValidatorBackendImagePolicy.TAG
+        from django.core.exceptions import ImproperlyConfigured
+
+        with pytest.raises(ImproperlyConfigured, match="garbage-value"):
+            get_current_policy()
+
+    @override_settings(VALIDATOR_BACKEND_IMAGE_POLICY="strict")
+    def test_typo_strict_does_not_relax_to_tag(self):
+        """A common typo (``strict`` for ``signed-digest``) raises.
+
+        Documented separately because this exact mistake is the
+        regression the previous fall-back-to-TAG behaviour enabled —
+        operators expecting strict enforcement would silently get
+        the loosest mode.  Pinning the test to this concrete typo
+        prevents reintroduction of the silent-relax behaviour by
+        accident.
+        """
+        from django.core.exceptions import ImproperlyConfigured
+
+        with pytest.raises(ImproperlyConfigured):
+            get_current_policy()
 
 
 # ── tag policy ──────────────────────────────────────────────────────────

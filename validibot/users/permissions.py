@@ -298,22 +298,20 @@ class OrgPermissionBackend(BaseBackend):
         if getattr(obj, "is_public", False):
             return True
 
-        # Guest grant check.
+        # Guest grant check — family-scoped.
         #
-        # Trust ADR-2026-04-27 + 2026-05-03 review (P1 #1): family-grant
-        # expansion. Match :meth:`WorkflowQuerySet.for_user` (workflows/
-        # models.py lines 146-153): a grant on ANY version of this
-        # workflow's family (same ``(org_id, slug)`` pair) authorises
-        # launch of every version.
+        # Match :meth:`WorkflowQuerySet.for_user`: a grant on ANY
+        # version of this workflow's family (same ``(org_id, slug)``
+        # pair) authorises launch of every version.
         #
         # Without this, a guest granted v1 sees v2 in their catalog
         # (the queryset expands by family) but ``user.has_perm(
-        # WORKFLOW_LAUNCH, v2)`` returns False because this filter
+        # WORKFLOW_LAUNCH, v2)`` would return False because the filter
         # only matched the exact workflow row. Direct callers of the
         # permission backend (e.g. ``views_helpers.user_can_launch``)
-        # don't go through ``Workflow.can_execute`` so the model-level
-        # fix alone wasn't sufficient — visibility, model methods, and
-        # the auth backend must all agree on the family-grant rule.
+        # don't go through ``Workflow.can_execute``, so the model-level
+        # check alone is not sufficient — visibility, model methods,
+        # and the auth backend must all agree on the family-grant rule.
         return WorkflowAccessGrant.objects.filter(
             user=user,
             is_active=True,

@@ -74,15 +74,14 @@ class LaunchValidationError(Exception):
 def _resolve_submission_retention(workflow: Workflow) -> str:
     """Resolve the submission retention policy from the workflow.
 
-    Trust ADR (2026-04-27) + 2026-05-03 review (P1 #2): every
-    Submission row created by a launch path must snapshot the
-    workflow's ``input_retention`` onto its own ``retention_policy``
-    column. The purge job acts on ``submission.retention_policy``,
-    not on the workflow's policy, so without this snapshot a
-    workflow configured to retain inputs would still have its
-    submissions queued for purge — and the evidence manifest
-    (which records the workflow's retention class) would
-    silently diverge from actual storage behaviour.
+    Every Submission row created by a launch path must snapshot
+    the workflow's ``input_retention`` onto its own
+    ``retention_policy`` column. The purge job acts on
+    ``submission.retention_policy``, not on the workflow's policy,
+    so without this snapshot a workflow configured to retain inputs
+    would still have its submissions queued for purge — and the
+    evidence manifest (which records the workflow's retention
+    class) would silently diverge from actual storage behaviour.
 
     This helper is the single source of truth for that mapping.
     Every Submission constructor in launch helpers must pass
@@ -155,13 +154,12 @@ def launch_api_validation_run(
 ) -> APIResponse:
     """Launches a workflow run initiated by the REST API.
 
-    Trust ADR (2026-04-27) + 2026-05-03 review (P1 #4): ``source``
-    must be passed explicitly by the *route* that called this helper.
-    Each entry point (regular REST API, MCP helper API, future CLI
-    helper) knows its own provenance and passes it here. We do NOT
-    derive source from a request header, because headers are
-    caller-controlled and a generic API caller could otherwise mint
-    runs that look MCP-originated.
+    ``source`` must be passed explicitly by the *route* that called
+    this helper.  Each entry point (regular REST API, MCP helper API,
+    future CLI helper) knows its own provenance and passes it here.
+    We do NOT derive source from a request header, because headers
+    are caller-controlled and a generic API caller could otherwise
+    mint runs that look MCP-originated.
 
     Args:
         request: DRF/Django request received by the API endpoint.
@@ -335,7 +333,7 @@ def handle_raw_body_mode(
         name=safe_filename,
         checksum_sha256=ingest.sha256,
         metadata={},
-        # Trust ADR P1 #2: snapshot workflow.input_retention onto
+        # Snapshot workflow.input_retention onto
         # submission.retention_policy so the purge job (which acts
         # on the submission's policy) honours what the workflow
         # promised. Without this, the evidence manifest's retention
@@ -443,7 +441,8 @@ def process_structured_payload(
             name=safe_filename,
             metadata={},
             checksum_sha256=ingest.sha256,
-            # Trust ADR P1 #2: see _resolve_submission_retention.
+            # Snapshot retention from the workflow — see
+            # _resolve_submission_retention for rationale.
             retention_policy=_resolve_submission_retention(workflow),
         )
         submission.set_content(
@@ -505,7 +504,8 @@ def process_structured_payload(
             project=project,
             name=safe_filename,
             metadata=metadata,
-            # Trust ADR P1 #2: see _resolve_submission_retention.
+            # Snapshot retention from the workflow — see
+            # _resolve_submission_retention for rationale.
             retention_policy=_resolve_submission_retention(workflow),
         )
         submission.set_content(
@@ -621,7 +621,8 @@ def build_submission_from_form(
         name="",
         metadata=metadata,
         checksum_sha256="",
-        # Trust ADR P1 #2: see _resolve_submission_retention.
+        # Snapshot retention from the workflow — see
+        # _resolve_submission_retention for rationale.
         retention_policy=_resolve_submission_retention(workflow),
     )
 

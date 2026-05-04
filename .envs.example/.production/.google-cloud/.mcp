@@ -6,8 +6,9 @@
 # pydantic-settings reads it at container start. The MCP server boots
 # only if the deployment's license advertises the `mcp_server` feature.
 #
-# Non-secret config (VALIDIBOT_API_BASE_URL, VALIDIBOT_MCP_ENABLED) is
-# set via `--set-env-vars` in the deploy recipe instead of going here.
+# Non-secret config (VALIDIBOT_API_BASE_URL, VALIDIBOT_MCP_ENABLED, and
+# VALIDIBOT_X402_* public payment knobs) is set from `.build` via
+# `--set-env-vars` in the deploy recipe instead of going here.
 
 # ── Logging ────────────────────────────────────────────────────────────
 
@@ -35,13 +36,9 @@ VALIDIBOT_OAUTH_CLIENT_SECRET=replace-with-generated-client-secret
 
 # ── x402 payments ──────────────────────────────────────────────────────
 
-# Mainnet (set VALIDIBOT_X402_TEST_MODE=false to use these).
-VALIDIBOT_X402_ENABLED=true
-VALIDIBOT_X402_TEST_MODE=false
+# The live enable/network/asset/facilitator knobs live in .build.
+# This file only stores receiving-wallet secrets.
 VALIDIBOT_X402_PAY_TO_ADDRESS=0xYOUR_PRODUCTION_BASE_MAINNET_WALLET
-# VALIDIBOT_X402_NETWORK=eip155:8453              # default
-# VALIDIBOT_X402_ASSET=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913  # default
-# VALIDIBOT_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402  # default
 
-# Testnet values (readable even in prod so flipping test_mode=true works).
+# Testnet receiver. Used when VALIDIBOT_X402_TEST_MODE=true in .build.
 VALIDIBOT_TEST_X402_PAY_TO_ADDRESS=0xYOUR_BASE_SEPOLIA_WALLET

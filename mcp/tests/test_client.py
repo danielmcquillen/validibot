@@ -189,6 +189,7 @@ class TestBuildAgentHeaders:
             amount="123",
             network="eip155:8453",
             asset="0xasset",
+            pay_to="0xreceiver",
             workflow_slug="energy-check",
             org_slug=ORG,
             file_name="test.json",
@@ -198,6 +199,11 @@ class TestBuildAgentHeaders:
         assert headers["X-X402-Workflow-Slug"] == "energy-check"
         assert headers["X-X402-Org-Slug"] == ORG
         assert headers["X-X402-File-Name"] == "test.json"
+        # Pay-to is required by the Django auth layer (without it the
+        # request 401s).  Pinning it here prevents a regression where
+        # someone removes the kwarg from the MCP client and silently
+        # breaks every real x402 launch.
+        assert headers["X-X402-Pay-To"] == "0xreceiver"
 
 
 class TestAgentWorkflowDetail:

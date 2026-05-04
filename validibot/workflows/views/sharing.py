@@ -28,6 +28,103 @@ from validibot.workflows.mixins import WorkflowObjectMixin
 logger = logging.getLogger(__name__)
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Family-scoped sharing helpers
+# ──────────────────────────────────────────────────────────────────────
+#
+# The permission layer treats an active grant on ANY version of a
+# workflow's ``(org_id, slug)`` family as authorisation for every
+# version (see ``WorkflowQuerySet.for_user`` and the per-row checks
+# on ``Workflow``).  Without family-scoped queries here the
+# management surface diverges from the permission rule and produces
+# three bugs:
+#
+#   (a) The sharing page on v2 hides grants rooted on v1 even
+#       though the holder still has access to v2.
+#   (b) The "user already has access" duplicate check misses legacy
+#       v1 grants when a manager invites the same email on v2.
+#   (c) Revoking a v2 row leaves the user's v1 grant intact, and
+#       the family-grant rule keeps v2 visible to them — the UI
+#       shows "revoked" while access is still live.
+#
+# These helpers return querysets scoped to the entire family, with
+# at most one row per user (the most recent grant), so the listing,
+# duplicate check, and revoke flow all share the family rule.
+
+
+def _family_active_grants_for_listing(workflow):
+    """Return active grants in the family with one row per user.
+
+    Uses PostgreSQL ``DISTINCT ON`` to pick the most recent grant per
+    user; the wrapping queryset re-sorts the result by ``-created``
+    for stable display order.
+    """
+    from validibot.workflows.models import WorkflowAccessGrant
+
+    distinct_pks = (
+        WorkflowAccessGrant.objects.filter(
+            workflow__org_id=workflow.org_id,
+            workflow__slug=workflow.slug,
+            is_active=True,
+        )
+        # DISTINCT ON requires the deduplication key (user_id) to be
+        # the leading order_by; the secondary ``-created`` selects
+        # the most recent grant per user.
+        .order_by("user_id", "-created")
+        .distinct("user_id")
+        .values_list("pk", flat=True)
+    )
+    return (
+        WorkflowAccessGrant.objects.filter(pk__in=list(distinct_pks))
+        .select_related("user", "granted_by", "workflow")
+        .order_by("-created")
+    )
+
+
+def _family_pending_invites_for_listing(workflow):
+    """Return pending invites in the family with one row per email.
+
+    Same DISTINCT ON pattern as :func:`_family_active_grants_for_listing`.
+    """
+    from validibot.workflows.models import WorkflowInvite
+
+    distinct_pks = (
+        WorkflowInvite.objects.filter(
+            workflow__org_id=workflow.org_id,
+            workflow__slug=workflow.slug,
+            status=WorkflowInvite.Status.PENDING,
+        )
+        .order_by("invitee_email", "-created")
+        .distinct("invitee_email")
+        .values_list("pk", flat=True)
+    )
+    return (
+        WorkflowInvite.objects.filter(pk__in=list(distinct_pks))
+        .select_related("inviter", "invitee_user", "workflow")
+        .order_by("-created")
+    )
+
+
+def _render_family_guest_section(request, workflow, view):
+    """Render the guest access section with family-scoped data.
+
+    Extracted so all 4 sharing views render the same section the
+    same way; the previous code duplicated this block 4 times with
+    subtle differences (some had HX-Trigger headers, some didn't).
+    """
+    context = {
+        "workflow": workflow,
+        "access_grants": _family_active_grants_for_listing(workflow),
+        "pending_invites": _family_pending_invites_for_listing(workflow),
+        "can_manage_sharing": view.user_can_manage_sharing(),
+    }
+    return render(
+        request,
+        "workflows/partials/workflow_guest_access_section.html",
+        context,
+    )
+
+
 # Workflow Invite Views
 # ------------------------------------------------------------------------------
 
@@ -158,30 +255,16 @@ class WorkflowSharingView(WorkflowObjectMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         workflow = self.get_workflow()
 
-        # Get active access grants for this workflow
-        from validibot.workflows.models import WorkflowAccessGrant
-        from validibot.workflows.models import WorkflowInvite
-
-        access_grants = (
-            WorkflowAccessGrant.objects.filter(workflow=workflow, is_active=True)
-            .select_related("user", "granted_by")
-            .order_by("-created")
-        )
-
-        pending_invites = (
-            WorkflowInvite.objects.filter(
-                workflow=workflow,
-                status=WorkflowInvite.Status.PENDING,
-            )
-            .select_related("inviter", "invitee_user")
-            .order_by("-created")
-        )
-
+        # Family-scoped queries — see module docstring above for why.
+        # An active grant on any version of this workflow's family
+        # authorises the entire family (see permissions.py), so the
+        # sharing page must surface those grants on every version's
+        # page.  The helpers also dedupe to one row per user/email.
         context.update(
             {
                 "workflow": workflow,
-                "access_grants": access_grants,
-                "pending_invites": pending_invites,
+                "access_grants": _family_active_grants_for_listing(workflow),
+                "pending_invites": _family_pending_invites_for_listing(workflow),
                 "can_manage_sharing": self.user_can_manage_sharing(),
             },
         )
@@ -288,8 +371,16 @@ class WorkflowGuestInviteView(WorkflowObjectMixin, View):
             messages.error(request, _("Email address is required."))
             return self._render_form_response(request, workflow, email)
 
-        # Check if user is already a member of the org
-        existing_membership = workflow.org.memberships.filter(
+        # Check if user is already a member of the org.  ``Membership.org``
+        # has no ``related_name``, so the reverse manager is the default
+        # ``membership_set`` — querying ``Membership`` directly is
+        # clearer than relying on the reverse name and avoids the
+        # AttributeError that ``workflow.org.memberships.filter(...)``
+        # used to raise on this path.
+        from validibot.users.models import Membership
+
+        existing_membership = Membership.objects.filter(
+            org=workflow.org,
             user__email__iexact=email,
             is_active=True,
         ).exists()
@@ -300,8 +391,16 @@ class WorkflowGuestInviteView(WorkflowObjectMixin, View):
             )
             return self._render_form_response(request, workflow, email)
 
-        # Check if user already has access
-        existing_grant = workflow.access_grants.filter(
+        # Check if user already has access — family-scoped.  A v1
+        # grant is family-equivalent to a v2 grant (the permission
+        # layer treats both as access to the whole family), so a
+        # duplicate scoped only to the v2 row would silently let a
+        # manager re-invite a user who already has access via v1.
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        existing_grant = WorkflowAccessGrant.objects.filter(
+            workflow__org_id=workflow.org_id,
+            workflow__slug=workflow.slug,
             user__email__iexact=email,
             is_active=True,
         ).exists()
@@ -312,9 +411,10 @@ class WorkflowGuestInviteView(WorkflowObjectMixin, View):
             )
             return self._render_form_response(request, workflow, email)
 
-        # Check for pending invite
+        # Check for pending invite — family-scoped (same rationale).
         pending_invite = WorkflowInvite.objects.filter(
-            workflow=workflow,
+            workflow__org_id=workflow.org_id,
+            workflow__slug=workflow.slug,
             invitee_email__iexact=email,
             status=WorkflowInvite.Status.PENDING,
         ).exists()
@@ -374,35 +474,14 @@ class WorkflowGuestInviteView(WorkflowObjectMixin, View):
         )
 
     def _render_guest_section_response(self, request, workflow):
-        """Render the updated guest access section."""
-        from validibot.workflows.models import WorkflowAccessGrant
-        from validibot.workflows.models import WorkflowInvite
+        """Render the updated guest access section (with HTMX retargeting).
 
-        access_grants = (
-            WorkflowAccessGrant.objects.filter(workflow=workflow, is_active=True)
-            .select_related("user", "granted_by")
-            .order_by("-created")
-        )
-        pending_invites = (
-            WorkflowInvite.objects.filter(
-                workflow=workflow,
-                status=WorkflowInvite.Status.PENDING,
-            )
-            .select_related("inviter", "invitee_user")
-            .order_by("-created")
-        )
-
-        context = {
-            "workflow": workflow,
-            "access_grants": access_grants,
-            "pending_invites": pending_invites,
-            "can_manage_sharing": self.user_can_manage_sharing(),
-        }
-        response = render(
-            request,
-            "workflows/partials/workflow_guest_access_section.html",
-            context,
-        )
+        The shared :func:`_render_family_guest_section` returns the
+        bare partial; this wrapper adds the HTMX response headers the
+        invite form needs to swap the section back into place and
+        close the modal.
+        """
+        response = _render_family_guest_section(request, workflow, self)
         # Retarget to the guest section (form targets modal content by default)
         response["HX-Retarget"] = "#guest-access-section"
         response["HX-Reswap"] = "outerHTML"
@@ -411,9 +490,20 @@ class WorkflowGuestInviteView(WorkflowObjectMixin, View):
 
 
 class WorkflowGuestRevokeView(WorkflowObjectMixin, View):
-    """Revoke a guest's access to this workflow."""
+    """Revoke a guest's access to this workflow's *family*.
+
+    Revoking is a family-scoped operation.  Deactivating only the
+    v2 row when the user also holds an active grant on v1 leaves
+    the user with effective access (the permission layer expands
+    grants by family), so the manager sees "revoked" while the
+    access is still live.  This view deactivates every active
+    grant the user holds in the family.
+    """
 
     def post(self, request, *args, **kwargs):
+        from django.db import transaction
+        from django.utils import timezone
+
         from validibot.notifications.models import Notification
         from validibot.workflows.models import WorkflowAccessGrant
 
@@ -423,20 +513,36 @@ class WorkflowGuestRevokeView(WorkflowObjectMixin, View):
         workflow = self.get_workflow()
         grant_id = kwargs.get("grant_id")
 
-        grant = get_object_or_404(
+        # The grant_id may point at any version of the family — the
+        # listing dedupes by user, so the displayed row could be the
+        # v1 grant even on the v2 sharing page.  Look up by pk +
+        # family scope so we accept any in-family pk while still
+        # rejecting cross-family attempts (defense against
+        # IDOR-style URL tampering).
+        display_grant = get_object_or_404(
             WorkflowAccessGrant,
             pk=grant_id,
-            workflow=workflow,
+            workflow__org_id=workflow.org_id,
+            workflow__slug=workflow.slug,
             is_active=True,
         )
 
-        # Deactivate the grant
-        grant.is_active = False
-        grant.save(update_fields=["is_active", "modified"])
+        # Deactivate every active grant this user holds in the family
+        # so the family-grant rule in permissions.py can no longer
+        # authorise them via a sibling version.  ``update`` runs at
+        # the DB layer in one statement; ``modified`` is set so the
+        # UI's last-modified column reflects the revocation.
+        with transaction.atomic():
+            WorkflowAccessGrant.objects.filter(
+                workflow__org_id=workflow.org_id,
+                workflow__slug=workflow.slug,
+                user=display_grant.user,
+                is_active=True,
+            ).update(is_active=False, modified=timezone.now())
 
         # Notify the guest
         Notification.objects.create(
-            user=grant.user,
+            user=display_grant.user,
             org=workflow.org,
             type=Notification.Type.SYSTEM_ALERT,
             payload={
@@ -452,7 +558,7 @@ class WorkflowGuestRevokeView(WorkflowObjectMixin, View):
 
         messages.success(
             request,
-            _("Access revoked for %(email)s.") % {"email": grant.user.email},
+            _("Access revoked for %(email)s.") % {"email": display_grant.user.email},
         )
 
         # Return updated guest access section
@@ -460,38 +566,17 @@ class WorkflowGuestRevokeView(WorkflowObjectMixin, View):
 
     def _render_guest_section_response(self, request, workflow):
         """Render the updated guest access section."""
-        from validibot.workflows.models import WorkflowAccessGrant
-        from validibot.workflows.models import WorkflowInvite
-
-        access_grants = (
-            WorkflowAccessGrant.objects.filter(workflow=workflow, is_active=True)
-            .select_related("user", "granted_by")
-            .order_by("-created")
-        )
-        pending_invites = (
-            WorkflowInvite.objects.filter(
-                workflow=workflow,
-                status=WorkflowInvite.Status.PENDING,
-            )
-            .select_related("inviter", "invitee_user")
-            .order_by("-created")
-        )
-
-        context = {
-            "workflow": workflow,
-            "access_grants": access_grants,
-            "pending_invites": pending_invites,
-            "can_manage_sharing": self.user_can_manage_sharing(),
-        }
-        return render(
-            request,
-            "workflows/partials/workflow_guest_access_section.html",
-            context,
-        )
+        return _render_family_guest_section(request, workflow, self)
 
 
 class WorkflowInviteCancelView(WorkflowObjectMixin, View):
-    """Cancel a pending workflow invite."""
+    """Cancel a pending workflow invite (family-scoped).
+
+    The invite_id may point at an invite rooted on a sibling version
+    of the family (the listing dedupes by email).  Look up by pk +
+    family scope so we accept any in-family invite while still
+    rejecting cross-family pks.
+    """
 
     def post(self, request, *args, **kwargs):
         from validibot.workflows.models import WorkflowInvite
@@ -505,7 +590,8 @@ class WorkflowInviteCancelView(WorkflowObjectMixin, View):
         invite = get_object_or_404(
             WorkflowInvite,
             pk=invite_id,
-            workflow=workflow,
+            workflow__org_id=workflow.org_id,
+            workflow__slug=workflow.slug,
             status=WorkflowInvite.Status.PENDING,
         )
 
@@ -521,34 +607,7 @@ class WorkflowInviteCancelView(WorkflowObjectMixin, View):
 
     def _render_guest_section_response(self, request, workflow):
         """Render the updated guest access section."""
-        from validibot.workflows.models import WorkflowAccessGrant
-        from validibot.workflows.models import WorkflowInvite
-
-        access_grants = (
-            WorkflowAccessGrant.objects.filter(workflow=workflow, is_active=True)
-            .select_related("user", "granted_by")
-            .order_by("-created")
-        )
-        pending_invites = (
-            WorkflowInvite.objects.filter(
-                workflow=workflow,
-                status=WorkflowInvite.Status.PENDING,
-            )
-            .select_related("inviter", "invitee_user")
-            .order_by("-created")
-        )
-
-        context = {
-            "workflow": workflow,
-            "access_grants": access_grants,
-            "pending_invites": pending_invites,
-            "can_manage_sharing": self.user_can_manage_sharing(),
-        }
-        return render(
-            request,
-            "workflows/partials/workflow_guest_access_section.html",
-            context,
-        )
+        return _render_family_guest_section(request, workflow, self)
 
 
 class WorkflowInviteResendView(WorkflowObjectMixin, View):
@@ -564,10 +623,12 @@ class WorkflowInviteResendView(WorkflowObjectMixin, View):
         workflow = self.get_workflow()
         invite_id = kwargs.get("invite_id")
 
+        # Family-scoped lookup — see WorkflowInviteCancelView for rationale.
         old_invite = get_object_or_404(
             WorkflowInvite,
             pk=invite_id,
-            workflow=workflow,
+            workflow__org_id=workflow.org_id,
+            workflow__slug=workflow.slug,
         )
 
         # Cancel the old invite if still pending
@@ -608,31 +669,4 @@ class WorkflowInviteResendView(WorkflowObjectMixin, View):
 
     def _render_guest_section_response(self, request, workflow):
         """Render the updated guest access section."""
-        from validibot.workflows.models import WorkflowAccessGrant
-        from validibot.workflows.models import WorkflowInvite
-
-        access_grants = (
-            WorkflowAccessGrant.objects.filter(workflow=workflow, is_active=True)
-            .select_related("user", "granted_by")
-            .order_by("-created")
-        )
-        pending_invites = (
-            WorkflowInvite.objects.filter(
-                workflow=workflow,
-                status=WorkflowInvite.Status.PENDING,
-            )
-            .select_related("inviter", "invitee_user")
-            .order_by("-created")
-        )
-
-        context = {
-            "workflow": workflow,
-            "access_grants": access_grants,
-            "pending_invites": pending_invites,
-            "can_manage_sharing": self.user_can_manage_sharing(),
-        }
-        return render(
-            request,
-            "workflows/partials/workflow_guest_access_section.html",
-            context,
-        )
+        return _render_family_guest_section(request, workflow, self)

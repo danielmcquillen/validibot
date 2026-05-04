@@ -83,10 +83,14 @@ dependencies = [
   # self-hosted deployments, on in cloud to deter free-trial abuse.
   "disposable-email-domains==0.0.178",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
-  # Trust ADR Phase 5 Session A — 0.7.0 adds StepValidatorRecord.validator_backend_image_digest.
-  # Subsequent patches (0.7.1–0.7.3) shipped publish workflow fixes; pinning to 0.7.3
-  # gets the cleanest PyPI provenance attestation.
-  "validibot-shared==0.7.3",
+  # 0.7.0 adds ``StepValidatorRecord.validator_backend_image_digest``;
+  # 0.7.1–0.7.3 shipped publish-workflow fixes;
+  # 0.7.4 adds the optional ``EvidenceManifest.source`` field that
+  # documents the auth channel that produced each run.  The Django-side
+  # builder populates ``source`` automatically when the installed
+  # schema exposes the field, so bumping this pin activates the
+  # behaviour in production.
+  "validibot-shared==0.7.4",
   "django-csp==4.0",
   "django-permissions-policy==4.29.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in

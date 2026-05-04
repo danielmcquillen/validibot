@@ -4,6 +4,63 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def _normalize_pre_constraint_rows(apps, schema_editor):
+    """Suppress public-x402 claims on rows that would now violate the constraints.
+
+    Real production databases may contain rows that were persisted via
+    paths that bypassed ``Workflow.clean()``: ``QuerySet.update()``,
+    fixtures, ``loaddata``, raw SQL, or pre-clean() admin paths.
+    Without this normalization the ``AddConstraint`` operations below
+    would fail at deploy time with ``IntegrityError`` and leave the
+    schema migration mid-flight.
+
+    The normalization is conservative: when a row is in a state that
+    would violate any of the new invariants, we strip the *claim*
+    (``agent_public_discovery=False``, ``agent_billing_mode=AUTHOR_PAYS``)
+    rather than mutate the privacy / billing settings the operator
+    chose.  Operators can re-publish the workflow once the underlying
+    state is fixed.
+
+    Idempotent: a deployment that already has clean data updates 0
+    rows.  A deployment that's already applied this migration also
+    updates 0 rows because the constraints below would have rejected
+    any subsequent invalid writes.
+    """
+    Workflow = apps.get_model("workflows", "Workflow")
+
+    # 1. Public discovery without agent access enabled — withdraw the
+    #    public claim.
+    Workflow.objects.filter(
+        agent_public_discovery=True,
+        agent_access_enabled=False,
+    ).update(agent_public_discovery=False)
+
+    # 2. x402 billing with non-positive or NULL price — back off to
+    #    AUTHOR_PAYS and withdraw the public claim so the row no
+    #    longer asserts a price.
+    Workflow.objects.filter(
+        agent_billing_mode="AGENT_PAYS_X402",
+    ).filter(
+        models.Q(agent_price_cents__lte=0) | models.Q(agent_price_cents__isnull=True),
+    ).update(
+        agent_billing_mode="AUTHOR_PAYS",
+        agent_public_discovery=False,
+    )
+
+    # 3. x402 billing with retention != DO_NOT_STORE — back off
+    #    billing rather than silently flip the retention choice (the
+    #    operator may genuinely want retained submissions; they just
+    #    can't combine that with x402).
+    Workflow.objects.filter(
+        agent_billing_mode="AGENT_PAYS_X402",
+    ).exclude(
+        input_retention="DO_NOT_STORE",
+    ).update(
+        agent_billing_mode="AUTHOR_PAYS",
+        agent_public_discovery=False,
+    )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -14,6 +71,13 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Data normalization MUST run before the AddConstraint
+        # operations below, otherwise legacy contradictory rows would
+        # cause the constraint creation to fail at deploy time.
+        migrations.RunPython(
+            _normalize_pre_constraint_rows,
+            reverse_code=migrations.RunPython.noop,
+        ),
         migrations.AddConstraint(
             model_name='workflow',
             constraint=models.CheckConstraint(condition=models.Q(('agent_public_discovery', False), ('agent_access_enabled', True), _connector='OR'), name='ck_workflow_public_discovery_requires_agent_access'),

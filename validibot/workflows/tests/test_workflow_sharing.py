@@ -564,21 +564,19 @@ class TestWorkflowPermissionExtensions:
         assert workflow.can_execute(user=guest) is False
 
     # ────────────────────────────────────────────────────────────────
-    # Family-grant expansion in per-row checks (Trust ADR P1 #1)
+    # Family-grant expansion in per-row checks
     # ────────────────────────────────────────────────────────────────
     #
-    # The visibility resolver (``Workflow.objects.for_user``) had been
-    # fixed to expand grants by ``(org_id, slug)`` so a guest granted
-    # v1 sees v2 of the same family in their catalog. But ``can_view``,
-    # ``can_execute``, and the auth backend's ``WORKFLOW_LAUNCH``
-    # special-case still queried the FK reverse manager only —
-    # matching the *exact pinned row* — so v2 was visible in the
-    # listing then rejected at every per-row check (detail page,
-    # launch button, API guard). The colleague's 2026-05-03 review
-    # flagged this divergence.
+    # The visibility resolver (``Workflow.objects.for_user``) expands
+    # grants by ``(org_id, slug)`` so a guest granted v1 sees v2 of
+    # the same family in their catalog.  ``can_view``, ``can_execute``,
+    # and the auth backend's ``WORKFLOW_LAUNCH`` special-case must
+    # share that rule — otherwise v2 shows in the listing then gets
+    # rejected at every per-row check (detail page, launch button,
+    # API guard).
     #
     # These tests pin all three callers to the family-grant rule so
-    # visibility and execution agree. If any caller silently regresses
+    # visibility and execution agree.  If any caller silently regresses
     # to exact-row matching, one of these tests fails.
     def test_can_view_expands_to_family_versions(self):
         """A grant on v1 lets the guest view v2 of the same family."""
@@ -1713,3 +1711,200 @@ class TestWorkflowSharingPermissions:
             reverse("workflows:workflow_sharing", kwargs={"pk": workflow.pk}),
         )
         assert response.status_code == HTTPStatus.FORBIDDEN
+
+
+# =============================================================================
+# Family-scoped sharing UI
+# =============================================================================
+#
+# The permission layer treats an active grant on any version of the
+# (org_id, slug) family as access to every version.  The management
+# surface (sharing page, duplicate-invite check, revoke) must share
+# that scope or three bugs surface:
+#
+#   (a) The sharing page on v2 hides grants rooted on v1.
+#   (b) The duplicate-invite check misses legacy v1 grants/invites.
+#   (c) Revoking on v2 leaves the user with effective access via v1.
+#
+# These tests pin the family-scoped behaviour of the listing,
+# duplicate check, and revoke flow.
+
+
+class TestSharingPageFamilyScoping:
+    """The sharing page on any version surfaces grants from the whole family."""
+
+    def _login_as_admin(self, client, org):
+        admin = UserFactory()
+        grant_role(admin, org, RoleCode.ADMIN)
+        client.force_login(admin)
+        session = client.session
+        session["active_org_id"] = str(org.id)
+        session.save()
+        return admin
+
+    def test_v2_sharing_page_lists_grant_rooted_on_v1(self, client):
+        """A grant pinned to v1 must appear on v2's sharing page."""
+        org = OrganizationFactory()
+        v1 = WorkflowFactory(org=org, slug="shared", version="1")
+        v2 = WorkflowFactory(org=org, slug="shared", version="2")
+
+        guest = UserFactory(orgs=[])
+        Membership.objects.filter(user=guest).delete()
+        WorkflowAccessGrant.objects.create(
+            workflow=v1,
+            user=guest,
+            is_active=True,
+        )
+
+        self._login_as_admin(client, org)
+
+        response = client.get(
+            reverse("workflows:workflow_sharing", kwargs={"pk": v2.pk}),
+        )
+        assert response.status_code == HTTPStatus.OK
+        # The guest's email should appear in the rendered page —
+        # without family scoping it would not.
+        assert guest.email.encode() in response.content
+
+
+class TestInviteDuplicateCheckFamilyScoping:
+    """Duplicate-grant and pending-invite checks must look at the family."""
+
+    def _login_as_admin(self, client, org):
+        admin = UserFactory()
+        grant_role(admin, org, RoleCode.ADMIN)
+        client.force_login(admin)
+        session = client.session
+        session["active_org_id"] = str(org.id)
+        session.save()
+        return admin
+
+    def test_invite_blocked_when_v1_grant_exists(self, client):
+        """Inviting on v2 must fail if user already has a v1 grant."""
+        org = OrganizationFactory()
+        WorkflowFactory(org=org, slug="shared", version="1")
+        v2 = WorkflowFactory(org=org, slug="shared", version="2")
+
+        guest = UserFactory(orgs=[])
+        Membership.objects.filter(user=guest).delete()
+        WorkflowAccessGrant.objects.create(
+            workflow=Workflow.objects.get(org=org, slug="shared", version="1"),
+            user=guest,
+            is_active=True,
+        )
+
+        self._login_as_admin(client, org)
+
+        before_count = WorkflowAccessGrant.objects.filter(
+            workflow__org_id=org.id,
+            workflow__slug="shared",
+            user=guest,
+            is_active=True,
+        ).count()
+
+        client.post(
+            reverse("workflows:workflow_guest_invite", kwargs={"pk": v2.pk}),
+            data={"email": guest.email},
+        )
+
+        # No new grant or invite should have been created.
+        after_count = WorkflowAccessGrant.objects.filter(
+            workflow__org_id=org.id,
+            workflow__slug="shared",
+            user=guest,
+            is_active=True,
+        ).count()
+        assert after_count == before_count
+        assert (
+            WorkflowInvite.objects.filter(
+                workflow__org_id=org.id,
+                workflow__slug="shared",
+                invitee_email__iexact=guest.email,
+                status=WorkflowInvite.Status.PENDING,
+            ).count()
+            == 0
+        )
+
+
+class TestRevokeFamilyScoping:
+    """Revoking on any version deactivates every grant in the family."""
+
+    def _login_as_admin(self, client, org):
+        admin = UserFactory()
+        grant_role(admin, org, RoleCode.ADMIN)
+        client.force_login(admin)
+        session = client.session
+        session["active_org_id"] = str(org.id)
+        session.save()
+        return admin
+
+    def test_revoke_on_v2_deactivates_v1_grant(self, client):
+        """Revoking on v2 must deactivate the user's v1 grant too."""
+        org = OrganizationFactory()
+        v1 = WorkflowFactory(org=org, slug="shared", version="1")
+        v2 = WorkflowFactory(org=org, slug="shared", version="2")
+
+        guest = UserFactory(orgs=[])
+        Membership.objects.filter(user=guest).delete()
+
+        v1_grant = WorkflowAccessGrant.objects.create(
+            workflow=v1,
+            user=guest,
+            is_active=True,
+        )
+        v2_grant = WorkflowAccessGrant.objects.create(
+            workflow=v2,
+            user=guest,
+            is_active=True,
+        )
+
+        self._login_as_admin(client, org)
+
+        client.post(
+            reverse(
+                "workflows:workflow_guest_revoke",
+                kwargs={"pk": v2.pk, "grant_id": v2_grant.pk},
+            ),
+        )
+
+        v1_grant.refresh_from_db()
+        v2_grant.refresh_from_db()
+        # Both rows deactivated — family-scoped revoke.
+        assert v1_grant.is_active is False
+        assert v2_grant.is_active is False
+        # And the permission layer agrees the user no longer has access.
+        assert v1.can_view(user=guest) is False
+        assert v2.can_view(user=guest) is False
+
+    def test_revoke_via_grant_id_from_other_family_rejected(self, client):
+        """A grant pk from a *different* family must NOT be revoked.
+
+        The lookup is family-scoped; a foreign grant_id falls through
+        to 404, NOT silently revoked through the wrong URL.
+        """
+        org_a = OrganizationFactory()
+        org_b = OrganizationFactory()
+        wf_a = WorkflowFactory(org=org_a, slug="shared", version="1")
+        wf_b = WorkflowFactory(org=org_b, slug="shared", version="1")
+
+        victim = UserFactory(orgs=[])
+        Membership.objects.filter(user=victim).delete()
+        cross_grant = WorkflowAccessGrant.objects.create(
+            workflow=wf_b,  # grant lives in org_b's family
+            user=victim,
+            is_active=True,
+        )
+
+        self._login_as_admin(client, org_a)
+
+        response = client.post(
+            reverse(
+                "workflows:workflow_guest_revoke",
+                kwargs={"pk": wf_a.pk, "grant_id": cross_grant.pk},
+            ),
+        )
+
+        # Should NOT have deactivated the foreign grant.
+        cross_grant.refresh_from_db()
+        assert cross_grant.is_active is True
+        assert response.status_code == HTTPStatus.NOT_FOUND

@@ -208,8 +208,15 @@ class AgentWorkflowResolverListPublishedTests(TestCase):
         # Only the public one.
         assert public_count == 1
 
-    def test_excludes_inactive_and_tombstoned(self):
-        """Inactive or tombstoned workflows don't appear in the public list."""
+    def test_excludes_inactive_workflows(self):
+        """Inactive workflows don't appear in the public list.
+
+        Tombstoned workflows are covered by a separate constraint
+        (``ck_workflow_public_discovery_requires_alive_row``) which
+        prevents the contradictory state at write time, so the test
+        for that path lives in
+        ``test_agent_access_fields.py::TestWorkflowCheckConstraints``.
+        """
         org = OrganizationFactory()
         active = WorkflowFactory(
             org=org,
@@ -224,14 +231,7 @@ class AgentWorkflowResolverListPublishedTests(TestCase):
             agent_access_enabled=True,
             agent_price_cents=10,
             is_active=False,
-        )  # inactive
-        WorkflowFactory(
-            org=org,
-            agent_public_discovery=True,
-            agent_access_enabled=True,
-            agent_price_cents=10,
-            is_tombstoned=True,
-        )  # tombstoned
+        )  # inactive — should be filtered by the resolver
 
         result = AgentWorkflowResolver.list_published()
         for wf in result:
@@ -499,128 +499,22 @@ class GuestGrantExpansionTests(TestCase):
 # ──────────────────────────────────────────────────────────────────────────
 #
 # AgentWorkflowResolver previously trusted Workflow.clean() to enforce
-# the full x402 publish contract (agent_access_enabled, billing_mode,
-# price>0, retention=DO_NOT_STORE, etc.). Because clean() doesn't fire
-# on QuerySet.update / fixtures / admin bulk paths, malformed rows
-# could leak into the public catalog. The resolver now defensively
-# filters the full predicate.
-
-
-class AgentResolverDefensivePredicateTests(TestCase):
-    """Rows that bypass clean() must not appear in the public catalog."""
-
-    def _make_published_workflow(self, org, **overrides):
-        """Build a workflow that satisfies the full x402 publish contract."""
-        from validibot.submissions.constants import SubmissionRetention
-
-        defaults = {
-            "org": org,
-            "agent_public_discovery": True,
-            "agent_access_enabled": True,
-            "agent_billing_mode": AgentBillingMode.AGENT_PAYS_X402,
-            "agent_price_cents": 10,
-            "input_retention": SubmissionRetention.DO_NOT_STORE,
-            "is_active": True,
-        }
-        defaults.update(overrides)
-        return WorkflowFactory(**defaults)
-
-    def test_workflow_without_agent_access_enabled_is_excluded(self):
-        """``agent_access_enabled=False`` -> not in public catalog.
-
-        Even though ``agent_public_discovery=True`` is set, missing
-        the runtime gate means the workflow is broken for x402.
-        """
-        from validibot.workflows.models import Workflow
-
-        org = OrganizationFactory()
-        wf = self._make_published_workflow(org)
-        # Bypass clean() via QuerySet.update — simulates fixtures /
-        # admin bulk paths the real bug surfaces through.
-        Workflow.objects.filter(pk=wf.pk).update(agent_access_enabled=False)
-
-        result = AgentWorkflowResolver.list_published()
-        assert wf not in result
-
-    def test_workflow_with_zero_price_is_excluded(self):
-        """price=0 -> not in public catalog.
-
-        The x402 path requires a positive price. Listing a price-0
-        workflow would mislead agents about what they'd pay.
-        """
-        from validibot.workflows.models import Workflow
-
-        org = OrganizationFactory()
-        wf = self._make_published_workflow(org)
-        Workflow.objects.filter(pk=wf.pk).update(agent_price_cents=0)
-
-        result = AgentWorkflowResolver.list_published()
-        assert wf not in result
-
-    def test_workflow_with_wrong_billing_mode_is_excluded(self):
-        """billing_mode != AGENT_PAYS_X402 -> not in public catalog.
-
-        ``AUTHOR_PAYS`` is the default mode for authenticated-agent
-        access via the author's plan quota; it doesn't belong in the
-        anonymous-x402 catalog because there's no x402 payment flow
-        for anonymous callers under that mode.
-        """
-        from validibot.workflows.models import Workflow
-
-        org = OrganizationFactory()
-        wf = self._make_published_workflow(org)
-        Workflow.objects.filter(pk=wf.pk).update(
-            agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
-        )
-
-        result = AgentWorkflowResolver.list_published()
-        assert wf not in result
-
-    def test_workflow_with_wrong_retention_is_excluded(self):
-        """input_retention != DO_NOT_STORE -> not in public x402 catalog.
-
-        x402 anonymous payment + storing input bytes is incompatible
-        — that's the privacy-invariant the form's clean() enforces.
-        Resolver enforces it for non-form paths.
-        """
-        from validibot.submissions.constants import SubmissionRetention
-        from validibot.workflows.models import Workflow
-
-        org = OrganizationFactory()
-        wf = self._make_published_workflow(org)
-        Workflow.objects.filter(pk=wf.pk).update(
-            input_retention=SubmissionRetention.STORE_30_DAYS,
-        )
-
-        result = AgentWorkflowResolver.list_published()
-        assert wf not in result
-
-    def test_archived_workflow_is_excluded(self):
-        """is_archived=True -> not in public catalog."""
-        from validibot.workflows.models import Workflow
-
-        org = OrganizationFactory()
-        wf = self._make_published_workflow(org)
-        Workflow.objects.filter(pk=wf.pk).update(is_archived=True)
-
-        result = AgentWorkflowResolver.list_published()
-        assert wf not in result
-
-    def test_get_by_slug_applies_same_predicate(self):
-        """get_by_slug enforces the same defensive predicate as list_published."""
-        from validibot.workflows.models import Workflow
-
-        org = OrganizationFactory()
-        wf = self._make_published_workflow(
-            org,
-            slug="defensive-x402",
-        )
-        # Make it inconsistent: keep agent_public_discovery=True but
-        # break a sibling invariant (price=0).
-        Workflow.objects.filter(pk=wf.pk).update(agent_price_cents=0)
-
-        result = AgentWorkflowResolver.get_by_slug(
-            org_slug=org.slug,
-            workflow_slug="defensive-x402",
-        )
-        assert result is None  # filtered out by the predicate
+# the full x402 publish contract.  Because clean() doesn't fire on
+# QuerySet.update / fixtures / admin bulk paths, the resolver also
+# applies the predicate defensively at read time so malformed rows
+# never reach the public catalog even if clean() was bypassed at
+# write time.
+#
+# The DB-level CheckConstraints in workflows/models.py now block
+# every contradictory state at write time, so legacy "create a bad
+# row via update() then verify the resolver filters it" tests are
+# no longer constructable on the current schema (the constraints
+# reject the setup).  The same invariants are tested as DB
+# constraints in
+# ``validibot/workflows/tests/test_agent_access_fields.py::TestWorkflowCheckConstraints``, # noqa:E501
+# which exercises the constraint from the write side directly —
+# stronger coverage than reading back through the resolver.
+#
+# The resolver predicate stays in place as defense-in-depth for any
+# legacy data that pre-dates the constraints, but it is no longer
+# uniquely test-covered here.

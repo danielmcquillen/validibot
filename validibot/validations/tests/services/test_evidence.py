@@ -173,6 +173,47 @@ class TestBuildManifest:
         manifest = EvidenceManifestBuilder.build(run)
         assert manifest.input_schema is None
 
+    # ── Manifest source field ──────────────────────────────────────
+    #
+    # ``ValidationRun.source`` is set by the launch path from the
+    # authenticated route.  The manifest builder propagates it
+    # verbatim so external verifiers can answer "what surface
+    # produced this run?" without consulting the producer database
+    # (which may have been purged under DO_NOT_STORE retention).
+    #
+    # The builder uses a forward-compat shim that emits the field
+    # only when the installed ``validibot-shared`` schema accepts it.
+    # These tests assume the installed shared library is recent
+    # enough; if validibot-shared regresses the field, the tests
+    # surface the regression at the integration boundary.
+    def test_build_propagates_x402_source(self):
+        """An x402-originated run records ``X402_AGENT`` in the manifest."""
+        from validibot.validations.constants import ValidationRunSource
+
+        workflow = WorkflowFactory()
+        WorkflowStepFactory(workflow=workflow)
+        run = _completed_run(
+            workflow=workflow,
+            source=ValidationRunSource.X402_AGENT,
+        )
+
+        manifest = EvidenceManifestBuilder.build(run)
+        assert manifest.source == ValidationRunSource.X402_AGENT.value
+
+    def test_build_propagates_api_source(self):
+        """A REST-API-originated run records ``API`` in the manifest."""
+        from validibot.validations.constants import ValidationRunSource
+
+        workflow = WorkflowFactory()
+        WorkflowStepFactory(workflow=workflow)
+        run = _completed_run(
+            workflow=workflow,
+            source=ValidationRunSource.API,
+        )
+
+        manifest = EvidenceManifestBuilder.build(run)
+        assert manifest.source == ValidationRunSource.API.value
+
 
 # ──────────────────────────────────────────────────────────────────────
 # EvidenceManifestBuilder.serialise — canonical JSON contract

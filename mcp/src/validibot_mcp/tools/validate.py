@@ -132,6 +132,11 @@ async def _validate_x402(
         amount=str(cents_to_usdc_atomic(price_cents)),
         network=settings.x402_network,
         asset=settings.x402_asset,
+        # Forward the receiving wallet so Django can compare it to
+        # its own ``X402_PAY_TO_ADDRESS`` and refuse runs whose
+        # receipts paid a different address — closes the
+        # config-drift gap between MCP / facilitator / Django.
+        pay_to=settings.x402_pay_to_address,
         workflow_slug=resolved_workflow_slug,
         org_slug=resolved_org,
         file_name=file_name,

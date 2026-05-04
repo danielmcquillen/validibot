@@ -169,7 +169,7 @@ container will exit during the license check.
 
 ### Configure the knobs
 
-The MCP deploy tooling reads two values from
+The MCP deploy tooling reads its public Cloud Run config from
 `.envs/.production/.google-cloud/.build`:
 
 ```bash
@@ -182,6 +182,15 @@ ENABLE_MCP_SERVER=true
 # tool calls here. There is no default; setting this wrong could
 # accidentally proxy your users' traffic to another operator's API.
 VALIDIBOT_MCP_API_BASE_URL=https://app.your-domain.example
+
+# Optional anonymous x402 public config. Leave disabled unless the
+# Django side also has matching X402_PAY_TO_ADDRESS and
+# X402_ALLOWED_NETWORK_ASSET_PAIRS values.
+VALIDIBOT_X402_ENABLED=false
+VALIDIBOT_X402_TEST_MODE=false
+VALIDIBOT_X402_NETWORK=eip155:8453
+VALIDIBOT_X402_ASSET=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+VALIDIBOT_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402
 ```
 
 See `.envs.example/.production/.google-cloud/.build` for the full

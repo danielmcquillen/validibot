@@ -191,6 +191,44 @@ These don't affect which buckets or URLs are used - that's all driven by the inp
 - **No secrets in containers**: Validators use ADC (Application Default Credentials) from the attached service account
 - **Safe rollbacks**: Rolling back a validator version doesn't affect stage isolation
 
+## Image-pinning policy: `VALIDATOR_BACKEND_IMAGE_POLICY`
+
+Cloud Run Jobs let an operator deploy a validator backend by pointing the Job at any container image — `:latest`, a moving tag, a specific version, or a digest. The setting `VALIDATOR_BACKEND_IMAGE_POLICY` decides how strict Validibot is about what counts as an acceptable launch image.
+
+### The three policies
+
+| Setting value     | What it accepts                                          | Use case                                            |
+| ----------------- | -------------------------------------------------------- | --------------------------------------------------- |
+| `tag`             | Anything (tag, digest, latest)                           | Default for community / self-host quick-start       |
+| `digest`          | Image references containing `@sha256:<hex>`              | Production self-hosted: prove which bytes ran       |
+| `signed-digest`   | Digest-pinned **and** cosign verification enabled        | High-trust hosted environments                      |
+
+The policy is enforced by `validibot/validations/services/image_policy.py`. Every Cloud Run launcher path (`launcher.py`) consults `enforce_image_policy()` before triggering the job and refuses to launch when the configured image violates the policy.
+
+### Resolution rules
+
+The setting resolver applies three rules:
+
+1. **Empty or unset** → defaults to `tag`. The bootstrap-friendly default for community installs that haven't been hardened yet.
+2. **Recognised value** (case-insensitive) → that policy.
+3. **Non-empty unrecognised value** → raises `ImproperlyConfigured`.
+
+The third rule is the security-critical one. A typo in a strict-intent setting (`"strict"` instead of `"signed-digest"`, `"hash"` instead of `"digest"`, …) used to silently fall back to `tag`. That inverted operator intent and turned the loosest mode into the effective policy. The resolver now fails loud so the bug surfaces immediately. The doctor command (`validibot doctor`) catches the exception and reports it as a `VB711` check failure rather than crashing the whole run.
+
+### Strict-mode lookup failures
+
+Under `digest` and `signed-digest` policies, the launcher needs to read the Cloud Run Job's *configured* image to validate it against the policy. If that lookup fails (the Job doesn't exist, the service account lacks `run.viewer`, the project ID is wrong), the launcher cannot verify the image — and under strict intent that is a launch-blocking configuration error, not a "let's hope for the best" fallback. The launcher refuses to trigger the Job and surfaces a clear error message naming the missing prerequisite.
+
+Under the default `tag` policy a lookup failure is non-fatal — the launcher proceeds and execution metadata is captured best-effort.
+
+### Doctor check
+
+Run `validibot doctor` to get a stage-aware advisory:
+
+- `VB711` (error) — invalid `VALIDATOR_BACKEND_IMAGE_POLICY` value (typo).
+- `VB712` (warn / info) — policy is `tag` and the deployment target is `production`. Operators on production targets should pin to `digest` or `signed-digest`.
+- `VB713` (error) — policy is `signed-digest` but `COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES` is false. Every launch will be refused; either enable cosign verification or relax the policy.
+
 ## Lost Callback Recovery
 
 If a Cloud Run Job completes but its callback never reaches Django (network failure, container crash before POST, Cloud Run retry exhaustion), the run gets stuck in `RUNNING` status. The `cleanup_stuck_runs` management command handles this:

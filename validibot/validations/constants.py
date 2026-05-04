@@ -325,11 +325,10 @@ class Severity(TextChoices):
 class ValidationRunSource(TextChoices):
     """How a validation run was launched.
 
-    Trust ADR (2026-04-27) + 2026-05-03 review (P1 #4): this value
-    must be derived from the authenticated route / auth channel —
-    NEVER from a caller-controlled header. Each value corresponds to
-    a distinct launch path with a distinct trust profile, and the
-    evidence manifest needs to distinguish them.
+    This value MUST be derived from the authenticated route / auth
+    channel — never from a caller-controlled header.  Each value
+    corresponds to a distinct launch path with a distinct trust
+    profile, and the evidence manifest needs to distinguish them.
     """
 
     LAUNCH_PAGE = "LAUNCH_PAGE", _("Launch Page")

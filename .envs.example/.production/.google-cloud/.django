@@ -83,6 +83,21 @@ STORAGE_BUCKET=your-app-name-storage
 # Consult each add-on's own documentation for the keys it expects; a
 # community-only deployment does not need any of them.
 
+# X402 RECEIPT VERIFICATION (cloud agent payments)
+# ==============================================================================
+# Required only when the MCP Cloud Run service has VALIDIBOT_X402_ENABLED=true
+# in .build. Django verifies the pay-to address and the exact
+# (network, asset) pair before creating anonymous x402 runs.
+#
+# The MCP receiver wallet lives in the separate .mcp Secret Manager
+# secret, so set the Django verifier value here explicitly. The allowed
+# pair must match the MCP-side VALIDIBOT_X402_NETWORK and
+# VALIDIBOT_X402_ASSET values from .build.
+#
+# Example: Base mainnet USDC
+#X402_PAY_TO_ADDRESS=0xYOUR_PRODUCTION_BASE_MAINNET_WALLET
+#X402_ALLOWED_NETWORK_ASSET_PAIRS=eip155:8453=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+
 # DEFAULT USERS
 # ==============================================================================
 # Initial superuser created on first run

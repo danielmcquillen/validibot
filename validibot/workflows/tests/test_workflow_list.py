@@ -160,6 +160,56 @@ def test_archived_badge_priority(client):
     assert "Archived" in html
 
 
+def test_archive_clears_public_agent_flags(client):
+    """Archiving must clear ``agent_public_discovery`` + ``agent_access_enabled``.
+
+    The ``ck_workflow_public_discovery_requires_alive_row`` constraint
+    forbids the contradictory state where a row is archived but still
+    claims to be on the public agent catalog.  The archive view must
+    therefore strip the agent flags in the same transition, mirroring
+    what ``Workflow.tombstone()`` does for the harder removal.
+
+    Without this, archiving a published x402 workflow would raise an
+    IntegrityError at save time — the archive button would simply
+    fail in production.
+    """
+    from validibot.submissions.constants import SubmissionRetention
+    from validibot.workflows.constants import AgentBillingMode
+
+    user = UserFactory()
+    org = OrganizationFactory()
+    grant_role(user, org, RoleCode.OWNER)
+    workflow = WorkflowFactory(
+        org=org,
+        user=user,
+        name="Published x402 Workflow",
+        is_active=True,
+        is_archived=False,
+        agent_access_enabled=True,
+        agent_public_discovery=True,
+        agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+        agent_price_cents=10,
+        input_retention=SubmissionRetention.DO_NOT_STORE,
+    )
+    client.force_login(user)
+    user.set_current_org(org)
+    session = client.session
+    session["active_org_id"] = org.id
+    session.save()
+
+    url = reverse("workflows:workflow_archive", args=[workflow.pk])
+    response = client.post(url, HTTP_HX_REQUEST="true")
+
+    assert response.status_code in (HTTPStatus.OK, HTTPStatus.NO_CONTENT)
+    workflow.refresh_from_db()
+    # All four bits must flip atomically — partial state would
+    # violate the alive-row constraint.
+    assert workflow.is_archived is True
+    assert workflow.is_active is False
+    assert workflow.agent_public_discovery is False
+    assert workflow.agent_access_enabled is False
+
+
 def test_unarchive_hx_updates_state(client):
     user = UserFactory()
     org = OrganizationFactory()

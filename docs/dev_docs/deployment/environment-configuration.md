@@ -21,7 +21,7 @@ Environment configuration uses a template-based approach:
     │   ├── .mcp            # MCP container env (when MCP is enabled)
     │   └── .postgres
     ├── .google-cloud/      # Google Cloud Platform deployment
-    │   ├── .build          # Deploy-time knobs (ENABLE_MCP_SERVER, VALIDIBOT_MCP_API_BASE_URL)
+    │   ├── .build          # Deploy-time knobs (MCP API URL, x402 public config)
     │   ├── .django         # Django runtime settings (uploaded to Secret Manager)
     │   ├── .just           # Just command runner settings (sourced locally)
     │   └── .mcp            # MCP Cloud Run env (uploaded to Secret Manager as mcp-env)
@@ -176,12 +176,15 @@ The quick version of "where does each variable go":
 | `VALIDIBOT_MCP_BASE_URL` | `.django` | Django stamps this as the OIDC audience; `ensure_oidc_clients` derives the redirect URI from it |
 | `MCP_OIDC_AUDIENCE`, `MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS` | `.django` | Django verifies MCP → Django identity tokens on GCP |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST` | `.postgres` | Database credentials, kept isolated |
-| `VALIDIBOT_API_BASE_URL` | `.mcp` | MCP server's target for REST calls |
+| `VALIDIBOT_API_BASE_URL` | `.mcp` / `.build` (GCP) | MCP server's target for REST calls; GCP deploy stamps `VALIDIBOT_MCP_API_BASE_URL` into `VALIDIBOT_API_BASE_URL` |
 | `VALIDIBOT_OAUTH_CLIENT_SECRET` | `.mcp` | Must equal `IDP_OIDC_MCP_SERVER_CLIENT_SECRET` in `.django` |
+| `VALIDIBOT_X402_PAY_TO_ADDRESS` | `.mcp` | Receiving wallet MCP includes in x402 payment requirements |
 | `VALIDIBOT_MCP_BASE_URL` (also in `.mcp`) | `.mcp` | MCP server's own public URL (used for RFC 9728 metadata) |
+| `X402_PAY_TO_ADDRESS`, `X402_ALLOWED_NETWORK_ASSET_PAIRS` | `.django` (cloud) | Django-side x402 receipt verification; must agree with the MCP-side wallet/network/asset |
 | `VALIDIBOT_COMMERCIAL_PACKAGE`, `VALIDIBOT_PRIVATE_INDEX_URL` | `.build` | Docker build-time args (docker-compose only) |
 | `ENABLE_MCP_SERVER` | `.build` | Recipe-level knob; decides whether `just gcp deploy-all` and the compose MCP profile activate MCP |
 | `VALIDIBOT_MCP_API_BASE_URL` | `.build` (GCP) | Passed as `--set-env-vars` at `gcloud run deploy` time |
+| `VALIDIBOT_X402_ENABLED`, `VALIDIBOT_X402_TEST_MODE`, `VALIDIBOT_X402_NETWORK`, `VALIDIBOT_X402_ASSET`, `VALIDIBOT_X402_FACILITATOR_URL` | `.build` (GCP) | Non-secret MCP x402 deploy-time config stamped into the Cloud Run revision |
 | `GCP_PROJECT_ID`, `GCP_REGION` | `.just` (GCP) | Sourced into the shell before running `just gcp` recipes |
 
 If a variable needs to appear in two files (like `VALIDIBOT_MCP_BASE_URL`

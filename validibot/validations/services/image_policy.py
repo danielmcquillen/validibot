@@ -116,19 +116,49 @@ class ImagePolicyResult:
 
 
 def get_current_policy() -> ValidatorBackendImagePolicy:
-    """Read the configured policy, defaulting to ``TAG`` when unset.
+    """Read the configured policy with strict validation.
 
-    Any unrecognised value falls back to ``TAG`` (the loose default)
-    rather than crashing — misconfigured deployments stay running
-    rather than failing every launch. The doctor command flags
-    unrecognised values separately.
+    Resolution rules:
+
+    - **Empty / unset** → default to :attr:`ValidatorBackendImagePolicy.TAG`.
+      A bootstrap-friendly default for community / self-hosted
+      installs that haven't been hardened yet.
+
+    - **Recognised value** (case-insensitive) → that policy.
+
+    - **Non-empty unrecognised value** → raise
+      :class:`~django.core.exceptions.ImproperlyConfigured`.
+
+    The strict-intent case is the security-critical one.  A typo in
+    a production setting (``"strict"`` instead of
+    ``"signed-digest"``, ``"hash"`` instead of ``"digest"``, …)
+    must NOT silently fall back to ``TAG`` — that would invert the
+    operator's intent and turn the loosest mode into the effective
+    policy.  Failing loud surfaces the bug at first call (and via
+    the doctor command, which catches the exception and reports it
+    as a check failure) so the operator can fix the config rather
+    than ship a hardening regression.
+
+    Raises:
+        ImproperlyConfigured: When ``VALIDATOR_BACKEND_IMAGE_POLICY``
+            is a non-empty value that doesn't match any known policy.
     """
+    from django.core.exceptions import ImproperlyConfigured
+
     raw = getattr(settings, "VALIDATOR_BACKEND_IMAGE_POLICY", "")
     raw = (raw or "").strip().lower()
+    if not raw:
+        return ValidatorBackendImagePolicy.TAG
     try:
         return ValidatorBackendImagePolicy(raw)
-    except ValueError:
-        return ValidatorBackendImagePolicy.TAG
+    except ValueError as exc:
+        valid_values = ", ".join(repr(p.value) for p in ValidatorBackendImagePolicy)
+        msg = (
+            f"VALIDATOR_BACKEND_IMAGE_POLICY={raw!r} is not a recognised "
+            f"policy. Valid values are: {valid_values}. Leave the setting "
+            f"empty to use the 'tag' default."
+        )
+        raise ImproperlyConfigured(msg) from exc
 
 
 def enforce_image_policy(image_ref: str) -> ImagePolicyResult:

@@ -72,19 +72,25 @@ mkdir -p .envs/.production/.google-cloud
 # Copy both template files
 cp .envs.example/.production/.google-cloud/.django .envs/.production/.google-cloud/.django
 cp .envs.example/.production/.google-cloud/.just .envs/.production/.google-cloud/.just
+cp .envs.example/.production/.google-cloud/.build .envs/.production/.google-cloud/.build
+cp .envs.example/.production/.google-cloud/.mcp .envs/.production/.google-cloud/.mcp
 
 # Edit .django with your GCP project values (uploaded to Secret Manager)
 # Edit .just with your GCP project ID and region (used locally by just commands)
+# Edit .build with deploy-time knobs like ENABLE_MCP_SERVER and x402 public config
+# Edit .mcp with MCP-only secrets before uploading mcp-env
 
 # Source the just config before running deployment commands
 source .envs/.production/.google-cloud/.just
 just gcp deploy prod
 ```
 
-**Two types of config files:**
+**GCP config files:**
 
 - `.django` - Django runtime settings, uploaded to Secret Manager
 - `.just` - Just command runner settings (project ID, region), sourced locally
+- `.build` - Deploy-time knobs read by just recipes and stamped into Cloud Run env vars
+- `.mcp` - MCP server secrets, uploaded to the separate `mcp-env` Secret Manager secret
 
 ### AWS (Future)
 
@@ -172,6 +178,8 @@ Both are optional — if the file is absent the recipes no-op cleanly.
 | `VALIDIBOT_COMMERCIAL_PACKAGE` | Build-time | Exact commercial package reference to bake into the image. Not needed for `local-pro` / `local-cloud` development (those editable-install from the sibling repo). | `validibot-pro==0.1.0` |
 | `VALIDIBOT_PRIVATE_INDEX_URL` | Build-time | Private package index URL from your license email. | `https://user:pass@pypi.validibot.com/simple/` |
 | `ENABLE_MCP_SERVER` | Recipe | Activate the `mcp` Compose profile so the FastMCP container is built and started alongside the stack. Set to `true` for `just local-pro up` / `just local-cloud up`; ignored by `just local up` (community compose has no mcp service). | `true` / `false` |
+| `VALIDIBOT_MCP_API_BASE_URL` | Recipe | GCP-only API URL stamped into the MCP Cloud Run service as `VALIDIBOT_API_BASE_URL`. Required when `ENABLE_MCP_SERVER=true` on GCP. | `https://app.your-domain.example` |
+| `VALIDIBOT_X402_ENABLED`, `VALIDIBOT_X402_TEST_MODE`, `VALIDIBOT_X402_NETWORK`, `VALIDIBOT_X402_ASSET`, `VALIDIBOT_X402_FACILITATOR_URL` | Recipe | GCP-only public x402 config stamped into the MCP Cloud Run revision. The receiving wallet stays in `.mcp`; Django verifies the matching pay-to and `(network, asset)` pair from `.django`. | Base mainnet USDC |
 
 ### Django Variables (`.django`)
 

@@ -192,14 +192,13 @@ class EvidenceManifestBuilder:
         # cleanly.
         executed_at_iso = run.ended_at.isoformat() if run.ended_at is not None else ""
 
-        # Trust ADR P2 #2 (2026-05-03 review): record the run's source
-        # in the manifest.  ``run.source`` is populated by the launch
-        # path from the *authenticated route* (see Trust ADR P1 #4 —
-        # never trust a client header).  ``ValidationRunSource`` is a
-        # ``TextChoices`` enum so the column value is already a string;
-        # the manifest stores the raw enum value (e.g. ``"X402_AGENT"``)
-        # so external verifiers can compare it without importing the
-        # Django enum.
+        # Record the run's source in the manifest.  ``run.source`` is
+        # populated by the launch path from the *authenticated route*
+        # (never from a client-controlled header).
+        # ``ValidationRunSource`` is a ``TextChoices`` enum so the
+        # column value is already a string; the manifest stores the
+        # raw enum value (e.g. ``"X402_AGENT"``) so external verifiers
+        # can compare it without importing the Django enum.
         #
         # Forward-compat shim: emit ``source=`` only when the installed
         # ``validibot-shared`` schema accepts the field.  The field was

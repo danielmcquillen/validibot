@@ -200,7 +200,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                 ],
                 name="uq_workflow_org_slug_version",
             ),
-            # ── Trust ADR-2026-04-27 + 2026-05-03 review (P2 #1) ──
+            # ── Public-x402 publishing invariants (DB-level guards) ──
             #
             # ``Workflow.clean()`` enforces a set of trust-critical
             # invariants for the public-x402 publishing contract, but
@@ -226,10 +226,15 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                 ),
                 name="ck_workflow_public_discovery_requires_agent_access",
             ),
+            # x402 requires a positive, NON-NULL price.  SQL CHECK
+            # constraints treat ``NULL > 0`` as UNKNOWN (not FALSE),
+            # so the original ``agent_price_cents__gt=0`` clause
+            # silently passed for x402 rows with NULL prices.  The
+            # explicit ``isnull=False`` closes that hole.
             models.CheckConstraint(
                 condition=(
                     ~Q(agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402)
-                    | Q(agent_price_cents__gt=0)
+                    | (Q(agent_price_cents__isnull=False) & Q(agent_price_cents__gt=0))
                 ),
                 name="ck_workflow_x402_requires_positive_price",
             ),
@@ -239,6 +244,43 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                     | Q(input_retention=SubmissionRetention.DO_NOT_STORE)
                 ),
                 name="ck_workflow_x402_requires_do_not_store_retention",
+            ),
+            # Three additional invariants enforced at the DB layer
+            # for the same reason — ``clean()`` covers them but bulk
+            # paths bypass it.
+            #
+            # ① Public discovery implies x402 billing.  A workflow on
+            # the cross-org public catalog must accept x402 — the
+            # catalog is the anonymous payment surface.  Without this
+            # constraint a row with ``agent_public_discovery=True`` and
+            # ``agent_billing_mode=AUTHOR_PAYS`` could persist via
+            # ``QuerySet.update`` (clean() would have rejected it,
+            # but clean() doesn't run on bulk paths).
+            models.CheckConstraint(
+                condition=(
+                    Q(agent_public_discovery=False)
+                    | Q(agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402)
+                ),
+                name="ck_workflow_public_discovery_requires_x402_billing",
+            ),
+            # ② Public discovery implies the row is alive (not
+            # archived, not tombstoned).  An archived row that still
+            # carries ``agent_public_discovery=True`` would be a
+            # contradiction the resolver hides from the catalog but
+            # x402 run-creation could still hit before the
+            # publish-invariants re-check (P1 #5) catches it.  The
+            # legacy NULL handling (treating ``is_archived=NULL`` and
+            # ``is_tombstoned=NULL`` as "not archived" / "not
+            # tombstoned") matches ``_public_x402_predicate``.
+            models.CheckConstraint(
+                condition=(
+                    Q(agent_public_discovery=False)
+                    | (
+                        (Q(is_archived=False) | Q(is_archived__isnull=True))
+                        & (Q(is_tombstoned=False) | Q(is_tombstoned__isnull=True))
+                    )
+                ),
+                name="ck_workflow_public_discovery_requires_alive_row",
             ),
         ]
         ordering = [
@@ -690,11 +732,10 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
         # Guest grant check.
         #
-        # Trust ADR-2026-04-27 + 2026-05-03 review (P1 #1): a grant on
-        # ANY version of this workflow's family (same ``(org_id, slug)``
-        # pair) authorises view of every version, matching the
-        # visibility resolver's semantics in
-        # :meth:`WorkflowQuerySet.for_user` (lines 146-153).
+        # A grant on ANY version of this workflow's family (same
+        # ``(org_id, slug)`` pair) authorises view of every version,
+        # matching the visibility resolver's semantics in
+        # :meth:`WorkflowQuerySet.for_user`.
         #
         # Without this expansion, ``Workflow.objects.for_user(user)``
         # surfaces v2 in the catalog (correct), then ``can_view()``
@@ -743,21 +784,20 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         if user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, self):
             return True
 
-        # Guest grant check.
+        # Guest grant check — family-scoped.
         #
-        # Trust ADR-2026-04-27 + 2026-05-03 review (P1 #1): family-grant
-        # expansion. A grant on ANY version of this workflow's family
-        # (same ``(org_id, slug)`` pair) authorises execution of every
+        # A grant on ANY version of this workflow's family (same
+        # ``(org_id, slug)`` pair) authorises execution of every
         # version, matching the visibility resolver's semantics in
-        # :meth:`WorkflowQuerySet.for_user` (lines 146-153).
+        # :meth:`WorkflowQuerySet.for_user`.
         #
         # Without this expansion: a guest granted v1 sees v2 in their
         # catalog (the queryset expands by family), clicks Launch on v2,
         # and gets "permission denied" here — because ``self.access_grants``
-        # only matches the exact row. The colleague's review flagged
-        # the same divergence in :meth:`can_view`. Tightening one
-        # without the other would just shift the bug from "deny on
-        # launch" to "show in catalog -> 404 on click".
+        # only matches the exact row. ``can_view`` carries the same
+        # rule for symmetry; tightening one without the other would
+        # just shift the bug from "deny on launch" to "show in catalog
+        # then 404 on click".
         return WorkflowAccessGrant.objects.filter(
             user=user,
             is_active=True,

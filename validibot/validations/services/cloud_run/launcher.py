@@ -248,8 +248,7 @@ def launch_energyplus_validation(
         # 6. Trigger Cloud Run Job directly via Jobs API
         job_name = settings.GCS_ENERGYPLUS_JOB_NAME
 
-        # Trust ADR Phase 5 Session B + 2026-05-03 review (P2 #3):
-        # refuse to launch when the Job's configured image violates
+        # Refuse to launch when the Job's configured image violates
         # VALIDATOR_BACKEND_IMAGE_POLICY.
         #
         # Behaviour by policy:
@@ -261,9 +260,7 @@ def launch_energyplus_validation(
         #   policy are both required. A lookup failure here means
         #   we can't *verify* the configured image — under strict
         #   intent that's a launch-blocking configuration error,
-        #   not a "let's hope for the best" fallback. The original
-        #   Phase 5 implementation was fail-open here; the review
-        #   correctly flagged that as exploitable.
+        #   not a "let's hope for the best" fallback.
         policy = get_current_policy()
         configured_image = get_job_configured_image(
             project_id=settings.GCP_PROJECT_ID,

@@ -90,6 +90,25 @@ Every release that adds *additive* schema fields preserves the v1 schema version
 }
 ```
 
+### Run source attribution
+
+The manifest's `source` field documents which authenticated route produced the run. Verifiers use it to answer "what surface produced this evidence?" without consulting the producer database — important under `DO_NOT_STORE` retention where the run row may have been purged.
+
+**Allowed values:**
+
+| Value         | Route                                                |
+| ------------- | ---------------------------------------------------- |
+| `LAUNCH_PAGE` | The web form's launch page (browser-driven)          |
+| `API`         | The REST API (`POST /api/v1/orgs/.../workflows/.../runs/`) |
+| `MCP`         | The MCP helper API (authenticated agent runs)        |
+| `X402_AGENT`  | The cloud-only x402 anonymous-agent route            |
+| `CLI`         | The `validibot` command-line tool                    |
+| `SCHEDULE`    | Scheduled / automated runs                           |
+
+**Trust rule:** `source` MUST be derived from the authenticated route — never from a request header. A previous implementation read `X-Validibot-Source` from incoming requests; that made the field caller-controlled (any client could claim `MCP` while invoking the plain API), polluting trust signals and pricing telemetry. The header has been removed; each launch helper takes an explicit `source` argument that the route fills in. See `validibot/workflows/views_launch_helpers.py::launch_api_validation_run`.
+
+**Schema location:** `EvidenceManifest.source` is a top-level optional field on the manifest (`validibot_shared.evidence.manifest`), added in `validibot-shared` 0.7.4. The field is additive — manifests written by older producers omit it, and the v1 schema-version contract is preserved.
+
 ## Bundle layout (when exported)
 
 When an operator exports a bundle, the artefacts are arranged as:

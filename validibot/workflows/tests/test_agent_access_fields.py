@@ -231,7 +231,7 @@ class TestX402RequiresDoNotStore:
         wf.clean()  # should not raise
 
 
-# ── Source resolution: removed (Trust ADR P1 #4, 2026-05-03) ────────
+# ── Source resolution: removed ──────────────────────────────────────
 #
 # The previous implementation of source resolution accepted an
 # ``X-Validibot-Source`` request header and trusted it.  That made
@@ -588,7 +588,7 @@ class TestTombstoneClearsPublicDiscovery:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# DB-level CheckConstraint enforcement (Trust ADR P2 #1, 2026-05-03)
+# DB-level CheckConstraint enforcement
 # ──────────────────────────────────────────────────────────────────────
 #
 # ``Workflow.clean()`` enforces the public-x402 publishing invariants
@@ -693,3 +693,94 @@ class TestWorkflowCheckConstraints:
         )
         wf.refresh_from_db()
         assert wf.input_retention == SubmissionRetention.STORE_30_DAYS
+
+    def test_x402_billing_rejects_null_price_via_update(self):
+        """x402 + NULL price is a contradiction the DB must refuse.
+
+        SQL CHECK constraints treat ``NULL > 0`` as UNKNOWN (not
+        FALSE), so a naive ``agent_price_cents > 0`` clause silently
+        passes for x402 rows with NULL prices.  The constraint adds
+        an explicit ``IS NOT NULL`` clause to close that hole.
+        """
+        from django.db import IntegrityError
+        from django.db import transaction
+
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory(
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=100,
+            agent_access_enabled=True,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
+        )
+
+        with transaction.atomic(), pytest.raises(IntegrityError):
+            Workflow.objects.filter(pk=wf.pk).update(agent_price_cents=None)
+
+    def test_public_discovery_requires_x402_billing_via_update(self):
+        """Public-discovery rows must use x402 billing.
+
+        A row with ``agent_public_discovery=True`` but
+        ``agent_billing_mode=AUTHOR_PAYS`` is a contradiction —
+        the public catalog is the anonymous-payment surface, so
+        AUTHOR_PAYS doesn't apply there.  ``clean()`` rejects this
+        for normal saves; the DB constraint catches the bypass.
+        """
+        from django.db import IntegrityError
+        from django.db import transaction
+
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory(
+            agent_access_enabled=True,
+            agent_public_discovery=True,
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=10,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
+        )
+
+        with transaction.atomic(), pytest.raises(IntegrityError):
+            Workflow.objects.filter(pk=wf.pk).update(
+                agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
+            )
+
+    def test_public_discovery_blocked_on_archived_row_via_update(self):
+        """An archived row must not retain ``agent_public_discovery=True``."""
+        from django.db import IntegrityError
+        from django.db import transaction
+
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory(
+            agent_access_enabled=True,
+            agent_public_discovery=True,
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=10,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
+        )
+
+        with transaction.atomic(), pytest.raises(IntegrityError):
+            Workflow.objects.filter(pk=wf.pk).update(is_archived=True)
+
+    def test_public_discovery_blocked_on_tombstoned_row_via_update(self):
+        """A tombstoned row must not retain ``agent_public_discovery=True``.
+
+        ``tombstone()`` clears the flag, but the DB constraint
+        defends the invariant against bypass paths that don't go
+        through the tombstone helper.
+        """
+        from django.db import IntegrityError
+        from django.db import transaction
+
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory(
+            agent_access_enabled=True,
+            agent_public_discovery=True,
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=10,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
+        )
+
+        with transaction.atomic(), pytest.raises(IntegrityError):
+            Workflow.objects.filter(pk=wf.pk).update(is_tombstoned=True)

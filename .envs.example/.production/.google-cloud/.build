@@ -5,7 +5,8 @@
 # Copy this file to ``.envs/.production/.google-cloud/.build`` before
 # your first ``just gcp deploy-all prod``. The ``just gcp`` module
 # sources this file at the top of any recipe that needs deploy-time
-# knobs — currently the MCP build/deploy step and the MCP API URL.
+# knobs — currently the MCP build/deploy step, the MCP API URL, and
+# the MCP x402 public payment settings.
 #
 # Unlike the other files in this directory (``.django``, ``.mcp``,
 # ``.just``), this file is NOT uploaded to GCP Secret Manager — it
@@ -67,3 +68,42 @@ ENABLE_MCP_SERVER=false
 # to Django using a Cloud Run OIDC identity token issued for this
 # audience. ``just gcp mcp setup`` wires that up automatically.
 VALIDIBOT_MCP_API_BASE_URL=
+
+# -- MCP x402 public config ----------------------------------------------
+
+# These values are public deploy-time config for the MCP Cloud Run
+# revision. They are deliberately kept out of ``.mcp`` because
+# ``.mcp`` is uploaded to Secret Manager and should only hold actual
+# secrets, such as receiving wallet addresses.
+#
+# Django still verifies the receipt independently. If you enable x402
+# here, set the matching Django-side values in ``.django``:
+#
+#   X402_PAY_TO_ADDRESS=<same wallet MCP forwards>
+#   X402_ALLOWED_NETWORK_ASSET_PAIRS=eip155:8453=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+#
+# ENABLED
+# -------
+#   true   — anonymous x402 launches are available through /public-mcp
+#   false  — anonymous launches remain payment-required/disabled
+VALIDIBOT_X402_ENABLED=false
+
+# TEST MODE
+# ---------
+# Keep false for Base mainnet. When true, MCP uses the
+# VALIDIBOT_TEST_X402_PAY_TO_ADDRESS secret from .mcp and the built-in
+# Base Sepolia public defaults from config.py. Django must still be
+# configured with the matching testnet pay-to and allowed pair.
+VALIDIBOT_X402_TEST_MODE=false
+
+# NETWORK / ASSET
+# ---------------
+# Explicit pair the MCP server quotes. Django must list the same pair
+# in X402_ALLOWED_NETWORK_ASSET_PAIRS or run creation fails closed.
+VALIDIBOT_X402_NETWORK=eip155:8453
+VALIDIBOT_X402_ASSET=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+
+# FACILITATOR
+# -----------
+# Endpoint the MCP server asks to verify and settle x402 payments.
+VALIDIBOT_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402

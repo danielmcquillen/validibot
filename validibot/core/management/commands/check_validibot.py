@@ -799,19 +799,42 @@ class Command(BaseCommand):
     def _check_validator_backend_image_policy(self):
         """Surface the deployment's image-pinning policy.
 
-        Trust ADR Phase 5 Session B — operators choose between
-        ``tag`` (default community), ``digest`` (production
-        recommended), and ``signed-digest`` (high-trust). The doctor
-        flags configurations that are loose for the deployment's
-        target stage and inconsistent ``signed-digest`` setups
-        where cosign verification isn't enabled.
+        Operators choose between ``tag`` (default community),
+        ``digest`` (production recommended), and ``signed-digest``
+        (high-trust).  The doctor flags configurations that are
+        loose for the deployment's target stage and inconsistent
+        ``signed-digest`` setups where cosign verification isn't
+        enabled.
+
+        Catches ``ImproperlyConfigured`` from
+        :func:`get_current_policy` and surfaces it as a check
+        failure rather than letting it crash the whole doctor run —
+        an unrecognised setting value is exactly what the doctor is
+        meant to find, not stop on.
         """
+        from django.core.exceptions import ImproperlyConfigured
+
         from validibot.validations.services.image_policy import (
             ValidatorBackendImagePolicy,
         )
         from validibot.validations.services.image_policy import get_current_policy
 
-        policy = get_current_policy()
+        try:
+            policy = get_current_policy()
+        except ImproperlyConfigured as exc:
+            self._add_result(
+                "VB711",
+                "validators",
+                "Validator backend image policy",
+                CheckStatus.ERROR,
+                f"Invalid VALIDATOR_BACKEND_IMAGE_POLICY: {exc}",
+                fix_hint=(
+                    "Set VALIDATOR_BACKEND_IMAGE_POLICY to one of: "
+                    "tag, digest, signed-digest.  Leave empty for "
+                    "the 'tag' default."
+                ),
+            )
+            return
         cosign_enabled = bool(
             getattr(settings, "COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES", False),
         )

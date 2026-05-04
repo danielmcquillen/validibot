@@ -610,3 +610,39 @@ class DoctorRestoreTestMarkerTests(TestCase):
         # Either WARN (most likely) or SKIPPED (DATA_STORAGE_ROOT
         # not set in test env) — never ERROR.
         self.assertIn(restore_check["status"], ("warn", "skipped", "ok"))
+
+
+class DoctorImagePolicyTests(TestCase):
+    """Verify the doctor's handling of ``VALIDATOR_BACKEND_IMAGE_POLICY``.
+
+    The policy resolver raises ``ImproperlyConfigured`` on
+    non-empty unknown values (a typo in a strict-intent setting
+    must not silently relax to ``tag`` — that would invert the
+    operator's intent).  The doctor catches the exception and
+    surfaces a structured ``VB711`` check failure rather than
+    crashing the whole run.
+    """
+
+    def test_unknown_policy_value_reports_vb711_error(self):
+        """A typo in the policy setting surfaces as a clear doctor finding."""
+        from django.test import override_settings
+
+        with override_settings(VALIDATOR_BACKEND_IMAGE_POLICY="strict"):
+            result, _ = _run_doctor()
+
+        # The doctor should have completed despite the bad config —
+        # finding the misconfiguration is the doctor's job, not
+        # crashing on it.
+        vb711 = next(
+            (c for c in result["checks"] if c["id"] == "VB711"),
+            None,
+        )
+        self.assertIsNotNone(
+            vb711,
+            "Expected VB711 to fire for unrecognised image-policy value, "
+            "but no VB711 check was reported.",
+        )
+        self.assertEqual(vb711["status"], "error")
+        # The fix-hint should mention the valid values so the operator
+        # sees the answer alongside the problem.
+        self.assertIn("tag", vb711["fix_hint"].lower())

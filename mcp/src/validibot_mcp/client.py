@@ -318,11 +318,19 @@ async def build_agent_headers(
     amount: str = "",
     network: str = "",
     asset: str = "",
+    pay_to: str = "",
     workflow_slug: str = "",
     org_slug: str = "",
     file_name: str = "",
 ) -> dict[str, str]:
-    """Build HTTP headers for agent API requests with service auth."""
+    """Build HTTP headers for agent API requests with service auth.
+
+    The ``pay_to`` argument carries the receiving wallet that the
+    on-chain transfer was sent to.  The Django side compares this
+    header against ``settings.X402_PAY_TO_ADDRESS`` and refuses the
+    run on mismatch — without the header, the auth layer 401s the
+    request as malformed (every x402 header is required).
+    """
 
     h = await _service_headers()
 
@@ -337,6 +345,8 @@ async def build_agent_headers(
         h["X-X402-Network"] = network
     if asset:
         h["X-X402-Asset"] = asset
+    if pay_to:
+        h["X-X402-Pay-To"] = pay_to
     if workflow_slug:
         h["X-X402-Workflow-Slug"] = workflow_slug
     if org_slug:
@@ -376,6 +386,7 @@ async def create_agent_run(
     amount: str,
     network: str,
     asset: str,
+    pay_to: str,
     workflow_slug: str,
     org_slug: str,
     file_name: str,
@@ -385,6 +396,13 @@ async def create_agent_run(
 
     Calls POST /api/v1/agent/runs/ with service auth and x402 headers.
     The file content goes in the request body (too large for headers).
+
+    ``pay_to`` is the receiving wallet on the receipt — the Django
+    side compares it to its own ``X402_PAY_TO_ADDRESS`` setting and
+    refuses runs whose receipts didn't pay this server's wallet.
+    Pass ``settings.x402_pay_to_address`` from the caller (the
+    validate tool); this client is the trust boundary that asserts
+    the value matches the receipt the facilitator confirmed.
 
     Returns:
         Dict with ``run_id``, ``wallet_address``, ``state``.
@@ -396,6 +414,7 @@ async def create_agent_run(
         amount=amount,
         network=network,
         asset=asset,
+        pay_to=pay_to,
         workflow_slug=workflow_slug,
         org_slug=org_slug,
         file_name=file_name,

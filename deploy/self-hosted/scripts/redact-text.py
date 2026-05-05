@@ -34,9 +34,21 @@ import sys
 REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(
-            r"(?i)\b(authorization|x-api-key|x-auth-token)\s*[:=][^\r\n]*",
+            r"(?i)\b(authorization|proxy-authorization|cookie|set-cookie|"
+            r"x-api-key|x-auth-token|x-csrf-?token|x-x402-payment|"
+            r"payment-signature|payment-required|payment-response|"
+            r"x-validibot-service-identity|x-validibot-api-token|"
+            r"x-validibot-user-sub|x-mcp-service-key)"
+            r"\s*[:=][^\r\n]*",
         ),
         r"\1: [REDACTED]",
+    ),
+    (
+        re.compile(
+            r"(?i)\b(sessionid|csrftoken|csrf_token|remember_token|jsessionid)"
+            r"\s*=\s*([^\s,;]+)",
+        ),
+        r"\1=[REDACTED]",
     ),
     (re.compile(r"(?i)\bBearer\s+[A-Za-z0-9_.-]+"), "Bearer [REDACTED]"),
     (

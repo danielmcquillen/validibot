@@ -631,7 +631,23 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert '"${BACKUP_URI}/db.sql.gz"' not in block
 
     def test_gcp_django_image_stamps_release_version(self):
-        """GCP app images must carry the release tag used by backup manifests."""
+        """GCP app images must carry the release tag used by backup manifests.
+
+        Two acceptable forms here:
+
+        - ``"{{validibot_version}}"`` — the original literal-constant
+          form (still valid for daily deploys);
+        - ``"${VALIDIBOT_VERSION:-{{validibot_version}}}"`` — the
+          override-aware form added with Phase 4 upgrade pinning. The
+          shell expansion picks an explicit env override (set by the
+          upgrade recipe) when present, and falls back to the
+          pyproject-derived constant otherwise.
+
+        We accept either spelling so the test stays meaningful as the
+        version-stamping policy evolves; what matters is that the
+        recipe DOES stamp ``VALIDIBOT_VERSION`` and that the worker /
+        web env carry it through to the running services.
+        """
         build_block = self._block_between(
             "build: _require-gcp-config",
             "# Push Docker image",
@@ -641,8 +657,24 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
             "# Internal: deploy worker service",
         )
 
-        assert '--build-arg VALIDIBOT_VERSION="{{validibot_version}}"' in build_block
-        assert "VALIDIBOT_VERSION={{validibot_version}}" in deploy_block
+        override_form = "${VALIDIBOT_VERSION:-{{validibot_version}}}"
+        accepted_build_forms = (
+            '--build-arg VALIDIBOT_VERSION="{{validibot_version}}"',
+            f'--build-arg VALIDIBOT_VERSION="{override_form}"',
+        )
+        accepted_deploy_forms = (
+            "VALIDIBOT_VERSION={{validibot_version}}",
+            f'VALIDIBOT_VERSION="{override_form}"',
+        )
+
+        assert any(form in build_block for form in accepted_build_forms), (
+            "GCP build recipe must stamp VALIDIBOT_VERSION via "
+            "--build-arg (literal or override-aware form)."
+        )
+        assert any(form in deploy_block for form in accepted_deploy_forms), (
+            "GCP _deploy-web must propagate VALIDIBOT_VERSION via "
+            "--set-env-vars (literal or override-aware form)."
+        )
         assert "VALIDIBOT_VERSION={{git_sha}}" not in deploy_block
 
     def test_validator_deploy_uses_backend_image_metadata_not_app_version(self):
@@ -1187,6 +1219,274 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         assert "just gcp smoke-test" in body
         assert "just gcp backup" in body
 
+    # ── Version-override path (Option C from the second-review pass) ──
+    #
+    # Concept being tested: the *default* version-stamping path reads
+    # pyproject.toml at justfile-load time and bakes the result into a
+    # ``{{validibot_version}}`` constant. That constant is captured
+    # BEFORE any recipe body runs, so by the time an upgrade recipe
+    # has done ``git checkout vX.Y.Z`` the constant still reflects
+    # the OLD pyproject. Without an override, the resulting build
+    # would be tagged with the pre-upgrade version — exactly the
+    # version-provenance failure mode the review flagged.
+    #
+    # The fix is a shell-level override: each upgrade recipe exports
+    # ``VALIDIBOT_VERSION="${TARGET}"`` after checkout, and every
+    # build/deploy line reads ``${VALIDIBOT_VERSION:-{{validibot_version}}}``
+    # so the explicit operator-supplied target wins, falling back to
+    # the pyproject default for daily deploys.
+    #
+    # These tests pin the override path on the recipe shape because
+    # the upgrade flow can't run end-to-end in a unit test (it needs
+    # docker compose / Cloud Run + a real backup target).
+
+    def test_self_hosted_upgrade_pins_validibot_version_to_target(self):
+        """Self-hosted upgrade must export VALIDIBOT_VERSION=<target>.
+
+        The export happens between Step 2/7 (git checkout) and
+        Step 3/7 (build), so the docker compose build picks up the
+        operator-supplied tag rather than the pre-checkout
+        ``{{validibot_version}}`` constant.
+        """
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-upgrade args:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "_run-upgrade helper missing"
+        body = match.group(1)
+
+        export_line = 'export VALIDIBOT_VERSION="${TARGET}"'
+        assert export_line in body, (
+            "Self-hosted _run-upgrade must export VALIDIBOT_VERSION "
+            "to the operator-supplied target so the build stamps the "
+            "correct version. Without this, the parse-time constant "
+            "{{validibot_version}} would still hold the OLD version "
+            "(parsed before git checkout ran)."
+        )
+
+        checkout_idx = body.index('git checkout --quiet "${TARGET}"')
+        export_idx = body.index(export_line)
+        # Match the actual ``docker compose ... build`` command line
+        # rather than the substring ``docker compose`` (which also
+        # appears in explanatory comments). The justfile interpolation
+        # ``{{compose_env_args}}`` only ever lives on real command
+        # lines, never in prose, so it gives us a clean anchor.
+        build_idx = body.index("docker compose {{compose_env_args}}")
+        assert checkout_idx < export_idx < build_idx, (
+            "VALIDIBOT_VERSION export must sit AFTER ``git checkout`` "
+            "(pyproject is now at the new version) and BEFORE the "
+            "``docker compose ... build`` (so the build picks it up)."
+        )
+
+    def test_self_hosted_upgrade_pins_validibot_revision_to_post_checkout_head(self):
+        """Self-hosted upgrade must also export VALIDIBOT_REVISION post-checkout.
+
+        Mirrors the VALIDIBOT_VERSION override but for the commit
+        revision label. ``{{git_sha}}`` is captured at parse time
+        from pre-checkout HEAD, so without this re-export the image
+        would have the right release version label but the OLD
+        commit revision label — what the second-pass review caught.
+
+        We assert ``$(git rev-parse --short HEAD)`` rather than the
+        target tag because tags can point at any commit (and tag
+        objects have their own SHA distinct from the commit SHA).
+        Re-running rev-parse at this point in the recipe guarantees
+        the LABEL matches the actual checked-out commit.
+        """
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-upgrade args:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "_run-upgrade helper missing"
+        body = match.group(1)
+
+        revision_export = 'export VALIDIBOT_REVISION="$(git rev-parse --short HEAD)"'
+        assert revision_export in body, (
+            "Self-hosted _run-upgrade must export VALIDIBOT_REVISION "
+            "to the post-checkout HEAD sha so the image's commit "
+            "revision label matches the checked-out commit. Without "
+            "this, ``{{git_sha}}`` (captured at parse time before "
+            "checkout) would still hold the OLD commit, leaving "
+            "the image labels internally inconsistent."
+        )
+
+        checkout_idx = body.index('git checkout --quiet "${TARGET}"')
+        revision_idx = body.index(revision_export)
+        build_idx = body.index("docker compose {{compose_env_args}}")
+        assert checkout_idx < revision_idx < build_idx, (
+            "VALIDIBOT_REVISION export must sit AFTER ``git checkout`` "
+            "(otherwise rev-parse returns the OLD HEAD) and BEFORE "
+            "the build (so the build picks it up)."
+        )
+
+    def test_self_hosted_load_build_env_honours_validibot_revision_override(self):
+        """``_load-build-env`` must echo the override-aware revision form.
+
+        ``${VALIDIBOT_REVISION:-{{git_sha}}}`` is the form that lets
+        the upgrade recipe's ``export VALIDIBOT_REVISION=$(git ...)``
+        propagate through ``eval $(just self-hosted _load-build-env)``
+        into the docker compose build. If this regressed to a literal
+        ``{{git_sha}}``, the export above would be silently dropped.
+        """
+        text = self._self_hosted_text()
+        override_form = 'export VALIDIBOT_REVISION="${VALIDIBOT_REVISION:-{{git_sha}}}"'
+        assert override_form in text, (
+            "Self-hosted _load-build-env must echo the override-aware "
+            "form for VALIDIBOT_REVISION so the upgrade recipe's "
+            "post-checkout export propagates through into the docker "
+            "compose build."
+        )
+
+    def test_self_hosted_load_build_env_honours_validibot_version_override(self):
+        """The compose env loader must respect a pre-set VALIDIBOT_VERSION.
+
+        ``_load-build-env`` is the helper the build recipe ``eval``s
+        to pull host env into compose. If it hard-coded the parse-time
+        constant, the upgrade-recipe export above would be ignored.
+        The ``${VAR:-default}`` shape lets the override flow through
+        while keeping pyproject as the default for daily deploys.
+        """
+        text = self._self_hosted_text()
+        # Match either inside _load-build-env or a ``just self-hosted``
+        # echo line — the exact spelling has shifted across edits.
+        override_form = (
+            'export VALIDIBOT_VERSION="${VALIDIBOT_VERSION:-{{validibot_version}}}"'
+        )
+        assert override_form in text, (
+            "Self-hosted _load-build-env must echo the override-aware "
+            "form so the upgrade recipe's VALIDIBOT_VERSION export "
+            "propagates through ``eval $(just self-hosted "
+            "_load-build-env)`` into the docker compose build."
+        )
+
+    def test_gcp_upgrade_pins_validibot_version_to_target(self):
+        """GCP upgrade must export VALIDIBOT_VERSION=<target> after checkout.
+
+        Mirrors the self-hosted contract: between Step 2/4 (git
+        checkout) and Step 3/4 (deploy-all), the recipe exports the
+        operator-supplied target so the build / web / worker layers
+        all stamp the right version.
+        """
+        text = self._gcp_text()
+        match = re.search(
+            r"^_run-upgrade stage version flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "GCP _run-upgrade helper missing"
+        body = match.group(1)
+
+        export_line = 'export VALIDIBOT_VERSION="${TARGET}"'
+        assert export_line in body, (
+            "GCP _run-upgrade must export VALIDIBOT_VERSION to the "
+            "operator-supplied target so deploy-all (which calls "
+            "build, _deploy-web, _deploy-worker) stamps the correct "
+            "version. Without this, the parse-time "
+            "{{validibot_version}} constant would still hold the "
+            "OLD version."
+        )
+
+        checkout_idx = body.index('git checkout --quiet "${TARGET}"')
+        export_idx = body.index(export_line)
+        deploy_idx = body.index("just gcp deploy-all")
+        assert checkout_idx < export_idx < deploy_idx, (
+            "VALIDIBOT_VERSION export must sit AFTER ``git checkout`` "
+            "and BEFORE ``just gcp deploy-all`` so the deploy chain "
+            "(build → web → worker) sees the operator-supplied target."
+        )
+
+    def test_gcp_upgrade_pins_validibot_revision_to_post_checkout_head(self):
+        """GCP upgrade must also export VALIDIBOT_REVISION post-checkout.
+
+        Same failure mode as self-hosted: ``{{git_sha}}`` is captured
+        at parse time, so an upgrade build without this re-export
+        would carry the right release version label but the OLD
+        commit revision label.
+
+        Note: only the in-image LABEL is overridden here; the Cloud
+        Run image TAG (``{{gcp_image}}:{{git_sha}}``) intentionally
+        keeps the parse-time sha so build / push / web / worker all
+        reference the same tag string. That trade-off is documented
+        on the build recipe itself.
+        """
+        text = self._gcp_text()
+        match = re.search(
+            r"^_run-upgrade stage version flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "GCP _run-upgrade helper missing"
+        body = match.group(1)
+
+        revision_export = 'export VALIDIBOT_REVISION="$(git rev-parse --short HEAD)"'
+        assert revision_export in body, (
+            "GCP _run-upgrade must export VALIDIBOT_REVISION to the "
+            "post-checkout HEAD sha so the in-image LABEL matches "
+            "the checked-out commit. Without this, ``{{git_sha}}`` "
+            "captured at parse time would still hold the OLD HEAD."
+        )
+
+        checkout_idx = body.index('git checkout --quiet "${TARGET}"')
+        revision_idx = body.index(revision_export)
+        deploy_idx = body.index("just gcp deploy-all")
+        assert checkout_idx < revision_idx < deploy_idx, (
+            "VALIDIBOT_REVISION export must sit AFTER ``git checkout`` "
+            "and BEFORE ``just gcp deploy-all`` so the build picks "
+            "up the post-checkout sha."
+        )
+
+    def test_gcp_build_recipe_honours_validibot_revision_override(self):
+        """GCP build must use ${VALIDIBOT_REVISION:-default} for the LABEL.
+
+        If the build recipe hard-codes ``{{git_sha}}`` in the
+        ``--build-arg VALIDIBOT_REVISION`` line, the export from
+        ``_run-upgrade`` would be silently dropped and the upgrade
+        build would land with the OLD commit revision label.
+        """
+        text = self._gcp_text()
+        override_form = (
+            '--build-arg VALIDIBOT_REVISION="${VALIDIBOT_REVISION:-{{git_sha}}}"'
+        )
+        assert override_form in text, (
+            "GCP build recipe must use the override-aware form "
+            f"``{override_form}`` so the upgrade recipe's "
+            "post-checkout VALIDIBOT_REVISION export propagates into "
+            "the image LABEL. The literal ``{{git_sha}}`` form would "
+            "silently drop the override."
+        )
+
+    def test_gcp_build_and_deploy_honour_validibot_version_override(self):
+        """GCP build + deploy lines must use ${VALIDIBOT_VERSION:-default}.
+
+        If the build/deploy lines hard-coded ``{{validibot_version}}``,
+        the export from ``_run-upgrade`` would be silently ignored
+        and the upgrade would produce a mis-stamped image — the
+        provenance bug Option C exists to prevent.
+        """
+        text = self._gcp_text()
+        override_form = "${VALIDIBOT_VERSION:-{{validibot_version}}}"
+
+        # The override-aware form must appear in three places: the
+        # build recipe (image label), _deploy-web (runtime env), and
+        # _deploy-worker (runtime env). A separate count check makes
+        # the failure mode clear if any one of the three drifts back
+        # to the literal ``{{validibot_version}}`` form.
+        expected_override_sites = 3  # build, _deploy-web, _deploy-worker
+        occurrences = text.count(override_form)
+        assert occurrences >= expected_override_sites, (
+            f"Expected the override-aware form "
+            f"``{override_form}`` to appear in at least "
+            f"{expected_override_sites} spots (build, _deploy-web, "
+            f"_deploy-worker). Found {occurrences}. Whichever spot "
+            f"is missing will silently drop back to the parse-time "
+            f"{{validibot_version}} constant, mis-stamping upgrade "
+            f"builds."
+        )
+
 
 class ValidatorsAndCleanupShapeTests(SimpleTestCase):
     """Verify Phase 5 validators + cleanup recipes are real implementations.
@@ -1407,18 +1707,32 @@ class ValidatorsAndCleanupShapeTests(SimpleTestCase):
 class VersionResolutionShapeTests(SimpleTestCase):
     """Verify ``validibot_version`` resolves from pyproject.toml.
 
-    Earlier in the project's history this lived in
-    ``scripts/resolve-git-tag-version.sh`` (which preferred the latest
-    git tag and fell back to pyproject.toml). That layer was removed in
-    Phase 5 because:
+    Version-stamping policy (deliberate, repeated across reviews):
+    ──────────────────────────────────────────────────────────────
+    Every default deploy path — daily ``deploy`` / ``bootstrap`` /
+    ``deploy-all`` against any stage — reads the runtime version from
+    pyproject.toml, not from "the latest git tag". This is the policy
+    chosen for the project after evaluating both options. Reasons
+    pyproject wins:
 
-    1. ``pyproject.toml`` is the canonical source already shipped in
-       every checkout — no extra script to maintain.
-    2. Calling out to a .sh script from a justfile is ugly and creates
-       a path-resolution headache (the script's relative path differs
-       across modules).
-    3. The .sh fallback existed only because shallow git exports might
-       lack tags; checkouts always have pyproject.toml.
+    1. pyproject.toml is the canonical source already shipped in
+       every checkout — no extra script, no ``git fetch --tags``
+       precondition. Behaviour is identical on a fresh CI clone, a
+       shallow checkout, or a tag-less branch.
+    2. Tags are operator metadata; they can drift behind the
+       checked-out commit. A "latest tag" resolver would silently
+       change behaviour the moment somebody cuts a tag — backup-
+       manifest provenance gets harder to reason about under that.
+    3. The "exact release tag" use case is handled by the upgrade
+       recipes via env-var override (``VALIDIBOT_VERSION="${TARGET}"``
+       after ``git checkout``); see ``UpgradeRecipeShapeTests``.
+
+    History: this used to live in ``scripts/resolve-git-tag-version.sh``
+    (latest tag with pyproject fallback). That layer was removed in
+    Phase 5 because shelling out from a justfile creates a path-
+    resolution headache, and the .sh fallback existed only because
+    shallow git exports might lack tags — checkouts always have
+    pyproject.toml.
 
     These tests pin that the simplified approach lands cleanly:
 

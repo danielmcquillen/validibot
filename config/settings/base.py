@@ -64,8 +64,22 @@ APP_ROLE = env(
 APP_IS_WORKER = APP_ROLE.lower() == "worker"
 
 # Runtime version stamp used by operator backup/restore compatibility checks.
-# Deploy recipes set this to the image git SHA; local/test deployments leave it
-# blank and fall back to installed package metadata.
+# Validibot app version, surfaced in backup manifests, support bundles, doctor
+# output, and the OCI ``org.opencontainers.image.version`` label.
+#
+# Deploy recipes (``just gcp deploy-all``, ``just self-hosted bootstrap``,
+# etc.) compute this by reading ``project.version`` from pyproject.toml at
+# build time and pass it as a ``--build-arg VALIDIBOT_VERSION=v0.4.0`` to
+# the Docker build, where the Dockerfile stamps it as both an env var and
+# an OCI label. Local / test deployments leave this blank; the helper
+# ``validibot.core.deployment.get_validibot_runtime_version()`` falls back
+# to installed package metadata in that case.
+#
+# The pyproject.toml-driven path is the agreed source of truth — no git tag
+# resolution and no separate version file. See ``just/common.just`` and the
+# top of ``just/self-hosted/mod.just`` and ``just/gcp/mod.just`` for the
+# resolver. If the source-of-truth choice ever changes, update this comment
+# AND the resolver together.
 VALIDIBOT_VERSION = env("VALIDIBOT_VERSION", default="")
 
 # Local time zone. Choices are

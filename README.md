@@ -133,6 +133,9 @@ For the full self-host walkthrough, see [Run Validibot Locally](https://dev.vali
 
 Validibot is designed for **deployment on your own infrastructure**. You control your infrastructure, data, and security posture.
 
+> [!IMPORTANT]
+> Before deploying, [verify the release tag](SECURITY.md#verifying-validibot-releases) you'll be running. Git checks the tag was signed by a Validibot maintainer; non-zero exit means stop.
+
 ### Production Stack
 
 | Component         | Purpose                                                   |

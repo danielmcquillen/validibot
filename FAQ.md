@@ -26,8 +26,10 @@ Everything functional. The Community edition includes:
 - Single-organization support
 - Docker Compose for self-hosting
 
-The only limitations are AGPL compliance requirements and lack of commercial
-support.
+The main limitations are AGPL compliance requirements and lack of commercial
+support. Furthermore, features like team management, verifiable credentials
+and other business-focused features are only available in the commercial "pro"
+and "enterprise" versions.
 
 ### Do I need a commercial license to use Validibot in CI/CD pipelines?
 

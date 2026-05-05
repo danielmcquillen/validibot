@@ -1,5 +1,4 @@
-# Trust ADR Phase 5 Session D — Release workflow for the validibot
-# Django app.
+# Release workflow for the validibot Django app.
 #
 # Validibot itself is distributed via ``git clone`` rather than PyPI
 # (per the open-core distribution model — see the trust ADR's
@@ -74,23 +73,14 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
 
       # Trust ADR Phase 5 Session D — refuse to publish unsigned
-      # tags. The check fails when ``git verify-tag`` exits non-zero,
-      # which happens for unsigned tags or tags signed by a key
-      # that isn't in the repo's allowed-signers config.
-      #
-      # SSH-signed tags require the ``.allowed_signers`` file at
-      # the repo root listing the maintainer's public keys. GPG-
-      # signed tags require the public key to be imported into the
-      # runner's GPG keyring (see RELEASING.md for the full setup).
-      - name: Configure git for signature verification
+      # tags. Validibot signs release tags with SSH; ``.allowed_signers``
+      # at the repo root lists the maintainer public keys that git
+      # checks against. ``git verify-tag`` exits non-zero for unsigned
+      # tags or for signatures from a key that isn't listed.
+      - name: Configure git for SSH signature verification
         run: |
-          # Use repo-rooted allowed_signers for SSH-signed tags. If
-          # this file is missing, ``git verify-tag`` falls back to
-          # GPG keyring lookup.
-          if [ -f .allowed_signers ]; then
-            git config gpg.ssh.allowedSignersFile "$PWD/.allowed_signers"
-            git config gpg.format ssh
-          fi
+          git config gpg.ssh.allowedSignersFile "$PWD/.allowed_signers"
+          git config gpg.format ssh
 
       # ``TAG_REF`` is bound via env (not interpolated into the
       # script body) — recommended practice for any input from a
@@ -103,7 +93,6 @@ jobs:
             echo "::error::Tag '$TAG_REF' is not signed."
             echo ""
             echo "Sign with: git tag -s '$TAG_REF' -m 'release notes'"
-            echo "See RELEASING.md for the full release recipe."
             exit 1
           fi
           echo "Tag '$TAG_REF' signature verified."

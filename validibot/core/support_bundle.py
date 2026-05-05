@@ -198,16 +198,61 @@ def looks_like_secret_value(value: str) -> bool:
 # conservative — false positives (redacting a non-secret) are
 # acceptable; false negatives (a credential leaking through) are not.
 _LOG_REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    # HTTP authorization-style headers: redact the entire value
-    # through end-of-line. Using ``\S+`` here would stop at the first
-    # space, leaving the token visible (``Authorization: Bearer
-    # <token>`` would match only ``Bearer`` and leave the token
-    # behind).
+    # HTTP header values that carry credentials or trust-boundary
+    # data — redact the entire value through end-of-line. Using
+    # ``\S+`` here would stop at the first space, leaving the value
+    # visible (``Authorization: Bearer <token>`` would match only
+    # ``Bearer`` and leave the token behind).
+    #
+    # The header set covers:
+    #   - ``authorization`` — HTTP Bearer / Basic / etc.
+    #   - ``cookie`` / ``set-cookie`` — session IDs, CSRF tokens,
+    #     remember-me tokens; the whole value is redacted because
+    #     individual cookie names can carry sensitive payloads.
+    #   - ``x-api-key`` / ``x-auth-token`` — common API auth headers
+    #   - ``x-csrftoken`` / ``x-csrf-token`` — Django + JS-framework
+    #     CSRF tokens, sensitive for session-fixation reasons
+    #   - ``x-x402-payment`` — internal alias used by some legacy
+    #     code paths for x402 payment receipts
+    #   - ``payment-signature`` — x402 v2 spec header carrying the
+    #     buyer's signed payment payload (base64 EIP-712 signature
+    #     + payload). Definitely sensitive — the actual money
+    #     authorisation lives here.
+    #   - ``payment-required`` / ``payment-response`` — x402 v2
+    #     server-side payment-protocol headers. ``PAYMENT-REQUIRED``
+    #     advertises receiving addresses + price; ``PAYMENT-RESPONSE``
+    #     contains settlement transaction hashes. Not "secrets" in
+    #     the strict sense, but financial PII worth scrubbing from
+    #     a support bundle that may end up on Slack or Linear.
+    #   - ``x-validibot-service-identity`` — Cloud Run OIDC identity
+    #     token forwarded between the MCP server and the Django API
+    #   - ``x-validibot-api-token`` / ``x-validibot-user-sub`` —
+    #     end-user identity headers the MCP helper API resolves
+    #   - ``x-mcp-service-key`` — local-dev service-to-service auth
+    #     between the MCP server and the Django API
+    #   - ``proxy-authorization`` — HTTP proxy credentials
     (
         re.compile(
-            r"(?i)\b(authorization|x-api-key|x-auth-token)\s*[:=][^\r\n]*",
+            r"(?i)\b(authorization|proxy-authorization|cookie|set-cookie|"
+            r"x-api-key|x-auth-token|x-csrf-?token|x-x402-payment|"
+            r"payment-signature|payment-required|payment-response|"
+            r"x-validibot-service-identity|x-validibot-api-token|"
+            r"x-validibot-user-sub|x-mcp-service-key)"
+            r"\s*[:=][^\r\n]*",
         ),
         r"\1: [REDACTED]",
+    ),
+    # ``sessionid=`` / ``csrftoken=`` style cookie *attributes*
+    # appearing in URL-encoded form or request-body fragments. The
+    # header-level pattern above catches the whole header; this
+    # pattern catches the same names when they show up bare in a
+    # log line (e.g. ``Set-Cookie: sessionid=abc123``).
+    (
+        re.compile(
+            r"(?i)\b(sessionid|csrftoken|csrf_token|remember_token|jsessionid)"
+            r"\s*=\s*([^\s,;]+)",
+        ),
+        r"\1=[REDACTED]",
     ),
     # ``Bearer <token>`` in any context.
     (re.compile(r"(?i)\bBearer\s+[A-Za-z0-9_.-]+"), "Bearer [REDACTED]"),

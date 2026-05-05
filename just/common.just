@@ -16,12 +16,36 @@
 git_sha := `git rev-parse --short HEAD`
 
 # App version baked into the runtime image as VALIDIBOT_VERSION (used for
-# backup compatibility, doctor metadata, etc.). Read directly from
-# pyproject.toml — the canonical source already shipped in every checkout,
-# avoiding both an external script and any reliance on git tag freshness.
-# ``git rev-parse --show-toplevel`` resolves to the repo root from any cwd
-# (just substitutes ``{{...}}`` in recipes but not in constant-assignment
-# backticks, so we use git which walks the .git ancestry instead).
+# backup compatibility, doctor metadata, etc.).
+#
+# Version-stamping policy (deliberate — see also the upgrade recipes):
+# ─────────────────────────────────────────────────────────────────────
+# Read directly from pyproject.toml, NOT from the latest git tag. This
+# is the policy across every deploy path — daily ``deploy``, daily
+# ``bootstrap``, ``deploy-all`` against any stage, and so on. Reasons:
+#
+#   1. pyproject.toml is the canonical version that ships in every
+#      checkout. There is no setup step (``git fetch --tags``) and
+#      no external resolver script needed; the version stamps the
+#      same way on a fresh CI clone, a shallow checkout, or a
+#      tag-less branch. That's the simplest contract.
+#   2. Tags are operator metadata, not source of truth. A "latest tag"
+#      resolver would silently change behaviour the moment somebody
+#      cuts a tag — the same commit could deploy as different versions
+#      on different days, depending on whether tags were pushed yet.
+#      Backup-manifest provenance and doctor metadata get harder to
+#      reason about under that drift.
+#   3. The "exact release tag" use case lives in the upgrade recipes
+#      (``just self-hosted upgrade --to vX.Y.Z`` /
+#      ``just gcp upgrade <stage> vX.Y.Z``). They explicitly export
+#      ``VALIDIBOT_VERSION=<tag>`` after checkout, and every build/
+#      deploy line reads ``${VALIDIBOT_VERSION:-{{validibot_version}}}``,
+#      so the operator-supplied target wins for upgrade builds while
+#      the pyproject default holds for everything else.
+#
+# Mechanics: ``git rev-parse --show-toplevel`` resolves to the repo
+# root from any cwd (just substitutes ``{{...}}`` in recipes but not
+# in constant-assignment backticks, so we use git's ancestry walk).
 validibot_version := `awk -F'"' '/^[[:space:]]*version[[:space:]]*=/ {print "v" $2; exit}' "$(git rev-parse --show-toplevel)/pyproject.toml"`
 
 # =============================================================================

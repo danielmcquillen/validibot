@@ -1,0 +1,28 @@
+Recent logs were not captured for this support bundle because the
+redactor was not available at bundle time. The redactor lives at:
+
+  deploy/self-hosted/scripts/redact-text.py
+
+and is invoked via the system "python3". One of those was missing
+or unreadable when the recipe ran.
+
+Including raw logs would have broken the redacted-bundle contract.
+See deploy/self-hosted/support-bundle-README.txt for what we
+promise NOT to ship in a support bundle: secrets, API tokens,
+signing keys, embedded credentials, raw submission contents.
+
+If support needs recent logs to diagnose your issue:
+
+  1. Run the relevant query manually on your workstation
+     (the recipe documents the exact filter near where this file
+     was written).
+  2. Read the output and remove anything sensitive by hand.
+     Things to look for: tokens, headers (Authorization, Cookie,
+     X-API-Key, X-Validibot-Service-Identity, X-X402-Payment),
+     URL credentials (user:pass@host), session IDs, request
+     payload fragments, raw submission file contents.
+  3. Attach the reviewed file separately to your support ticket
+     with a brief note explaining what you removed.
+
+This is the safe path. We would rather ask follow-up questions
+than ship a bundle with unredacted logs.

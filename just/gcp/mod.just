@@ -131,8 +131,15 @@ _require-not-maintenance stage:
 git_sha := `git rev-parse --short HEAD`
 
 # Validibot app version stamped into the Django image and Cloud Run env.
-# Read from pyproject.toml — single source of truth, no external scripts.
-# ``git rev-parse --show-toplevel`` resolves to the repo root from any cwd.
+#
+# Version-stamping policy: pyproject.toml is the source of truth on
+# every deploy path (daily ``just gcp deploy <stage>``,
+# ``deploy-all <stage>``, etc.). The ``upgrade`` recipe overrides
+# this via env var (``VALIDIBOT_VERSION="${TARGET}"`` after
+# ``git checkout``); daily deploys use whatever pyproject says at the
+# current commit. Detailed rationale lives in ``just/common.just``
+# (deliberately repeated here because just modules have isolated
+# scope and the constant assignment must live in the module).
 validibot_version := `awk -F'"' '/^[[:space:]]*version[[:space:]]*=/ {print "v" $2; exit}' "$(git rev-parse --show-toplevel)/pyproject.toml"`
 
 # Validator backend source metadata for images built by the developer-facing
@@ -369,11 +376,35 @@ build: _require-gcp-config
         CACHE_FLAG="--no-cache"
         echo "Building with --no-cache (GCP_NO_CACHE=1)"
     fi
+    # Version + revision stamping policy:
+    #
+    # Default: ``{{validibot_version}}`` (from pyproject.toml) and
+    # ``{{git_sha}}`` (from ``git rev-parse --short HEAD``) are
+    # captured at justfile-load time. That covers the everyday
+    # "deploy whatever's checked out" flow.
+    #
+    # Override: when an operator runs ``just gcp upgrade <stage> <ver>``,
+    # the upgrade recipe exports BOTH ``VALIDIBOT_VERSION`` and
+    # ``VALIDIBOT_REVISION`` after ``git checkout``. The
+    # ``${VAR:-default}`` forms below pick the explicit overrides if
+    # set, otherwise fall back to the parse-time defaults. Without
+    # the revision override, an upgrade build would carry the right
+    # release version label but the OLD commit revision label —
+    # the failure mode the second-pass review caught.
+    #
+    # NOTE on the image TAG (``-t {{gcp_image}}:{{git_sha}}``): the
+    # tag uses the parse-time sha by design. Build / push / web /
+    # worker all read ``{{git_sha}}`` consistently, so the tag is
+    # internally consistent across the deploy. The post-checkout sha
+    # only feeds the in-image LABEL via VALIDIBOT_REVISION; that's
+    # what doctor + support-bundle surface. (Threading a per-build
+    # tag override through every recipe is a larger change and not
+    # what the review flagged.)
     docker build --platform linux/amd64 --provenance=false $CACHE_FLAG \
         -f "$DOCKERFILE" \
         --build-arg EXTRA_UV_EXTRAS="${EXTRA_UV_EXTRAS}" \
-        --build-arg VALIDIBOT_VERSION="{{validibot_version}}" \
-        --build-arg VALIDIBOT_REVISION="{{git_sha}}" \
+        --build-arg VALIDIBOT_VERSION="${VALIDIBOT_VERSION:-{{validibot_version}}}" \
+        --build-arg VALIDIBOT_REVISION="${VALIDIBOT_REVISION:-{{git_sha}}}" \
         ${EXTRA_PACKAGES_CONTEXT} \
         -t {{gcp_image}}:{{git_sha}} \
         -t {{gcp_image}}:latest .
@@ -646,12 +677,45 @@ _run-upgrade stage version flags:
     echo "  ✓ Working tree at ${TARGET}."
     echo ""
 
+    # ── Pin VALIDIBOT_VERSION + VALIDIBOT_REVISION post-checkout ──────
+    # The default stamping path reads pyproject.toml + ``git rev-parse
+    # --short HEAD`` at justfile-load time and bakes them into
+    # ``{{validibot_version}}`` / ``{{git_sha}}``. That works for
+    # everyday "deploy whatever's checked out" flows, but the upgrade
+    # recipe is a different contract: the operator named an exact
+    # release tag (``v0.9.0``) and the resulting Cloud Run revision /
+    # OCI image labels / support-bundle output should reflect the
+    # post-checkout state, not the pre-checkout state.
+    #
+    # Two values must be overridden together for the labels to be
+    # self-consistent:
+    #
+    #   - VALIDIBOT_VERSION → the operator-supplied tag (``${TARGET}``).
+    #     Without this, ``{{validibot_version}}`` from parse time
+    #     would still reflect the OLD pyproject version.
+    #
+    #   - VALIDIBOT_REVISION → ``git rev-parse --short HEAD`` at this
+    #     point (now pointing at ``${TARGET}``'s commit). Without
+    #     this, ``{{git_sha}}`` from parse time would still reflect
+    #     the OLD HEAD, so the image would have the right release
+    #     version label but the wrong commit revision label — what
+    #     the second-pass review flagged.
+    #
+    # The build, ``_deploy-web``, and ``_deploy-worker`` recipes all
+    # read ``${VALIDIBOT_VERSION:-{{validibot_version}}}`` and
+    # ``${VALIDIBOT_REVISION:-{{git_sha}}}``, so exporting here
+    # propagates through the entire ``deploy-all`` call chain.
+    export VALIDIBOT_VERSION="${TARGET}"
+    export VALIDIBOT_REVISION="$(git rev-parse --short HEAD)"
+
     # ── Step 3/4: deploy-all ──────────────────────────────────────────
     # Reuse the existing recipe so all the stage-specific naming,
     # scheduler setup, and MCP gating stay in one place. ``deploy-all``
     # builds + pushes the image, runs migrations as a Cloud Run Job,
-    # and deploys web + worker services.
-    echo "Step 3/4: Running deploy-all {{stage}}..."
+    # and deploys web + worker services. Because we exported
+    # VALIDIBOT_VERSION above, every layer of that chain stamps the
+    # operator-supplied target rather than the pre-checkout default.
+    echo "Step 3/4: Running deploy-all {{stage}} (pinned to ${VALIDIBOT_VERSION} @ ${VALIDIBOT_REVISION})..."
     just gcp deploy-all {{stage}}
     echo ""
 
@@ -847,7 +911,7 @@ _deploy-web stage:
         --service-account "$SA" \
         --add-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
-        --set-env-vars APP_ROLE=web,VALIDIBOT_STAGE={{stage}},VALIDIBOT_VERSION={{validibot_version}} \
+        --set-env-vars APP_ROLE=web,VALIDIBOT_STAGE={{stage}},VALIDIBOT_VERSION="${VALIDIBOT_VERSION:-{{validibot_version}}}" \
         --min-instances $MIN_INSTANCES \
         --max-instances $MAX_INSTANCES \
         --memory 1Gi \
@@ -902,7 +966,7 @@ _deploy-worker stage:
         --service-account "$SA" \
         --add-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
-        --set-env-vars APP_ROLE=worker,VALIDIBOT_STAGE={{stage}},VALIDIBOT_VERSION={{validibot_version}} \
+        --set-env-vars APP_ROLE=worker,VALIDIBOT_STAGE={{stage}},VALIDIBOT_VERSION="${VALIDIBOT_VERSION:-{{validibot_version}}}" \
         --no-allow-unauthenticated \
         --ingress internal \
         --min-instances 0 \
@@ -5002,14 +5066,31 @@ collect-support-bundle stage *flags: _require-gcp-config
             --quiet >/dev/null
     fi
 
+    # Capture stdout (the execution name) and stderr (gcloud progress
+    # banners, warnings) separately. Earlier this used ``2>&1`` which
+    # mixed the two streams; if gcloud printed any progress text while
+    # still exiting 0, ``EXECUTION`` would carry a multi-line value
+    # and the subsequent logging-filter call would receive garbage,
+    # silently losing app-snapshot.json from the bundle. Now stderr
+    # goes to a side log we can show on failure, and stdout is
+    # validated against the expected Cloud Run execution-name shape.
     set +e
+    EXECUTION_STDERR="${WORKDIR}/_app_snapshot_execute_stderr.log"
     EXECUTION=$(gcloud run jobs execute "${JOB_NAME}" \
         --region={{gcp_region}} --project={{gcp_project}} --wait \
-        --format='value(metadata.name)' 2>&1)
+        --format='value(metadata.name)' 2>"${EXECUTION_STDERR}")
     SNAPSHOT_RC=$?
     set -e
 
-    if [ ${SNAPSHOT_RC} -eq 0 ] && [ -n "${EXECUTION}" ]; then
+    # Validate the captured value: Cloud Run execution names look like
+    # ``<job-name>-<5-char-hash>``. We don't try to enforce the exact
+    # hash length (it's stable today but Cloud Run owns the naming
+    # scheme), only that it's a single line of plausible-looking
+    # characters and not blank. If it's not, treat it as a snapshot
+    # failure rather than passing garbage to the logging filter.
+    if [ ${SNAPSHOT_RC} -eq 0 ] && [ -n "${EXECUTION}" ] \
+        && [ "$(printf '%s' "${EXECUTION}" | wc -l | tr -d ' ')" = "0" ] \
+        && printf '%s' "${EXECUTION}" | grep -qE '^[A-Za-z0-9._-]+$'; then
         # Read the execution's logs via the structured ``textPayload``
         # field. Earlier this used ``awk '/^{/,EOF'`` to slice from the
         # first ``{`` to EOF, which broke whenever Cloud Run prepended
@@ -5038,8 +5119,20 @@ collect-support-bundle stage *flags: _require-gcp-config
             rm -f "${WORKDIR}/app-snapshot.json"
         fi
     else
-        echo "  ⚠ Cloud Run Job execution failed — bundle will be host-side only."
+        echo "  ⚠ Cloud Run Job execution failed or returned an unrecognised"
+        echo "    execution name — bundle will be host-side only."
+        if [ -s "${EXECUTION_STDERR}" ]; then
+            echo "    gcloud stderr:"
+            sed 's/^/      /' "${EXECUTION_STDERR}"
+            # Move the stderr into the bundle so support sees what
+            # went wrong without needing the operator to retype it.
+            mv "${EXECUTION_STDERR}" \
+                "${WORKDIR}/app-snapshot-execute-stderr.log"
+        fi
     fi
+    # If we got here via the success path, drop the now-stale stderr
+    # log so it doesn't clutter the bundle.
+    rm -f "${EXECUTION_STDERR}"
     echo ""
 
     # ── Step 2: Cloud Run service state ───────────────────────────────
@@ -5070,7 +5163,12 @@ collect-support-bundle stage *flags: _require-gcp-config
     echo "Step 3/4: Capturing recent logs (last 1h, WARNING+, redacted)..."
     REDACTOR="deploy/self-hosted/scripts/redact-text.py"
     SERVICE_FILTER="resource.type=\"cloud_run_revision\" AND (resource.labels.service_name=\"${WEB_SERVICE}\" OR resource.labels.service_name=\"${WORKER_SERVICE}\") AND severity>=WARNING"
-    if [ -x "${REDACTOR}" ] && command -v python3 >/dev/null 2>&1; then
+    # The redactor is invoked via ``python3 <path>``, so the file's
+    # executable bit doesn't matter — we check ``-f`` (file exists)
+    # rather than ``-x``. Earlier the check was ``-x`` and the file
+    # ships as 100644 in some clones, which made every GCP bundle
+    # silently fall through to raw logs.
+    if [ -f "${REDACTOR}" ] && command -v python3 >/dev/null 2>&1; then
         gcloud logging read "${SERVICE_FILTER}" \
             --freshness=1h \
             --limit=200 \
@@ -5080,20 +5178,23 @@ collect-support-bundle stage *flags: _require-gcp-config
             | python3 "${REDACTOR}" > "${WORKDIR}/recent-cloud-logs.txt" || true
         echo "  ✓ Recent logs captured (piped through redact-text.py)."
     else
-        # Fallback: capture raw logs and warn loudly. Operators
-        # reviewing the bundle will still see the redaction-status
-        # banner that the README describes.
-        gcloud logging read "${SERVICE_FILTER}" \
-            --freshness=1h \
-            --limit=200 \
-            --order=desc \
-            --format='value(timestamp,severity,resource.labels.service_name,textPayload)' \
-            --project={{gcp_project}} \
-            > "${WORKDIR}/recent-cloud-logs.txt" 2>&1 || true
-        echo "[bundle: redact-text.py or python3 unavailable — logs are RAW]" \
-            >> "${WORKDIR}/recent-cloud-logs.txt"
-        echo "  ⚠ ${REDACTOR} or python3 unavailable — logs included raw."
-        echo "    Inspect before sending; consider deleting the file."
+        # The redactor isn't available. The previous fallback wrote
+        # raw logs into the bundle with a "logs are RAW" banner. That
+        # broke the redacted-bundle contract: operators reading the
+        # README expect the bundle never carries unredacted output.
+        # The new fallback OMITS logs entirely and writes a placeholder
+        # (shipped as a kit file rather than a heredoc, because just's
+        # recipe parser chokes on the special characters in the
+        # placeholder text).
+        if [ -f deploy/self-hosted/support-bundle-logs-omitted.txt ]; then
+            cp deploy/self-hosted/support-bundle-logs-omitted.txt \
+                "${WORKDIR}/recent-cloud-logs.txt"
+        else
+            echo "Logs omitted: redactor unavailable. See README." \
+                > "${WORKDIR}/recent-cloud-logs.txt"
+        fi
+        echo "  ⚠ ${REDACTOR} or python3 unavailable — logs OMITTED."
+        echo "    Bundle includes a placeholder explaining what happened."
     fi
     echo ""
 

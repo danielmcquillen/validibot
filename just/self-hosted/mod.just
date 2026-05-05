@@ -66,9 +66,15 @@ compose_env_args := `bash -lc 'if [ -f ".envs/.production/.self-hosted/.build" ]
 git_sha := `git rev-parse --short HEAD`
 
 # App version baked into the locally-built image as VALIDIBOT_VERSION
-# (consumed by backup compatibility checks and doctor metadata). Read
-# from pyproject.toml — single source of truth, no external script.
-# ``git rev-parse --show-toplevel`` resolves to the repo root from any cwd.
+# (consumed by backup compatibility checks and doctor metadata).
+#
+# Version-stamping policy: pyproject.toml is the source of truth on
+# every deploy path. The upgrade recipe overrides this via env var
+# (``VALIDIBOT_VERSION="${TARGET}"`` after ``git checkout``); daily
+# deploys use whatever pyproject says at the current commit. See the
+# detailed rationale in ``just/common.just`` (deliberately repeated
+# here because just modules have isolated scope and the constant
+# assignment must live in the module that uses it).
 validibot_version := `awk -F'"' '/^[[:space:]]*version[[:space:]]*=/ {print "v" $2; exit}' "$(git rev-parse --show-toplevel)/pyproject.toml"`
 
 # Validator backend image metadata. This is only used for local images built
@@ -1634,11 +1640,43 @@ _run-upgrade args:
     echo "  ✓ Working tree at ${TARGET}."
     echo ""
 
+    # ── Pin VALIDIBOT_VERSION + VALIDIBOT_REVISION post-checkout ──────
+    # The default version- and revision-stamping path reads
+    # pyproject.toml + ``git rev-parse --short HEAD`` at justfile-load
+    # time. That works for everyday "deploy whatever's checked out"
+    # flows, but the upgrade recipe is a different contract: the
+    # operator named an exact release tag via ``--to``, and that's
+    # what should appear on the resulting image and in backup
+    # manifests / support bundles.
+    #
+    # Two values must be overridden together for the image labels to
+    # be self-consistent:
+    #
+    #   - VALIDIBOT_VERSION → the operator-supplied tag (``${TARGET}``).
+    #     The justfile constant ``{{validibot_version}}`` was captured
+    #     at parse time BEFORE this recipe ran ``git checkout``, so
+    #     without an override the build would stamp the OLD version.
+    #
+    #   - VALIDIBOT_REVISION → ``git rev-parse --short HEAD`` at this
+    #     point in the recipe (now pointing at ``${TARGET}``'s commit).
+    #     Same parse-time-capture problem: ``{{git_sha}}`` reflects
+    #     the pre-checkout HEAD. Without this override the image
+    #     would carry the correct release version label but the OLD
+    #     commit revision label — confusing for forensics and what
+    #     the second-pass review caught.
+    #
+    # ``_load-build-env`` already echoes ``${VALIDIBOT_VERSION:-...}``
+    # and ``${VALIDIBOT_REVISION:-...}``, so exporting both values
+    # here propagates through ``eval $(just self-hosted _load-build-env)``
+    # into the docker compose build.
+    export VALIDIBOT_VERSION="${TARGET}"
+    export VALIDIBOT_REVISION="$(git rev-parse --short HEAD)"
+
     # ── Step 3/7: Build images ────────────────────────────────────────
     # Naturally idempotent (Docker layer caching). On a re-run after
     # a partial failure, this step is essentially free if no Dockerfile
     # or pyproject changes happened between attempts.
-    echo "Step 3/7: Building images..."
+    echo "Step 3/7: Building images (pinned to ${VALIDIBOT_VERSION} @ ${VALIDIBOT_REVISION})..."
     eval "$(just self-hosted _load-build-env)"
     eval "$(just self-hosted _mcp-profile-env)"
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} build
@@ -1893,22 +1931,52 @@ _run-collect-support-bundle flags:
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} ps \
         > "${WORKDIR}/service-status.txt" 2>&1 || true
 
-    # Redact through a single ``manage.py redact_text`` invocation
-    # per stream. If the web container is down we fall through to
-    # raw logs so support still gets *something*; in that case the
-    # snapshot-error.log from Step 1 already tells support the app
-    # is down and the redaction layer wasn't reachable.
+    # Redact each container's recent logs through the canonical
+    # ``manage.py redact_text`` command if the web container is up,
+    # OR the standalone stdlib script if the container is down.
+    # Operators most often collect a support bundle WHEN the web
+    # container is broken, so the standalone fallback is the load-
+    # bearing path here, not an edge case. Earlier we fell through
+    # to raw logs in that scenario, which broke the redacted-bundle
+    # contract under exactly the conditions support bundles exist
+    # to handle.
+    #
+    # Priority order:
+    #   1. ``docker compose exec web python manage.py redact_text``
+    #      — works when the deployment is healthy, uses the
+    #      canonical redaction module
+    #   2. ``python3 deploy/self-hosted/scripts/redact-text.py``
+    #      — stdlib-only standalone script with the same patterns
+    #      (a drift-test asserts they match), works regardless of
+    #      container state
+    #   3. Omit logs entirely, write the kit-shipped placeholder
+    #      explaining how to capture and review logs by hand
+    REDACTOR="deploy/self-hosted/scripts/redact-text.py"
     _capture_redacted_log() {
         local svc="$1" outfile="$2"
-        if ! docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} \
+        # Try the canonical in-container redactor first.
+        if docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} \
             logs --tail=200 "$svc" 2>&1 \
             | docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} \
                 exec -T web python manage.py redact_text \
-            > "$outfile" 2>/dev/null; then
-            # Fallback: capture raw logs so support sees *something*.
+            > "$outfile" 2>/dev/null \
+            && [ -s "$outfile" ]; then
+            return 0
+        fi
+        # Fall back to the standalone stdlib redactor — the path
+        # operators take when the web container is down (which is
+        # often the very reason they're collecting a bundle).
+        if [ -f "$REDACTOR" ] && command -v python3 >/dev/null 2>&1; then
             docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} \
-                logs --tail=200 "$svc" > "$outfile" 2>&1 || true
-            echo "[bundle: redact_text unavailable; raw logs included]" >> "$outfile"
+                logs --tail=200 "$svc" 2>&1 \
+                | python3 "$REDACTOR" > "$outfile" 2>/dev/null || true
+            return 0
+        fi
+        # Neither redactor is available — omit logs and explain.
+        if [ -f deploy/self-hosted/support-bundle-logs-omitted.txt ]; then
+            cp deploy/self-hosted/support-bundle-logs-omitted.txt "$outfile"
+        else
+            echo "Logs omitted: redactor unavailable. See README." > "$outfile"
         fi
     }
     _capture_redacted_log web "${WORKDIR}/recent-web.log"

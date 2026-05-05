@@ -361,6 +361,101 @@ class TestLogTextRedaction:
         assert "super-secret-token-value-here-please" not in redacted
         assert "[REDACTED]" in redacted
 
+    def test_cookie_headers_are_redacted(self):
+        """Cookie / Set-Cookie carry session IDs, CSRF tokens, etc."""
+        log = (
+            "Cookie: sessionid=abc123def456; csrftoken=xyz789; theme=dark\n"
+            "Set-Cookie: sessionid=newvalue; HttpOnly; Path=/\n"
+        )
+        redacted = redact_text_for_bundle(log)
+        # The cookie values must not appear.
+        assert "abc123def456" not in redacted
+        assert "xyz789" not in redacted
+        assert "newvalue" not in redacted
+        assert "[REDACTED]" in redacted
+
+    def test_csrf_header_is_redacted(self):
+        """X-CSRFToken / X-CSRF-Token carry session-fixation-sensitive material."""
+        for header in ("X-CSRFToken: abc123def456", "X-CSRF-Token: xyz789xyz789"):
+            redacted = redact_text_for_bundle(header)
+            assert "abc123def456" not in redacted
+            assert "xyz789xyz789" not in redacted
+
+    def test_session_attributes_redacted_outside_header(self):
+        """Bare ``sessionid=...`` or ``csrftoken=...`` in log bodies are caught."""
+        log = (
+            "Request: GET /admin?sessionid=abc123def456&page=1\n"
+            "Setting csrftoken=xyz789 for user 42\n"
+        )
+        redacted = redact_text_for_bundle(log)
+        assert "abc123def456" not in redacted
+        assert "xyz789" not in redacted
+
+    def test_x402_payment_header_is_redacted(self):
+        """``X-X402-Payment`` carries signed payment proof — trust-boundary data."""
+        log = "X-X402-Payment: eyJzaWduYXR1cmUiOiJhYmMxMjMifQ=="
+        redacted = redact_text_for_bundle(log)
+        assert "eyJzaWduYXR1cmUiOiJhYmMxMjMifQ==" not in redacted
+        assert "[REDACTED]" in redacted
+
+    def test_x402_v2_spec_payment_headers_are_redacted(self):
+        """The actual x402 v2 header names (``PAYMENT-SIGNATURE`` etc.) must redact.
+
+        Why this is a separate test from the legacy ``X-X402-Payment``
+        case: the x402 v2 specification (and our MCP server's
+        ``validibot_mcp.x402``) uses unprefixed names ``PAYMENT-
+        SIGNATURE``, ``PAYMENT-REQUIRED``, and ``PAYMENT-RESPONSE``.
+        Redacting only the ``X-X402-*`` alias would leave the actual
+        signed-payment payload (``PAYMENT-SIGNATURE``) intact in logs
+        — that's the failure mode the second-pass review caught.
+
+        ``PAYMENT-REQUIRED`` and ``PAYMENT-RESPONSE`` aren't
+        cryptographic secrets, but they carry receiving wallet
+        addresses and settlement transaction hashes — financial PII
+        worth scrubbing from a bundle that may end up in a customer-
+        support thread.
+        """
+        log = (
+            "PAYMENT-SIGNATURE: eyJwYXltZW50IjoiQUJDREVGMTIzIn0=\n"
+            "PAYMENT-REQUIRED: eyJzY2hlbWUiOiJleGFjdCIsImFkZHJlc3MiOiIweGFiYyJ9\n"
+            "PAYMENT-RESPONSE: eyJ0eEhhc2giOiIweGRlYWRiZWVmIn0=\n"
+        )
+        redacted = redact_text_for_bundle(log)
+        # Each base64 payload must be scrubbed.
+        assert "eyJwYXltZW50IjoiQUJDREVGMTIzIn0=" not in redacted
+        assert "eyJzY2hlbWUiOiJleGFjdCIsImFkZHJlc3MiOiIweGFiYyJ9" not in redacted
+        assert "eyJ0eEhhc2giOiIweGRlYWRiZWVmIn0=" not in redacted
+        # Header names should still appear (so an operator can see
+        # which headers were present without the values).
+        assert "PAYMENT-SIGNATURE" in redacted
+        assert "PAYMENT-REQUIRED" in redacted
+        assert "PAYMENT-RESPONSE" in redacted
+        assert "[REDACTED]" in redacted
+
+    def test_validibot_service_identity_header_is_redacted(self):
+        """Cloud Run OIDC identity tokens forwarded between MCP and the API."""
+        log = "X-Validibot-Service-Identity: eyJhbGciOiJSUzI1NiJ9.body.sig"
+        redacted = redact_text_for_bundle(log)
+        assert "eyJhbGciOiJSUzI1NiJ9.body.sig" not in redacted
+
+    def test_mcp_and_user_identity_headers_are_redacted(self):
+        """MCP service-key + forwarded user-identity headers."""
+        log = (
+            "X-MCP-Service-Key: local-dev-secret-abc123\n"
+            "X-Validibot-Api-Token: token-for-user-42-do-not-leak\n"
+            "X-Validibot-User-Sub: oidc-subject-claim-value\n"
+        )
+        redacted = redact_text_for_bundle(log)
+        assert "local-dev-secret-abc123" not in redacted
+        assert "token-for-user-42-do-not-leak" not in redacted
+        assert "oidc-subject-claim-value" not in redacted
+
+    def test_proxy_authorization_is_redacted(self):
+        """Proxy-Authorization carries HTTP proxy credentials."""
+        log = "Proxy-Authorization: Basic dXNlcjpwYXNz"
+        redacted = redact_text_for_bundle(log)
+        assert "dXNlcjpwYXNz" not in redacted
+
     def test_jwt_anywhere_in_text_is_redacted(self):
         # JWT in the middle of a stack trace.
         log = (
@@ -478,17 +573,28 @@ class TestStandaloneRedactorPatternDrift:
         script = repo_root / "deploy" / "self-hosted" / "scripts" / "redact-text.py"
         assert script.is_file(), f"{script} missing — see ADR Phase 6 follow-ups."
 
-        # Representative input touching every pattern category.
+        # Representative input touching every pattern category, including
+        # the trust-boundary headers added in the P1 review (cookie,
+        # x402, service-identity, MCP service key, user-sub).
         digest_body = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
         test_input = (
             "Authorization: Bearer abc123def456\n"
             "X-API-Key: my-token-value\n"
+            "Cookie: sessionid=abc; csrftoken=xyz\n"
+            "Set-Cookie: sessionid=newvalue; HttpOnly\n"
+            "X-CSRFToken: csrftoken-value-here\n"
+            "X-X402-Payment: signed-payment-proof-blob\n"
+            "X-Validibot-Service-Identity: oidc-id-token\n"
+            "X-Validibot-Api-Token: user-token-here\n"
+            "X-MCP-Service-Key: local-dev-shared-secret\n"
+            "Proxy-Authorization: Basic dXNlcjpwYXNz\n"
             "JWT: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0In0.AbC123\n"
             "PEM: -----BEGIN RSA PRIVATE KEY-----\nMIIEoBASE64\n"
             "-----END RSA PRIVATE KEY-----\n"
             "URL: https://op:secret@host.example/path\n"
             "HASH: 0123456789abcdef0123456789abcdef0123456789abcdef\n"
             f"DIGEST: sha256:{digest_body}\n"
+            "Bare cookie: sessionid=session-value-bare\n"
             "PASSWORD=hunter2 and DEBUG=True\n"
         )
         result = subprocess.run(  # noqa: S603

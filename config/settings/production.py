@@ -413,7 +413,7 @@ elif DEPLOYMENT_TARGET == "aws":
         # Additional AWS Batch configuration will go here
     }
 
-else:  # docker_compose
+else:  # self_hosted (DeploymentTarget.SELF_HOSTED — single-VM Docker Compose)
     VALIDATOR_RUNNER = env("VALIDATOR_RUNNER", default="docker")
     VALIDATOR_RUNNER_OPTIONS = {
         "memory_limit": env("VALIDATOR_MEMORY_LIMIT", default="4g"),

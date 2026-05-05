@@ -12,9 +12,17 @@
 # Shared Variables
 # =============================================================================
 
-# Git SHA for image tagging - used by all platforms for versioning
-# This ensures we can trace deployed images back to specific commits
+# Git SHA for immutable image tagging and provenance.
 git_sha := `git rev-parse --short HEAD`
+
+# App version baked into the runtime image as VALIDIBOT_VERSION (used for
+# backup compatibility, doctor metadata, etc.). Read directly from
+# pyproject.toml — the canonical source already shipped in every checkout,
+# avoiding both an external script and any reliance on git tag freshness.
+# ``git rev-parse --show-toplevel`` resolves to the repo root from any cwd
+# (just substitutes ``{{...}}`` in recipes but not in constant-assignment
+# backticks, so we use git which walks the .git ancestry instead).
+validibot_version := `awk -F'"' '/^[[:space:]]*version[[:space:]]*=/ {print "v" $2; exit}' "$(git rev-parse --show-toplevel)/pyproject.toml"`
 
 # =============================================================================
 # Stage Validation
@@ -139,5 +147,6 @@ _env-file stage:
 
 # Show the current git SHA that would be used for tagging
 show-sha:
+    @echo "Current Validibot version: {{validibot_version}}"
     @echo "Current git SHA: {{git_sha}}"
     @echo "Images will be tagged with: {{git_sha}}"

@@ -72,8 +72,8 @@ The launcher generates a unique `callback_id` for each job execution and puts it
    - Grant `roles/run.invoker` on `$GCP_APP_NAME-worker` to each validator job service account
 
 4. Validator jobs:
-   - Tag with labels: `validator=<name>,version=<git_sha>`
-   - Env: `VALIDATOR_VERSION=<git_sha>`
+   - Tag Cloud Run Jobs with labels: `validator=<name>,revision=<backend_git_sha>`
+   - Backend images carry OCI labels such as `org.opencontainers.image.version` and `org.opencontainers.image.revision`
    - Callback client mints an ID token via metadata server; Django callback view 404s on non-worker.
 
 To populate `WORKER_URL` for a stage, fetch the worker service URL and add it to the stage env file:
@@ -176,14 +176,16 @@ Stage isolation is enforced by:
 
 ### Deploy-time environment variables
 
-The only env vars set at deploy time are for observability:
+The only env vars set at deploy time are for routing/log filtering:
 
 ```bash
-VALIDATOR_VERSION=<git_sha>   # For version tracking in logs
 VALIDIBOT_STAGE=dev           # For log filtering (doesn't affect behavior)
 ```
 
-These don't affect which buckets or URLs are used - that's all driven by the input envelope.
+Validator backend version is not a runtime env var. Inspect the image's OCI labels
+(`org.opencontainers.image.version`, `org.opencontainers.image.revision`) for
+operator-readable release metadata. The evidence manifest records the resolved
+image digest as the trust-critical backend identity.
 
 ### Implications
 

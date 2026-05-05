@@ -142,6 +142,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 ARG APP_HOME=/app
+ARG VALIDIBOT_VERSION=""
+ARG VALIDIBOT_REVISION=""
+ARG VALIDIBOT_SOURCE="https://github.com/danielmcquillen/validibot"
+
+ENV VALIDIBOT_VERSION="${VALIDIBOT_VERSION}"
+LABEL org.opencontainers.image.title="Validibot" \
+      org.opencontainers.image.version="${VALIDIBOT_VERSION}" \
+      org.opencontainers.image.revision="${VALIDIBOT_REVISION}" \
+      org.opencontainers.image.source="${VALIDIBOT_SOURCE}"
+
 WORKDIR ${APP_HOME}
 
 # Create the django user BEFORE copying files so we can use --chown on COPY.
@@ -162,11 +172,16 @@ RUN addgroup --system django \
 #   postgresql-client: pg_isready command (Docker Compose DB wait in entrypoint)
 #   curl:              Health checks in Docker Compose deployments
 #   gosu:              Privilege drop from root to django in entrypoint.sh
+#   zstd:              Compression for ``just self-hosted backup`` /
+#                      ``restore`` data archives. ``tar --zstd`` invokes
+#                      the ``zstd`` binary externally; without it the
+#                      backup/restore recipes fail at the tar step.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     postgresql-client \
     curl \
     gosu \
+    zstd \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the pre-built virtual environment from the builder.

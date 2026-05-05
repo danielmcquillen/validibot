@@ -54,6 +54,8 @@ services:
       args:
         VALIDIBOT_COMMERCIAL_PACKAGE: ${VALIDIBOT_COMMERCIAL_PACKAGE:-}
         VALIDIBOT_PRIVATE_INDEX_URL: ${VALIDIBOT_PRIVATE_INDEX_URL:-}
+        VALIDIBOT_VERSION: ${VALIDIBOT_VERSION:-}
+        VALIDIBOT_REVISION: ${VALIDIBOT_REVISION:-}
     depends_on:
       postgres:
         condition: service_healthy

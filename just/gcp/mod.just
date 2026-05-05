@@ -130,6 +130,16 @@ _require-not-maintenance stage:
 # Git SHA for image tagging (inherited from common.just via root justfile)
 git_sha := `git rev-parse --short HEAD`
 
+# Validibot app version stamped into the Django image and Cloud Run env.
+# Read from pyproject.toml — single source of truth, no external scripts.
+# ``git rev-parse --show-toplevel`` resolves to the repo root from any cwd.
+validibot_version := `awk -F'"' '/^[[:space:]]*version[[:space:]]*=/ {print "v" $2; exit}' "$(git rev-parse --show-toplevel)/pyproject.toml"`
+
+# Validator backend source metadata for images built by the developer-facing
+# validator-build recipes below. Runtime trust does not consume this; validator
+# runs are still identified by image digest.
+validator_backend_git_sha := `git -C ../validibot-validator-backends rev-parse --short HEAD 2>/dev/null || echo "dev"`
+
 # =============================================================================
 # Submodules
 # =============================================================================
@@ -261,7 +271,7 @@ build: _require-gcp-config
         echo "The image may contain uncommitted changes not tracked by git."
     fi
 
-    echo "Building image: {{gcp_image}}:{{git_sha}}"
+    echo "Building image: {{gcp_image}}:{{git_sha}} (Validibot {{validibot_version}})"
 
     DOCKERFILE="compose/production/django/Dockerfile"
 
@@ -362,6 +372,8 @@ build: _require-gcp-config
     docker build --platform linux/amd64 --provenance=false $CACHE_FLAG \
         -f "$DOCKERFILE" \
         --build-arg EXTRA_UV_EXTRAS="${EXTRA_UV_EXTRAS}" \
+        --build-arg VALIDIBOT_VERSION="{{validibot_version}}" \
+        --build-arg VALIDIBOT_REVISION="{{git_sha}}" \
         ${EXTRA_PACKAGES_CONTEXT} \
         -t {{gcp_image}}:{{git_sha}} \
         -t {{gcp_image}}:latest .
@@ -464,6 +476,237 @@ deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build pus
     @echo ""
     @echo "``just gcp secrets`` uploads .django always; it also uploads"
     @echo ".mcp when ENABLE_MCP_SERVER is set (in .build or inline)."
+
+# =============================================================================
+# Versioned Upgrade (Phase 4 of ADR-2026-04-27)
+# =============================================================================
+#
+# ``just gcp upgrade <stage> <version>`` wraps ``deploy`` with the same
+# discipline self-hosted gets from ``just self-hosted upgrade``:
+#
+#   1. Pre-flight: doctor --strict       → refuse on unhealthy state (AC #15)
+#   2. Pre-flight: clean working tree    → refuse to checkout over uncommitted edits
+#   3. Pre-flight: target tag exists     → refuse to upgrade to a non-existent version
+#   4. Pre-flight: validate upgrade path → refuse cross-major-version jumps (AC #16)
+#   5. Backup                            → manifested backup unless --no-backup
+#   6. Git checkout target version       → switch the working tree to <target>
+#   7. ``just gcp deploy-all <stage>``   → existing build + push + migrate + deploy
+#   8. Post-flight: doctor               → verify deploy landed cleanly
+#   9. Post-flight: smoke-test           → end-to-end pipeline check
+#  10. Write upgrade report              → backups/upgrades/<target>-<stage>/report.json
+#
+# We DON'T overload the existing ``deploy`` recipe with a ``--to`` flag
+# because the team uses ``deploy`` for daily continuous-deploy work
+# from main; the gated ``upgrade`` recipe is for explicit version
+# transitions where the operator wants every safety rail engaged.
+# Same lifecycle, different verbs per audience.
+
+# Versioned upgrade with backup + doctor + smoke-test gates (Phase 4).
+# Usage: just gcp upgrade prod v0.9.0 [--no-backup]
+[arg('stage', pattern='dev|staging|prod')]
+upgrade stage version *flags: _require-gcp-config
+    @just gcp _run-upgrade {{stage}} {{version}} "{{flags}}"
+
+# Run the manifested upgrade orchestration for GCP.
+#
+# Mirrors the self-hosted _run-upgrade recipe step-for-step. The only
+# differences are the substrate-specific calls — ``just gcp backup``
+# instead of ``just self-hosted backup``, ``just gcp deploy-all``
+# instead of local ``docker compose build`` + migrate + restart, and
+# ``just gcp doctor`` / ``just gcp smoke-test`` for the post-flight.
+[private]
+_run-upgrade stage version flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    TARGET="{{version}}"
+    if [ -z "${TARGET}" ]; then
+        echo "ERROR: version is required." >&2
+        echo "Usage: just gcp upgrade <stage> <version> [--no-backup]" >&2
+        exit 1
+    fi
+
+    NO_BACKUP=0
+    # shellcheck disable=SC2086
+    set -- {{flags}}
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --no-backup) NO_BACKUP=1 ;;
+            "") ;;
+            *)
+                echo "ERROR: unknown flag: $1" >&2
+                echo "Usage: just gcp upgrade <stage> <version> [--no-backup]" >&2
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
+    if ! [[ "${TARGET}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+        echo "ERROR: '${TARGET}' is not a vX.Y.Z release tag." >&2
+        exit 1
+    fi
+
+    UPGRADE_DIR="backups/upgrades/${TARGET}-{{stage}}"
+    REPORT_FILE="${UPGRADE_DIR}/report.json"
+    mkdir -p "${UPGRADE_DIR}"
+    STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    if [ -f "${REPORT_FILE}" ]; then
+        echo "Upgrade to ${TARGET} on {{stage}} already complete — report at ${REPORT_FILE}."
+        exit 0
+    fi
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Upgrade — {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Target:  ${TARGET}"
+    echo "  Backup:  $([ ${NO_BACKUP} -eq 1 ] && echo 'SKIPPED (--no-backup)' || echo 'will run')"
+    echo "  Report:  ${REPORT_FILE}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # ── Pre-flight 1: doctor --strict ─────────────────────────────────
+    echo "Pre-flight 1/4: running doctor --strict..."
+    if ! just gcp doctor {{stage}} --strict; then
+        echo "Error: doctor --strict failed. Refusing to upgrade." >&2
+        exit 1
+    fi
+    echo "  ✓ doctor --strict passed."
+    echo ""
+
+    # ── Pre-flight 2: clean working tree ──────────────────────────────
+    echo "Pre-flight 2/4: checking working tree..."
+    if ! git diff --quiet HEAD 2>/dev/null; then
+        echo "Error: working tree has uncommitted changes." >&2
+        exit 1
+    fi
+    echo "  ✓ Working tree is clean."
+    echo ""
+
+    # ── Pre-flight 3: target tag exists ───────────────────────────────
+    echo "Pre-flight 3/4: verifying target tag exists..."
+    git fetch --tags --quiet origin || true
+    if ! git rev-parse --verify --quiet "${TARGET}^{commit}" >/dev/null; then
+        echo "Error: tag '${TARGET}' not found in this repository." >&2
+        echo "       Pull latest tags with: git fetch --tags origin" >&2
+        exit 1
+    fi
+    CURRENT_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo "v0.0.0")
+    echo "  ✓ Target ${TARGET} reachable (current: ${CURRENT_TAG})."
+    echo ""
+
+    # ── Pre-flight 4: validate upgrade path ───────────────────────────
+    echo "Pre-flight 4/4: validating upgrade path..."
+    CURRENT_MAJOR=$(echo "${CURRENT_TAG}" | sed -E 's/^v([0-9]+)\..*/\1/')
+    TARGET_MAJOR=$(echo "${TARGET}" | sed -E 's/^v([0-9]+)\..*/\1/')
+    if [ "${CURRENT_MAJOR}" -ne "${TARGET_MAJOR}" ]; then
+        NEXT_STOP=$(git tag --list "v${CURRENT_MAJOR}.*" --sort=-v:refname | head -1)
+        echo "Error: cannot upgrade across major versions in one step." >&2
+        if [ -n "${NEXT_STOP}" ]; then
+            echo "  Required intermediate stop: ${NEXT_STOP}." >&2
+            echo "  Run:  just gcp upgrade {{stage}} ${NEXT_STOP}  first." >&2
+        fi
+        exit 1
+    fi
+    echo "  ✓ Path ${CURRENT_TAG} → ${TARGET} is within major v${CURRENT_MAJOR}."
+    echo ""
+
+    # ── Step 1/4: Backup ──────────────────────────────────────────────
+    BACKUP_REF=""
+    if [ ${NO_BACKUP} -eq 0 ]; then
+        echo "Step 1/4: Creating pre-upgrade backup..."
+        TMP_BACKUP_LOG=$(mktemp)
+        trap 'rm -f "$TMP_BACKUP_LOG"' EXIT
+        just gcp backup {{stage}} | tee "${TMP_BACKUP_LOG}"
+        # GCP backup prints "Backup root: gs://..." near the end.
+        BACKUP_REF=$(awk '/Backup root:/ {print $NF; exit}' "${TMP_BACKUP_LOG}")
+        echo "  ✓ Backup at ${BACKUP_REF}"
+        echo ""
+    else
+        echo "Step 1/4: Backup SKIPPED (--no-backup)."
+        echo "          ⚠ Restore from backup is not available if this upgrade fails."
+        echo ""
+    fi
+
+    # ── Step 2/4: Git checkout target ─────────────────────────────────
+    echo "Step 2/4: Checking out ${TARGET}..."
+    git checkout --quiet "${TARGET}"
+    echo "  ✓ Working tree at ${TARGET}."
+    echo ""
+
+    # ── Step 3/4: deploy-all ──────────────────────────────────────────
+    # Reuse the existing recipe so all the stage-specific naming,
+    # scheduler setup, and MCP gating stay in one place. ``deploy-all``
+    # builds + pushes the image, runs migrations as a Cloud Run Job,
+    # and deploys web + worker services.
+    echo "Step 3/4: Running deploy-all {{stage}}..."
+    just gcp deploy-all {{stage}}
+    echo ""
+
+    # ── Step 4/4: Post-flight verification ────────────────────────────
+    echo "Step 4/4: Running post-upgrade doctor + smoke-test..."
+    DOCTOR_PASS=1
+    if ! just gcp doctor {{stage}}; then
+        DOCTOR_PASS=0
+        echo "  ⚠ Doctor reported issues on {{stage}}." >&2
+    fi
+    SMOKE_PASS=1
+    if ! just gcp smoke-test {{stage}}; then
+        SMOKE_PASS=0
+        echo "  ⚠ Smoke-test failed on {{stage}}." >&2
+    fi
+    echo ""
+
+    # ── Write upgrade report ──────────────────────────────────────────
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "Error: 'jq' not found on host — install it (apt install jq)." >&2
+        exit 1
+    fi
+    COMPLETED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    SKIPPED_JSON=$(if [ ${NO_BACKUP} -eq 1 ]; then echo true; else echo false; fi)
+    DOCTOR_JSON=$(if [ ${DOCTOR_PASS} -eq 1 ]; then echo true; else echo false; fi)
+    SMOKE_JSON=$(if [ ${SMOKE_PASS} -eq 1 ]; then echo true; else echo false; fi)
+    jq -n \
+        --arg stage "{{stage}}" \
+        --arg from "${CURRENT_TAG}" \
+        --arg to "${TARGET}" \
+        --arg started "${STARTED_AT}" \
+        --arg completed "${COMPLETED_AT}" \
+        --arg backup "${BACKUP_REF}" \
+        --argjson skipped "${SKIPPED_JSON}" \
+        --argjson doctor "${DOCTOR_JSON}" \
+        --argjson smoke "${SMOKE_JSON}" \
+        '{
+            schema_version: "validibot.upgrade.v1",
+            target_substrate: "gcp",
+            stage: $stage,
+            from_version: $from,
+            to_version: $to,
+            started_at: $started,
+            completed_at: $completed,
+            backup_uri: $backup,
+            backup_skipped: $skipped,
+            doctor_pass: $doctor,
+            smoke_test_pass: $smoke
+        }' > "${REPORT_FILE}"
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if [ ${DOCTOR_PASS} -eq 1 ] && [ ${SMOKE_PASS} -eq 1 ]; then
+        echo "  ✓ Upgrade to ${TARGET} complete on {{stage}}"
+    else
+        echo "  ⚠ Upgrade to ${TARGET} landed with post-flight findings"
+    fi
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "  Report:  ${REPORT_FILE}"
+    if [ -n "${BACKUP_REF}" ]; then
+        echo "  Backup:  ${BACKUP_REF}"
+    fi
+    if [ ${DOCTOR_PASS} -eq 0 ] || [ ${SMOKE_PASS} -eq 0 ]; then
+        exit 1
+    fi
+    exit 0
 
 # Internal: build and deploy the MCP server when the deploy is MCP-aware.
 #
@@ -586,7 +829,7 @@ _deploy-web stage:
         --service-account "$SA" \
         --add-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
-        --set-env-vars APP_ROLE=web,VALIDIBOT_STAGE={{stage}} \
+        --set-env-vars APP_ROLE=web,VALIDIBOT_STAGE={{stage}},VALIDIBOT_VERSION={{validibot_version}} \
         --min-instances $MIN_INSTANCES \
         --max-instances $MAX_INSTANCES \
         --memory 1Gi \
@@ -641,7 +884,7 @@ _deploy-worker stage:
         --service-account "$SA" \
         --add-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
-        --set-env-vars APP_ROLE=worker,VALIDIBOT_STAGE={{stage}} \
+        --set-env-vars APP_ROLE=worker,VALIDIBOT_STAGE={{stage}},VALIDIBOT_VERSION={{validibot_version}} \
         --no-allow-unauthenticated \
         --ingress internal \
         --min-instances 0 \
@@ -1088,6 +1331,821 @@ _run-migrate-job stage image:
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  ✓ Migrations complete on {{stage}}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# ─────────────────────────────────────────────────────────────────────────
+# _resolve-deployed-image: query the live image of the web service
+# ─────────────────────────────────────────────────────────────────────────
+#
+# Returns (on stdout) the full image reference currently serving
+# traffic for the stage's web service, e.g.
+# ``us-central1-docker.pkg.dev/proj/validibot/validibot-web@sha256:...``.
+#
+# Used by ``doctor``, ``backup``, and ``restore`` so each runs
+# against the actually-deployed image rather than the operator's
+# local checkout.  An operator with unpushed local changes, a dirty
+# tree, or a branch that diverges from prod must not be able to run
+# diagnostics or write backup manifests using code that isn't
+# serving traffic.
+#
+# Note this is INTENTIONALLY different from ``_run-migrate-job``,
+# which takes ``{{gcp_image}}:{{git_sha}}`` because migrate runs
+# inside ``deploy`` (after build+push) — at that point the local
+# SHA has just become the deployed image.  Doctor / backup /
+# restore all run independently of deploy and need to look up what's
+# live.
+[private]
+[arg('stage', pattern='dev|staging|prod')]
+_resolve-deployed-image stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        SERVICE="${APP_NAME}-web"
+    else
+        SERVICE="${APP_NAME}-web-{{stage}}"
+    fi
+
+    IMAGE=$(gcloud run services describe "${SERVICE}" \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format='value(spec.template.spec.containers[0].image)' 2>&1) || {
+        echo "Error: could not resolve deployed image for ${SERVICE}." >&2
+        echo "" >&2
+        echo "  Has the web service been deployed for stage '{{stage}}'?" >&2
+        echo "    just gcp deploy {{stage}}" >&2
+        exit 1
+    }
+
+    if [ -z "${IMAGE}" ]; then
+        echo "Error: ${SERVICE} reports an empty image (newly created service?)." >&2
+        echo "  Deploy first:  just gcp deploy {{stage}}" >&2
+        exit 1
+    fi
+
+    echo "${IMAGE}"
+
+# ─────────────────────────────────────────────────────────────────────────
+# _run-doctor-job: stage doctor execution as a Cloud Run Job
+# ─────────────────────────────────────────────────────────────────────────
+#
+# Mirrors ``_run-migrate-job`` but for the doctor command.  The Job
+# runs ``python manage.py check_validibot --target gcp --stage <stage>``
+# in the deployed image, with the same SA / Cloud SQL / secret as the
+# web service so the doctor sees what the runtime sees.
+#
+# Why this is a Job rather than a one-shot ``gcloud run services exec``:
+#
+#   - Jobs have a stable name we can describe + update across
+#     invocations, so an operator running ``just gcp doctor prod`` ten
+#     times in a row doesn't pay container-cold-start ten times.
+#   - Job execution history is preserved in Cloud Run, which is
+#     useful for "doctor was green at 09:00, when did it start
+#     failing?" investigations.
+#   - The migrate Job already follows this pattern, so contributors
+#     who understand one understand both.
+#
+# Operator-supplied args (``--strict``, ``--json``, etc.) are
+# forwarded to the underlying command via the ``args`` parameter.
+# We always prepend ``--target gcp --stage <stage>`` so operators
+# don't have to repeat them.
+#
+# The ``image`` parameter is the *deployed* image ref resolved by
+# ``_resolve-deployed-image`` — never the operator's local SHA.
+[private]
+_run-doctor-job stage image args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+
+    # Stage-specific configuration — same convention as
+    # ``_run-migrate-job``: prod gets the unsuffixed name; other
+    # stages append ``-{stage}`` to avoid collisions.
+    if [ "{{stage}}" = "prod" ]; then
+        JOB_NAME="${APP_NAME}-doctor"
+        SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db"
+        SECRET="django-env"
+    else
+        JOB_NAME="${APP_NAME}-doctor-{{stage}}"
+        SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db-{{stage}}"
+        SECRET="django-env-{{stage}}"
+    fi
+
+    # The container command.  ``set -a && source /secrets/.env``
+    # mirrors the entrypoint pattern other Jobs use so the runtime
+    # picks up the same env vars Django expects.  ``--target gcp
+    # --stage`` is always set; operator-supplied args follow.
+    DOCTOR_CMD="python manage.py check_validibot --target gcp --stage {{stage}} {{args}}"
+    BASH_ARGS="-c,set -a && source /secrets/.env && set +a && ${DOCTOR_CMD}"
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Doctor — {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Job:     $JOB_NAME"
+    echo "  Image:   {{image}}"
+    echo "  Args:    {{args}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # ── Create or update the Job ────────────────────────────────────────
+    # Same describe-or-create pattern ``_run-migrate-job`` uses.  The
+    # update path is taken on every invocation because the args may
+    # have changed; the create path runs on the first ever doctor
+    # call against a stage.  Memory / timeout are smaller than the
+    # migrate Job because the doctor is read-only and fast.
+    # ────────────────────────────────────────────────────────────────────
+    if gcloud run jobs describe "$JOB_NAME" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
+        gcloud run jobs update "$JOB_NAME" \
+            --image "{{image}}" \
+            --region {{gcp_region}} \
+            --service-account "$SA" \
+            --set-cloudsql-instances "$DB" \
+            --set-secrets=/secrets/.env="$SECRET":latest \
+            --memory 512Mi \
+            --task-timeout 120s \
+            --execution-environment gen2 \
+            --command "/bin/bash" \
+            --args "$BASH_ARGS" \
+            --project {{gcp_project}} \
+            --quiet >/dev/null
+    else
+        gcloud run jobs create "$JOB_NAME" \
+            --image "{{image}}" \
+            --region {{gcp_region}} \
+            --service-account "$SA" \
+            --set-cloudsql-instances "$DB" \
+            --set-secrets=/secrets/.env="$SECRET":latest \
+            --memory 512Mi \
+            --task-timeout 120s \
+            --execution-environment gen2 \
+            --command "/bin/bash" \
+            --args "$BASH_ARGS" \
+            --project {{gcp_project}} \
+            --quiet >/dev/null
+    fi
+
+    # ── Execute and wait ────────────────────────────────────────────────
+    # ``--wait`` blocks until the Job finishes.  We DON'T fail the
+    # recipe on a non-zero exit code from gcloud — ``check_validibot
+    # --strict`` exits 1 when warnings are present, which is a real
+    # signal we want to propagate to the caller, not swallow.  The
+    # final ``exit $RC`` below preserves that.
+    # ────────────────────────────────────────────────────────────────────
+    set +e
+    EXECUTION=$(gcloud run jobs execute "$JOB_NAME" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --wait \
+        --format="value(metadata.name)" 2>&1)
+    RC=$?
+    set -e
+
+    # Best-effort log retrieval.  Even if the doctor returned non-zero
+    # we want to show its output — that's where the operator finds out
+    # WHICH check failed.  ``2>/dev/null || true`` because the gcloud
+    # beta logs subcommand can flake on cold project state.
+    if [ -n "$EXECUTION" ]; then
+        echo ""
+        gcloud beta run jobs executions logs read "$EXECUTION" \
+            --region {{gcp_region}} \
+            --project {{gcp_project}} 2>/dev/null \
+            || echo "(Could not retrieve execution logs — check GCP console)"
+    fi
+
+    echo ""
+    if [ $RC -eq 0 ]; then
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  ✓ Doctor passed on {{stage}}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    else
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  ✗ Doctor reported issues on {{stage}} (exit $RC)"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "  Re-run with --json to get machine-readable output:"
+        echo "    just gcp doctor {{stage}} --json"
+    fi
+    exit $RC
+
+# ─────────────────────────────────────────────────────────────────────────
+# _run-backup: stage backup orchestration
+# ─────────────────────────────────────────────────────────────────────────
+#
+# Three-step flow: Cloud SQL export → media rsync → manifest write.
+# Each step is independent so a partial failure leaves a partial
+# backup (with no manifest) that an operator can either delete or
+# resume from; the manifest is only written when every artifact is
+# in place and checksummed.
+#
+# The backup bucket name follows the convention
+# ``<project>-validibot-backups-<stage>``.  Created on first use
+# with object versioning enabled (so concurrent backups don't
+# overwrite each other) and uniform bucket-level access (no
+# per-object ACLs, simpler IAM).
+[private]
+_run-backup stage image:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+
+    # ── Stage configuration ─────────────────────────────────────────────
+    if [ "{{stage}}" = "prod" ]; then
+        DB_INSTANCE="${APP_NAME}-db"
+        SECRET="django-env"
+        SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        MEDIA_BUCKET="${APP_NAME}-media"
+    else
+        DB_INSTANCE="${APP_NAME}-db-{{stage}}"
+        SECRET="django-env-{{stage}}"
+        SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        MEDIA_BUCKET="${APP_NAME}-media-{{stage}}"
+    fi
+
+    # GCS bucket names are globally unique across all GCP projects, so
+    # ``validibot-backups-prod`` would collide on first use in any
+    # environment that isn't ours.  Including the project ID keeps
+    # the name unambiguous.  Operators who want a specific bucket
+    # can override via ``GCP_BACKUP_BUCKET`` in ``.envs/...``.
+    BACKUP_BUCKET="${GCP_BACKUP_BUCKET:-{{gcp_project}}-${APP_NAME}-backups-{{stage}}}"
+    BACKUP_ID=$(date -u +%Y%m%dT%H%M%SZ)
+    BACKUP_URI="gs://${BACKUP_BUCKET}/${BACKUP_ID}"
+    DB_OBJECT="${BACKUP_URI}/db.sql.gz"
+    MEDIA_PREFIX="${BACKUP_URI}/media/"
+    MEDIA_INVENTORY="${BACKUP_URI}/media-inventory.jsonl"
+    MANIFEST_OBJECT="${BACKUP_URI}/manifest.json"
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Backup — {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Backup ID:    ${BACKUP_ID}"
+    echo "  Destination:  ${BACKUP_URI}"
+    echo "  DB instance:  ${DB_INSTANCE}"
+    echo "  Media bucket: gs://${MEDIA_BUCKET}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # ── Ensure the backup bucket exists ────────────────────────────────
+    # First-run operators don't pre-create the bucket; we provision
+    # it with versioning + uniform bucket-level access on demand.
+    # ``gcloud storage buckets describe`` exits non-zero if missing,
+    # so we use it as the existence check.
+    if ! gcloud storage buckets describe "gs://${BACKUP_BUCKET}" \
+        --project={{gcp_project}} &>/dev/null; then
+        echo "Creating backup bucket gs://${BACKUP_BUCKET}..."
+        gcloud storage buckets create "gs://${BACKUP_BUCKET}" \
+            --location={{gcp_region}} \
+            --uniform-bucket-level-access \
+            --enable-versioning \
+            --project={{gcp_project}}
+        # Grant the Cloud SQL service agent permission to write
+        # exports here.  Cloud SQL refuses the export operation
+        # otherwise, with a notoriously opaque error.
+        SQL_AGENT=$(gcloud sql instances describe "${DB_INSTANCE}" \
+            --project={{gcp_project}} \
+            --format='value(serviceAccountEmailAddress)')
+        gcloud storage buckets add-iam-policy-binding "gs://${BACKUP_BUCKET}" \
+            --member="serviceAccount:${SQL_AGENT}" \
+            --role=roles/storage.objectAdmin \
+            --project={{gcp_project}} >/dev/null
+    fi
+
+    # ── Step 1: Cloud SQL export ───────────────────────────────────────
+    # ``--offload`` performs the export from a serverless export
+    # operation rather than against the primary; available on all
+    # Postgres instances and avoids primary load.  ``--async`` would
+    # let us run multiple exports in parallel, but for a single
+    # backup we want to wait inline so the manifest writer has
+    # something to checksum.
+    echo "Step 1/4: Exporting Cloud SQL database to ${DB_OBJECT}..."
+    gcloud sql export sql "${DB_INSTANCE}" "${DB_OBJECT}" \
+        --offload \
+        --project={{gcp_project}}
+    echo "  ✓ DB export complete."
+    echo ""
+
+    # ── Step 2: Media rsync ────────────────────────────────────────────
+    # First verify the source bucket EXISTS — a missing bucket / IAM
+    # denial / API blip would otherwise silently degrade to "no
+    # media in this backup," which is a serious data-loss footgun.
+    # Only after the bucket-exists check do we attempt to list +
+    # rsync; an empty listing AT THAT POINT is genuinely "bucket is
+    # empty," not "we couldn't tell."
+    echo "Step 2/4: Syncing media bucket to ${MEDIA_PREFIX}..."
+    if ! gcloud storage buckets describe "gs://${MEDIA_BUCKET}" \
+        --project={{gcp_project}} &>/dev/null; then
+        echo "Error: media bucket gs://${MEDIA_BUCKET} not found or not accessible." >&2
+        echo "" >&2
+        echo "  Verify the bucket exists and the running gcloud principal has" >&2
+        echo "  storage.buckets.get permission on it." >&2
+        exit 1
+    fi
+    # ``gcloud storage rsync -r`` copies the bucket contents and sets
+    # the destination's metadata to match.  We DON'T use ``-d``
+    # (delete extras) because the destination prefix is timestamp-
+    # fresh — there are no extras to delete.  An empty source
+    # bucket is fine; rsync no-ops cleanly.
+    gcloud storage rsync \
+        "gs://${MEDIA_BUCKET}" "${MEDIA_PREFIX}" \
+        --recursive \
+        --project={{gcp_project}}
+    echo "  ✓ Media sync complete."
+    echo ""
+
+    # ── Step 3: Inventory + checksums ──────────────────────────────────
+    # We need three things for the manifest writer:
+    #   - DB dump size + sha256
+    #   - List of media files with GCS-native metadata
+    #
+    # The DB dump checksum is computed by streaming the GCS object
+    # through sha256sum — we never download it to local disk, just
+    # pipe it through.  Cloud Run Job environments don't have local
+    # disk space for multi-GB dumps, but ``gsutil cat`` is streaming
+    # so memory usage stays bounded.
+    echo "Step 3/4: Computing checksums + inventory..."
+    DB_SIZE=$(gcloud storage objects describe "${DB_OBJECT}" \
+        --project={{gcp_project}} \
+        --format='value(size)')
+    DB_SHA256=$(gcloud storage cat "${DB_OBJECT}" \
+        --project={{gcp_project}} | sha256sum | awk '{print $1}')
+    echo "  DB size: ${DB_SIZE} bytes"
+    echo "  DB sha256: ${DB_SHA256}"
+
+    # Build the media inventory as JSONL.  Each line is a complete
+    # ``BackupFileEntry`` JSON object that the manifest writer
+    # parses.  We stream this directly to GCS rather than buffering
+    # it locally because it can be large for media-heavy
+    # deployments.
+    INVENTORY_FILE=$(mktemp)
+    trap 'rm -f "$INVENTORY_FILE"' EXIT
+
+    # ``gcloud storage objects list`` with ``--format=json`` gives us
+    # the raw object metadata; jq reshapes it into BackupFileEntry
+    # shape.  ``content_type``, ``md5_hash`` (base64 → hex), and
+    # ``crc32c`` are all on the response.
+    #
+    # ``--format=json`` always emits valid JSON (an empty array
+    # ``[]`` when no objects match), so we can run jq
+    # unconditionally and let it produce zero lines for an empty
+    # bucket.  This avoids the "ls failed → assume empty" footgun
+    # that masked errors in the previous version.
+    gcloud storage objects list "${MEDIA_PREFIX}**" \
+        --project={{gcp_project}} \
+        --format=json | \
+        jq -r --arg prefix "${MEDIA_PREFIX}" '
+            .[] | {
+                path: (.name | sub($prefix; "media/")),
+                size_bytes: (.size | tonumber),
+                content_type: .contentType,
+                checksum_sha256: null,
+                checksum_md5: .md5Hash,
+                checksum_crc32c: .crc32c
+            } | tostring
+        ' > "${INVENTORY_FILE}"
+    gcloud storage cp "${INVENTORY_FILE}" "${MEDIA_INVENTORY}" \
+        --project={{gcp_project}} >/dev/null
+    INVENTORY_COUNT=$(wc -l < "${INVENTORY_FILE}" | tr -d ' ')
+    echo "  Inventory: ${INVENTORY_COUNT} media files"
+    echo ""
+
+    # ── Step 4: Write the manifest via Cloud Run Job ───────────────────
+    # The Job runs ``manage.py write_backup_manifest`` against the
+    # deployed image, which means it sees the live migration head +
+    # Postgres version.  The Job needs:
+    #   - access to the deployed Cloud SQL instance (for migration state)
+    #   - GCS read on the inventory file + write on the manifest
+    #     object (covered by the existing service account, which
+    #     already has these permissions for evidence storage)
+    echo "Step 4/4: Writing manifest via Cloud Run Job..."
+
+    JOB_NAME="${APP_NAME}-backup-manifest-{{stage}}"
+    [ "{{stage}}" = "prod" ] && JOB_NAME="${APP_NAME}-backup-manifest"
+
+    DB="{{gcp_project}}:{{gcp_region}}:${DB_INSTANCE}"
+    RESTORE_HINT="just gcp restore {{stage}} ${BACKUP_URI}"
+
+    # Capture currently-active Secret Manager versions for the
+    # config component.  ``gcloud secrets versions list --filter=
+    # state=ENABLED --limit=1`` returns the most recent enabled
+    # version; we record that so a future restore knows which
+    # version was active at backup time.  Missing secrets (e.g.
+    # mcp-env in a deployment without MCP) are silently skipped —
+    # we record what's there, not what should be there.
+    SECRET_VERSION_ARGS=()
+    for SECRET_NAME in "${SECRET}" "mcp-env" "mcp-env-{{stage}}"; do
+        # Only the prod-named MCP secret applies to prod, etc.
+        if [ "{{stage}}" = "prod" ] && [ "${SECRET_NAME}" = "mcp-env-{{stage}}" ]; then
+            continue
+        fi
+        if [ "{{stage}}" != "prod" ] && [ "${SECRET_NAME}" = "mcp-env" ]; then
+            continue
+        fi
+        SECRET_VERSION=$(gcloud secrets versions list "${SECRET_NAME}" \
+            --filter="state=ENABLED" \
+            --limit=1 \
+            --format='value(name)' \
+            --project={{gcp_project}} 2>/dev/null || echo "")
+        if [ -n "${SECRET_VERSION}" ]; then
+            SECRET_VERSION_ARGS+=(
+                "--secret-manager-version"
+                "${SECRET_NAME}=${SECRET_VERSION}"
+            )
+        fi
+    done
+
+    # Build the writer's argv.  Note ``--media-inventory`` references
+    # the GCS path; the Job downloads it on entry into a temp file.
+    WRITER_ARGS=(
+        "--backup-id" "${BACKUP_ID}"
+        "--target" "gcp"
+        "--stage" "{{stage}}"
+        "--backup-uri" "${BACKUP_URI}"
+        "--db-file" "db.sql.gz"
+        "--db-sha256" "${DB_SHA256}"
+        "--db-size-bytes" "${DB_SIZE}"
+        "--media-inventory" "/tmp/inventory.jsonl"
+        "--restore-command-hint" "${RESTORE_HINT}"
+        "--output" "${MANIFEST_OBJECT}"
+        "${SECRET_VERSION_ARGS[@]}"
+    )
+    # Quote each arg for the bash -c command line.
+    WRITER_ARGS_QUOTED=$(printf '%q ' "${WRITER_ARGS[@]}")
+    BASH_ARGS="-c,set -a && source /secrets/.env && set +a && \
+        gcloud storage cp '${MEDIA_INVENTORY}' /tmp/inventory.jsonl --project={{gcp_project}} && \
+        python manage.py write_backup_manifest ${WRITER_ARGS_QUOTED}"
+
+    if gcloud run jobs describe "${JOB_NAME}" \
+        --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
+        gcloud run jobs update "${JOB_NAME}" \
+            --image "{{image}}" \
+            --region {{gcp_region}} \
+            --service-account "${SA}" \
+            --set-cloudsql-instances "${DB}" \
+            --set-secrets=/secrets/.env="${SECRET}":latest \
+            --memory 512Mi \
+            --task-timeout 300s \
+            --execution-environment gen2 \
+            --command "/bin/bash" \
+            --args "${BASH_ARGS}" \
+            --project {{gcp_project}} \
+            --quiet >/dev/null
+    else
+        gcloud run jobs create "${JOB_NAME}" \
+            --image "{{image}}" \
+            --region {{gcp_region}} \
+            --service-account "${SA}" \
+            --set-cloudsql-instances "${DB}" \
+            --set-secrets=/secrets/.env="${SECRET}":latest \
+            --memory 512Mi \
+            --task-timeout 300s \
+            --execution-environment gen2 \
+            --command "/bin/bash" \
+            --args "${BASH_ARGS}" \
+            --project {{gcp_project}} \
+            --quiet >/dev/null
+    fi
+
+    gcloud run jobs execute "${JOB_NAME}" \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --wait >/dev/null
+    echo "  ✓ Manifest written to ${MANIFEST_OBJECT}"
+    echo ""
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ✓ Backup complete on {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "  Backup root:  ${BACKUP_URI}"
+    echo "  Manifest:     ${MANIFEST_OBJECT}"
+    echo ""
+    echo "  Restore later with:"
+    echo "    ${RESTORE_HINT}"
+
+# ─────────────────────────────────────────────────────────────────────────
+# _run-restore: orchestrate restore from a backup URI
+# ─────────────────────────────────────────────────────────────────────────
+#
+# Four pre-flight gates run before any destructive operation:
+#
+#   1. ``doctor --strict`` — refuse if the deployment is unhealthy.
+#      A half-broken target makes recovery harder, not easier.
+#      Boring-self-hosting AC #15.
+#
+#   2. ``verify_backup_compatibility`` — refuse if the manifest's
+#      schema version, migration head, or major Validibot version
+#      is incompatible with current code.  Boring-self-hosting AC
+#      #16.
+#
+#   3. Artifact integrity — refuse if the manifest's DB dump entry
+#      does not match the GCS object that would be imported.
+#
+#   4. Interactive operator confirmation — restore is destructive
+#      (overwrites the database, syncs media back).  An accidental
+#      ``just gcp restore prod gs://...`` typed by mistake will
+#      sit at the prompt rather than nuking production.
+#
+# After confirmation:
+#   - Cloud SQL import from the manifest's DB dump object
+#   - Media bucket restore via rsync from the backup's media prefix
+#   - Print Secret Manager versions block from the manifest so the
+#     operator can re-pin secrets if needed
+#
+# What this does NOT do (deferred):
+#
+#   - ``--components`` flag handling.  This MVP always restores
+#     data + prints config; future iteration adds the AC #17 flag
+#     surface (``data-only`` / ``config-only`` / ``full``).
+#   - Active maintenance-mode toggling.  Cloud SQL import takes
+#     the DB offline briefly; the operator can ``just gcp
+#     maintenance-on`` first if they want to be explicit.
+[private]
+_run-restore stage path image:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+    BACKUP_URI="{{path}}"
+
+    # Trim trailing slash so concatenations like ${BACKUP_URI}/... are clean.
+    BACKUP_URI="${BACKUP_URI%/}"
+    MANIFEST_URI="${BACKUP_URI}/manifest.json"
+
+    # Stage configuration mirrors backup so DB / SA / secret names
+    # are consistent.
+    if [ "{{stage}}" = "prod" ]; then
+        DB_INSTANCE="${APP_NAME}-db"
+        SECRET="django-env"
+        SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        MEDIA_BUCKET="${APP_NAME}-media"
+    else
+        DB_INSTANCE="${APP_NAME}-db-{{stage}}"
+        SECRET="django-env-{{stage}}"
+        SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        MEDIA_BUCKET="${APP_NAME}-media-{{stage}}"
+    fi
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Restore — {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Source:       ${BACKUP_URI}"
+    echo "  DB instance:  ${DB_INSTANCE}"
+    echo "  Media bucket: gs://${MEDIA_BUCKET}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # ── Pre-flight 1: manifest exists ──────────────────────────────────
+    # Check before doctor / verify so a typo'd backup path fails
+    # immediately with a clear error rather than after spending a
+    # minute on doctor.
+    if ! gcloud storage objects describe "${MANIFEST_URI}" \
+        --project={{gcp_project}} &>/dev/null; then
+        echo "Error: manifest.json not found at ${MANIFEST_URI}." >&2
+        echo "" >&2
+        echo "  Verify the backup URI is correct.  Backups are stored at" >&2
+        echo "  gs://<project>-<app>-backups-<stage>/<backup-id>/." >&2
+        echo "" >&2
+        echo "  List recent backups for this stage:" >&2
+        echo "    gcloud storage ls gs://{{gcp_project}}-${APP_NAME}-backups-{{stage}}/ \\" >&2
+        echo "      --project={{gcp_project}}" >&2
+        exit 1
+    fi
+    echo "Pre-flight 1/4: manifest located at ${MANIFEST_URI}"
+
+    # ── Pre-flight 2: doctor --strict ──────────────────────────────────
+    # AC #15: destructive recipes call doctor --strict first.
+    echo "Pre-flight 2/4: running doctor --strict..."
+    if ! just gcp doctor {{stage}} --strict; then
+        echo "" >&2
+        echo "Error: doctor --strict failed.  Refusing to restore against" >&2
+        echo "an unhealthy deployment." >&2
+        echo "" >&2
+        echo "  Resolve the issues doctor reported, then re-run restore." >&2
+        exit 1
+    fi
+    echo "  ✓ doctor --strict passed."
+    echo ""
+
+    # ── Pre-flight 3: verify_backup_compatibility ──────────────────────
+    # AC #16: refuse cross-major-version jumps + schema-ahead backups.
+    # Runs as a Cloud Run Job so it sees the LIVE migration head.
+    echo "Pre-flight 3/4: verifying backup compatibility..."
+    VERIFY_JOB="${APP_NAME}-verify-backup-{{stage}}"
+    [ "{{stage}}" = "prod" ] && VERIFY_JOB="${APP_NAME}-verify-backup"
+    DB="{{gcp_project}}:{{gcp_region}}:${DB_INSTANCE}"
+
+    BASH_ARGS="-c,set -a && source /secrets/.env && set +a && \
+        python manage.py verify_backup_compatibility --manifest '${MANIFEST_URI}'"
+
+    if gcloud run jobs describe "${VERIFY_JOB}" \
+        --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
+        gcloud run jobs update "${VERIFY_JOB}" \
+            --image "{{image}}" \
+            --region {{gcp_region}} \
+            --service-account "${SA}" \
+            --set-cloudsql-instances "${DB}" \
+            --set-secrets=/secrets/.env="${SECRET}":latest \
+            --memory 512Mi \
+            --task-timeout 60s \
+            --execution-environment gen2 \
+            --command "/bin/bash" \
+            --args "${BASH_ARGS}" \
+            --project {{gcp_project}} \
+            --quiet >/dev/null
+    else
+        gcloud run jobs create "${VERIFY_JOB}" \
+            --image "{{image}}" \
+            --region {{gcp_region}} \
+            --service-account "${SA}" \
+            --set-cloudsql-instances "${DB}" \
+            --set-secrets=/secrets/.env="${SECRET}":latest \
+            --memory 512Mi \
+            --task-timeout 60s \
+            --execution-environment gen2 \
+            --command "/bin/bash" \
+            --args "${BASH_ARGS}" \
+            --project {{gcp_project}} \
+            --quiet >/dev/null
+    fi
+
+    set +e
+    EXECUTION=$(gcloud run jobs execute "${VERIFY_JOB}" \
+        --region={{gcp_region}} --project={{gcp_project}} \
+        --wait \
+        --format='value(metadata.name)' 2>&1)
+    VERIFY_RC=$?
+    set -e
+
+    # Always show the verifier's output (compatible OR refused) —
+    # it's the operator's only window into what was checked.
+    if [ -n "${EXECUTION}" ]; then
+        gcloud beta run jobs executions logs read "${EXECUTION}" \
+            --region={{gcp_region}} --project={{gcp_project}} 2>/dev/null \
+            || echo "(Could not retrieve verifier logs — check GCP console)"
+    fi
+
+    if [ ${VERIFY_RC} -ne 0 ]; then
+        echo "" >&2
+        echo "Error: backup is not compatible with this deployment." >&2
+        echo "  See the verifier output above for the specific reason(s)." >&2
+        exit 1
+    fi
+    echo "  ✓ Backup is compatible with this deployment."
+    echo ""
+
+    # ── Pre-flight 4: DB artifact integrity ─────────────────────────────
+    # Compatibility tells us the backup can be restored by this code.
+    # Integrity tells us the object we are about to import is exactly
+    # the object the manifest described.  The DB dump is the highest-
+    # impact artifact, so a missing path / missing checksum / size
+    # mismatch / sha mismatch is a hard stop before the destructive
+    # confirmation prompt.
+    echo "Pre-flight 4/4: verifying DB dump integrity..."
+    MANIFEST_JSON=$(gcloud storage cat "${MANIFEST_URI}" \
+        --project={{gcp_project}})
+    DB_PATH=$(printf '%s' "${MANIFEST_JSON}" | jq -r '.data.db_dump.path // empty')
+    DB_EXPECTED_SHA=$(printf '%s' "${MANIFEST_JSON}" | jq -r '.data.db_dump.checksum_sha256 // empty')
+    DB_EXPECTED_SIZE=$(printf '%s' "${MANIFEST_JSON}" | jq -r '.data.db_dump.size_bytes // empty')
+
+    if [ -z "${DB_PATH}" ] || [ "${DB_PATH}" = "null" ]; then
+        echo "Error: manifest is missing data.db_dump.path." >&2
+        exit 1
+    fi
+    if [ -z "${DB_EXPECTED_SHA}" ] || [ "${DB_EXPECTED_SHA}" = "null" ]; then
+        echo "Error: manifest is missing data.db_dump.checksum_sha256." >&2
+        exit 1
+    fi
+    if ! [[ "${DB_EXPECTED_SHA}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        echo "Error: manifest DB sha256 is not a 64-character hex digest." >&2
+        exit 1
+    fi
+    DB_EXPECTED_SHA=$(printf '%s' "${DB_EXPECTED_SHA}" | tr '[:upper:]' '[:lower:]')
+    if ! [[ "${DB_EXPECTED_SIZE}" =~ ^[0-9]+$ ]]; then
+        echo "Error: manifest DB size is missing or invalid." >&2
+        exit 1
+    fi
+
+    if [[ "${DB_PATH}" == gs://* ]]; then
+        DB_OBJECT="${DB_PATH}"
+        if [[ "${DB_OBJECT}" != "${BACKUP_URI}/"* ]]; then
+            echo "Error: manifest DB path is outside the backup root." >&2
+            echo "  backup root: ${BACKUP_URI}" >&2
+            echo "  db path:     ${DB_OBJECT}" >&2
+            exit 1
+        fi
+    else
+        if [[ "${DB_PATH}" = /* || "${DB_PATH}" == "../"* || "${DB_PATH}" == *"/../"* || "${DB_PATH}" == *"/.." ]]; then
+            echo "Error: manifest DB path must be relative to the backup root." >&2
+            echo "  db path: ${DB_PATH}" >&2
+            exit 1
+        fi
+        DB_OBJECT="${BACKUP_URI}/${DB_PATH}"
+    fi
+
+    DB_ACTUAL_SIZE=$(gcloud storage objects describe "${DB_OBJECT}" \
+        --project={{gcp_project}} \
+        --format='value(size)')
+    if [ "${DB_ACTUAL_SIZE}" != "${DB_EXPECTED_SIZE}" ]; then
+        echo "Error: DB dump size mismatch." >&2
+        echo "  object:   ${DB_OBJECT}" >&2
+        echo "  expected: ${DB_EXPECTED_SIZE}" >&2
+        echo "  actual:   ${DB_ACTUAL_SIZE}" >&2
+        exit 1
+    fi
+
+    DB_ACTUAL_SHA=$(gcloud storage cat "${DB_OBJECT}" \
+        --project={{gcp_project}} | sha256sum | awk '{print $1}')
+    if [ "${DB_ACTUAL_SHA}" != "${DB_EXPECTED_SHA}" ]; then
+        echo "Error: DB dump sha256 mismatch." >&2
+        echo "  object:   ${DB_OBJECT}" >&2
+        echo "  expected: ${DB_EXPECTED_SHA}" >&2
+        echo "  actual:   ${DB_ACTUAL_SHA}" >&2
+        exit 1
+    fi
+    echo "  ✓ DB dump matches manifest (${DB_EXPECTED_SIZE} bytes, sha256 ${DB_EXPECTED_SHA})."
+    echo ""
+
+    # ── Operator confirmation ──────────────────────────────────────────
+    # Restore is destructive: the DB is overwritten, the media bucket
+    # is overwritten.  Make the operator type the stage name to
+    # confirm — accidental ``just gcp restore prod ...`` typed by
+    # mistake stops here rather than nuking production.
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ⚠ DESTRUCTIVE OPERATION"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  About to:"
+    echo "    1. Import ${DB_OBJECT} INTO Cloud SQL '${DB_INSTANCE}'"
+    echo "       (this OVERWRITES the current database)"
+    echo "    2. Rsync ${BACKUP_URI}/media/ INTO gs://${MEDIA_BUCKET}/"
+    echo "       (this OVERWRITES current media files)"
+    echo ""
+    echo "  Type the stage name '{{stage}}' to confirm, or anything else to abort:"
+    read -r CONFIRM
+    if [ "${CONFIRM}" != "{{stage}}" ]; then
+        echo "Aborted by operator (no changes made)."
+        exit 1
+    fi
+    echo ""
+
+    # ── Step 1: Cloud SQL import ───────────────────────────────────────
+    # Cloud SQL takes the DB offline during import; running services
+    # queue requests.  The operator can ``just gcp maintenance-on``
+    # first if they want a clean drain.
+    echo "Step 1/3: Importing Cloud SQL database from ${DB_OBJECT}..."
+    gcloud sql import sql "${DB_INSTANCE}" "${DB_OBJECT}" \
+        --project={{gcp_project}} \
+        --quiet
+    echo "  ✓ DB import complete."
+    echo ""
+
+    # ── Step 2: Media rsync (reverse direction) ────────────────────────
+    # Note ``-d`` (delete extras) IS appropriate here: a restored
+    # media bucket should match the backup, not be a superset.  An
+    # operator who wants additive restore can copy by hand.
+    echo "Step 2/3: Restoring media bucket from ${BACKUP_URI}/media/..."
+    if ! gcloud storage buckets describe "gs://${MEDIA_BUCKET}" \
+        --project={{gcp_project}} &>/dev/null; then
+        echo "Error: target media bucket gs://${MEDIA_BUCKET} not found." >&2
+        echo "  Cannot restore media without the destination bucket." >&2
+        exit 1
+    fi
+    gcloud storage rsync \
+        "${BACKUP_URI}/media/" "gs://${MEDIA_BUCKET}" \
+        --recursive \
+        --delete-unmatched-destination-objects \
+        --project={{gcp_project}}
+    echo "  ✓ Media restore complete."
+    echo ""
+
+    # ── Step 3: Surface config component for operator action ───────────
+    # We don't auto-restore config because the manifest stores
+    # Secret Manager versions, not values.  Operators re-pin by
+    # hand if needed.  Showing the manifest's config block lets
+    # them see what's available without re-fetching the manifest.
+    echo "Step 3/3: Reading config component from manifest..."
+    CONFIG_JSON=$(printf '%s' "${MANIFEST_JSON}" | jq -r '.config // null')
+    echo ""
+    if [ "${CONFIG_JSON}" = "null" ]; then
+        echo "  Manifest has no config component (data-only backup)."
+    else
+        echo "  Secret Manager versions active at backup time:"
+        echo "${CONFIG_JSON}" | jq -r \
+            '.secret_manager_versions | to_entries[] | "    \(.key): version \(.value)"'
+        echo ""
+        echo "  To re-pin a secret to the recorded version (if needed):"
+        echo "    gcloud secrets versions disable <newer-version> \\"
+        echo "      --secret=<name> --project={{gcp_project}}"
+        echo "    # then redeploy so Cloud Run picks up the now-current version"
+    fi
+    echo ""
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ✓ Restore complete on {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "  Recommended verification:"
+    echo "    just gcp doctor {{stage}}"
+    echo "    just gcp errors-since {{stage}} 5m"
 
 # Run setup_validibot to initialize site and default data
 # Configures site domain, validators, roles, workspaces, etc.
@@ -2041,23 +3099,36 @@ scheduler-resume job_name:
 #   - fmu: Functional Mock-up Unit validator
 #
 # Validator backends live in the separate validibot-validator-backends repository
-# at ../validibot-validator-backends. Run these commands from that directory.
+# at ../validibot-validator-backends. These recipes build from that sibling
+# source checkout and stamp OCI labels from that repo's release tag / SHA.
 #
 # =============================================================================
 
 # Build a specific validator container (energyplus, fmu, etc.)
+#
+# The backend image version is baked into each backend's Dockerfile as the
+# ``ARG VALIDATOR_BACKEND_VERSION`` default — that's the single source of
+# truth and what gets stamped onto the image as the
+# ``org.opencontainers.image.version`` OCI label. Release engineering can
+# override via ``VALIDATOR_BACKEND_VERSION=0.1.1-rc1 just gcp
+# validator-build energyplus``; otherwise the Dockerfile default wins.
+#
 # Usage: just gcp validator-build energyplus
-# NOTE: Run from ../validibot-validator-backends directory
 validator-build name:
+    #!/usr/bin/env bash
+    set -euo pipefail
     docker build --platform linux/amd64 \
         -f ../validibot-validator-backends/validator_backends/{{name}}/Dockerfile \
-        -t {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:{{git_sha}} \
+        ${VALIDATOR_BACKEND_VERSION:+--build-arg VALIDATOR_BACKEND_VERSION="${VALIDATOR_BACKEND_VERSION}"} \
+        --build-arg VALIDATOR_BACKEND_REVISION="{{validator_backend_git_sha}}" \
+        --build-arg VALIDATOR_BACKEND_SLUG="{{name}}" \
+        -t {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:{{validator_backend_git_sha}} \
         -t {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:latest \
         ../validibot-validator-backends
 
 # Push a validator container
 validator-push name:
-    docker push {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:{{git_sha}}
+    docker push {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:{{validator_backend_git_sha}}
     docker push {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:latest
 
 # Build and push in one step
@@ -2087,10 +3158,16 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
     fi
 
-    # Deploy the job with the dedicated validator SA (least-privilege)
+    # Deploy the job with the dedicated validator SA (least-privilege).
+    # Image name MUST match what ``validator-build`` / ``validator-push``
+    # actually produced — both use the ``-validator-backend-`` prefix.
+    # The earlier ``-validator-`` form here referred to an image that
+    # was never built; deploys would silently fail with "image not
+    # found" until a freshly built image happened to use the matching
+    # tag.
     echo "Deploying $JOB_NAME..."
     gcloud run jobs deploy "$JOB_NAME" \
-        --image {{validator_repo}}/{{app_name}}-validator-{{name}}:{{git_sha}} \
+        --image {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:{{validator_backend_git_sha}} \
         --region {{gcp_region}} \
         --service-account "$VALIDATOR_SA" \
         --max-retries 0 \
@@ -2099,8 +3176,8 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
         --network default \
         --subnet default \
         --vpc-egress all-traffic \
-        --set-env-vars VALIDATOR_VERSION={{git_sha}},VALIDIBOT_STAGE={{stage}},DEPLOYMENT_TARGET=gcp \
-        --labels validator={{name}},version={{git_sha}},stage={{stage}} \
+        --set-env-vars VALIDIBOT_STAGE={{stage}},DEPLOYMENT_TARGET=gcp \
+        --labels validator={{name}},revision={{validator_backend_git_sha}},stage={{stage}} \
         --project {{gcp_project}}
     echo "$JOB_NAME deployed"
 
@@ -3383,25 +4460,28 @@ local-to-gcp-shell stage: _require-gcp-config
     kill $PROXY_PID 2>/dev/null || true
 
 # =============================================================================
-# Operator-Facing Stub Recipes (Phase 0 of ADR-2026-04-27)
+# Operator-Facing Recipes (ADR-2026-04-27)
 # =============================================================================
 #
 # These recipes mirror the operator-facing recipes in ``just/self-hosted/``
 # so we have cross-target parity by construction (see ADR section 1).
-# Today they print a "not yet implemented" notice and exit non-zero.
-# This makes the parity surface visible in ``just gcp --list`` and
-# lets cross-target parity tests work today.
 #
 # GCP recipes take an explicit stage (dev/staging/prod) — see ADR
 # section 4. This is the one intentional asymmetry between
 # ``just self-hosted`` (no stage) and ``just gcp`` (stage required).
 #
-# The full implementations land in later ADR phases:
-#   - doctor: Phase 1 (target-aware health diagnostic)
-#   - smoke-test: Phase 2 (end-to-end demo workflow)
-#   - backup, restore: Phase 3 (Cloud SQL export + GCS export)
-#   - validators: Phase 5 (Cloud Run Job inventory)
-#   - collect-support-bundle: Phase 6 (redacted support archive)
+# Implementation status:
+#   - doctor:                 ✅ Cloud Run Job runs check_validibot
+#   - errors-since:           ✅ wraps gcloud logging read
+#   - validators:             ✅ Cloud Run Job inventory + pinning compliance
+#   - backup:                 ✅ Cloud SQL export + media rsync + manifest
+#   - restore:                ✅ DB import + media rsync + compatibility verifier
+#   - smoke-test:             stub (Phase 2 — end-to-end demo workflow)
+#   - collect-support-bundle: stub (Phase 6 — redacted support archive)
+#
+# Stubs print a "not yet implemented" notice and exit 64 so the parity
+# surface is visible in ``just gcp --list`` and cross-target parity
+# tests work against the recipe set today.
 
 [private]
 _phase0-stub recipe stage:
@@ -3416,54 +4496,941 @@ _phase0-stub recipe stage:
 # with GCP-specific checks (Cloud Run revision, Cloud SQL instance,
 # Cloud Tasks queue, GCS IAM bindings).
 #
-# Phase 1 Session 1 status: ``check_validibot`` itself is target-aware
-# and emits the v1 JSON schema, but the GCP-specific wiring (running it
-# remotely via Cloud Run job, mapping output back) lands in Session 2.
-# For now, this recipe explains how to invoke it manually.
-doctor stage *args:
-    @echo "GCP doctor wiring lands in Phase 1 Session 2."
-    @echo ""
-    @echo "For now, run check_validibot manually against the deployed service:"
-    @echo ""
-    @echo "  gcloud run jobs execute validibot-doctor-{{stage}} \\"
-    @echo "    --region <region> --project <project>"
-    @echo ""
-    @echo "Or shell into a worker and run:"
-    @echo ""
-    @echo "  python manage.py check_validibot --target gcp --stage {{stage}} {{args}}"
-    @echo ""
-    @echo "The check_validibot command itself is fully target-aware as of"
-    @echo "Phase 1 Session 1 — see validibot/core/management/commands/check_validibot.py"
-    @echo "and docs/operations/self-hosting/doctor-check-ids.md."
-    @exit 64
+# How this works:
+#
+#   1. Ensures a stage-specific Cloud Run Job exists
+#      (``validibot-doctor`` for prod, ``validibot-doctor-{stage}``
+#      otherwise) running the deployed image.  The Job's command is
+#      ``python manage.py check_validibot --target gcp --stage <stage>``.
+#      Same SA, same Cloud SQL instance, same secret as the web /
+#      worker services so the doctor sees what the runtime sees.
+#
+#   2. Executes the Job with ``gcloud run jobs execute --wait`` and
+#      passes any extra args (``--strict``, ``--json``, etc.)
+#      through.  The Job's exit code propagates so CI gates work.
+#
+#   3. Tails the execution logs back to the operator's terminal so
+#      the JSON / pretty output is visible alongside the exit code.
+#
+# Why a Cloud Run Job rather than running locally:
+#
+# Running ``check_validibot`` on the operator's laptop only checks
+# things visible from outside (DNS, public endpoints).  It misses
+# Cloud SQL connectivity from inside the VPC, Secret Manager
+# bindings, Service Account permissions on private resources — all
+# the failures that actually break production.  Running the Job in
+# the deployed environment exercises the same network and identity
+# the runtime uses.
+
+# Resolves the deployed image from ``gcloud run services
+# describe`` rather than passing the local ``{{gcp_image}}:{{git_sha}}``
+# — operators with stale checkouts, dirty trees, or branches that
+# diverge from prod must not run diagnostics against an image that
+# isn't actually serving traffic.  The doctor's value is precisely
+# that it inspects what's *deployed*; using anything else makes
+# the check a lie.
+
+# Run check_validibot against the deployed GCP environment.
+[arg('stage', pattern='dev|staging|prod')]
+doctor stage *args: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    DEPLOYED_IMAGE=$(just gcp _resolve-deployed-image {{stage}})
+    just gcp _run-doctor-job {{stage}} "${DEPLOYED_IMAGE}" "{{args}}"
 
 # Show recent ERROR / EXCEPTION lines from Cloud Run logs.
 #
-# Phase 1 Session 1 stub. Session 2 wires this up to gcloud logging.
-errors-since stage duration="1h":
-    @just gcp _phase0-stub errors-since {{stage}}
+# Wraps ``gcloud logging read`` against the deployed services for the
+# stage.  Default freshness is 1h, which matches the operator's
+# typical "what just broke?" window.  Adjust via the second arg:
+#
+#   just gcp errors-since prod 1h
+#   just gcp errors-since staging 6h
+#   just gcp errors-since prod 30m
+#
+# Output is pretty-printed for the operator's terminal.  For
+# machine-readable output (e.g. for grafana log-ingest), add
+# ``--format=json`` to the gcloud invocation directly — wrapping
+# that in this recipe would mean every operator who wants pretty
+# output has to pass an extra flag, which is the wrong default.
 
-# End-to-end smoke test — creates demo data, runs a small validation,
-# exports an evidence bundle, cleans up.
-smoke-test stage:
-    @just gcp _phase0-stub smoke-test {{stage}}
+# Show recent ERROR-level Cloud Run log entries (defaults to last 1h).
+[arg('stage', pattern='dev|staging|prod')]
+errors-since stage duration="1h": _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
 
-# Application-level backup — Cloud SQL export + GCS media export +
-# manifest with Validibot version and migration state. Same schema as
-# self-hosted backup manifests.
-backup stage:
-    @just gcp _phase0-stub backup {{stage}}
+    # Stage-aware filter.  Cloud Run revisions are named
+    # ``<service>-<revision>`` and the service name encodes the
+    # stage; filtering at the resource level avoids paging through
+    # unrelated logs from sibling stages.
+    #
+    # We surface BOTH ``cloud_run_revision`` (Services: web, worker)
+    # AND ``cloud_run_job`` (Jobs: validators, migrate, setup, doctor,
+    # backup) because the operator-visible failure surface includes
+    # both.  Slice 4 / 5 / 7 work added Jobs that produce errors
+    # operators need to see in this view.
+    if [ "{{stage}}" = "prod" ]; then
+        WEB_SERVICE="${APP_NAME}-web"
+        WORKER_SERVICE="${APP_NAME}-worker"
+        # Cloud Run Jobs for prod use the unsuffixed name.
+        JOB_LABEL_FILTER="(resource.labels.job_name:\"${APP_NAME}-validator-\""
+        JOB_LABEL_FILTER="${JOB_LABEL_FILTER} OR resource.labels.job_name=\"${APP_NAME}-migrate\""
+        JOB_LABEL_FILTER="${JOB_LABEL_FILTER} OR resource.labels.job_name=\"${APP_NAME}-setup\""
+        JOB_LABEL_FILTER="${JOB_LABEL_FILTER} OR resource.labels.job_name=\"${APP_NAME}-doctor\""
+        JOB_LABEL_FILTER="${JOB_LABEL_FILTER} OR resource.labels.job_name=\"${APP_NAME}-backup-manifest\""
+        JOB_LABEL_FILTER="${JOB_LABEL_FILTER} OR resource.labels.job_name=\"${APP_NAME}-verify-backup\")"
+    else
+        WEB_SERVICE="${APP_NAME}-web-{{stage}}"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
+        JOB_LABEL_FILTER="(resource.labels.job_name:\"${APP_NAME}-validator-\""
+        JOB_LABEL_FILTER="${JOB_LABEL_FILTER} OR resource.labels.job_name=\"${APP_NAME}-migrate-{{stage}}\""
+        JOB_LABEL_FILTER="${JOB_LABEL_FILTER} OR resource.labels.job_name=\"${APP_NAME}-setup-{{stage}}\""
+        JOB_LABEL_FILTER="${JOB_LABEL_FILTER} OR resource.labels.job_name=\"${APP_NAME}-doctor-{{stage}}\""
+        JOB_LABEL_FILTER="${JOB_LABEL_FILTER} OR resource.labels.job_name=\"${APP_NAME}-backup-manifest-{{stage}}\""
+        JOB_LABEL_FILTER="${JOB_LABEL_FILTER} OR resource.labels.job_name=\"${APP_NAME}-verify-backup-{{stage}}\")"
+    fi
 
-# Restore from a backup. Same path semantics as self-hosted restore.
-restore stage path="":
-    @just gcp _phase0-stub restore {{stage}}
+    # ``severity>=ERROR`` is the minimum signal operators care about;
+    # WARNING is too noisy for an at-a-glance "what just broke?"
+    # view.  The OR-bridged service + job filter shows both surfaces
+    # in one listing — the on-caller is the same person regardless
+    # of which container produced the error.
+    SERVICE_FILTER='resource.type="cloud_run_revision"'
+    SERVICE_FILTER="${SERVICE_FILTER} AND (resource.labels.service_name=\"${WEB_SERVICE}\""
+    SERVICE_FILTER="${SERVICE_FILTER} OR resource.labels.service_name=\"${WORKER_SERVICE}\")"
 
-# Redacted support bundle. Substitutes Cloud Run logs, Cloud SQL
-# state, etc. for the self-hosted log sources, but keeps the same
-# schema and redaction rules.
-collect-support-bundle stage:
-    @just gcp _phase0-stub collect-support-bundle {{stage}}
+    JOB_FILTER='resource.type="cloud_run_job"'
+    JOB_FILTER="${JOB_FILTER} AND ${JOB_LABEL_FILTER}"
 
-# Validator inventory — Cloud Run Job state and image digests.
-validators stage:
-    @just gcp _phase0-stub validators {{stage}}
+    FILTER="(${SERVICE_FILTER}) OR (${JOB_FILTER})"
+    FILTER="(${FILTER}) AND severity>=ERROR"
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Errors in the last {{duration}} — {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Services:  ${WEB_SERVICE}, ${WORKER_SERVICE}"
+    echo "  Jobs:      validators / migrate / setup / doctor / backup-manifest / verify-backup"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # ``--limit=100`` keeps a single invocation bounded; an operator
+    # seeing a flood of errors will scroll back via the cloud
+    # console anyway, and 100 entries is enough to see the shape of
+    # the failure.  ``--order=desc`` shows newest first (matches
+    # ``tail -f`` mental model).  The format pulls service_name OR
+    # job_name into a single SOURCE column so the operator sees one
+    # interleaved listing rather than two parallel sections.
+    gcloud logging read "$FILTER" \
+        --freshness="{{duration}}" \
+        --limit=100 \
+        --order=desc \
+        --format='table(
+            timestamp.date(format="%Y-%m-%dT%H:%M:%S"):label=TIME,
+            severity:label=SEV,
+            resource.type:label=KIND,
+            resource.labels.service_name.if(resource.labels.service_name):label=SOURCE,
+            resource.labels.job_name.if(resource.labels.job_name):label=JOB,
+            textPayload.if(textPayload):label=MESSAGE
+        )' \
+        --project={{gcp_project}}
+
+    echo ""
+    echo "Tip: for a single error in detail, use:"
+    echo "  gcloud logging read '<filter>' --format=json --project={{gcp_project}}"
+
+# Run the validibot.smoke-test.v1 command as a Cloud Run Job against the
+# deployed environment. The Job needs the same Cloud SQL + Secret Manager
+# wiring as the doctor / backup Jobs because the smoke test creates a
+# real Submission and ValidationRun in the deployment's database.
+# Returns 0 if the deployment can validate things end-to-end, non-zero
+# otherwise (worker stuck, validator misconfigured, etc.).
+#
+# Forwards extra args (``--json``, ``--timeout-seconds``) through to the
+# underlying command, e.g. ``just gcp smoke-test prod --json``.
+#
+# End-to-end smoke test — runs a tiny JSON Schema validation through the real pipeline.
+[arg('stage', pattern='dev|staging|prod')]
+smoke-test stage *args: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    DEPLOYED_IMAGE=$(just gcp _resolve-deployed-image {{stage}})
+    just gcp _run-smoke-test-job {{stage}} "${DEPLOYED_IMAGE}" "{{args}}"
+
+# ─────────────────────────────────────────────────────────────────────────
+# _run-smoke-test-job: stage smoke-test execution as a Cloud Run Job
+# ─────────────────────────────────────────────────────────────────────────
+#
+# Mirrors ``_run-doctor-job`` but for the smoke_test management
+# command. The Job needs:
+#   - access to the deployed Cloud SQL instance (creates a real
+#     ValidationRun row);
+#   - the same django-env secret the runtime uses (so settings line
+#     up — DEPLOYMENT_TARGET, storage bucket names, etc.);
+#   - a slightly longer task-timeout than doctor because the smoke
+#     test waits for the worker to pick up a job and run it.
+#
+# The Job runs synchronously via ``--wait`` so the recipe's exit
+# status is the smoke test's exit status — Phase 4's upgrade recipe
+# can call this and trust the verdict.
+[private]
+_run-smoke-test-job stage image args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+
+    if [ "{{stage}}" = "prod" ]; then
+        JOB_NAME="${APP_NAME}-smoke-test"
+        SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db"
+        SECRET="django-env"
+    else
+        JOB_NAME="${APP_NAME}-smoke-test-{{stage}}"
+        SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db-{{stage}}"
+        SECRET="django-env-{{stage}}"
+    fi
+
+    SMOKE_CMD="python manage.py smoke_test --target gcp --stage {{stage}} {{args}}"
+    BASH_ARGS="-c,set -a && source /secrets/.env && set +a && ${SMOKE_CMD}"
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Smoke test — {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Job:     $JOB_NAME"
+    echo "  Image:   {{image}}"
+    echo "  Args:    {{args}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # Task timeout 180s gives the smoke test up to its default
+    # 120s polling window plus headroom for cold-start and Job
+    # bring-up. Adjust upward if a deployment has a very slow
+    # worker startup; the Python --timeout-seconds flag still
+    # bounds the wait inside the Job.
+    if gcloud run jobs describe "$JOB_NAME" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
+        gcloud run jobs update "$JOB_NAME" \
+            --image "{{image}}" \
+            --region {{gcp_region}} \
+            --service-account "$SA" \
+            --set-cloudsql-instances "$DB" \
+            --set-secrets=/secrets/.env="$SECRET":latest \
+            --memory 512Mi \
+            --task-timeout 180s \
+            --execution-environment gen2 \
+            --command "/bin/bash" \
+            --args "$BASH_ARGS" \
+            --project {{gcp_project}} \
+            --quiet >/dev/null
+    else
+        gcloud run jobs create "$JOB_NAME" \
+            --image "{{image}}" \
+            --region {{gcp_region}} \
+            --service-account "$SA" \
+            --set-cloudsql-instances "$DB" \
+            --set-secrets=/secrets/.env="$SECRET":latest \
+            --memory 512Mi \
+            --task-timeout 180s \
+            --execution-environment gen2 \
+            --command "/bin/bash" \
+            --args "$BASH_ARGS" \
+            --project {{gcp_project}} \
+            --quiet >/dev/null
+    fi
+
+    set +e
+    EXECUTION=$(gcloud run jobs execute "$JOB_NAME" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --wait \
+        --format="value(metadata.name)" 2>&1)
+    RC=$?
+    set -e
+
+    if [ -n "$EXECUTION" ]; then
+        echo ""
+        gcloud beta run jobs executions logs read "$EXECUTION" \
+            --region {{gcp_region}} \
+            --project {{gcp_project}} 2>/dev/null \
+            || echo "(Could not retrieve execution logs — check GCP console)"
+    fi
+
+    echo ""
+    if [ $RC -eq 0 ]; then
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  ✓ Smoke test passed on {{stage}}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    else
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  ✗ Smoke test failed on {{stage}} (exit $RC)"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "  Diagnose with:"
+        echo "    just gcp doctor {{stage}}             # configuration sanity"
+        echo "    just gcp errors-since {{stage}} 5m    # recent service errors"
+    fi
+    exit $RC
+
+# Application-level backup — Cloud SQL export + GCS media rsync +
+# manifest.json with Validibot version, migration head, and file
+# checksums.  The manifest format is shared with self-hosted
+# backups (``validibot.backup.v1``); restore tooling will read
+# either flavour without per-target branches.
+#
+# How this works:
+#
+#   1. Compute a UTC ``backup_id`` (``YYYYMMDDTHHMMSSZ``) and the
+#      backup destination URI under
+#      ``gs://<project>-validibot-backups-<stage>/<backup_id>/``.
+#      The bucket is auto-created on first use, with object
+#      versioning enabled and a retention policy operators tune via
+#      env vars.
+#
+#   2. Cloud SQL export → ``gs://.../<backup_id>/db.sql.gz``.
+#      ``gcloud sql export sql --offload`` runs the export from a
+#      read replica when one exists, avoiding load on the primary.
+#
+#   3. Media rsync → ``gs://.../<backup_id>/media/``.  The source is
+#      the deployed media bucket; gsutil tracks per-file metadata
+#      that the manifest writer then consumes.
+#
+#   4. Compute the dump's sha256 by streaming it through gsutil cat
+#      | sha256sum.  Skipping this would mean the manifest can't
+#      verify the most critical artifact at restore time.
+#
+#   5. Run a Cloud Run Job that invokes ``manage.py
+#      write_backup_manifest`` against the deployed environment.
+#      The Job sees the live migration head + Postgres version,
+#      which is exactly what restore needs to verify against.
+#
+#   6. Report the backup URI back to the operator with the exact
+#      restore command they'd run later.
+#
+# Why a Cloud Run Job for the manifest writer:
+#
+#   The manifest's ``compatibility`` block needs Django's view of
+#   the migration state, not the operator laptop's.  Running the
+#   writer on the deployed image guarantees the manifest reflects
+#   what the live database actually has.
+
+# Run an application-level backup (Cloud SQL + media + manifest).
+[arg('stage', pattern='dev|staging|prod')]
+backup stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Resolve the deployed image so the manifest writer captures
+    # the LIVE migration head + Validibot version, not whatever
+    # the operator's local checkout happens to be.
+    DEPLOYED_IMAGE=$(just gcp _resolve-deployed-image {{stage}})
+    just gcp _run-backup {{stage}} "${DEPLOYED_IMAGE}"
+
+# Restore from a backup produced by ``just gcp backup``.
+#
+# Reads ``manifest.json`` at the backup root, refuses on
+# incompatibility, runs ``doctor --strict`` as a pre-flight, and on
+# operator confirmation imports the DB dump and rsyncs the media
+# bucket back into the deployed environment.
+#
+# Compatibility checks (boring self-hosting ADR AC #16):
+#
+#   - Schema version must be ``validibot.backup.v1``
+#   - Backup's migration head must NOT be ahead of current code
+#     (operator must upgrade the deployment first if it is)
+#   - No cross-major Validibot version jumps
+#
+# Pre-flight check (AC #15):
+#
+#   - ``doctor --strict`` must exit 0; restore refuses to run
+#     against an unhealthy deployment because the import operation
+#     is destructive and a half-broken target makes recovery much
+#     harder.
+#
+# What the recipe does NOT do (deferred work):
+#
+#   - ``--components config-only`` / ``data-only`` / ``full``
+#     selection (AC #17).  This MVP always restores the data
+#     component; config restoration is informational only because
+#     the manifest stores Secret Manager *versions*, not values.
+#     Operators see the recorded versions printed at the end and
+#     re-pin them by hand if needed.
+#   - Down-time orchestration (maintenance mode toggling, traffic
+#     drain).  Cloud SQL import takes the DB offline briefly; the
+#     deployed Cloud Run services queue requests during that
+#     window.  Future iteration may add explicit
+#     ``maintenance-on`` / ``maintenance-off`` wrapping.
+
+# Restore from a backup (DB import + media rsync + manifest verification).
+[arg('stage', pattern='dev|staging|prod')]
+restore stage path: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    DEPLOYED_IMAGE=$(just gcp _resolve-deployed-image {{stage}})
+    just gcp _run-restore {{stage}} {{path}} "${DEPLOYED_IMAGE}"
+
+# =============================================================================
+# Support Bundle (Phase 6 of ADR-2026-04-27)
+# =============================================================================
+#
+# Same lifecycle as the self-hosted ``collect-support-bundle`` recipe,
+# different substrate. The app-side snapshot is captured by running
+# ``collect_support_bundle`` as a Cloud Run Job (so it sees the live
+# Cloud SQL connection); host-side artefacts are captured via gcloud:
+#
+#   - Cloud Run service + revision state
+#   - Recent Cloud Run + Cloud SQL logs
+#   - Validator job inventory
+#
+# Output: ``support-bundles/<stage>-<timestamp>.zip`` on the operator's
+# laptop. Same redaction guarantee — sensitive setting values never
+# leave the deployment unredacted.
+
+# Generate a redacted support bundle zip for a GCP stage.
+# Usage: just gcp collect-support-bundle prod [--output <path>]
+[arg('stage', pattern='dev|staging|prod')]
+collect-support-bundle stage *flags: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    OUTPUT=""
+    # shellcheck disable=SC2086
+    set -- {{flags}}
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --output) shift; OUTPUT="${1:-}" ;;
+            --output=*) OUTPUT="${1#--output=}" ;;
+            "") ;;
+            *)
+                echo "ERROR: unknown flag: $1" >&2
+                echo "Usage: just gcp collect-support-bundle <stage> [--output <path>]" >&2
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
+    APP_NAME="{{app_name}}"
+    BUNDLE_ID=$(date -u +%Y%m%dT%H%M%SZ)
+    if [ -z "${OUTPUT}" ]; then
+        OUTPUT="support-bundles/support-bundle-{{stage}}-${BUNDLE_ID}.zip"
+    fi
+    mkdir -p "$(dirname "${OUTPUT}")"
+
+    WORKDIR=$(mktemp -d)
+    trap 'rm -rf "$WORKDIR"' EXIT
+
+    if [ "{{stage}}" = "prod" ]; then
+        WEB_SERVICE="${APP_NAME}-web"
+        WORKER_SERVICE="${APP_NAME}-worker"
+        DB_INSTANCE="${APP_NAME}-db"
+        SECRET="django-env"
+        SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        JOB_NAME="${APP_NAME}-support-bundle"
+    else
+        WEB_SERVICE="${APP_NAME}-web-{{stage}}"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
+        DB_INSTANCE="${APP_NAME}-db-{{stage}}"
+        SECRET="django-env-{{stage}}"
+        SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        JOB_NAME="${APP_NAME}-support-bundle-{{stage}}"
+    fi
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Support bundle — {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Bundle ID:  ${BUNDLE_ID}"
+    echo "  Output:     ${OUTPUT}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # ── Step 1: App-side snapshot via Cloud Run Job ───────────────────
+    # Mirrors _run-doctor-job's pattern: resolve the deployed image,
+    # invoke ``collect_support_bundle`` against it as a one-off Job.
+    # We capture the JSON output by reading the Job's execution logs
+    # — Cloud Run captures stdout there.
+    echo "Step 1/4: Capturing app-side snapshot via Cloud Run Job..."
+    DEPLOYED_IMAGE=$(just gcp _resolve-deployed-image {{stage}})
+    DB="{{gcp_project}}:{{gcp_region}}:${DB_INSTANCE}"
+    BASH_ARGS="-c,set -a && source /secrets/.env && set +a && python manage.py collect_support_bundle --no-indent"
+
+    if gcloud run jobs describe "${JOB_NAME}" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
+        gcloud run jobs update "${JOB_NAME}" \
+            --image "${DEPLOYED_IMAGE}" \
+            --region {{gcp_region}} \
+            --service-account "${SA}" \
+            --set-cloudsql-instances "${DB}" \
+            --set-secrets=/secrets/.env="${SECRET}":latest \
+            --memory 512Mi \
+            --task-timeout 120s \
+            --execution-environment gen2 \
+            --command "/bin/bash" \
+            --args "${BASH_ARGS}" \
+            --project {{gcp_project}} \
+            --quiet >/dev/null
+    else
+        gcloud run jobs create "${JOB_NAME}" \
+            --image "${DEPLOYED_IMAGE}" \
+            --region {{gcp_region}} \
+            --service-account "${SA}" \
+            --set-cloudsql-instances "${DB}" \
+            --set-secrets=/secrets/.env="${SECRET}":latest \
+            --memory 512Mi \
+            --task-timeout 120s \
+            --execution-environment gen2 \
+            --command "/bin/bash" \
+            --args "${BASH_ARGS}" \
+            --project {{gcp_project}} \
+            --quiet >/dev/null
+    fi
+
+    set +e
+    EXECUTION=$(gcloud run jobs execute "${JOB_NAME}" \
+        --region={{gcp_region}} --project={{gcp_project}} --wait \
+        --format='value(metadata.name)' 2>&1)
+    SNAPSHOT_RC=$?
+    set -e
+
+    if [ ${SNAPSHOT_RC} -eq 0 ] && [ -n "${EXECUTION}" ]; then
+        # Read the execution's logs — that's where the JSON was written.
+        # Strip the gcloud log-line prefix (timestamp etc.) by reading
+        # the JSON from the last contiguous run that starts with ``{``.
+        gcloud beta run jobs executions logs read "${EXECUTION}" \
+            --region={{gcp_region}} --project={{gcp_project}} 2>/dev/null \
+            | awk '/^{/,EOF' > "${WORKDIR}/app-snapshot.json"
+        if [ -s "${WORKDIR}/app-snapshot.json" ]; then
+            echo "  ✓ App snapshot captured."
+        else
+            echo "  ⚠ Job ran but produced no parseable JSON — check logs."
+            rm -f "${WORKDIR}/app-snapshot.json"
+        fi
+    else
+        echo "  ⚠ Cloud Run Job execution failed — bundle will be host-side only."
+    fi
+    echo ""
+
+    # ── Step 2: Cloud Run service state ───────────────────────────────
+    echo "Step 2/4: Capturing Cloud Run service state..."
+    gcloud run services describe "${WEB_SERVICE}" \
+        --region={{gcp_region}} --project={{gcp_project}} \
+        > "${WORKDIR}/web-service.txt" 2>&1 || true
+    gcloud run services describe "${WORKER_SERVICE}" \
+        --region={{gcp_region}} --project={{gcp_project}} \
+        > "${WORKDIR}/worker-service.txt" 2>&1 || true
+    gcloud sql instances describe "${DB_INSTANCE}" \
+        --project={{gcp_project}} \
+        > "${WORKDIR}/sql-instance.txt" 2>&1 || true
+    echo "  ✓ Cloud Run + Cloud SQL state captured."
+    echo ""
+
+    # ── Step 3: Recent logs ───────────────────────────────────────────
+    # 1h freshness, severity>=WARNING captures both errors and recent
+    # warnings. We deliberately don't lower severity further; INFO logs
+    # blow up bundle size without adding diagnostic value.
+    echo "Step 3/4: Capturing recent logs (last 1h, WARNING+)..."
+    SERVICE_FILTER="resource.type=\"cloud_run_revision\" AND (resource.labels.service_name=\"${WEB_SERVICE}\" OR resource.labels.service_name=\"${WORKER_SERVICE}\") AND severity>=WARNING"
+    gcloud logging read "${SERVICE_FILTER}" \
+        --freshness=1h \
+        --limit=200 \
+        --order=desc \
+        --format='value(timestamp,severity,resource.labels.service_name,textPayload)' \
+        --project={{gcp_project}} \
+        > "${WORKDIR}/recent-cloud-logs.txt" 2>&1 || true
+    echo "  ✓ Recent logs captured."
+    echo ""
+
+    # ── Step 4: Versions + manifest ───────────────────────────────────
+    echo "Step 4/4: Writing manifest..."
+    {
+        echo "stage: {{stage}}"
+        echo "bundle_id: ${BUNDLE_ID}"
+        echo "captured_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+        echo "[gcloud]"
+        gcloud version 2>/dev/null || echo "(gcloud version unavailable)"
+        echo ""
+        echo "[deployed image]"
+        echo "${DEPLOYED_IMAGE}"
+    } > "${WORKDIR}/versions.txt"
+
+    if [ -f deploy/self-hosted/support-bundle-README.txt ]; then
+        cp deploy/self-hosted/support-bundle-README.txt "${WORKDIR}/README.txt"
+    fi
+
+    if ! command -v zip >/dev/null 2>&1; then
+        echo "Error: 'zip' not found on host — install it (apt install zip)." >&2
+        exit 1
+    fi
+    (cd "${WORKDIR}" && zip -q -r "$(cd "$(dirname "${OLDPWD}/${OUTPUT}")" && pwd)/$(basename "${OUTPUT}")" .)
+    BUNDLE_SIZE=$(du -sh "${OUTPUT}" 2>/dev/null | awk '{print $1}')
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ✓ Bundle written: ${OUTPUT} (${BUNDLE_SIZE})"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "  Review with:"
+    echo "    unzip -l ${OUTPUT}"
+    echo "    unzip -p ${OUTPUT} app-snapshot.json | jq ."
+
+# Validator inventory — list every validator backend Cloud Run Job
+# for the stage with its configured image, digest, image-policy
+# compliance, and last execution status.
+#
+# What this surface is for:
+#
+#   The trust ADR Phase 5 introduced
+#   ``VALIDATOR_BACKEND_IMAGE_POLICY`` (tag / digest / signed-digest)
+#   and the ``check_validibot`` doctor reports the *deployment-wide*
+#   policy via ``VB712`` and ``VB713``.  But operators also need a
+#   *per-validator* view: which backends are pinned by digest, which
+#   are still on a floating tag, when each was last executed
+#   successfully.  ``just gcp validators prod`` is that view.
+#
+# What this surface is NOT for:
+#
+#   This is read-only inventory, not a deploy / redeploy entry
+#   point — for that, use ``validator-deploy`` or
+#   ``validators-deploy-all``.  It also doesn't run cosign
+#   verification (the runtime does that on each launch); the column
+#   it reports is whether the *configured image string* is
+#   digest-pinned, which is the precondition for cosign verification
+#   and is fast to check from gcloud alone.
+
+# List validator backend Cloud Run Jobs with image, pinning, and last-run status.
+[arg('stage', pattern='dev|staging|prod')]
+validators stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+
+    # The validator-deploy recipe labels every validator Job with
+    # ``validator=<name>``, so we filter by the label rather than
+    # by name pattern.  Label-based filtering is more robust than
+    # parsing names that may evolve (e.g. if we ever support
+    # tenant-scoped validator jobs).
+    if [ "{{stage}}" = "prod" ]; then
+        STAGE_LABEL="prod"
+    else
+        STAGE_LABEL="{{stage}}"
+    fi
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Validator inventory — {{stage}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # List every validator Job for the stage.  ``--filter`` accepts
+    # GCP label selectors via the ``metadata.labels.<key>:<value>``
+    # syntax; we use it twice (validator label exists, stage label
+    # matches) to scope the listing precisely.
+    JOBS=$(gcloud run jobs list \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --filter="metadata.labels.stage:${STAGE_LABEL} AND metadata.labels.validator:*" \
+        --format="value(metadata.name)" 2>/dev/null || true)
+
+    if [ -z "$JOBS" ]; then
+        echo "  No validator backends found for stage '{{stage}}'."
+        echo ""
+        echo "  Deploy validators with:"
+        echo "    just gcp validators-deploy-all {{stage}}"
+        echo "    just gcp validator-deploy energyplus {{stage}}"
+        exit 0
+    fi
+
+    # Per-job inventory.  For each Job we read:
+    #   - the configured image (full reference including digest if pinned)
+    #   - the validator name from the labels
+    #   - the most recent execution's completion timestamp + status
+    #
+    # We deliberately don't summarise multiple executions — operators
+    # who need execution history have ``gcloud run jobs executions
+    # list``; this view is "current configuration + last result," at
+    # a glance.
+    printf "%-40s %-12s %-9s %-22s %s\n" "JOB" "VALIDATOR" "PINNING" "LAST RUN" "IMAGE"
+    printf "%-40s %-12s %-9s %-22s %s\n" "----------------------------------------" "------------" "---------" "----------------------" "-----"
+
+    while IFS= read -r JOB_NAME; do
+        [ -z "$JOB_NAME" ] && continue
+
+        # Single describe call extracts everything we need; using
+        # ``--format`` keeps the parse in gcloud rather than shell
+        # so we don't have to deal with YAML quoting.
+        DESCRIBE=$(gcloud run jobs describe "$JOB_NAME" \
+            --region={{gcp_region}} \
+            --project={{gcp_project}} \
+            --format='value(spec.template.template.containers[0].image,metadata.labels.validator)' 2>/dev/null \
+            || echo -e "(unknown)\t(unknown)")
+        IMAGE=$(echo "$DESCRIBE" | awk -F'\t' '{print $1}')
+        VALIDATOR=$(echo "$DESCRIBE" | awk -F'\t' '{print $2}')
+
+        # Image-pinning check.  Match the same heuristic the doctor
+        # uses (``image_policy.is_digest_pinned`` — substring
+        # ``@sha256:``).  Keeping the check here in shell rather
+        # than calling out to Python keeps the recipe operationally
+        # simple; the doctor still owns the authoritative check.
+        if [[ "$IMAGE" == *"@sha256:"* ]]; then
+            PINNING="digest"
+        elif [[ "$IMAGE" == *":"* ]]; then
+            PINNING="tag"
+        else
+            PINNING="(none)"
+        fi
+
+        # Last execution status.  The list-executions call returns
+        # newest first; we take the head and read the completion
+        # state.  An empty result means "never executed" — common
+        # for a freshly deployed validator.
+        LAST_EXEC=$(gcloud run jobs executions list \
+            --job="$JOB_NAME" \
+            --region={{gcp_region}} \
+            --project={{gcp_project}} \
+            --limit=1 \
+            --format='value(metadata.creationTimestamp,status.conditions[0].type,status.conditions[0].status)' 2>/dev/null \
+            || echo "")
+
+        if [ -z "$LAST_EXEC" ]; then
+            LAST_RUN="(never)"
+        else
+            TS=$(echo "$LAST_EXEC" | awk -F'\t' '{print $1}' | cut -c1-19)
+            COND_STATUS=$(echo "$LAST_EXEC" | awk -F'\t' '{print $3}')
+            if [ "$COND_STATUS" = "True" ]; then
+                LAST_RUN="$TS ✓"
+            else
+                LAST_RUN="$TS ✗"
+            fi
+        fi
+
+        printf "%-40s %-12s %-9s %-22s %s\n" \
+            "$JOB_NAME" "$VALIDATOR" "$PINNING" "$LAST_RUN" "$IMAGE"
+    done <<< "$JOBS"
+
+    echo ""
+    echo "Pinning legend:"
+    echo "  digest  — image is pinned by sha256 digest (production-recommended)"
+    echo "  tag     — image is on a floating tag (rejected under digest/signed-digest policy)"
+    echo "  (none)  — no image set (misconfigured Job)"
+    echo ""
+    echo "Tip: run 'just gcp doctor {{stage}}' for the deployment-wide"
+    echo "image-policy check (VB712 / VB713)."
+
+# =============================================================================
+# Cleanup (Phase 5 of ADR-2026-04-27)
+# =============================================================================
+#
+# Long-running GCP deployments accumulate artefacts that aren't part of
+# any working set: completed Cloud Run Job executions, expired backup
+# objects in GCS, old validator Job revisions. This recipe scans, lists
+# candidates, and removes them after operator confirmation.
+#
+# What this cleans (per stage):
+#   - Cloud Run Job executions older than ${EXECUTION_RETAIN_DAYS}
+#     (default 30d). Cloud Run keeps execution metadata indefinitely
+#     by default, which can pile up across high-cardinality validator
+#     stages. We don't touch the Jobs themselves — only their
+#     execution history.
+#   - Manifested backup objects in the per-stage backup bucket older
+#     than ${BACKUP_RETAIN_DAYS} (default 30d). Determined by parsing
+#     each backup's manifest.json::created_at.
+#
+# What this does NOT clean:
+#   - Cloud Run Services or Job DEFINITIONS — those are part of the
+#     deployment surface; ``just gcp deploy-all`` manages them.
+#   - Artifact Registry images — those are managed by GCP's own
+#     lifecycle policies. Configure retention there directly if you
+#     want to reclaim image storage.
+#   - Cloud SQL automatic backups — those are managed by Cloud SQL's
+#     retention policy, not by us.
+#
+# Pattern adopted from Discourse's ``./launcher cleanup``: always show
+# what would be deleted before deleting, even without ``--dry-run``.
+# Safe to run on a Cloud Scheduler cron with ``--yes`` to skip the
+# interactive confirm.
+
+# Prune old Cloud Run Job executions and expired GCS backups (Phase 5).
+# Usage: just gcp cleanup <stage> [--dry-run] [--yes]
+[arg('stage', pattern='dev|staging|prod')]
+cleanup stage *flags: _require-gcp-config
+    @just gcp _run-cleanup {{stage}} "{{flags}}"
+
+# Run the GCP cleanup orchestration.
+[private]
+_run-cleanup stage flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    DRY_RUN=0
+    YES=0
+    # shellcheck disable=SC2086
+    set -- {{flags}}
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dry-run) DRY_RUN=1 ;;
+            --yes) YES=1 ;;
+            "") ;;
+            *)
+                echo "ERROR: unknown flag: $1" >&2
+                echo "Usage: just gcp cleanup <stage> [--dry-run] [--yes]" >&2
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
+    APP_NAME="{{app_name}}"
+    EXECUTION_RETAIN_DAYS="${EXECUTION_RETAIN_DAYS:-30}"
+    BACKUP_RETAIN_DAYS="${BACKUP_RETAIN_DAYS:-30}"
+
+    # Backup bucket name follows the same convention as ``just gcp
+    # backup``: <project>-<app>-backups-<stage>. Operators who
+    # overrode it via GCP_BACKUP_BUCKET in their backup runs need to
+    # set the same here.
+    BACKUP_BUCKET="${GCP_BACKUP_BUCKET:-{{gcp_project}}-${APP_NAME}-backups-{{stage}}}"
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Cleanup — {{stage}} ($([ ${DRY_RUN} -eq 1 ] && echo 'DRY RUN' || echo 'live'))"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Job execution retention: ${EXECUTION_RETAIN_DAYS}d"
+    echo "  Backup retention:        ${BACKUP_RETAIN_DAYS}d"
+    echo "  Backup bucket:           gs://${BACKUP_BUCKET}/"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # ── Scope 1: old Cloud Run Job executions ─────────────────────────
+    # ``gcloud run jobs executions list`` returns every execution
+    # across every Job in the project. We filter by completion
+    # timestamp on the operator side (gcloud's ``--filter`` is
+    # finicky around timestamp comparisons).
+    echo "Scope 1/2: Cloud Run Job executions older than ${EXECUTION_RETAIN_DAYS}d..."
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "  ERROR: 'jq' not found on host — install it (apt install jq)." >&2
+        exit 1
+    fi
+
+    # ISO 8601 cutoff — gcloud emits timestamps in this format, so
+    # string compare is sufficient (and faster than two ``date``
+    # round-trips per execution).
+    if CUTOFF_ISO=$(date -u -d "${EXECUTION_RETAIN_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null); then
+        : # GNU
+    else
+        # BSD date doesn't accept "X days ago" — compute via
+        # ``-v`` instead.
+        CUTOFF_ISO=$(date -u -v "-${EXECUTION_RETAIN_DAYS}d" +%Y-%m-%dT%H:%M:%SZ)
+    fi
+
+    EXECUTIONS_JSON=$(gcloud run jobs executions list \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format=json 2>/dev/null || echo '[]')
+
+    EXECUTION_CANDIDATES=$(echo "${EXECUTIONS_JSON}" | jq -r --arg cutoff "${CUTOFF_ISO}" '
+        .[] | select(
+            (.metadata.creationTimestamp // "") < $cutoff
+            and (.status.completionTime // "") != ""
+        ) | "\(.metadata.namespace)|\(.metadata.name)|\(.metadata.creationTimestamp)|\(.metadata.labels.run.googleapis.com_job // .spec.template.spec.template.spec.containers[0].image // \"unknown\")"
+    ' || true)
+
+    EXECUTION_COUNT=$(echo "${EXECUTION_CANDIDATES}" | grep -c . || true)
+    if [ "${EXECUTION_COUNT}" -eq 0 ]; then
+        echo "  (none)"
+    else
+        echo "${EXECUTION_CANDIDATES}" | head -20 | while IFS='|' read -r NAMESPACE NAME CREATED JOB; do
+            [ -z "${NAME}" ] && continue
+            printf "  %-50s  %s\n" "${NAME}" "${CREATED:0:19}"
+        done
+        if [ "${EXECUTION_COUNT}" -gt 20 ]; then
+            echo "  ... and $((EXECUTION_COUNT - 20)) more."
+        fi
+    fi
+    echo ""
+
+    # ── Scope 2: expired GCS backup objects ───────────────────────────
+    # The bucket contains one prefix per backup_id (timestamp). We
+    # walk top-level prefixes, fetch each manifest.json, parse
+    # ``created_at``, and select prefixes older than the cutoff. A
+    # missing manifest.json means "not a Validibot backup" — we
+    # leave those alone.
+    echo "Scope 2/2: Manifested backups older than ${BACKUP_RETAIN_DAYS}d..."
+    BACKUP_CUTOFF_S=$(($(date -u +%s) - BACKUP_RETAIN_DAYS * 86400))
+    BACKUP_CANDIDATES=""
+    if gcloud storage buckets describe "gs://${BACKUP_BUCKET}" \
+        --project={{gcp_project}} &>/dev/null; then
+        # gsutil list prints one prefix per line ending with /.
+        # Bare ``ls`` (not ``-r``) gives just the top-level entries,
+        # which is exactly the per-backup_id structure we want.
+        for PREFIX in $(gcloud storage ls "gs://${BACKUP_BUCKET}/" --project={{gcp_project}} 2>/dev/null || true); do
+            MANIFEST_URI="${PREFIX}manifest.json"
+            CREATED=$(gcloud storage cat "${MANIFEST_URI}" --project={{gcp_project}} 2>/dev/null | jq -r '.created_at // empty' 2>/dev/null || true)
+            [ -z "${CREATED}" ] && continue
+            if CREATED_S=$(date -d "${CREATED}" +%s 2>/dev/null); then
+                : # GNU
+            elif CREATED_S=$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "${CREATED%.*Z}+0000" +%s 2>/dev/null); then
+                : # BSD
+            else
+                continue
+            fi
+            if [ "${CREATED_S}" -lt "${BACKUP_CUTOFF_S}" ]; then
+                BACKUP_CANDIDATES="${BACKUP_CANDIDATES}${PREFIX}|${CREATED}\n"
+            fi
+        done
+    else
+        echo "  Backup bucket gs://${BACKUP_BUCKET} not found (no backups have run on this stage)."
+    fi
+    if [ -z "${BACKUP_CANDIDATES}" ]; then
+        echo "  (none)"
+    else
+        printf "${BACKUP_CANDIDATES}" | while IFS='|' read -r PREFIX CREATED; do
+            [ -z "${PREFIX}" ] && continue
+            printf "  %s  (created %s)\n" "${PREFIX}" "${CREATED:0:19}"
+        done
+    fi
+    echo ""
+
+    # ── Decision point ────────────────────────────────────────────────
+    HAS_WORK=0
+    [ "${EXECUTION_COUNT}" -gt 0 ] && HAS_WORK=1
+    [ -n "${BACKUP_CANDIDATES}" ] && HAS_WORK=1
+
+    if [ ${HAS_WORK} -eq 0 ]; then
+        echo "Nothing to clean up."
+        exit 0
+    fi
+
+    if [ ${DRY_RUN} -eq 1 ]; then
+        echo "Dry run — no changes made."
+        exit 0
+    fi
+
+    if [ ${YES} -eq 0 ]; then
+        echo "Type 'yes' to delete the items listed above:"
+        read -r CONFIRM
+        if [ "${CONFIRM}" != "yes" ]; then
+            echo "Aborted by operator (no changes made)."
+            exit 1
+        fi
+    fi
+
+    # ── Delete ────────────────────────────────────────────────────────
+    if [ "${EXECUTION_COUNT}" -gt 0 ]; then
+        echo "${EXECUTION_CANDIDATES}" | while IFS='|' read -r NAMESPACE NAME _ _; do
+            [ -z "${NAME}" ] && continue
+            gcloud run jobs executions delete "${NAME}" \
+                --region={{gcp_region}} \
+                --project={{gcp_project}} \
+                --quiet >/dev/null 2>&1 || true
+        done
+        echo "  ✓ ${EXECUTION_COUNT} Cloud Run Job execution(s) removed."
+    fi
+
+    if [ -n "${BACKUP_CANDIDATES}" ]; then
+        printf "${BACKUP_CANDIDATES}" | while IFS='|' read -r PREFIX _; do
+            [ -z "${PREFIX}" ] && continue
+            gcloud storage rm --recursive "${PREFIX}" \
+                --project={{gcp_project}} \
+                --quiet >/dev/null 2>&1 || true
+        done
+        echo "  ✓ Expired backup objects removed from gs://${BACKUP_BUCKET}/."
+    fi
+
+    echo ""
+    echo "Cleanup complete on {{stage}}."

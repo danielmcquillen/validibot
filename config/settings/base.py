@@ -43,10 +43,14 @@ DEBUG = env.bool("DJANGO_DEBUG", False)
 #
 # Valid values (from validibot.core.constants.DeploymentTarget):
 #   - "test": Test environment (synchronous inline execution)
-#   - "local_docker_compose": Local Docker Compose (HTTP to worker, Docker validators)
-#   - "docker_compose": Docker Compose production (Celery + Docker)
+#   - "local_docker_compose": Local Docker Compose dev stack (developer laptop)
+#   - "self_hosted": Customer-operated single-VM deployment (Docker Compose)
 #   - "gcp": Google Cloud Platform (Cloud Tasks + Cloud Run Jobs)
 #   - "aws": Amazon Web Services (SQS + ECS/Batch) - future
+#
+# See ADR-2026-04-27 (Boring Self-Hosting and Operator Experience) for the
+# audience-named taxonomy. ``self_hosted`` was renamed from ``docker_compose``
+# in Phase 0 to match the operator-facing module rename.
 #
 # If not set, auto-detection is used based on other settings.
 DEPLOYMENT_TARGET = env("DEPLOYMENT_TARGET", default=None)
@@ -58,6 +62,12 @@ APP_ROLE = env(
     default="web",
 )
 APP_IS_WORKER = APP_ROLE.lower() == "worker"
+
+# Runtime version stamp used by operator backup/restore compatibility checks.
+# Deploy recipes set this to the image git SHA; local/test deployments leave it
+# blank and fall back to installed package metadata.
+VALIDIBOT_VERSION = env("VALIDIBOT_VERSION", default="")
+
 # Local time zone. Choices are
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
 # though not all of them may be available with every OS.

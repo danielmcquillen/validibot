@@ -208,6 +208,53 @@ Model `clean()` is useful but not enough — direct `QuerySet.update()`, data mi
 - submission content is either inline or file, not both;
 - purged submissions must have content cleared.
 
+## Three-sided config split for cross-service trust gates
+
+Trust gates that span two services (e.g. the MCP server quotes a price; the Django runtime verifies the receipt) are configured by **three** files, not two. Treat this as a reusable pattern whenever a new feature crosses a service boundary:
+
+| File | Purpose | Lifecycle |
+| --- | --- | --- |
+| **Public-config file** (`.build`) | The half each side advertises publicly — chain identifiers, asset addresses, facilitator URLs, feature flags. Stamped by the deploy recipe via `--set-env-vars`. | Versioned with code; safe to commit values. |
+| **Secret-side file** (`.mcp` or per-service equivalent) | The half each side keeps private — receiving wallets, signing keys, OAuth client secrets. Mounted from Secret Manager. | Per-deployment; rotated independently. |
+| **Verifier-side file** (`.django`) | The other side's *copy* of the trust-relevant values, used to verify what arrived against what was expected. | Per-deployment; must agree with the matching values in the other two. |
+
+The third file is the one teams forget. It exists because **the verifier's container does not see the producer's secret mount** — they're independent Cloud Run services with independent secret bindings. The verifier's settings module must declare its own copy of the canonical name, with an optional fallback to the producer-side name for combined deploys (one process holding both halves).
+
+A reusable helper for the verifier side:
+
+```python
+# In _cloud_common.py (or equivalent shared settings helper)
+def resolve_trusted_value(env, *, canonical: str, fallback: str, default: str = "") -> str:
+    """Read ``canonical`` first, then ``fallback`` (treating blank as unset)."""
+    val = env.str(canonical, default="").strip()
+    if val:
+        return val
+    val = env.str(fallback, default="").strip()
+    if val:
+        return val
+    return default
+```
+
+Properties worth replicating in any cross-service setting:
+
+- **Strict precedence** — canonical wins; fallback only fires when canonical is absent or blank.
+- **Blank treated as unset** — env-file templates often ship with placeholder lines (`X=`) that operators forget to fill in. Treating blank as unset lets the fallback take over rather than the canonical's empty string short-circuiting the chain.
+- **Fail-closed default** — when both env vars are absent or blank, the fail-closed default kicks in (typically `""`). The verifier refuses every payment / message / receipt until the operator opts in by setting at least one of the two.
+- **Whitespace stripped** — copy/paste from a runbook can introduce stray spaces; stripping them removes a footgun.
+- **Three-layer test coverage** — (1) helper logic with stubbed envs, (2) source-level grep that the assignment exists in each settings module, (3) live `settings.X` read without `override_settings`. The middle layer is the only one that catches "someone deleted the block from cloud.py."
+
+The x402 payment verification is the canonical example — see `validibot-cloud/validibot_cloud/settings/_cloud_common.py::resolve_x402_pay_to_address`.
+
+## Configuration patterns that close trust gaps
+
+Three architectural patterns recurred across every trust gate added under the trust ADR. Worth knowing as design vocabulary when working on new trust-relevant code:
+
+- **Fail-closed defaults** — empty allow-list rejects, unknown policy value raises, missing config refuses. The opposite (silently fall back to the loosest mode) is exactly the inversion of operator intent that turns hardening into a regression.
+- **Conservative suppression** — when a row is in a contradictory state (e.g. `agent_public_discovery=True` + `is_archived=True`), withdraw the *claim* (clear `agent_public_discovery`), not the *state* the operator chose (don't flip `is_archived`, don't flip `input_retention`). Reversible via re-publish; the alternative would silently change the privacy contract.
+- **Route-bound trust** — every trust-relevant value (run source, payment recipient, validator-backend digest) derives from the authenticated route, never from a client header. Headers are caller-controlled by definition; the route is what the auth layer already verified.
+
+Each pattern is enforced by tests that pin the exact behaviour. When you find yourself writing `assert result in {...some_values}` because the contract is unclear, that's evidence the underlying decision hasn't been made — pick a value and pin it.
+
 ## Audit hooks around trust decisions
 
 Specific events feed the audit log:

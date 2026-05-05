@@ -57,3 +57,24 @@ def get_deployment_target() -> DeploymentTarget:
             f"Valid values: {valid_targets}"
         )
         raise ValueError(msg) from None
+
+
+def get_validibot_runtime_version() -> str:
+    """Return the app version string for operator compatibility checks.
+
+    Deployment stamps ``VALIDIBOT_VERSION`` explicitly from the latest
+    reachable Validibot release tag. If that setting is absent, fall back
+    to the installed package version. Validator-backend metadata is
+    intentionally ignored: backup/restore compatibility is about the
+    Django app schema and code, not the external validator image version.
+    """
+    explicit = (getattr(settings, "VALIDIBOT_VERSION", "") or "").strip()
+    if explicit:
+        return explicit
+
+    try:
+        from validibot import __version__
+    except Exception:
+        return "unknown"
+
+    return (__version__ or "").strip() or "unknown"

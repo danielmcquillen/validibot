@@ -21,6 +21,18 @@ repos:
       - id: check-case-conflict
       - id: check-docstring-first
       - id: detect-private-key
+        # Exclude files that legitimately contain PEM-header substrings
+        # for pattern-matching purposes. The support-bundle redaction
+        # module declares a regex that *matches* private-key headers in
+        # operator settings (defense-in-depth so an unexpectedly-named
+        # setting holding a PEM key still gets [REDACTED]). Its tests
+        # construct synthetic PEM-shaped strings to exercise the regex.
+        # Neither file ever contains real key material.
+        exclude: |
+          (?x)^(
+              validibot/core/support_bundle\.py|
+              validibot/core/tests/test_support_bundle\.py
+          )$
 
   - repo: https://github.com/trufflesecurity/trufflehog
     rev: v3.93.3

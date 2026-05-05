@@ -1,75 +1,108 @@
 # Restore
 
-A backup that has never been restored is not considered valid. This page covers the restore command, component selection, dry-runs, and the doctor-marker that records when a restore drill last passed.
+A backup that has never been restored is not considered valid. This page covers the restore command, the four pre-flight gates that protect against accidents, the doctor marker that records restore-test recency, and the common recovery scenarios.
 
-This work lands in Phase 3 of the boring-self-hosting ADR.
+This work landed in Phase 3 of the [boring self-hosting ADR](https://github.com/validibot/validibot-project/blob/main/docs/adr/2026-04-27-boring-self-hosting-and-operator-experience.md).
 
 ## The principle
 
 > Restore is more important than backup.
 
-Backups create confidence only if restore has been tested. Doctor makes untested restores visible. Phase 3 of the boring-self-hosting ADR turns this from "good practice" into a measurable thing: VB411 (restore-test marker) is a `WARN` finding by default, and the operator-readiness checklist (Phase 6) requires running a restore drill before declaring a pilot install complete.
+Backups create confidence only if restore has been tested. Doctor makes untested restores visible: `VB411` (restore-test marker) is a `WARN` finding by default, and the operator-readiness checklist (Phase 6) requires running a restore drill before declaring a pilot install complete. The operational intent is to make "we have backups" indistinguishable from "we have provably working backups."
 
 ## Commands
 
 ```bash
-just self-hosted restore backups/2026-04-27T120000Z
-just self-hosted restore backups/2026-04-27T120000Z --dry-run
-just self-hosted restore backups/2026-04-27T120000Z --components config-only
-just self-hosted restore backups/2026-04-27T120000Z --components data-only
-just self-hosted restore backups/2026-04-27T120000Z --components full   # default
+just self-hosted restore backups/20260427T120000Z      # restore from a manifested backup
+just self-hosted list-backups                          # show what's available
 
-just gcp restore prod backups/2026-04-27T120000Z
+just gcp restore prod gs://my-project-validibot-backups-prod/20260427T120000Z
 ```
 
-### Component selection
+Self-hosted is single-stage per VM; the recipe takes a single backup-directory argument and no stage. The argument can be relative or absolute — both work.
 
-The backup manifest separates `config` and `data` components. Restore lets you select either or both:
+## What restore does, step by step
 
-| Mode | Restores | When to use |
+The recipe mirrors the GCP restore flow exactly: four pre-flight gates, an operator confirmation, then five destructive steps. Every gate prints what it's checking; if any gate fails, no destructive operation runs.
+
+### Pre-flight gates
+
+```text
+Pre-flight 1/4: manifest located at backups/20260427T120000Z/manifest.json
+Pre-flight 2/4: running doctor --strict...
+  ✓ doctor --strict passed.
+
+Pre-flight 3/4: verifying backup compatibility...
+  COMPATIBLE: backup 20260427T120000Z restorable on deployment.
+  ✓ Backup is compatible with this deployment.
+
+Pre-flight 4/4: verifying DB dump integrity...
+  ✓ DB dump matches manifest (4923847 bytes, sha256 f7a3c4d8e2b1a09f...).
+```
+
+| # | Gate | Failure means |
 |---|---|---|
-| `config-only` | `.envs/.production/.self-hosted/*` env files | After a bad env edit; data is fine |
-| `data-only` | Postgres + `DATA_STORAGE_ROOT` | After a bad migration; secrets unchanged |
-| `full` (default) | Both | Disaster recovery; spinning up on a fresh host |
+| 1 | Manifest exists at `<path>/manifest.json` | Wrong path or backup is incomplete |
+| 2 | `doctor --strict` exits 0 | Deployment is unhealthy; resolve before restoring |
+| 3 | `verify_backup_compatibility` exits 0 | Schema mismatch, migration head ahead, or cross-major version jump |
+| 4 | DB dump size + sha256 match the manifest | Tampering, truncation, or partial download |
 
-Pattern adopted from GitLab's split between `gitlab-ctl backup-etc` (config + secrets) and `gitlab-backup create` (data).
+These are sequenced cheap → expensive. Gate 1 is a single `[ -f ... ]`; gate 4 streams the whole DB dump through `sha256sum`. Stopping early on a typo'd path saves an unnecessary doctor run.
+
+### Operator confirmation
+
+Restore is destructive. The recipe prints a clear summary and asks the operator to type the short hostname:
+
+```text
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ⚠ DESTRUCTIVE OPERATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  About to:
+    1. DROP and recreate the public schema in validibot
+    2. Stream backups/20260427T120000Z/db.sql.zst through psql
+    3. Apply any migrations newer than the backup
+    4. WIPE DATA_STORAGE_ROOT and extract data.tar.zst
+
+  Type the short hostname 'validibot-prod' to confirm, anything else aborts:
+```
+
+An accidental `just self-hosted restore <wrong-path>` typed by mistake will sit at this prompt rather than nuking data.
+
+### Destructive steps
+
+After confirmation:
+
+1. **Reset the public schema** — `DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;`. Standard idiom for "wipe everything before importing a plain-SQL dump." Without this step the incoming `CREATE TABLE` statements would conflict with existing tables.
+2. **Stream the dump through psql** — `zstd -dc db.sql.zst | psql -v ON_ERROR_STOP=1`. The `ON_ERROR_STOP` flag makes psql exit on the first error rather than silently leaving a half-imported database.
+3. **Apply newer migrations** — `python manage.py migrate --noinput`. Verify-compatibility refused if the backup's migration head is ahead of code; if code is ahead of the backup (the normal case during an upgrade), `migrate` brings the schema forward without touching data.
+4. **Wipe and extract data archive** — `find $DATA_ROOT -mindepth 1 -delete` followed by `tar --zstd -xf data.tar.zst -C $DATA_ROOT`. The `-mindepth 1` keeps the directory itself in place (the container expects it).
+5. **Touch the restore-test marker** — `touch $DATA_ROOT/.last-restore-test`. Doctor's VB411 reads this file's mtime; this step turns the warning green for the next 90 days.
+
+After step 5 the recipe prints recommended verification:
+
+```bash
+just self-hosted doctor
+just self-hosted errors-since 5m
+```
 
 ## Restore policy
 
-1. **Restore refuses to overwrite existing data unless `--force` is passed.** A clean target host is the safe default.
-2. **Pre-flight check.** `restore` calls `doctor --strict` first and refuses to proceed if anything is `ERROR` or `FATAL`. "Refuse early, refuse loudly" beats "fail half-way through with corrupt state."
-3. **Idempotent retry.** Each restore step prints "starting / done / skipped (already done)." After a partial failure, re-running the recipe picks up where it left off.
-4. **Post-restore report.** Restore writes a report to `backups/restored/<timestamp>/report.json` and prints suggestions to run doctor and smoke-test.
-5. **Restore-test marker.** A successful restore in a non-production-target context (a temp host, a fresh local stack, a CI job) records a marker that doctor reads. Restoring into production for actual recovery does **not** advance the marker.
-
-## Dry-run
-
-`--dry-run` prints what would happen without making changes:
-
-```bash
-just self-hosted restore backups/2026-04-27T120000Z --dry-run
-```
-
-Output includes:
-
-- which files would be written;
-- which database tables would be replaced;
-- estimated bytes;
-- doctor's verdict on the target's current state;
-- whether `--force` would be required.
-
-A green dry-run is a strong signal that the restore will succeed. It is **not** a substitute for an actual restore drill.
+1. **Pre-flight gates run unconditionally.** There is no `--force` flag yet. Address the gate's failure first; the recipe protects against half-done states.
+2. **Restore writes the `.last-restore-test` marker on success.** Doctor's `VB411` reads it. Re-running restore advances the mtime even if the backup contained an older marker (the tar archive may carry one from a previous restore).
+3. **Restore applies migrations on top of the imported state.** This is what makes "restore older backup onto current code" work cleanly — the dump captures schema-as-of-backup, migrations bring it forward, no special handling required.
+4. **Restore is not currently component-selective.** Component-selective restore (`--components config-only` / `data-only` / `full`) is reserved in the manifest schema (boring-self-hosting ADR AC #17) but not yet implemented. The MVP always restores both halves.
+5. **Restore is not currently dry-run-able.** Run `verify_backup_compatibility` standalone (see [Backups](backups.md#verifying-a-backup-without-restoring)) for the closest equivalent today.
 
 ## The quarterly drill
 
 Quarterly:
 
 1. Take a backup: `just self-hosted backup`.
-2. Spin up a restore environment (a temporary Droplet, a local Compose stack, or a CI job).
-3. Restore: `just self-hosted restore backups/<timestamp>`.
-4. Run `just self-hosted doctor` — should pass on the restored target.
-5. Run `just self-hosted smoke-test` — end-to-end validation should work.
-6. Record the marker (the restore command does this automatically on success).
+2. Spin up a restore environment — a temporary Droplet, a local Compose stack on a different host, or a CI job. Restoring on the same host you're trying to verify defeats the purpose.
+3. Copy `backups/<id>/` to that environment.
+4. Restore: `just self-hosted restore backups/<id>`. Type the test environment's short hostname at the confirmation prompt.
+5. Run `just self-hosted doctor` — VB411 should now report OK; everything else should pass.
+6. Run `just self-hosted smoke-test` — end-to-end validation should work.
 7. Tear down the restore environment.
 
 This is the difference between "we have backups" and "we have provably working backups." For a customer paying 6k–24k/year, the restore drill is the artefact that justifies the pricing.
@@ -78,58 +111,54 @@ This is the difference between "we have backups" and "we have provably working b
 
 A DigitalOcean snapshot or automatic Droplet backup is useful for infrastructure-level recovery — if the VM is corrupted, you can roll the entire VM back. But these snapshots **do not replace** Validibot's application-level backup/restore, because:
 
-1. they don't produce a manifest that records Validibot version, migration state, or evidence-bundle checksums;
-2. they're tied to a specific provider and a specific VM ID;
-3. they don't separate config from data, so component-selection restore isn't available;
-4. they don't pass through the doctor pre-flight check.
+1. They don't produce a manifest that records Validibot version, migration state, or evidence-bundle checksums.
+2. They're tied to a specific provider and a specific VM ID, which complicates "spin up a new host on a different provider."
+3. They don't pass through `verify_backup_compatibility` — restoring an old snapshot onto current code can resurrect schemas the ORM no longer knows about.
+4. They include the host OS, Docker daemon, and system-level state, much of which is not what you actually want during data recovery.
 
-Use both: provider snapshots for "the VM is on fire," Validibot application backups for "the data is corrupted but the VM is fine," "the migration broke," "we need to spin up a new host."
+Use both: provider snapshots for "the VM is on fire," Validibot application backups for "the data is corrupted but the VM is fine," "the migration broke," "we need to spin up on a new provider."
 
 ## Restoring on a different host
 
-Common case: a pilot customer's first VM was undersized; they spin up a bigger VM and want to migrate.
+Common case: a pilot customer's first VM was undersized and they're migrating to a bigger one.
 
 1. On the source host: `just self-hosted backup`.
-2. Copy `backups/<timestamp>/` to the new host.
-3. On the new host, complete the install steps up to before bringing the stack up.
-4. Run `just self-hosted restore backups/<timestamp> --components full`.
+2. Copy `backups/<id>/` to the new host (rsync, scp, restic restore, etc.).
+3. On the new host, complete the install steps up to and including `just self-hosted bootstrap`.
+4. Run `just self-hosted restore backups/<id>`. Type the new host's short hostname at the confirmation prompt.
 5. Run `just self-hosted doctor` and `just self-hosted smoke-test`.
 6. Update DNS to point at the new host.
 
-The backup manifest's `validibot_version` is checked against the host's running version. A restore against a different version is allowed but explicitly logged. Practice: always restore against the same Validibot version as the backup, then upgrade after.
+Per the third pre-flight gate, the manifest's `validibot_version` is checked. A restore on the same Validibot version is the easy path; a restore onto a *newer* Validibot version is fine because `migrate` brings the schema forward; a restore onto an *older* Validibot version is refused (cross-major) or implicitly refused (migration head ahead of code).
 
-## Recovering after a bad env edit
-
-```bash
-just self-hosted restore backups/<timestamp> --components config-only
-just self-hosted doctor
-```
-
-This restores the env files from the backup without touching the database or `DATA_STORAGE_ROOT`. Useful when an operator has misedited a setting and wants to roll back without losing recent runs.
+Practice: always restore against the same Validibot version as the backup, then upgrade after.
 
 ## Recovering after a bad migration
 
 ```bash
-# 1. Stop the stack
-just self-hosted stop
+# 1. Stop the stack so no writes are in flight.
+just self-hosted down
 
-# 2. Restore data only
-just self-hosted restore backups/<timestamp> --components data-only
+# 2. Restore from the pre-upgrade backup. Re-runs migrate as part of restore;
+#    if you also need to roll the IMAGE TAG back, edit the build env first.
+just self-hosted restore backups/<pre-upgrade-id>
 
-# 3. Bring up the previous version's image (env files still pin the new version, so this is a temporary edit)
-$EDITOR .envs/.production/.self-hosted/.build  # set VALIDIBOT_IMAGE_TAG to the previous version
-just self-hosted deploy
-
-# 4. Verify and plan the proper fix
+# 3. Verify and plan the proper fix.
 just self-hosted doctor
 just self-hosted smoke-test
 ```
 
-Rollback across migrations is **restore-from-backup, not reverse migrations**. Validibot does not promise reversible migrations. If you need a true rollback path for a destructive migration, take the backup before the upgrade, and restore if the upgrade goes wrong.
+Rollback across migrations is **restore-from-backup, not reverse migrations**. Validibot does not promise reversible migrations. If you need a true rollback path for a destructive migration, take the backup before the upgrade, and restore if the upgrade goes wrong. The [Upgrades](upgrades.md) page enforces this with a pre-upgrade backup step.
+
+## Recovering after a bad env edit
+
+The MVP does not have `--components config-only` yet, so config-only recovery is a manual restore from your config-management tooling (Ansible, hand-edited git history, etc.) rather than a Validibot recipe. Until the component-selective restore lands, keep the env files under version control or other separate backup.
+
+The reason this isn't a regression: `validibot.backup.v1` reserves a `config` component for exactly this case (see `backup_manifest.py`). It's an additive feature, not a redesign.
 
 ## See also
 
-- [Backups](backups.md) — what gets captured
+- [Backups](backups.md) — what gets captured, manifest schema, off-host storage
 - [Upgrades](upgrades.md) — backup is required before upgrade; rollback is restore-from-backup
 - [DigitalOcean Provider Guide](providers/digitalocean.md) — restore drill on DigitalOcean
 - [Doctor Check IDs](doctor-check-ids.md) — VB411 restore-test marker

@@ -76,6 +76,12 @@ PARITY_RECIPES = [
     "collect-support-bundle",
     "validators",
     "errors-since",
+    # ``cleanup`` was added in Phase 5 — both substrates accumulate
+    # artefacts that aren't part of any working set (stopped
+    # containers + dangling images on self-hosted; old Cloud Run
+    # Job executions + expired GCS backups on GCP), and operators
+    # shouldn't have to know substrate-specific prune commands.
+    "cleanup",
 ]
 
 # Self-hosted-only recipes that don't need a GCP equivalent. ``check-dns``
@@ -533,6 +539,142 @@ class JustRecipeParityTests(SimpleTestCase):
             )
 
 
+class GcpOperatorRecipeInvariantTests(SimpleTestCase):
+    """Pin trust-critical GCP recipe wiring that cannot run in unit tests.
+
+    These checks are intentionally static. The recipes call ``gcloud`` and need
+    live project state, but the most damaging regressions are naming and flag
+    drift that we can catch by inspecting the just module.
+    """
+
+    GCP_MOD = REPO_ROOT / "just" / "gcp" / "mod.just"
+
+    def _gcp_mod_text(self) -> str:
+        """Read the GCP just module once per assertion."""
+        return self.GCP_MOD.read_text(encoding="utf-8")
+
+    def _block_between(self, start_marker: str, end_marker: str) -> str:
+        """Return a justfile slice bounded by two stable markers."""
+        text = self._gcp_mod_text()
+        start = text.index(start_marker)
+        end = text.index(end_marker, start)
+        return text[start:end]
+
+    def test_deployed_image_resolver_uses_web_service_names(self):
+        """Doctor / backup / restore must inspect the deployed web service.
+
+        A resolver pointed at ``validibot`` instead of ``validibot-web`` makes
+        every higher-level operator command either fail or inspect a legacy
+        service that is not serving traffic.
+        """
+        block = self._block_between(
+            "_resolve-deployed-image stage:",
+            "# _run-doctor-job",
+        )
+
+        assert 'SERVICE="${APP_NAME}-web"' in block
+        assert 'SERVICE="${APP_NAME}-web-{{stage}}"' in block
+        assert 'SERVICE="${APP_NAME}"' not in block
+        assert 'SERVICE="${APP_NAME}-{{stage}}"' not in block
+
+    def test_errors_since_filters_deployed_web_and_restore_jobs(self):
+        """Incident scanning must include real web service and restore verifier."""
+        block = self._block_between(
+            'errors-since stage duration="1h":',
+            "# End-to-end smoke test",
+        )
+
+        assert 'WEB_SERVICE="${APP_NAME}-web"' in block
+        assert 'WEB_SERVICE="${APP_NAME}-web-{{stage}}"' in block
+        assert "verify-backup" in block
+
+    def test_operator_job_updates_converge_identity_and_database_binding(self):
+        """Re-running an operator recipe must converge old Cloud Run Jobs.
+
+        The create path has always set service account and Cloud SQL binding.
+        The update path has to set them too, otherwise an old job keeps stale
+        runtime identity even after the recipe appears to succeed.
+        """
+        blocks = [
+            self._block_between(
+                "_run-doctor-job stage image args:",
+                "# _run-backup",
+            ),
+            self._block_between(
+                "_run-backup stage image:",
+                "# _run-restore",
+            ),
+            self._block_between(
+                "_run-restore stage path image:",
+                "# Run setup_validibot to initialize site",
+            ),
+        ]
+
+        for block in blocks:
+            position = block.index("gcloud run jobs update")
+            update_block = block[position : block.index("--quiet >/dev/null", position)]
+            assert "--service-account" in update_block
+            assert "--set-cloudsql-instances" in update_block
+
+    def test_restore_verifies_manifest_db_artifact_before_import(self):
+        """Restore must compare manifest size and sha256 before Cloud SQL import."""
+        block = self._block_between(
+            "_run-restore stage path image:",
+            "# Run setup_validibot to initialize site",
+        )
+
+        assert "Pre-flight 4/4: verifying DB dump integrity" in block
+        assert ".data.db_dump.path" in block
+        assert ".data.db_dump.checksum_sha256" in block
+        assert ".data.db_dump.size_bytes" in block
+        assert 'gcloud sql import sql "${DB_INSTANCE}" "${DB_OBJECT}"' in block
+        assert '"${BACKUP_URI}/db.sql.gz"' not in block
+
+    def test_gcp_django_image_stamps_release_version(self):
+        """GCP app images must carry the release tag used by backup manifests."""
+        build_block = self._block_between(
+            "build: _require-gcp-config",
+            "# Push Docker image",
+        )
+        deploy_block = self._block_between(
+            "_deploy-web stage:",
+            "# Internal: deploy worker service",
+        )
+
+        assert '--build-arg VALIDIBOT_VERSION="{{validibot_version}}"' in build_block
+        assert "VALIDIBOT_VERSION={{validibot_version}}" in deploy_block
+        assert "VALIDIBOT_VERSION={{git_sha}}" not in deploy_block
+
+    def test_validator_deploy_uses_backend_image_metadata_not_app_version(self):
+        """Validator backend images expose OCI metadata, not VALIDATOR_VERSION env.
+
+        The backend version comes from the Dockerfile's
+        ``ARG VALIDATOR_BACKEND_VERSION`` default; the recipe only
+        passes the build-arg when an operator overrides via env var
+        (``${VALIDATOR_BACKEND_VERSION:+--build-arg ...}``). We assert
+        that override path is wired AND that the recipe doesn't shell
+        out to the deleted ``resolve-backend-image-version.py`` helper.
+        """
+        block = self._block_between(
+            "validator-build name:",
+            "validators-deploy-all stage:",
+        )
+
+        # The deleted resolver script must not be called from this recipe.
+        assert "resolve-backend-image-version.py" not in block
+        # OCI revision + slug are still per-build args (only the version
+        # comes from the Dockerfile default).
+        assert "VALIDATOR_BACKEND_REVISION" in block
+        # Conditional override pattern: only passes --build-arg when
+        # the env var is set, otherwise the Dockerfile default wins.
+        assert "${VALIDATOR_BACKEND_VERSION:+--build-arg" in block
+        # Validator-backend SHA is distinct from validibot's git SHA.
+        assert "{{validator_backend_git_sha}}" in block
+        assert "{{git_sha}}" not in block
+        # The legacy app-version env var must not appear.
+        assert "VALIDATOR_VERSION=" not in block
+
+
 class NoStaleDockerComposeReferencesTests(SimpleTestCase):
     """Verify the operator surface no longer mentions the old name.
 
@@ -606,3 +748,836 @@ class NoStaleDockerComposeReferencesTests(SimpleTestCase):
         )
         # local_docker_compose stays — developer-dev audience.
         assert hasattr(DeploymentTarget, "LOCAL_DOCKER_COMPOSE")
+
+
+class BackupRestoreRecipeShapeTests(SimpleTestCase):
+    """Verify the Phase 3 backup/restore recipes are real implementations.
+
+    Phase 3 of ADR-2026-04-27 replaces the Phase 0 stubs with a
+    manifested backup/restore pair that shares the
+    ``validibot.backup.v1`` schema with GCP backups. These tests pin
+    the operator-facing contract:
+
+    1. The recipes are no longer ``_phase0-stub`` calls — they
+       reference the real management commands.
+    2. The backup recipe targets the manifest writer with
+       ``--target self_hosted`` (matching the GCP recipe's
+       ``--target gcp``).
+    3. The restore recipe runs the four pre-flight gates that
+       ADR section 8 mandates: manifest exists, doctor --strict,
+       verify_backup_compatibility, and DB integrity.
+    4. The restore recipe writes the ``.last-restore-test`` marker
+       that doctor's ``VB411`` consumes.
+    5. The Postgres + tar artifacts use the zstd compression named
+       in ADR section 8 (``plain-sql-zstd``).
+    6. The django runtime image installs ``zstd`` so ``tar --zstd``
+       works inside the web container.
+
+    These checks are static (regex / substring) — actually running
+    backup against a live Compose stack is a manual / integration
+    concern, not a unit test. The static checks catch the shape
+    regressions that would otherwise slip through.
+    """
+
+    SELF_HOSTED_MOD = REPO_ROOT / "just" / "self-hosted" / "mod.just"
+    DJANGO_DOCKERFILE = REPO_ROOT / "compose" / "production" / "django" / "Dockerfile"
+
+    def _self_hosted_text(self) -> str:
+        return self.SELF_HOSTED_MOD.read_text(encoding="utf-8")
+
+    def test_backup_recipe_no_longer_stub(self):
+        """``backup`` must not delegate to ``_phase0-stub`` anymore.
+
+        The Phase 0 stub printed "not yet implemented" and exited 64;
+        Phase 3 wires the real orchestration.
+        """
+        text = self._self_hosted_text()
+        # Find the public ``backup:`` recipe (no args) and capture its body.
+        # Recipes end at the next blank line followed by a non-indented line.
+        match = re.search(
+            r"^backup:\n((?:    .*\n|    \n)*)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, (
+            "Public ``backup:`` recipe missing from just/self-hosted/mod.just."
+        )
+        body = match.group(1)
+        assert "_phase0-stub" not in body, (
+            "``backup`` is still a Phase 0 stub. Phase 3 of ADR-2026-04-27 "
+            "replaces it with the manifested orchestration in _run-backup."
+        )
+        assert "_run-backup" in body, (
+            "``backup`` should delegate to ``_run-backup`` private recipe."
+        )
+
+    def test_restore_recipe_no_longer_stub(self):
+        """``restore`` must not delegate to ``_phase0-stub`` anymore."""
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^restore path=\"\":\n((?:    .*\n|    \n)*)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, (
+            'Public ``restore path="":`` recipe missing from just/self-hosted/mod.just.'
+        )
+        body = match.group(1)
+        assert "_phase0-stub" not in body, (
+            "``restore`` is still a Phase 0 stub. Phase 3 wires the real "
+            "orchestration through _run-restore."
+        )
+        assert "_run-restore" in body
+
+    def test_backup_orchestration_writes_manifest_with_self_hosted_target(self):
+        """Backup must invoke write_backup_manifest with the self-hosted target.
+
+        Cross-target restore tooling reads ``manifest.json`` and
+        branches on ``target`` to know whether to ``gcloud sql
+        import`` (gcp) or ``psql`` (self_hosted). The ``--target``
+        flag in the writer call is the contract.
+        """
+        text = self._self_hosted_text()
+        # The block between _run-backup: and the next public recipe header.
+        match = re.search(
+            r"^_run-backup:\n((?:    .*\n|    \n|\n)*?)^# ",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "_run-backup helper missing."
+        body = match.group(1)
+        assert "write_backup_manifest" in body
+        assert "--target self_hosted" in body
+        assert "validibot.backup.v1" not in body, (
+            "Don't hard-code the schema version in the recipe — let the "
+            "manifest writer's BackupManifest default supply it."
+        )
+
+    def test_backup_orchestration_uses_zstd_compression(self):
+        """ADR section 8 mandates zstd compression for both DB dump and data archive."""
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-backup:\n((?:    .*\n|    \n|\n)*?)^# ",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        assert "zstd" in body, "DB dump must be compressed with zstd (ADR section 8)."
+        assert "tar --zstd" in body, "Data archive must be tar --zstd (ADR section 8)."
+
+    def test_restore_orchestration_runs_four_preflight_gates(self):
+        """The restore recipe must run the four pre-flight gates GCP runs.
+
+        ADR section 8 + AC #15-#16: destructive operations refuse on
+        unhealthy deployments, incompatible backups, or tampered
+        artifacts. The four gates report progress so an operator
+        watching the recipe sees what it's checking and why.
+        """
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-restore path:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "_run-restore helper missing."
+        body = match.group(1)
+        # The four numbered gates are operator-visible signals.
+        assert "Pre-flight 1/4" in body
+        assert "Pre-flight 2/4" in body
+        assert "Pre-flight 3/4" in body
+        assert "Pre-flight 4/4" in body
+        # Specific tools per gate.
+        assert "doctor --strict" in body, (
+            "Pre-flight gate 2 must invoke doctor --strict (AC #15)."
+        )
+        assert "verify_backup_compatibility" in body, (
+            "Pre-flight gate 3 must invoke verify_backup_compatibility (AC #16)."
+        )
+        assert "sha256sum" in body, (
+            "Pre-flight gate 4 must verify DB sha256 against the manifest."
+        )
+
+    def test_restore_orchestration_writes_last_restore_test_marker(self):
+        """Doctor's VB411 expects ``.last-restore-test`` to be touched on restore.
+
+        Without this write, every install warns on VB411 forever
+        — the marker is the signal that "this deployment has done
+        a restore drill and it worked." See doctor's _check_restore_test.
+        """
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-restore path:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        assert ".last-restore-test" in body, (
+            "Restore must touch ``.last-restore-test`` so doctor's VB411 "
+            "can compute restore-test staleness. See "
+            "validibot/core/management/commands/check_validibot.py."
+        )
+
+    def test_restore_orchestration_demands_operator_confirmation(self):
+        """Restore is destructive — the recipe must prompt before proceeding.
+
+        The GCP recipe asks the operator to type the stage name; the
+        self-hosted equivalent asks for the short hostname. Either way,
+        an accidental ``just self-hosted restore <typo>`` typed by
+        mistake stops at the prompt rather than nuking data.
+        """
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-restore path:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        assert "DESTRUCTIVE OPERATION" in body
+        assert "read -r CONFIRM" in body or "read -r CONFIRM" in body
+
+    def test_django_runtime_image_installs_zstd(self):
+        """The web container needs zstd so ``tar --zstd`` works.
+
+        ``tar --zstd`` shells out to the zstd binary; without it the
+        backup's data-archive step fails immediately. Adding zstd to
+        the Dockerfile is small (~600KB) and prevents a class of
+        silent backup failures.
+        """
+        text = self.DJANGO_DOCKERFILE.read_text(encoding="utf-8")
+        # Look for zstd in any apt-get install RUN block in the runtime
+        # stage. We don't pin the exact line number because that drifts.
+        runtime_section = text.split("FROM python:3.13-slim-bookworm", 1)[-1]
+        assert "zstd" in runtime_section, (
+            "compose/production/django/Dockerfile runtime stage must "
+            "install zstd. Without it ``tar --zstd`` inside the web "
+            "container fails, which breaks ``just self-hosted backup``."
+        )
+
+    def test_self_hosted_builds_stamp_validibot_version(self):
+        """Compose builds must bake the release tag into the runtime image.
+
+        Backup manifests are written from inside the running web
+        container. If the image is built without ``VALIDIBOT_VERSION``,
+        restore compatibility falls back to package metadata and loses
+        the explicit release tag the operator built.
+        """
+        just_text = self._self_hosted_text()
+        compose_text = (REPO_ROOT / "docker-compose.production.yml").read_text(
+            encoding="utf-8"
+        )
+
+        version_export = (
+            'export VALIDIBOT_VERSION="${VALIDIBOT_VERSION:-{{validibot_version}}}"'
+        )
+        assert version_export in just_text
+        assert "VALIDIBOT_VERSION: ${VALIDIBOT_VERSION:-}" in compose_text
+        assert "VALIDIBOT_REVISION: ${VALIDIBOT_REVISION:-}" in compose_text
+
+    def test_self_hosted_validator_build_labels_backend_images(self):
+        """Locally built validator images carry OCI metadata via Dockerfile defaults.
+
+        The wrapper version is baked into the Dockerfile's
+        ``ARG VALIDATOR_BACKEND_VERSION`` default; the recipe only
+        passes the build-arg when an operator overrides via env var.
+        We assert the override path is wired AND that the recipe
+        doesn't reach for the deleted resolver script.
+        """
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^validator-build name:\n((?:    .*\n|    \n)*)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        # The deleted resolver script must not be referenced.
+        assert "resolve-backend-image-version.py" not in body
+        # OCI revision + slug args still per build.
+        assert "VALIDATOR_BACKEND_REVISION" in body
+        # Conditional override only passes --build-arg when the env
+        # var is set; otherwise Dockerfile default wins.
+        assert "${VALIDATOR_BACKEND_VERSION:+--build-arg" in body
+        assert "{{validator_backend_git_sha}}" in body
+        # Legacy app-version env var must not appear.
+        assert "VALIDATOR_VERSION=" not in body
+
+
+class UpgradeRecipeShapeTests(SimpleTestCase):
+    """Verify Phase 4 upgrade recipes are real implementations.
+
+    Phase 4 of ADR-2026-04-27 introduces the manifested upgrade —
+    version-pinned, gated by doctor --strict and a four-step
+    pre-flight, mandatory backup unless --no-backup, post-flight
+    doctor + smoke-test, and a ``validibot.upgrade.v1`` report. These
+    tests pin the operator-facing contract on the recipe-shape level
+    (running the actual upgrade requires a live Compose stack, which
+    a unit test can't provide).
+
+    Specifically:
+
+    1. The legacy ``update`` recipe is deprecated and no longer pulls
+       latest unconditionally — it points operators at ``upgrade``.
+    2. ``upgrade`` is no longer a Phase 0 stub.
+    3. The four pre-flight gates (doctor --strict, clean tree, target
+       tag exists, version path validation) all appear.
+    4. The recipe calls the manifested ``backup`` (Phase 3) — not
+       ``backup-db`` (the legacy db-only dump).
+    5. Post-flight ``doctor`` and ``smoke-test`` run.
+    6. The report schema is ``validibot.upgrade.v1`` (matches the
+       backup-manifest versioning convention).
+    7. ``clean-all`` got the same destructive-confirmation pattern
+       (typing the short hostname unlocks the wipe).
+    8. GCP has a paired ``upgrade <stage> <version>`` recipe that
+       reuses ``deploy-all`` as its build+migrate+deploy step.
+    """
+
+    SELF_HOSTED_MOD = REPO_ROOT / "just" / "self-hosted" / "mod.just"
+    GCP_MOD = REPO_ROOT / "just" / "gcp" / "mod.just"
+
+    def _self_hosted_text(self) -> str:
+        return self.SELF_HOSTED_MOD.read_text(encoding="utf-8")
+
+    def _gcp_text(self) -> str:
+        return self.GCP_MOD.read_text(encoding="utf-8")
+
+    def test_update_is_deprecated(self):
+        """``update`` no longer runs the old pull-latest flow."""
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^update:\n((?:    .*\n|    \n)*)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "update recipe missing"
+        body = match.group(1)
+        assert "deprecated" in body.lower()
+        assert "upgrade --to" in body
+        assert "git pull" not in body
+        assert "backup-db" not in body
+
+    def test_upgrade_recipe_no_longer_stub(self):
+        """``upgrade`` must not delegate to ``_phase0-stub`` anymore."""
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^upgrade \*args:\n((?:    .*\n|    \n)*)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "upgrade recipe missing"
+        body = match.group(1)
+        assert "_phase0-stub" not in body
+        assert "_run-upgrade" in body
+
+    def test_upgrade_runs_four_preflight_gates(self):
+        """All four pre-flight gates must be present in _run-upgrade.
+
+        ADR section 9 + AC #15-#16: destructive operations gate on
+        doctor --strict, clean working tree, target tag existence,
+        and cross-major-version refusal. The four gates report as
+        Pre-flight 1/4 through 4/4 so an operator following along
+        sees exactly what's checked.
+        """
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-upgrade args:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "_run-upgrade helper missing"
+        body = match.group(1)
+        assert "Pre-flight 1/4" in body
+        assert "Pre-flight 2/4" in body
+        assert "Pre-flight 3/4" in body
+        assert "Pre-flight 4/4" in body
+        assert "doctor --strict" in body
+        assert "git diff --quiet HEAD" in body
+        assert "CURRENT_MAJOR" in body
+        assert "TARGET_MAJOR" in body
+
+    def test_upgrade_uses_manifested_backup(self):
+        """Pre-upgrade backup must call the Phase 3 manifested backup."""
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-upgrade args:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        assert "just self-hosted backup" in body
+        assert "backup-db" not in body, (
+            "Pre-upgrade backup must use the manifested ``backup``, "
+            "not the legacy ``backup-db``."
+        )
+
+    def test_upgrade_runs_postflight_doctor_and_smoke_test(self):
+        """Post-flight: doctor + smoke-test, both reused from existing recipes."""
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-upgrade args:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        assert "just self-hosted doctor" in body
+        assert "just self-hosted smoke-test" in body
+
+    def test_upgrade_writes_versioned_report_schema(self):
+        """Upgrade report uses ``validibot.upgrade.v1``.
+
+        Same versioning convention as backup manifests and doctor
+        output. Schema is part of the operator-facing contract.
+        """
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-upgrade args:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        assert "validibot.upgrade.v1" in body
+        assert "report.json" in body
+
+    def test_clean_all_demands_hostname_confirmation(self):
+        """``clean-all`` must require typing the short hostname."""
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^clean-all:\n((?:    .*\n|    \n)*)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "clean-all recipe missing"
+        body = match.group(1)
+        assert "DESTRUCTIVE OPERATION" in body
+        assert "hostname" in body.lower()
+        assert "read -r CONFIRM" in body
+
+    def test_gcp_upgrade_recipe_exists(self):
+        """``just gcp upgrade <stage> <version>`` must exist for parity."""
+        text = self._gcp_text()
+        match = re.search(
+            r"^upgrade stage version \*flags:.*$",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "GCP upgrade recipe missing"
+
+    def test_gcp_upgrade_reuses_deploy_all(self):
+        """GCP upgrade must call the existing ``deploy-all`` recipe.
+
+        Reusing ``deploy-all`` keeps the build + push + migrate +
+        scheduler-setup logic in one place. The upgrade recipe is
+        a wrapper that adds the gates around it.
+        """
+        text = self._gcp_text()
+        match = re.search(
+            r"^_run-upgrade stage version flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "GCP _run-upgrade helper missing"
+        body = match.group(1)
+        assert "just gcp deploy-all" in body
+        assert "just gcp doctor" in body
+        assert "just gcp smoke-test" in body
+        assert "just gcp backup" in body
+
+
+class ValidatorsAndCleanupShapeTests(SimpleTestCase):
+    """Verify Phase 5 validators + cleanup recipes are real implementations.
+
+    Phase 5 of ADR-2026-04-27 introduces:
+
+    1. ``just self-hosted validators`` — local Docker daemon
+       inventory that surfaces the OCI version label
+       (``org.opencontainers.image.version``) added by the
+       VALIDATOR_VERSION-cleanup work earlier this session.
+    2. ``just self-hosted cleanup`` and ``just gcp cleanup <stage>``
+       — Discourse-launcher-style prune of artefacts that aren't
+       part of any working set.
+
+    These tests pin the contract on the recipe-shape level. Actually
+    running cleanup against a live Docker daemon requires
+    integration-level fixtures; we cover the orchestration shape
+    here and rely on operator-level walkthroughs for end-to-end.
+    """
+
+    SELF_HOSTED_MOD = REPO_ROOT / "just" / "self-hosted" / "mod.just"
+    GCP_MOD = REPO_ROOT / "just" / "gcp" / "mod.just"
+
+    def _self_hosted_text(self) -> str:
+        return self.SELF_HOSTED_MOD.read_text(encoding="utf-8")
+
+    def _gcp_text(self) -> str:
+        return self.GCP_MOD.read_text(encoding="utf-8")
+
+    def test_self_hosted_validators_recipe_no_longer_stub(self):
+        """``validators`` must not delegate to ``_phase0-stub`` anymore."""
+        text = self._self_hosted_text()
+        # Capture the full recipe body. Just recipe bodies have indented
+        # lines; blank lines inside the body are bare ``\n`` (no
+        # indentation). The body ends at the next recipe declaration
+        # (a non-indented line that isn't blank) or end-of-file.
+        match = re.search(
+            r"^validators:\n((?:    .*\n|\n)*?)(?=^[A-Za-z_#\[]|\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "self-hosted validators recipe missing"
+        body = match.group(1)
+        assert "_phase0-stub" not in body
+        # The recipe must query the local Docker daemon.
+        assert "docker image ls" in body
+
+    def test_self_hosted_validators_reads_oci_version_label(self):
+        """The inventory must surface ``org.opencontainers.image.version``.
+
+        That label is the operator-readable backend version (e.g.
+        EnergyPlus 25.2.0). Showing only the digest would mean
+        operators can't tell at a glance which version of EnergyPlus
+        is installed.
+        """
+        text = self._self_hosted_text()
+        # Capture the full recipe body. Just recipe bodies have indented
+        # lines; blank lines inside the body are bare ``\n`` (no
+        # indentation). The body ends at the next recipe declaration
+        # (a non-indented line that isn't blank) or end-of-file.
+        match = re.search(
+            r"^validators:\n((?:    .*\n|\n)*?)(?=^[A-Za-z_#\[]|\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        assert "org.opencontainers.image.version" in body
+        # Filter on the validator-backend repository convention so
+        # other unrelated images don't appear in the listing.
+        assert "validibot-validator-backend-*" in body
+
+    def test_self_hosted_cleanup_recipe_no_longer_stub(self):
+        """``cleanup`` must not delegate to ``_phase0-stub``."""
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^cleanup \*flags:\n((?:    .*\n|    \n)*)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "self-hosted cleanup recipe missing"
+        body = match.group(1)
+        assert "_phase0-stub" not in body
+        assert "_run-cleanup" in body
+
+    def test_self_hosted_cleanup_supports_dry_run_and_yes(self):
+        """``cleanup`` must accept ``--dry-run`` and ``--yes`` flags.
+
+        The operator UX contract: dry-run lists candidates without
+        deletion (safe to run any time); --yes skips the
+        confirmation prompt for cron-friendly automation.
+        """
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-cleanup flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "_run-cleanup helper missing"
+        body = match.group(1)
+        assert "--dry-run" in body
+        assert "--yes" in body
+
+    def test_self_hosted_cleanup_three_retention_scopes(self):
+        """Cleanup walks three retention scopes per ADR Phase 5."""
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-cleanup flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        # Validator container + backup + upgrade-report retention,
+        # each with a configurable env-var window.
+        assert "VALIDATOR_RETAIN_HOURS" in body
+        assert "BACKUP_RETAIN_DAYS" in body
+        assert "UPGRADE_REPORT_RETAIN_DAYS" in body
+        # Dangling images get a bonus pass — always safe to remove.
+        assert "dangling" in body.lower()
+
+    def test_self_hosted_cleanup_shows_candidates_before_deleting(self):
+        """Cleanup must list candidates before any destructive action.
+
+        Pattern from Discourse's launcher cleanup. Even without
+        ``--dry-run`` the recipe shows what would be removed and
+        prompts for confirmation. That's what makes it safe to run
+        on a schedule (operators inspect the cron log to see what
+        was cleaned, not "did anything bad happen?").
+        """
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-cleanup flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        # Each scope prints "Scope N/3: ..." with the candidate
+        # listing before any deletion happens; the confirmation
+        # prompt comes after.
+        assert "Scope 1/3" in body
+        assert "Scope 2/3" in body
+        assert "Scope 3/3" in body
+        assert "read -r CONFIRM" in body
+
+    def test_gcp_cleanup_recipe_exists(self):
+        """``just gcp cleanup <stage>`` exists for cross-target parity."""
+        text = self._gcp_text()
+        match = re.search(
+            r"^cleanup stage \*flags:.*$",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "GCP cleanup recipe missing"
+
+    def test_gcp_cleanup_targets_executions_and_gcs_backups(self):
+        """GCP cleanup prunes Cloud Run Job executions + expired GCS backups."""
+        text = self._gcp_text()
+        match = re.search(
+            r"^_run-cleanup stage flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "GCP _run-cleanup helper missing"
+        body = match.group(1)
+        # Two scopes: Cloud Run Job executions and GCS backup objects.
+        assert "Scope 1/2" in body
+        assert "Scope 2/2" in body
+        assert "gcloud run jobs executions" in body
+        assert "gcloud storage" in body
+        # Same retention env vars + dry-run UX as self-hosted.
+        assert "EXECUTION_RETAIN_DAYS" in body
+        assert "BACKUP_RETAIN_DAYS" in body
+        assert "--dry-run" in body
+        assert "--yes" in body
+
+
+class VersionResolutionShapeTests(SimpleTestCase):
+    """Verify ``validibot_version`` resolves from pyproject.toml.
+
+    Earlier in the project's history this lived in
+    ``scripts/resolve-git-tag-version.sh`` (which preferred the latest
+    git tag and fell back to pyproject.toml). That layer was removed in
+    Phase 5 because:
+
+    1. ``pyproject.toml`` is the canonical source already shipped in
+       every checkout — no extra script to maintain.
+    2. Calling out to a .sh script from a justfile is ugly and creates
+       a path-resolution headache (the script's relative path differs
+       across modules).
+    3. The .sh fallback existed only because shallow git exports might
+       lack tags; checkouts always have pyproject.toml.
+
+    These tests pin that the simplified approach lands cleanly:
+
+    - all three justfile modules (``common``, ``self-hosted``, ``gcp``)
+      read directly from pyproject.toml, not from a script;
+    - the script and its test file are gone;
+    - the resolved version starts with ``v`` (matches OCI label and
+      backup-manifest convention).
+    """
+
+    SELF_HOSTED_MOD = REPO_ROOT / "just" / "self-hosted" / "mod.just"
+    GCP_MOD = REPO_ROOT / "just" / "gcp" / "mod.just"
+    COMMON = REPO_ROOT / "just" / "common.just"
+
+    def test_resolve_git_tag_version_script_is_gone(self):
+        """The legacy script must not return — no stub, no symlink."""
+        legacy = REPO_ROOT / "scripts" / "resolve-git-tag-version.sh"
+        assert not legacy.exists(), (
+            f"{legacy} should have been removed in Phase 5. The "
+            "version is now read directly from pyproject.toml."
+        )
+
+    def test_no_module_calls_the_legacy_script(self):
+        """No just module should reference the deleted script."""
+        for mod in (self.COMMON, self.SELF_HOSTED_MOD, self.GCP_MOD):
+            text = mod.read_text(encoding="utf-8")
+            assert "resolve-git-tag-version.sh" not in text, (
+                f"{mod} still references the deleted resolver script."
+            )
+
+    def test_modules_read_pyproject_directly(self):
+        """The three modules each compute ``validibot_version`` from pyproject.toml.
+
+        Using ``git rev-parse --show-toplevel`` rather than a relative
+        path or ``{{justfile_directory()}}`` is intentional: just
+        substitutes ``{{...}}`` in recipes but not in constant-
+        assignment backticks, and a relative path is fragile across
+        ``just`` invocation contexts (different cwd, module nesting).
+        """
+        for mod in (self.COMMON, self.SELF_HOSTED_MOD, self.GCP_MOD):
+            text = mod.read_text(encoding="utf-8")
+            # Each module declares its own validibot_version because
+            # just modules have isolated scope — that's a known just
+            # limitation, not a code-smell.
+            match = re.search(
+                r"^validibot_version := `(.*?)`",
+                text,
+                re.MULTILINE,
+            )
+            assert match is not None, f"{mod} missing validibot_version assignment"
+            backtick = match.group(1)
+            assert "pyproject.toml" in backtick, (
+                f"{mod} validibot_version should read pyproject.toml, got: {backtick!r}"
+            )
+            assert "git rev-parse --show-toplevel" in backtick, (
+                f"{mod} validibot_version should use ``git rev-parse "
+                f"--show-toplevel`` to find the repo root from any cwd."
+            )
+
+
+class SupportBundleRecipeShapeTests(SimpleTestCase):
+    """Verify Phase 6 ``collect-support-bundle`` recipes are real.
+
+    Phase 6 of ADR-2026-04-27 adds operator-facing support bundle
+    recipes for both substrates. These tests pin the contract on the
+    recipe-shape level (the redaction primitives + management command
+    are tested directly in
+    ``validibot/core/tests/test_support_bundle.py`` and
+    ``test_collect_support_bundle_command.py``).
+
+    What we lock in here:
+
+    1. The Phase 0 stubs are gone — real implementations replace them.
+    2. The recipes invoke the ``collect_support_bundle`` management
+       command (the canonical app-side snapshot path).
+    3. The bundles are zipped (operator-friendly single artefact).
+    4. The kit ships a ``support-bundle-README.txt`` that gets
+       embedded in the zip — operators reviewing the bundle see a
+       redaction explanation without consulting the website.
+    5. Both substrates produce the same conceptual bundle shape
+       (app-side JSON + host-side artefacts + README).
+    """
+
+    SELF_HOSTED_MOD = REPO_ROOT / "just" / "self-hosted" / "mod.just"
+    GCP_MOD = REPO_ROOT / "just" / "gcp" / "mod.just"
+    KIT_README = REPO_ROOT / "deploy" / "self-hosted" / "support-bundle-README.txt"
+
+    def _self_hosted_text(self) -> str:
+        return self.SELF_HOSTED_MOD.read_text(encoding="utf-8")
+
+    def _gcp_text(self) -> str:
+        return self.GCP_MOD.read_text(encoding="utf-8")
+
+    def test_self_hosted_recipe_no_longer_stub(self):
+        """``collect-support-bundle`` must not delegate to ``_phase0-stub``."""
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^collect-support-bundle \*flags:\n((?:    .*\n|    \n)*)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "self-hosted collect-support-bundle missing"
+        body = match.group(1)
+        assert "_phase0-stub" not in body
+        assert "_run-collect-support-bundle" in body
+
+    def test_self_hosted_recipe_invokes_collect_support_bundle_command(self):
+        """The recipe must call the management command for app-side data."""
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-collect-support-bundle flags:\n"
+            r"((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        assert "manage.py collect_support_bundle" in body, (
+            "Recipe must invoke the collect_support_bundle Django command"
+        )
+        # Output must be a zip — operators get a single artefact.
+        assert "zip" in body.lower()
+
+    def test_self_hosted_recipe_captures_host_artefacts(self):
+        """The recipe must capture host-side data the Django command can't see."""
+        text = self._self_hosted_text()
+        match = re.search(
+            r"^_run-collect-support-bundle flags:\n"
+            r"((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        # Each host-side artefact comes from a distinct command —
+        # the bundle's value comes from breadth, not just one
+        # source.
+        assert "docker compose" in body
+        assert "logs --tail" in body or "logs --tail=" in body
+        assert "df -h" in body
+        # The validator inventory recipe (Phase 5) is reused.
+        assert "just self-hosted validators" in body
+
+    def test_kit_ships_support_bundle_readme(self):
+        """The kit ships a README explaining bundle contents.
+
+        The recipe ``cp``s this file into the workdir before
+        zipping; without it operators reviewing a bundle have no
+        offline reference for what's in there.
+        """
+        assert self.KIT_README.exists(), (
+            f"{self.KIT_README} missing. Operators reviewing a "
+            "bundle need an offline explanation of what's redacted."
+        )
+        readme = self.KIT_README.read_text(encoding="utf-8")
+        # The file mentions the redaction story and the schema name.
+        assert "REDACTED" in readme
+        assert "validibot.support-bundle.v1" in readme
+
+    def test_gcp_recipe_no_longer_stub(self):
+        text = self._gcp_text()
+        match = re.search(
+            r"^collect-support-bundle stage \*flags:.*$",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, "GCP collect-support-bundle missing"
+        # GCP recipe stages directly into a Cloud Run Job (no separate
+        # private helper needed because the stage parameter scopes it).
+        block_match = re.search(
+            r"^collect-support-bundle stage \*flags:.*\n"
+            r"((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert block_match is not None
+        body = block_match.group(1)
+        assert "_phase0-stub" not in body
+
+    def test_gcp_recipe_runs_command_via_cloud_run_job(self):
+        """GCP captures app-side data by invoking the Django command in a Job.
+
+        Mirrors the doctor / smoke-test / migrate Job patterns —
+        same Cloud SQL + Secret Manager wiring so the Job sees the
+        live deployment.
+        """
+        text = self._gcp_text()
+        block_match = re.search(
+            r"^collect-support-bundle stage \*flags:.*\n"
+            r"((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert block_match is not None
+        body = block_match.group(1)
+        assert "manage.py collect_support_bundle" in body
+        assert "gcloud run jobs execute" in body
+        # The recipe must also capture Cloud Run service state +
+        # recent logs (the host-side equivalents on GCP).
+        assert "gcloud run services describe" in body
+        assert "gcloud logging read" in body

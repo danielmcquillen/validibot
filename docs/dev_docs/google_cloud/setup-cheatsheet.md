@@ -513,13 +513,47 @@ just gcp migrate
 just gcp setup-data
 
 # Verify setup is correct.
-# (Phase 1 Session 1: Use the underlying management command directly.
-# `just gcp doctor <stage>` ships in Session 2 with full Cloud Run wiring.)
-just gcp run-command "check_validibot --target gcp --stage prod --verbose"
+# Runs check_validibot in a stage-specific Cloud Run Job using the
+# deployed image, so the doctor sees what the runtime sees (Cloud SQL,
+# Secret Manager, IAM bindings).  Pass --strict to fail on warnings,
+# or --json for machine-readable output.
+just gcp doctor prod
+just gcp doctor prod --strict --json
 
-# View job logs
+# Show recent ERROR-level log entries from the deployed services.
+# Default window is 1h; pass a duration like 6h or 30m to widen.
+just gcp errors-since prod
+just gcp errors-since prod 6h
+
+# Per-validator inventory: which backends are deployed for the stage,
+# whether each is digest-pinned, and the last execution status.  Useful
+# when verifying that a hardening change (digest policy) has actually
+# rolled out to every validator job, or for diagnosing a specific
+# validator that hasn't run successfully recently.
+just gcp validators prod
+
+# Application-level backup: Cloud SQL export + media bucket rsync +
+# a ``manifest.json`` recording Validibot version, migration head,
+# Secret Manager versions, and per-file checksums.  The manifest
+# format is shared with self-hosted backups (``validibot.backup.v1``).
+# First invocation auto-creates the destination bucket
+# (``<project>-<app>-backups-<stage>``) with object versioning and
+# uniform access enabled.
+just gcp backup prod
+
+# Restore from a backup produced by ``just gcp backup``.  The recipe
+# runs three pre-flight gates before any destructive work: (1) the
+# manifest must exist, (2) ``doctor --strict`` must pass, (3) the
+# backup must be compatible with the current code (no schema-ahead,
+# no cross-major version jumps).  Then it prompts the operator to
+# confirm by typing the stage name, imports the DB, rsyncs media,
+# and prints the recorded Secret Manager versions for re-pinning.
+just gcp restore prod gs://my-project-validibot-backups-prod/20260504T143022Z/
+
+# View job logs (after a migrate / setup / doctor run)
 just gcp job-logs $GCP_APP_NAME-migrate
 just gcp job-logs $GCP_APP_NAME-setup
+just gcp job-logs $GCP_APP_NAME-doctor
 ```
 
 ### Manual job creation

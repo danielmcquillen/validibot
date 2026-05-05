@@ -19,39 +19,68 @@ For the developer-facing reference on how this works, see the dev-docs companion
 
 The current shipped advanced validators:
 
-| Slug | Backend image | Purpose |
+| Slug | Backend image (built locally) | Purpose |
 |---|---|---|
-| `energyplus` | `ghcr.io/validibot/energyplus:<version>` | Building energy simulation |
-| `fmu` | `ghcr.io/validibot/fmu:<version>` | Functional Mock-up Unit simulation |
+| `energyplus` | `validibot-validator-backend-energyplus:<git_sha>` | Building energy simulation |
+| `fmu` | `validibot-validator-backend-fmu:<git_sha>` | Functional Mock-up Unit simulation |
 
-The exact versions installed in your deployment depend on your `validibot-pro` version. Use the inventory recipe to check:
+Self-hosted operators **build validator images locally** from a sibling checkout of `validibot-validator-backends`. There's no public image registry pull for validators (the source is open under AGPL but the images aren't currently pushed to GHCR). Build with:
 
 ```bash
-just self-hosted validators list-images
+just self-hosted validator-build energyplus
+just self-hosted validator-build fmu
+just self-hosted validators-build-all      # builds both
 ```
 
-Output looks like:
+The build stamps OCI labels (`org.opencontainers.image.version`, `revision`, `source`, `io.validibot.validator-backend.slug`) onto the image, so a future `docker inspect` can read the human-readable backend version straight from the image metadata.
+
+## Inventory
+
+```bash
+just self-hosted validators
+```
+
+Lists every `validibot-validator-backend-*` image on the local Docker daemon, with its OCI version label, content digest, size, and age:
 
 ```text
-SLUG       VERSION    IMAGE                                          DIGEST
-energyplus 24.2.0     ghcr.io/validibot/energyplus:24.2.0            sha256:...
-fmu        2.0.4      ghcr.io/validibot/fmu:2.0.4                    sha256:...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Validator backends — local Docker daemon
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+REPOSITORY                                   TAG       BACKEND VERSION  DIGEST                  SIZE       AGE
+-------------------------------------------  --------  -----------------  ----------------------  ---------  ---
+validibot-validator-backend-energyplus       abc1234   25.2.0           sha256:f7a3c4d8e2b1...  456MB      2 days ago
+validibot-validator-backend-energyplus       latest    25.2.0           sha256:f7a3c4d8e2b1...  456MB      2 days ago
+validibot-validator-backend-fmu              abc1234   0.3.29           sha256:9b1c2d3e4f5a...  234MB      2 days ago
+validibot-validator-backend-fmu              latest    0.3.29           sha256:9b1c2d3e4f5a...  234MB      2 days ago
+
+Tip: backend version comes from org.opencontainers.image.version
+     (set when the image was built from validibot-validator-backends).
+     Use the digest for trust-critical verification, not the tag.
 ```
 
-## Smoke testing validators
+The "BACKEND VERSION" column is the **human-readable identity** (e.g. EnergyPlus 25.2.0). The "DIGEST" column is the **cryptographic identity** — that's what cosign signs and what trust verification commits to. They serve different audiences:
 
-```bash
-just self-hosted validators smoke-test
-```
+- **Operator browsing inventory** → reads BACKEND VERSION
+- **Audit / cryptographic verifier** → reads DIGEST
 
-Runs each advanced validator with a known-good demo input. Useful after upgrading validator images, after Docker daemon restarts, or when troubleshooting.
+## Smoke testing the validation pipeline
 
-A failed validator smoke test points at:
+There's no separate `validators smoke-test` subcommand — the main `just self-hosted smoke-test` (Phase 2) exercises the JSON Schema validator end-to-end through the same code path real validations use. If that passes, the pipeline (queue, worker, dispatcher) is healthy.
+
+For verifying the *advanced* validators specifically (EnergyPlus, FMU), the operational path is:
+
+1. Run a real workflow against the validator with a known-good input.
+2. Inspect the `ValidationRun` outcome.
+
+A failed advanced-validator run points at:
 
 - Docker socket unreachable (self-hosted) or Cloud Run Job invoker permissions (GCP);
-- image not pulled or pull credentials wrong;
+- validator image not built locally (see Inventory above) or pull credentials wrong (cloud);
 - storage misconfiguration (data root not writable, run workspace can't be created);
-- network policy blocking required outbound calls (most validators run with `network=none` by default, but see the per-validator metadata).
+- network policy blocking required outbound calls (most validators run with `network=none` by default).
+
+A future `validators smoke-test` recipe could automate this; for the MVP, the operator-driven path is sufficient because most operators have at least one workflow they care about and can run manually.
 
 ## Image pinning
 
@@ -120,21 +149,39 @@ If you have a custom validator backend you want to run today, the path is a paid
 
 ## Cleanup
 
-Validator containers are short-lived but accumulate as exit artifacts. The `cleanup` recipe handles them:
+Validator containers are short-lived but accumulate as exit artifacts. So do manifested backups past their retention window and old upgrade reports. The `cleanup` recipe walks all of these in one pass:
 
 ```bash
-just self-hosted cleanup --dry-run    # show what would be deleted
-just self-hosted cleanup              # actually delete
+just self-hosted cleanup --dry-run    # list candidates without deleting
+just self-hosted cleanup              # interactive: list, prompt, delete
+just self-hosted cleanup --yes        # cron-friendly: list, delete (no prompt)
 ```
 
-What it cleans:
+Three retention scopes, each configurable via env var:
 
-- stopped validator containers older than `VALIDATOR_RETAIN_HOURS` (default 24h);
-- dangling Docker images from previous Compose builds;
-- expired backups past retention (default 30d);
-- rotated log files past max age.
+| Scope | Default | Env var override |
+|---|---|---|
+| Stopped validator containers (filtered by `io.validibot.validator-backend.slug` label) | 24h | `VALIDATOR_RETAIN_HOURS` |
+| Manifested backups (read `manifest.json::created_at`) | 30d | `BACKUP_RETAIN_DAYS` |
+| Upgrade reports (`backups/upgrades/*/report.json` mtime) | 90d | `UPGRADE_REPORT_RETAIN_DAYS` |
 
-Always shows a dry-run summary before destructive action, even without `--dry-run`. Operators confirm before deletion. Safe to run on a cron schedule.
+Plus a "bonus pass" that prunes Docker dangling images (always safe — nothing references them).
+
+The recipe **always lists candidates before any deletion**, even without `--dry-run`. The operator sees what will be removed, then confirms (or re-runs with `--yes` for cron). Pattern adopted from Discourse's `./launcher cleanup`.
+
+What `cleanup` does NOT touch:
+
+- Validator backend **images** themselves — re-pulling/re-building is expensive. Use `docker image prune` directly when you genuinely want to reclaim image storage.
+- Working-set volumes (Postgres, Redis, `validibot_storage`). Those are part of the live deployment; `clean-all` is the recipe for that.
+- Ad-hoc `backup-db` `.sql.gz` dumps at the top of `backups/`. Those are operator-managed; we don't know your retention policy.
+
+A reasonable cron entry:
+
+```cron
+0 3 * * 0  cd /srv/validibot/repo && just self-hosted cleanup --yes >> /var/log/validibot-cleanup.log 2>&1
+```
+
+Weekly cleanup at 3am Sunday. The log shows what was removed; if nothing matched, the recipe prints "Nothing to clean up." and exits 0.
 
 ## Image registry: GHCR primary, Docker Hub mirror
 

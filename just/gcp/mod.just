@@ -278,7 +278,18 @@ build: _require-gcp-config
         echo "The image may contain uncommitted changes not tracked by git."
     fi
 
-    echo "Building image: {{gcp_image}}:{{git_sha}} (Validibot {{validibot_version}})"
+    # Resolve the image tag once. Daily deploys use the parse-time
+    # ``{{git_sha}}`` constant (whatever HEAD was when ``just`` parsed
+    # the file). The ``upgrade`` recipe exports
+    # ``VALIDIBOT_REVISION=$(git rev-parse --short HEAD)`` AFTER its
+    # ``git checkout``, so the override gives us the post-checkout
+    # commit. Threading this through ``build → push → deploy → migrate``
+    # consistently means the registry tag matches the actual code in
+    # the image — preventing the "OLD tag silently re-points to NEW
+    # code" hazard during upgrades.
+    IMAGE_TAG="${VALIDIBOT_REVISION:-{{git_sha}}}"
+
+    echo "Building image: {{gcp_image}}:${IMAGE_TAG} (Validibot ${VALIDIBOT_VERSION:-{{validibot_version}}})"
 
     DOCKERFILE="compose/production/django/Dockerfile"
 
@@ -386,27 +397,31 @@ build: _require-gcp-config
     # Override: when an operator runs ``just gcp upgrade <stage> <ver>``,
     # the upgrade recipe exports BOTH ``VALIDIBOT_VERSION`` and
     # ``VALIDIBOT_REVISION`` after ``git checkout``. The
-    # ``${VAR:-default}`` forms below pick the explicit overrides if
-    # set, otherwise fall back to the parse-time defaults. Without
-    # the revision override, an upgrade build would carry the right
-    # release version label but the OLD commit revision label —
-    # the failure mode the second-pass review caught.
+    # ``${VAR:-default}`` forms pick the explicit overrides if set,
+    # otherwise fall back to the parse-time defaults.
     #
-    # NOTE on the image TAG (``-t {{gcp_image}}:{{git_sha}}``): the
-    # tag uses the parse-time sha by design. Build / push / web /
-    # worker all read ``{{git_sha}}`` consistently, so the tag is
-    # internally consistent across the deploy. The post-checkout sha
-    # only feeds the in-image LABEL via VALIDIBOT_REVISION; that's
-    # what doctor + support-bundle surface. (Threading a per-build
-    # tag override through every recipe is a larger change and not
-    # what the review flagged.)
+    # The override threads through THREE places that must all agree
+    # for upgrade provenance to be honest:
+    #
+    #   1. ``--build-arg VALIDIBOT_REVISION`` → in-image LABEL.
+    #      Surfaced by doctor / support-bundle.
+    #   2. ``-t {{gcp_image}}:${IMAGE_TAG}`` (computed above) →
+    #      registry tag. The tag must move with the actual code, or
+    #      an upgrade silently re-points the OLD tag to NEW image
+    #      contents — breaking rollback by tag.
+    #   3. ``--build-arg VALIDIBOT_VERSION`` → release-tag label.
+    #      Drives backup-manifest provenance and doctor metadata.
+    #
+    # All three reach the daily-deploy path via parse-time defaults,
+    # and all three reach the upgrade path via the same env-var
+    # override mechanism — symmetry that's easy to verify.
     docker build --platform linux/amd64 --provenance=false $CACHE_FLAG \
         -f "$DOCKERFILE" \
         --build-arg EXTRA_UV_EXTRAS="${EXTRA_UV_EXTRAS}" \
         --build-arg VALIDIBOT_VERSION="${VALIDIBOT_VERSION:-{{validibot_version}}}" \
         --build-arg VALIDIBOT_REVISION="${VALIDIBOT_REVISION:-{{git_sha}}}" \
         ${EXTRA_PACKAGES_CONTEXT} \
-        -t {{gcp_image}}:{{git_sha}} \
+        -t {{gcp_image}}:${IMAGE_TAG} \
         -t {{gcp_image}}:latest .
 
     if [ "${GCP_BUILD_VALIDIBOT_CLOUD:-0}" = "1" ]; then
@@ -417,9 +432,15 @@ build: _require-gcp-config
 
 # Push Docker image to Google Artifact Registry
 # Requires: gcloud auth configure-docker (run 'just gcp auth' first)
+#
+# Tag selection mirrors ``build``: ``${VALIDIBOT_REVISION:-{{git_sha}}}``
+# resolves to the parse-time SHA on daily deploys and the post-checkout
+# SHA when called from ``upgrade``. Inlined per call site rather than
+# stored in a local because ``push`` is a non-bash recipe and each
+# line runs as its own shell command (no shared variables).
 push:
-    @echo "Pushing image: {{gcp_image}}:{{git_sha}}"
-    docker push {{gcp_image}}:{{git_sha}}
+    @echo "Pushing image: {{gcp_image}}:${VALIDIBOT_REVISION:-{{git_sha}}}"
+    docker push {{gcp_image}}:${VALIDIBOT_REVISION:-{{git_sha}}}
     docker push {{gcp_image}}:latest
 
 # =============================================================================
@@ -903,9 +924,16 @@ _deploy-web stage:
         echo "   No private IP — skipping VPC egress (using Cloud SQL Auth Proxy)"
     fi
 
+    # Resolve image tag from the same env-var override + parse-time
+    # default pair used by ``build`` / ``push``. During an upgrade,
+    # the upgrade recipe has already exported VALIDIBOT_REVISION to
+    # the post-checkout SHA, so the tag picked here matches the tag
+    # that ``build``/``push`` produced.
+    IMAGE_TAG="${VALIDIBOT_REVISION:-{{git_sha}}}"
+
     echo "Deploying $SERVICE to Cloud Run ({{stage}}, ingress: $INGRESS)..."
     gcloud run deploy "$SERVICE" \
-        --image {{gcp_image}}:{{git_sha}} \
+        --image {{gcp_image}}:${IMAGE_TAG} \
         --region {{gcp_region}} \
         --port 8000 \
         --service-account "$SA" \
@@ -958,9 +986,12 @@ _deploy-worker stage:
         VPC_FLAGS=""
     fi
 
+    # Resolve image tag (see comment in _deploy-web for why).
+    IMAGE_TAG="${VALIDIBOT_REVISION:-{{git_sha}}}"
+
     echo "Deploying $SERVICE to Cloud Run ({{stage}}, private)..."
     gcloud run deploy "$SERVICE" \
-        --image {{gcp_image}}:{{git_sha}} \
+        --image {{gcp_image}}:${IMAGE_TAG} \
         --region {{gcp_region}} \
         --port 8000 \
         --service-account "$SA" \
@@ -1274,10 +1305,17 @@ _migrate stage:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    echo "Running pre-deploy migrations on {{stage}} with new image..."
-    echo "Image: {{gcp_image}}:{{git_sha}}"
+    # Resolve image tag (see comment in build for the override
+    # mechanism). Migrations run BEFORE the web/worker switch, so
+    # they must run against the same image those services will run
+    # — ``build`` and ``push`` produced ``{{gcp_image}}:${IMAGE_TAG}``,
+    # so we point the migrate job at the same tag.
+    IMAGE_TAG="${VALIDIBOT_REVISION:-{{git_sha}}}"
 
-    just gcp _run-migrate-job "{{stage}}" "{{gcp_image}}:{{git_sha}}"
+    echo "Running pre-deploy migrations on {{stage}} with new image..."
+    echo "Image: {{gcp_image}}:${IMAGE_TAG}"
+
+    just gcp _run-migrate-job "{{stage}}" "{{gcp_image}}:${IMAGE_TAG}"
 
 # Internal: The actual Cloud Run Job creation and execution logic.
 #

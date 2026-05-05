@@ -1487,6 +1487,138 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
             f"builds."
         )
 
+    # ── Image-tag threading (third-pass review P1 fix) ────────────────
+    #
+    # Concept being tested: the registry image TAG (not just the
+    # in-image LABEL) must move with the actual code. Daily deploys
+    # use the parse-time ``{{git_sha}}``; upgrades use the post-
+    # checkout sha via the same ``${VALIDIBOT_REVISION:-{{git_sha}}}``
+    # override mechanism we already use for the LABEL.
+    #
+    # Why this matters: container tags are mutable pointers. If
+    # ``image:AAAAAA`` was previously deployed with one set of code,
+    # and an upgrade re-pushes new code under the same tag string,
+    # the registry silently re-points the tag — breaking rollback
+    # ("redeploy image:AAAAAA" no longer returns the same code) and
+    # confusing forensics ("what's actually at image:AAAAAA?").
+    #
+    # The fix threads ``IMAGE_TAG="${VALIDIBOT_REVISION:-{{git_sha}}}"``
+    # through every recipe that references the app image:
+    # ``build``, ``push``, ``_deploy-web``, ``_deploy-worker``,
+    # ``_migrate``. Operator-job recipes (``_run-doctor-job``,
+    # ``_run-backup``, ``_run-restore``) resolve the deployed image
+    # at runtime via ``_resolve-deployed-image``, so they don't
+    # need this override.
+
+    def test_gcp_image_tag_uses_revision_override(self):
+        """All app-image references must thread the IMAGE_TAG override.
+
+        We assert by counting two distinct shapes:
+
+        - ``IMAGE_TAG="${VALIDIBOT_REVISION:-{{git_sha}}}"`` — the
+          local-variable form used by bash recipes (build,
+          _deploy-web, _deploy-worker, _migrate).
+        - ``${VALIDIBOT_REVISION:-{{git_sha}}}`` inlined directly —
+          the form used by the non-bash ``push`` recipe (each line
+          is its own shell command, so no shared local variable).
+
+        Either form means the recipe will pick up the override; the
+        regression we're guarding against is a bare ``{{git_sha}}``
+        sneaking back in via copy-paste from an older recipe shape.
+        """
+        text = self._gcp_text()
+        local_var_form = 'IMAGE_TAG="${VALIDIBOT_REVISION:-{{git_sha}}}"'
+        inline_form = "${VALIDIBOT_REVISION:-{{git_sha}}}"
+
+        # Local-variable form should appear in 4 bash recipes:
+        # build, _deploy-web, _deploy-worker, _migrate.
+        expected_bash_sites = 4
+        local_var_count = text.count(local_var_form)
+        assert local_var_count >= expected_bash_sites, (
+            f"Expected ``IMAGE_TAG=...`` to appear in at least "
+            f"{expected_bash_sites} bash recipes (build, _deploy-web, "
+            f"_deploy-worker, _migrate). Found {local_var_count}. "
+            f"Whichever recipe is missing will tag/deploy the image "
+            f"with the parse-time {{git_sha}}, breaking upgrade "
+            f"provenance."
+        )
+
+        # Inline form must appear at least 5 times (the ones inside
+        # IMAGE_TAG="..." lines plus 2 additional in the ``push``
+        # recipe — the echo and the docker push line).
+        expected_total_sites = 6  # 4 bash + 2 push lines
+        inline_count = text.count(inline_form)
+        assert inline_count >= expected_total_sites, (
+            f"Expected ``${inline_form}`` to appear in at least "
+            f"{expected_total_sites} spots total (4 bash recipes + "
+            f"the 2 lines in ``push``). Found {inline_count}. The "
+            f"non-bash push recipe in particular needs the inlined "
+            f"form because each line runs as its own shell command."
+        )
+
+    def test_gcp_app_image_tag_uses_imagetag_var_in_bash_recipes(self):
+        """Bash recipes must reference the image as ``{{gcp_image}}:${IMAGE_TAG}``.
+
+        The local variable is only useful if it's actually consumed.
+        We grep for the post-fix usage shape and count the call sites:
+
+        - ``-t {{gcp_image}}:${IMAGE_TAG}`` in build (one tag line;
+          the ``:latest`` line stays unchanged because ``latest`` is
+          a deliberately moving tag).
+        - ``--image {{gcp_image}}:${IMAGE_TAG}`` in _deploy-web,
+          _deploy-worker, and the migrate-job hand-off.
+        - ``"{{gcp_image}}:${IMAGE_TAG}"`` (quoted) in _migrate's
+          call to _run-migrate-job.
+
+        Total: at least 4 sites must use the ``${IMAGE_TAG}`` form.
+        """
+        text = self._gcp_text()
+        usage_form = "{{gcp_image}}:${IMAGE_TAG}"
+        expected_consumer_sites = 4
+        usage_count = text.count(usage_form)
+        assert usage_count >= expected_consumer_sites, (
+            f"Expected ``{usage_form}`` to appear in at least "
+            f"{expected_consumer_sites} sites (build -t, "
+            f"_deploy-web --image, _deploy-worker --image, "
+            f"_migrate's _run-migrate-job hand-off). Found "
+            f"{usage_count}. The IMAGE_TAG variable is set up at "
+            f"the top of each bash recipe but only matters if the "
+            f"actual image reference uses it."
+        )
+
+    def test_gcp_no_bare_git_sha_in_app_image_tag(self):
+        """No remaining bare ``{{gcp_image}}:{{git_sha}}`` references.
+
+        This is the regression-guard: the literal form was the
+        broken-tag-overwrite shape that the third-pass review
+        flagged. Any new recipe that needs to reference the app
+        image must either use the IMAGE_TAG variable (bash recipes)
+        or the inlined ``${VALIDIBOT_REVISION:-{{git_sha}}}`` form
+        (non-bash recipes). The literal must not return.
+
+        ``{{gcp_image}}:latest`` is fine — ``:latest`` is a moving
+        "most recent build" tag by convention; the override only
+        applies to per-commit tags.
+        """
+        text = self._gcp_text()
+        broken_form = "{{gcp_image}}:{{git_sha}}"
+        non_comment_lines = [
+            line
+            for line in text.splitlines()
+            # Strip recipe-body indentation; comment lines start with
+            # ``#`` after stripping. We deliberately allow comments
+            # to mention the broken form (they explain the history).
+            if not line.lstrip().startswith("#")
+        ]
+        offenders = [line for line in non_comment_lines if broken_form in line]
+        assert not offenders, (
+            f"Found {len(offenders)} non-comment line(s) still "
+            f"using the broken ``{broken_form}`` form. These will "
+            f"silently re-point registry tags during upgrade builds, "
+            f"breaking rollback by tag:\n"
+            + "\n".join(f"  - {line.strip()}" for line in offenders)
+        )
+
 
 class ValidatorsAndCleanupShapeTests(SimpleTestCase):
     """Verify Phase 5 validators + cleanup recipes are real implementations.

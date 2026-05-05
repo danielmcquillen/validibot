@@ -139,6 +139,86 @@ class TestStdoutOutput:
 
 
 # ──────────────────────────────────────────────────────────────────────
+# DB dump content-type resolution
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestDbContentTypeResolution:
+    """Content-type matches the dump format, not a hard-coded string.
+
+    Earlier the writer always recorded ``application/gzip`` for the
+    DB dump regardless of the actual format. Self-hosted backups
+    produce ``db.sql.zst`` (zstd-compressed), so the manifest was
+    misleading restore tooling. The fix: explicit
+    ``--db-content-type`` flag, with extension-based inference as
+    the safe fallback.
+    """
+
+    def _common_args(self, *, db_file: str = "db.sql.gz") -> list[str]:
+        return [
+            "--backup-id",
+            "20260504T143022Z",
+            "--target",
+            "gcp",
+            "--stage",
+            "prod",
+            "--backup-uri",
+            "gs://bucket/20260504T143022Z/",
+            "--db-file",
+            db_file,
+            "--db-sha256",
+            "a" * 64,
+            "--db-size-bytes",
+            "1024",
+            "--restore-command-hint",
+            "...",
+        ]
+
+    def test_explicit_content_type_wins(self):
+        out = StringIO()
+        call_command(
+            "write_backup_manifest",
+            *self._common_args(db_file="db.sql.zst"),
+            "--db-content-type",
+            "application/zstd",
+            stdout=out,
+        )
+        as_dict = json.loads(out.getvalue())
+        assert as_dict["data"]["db_dump"]["content_type"] == "application/zstd"
+
+    def test_zst_extension_inferred_as_zstd(self):
+        out = StringIO()
+        call_command(
+            "write_backup_manifest",
+            *self._common_args(db_file="db.sql.zst"),
+            stdout=out,
+        )
+        as_dict = json.loads(out.getvalue())
+        assert as_dict["data"]["db_dump"]["content_type"] == "application/zstd"
+
+    def test_gz_extension_inferred_as_gzip(self):
+        out = StringIO()
+        call_command(
+            "write_backup_manifest",
+            *self._common_args(db_file="db.sql.gz"),
+            stdout=out,
+        )
+        as_dict = json.loads(out.getvalue())
+        assert as_dict["data"]["db_dump"]["content_type"] == "application/gzip"
+
+    def test_unknown_extension_falls_back_to_octet_stream(self):
+        """Honest fallback — better than silently mislabeling."""
+        out = StringIO()
+        call_command(
+            "write_backup_manifest",
+            *self._common_args(db_file="db.sql.weirdformat"),
+            stdout=out,
+        )
+        as_dict = json.loads(out.getvalue())
+        assert as_dict["data"]["db_dump"]["content_type"] == "application/octet-stream"
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Runtime version capture
 # ──────────────────────────────────────────────────────────────────────
 

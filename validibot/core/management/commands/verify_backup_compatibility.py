@@ -222,26 +222,59 @@ class Command(BaseCommand):
                 },
             )
 
-        # 3. Cross-major version jump.  If we can parse both
+        # 3. Cross-major version mismatch.  If we can parse both
         # versions as semver (or at least extract a major
-        # component), refuse a jump of >= 1 major.  If parsing
-        # fails (custom version strings), we WARN but don't
-        # refuse — the operator's existing version-pinning
-        # discipline is the gate.
+        # component), refuse ANY major mismatch — both directions.
+        #
+        # Why both directions:
+        #
+        #   - backup_major > current_major (backup is newer):
+        #       Restoring would require migrations the current code
+        #       doesn't ship; the database schema would be ahead of
+        #       the ORM. Already caught by the migration_head check
+        #       above, but we surface it here too with a clearer
+        #       message about the version axis.
+        #
+        #   - backup_major < current_major (backup is older):
+        #       Earlier we permitted this, on the theory that
+        #       ``migrate`` would forward-port the older state. That
+        #       bypasses the ADR's controlled cross-major upgrade
+        #       path: an operator on v1.x could restore a v0 backup
+        #       and let migrations run, skipping the deliberate
+        #       v0 → v0.last_minor → v1.0 step that the upgrade
+        #       recipe enforces. Boring-self-hosting AC #16: cross-
+        #       major restores must route through documented
+        #       intermediate releases.
+        #
+        # If parsing fails (custom version strings), we permit the
+        # restore — the operator's existing version-pinning discipline
+        # is the gate, and we don't want to refuse purely because
+        # we couldn't parse a freeform string.
         backup_major = self._parse_major(manifest.compatibility.validibot_version)
         current_major = self._parse_major(self._current_validibot_version())
         if (
             backup_major is not None
             and current_major is not None
-            and backup_major > current_major
+            and backup_major != current_major
         ):
+            if backup_major > current_major:
+                detail = (
+                    "backup is from a newer major version — upgrade the "
+                    "deployment first, then restore."
+                )
+            else:
+                detail = (
+                    "backup is from an older major version — restore via "
+                    "the documented upgrade path (boring-self-hosting "
+                    "ADR AC #16) instead of directly onto current code."
+                )
             problems.append(
                 {
                     "code": "version_jump",
                     "message": (
                         f"backup is major v{backup_major} "
-                        f"but deployment is major v{current_major} "
-                        f"(restore across major versions is not supported)"
+                        f"but deployment is major v{current_major}. "
+                        f"{detail}"
                     ),
                     "backup_major": backup_major,
                     "current_major": current_major,

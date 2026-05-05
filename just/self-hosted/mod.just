@@ -1120,6 +1120,7 @@ _run-backup:
                 --db-file "db.sql.zst" \
                 --db-sha256 "${DB_SHA}" \
                 --db-size-bytes "${DB_SIZE}" \
+                --db-content-type "application/zstd" \
                 --media-inventory - \
                 --restore-command-hint "${RESTORE_HINT}" \
                 --output - \
@@ -1750,8 +1751,15 @@ _run-upgrade args:
         if [ -n "${BACKUP_PATH}" ]; then
             echo "    just self-hosted restore ${BACKUP_PATH}  # roll back"
         fi
+        echo ""
+        echo "  This run is RETRYABLE — re-run ``just self-hosted upgrade --to ${TARGET}``"
+        echo "  after fixing the issues above. The completed.ok marker is written"
+        echo "  only when both post-flight checks pass."
         exit 1
     fi
+    # Both doctor and smoke-test passed — write the completion sentinel
+    # so future invocations short-circuit cleanly.
+    : > "${COMPLETED_MARKER}"
     exit 0
 
 # =============================================================================
@@ -1871,21 +1879,44 @@ _run-collect-support-bundle flags:
     echo ""
 
     # ── Step 2: Host-side artefacts ───────────────────────────────────
-    # ``docker compose ps`` shows service status; ``logs --tail=200``
-    # captures recent activity. We don't try to be clever about
-    # which logs to include — operators can edit the zip if they
-    # want to trim before sending.
+    # Container logs are piped through ``manage.py redact_text``
+    # (running inside the web container) so credentials that may
+    # have appeared in URLs, request payloads, or stack traces are
+    # stripped before zipping. Without this, the app-side snapshot's
+    # redaction would be undermined by a verbatim log dump.
+    #
+    # Service status, disk usage, and other operator-status output
+    # are NOT piped through the redactor — they're structured by
+    # docker / system commands and have no leak surface. Adding
+    # redaction there would just slow things down.
     echo "Step 2/4: Capturing host-side artefacts..."
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} ps \
         > "${WORKDIR}/service-status.txt" 2>&1 || true
-    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} \
-        logs --tail=200 web > "${WORKDIR}/recent-web.log" 2>&1 || true
-    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} \
-        logs --tail=200 worker > "${WORKDIR}/recent-worker.log" 2>&1 || true
-    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} \
-        logs --tail=200 postgres > "${WORKDIR}/recent-postgres.log" 2>&1 || true
+
+    # Redact through a single ``manage.py redact_text`` invocation
+    # per stream. If the web container is down we fall through to
+    # raw logs so support still gets *something*; in that case the
+    # snapshot-error.log from Step 1 already tells support the app
+    # is down and the redaction layer wasn't reachable.
+    _capture_redacted_log() {
+        local svc="$1" outfile="$2"
+        if ! docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} \
+            logs --tail=200 "$svc" 2>&1 \
+            | docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} \
+                exec -T web python manage.py redact_text \
+            > "$outfile" 2>/dev/null; then
+            # Fallback: capture raw logs so support sees *something*.
+            docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} \
+                logs --tail=200 "$svc" > "$outfile" 2>&1 || true
+            echo "[bundle: redact_text unavailable; raw logs included]" >> "$outfile"
+        fi
+    }
+    _capture_redacted_log web "${WORKDIR}/recent-web.log"
+    _capture_redacted_log worker "${WORKDIR}/recent-worker.log"
+    _capture_redacted_log postgres "${WORKDIR}/recent-postgres.log"
+
     df -h > "${WORKDIR}/disk-usage.txt" 2>&1 || true
-    echo "  ✓ Host artefacts captured."
+    echo "  ✓ Host artefacts captured (logs piped through redact_text)."
     echo ""
 
     # ── Step 3: Validator backend inventory ───────────────────────────

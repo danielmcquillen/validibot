@@ -112,6 +112,15 @@ class Command(BaseCommand):
             help="Size of the DB dump file in bytes.",
         )
         parser.add_argument(
+            "--db-content-type",
+            default=None,
+            help=(
+                "MIME type for the DB dump (e.g. application/zstd for "
+                "self-hosted, application/gzip for GCP). If omitted, "
+                "inferred from the --db-file extension."
+            ),
+        )
+        parser.add_argument(
             "--media-inventory",
             default=None,
             help=(
@@ -233,11 +242,20 @@ class Command(BaseCommand):
         )
 
     def _capture_data_component(self, options: dict) -> BackupDataComponent:
-        """Build the data component from --db-* flags and --media-inventory."""
+        """Build the data component from --db-* flags and --media-inventory.
+
+        ``content_type`` is taken from ``--db-content-type`` if the
+        recipe passed it; otherwise we infer from the file extension.
+        Self-hosted backups produce ``db.sql.zst`` (zstd-compressed
+        plain SQL); GCP backups produce ``db.sql.gz`` (gzip from
+        ``gcloud sql export``). Each substrate's recipe should pass
+        the right value explicitly, but the inference is a safe
+        default that matches how real recipes name their files.
+        """
         db_dump = BackupFileEntry(
             path=options["db_file"],
             size_bytes=options["db_size_bytes"],
-            content_type="application/gzip",
+            content_type=self._resolve_db_content_type(options),
             checksum_sha256=options["db_sha256"],
         )
 
@@ -247,6 +265,27 @@ class Command(BaseCommand):
             media_files = self._read_media_inventory(media_inventory_path)
 
         return BackupDataComponent(db_dump=db_dump, media_files=media_files)
+
+    @staticmethod
+    def _resolve_db_content_type(options: dict) -> str:
+        """Return the explicit ``--db-content-type`` or infer from path.
+
+        Inference is conservative: only the two extensions Validibot
+        actually produces today (``.zst``, ``.gz``) are mapped.
+        Anything else falls back to ``application/octet-stream``,
+        which is wrong but at least honest — better than silently
+        labelling a zstd dump as gzip.
+        """
+        explicit = options.get("db_content_type")
+        if explicit:
+            return explicit
+        path = options.get("db_file") or ""
+        path_lower = path.lower()
+        if path_lower.endswith((".zst", ".zstd")):
+            return "application/zstd"
+        if path_lower.endswith((".gz", ".gzip")):
+            return "application/gzip"
+        return "application/octet-stream"
 
     def _capture_config_component(
         self,

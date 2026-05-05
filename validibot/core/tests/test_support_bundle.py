@@ -39,6 +39,7 @@ from validibot.core.support_bundle import VersionInfo
 from validibot.core.support_bundle import is_sensitive_setting
 from validibot.core.support_bundle import looks_like_secret_value
 from validibot.core.support_bundle import redact_setting_value
+from validibot.core.support_bundle import redact_text_for_bundle
 
 # ──────────────────────────────────────────────────────────────────────
 # Name-based redaction
@@ -315,3 +316,194 @@ class TestRedactedSetting:
                 redacted=False,
                 surprise="bad",
             )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Log-text redaction (bundle host-side artefacts)
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestLogTextRedaction:
+    """``redact_text_for_bundle`` scrubs free-form text for support bundles.
+
+    The settings-side redaction fixes one class of leak (Django
+    settings whose names match a credential pattern). This second
+    layer protects host/cloud logs the recipe pipes into the bundle
+    — those would otherwise carry tokens, embedded URL credentials,
+    and PEM blocks straight into the zip operators send to support.
+    """
+
+    def test_bearer_tokens_are_redacted(self):
+        # Bearer in an Authorization header — the Authorization-header
+        # pattern catches the whole line and replaces with
+        # ``Authorization: [REDACTED]``. The standalone Bearer pattern
+        # is for cases where ``Bearer <tok>`` appears outside a
+        # header. Both end with the token gone, which is the
+        # invariant we care about.
+        log = "GET /api/x HTTP/1.1\nAuthorization: Bearer abc123def456\n"
+        redacted = redact_text_for_bundle(log)
+        assert "abc123def456" not in redacted
+        assert "[REDACTED]" in redacted
+
+    def test_bearer_outside_header_is_redacted(self):
+        """Standalone ``Bearer <tok>`` (no Authorization header) is also caught."""
+        # In a stack trace, log message, or arbitrary debug output
+        # the Authorization-header pattern doesn't fire — but the
+        # bare ``Bearer <token>`` pattern still does.
+        log = "Calling with auth=Bearer abc123def456 returned 401"
+        redacted = redact_text_for_bundle(log)
+        assert "abc123def456" not in redacted
+        assert "Bearer [REDACTED]" in redacted
+
+    def test_authorization_header_redacted_regardless_of_scheme(self):
+        log = "X-API-Key: super-secret-token-value-here-please"
+        redacted = redact_text_for_bundle(log)
+        assert "super-secret-token-value-here-please" not in redacted
+        assert "[REDACTED]" in redacted
+
+    def test_jwt_anywhere_in_text_is_redacted(self):
+        # JWT in the middle of a stack trace.
+        log = (
+            "ERROR fetching: token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+            "eyJzdWIiOiJ0ZXN0In0.AbC123-_DefGhi at line 42"
+        )
+        redacted = redact_text_for_bundle(log)
+        assert "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" not in redacted
+        assert "[REDACTED-JWT]" in redacted
+
+    def test_pem_blocks_are_redacted_multiline(self):
+        # Synthetic PEM, no real key material. detect-private-key
+        # excludes this file via .pre-commit-config.yaml.
+        log = (
+            "Loading signing key:\n"
+            "-----BEGIN RSA PRIVATE KEY-----\n"
+            "MIIEowIBAAKCAQEAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+            "-----END RSA PRIVATE KEY-----\n"
+            "Done."
+        )
+        redacted = redact_text_for_bundle(log)
+        # The base64 body must not survive.
+        assert (
+            "MIIEowIBAAKCAQEAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            not in redacted
+        )
+        assert "[REDACTED-PEM-PRIVATE-KEY]" in redacted
+        # Surrounding context ("Loading signing key", "Done.") survives.
+        assert "Loading signing key" in redacted
+        assert "Done." in redacted
+
+    def test_url_embedded_basic_auth_redacts_credential_only(self):
+        log = "Connecting to postgres://operator:hunter2@db.internal:5432/validibot"
+        redacted = redact_text_for_bundle(log)
+        assert "operator:hunter2" not in redacted
+        assert "hunter2" not in redacted
+        # The host portion of the URL survives so support sees what
+        # endpoint the operator was hitting.
+        assert "@db.internal:5432/validibot" in redacted
+        assert "[REDACTED]" in redacted
+
+    def test_long_hex_strings_are_redacted_but_image_digests_pass(self):
+        digest_body = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+        log = (
+            "SECRET_KEY value: 0123456789abcdef0123456789abcdef0123456789abcdef\n"
+            f"Pulling image@sha256:{digest_body}"
+        )
+        redacted = redact_text_for_bundle(log)
+        # The long hex value is replaced.
+        assert "0123456789abcdef0123456789abcdef0123456789abcdef" not in redacted
+        assert "[REDACTED-HEX]" in redacted
+        # The image digest survives — sha256:... is a public identifier
+        # operators routinely paste in tickets to identify versions.
+        assert f"sha256:{digest_body}" in redacted
+
+    def test_key_value_patterns_with_sensitive_names(self):
+        log = "config: DATABASE_PASSWORD=hunter2; OIDC_CLIENT_SECRET=def456; DEBUG=True"
+        redacted = redact_text_for_bundle(log)
+        assert "hunter2" not in redacted
+        assert "def456" not in redacted
+        # DEBUG=True is not sensitive — survives.
+        assert "DEBUG=True" in redacted
+        assert "DATABASE_PASSWORD=[REDACTED]" in redacted
+
+    def test_idempotent_on_already_redacted_text(self):
+        """Running the redactor twice must produce the same output.
+
+        Re-running on already-redacted text is a real scenario when
+        operators inspect a bundle, edit it, and re-zip. The
+        redaction sentinels (``[REDACTED]``, ``[REDACTED-JWT]``,
+        etc.) must NOT match any pattern.
+        """
+        original = "Authorization: Bearer abc123 and a secret eyJxxx.yyy.zzz"
+        once = redact_text_for_bundle(original)
+        twice = redact_text_for_bundle(once)
+        assert once == twice
+
+    def test_normal_log_lines_pass_through(self):
+        log = (
+            "2026-05-06T14:30:22Z INFO Validation run started run_id=abc123\n"
+            "2026-05-06T14:30:23Z INFO Validation run completed status=SUCCEEDED\n"
+        )
+        redacted = redact_text_for_bundle(log)
+        # Non-secret content survives.
+        assert "Validation run started" in redacted
+        assert "status=SUCCEEDED" in redacted
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Pattern-drift contract: standalone redactor stays in sync
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestStandaloneRedactorPatternDrift:
+    """The standalone ``deploy/self-hosted/scripts/redact-text.py``
+    must apply the SAME redactions as ``redact_text_for_bundle``.
+
+    The standalone exists because the GCP bundle recipe runs on the
+    operator's workstation (no Validibot venv assumed); it imports
+    only ``re`` and ``sys`` so it works against any system Python 3.
+    The trade-off is that the patterns live in two places — this
+    test catches accidental drift.
+
+    We don't import the standalone module via ``importlib`` because
+    its filename has a hyphen. Instead, we exec it as a subprocess
+    against a representative input and assert the output matches
+    what ``redact_text_for_bundle`` produces.
+    """
+
+    def test_standalone_output_matches_canonical(self):
+        import subprocess
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parents[3]
+        script = repo_root / "deploy" / "self-hosted" / "scripts" / "redact-text.py"
+        assert script.is_file(), f"{script} missing — see ADR Phase 6 follow-ups."
+
+        # Representative input touching every pattern category.
+        digest_body = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+        test_input = (
+            "Authorization: Bearer abc123def456\n"
+            "X-API-Key: my-token-value\n"
+            "JWT: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0In0.AbC123\n"
+            "PEM: -----BEGIN RSA PRIVATE KEY-----\nMIIEoBASE64\n"
+            "-----END RSA PRIVATE KEY-----\n"
+            "URL: https://op:secret@host.example/path\n"
+            "HASH: 0123456789abcdef0123456789abcdef0123456789abcdef\n"
+            f"DIGEST: sha256:{digest_body}\n"
+            "PASSWORD=hunter2 and DEBUG=True\n"
+        )
+        result = subprocess.run(  # noqa: S603
+            ["/usr/bin/env", "python3", str(script)],
+            input=test_input,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        )
+        canonical = redact_text_for_bundle(test_input)
+
+        assert result.stdout == canonical, (
+            "Standalone redact-text.py drifted from "
+            "validibot.core.support_bundle.redact_text_for_bundle. "
+            "Re-sync the patterns in both files; see the docstring at "
+            "the top of redact-text.py."
+        )

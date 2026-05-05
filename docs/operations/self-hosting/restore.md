@@ -90,8 +90,18 @@ just self-hosted errors-since 5m
 1. **Pre-flight gates run unconditionally.** There is no `--force` flag yet. Address the gate's failure first; the recipe protects against half-done states.
 2. **Restore writes the `.last-restore-test` marker on success.** Doctor's `VB411` reads it. Re-running restore advances the mtime even if the backup contained an older marker (the tar archive may carry one from a previous restore).
 3. **Restore applies migrations on top of the imported state.** This is what makes "restore older backup onto current code" work cleanly — the dump captures schema-as-of-backup, migrations bring it forward, no special handling required.
-4. **Restore is not currently component-selective.** Component-selective restore (`--components config-only` / `data-only` / `full`) is reserved in the manifest schema (boring-self-hosting ADR AC #17) but not yet implemented. The MVP always restores both halves.
-5. **Restore is not currently dry-run-able.** Run `verify_backup_compatibility` standalone (see [Backups](backups.md#verifying-a-backup-without-restoring)) for the closest equivalent today.
+
+## ADR scope: what's deferred from the original acceptance criteria
+
+The boring self-hosting ADR's Phase 3 acceptance criteria list three restore surfaces — `--dry-run`, `--components`, `--force` — that are NOT in the MVP. They're documented here so the ADR's status is honest:
+
+| Surface | ADR AC | MVP status | Why deferred |
+|---|---|---|---|
+| `--dry-run` (preview without applying) | Phase 3 task 8 | **Not implemented** | The four pre-flight gates already make most "would this work?" questions answerable without touching the deployment. Operators can run `verify_backup_compatibility` standalone (see [Backups → Verifying a backup](backups.md#verifying-a-backup-without-restoring)) for the closest equivalent. A real `--dry-run` would simulate the SQL import + tar-extract steps; that adds complexity disproportionate to its value at MVP. |
+| `--components config-only` / `data-only` / `full` | Phase 3 task 9 + AC #17 | **Not implemented** | The manifest schema (`validibot.backup.v1`) reserves the slot — `data` and `config` are separate components. The MVP always applies both. The recipe-side branching is a focused additive change when an operator pilot needs it. |
+| `--force` (skip pre-flight gates) | Phase 3 task 5 | **Not implemented** | The gates are deliberately unconditional. A `--force` escape hatch would invite operators to bypass the protections under pressure — exactly when they shouldn't. The "right" override path is to fix the doctor finding, not skip it. |
+
+These deferrals are tracked in the ADR follow-up list; if a paid pilot needs any of them, that's a focused implementation rather than a redesign.
 
 ## The quarterly drill
 

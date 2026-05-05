@@ -549,12 +549,23 @@ _run-upgrade stage version flags:
 
     UPGRADE_DIR="backups/upgrades/${TARGET}-{{stage}}"
     REPORT_FILE="${UPGRADE_DIR}/report.json"
+    # ``completed.ok`` is the success sentinel — written only when both
+    # post-flight checks (doctor + smoke-test) pass. ``report.json``
+    # is unconditional status, including failed runs. Splitting the
+    # two means a degraded upgrade (report present, marker absent) is
+    # retryable — see the self-hosted equivalent for the rationale.
+    COMPLETED_MARKER="${UPGRADE_DIR}/completed.ok"
     mkdir -p "${UPGRADE_DIR}"
     STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-    if [ -f "${REPORT_FILE}" ]; then
-        echo "Upgrade to ${TARGET} on {{stage}} already complete — report at ${REPORT_FILE}."
+    if [ -f "${COMPLETED_MARKER}" ]; then
+        echo "Upgrade to ${TARGET} on {{stage}} already complete — marker at ${COMPLETED_MARKER}."
         exit 0
+    fi
+    if [ -f "${REPORT_FILE}" ]; then
+        echo "Previous attempt to ${TARGET} on {{stage}} did not complete cleanly — retrying."
+        echo "(See ${REPORT_FILE} for the prior verdict.)"
+        echo ""
     fi
 
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -704,8 +715,15 @@ _run-upgrade stage version flags:
         echo "  Backup:  ${BACKUP_REF}"
     fi
     if [ ${DOCTOR_PASS} -eq 0 ] || [ ${SMOKE_PASS} -eq 0 ]; then
+        echo ""
+        echo "  This run is RETRYABLE — re-run ``just gcp upgrade {{stage}} ${TARGET}``"
+        echo "  after fixing the issues above. The completed.ok marker is written"
+        echo "  only when both post-flight checks pass."
         exit 1
     fi
+    # Both doctor and smoke-test passed — write the completion sentinel
+    # so future invocations short-circuit cleanly.
+    : > "${COMPLETED_MARKER}"
     exit 0
 
 # Internal: build and deploy the MCP server when the deploy is MCP-aware.
@@ -4992,16 +5010,31 @@ collect-support-bundle stage *flags: _require-gcp-config
     set -e
 
     if [ ${SNAPSHOT_RC} -eq 0 ] && [ -n "${EXECUTION}" ]; then
-        # Read the execution's logs — that's where the JSON was written.
-        # Strip the gcloud log-line prefix (timestamp etc.) by reading
-        # the JSON from the last contiguous run that starts with ``{``.
-        gcloud beta run jobs executions logs read "${EXECUTION}" \
-            --region={{gcp_region}} --project={{gcp_project}} 2>/dev/null \
-            | awk '/^{/,EOF' > "${WORKDIR}/app-snapshot.json"
-        if [ -s "${WORKDIR}/app-snapshot.json" ]; then
+        # Read the execution's logs via the structured ``textPayload``
+        # field. Earlier this used ``awk '/^{/,EOF'`` to slice from the
+        # first ``{`` to EOF, which broke whenever Cloud Run prepended
+        # a timestamp banner or wrapped the payload — the bundle then
+        # silently lost the snapshot. Reading the textPayload directly
+        # gives us the raw stdout the Job wrote, with no log-line
+        # prefixes to strip.
+        gcloud logging read \
+            "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${JOB_NAME}\" AND labels.\"run.googleapis.com/execution_name\"=\"${EXECUTION}\"" \
+            --project={{gcp_project}} \
+            --limit=1000 \
+            --order=asc \
+            --format='value(textPayload)' 2>/dev/null \
+            | awk 'NF' > "${WORKDIR}/app-snapshot.json"
+        # The ``--no-indent`` form of the management command emits the
+        # whole JSON on one line, so a single non-empty textPayload
+        # entry is all we need. We still pass through awk to strip
+        # any blank lines that might come from the log query.
+        if [ -s "${WORKDIR}/app-snapshot.json" ] \
+            && head -c1 "${WORKDIR}/app-snapshot.json" | grep -q '{'; then
             echo "  ✓ App snapshot captured."
         else
-            echo "  ⚠ Job ran but produced no parseable JSON — check logs."
+            echo "  ⚠ Job ran but produced no parseable JSON — check execution logs."
+            echo "    gcloud beta run jobs executions logs read ${EXECUTION} \\"
+            echo "      --region={{gcp_region}} --project={{gcp_project}}"
             rm -f "${WORKDIR}/app-snapshot.json"
         fi
     else
@@ -5027,16 +5060,41 @@ collect-support-bundle stage *flags: _require-gcp-config
     # 1h freshness, severity>=WARNING captures both errors and recent
     # warnings. We deliberately don't lower severity further; INFO logs
     # blow up bundle size without adding diagnostic value.
-    echo "Step 3/4: Capturing recent logs (last 1h, WARNING+)..."
+    #
+    # The output is piped through ``redact-text.py`` (a stdlib-only
+    # standalone copy of the support_bundle redaction patterns)
+    # before landing in the bundle. Without redaction, log payloads
+    # containing tokens, embedded URL auth, or hex-shaped secrets
+    # would leak verbatim — undermining the app-side snapshot's
+    # name-based redaction.
+    echo "Step 3/4: Capturing recent logs (last 1h, WARNING+, redacted)..."
+    REDACTOR="deploy/self-hosted/scripts/redact-text.py"
     SERVICE_FILTER="resource.type=\"cloud_run_revision\" AND (resource.labels.service_name=\"${WEB_SERVICE}\" OR resource.labels.service_name=\"${WORKER_SERVICE}\") AND severity>=WARNING"
-    gcloud logging read "${SERVICE_FILTER}" \
-        --freshness=1h \
-        --limit=200 \
-        --order=desc \
-        --format='value(timestamp,severity,resource.labels.service_name,textPayload)' \
-        --project={{gcp_project}} \
-        > "${WORKDIR}/recent-cloud-logs.txt" 2>&1 || true
-    echo "  ✓ Recent logs captured."
+    if [ -x "${REDACTOR}" ] && command -v python3 >/dev/null 2>&1; then
+        gcloud logging read "${SERVICE_FILTER}" \
+            --freshness=1h \
+            --limit=200 \
+            --order=desc \
+            --format='value(timestamp,severity,resource.labels.service_name,textPayload)' \
+            --project={{gcp_project}} 2>&1 \
+            | python3 "${REDACTOR}" > "${WORKDIR}/recent-cloud-logs.txt" || true
+        echo "  ✓ Recent logs captured (piped through redact-text.py)."
+    else
+        # Fallback: capture raw logs and warn loudly. Operators
+        # reviewing the bundle will still see the redaction-status
+        # banner that the README describes.
+        gcloud logging read "${SERVICE_FILTER}" \
+            --freshness=1h \
+            --limit=200 \
+            --order=desc \
+            --format='value(timestamp,severity,resource.labels.service_name,textPayload)' \
+            --project={{gcp_project}} \
+            > "${WORKDIR}/recent-cloud-logs.txt" 2>&1 || true
+        echo "[bundle: redact-text.py or python3 unavailable — logs are RAW]" \
+            >> "${WORKDIR}/recent-cloud-logs.txt"
+        echo "  ⚠ ${REDACTOR} or python3 unavailable — logs included raw."
+        echo "    Inspect before sending; consider deleting the file."
+    fi
     echo ""
 
     # ── Step 4: Versions + manifest ───────────────────────────────────
@@ -5296,12 +5354,24 @@ _run-cleanup stage flags:
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
-    # ── Scope 1: old Cloud Run Job executions ─────────────────────────
+    # ── Scope 1: old Cloud Run Job executions (stage-scoped) ──────────
     # ``gcloud run jobs executions list`` returns every execution
-    # across every Job in the project. We filter by completion
-    # timestamp on the operator side (gcloud's ``--filter`` is
-    # finicky around timestamp comparisons).
-    echo "Scope 1/2: Cloud Run Job executions older than ${EXECUTION_RETAIN_DAYS}d..."
+    # across every Job in the project. We filter:
+    #
+    #   1. by stage (so ``cleanup dev`` never touches prod or staging);
+    #   2. by completion timestamp (older than the retention window).
+    #
+    # Stage scoping uses the parent Job's name pattern, which Cloud
+    # Run records on each execution as
+    # ``metadata.labels."run.googleapis.com/job"``. The naming
+    # conventions match the deploy recipes:
+    #
+    #   - prod: ``<app>-<purpose>`` (no stage suffix)
+    #   - dev/staging: ``<app>-<purpose>-<stage>``
+    #
+    # Without this filter, a ``cleanup dev`` would happily delete
+    # production execution history — the bug this fix addresses.
+    echo "Scope 1/2: Cloud Run Job executions for {{stage}} older than ${EXECUTION_RETAIN_DAYS}d..."
     if ! command -v jq >/dev/null 2>&1; then
         echo "  ERROR: 'jq' not found on host — install it (apt install jq)." >&2
         exit 1
@@ -5318,25 +5388,54 @@ _run-cleanup stage flags:
         CUTOFF_ISO=$(date -u -v "-${EXECUTION_RETAIN_DAYS}d" +%Y-%m-%dT%H:%M:%SZ)
     fi
 
+    # Build the stage-specific job-name regexes for the jq filter:
+    #   - INCLUDE matches Jobs in this stage.
+    #   - EXCLUDE rejects non-prod jobs from the prod set (since prod
+    #     jobs are unsuffixed, they'd otherwise match the dev/staging
+    #     names by simple prefix).
+    if [ "{{stage}}" = "prod" ]; then
+        STAGE_INCLUDE_RE="^${APP_NAME}-"
+        STAGE_EXCLUDE_RE="-(dev|staging)$"
+    else
+        STAGE_INCLUDE_RE="^${APP_NAME}-.*-{{stage}}$"
+        STAGE_EXCLUDE_RE=""
+    fi
+
     EXECUTIONS_JSON=$(gcloud run jobs executions list \
         --region={{gcp_region}} \
         --project={{gcp_project}} \
         --format=json 2>/dev/null || echo '[]')
 
-    EXECUTION_CANDIDATES=$(echo "${EXECUTIONS_JSON}" | jq -r --arg cutoff "${CUTOFF_ISO}" '
-        .[] | select(
-            (.metadata.creationTimestamp // "") < $cutoff
-            and (.status.completionTime // "") != ""
-        ) | "\(.metadata.namespace)|\(.metadata.name)|\(.metadata.creationTimestamp)|\(.metadata.labels.run.googleapis.com_job // .spec.template.spec.template.spec.containers[0].image // \"unknown\")"
+    # The parent-job label key contains a slash, which jq accesses
+    # via bracket-string syntax. We surface the parsed job name as
+    # the third pipe-separated field so the listing below can show
+    # operators which Job each execution belonged to.
+    EXECUTION_CANDIDATES=$(echo "${EXECUTIONS_JSON}" | jq -r \
+        --arg cutoff "${CUTOFF_ISO}" \
+        --arg include "${STAGE_INCLUDE_RE}" \
+        --arg exclude "${STAGE_EXCLUDE_RE}" \
+        '
+        .[] | . as $e |
+        ($e.metadata.labels["run.googleapis.com/job"] // "") as $job |
+        select(
+            ($e.metadata.creationTimestamp // "") < $cutoff
+            and ($e.status.completionTime // "") != ""
+            and ($job | test($include))
+            and (if $exclude != "" then ($job | test($exclude) | not) else true end)
+        ) | "\($e.metadata.namespace)|\($e.metadata.name)|\($job)|\($e.metadata.creationTimestamp)"
     ' || true)
 
     EXECUTION_COUNT=$(echo "${EXECUTION_CANDIDATES}" | grep -c . || true)
     if [ "${EXECUTION_COUNT}" -eq 0 ]; then
         echo "  (none)"
     else
-        echo "${EXECUTION_CANDIDATES}" | head -20 | while IFS='|' read -r NAMESPACE NAME CREATED JOB; do
+        # Field order (matches the jq output): namespace|name|job|created.
+        # Showing the parent JOB column makes stage scoping auditable
+        # — operators reviewing the dry-run see exactly which jobs
+        # the cleanup would touch.
+        echo "${EXECUTION_CANDIDATES}" | head -20 | while IFS='|' read -r NAMESPACE NAME JOB CREATED; do
             [ -z "${NAME}" ] && continue
-            printf "  %-50s  %s\n" "${NAME}" "${CREATED:0:19}"
+            printf "  %-40s  job=%-30s  %s\n" "${NAME}" "${JOB}" "${CREATED:0:19}"
         done
         if [ "${EXECUTION_COUNT}" -gt 20 ]; then
             echo "  ... and $((EXECUTION_COUNT - 20)) more."

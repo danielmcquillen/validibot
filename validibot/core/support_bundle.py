@@ -184,6 +184,98 @@ def looks_like_secret_value(value: str) -> bool:
     return any(pattern.search(value) for pattern in _SECRET_VALUE_PATTERNS)
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Text redaction (logs, command output, free-form blobs)
+# ─────────────────────────────────────────────────────────────────────
+
+# Substitution patterns for free-form text — applied to support-bundle
+# logs (container stdout/stderr, gcloud output) before they're zipped
+# into the bundle. Each pattern (regex, replacement) replaces matching
+# substrings with a redaction sentinel that preserves enough shape for
+# support staff to see WHAT was redacted but never the secret itself.
+#
+# Order matters: more-specific patterns first. The patterns are kept
+# conservative — false positives (redacting a non-secret) are
+# acceptable; false negatives (a credential leaking through) are not.
+_LOG_REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # HTTP authorization-style headers: redact the entire value
+    # through end-of-line. Using ``\S+`` here would stop at the first
+    # space, leaving the token visible (``Authorization: Bearer
+    # <token>`` would match only ``Bearer`` and leave the token
+    # behind).
+    (
+        re.compile(
+            r"(?i)\b(authorization|x-api-key|x-auth-token)\s*[:=][^\r\n]*",
+        ),
+        r"\1: [REDACTED]",
+    ),
+    # ``Bearer <token>`` in any context.
+    (re.compile(r"(?i)\bBearer\s+[A-Za-z0-9_.-]+"), "Bearer [REDACTED]"),
+    # JWTs (three base64-ish segments separated by dots, opening with eyJ).
+    (
+        re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"),
+        "[REDACTED-JWT]",
+    ),
+    # PEM private-key blocks (multi-line). DOTALL so ``.`` matches newlines.
+    (
+        re.compile(
+            r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+            re.DOTALL,
+        ),
+        "[REDACTED-PEM-PRIVATE-KEY]",
+    ),
+    # URLs with embedded basic-auth credentials (``user:pass@host``).
+    # Replace the credential portion only, preserving the URL shape so
+    # support can still see which endpoint was being hit.
+    (re.compile(r"://([^/:@\s]+):([^@\s]+)@"), r"://[REDACTED]:[REDACTED]@"),
+    # Long hex strings (32+ characters) — likely SHA-256ish secret keys
+    # or hashes. SHA-256 image digests with the ``sha256:`` prefix are
+    # NOT redacted because they're public identifiers, not secrets.
+    (
+        re.compile(r"(?<!sha256:)\b[A-Fa-f0-9]{32,}\b"),
+        "[REDACTED-HEX]",
+    ),
+    # ``key=value`` and ``KEY: value`` patterns where the key name is
+    # itself sensitive (mirrors the settings name-based redaction).
+    # The value capture excludes ``[`` so an already-redacted
+    # ``[REDACTED-JWT]`` (or any other sentinel) isn't double-
+    # processed when it follows a sensitive key name. Earlier
+    # patterns (JWT, PEM, etc.) get first crack at the value; this
+    # pattern is the catch-all for sensitive-named values that don't
+    # match any specific shape.
+    (
+        re.compile(
+            r"(?i)\b((?:[A-Z_]+_)?(?:SECRET|PASSWORD|PASSWD|TOKEN|API[_-]?KEY|"
+            r"PRIVATE[_-]?KEY|CREDENTIAL|WEBHOOK[_-]?SECRET|SIGNING[_-]?KEY)"
+            r"[A-Z_]*)\s*[:=]\s*([^\s,;}\[]+)",
+        ),
+        r"\1=[REDACTED]",
+    ),
+)
+
+
+def redact_text_for_bundle(text: str) -> str:
+    """Apply log-level redaction patterns to free-form text.
+
+    Used by the support-bundle recipes to scrub container logs and
+    gcloud output before zipping them into the archive. Each pattern
+    in :data:`_LOG_REDACTION_PATTERNS` is applied in order — the
+    output of one substitution is the input of the next.
+
+    Returns the redacted text. Idempotent: running the function twice
+    on the same input produces the same output (the redaction
+    sentinels themselves don't match any pattern).
+
+    Performance: log files are typically a few hundred KB; this runs
+    in milliseconds. We don't optimise for the multi-GB case because
+    container log windows are bounded by the recipe's
+    ``--tail=N`` argument.
+    """
+    for pattern, replacement in _LOG_REDACTION_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 def redact_setting_value(name: str, value: object) -> object:
     """Return ``REDACTED_SENTINEL`` or the original value, per redaction rules.
 
@@ -386,4 +478,5 @@ __all__ = [
     "is_sensitive_setting",
     "looks_like_secret_value",
     "redact_setting_value",
+    "redact_text_for_bundle",
 ]

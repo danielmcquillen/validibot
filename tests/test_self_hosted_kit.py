@@ -1364,6 +1364,45 @@ class ValidatorsAndCleanupShapeTests(SimpleTestCase):
         assert "--dry-run" in body
         assert "--yes" in body
 
+    def test_gcp_cleanup_is_stage_scoped(self):
+        """``cleanup <stage>`` must only touch jobs belonging to that stage.
+
+        Earlier the recipe listed every execution in the project /
+        region and only filtered by age. That meant ``cleanup dev``
+        could delete prod execution history — a real cross-stage
+        blast-radius bug.
+
+        The fix builds stage-specific job-name regexes and applies
+        them in the jq filter. Prod includes ``^<app>-`` and excludes
+        anything ending in ``-dev`` or ``-staging`` (since prod jobs
+        are unsuffixed). Non-prod includes ``^<app>-.*-{stage}$``.
+        """
+        text = self._gcp_text()
+        match = re.search(
+            r"^_run-cleanup stage flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None
+        body = match.group(1)
+        # Stage-pattern variables MUST be set, otherwise the filter
+        # has nothing to constrain on.
+        assert "STAGE_INCLUDE_RE" in body, (
+            "GCP cleanup must build a stage-include regex; without it "
+            "every execution in the project gets matched."
+        )
+        assert "STAGE_EXCLUDE_RE" in body, (
+            "GCP cleanup needs the prod-exclude regex to reject "
+            "dev/staging-suffixed jobs from the prod set (since prod "
+            "jobs are unsuffixed)."
+        )
+        # The jq filter must reference both regexes.
+        assert "test($include)" in body
+        assert "test($exclude)" in body
+        # The stage label must appear in the listing prefix so
+        # operators see what stage they're cleaning.
+        assert "for {{stage}} older than" in body
+
 
 class VersionResolutionShapeTests(SimpleTestCase):
     """Verify ``validibot_version`` resolves from pyproject.toml.

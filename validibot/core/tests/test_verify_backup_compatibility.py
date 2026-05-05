@@ -215,7 +215,8 @@ class TestVerdict:
         problem = next(p for p in verdict["problems"] if p["code"] == "migration_head")
         assert "workflows" in problem["ahead_apps"]
 
-    def test_refuses_on_cross_major_version_jump(self):
+    def test_refuses_on_newer_cross_major_backup(self):
+        """Backup from a newer major than current code is refused."""
         cmd = VerifyCommand()
         manifest = _manifest(validibot_version="2.0.0")
         cmd._current_validibot_version = lambda: "0.5.0"  # type: ignore[method-assign]
@@ -227,6 +228,35 @@ class TestVerdict:
         problem = next(p for p in verdict["problems"] if p["code"] == "version_jump")
         assert problem["backup_major"] == FUTURE_MAJOR_VERSION
         assert problem["current_major"] == 0
+        # The message must point at the right fix path: upgrade
+        # deployment first, then restore.
+        assert "upgrade the deployment first" in problem["message"]
+
+    def test_refuses_on_older_cross_major_backup(self):
+        """Backup from an older major than current code is also refused.
+
+        Earlier this case was permitted on the theory that ``migrate``
+        would forward-port the older state. That bypasses the ADR's
+        controlled cross-major upgrade path: an operator on v1.x could
+        restore a v0 backup directly, skipping the deliberate
+        v0 → v0.last_minor → v1.0 stops the upgrade recipe enforces.
+        Boring-self-hosting AC #16: cross-major restores route through
+        documented intermediate releases.
+        """
+        cmd = VerifyCommand()
+        manifest = _manifest(validibot_version="0.5.0")
+        cmd._current_validibot_version = lambda: "1.0.0"  # type: ignore[method-assign]
+
+        verdict = cmd._check(manifest)
+        assert verdict["status"] == "REFUSED"
+        codes = [p["code"] for p in verdict["problems"]]
+        assert "version_jump" in codes
+        problem = next(p for p in verdict["problems"] if p["code"] == "version_jump")
+        assert problem["backup_major"] == 0
+        assert problem["current_major"] == 1
+        # The message must point at the right fix path: route through
+        # the upgrade path, not direct restore.
+        assert "upgrade path" in problem["message"]
 
     def test_minor_version_jump_is_compatible(self):
         """Minor version differences (0.4 → 0.5) are routine and allowed.

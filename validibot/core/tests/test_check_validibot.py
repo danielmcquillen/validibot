@@ -646,3 +646,50 @@ class DoctorImagePolicyTests(TestCase):
         # The fix-hint should mention the valid values so the operator
         # sees the answer alongside the problem.
         self.assertIn("tag", vb711["fix_hint"].lower())
+
+
+class DoctorVersionStampTests(TestCase):
+    """``_get_validibot_version`` reads the deployment-stamped version.
+
+    Earlier the doctor read package metadata directly, which split
+    the operator surfaces: backup manifests + support bundles +
+    OCI labels all read ``settings.VALIDIBOT_VERSION`` (stamped by
+    the deploy recipes from the latest release tag), but doctor
+    showed package metadata (often ``unknown`` because Validibot
+    isn't installed as a package, just run from a source tree).
+
+    Now ``_get_validibot_version`` delegates to
+    ``get_validibot_runtime_version()`` — the single source of truth.
+    """
+
+    @override_settings(VALIDIBOT_VERSION="v0.5.0")
+    def test_doctor_version_uses_validibot_version_setting(self):
+        """When ``VALIDIBOT_VERSION`` is set, doctor reports it.
+
+        The deploy recipes stamp this value into the runtime image's
+        env from the latest release tag. Doctor's report should match
+        what backup manifests and support bundles already record.
+        """
+        from validibot.core.management.commands.check_validibot import (
+            Command as DoctorCommand,
+        )
+
+        cmd = DoctorCommand()
+        assert cmd._get_validibot_version() == "v0.5.0"
+
+    @override_settings(VALIDIBOT_VERSION="")
+    def test_doctor_version_falls_back_to_package_metadata(self):
+        """Without the deployment stamp, doctor falls back to package version.
+
+        Through the ``get_validibot_runtime_version`` helper, this
+        is the same fallback chain backup / support tooling uses.
+        We assert the result is non-empty so a future regression in
+        the helper (returning empty / None) trips this test.
+        """
+        from validibot.core.management.commands.check_validibot import (
+            Command as DoctorCommand,
+        )
+
+        cmd = DoctorCommand()
+        result = cmd._get_validibot_version()
+        assert result, "doctor should always return a non-empty version string"

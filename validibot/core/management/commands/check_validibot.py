@@ -2122,19 +2122,21 @@ class Command(BaseCommand):
         self.stdout.write(json.dumps(output, indent=2))
 
     def _get_validibot_version(self) -> str:
-        """Return the running Validibot package version.
+        """Return the running Validibot version.
 
-        Reading from package metadata is more reliable than hardcoding
-        — picks up patch releases, custom builds, etc. Falls back to
-        ``unknown`` if metadata is unavailable (e.g., during tests).
+        Delegates to :func:`get_validibot_runtime_version`, which is
+        the single source of truth across operator surfaces. That
+        helper prefers ``settings.VALIDIBOT_VERSION`` (stamped by the
+        deploy recipes from the latest release tag) and falls back to
+        package metadata only when the deployment-side stamp is
+        missing.
+
+        Earlier this implementation read package metadata directly,
+        which meant doctor's ``versions`` block could disagree with
+        backup manifests, support bundles, and the OCI image label —
+        all of which use ``get_validibot_runtime_version()``. Now they
+        all agree.
         """
-        try:
-            from importlib.metadata import PackageNotFoundError
-            from importlib.metadata import version
+        from validibot.core.deployment import get_validibot_runtime_version
 
-            try:
-                return version("validibot")
-            except PackageNotFoundError:
-                return "unknown"
-        except ImportError:
-            return "unknown"
+        return get_validibot_runtime_version()

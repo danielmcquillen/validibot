@@ -1407,11 +1407,12 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         would carry the right release version label but the OLD
         commit revision label.
 
-        Note: only the in-image LABEL is overridden here; the Cloud
-        Run image TAG (``{{gcp_image}}:{{git_sha}}``) intentionally
-        keeps the parse-time sha so build / push / web / worker all
-        reference the same tag string. That trade-off is documented
-        on the build recipe itself.
+        Note: this test asserts the post-checkout export only. The
+        exported value feeds both the in-image LABEL and the Cloud
+        Run image TAG, since both now thread the same
+        ``${VALIDIBOT_REVISION:-{{git_sha}}}`` override form. See
+        ``test_gcp_image_tag_uses_revision_override`` further down
+        for the image-tag pinning.
         """
         text = self._gcp_text()
         match = re.search(

@@ -101,6 +101,67 @@ class AccountAdapter(DefaultAccountAdapter):
 
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
 
+    def pre_login(self, request: HttpRequest, user, **kwargs):
+        """Block GUEST-classified users when ``allow_guest_access=False``.
+
+        Hooks into allauth's login flow after credential verification
+        but before session establishment. The site-wide
+        ``allow_guest_access`` toggle is the operator's incident-
+        response kill switch: flip it off and every guest account
+        loses access immediately, no migrations required. Existing
+        guest rows are kept (the flag is a *gate*, not a destructive
+        action), so flipping it back on restores access without data
+        loss.
+
+        The check is gated on the ``guest_management`` Pro feature.
+        Without Pro the GUEST classification doesn't exist at all and
+        the toggle is meaningless; we return early so community
+        deployments don't pay the SiteSettings lookup cost on every
+        login.
+
+        Returning an ``HttpResponse`` short-circuits allauth's flow;
+        returning ``None`` lets login proceed normally. We delegate to
+        ``super().pre_login`` first so any upstream check (e.g.
+        unverified email, MFA challenge) wins before our gate fires.
+        """
+
+        response = super().pre_login(request, user, **kwargs)
+        if response is not None:
+            return response
+
+        from validibot.core.features import CommercialFeature
+        from validibot.core.features import is_feature_enabled
+
+        if not is_feature_enabled(CommercialFeature.GUEST_MANAGEMENT):
+            return None
+
+        from validibot.users.constants import UserKindGroup
+
+        if user.user_kind != UserKindGroup.GUEST:
+            return None
+
+        from validibot.core.site_settings import get_site_settings
+
+        if get_site_settings().allow_guest_access:
+            return None
+
+        # Guest login is disabled. Issue a clear redirect with a flash
+        # message so the user understands they aren't blocked due to
+        # bad credentials — the credentials *worked*, the kill switch
+        # is on.
+        from django.contrib import messages
+        from django.shortcuts import redirect
+        from django.utils.translation import gettext_lazy as _
+
+        messages.error(
+            request,
+            _(
+                "Guest access is currently disabled by the administrator. "
+                "Contact support if you believe this is in error.",
+            ),
+        )
+        return redirect("account_login")
+
     def get_signup_redirect_url(self, request: HttpRequest) -> str:
         """
         Redirect to appropriate destination after signup.

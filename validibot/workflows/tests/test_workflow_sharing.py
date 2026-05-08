@@ -410,17 +410,80 @@ class TestWorkflowInvite:
 
 
 # =============================================================================
-# User.is_workflow_guest Property Tests
+# User.user_kind Property Tests
 # =============================================================================
 
 
-class TestIsWorkflowGuest:
-    """Tests for the User.is_workflow_guest property."""
+def _community_license():
+    """Return a community license — no commercial features.
 
-    def test_user_with_no_memberships_and_grants_is_guest(self):
-        """Test that user with grants but no memberships is a guest."""
+    Mirrors the ``_pro_license_with_X()`` helper convention used across
+    audit, analytics, and core tests: a small module-level builder that
+    each test calls inline via ``set_license(_community_license())``.
+    The root conftest's snapshot fixture restores the baseline license
+    after the test, so no explicit teardown is needed.
+    """
+
+    from validibot.core.license import Edition
+    from validibot.core.license import License
+
+    return License(edition=Edition.COMMUNITY)
+
+
+def _pro_license_with_guest_management():
+    """Return a Pro license that advertises ``GUEST_MANAGEMENT`` only.
+
+    The user-kind classifier is only meaningful when the license
+    advertises ``guest_management``. Tests that exercise the GUEST
+    branch call ``set_license(_pro_license_with_guest_management())``
+    at the top of each test. The dev environment may not have
+    validibot-pro installed, so the feature has to be activated
+    explicitly. Only ``GUEST_MANAGEMENT`` is on so the assertions
+    describe the smallest license that activates the classifier.
+    """
+
+    from validibot.core.features import CommercialFeature
+    from validibot.core.license import Edition
+    from validibot.core.license import License
+
+    return License(
+        edition=Edition.PRO,
+        features=frozenset({CommercialFeature.GUEST_MANAGEMENT.value}),
+    )
+
+
+class TestUserKindCommunity:
+    """``User.user_kind`` semantics in community deployments.
+
+    Without the ``guest_management`` Pro feature, every user's
+    ``user_kind`` is ``BASIC`` — system-wide. The GUEST classification
+    is a Pro-only concept. Per-workflow guest access still exists
+    (``WorkflowAccessGrant``) but is a separate concern from the
+    account's kind.
+    """
+
+    def test_user_kind_is_always_basic_without_pro(self):
+        """Community deployments have no GUEST kind — always BASIC."""
+        from validibot.core.license import set_license
+        from validibot.users.constants import UserKindGroup
+
+        set_license(_community_license())
         user = UserFactory(orgs=[])
-        # Remove any auto-created memberships
+
+        assert user.user_kind == UserKindGroup.BASIC
+
+    def test_grants_do_not_make_a_user_guest_kind_in_community(self):
+        """A community user with cross-workflow grants stays BASIC.
+
+        Holding a ``WorkflowAccessGrant`` is an access-level concern,
+        not an account-classification concern. The grant gives them
+        access to the workflow; it does not change ``user_kind``.
+        """
+        from validibot.core.license import set_license
+        from validibot.users.constants import UserKindGroup
+
+        set_license(_community_license())
+        user = UserFactory(orgs=[])
         Membership.objects.filter(user=user).delete()
 
         workflow = WorkflowFactory()
@@ -430,13 +493,46 @@ class TestIsWorkflowGuest:
             is_active=True,
         )
 
-        assert user.is_workflow_guest is True
+        assert user.user_kind == UserKindGroup.BASIC
 
-    def test_user_with_membership_is_not_guest(self):
-        """Test that user with active membership is not a guest."""
-        org = OrganizationFactory()
+
+class TestUserKindPro:
+    """``User.user_kind`` semantics under Pro (``guest_management`` enabled).
+
+    Sticky semantics: the classifier is a stored Django Group
+    membership. Only ``classify_as_basic`` / ``classify_as_guest`` (or
+    ``promote_user``) move a user between kinds; grants and memberships
+    don't.
+    """
+
+    def test_user_in_guests_group_has_guest_kind(self):
+        """Group membership is the source of truth — grants are irrelevant."""
+        from validibot.core.license import set_license
+        from validibot.users.constants import UserKindGroup
+        from validibot.users.user_kind import classify_as_guest
+
+        set_license(_pro_license_with_guest_management())
         user = UserFactory(orgs=[])
-        grant_role(user, org, RoleCode.EXECUTOR)
+        Membership.objects.filter(user=user).delete()
+        classify_as_guest(user)
+
+        assert user.user_kind == UserKindGroup.GUEST
+
+    def test_user_in_basic_group_is_basic_even_with_grants(self):
+        """A BASIC user holding a workflow grant remains BASIC.
+
+        Sticky: classification doesn't change just because the user
+        accepts a cross-org workflow invite. The grant grants access;
+        the kind stays put.
+        """
+        from validibot.core.license import set_license
+        from validibot.users.constants import UserKindGroup
+        from validibot.users.user_kind import classify_as_basic
+
+        set_license(_pro_license_with_guest_management())
+        user = UserFactory(orgs=[])
+        Membership.objects.filter(user=user).delete()
+        classify_as_basic(user)
 
         workflow = WorkflowFactory()
         WorkflowAccessGrant.objects.create(
@@ -445,52 +541,37 @@ class TestIsWorkflowGuest:
             is_active=True,
         )
 
-        assert user.is_workflow_guest is False
+        assert user.user_kind == UserKindGroup.BASIC
 
-    def test_user_with_inactive_membership_and_grant_is_guest(self):
-        """Test that user with inactive membership but active grant is guest."""
-        org = OrganizationFactory()
+    def test_classify_as_basic_clears_guest_kind(self):
+        """``classify_as_basic`` is the sanctioned demote step — it removes Guests."""
+        from validibot.core.license import set_license
+        from validibot.users.constants import UserKindGroup
+        from validibot.users.user_kind import classify_as_basic
+        from validibot.users.user_kind import classify_as_guest
+
+        set_license(_pro_license_with_guest_management())
         user = UserFactory(orgs=[])
-        # Delete all auto-created memberships
-        Membership.objects.filter(user=user).delete()
+        classify_as_guest(user)
+        assert user.user_kind == UserKindGroup.GUEST
 
-        # Create only an inactive membership
-        membership = Membership.objects.create(
-            user=user,
-            org=org,
-            is_active=False,
-        )
-        assert membership.is_active is False
+        classify_as_basic(user)
+        assert user.user_kind == UserKindGroup.BASIC
 
-        workflow = WorkflowFactory()
-        WorkflowAccessGrant.objects.create(
-            workflow=workflow,
-            user=user,
-            is_active=True,
-        )
+    def test_classify_as_guest_clears_basic_kind(self):
+        """``classify_as_guest`` is the sanctioned promote-to-guest step."""
+        from validibot.core.license import set_license
+        from validibot.users.constants import UserKindGroup
+        from validibot.users.user_kind import classify_as_basic
+        from validibot.users.user_kind import classify_as_guest
 
-        assert user.is_workflow_guest is True
-
-    def test_user_with_no_grants_is_not_guest(self):
-        """Test that user without any grants is not a guest."""
+        set_license(_pro_license_with_guest_management())
         user = UserFactory(orgs=[])
-        Membership.objects.filter(user=user).delete()
+        classify_as_basic(user)
+        assert user.user_kind == UserKindGroup.BASIC
 
-        assert user.is_workflow_guest is False
-
-    def test_user_with_inactive_grant_is_not_guest(self):
-        """Test that user with only inactive grants is not a guest."""
-        user = UserFactory(orgs=[])
-        Membership.objects.filter(user=user).delete()
-
-        workflow = WorkflowFactory()
-        WorkflowAccessGrant.objects.create(
-            workflow=workflow,
-            user=user,
-            is_active=False,
-        )
-
-        assert user.is_workflow_guest is False
+        classify_as_guest(user)
+        assert user.user_kind == UserKindGroup.GUEST
 
 
 # =============================================================================
@@ -1272,10 +1353,12 @@ class TestGuestAwareThrottle:
             "guest_workflow_launch": "20/minute",
         }
 
-        # Create mock request with guest user
+        # Create mock request with GUEST-classified user
+        from validibot.users.constants import UserKindGroup
+
         request = MagicMock()
         request.user.is_authenticated = True
-        request.user.is_workflow_guest = True
+        request.user.user_kind = UserKindGroup.GUEST
 
         # Create mock view
         view = MagicMock()
@@ -1300,10 +1383,12 @@ class TestGuestAwareThrottle:
             "guest_workflow_launch": "20/minute",
         }
 
-        # Create mock request with non-guest user
+        # Create mock request with BASIC-kind (non-guest) user
+        from validibot.users.constants import UserKindGroup
+
         request = MagicMock()
         request.user.is_authenticated = True
-        request.user.is_workflow_guest = False
+        request.user.user_kind = UserKindGroup.BASIC
 
         view = MagicMock()
 
@@ -1346,9 +1431,11 @@ class TestGuestAwareThrottle:
             "workflow_launch": "60/minute",
         }
 
+        from validibot.users.constants import UserKindGroup
+
         request = MagicMock()
         request.user.is_authenticated = True
-        request.user.is_workflow_guest = True
+        request.user.user_kind = UserKindGroup.GUEST
 
         view = MagicMock()
 
@@ -1496,7 +1583,16 @@ class TestGuestInvite:
         ).exists()
 
     def test_accept_guest_invite_with_all_scope(self):
-        """Test accepting ALL scope invite creates grants for all workflows."""
+        """Accepting ALL scope creates one OrgGuestAccess row, not N grants.
+
+        The new behaviour replaces the legacy "expand into N
+        WorkflowAccessGrant rows" model. A single OrgGuestAccess row
+        authorises the user against every CURRENT and FUTURE workflow
+        in the org's catalog, eliminating per-workflow maintenance as
+        the catalog grows.
+        """
+        from validibot.workflows.models import OrgGuestAccess
+
         org = OrganizationFactory()
         inviter = UserFactory()
         inviter.memberships.create(org=org, is_active=True)
@@ -1505,7 +1601,9 @@ class TestGuestInvite:
 
         WorkflowFactory(org=org, is_active=True)
         WorkflowFactory(org=org, is_active=True)
-        WorkflowFactory(org=org, is_active=False)  # inactive, should be skipped
+        WorkflowFactory(
+            org=org, is_active=False
+        )  # ignored: org-wide gate, not per-workflow
 
         invite = GuestInvite.create_with_expiry(
             org=org,
@@ -1516,10 +1614,19 @@ class TestGuestInvite:
             send_email=False,
         )
 
-        grants = invite.accept()
+        result = invite.accept()
 
-        assert len(grants) == 2  # noqa: PLR2004  # Only active workflows
-        assert invitee.is_workflow_guest is True
+        # Single OrgGuestAccess row, not a list of grants.
+        assert isinstance(result, OrgGuestAccess)
+        assert result.user == invitee
+        assert result.org == org
+        assert result.is_active is True
+        # No per-workflow grants were created — the read-side queryset
+        # (Phase 5) consults OrgGuestAccess directly.
+        assert not WorkflowAccessGrant.objects.filter(
+            user=invitee,
+            workflow__org=org,
+        ).exists()
 
     def test_decline_guest_invite(self):
         """Test declining a guest invite."""

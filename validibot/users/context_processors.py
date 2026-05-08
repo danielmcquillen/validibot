@@ -3,6 +3,7 @@ import logging
 from django.conf import settings
 
 from validibot.users.constants import PermissionCode
+from validibot.users.constants import UserKindGroup
 from validibot.users.models import ensure_personal_workspace
 from validibot.users.scoping import ensure_active_org_scope
 
@@ -10,12 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 def organization_context(request):
-    """
-    Provide organization context for the current user.
-    Sets request.active_org to the active organization.
+    """Provide organization context for the current user.
 
-    For workflow guests (users with only WorkflowAccessGrants, no org memberships),
-    returns a minimal context with is_workflow_guest=True.
+    Sets ``request.active_org`` to the active organization. For accounts
+    classified as ``UserKindGroup.GUEST``, returns a minimal context
+    with ``user_is_guest=True`` and skips the personal-workspace
+    provisioning (a guest account has no org context to provision).
     """
 
     if not hasattr(request, "user"):
@@ -30,9 +31,10 @@ def organization_context(request):
     except Exception:
         return {}
 
-    # Check if user is a workflow guest (has grants but no memberships).
-    # Must be checked BEFORE ensure_personal_workspace which would create one.
-    if request.user.is_workflow_guest:
+    # Check the system-wide account kind BEFORE running
+    # ensure_personal_workspace — guest accounts must not get a personal
+    # workspace silently created underneath them.
+    if request.user.user_kind == UserKindGroup.GUEST:
         return _guest_context(request)
 
     try:
@@ -52,15 +54,15 @@ def organization_context(request):
 
 
 def _guest_context(request):
-    """
-    Return context for workflow guests.
+    """Return template context for GUEST-classified accounts.
 
-    Workflow guests have access to shared workflows via WorkflowAccessGrant,
-    but no organization membership. They see a limited UI with only their
-    shared workflows and validation runs.
+    GUEST accounts see a limited UI tailored to their access pattern —
+    no personal org, no member-level features. Per-workflow access is
+    still enforced through the usual grant machinery; this context just
+    provides the chrome that surrounds it.
     """
     return {
-        "is_workflow_guest": True,
+        "user_is_guest": True,
         "show_limited_nav": True,
         "org_memberships": [],
         "active_org": None,
@@ -95,7 +97,7 @@ def _apply_organization_context(request):
     is_superuser = request.user.is_superuser
     if is_superuser:
         return {
-            "is_workflow_guest": False,
+            "user_is_guest": False,
             "show_limited_nav": False,
             "org_memberships": memberships,
             "active_org": active_org,
@@ -124,7 +126,7 @@ def _apply_organization_context(request):
     )
 
     return {
-        "is_workflow_guest": False,
+        "user_is_guest": False,
         "show_limited_nav": False,
         "org_memberships": memberships,
         "active_org": active_org,

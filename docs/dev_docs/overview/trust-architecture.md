@@ -270,6 +270,43 @@ Specific events feed the audit log:
 - evidence bundle exported;
 - evidence bundle export omitted raw content due to retention policy.
 
+## User-kind classification + per-org RBAC
+
+The trust model distinguishes two orthogonal axes for "what is this user allowed to do?":
+
+1. **User kind** (`User.user_kind`) — the system-wide classifier: `BASIC` or `GUEST`. A property of the *account*, not of any workflow or org. In community deployments every account is `BASIC` (the GUEST classifier doesn't exist without `validibot-pro`). In Pro deployments, `GUEST` accounts are external collaborators who hold no `Membership` rows and can only see workflows they've been granted access to.
+
+2. **Per-workflow access** — answered by `WorkflowAccessGrant` (per-workflow), `OrgGuestAccess` (org-wide), `Membership` + `OrgPermissionBackend` (member-with-role), and the `is_public` flag (platform-wide). Resolved by `Workflow.objects.for_user(user)` which unions every access path. A `BASIC` user can hold a `WorkflowAccessGrant` for a workflow in another org for cross-org collaboration without becoming `GUEST` — the kind tracks the account, not any single relationship.
+
+### Why the split matters
+
+Throttling, UI navigation, and admin lockdowns key off the **kind** axis: "is this account a guest of the system as a whole?" Read-side queryset narrowing keys off the **per-workflow access** axis: "can this account see this specific row?" Conflating them caused subtle bugs in earlier iterations where a basic user with a single cross-org grant got guest-level rate limits and a stripped-down navigation; the split fixes that.
+
+### Sticky semantics
+
+The `Guests` Django Group is the source of truth for `user_kind`, and changing the classification requires either the `promote_user` management command or its admin-action wrapper. Three structural guards keep the classifier consistent:
+
+- **`Membership.clean()`** refuses to add a `GUEST` user as an organization member. The guard runs in `full_clean`, which `Membership.save` invokes on every write path — direct ORM creates, fixtures, and admin shortcuts all trip it.
+- **`UserAdmin.get_form`** disables the `groups` field for non-superuser staff. Bypassing the audited promotion path via Django admin click-throughs is denied at the form layer.
+- **`m2m_changed` signal on `User.groups`** records every membership change as a `USER_GROUPS_CHANGED` audit event. The promotion command additionally records intent-specific `USER_PROMOTED_TO_BASIC` / `USER_DEMOTED_TO_GUEST` rows; the generic m2m row is suppressed during those flows so the audit log has exactly one entry per intent.
+
+### Operator kill switches
+
+Two `SiteSettings` booleans give operators run-time control:
+
+- **`allow_guest_access`** — when `False`, the allauth `pre_login` adapter rejects credential-validated `GUEST` users with a flash message redirecting them back to login. Existing accounts are kept; flipping the flag back on restores access. Useful as an incident-response kill switch.
+- **`allow_guest_invites`** — when `False`, `GuestInvitesEnabledMixin` returns 403 from BOTH the create endpoints (`GuestInviteCreateView`, `WorkflowGuestInviteView`) AND the accept endpoints (`WorkflowInviteAcceptView`, `AcceptGuestInviteView`). Two-sided enforcement makes the toggle atomic from the operator's perspective — pending invites cannot sneak through during a temporary disable window. Pending rows remain `PENDING` in the database while the flag is `False`; flipping it back on lets unexpired invites be redeemed.
+
+### Both gates compose with per-org RBAC
+
+The site-wide kill switches do NOT replace `OrgPermissionBackend`. The standard flow for guest invite creation is:
+
+1. `GuestInvitesEnabledMixin` checks `allow_guest_invites` (site-wide kill switch).
+2. `FeatureRequiredMixin` checks `guest_management` is licensed (Pro feature gate).
+3. `OrganizationPermissionRequiredMixin` checks the user has the `GUEST_INVITE` permission on the resolved org (per-org RBAC, granted to ADMIN/AUTHOR/OWNER).
+
+Mixin ordering is left-most first. A 403 from the site-wide gate is more honest than a 404 from the feature gate when the feature *is* licensed but currently disabled.
+
 ## See also
 
 - [Terminology](terminology.md) — the full vocabulary

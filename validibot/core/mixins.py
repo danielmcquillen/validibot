@@ -1,6 +1,8 @@
 import copy
 
+from django.core.exceptions import PermissionDenied
 from django.http import Http404
+from django.utils.translation import gettext_lazy as _
 
 from validibot.core.features import is_feature_enabled
 
@@ -21,6 +23,43 @@ class FeatureRequiredMixin:
             self.required_commercial_feature,
         ):
             raise Http404
+        return super().dispatch(request, *args, **kwargs)
+
+
+class GuestInvitesEnabledMixin:
+    """Block access (403) when ``SiteSettings.allow_guest_invites`` is False.
+
+    Mix into any view that either *creates* or *accepts* a guest invite.
+    The site-wide kill-switch is a two-sided gate — it stops new invites
+    AND blocks redemption of pending invites — so an operator flipping
+    the flag during incident response cannot have an in-flight invite
+    sneak through. Two-sided enforcement makes the toggle atomic from
+    the operator's perspective.
+
+    Superusers are intentionally not bypassed. The flag is platform-
+    wide and operator-controlled; if the operator wants to explicitly
+    re-enable invites for themselves, they flip the flag back on.
+
+    The check runs first in ``dispatch`` so it composes with downstream
+    mixins (``FeatureRequiredMixin``, ``OrganizationPermissionRequiredMixin``,
+    etc.) without ordering surprises — denied invites never see a
+    permission check or feature lookup.
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        # Local import keeps this mixin importable in environments
+        # where the core app's models aren't loaded yet (e.g. during
+        # migrations bootstrap).
+        from validibot.core.site_settings import get_site_settings
+
+        if not get_site_settings().allow_guest_invites:
+            raise PermissionDenied(
+                _(
+                    "Guest invites are currently disabled site-wide. "
+                    "Contact your administrator if you need to send or "
+                    "accept a guest invite.",
+                ),
+            )
         return super().dispatch(request, *args, **kwargs)
 
 

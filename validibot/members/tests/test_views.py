@@ -277,6 +277,99 @@ def test_guest_invite_selected_requires_workflows(admin_client):
     assert b"Please select at least one workflow" in response.content
 
 
+# =============================================================================
+# Guest invite role gating (PermissionCode.GUEST_INVITE)
+# =============================================================================
+#
+# The guest-invite create view is gated on ``GUEST_INVITE``, which is
+# bound to ``{ADMIN, AUTHOR, OWNER}`` in ``PERMISSION_DEFINITIONS`` so
+# authors can send guest invites without admin-level authority. These
+# tests pin the role binding and the view's mixin wiring — break either
+# and the failure here tells reviewers which side has drifted.
+
+
+def _client_as(client, role: RoleCode):
+    """Build a logged-in client whose user holds ``role`` in a fresh org."""
+
+    org = OrganizationFactory()
+    user = UserFactory(orgs=[org])
+    grant_role(user, org, role)
+    user.set_current_org(org)
+    client.force_login(user)
+    session = client.session
+    session["active_org_id"] = org.pk
+    session.save()
+    return client, org, user
+
+
+@pytest.mark.django_db
+def test_guest_invite_create_allows_author(client):
+    """AUTHOR can hit the guest-invite create view.
+
+    AUTHOR is in ``GUEST_INVITE``'s role set, so the view's permission
+    gate lets them through. The role binding lives in
+    ``PERMISSION_DEFINITIONS`` and is pinned by
+    ``test_guest_invite_permission_definition_role_set`` below.
+    """
+
+    client, _, _ = _client_as(client, RoleCode.AUTHOR)
+    response = client.get(reverse("members:guest_invite_create"))
+    assert response.status_code == HTTPStatus.OK
+
+
+@pytest.mark.django_db
+def test_guest_invite_create_allows_owner(client):
+    """OWNER retains access — ``OrgPermissionBackend`` short-circuits owners."""
+
+    client, _, _ = _client_as(client, RoleCode.OWNER)
+    response = client.get(reverse("members:guest_invite_create"))
+    assert response.status_code == HTTPStatus.OK
+
+
+@pytest.mark.django_db
+def test_guest_invite_create_blocks_executor(client):
+    """EXECUTOR cannot send guest invites — not in GUEST_INVITE's role set.
+
+    The role binding is ``{ADMIN, AUTHOR, OWNER}``. EXECUTOR's job is
+    running workflows, not managing access — confirms the gate denies.
+    """
+
+    client, _, _ = _client_as(client, RoleCode.EXECUTOR)
+    response = client.get(reverse("members:guest_invite_create"))
+    assert response.status_code == HTTPStatus.FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_guest_invite_create_blocks_workflow_viewer(client):
+    """WORKFLOW_VIEWER (read-only) cannot send guest invites."""
+
+    client, _, _ = _client_as(client, RoleCode.WORKFLOW_VIEWER)
+    response = client.get(reverse("members:guest_invite_create"))
+    assert response.status_code == HTTPStatus.FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_guest_invite_permission_definition_role_set():
+    """Sanity-check the centralised role binding for GUEST_INVITE.
+
+    Pinning the role set here means a future PR that quietly drops
+    AUTHOR (or quietly adds EXECUTOR) shows up as a test failure instead
+    of as silent behaviour change in production.
+    """
+
+    from validibot.users.constants import PermissionCode
+    from validibot.users.permissions import roles_for_permission
+
+    roles = roles_for_permission(PermissionCode.GUEST_INVITE)
+    assert roles == frozenset(
+        {
+            RoleCode.AUTHOR,
+            RoleCode.ADMIN,
+            RoleCode.OWNER,
+        },
+    )
+
+
 # Feature gating tests
 
 

@@ -58,6 +58,28 @@ class AuditAction(TextChoices):
     # ── Admin actions (insider-threat investigation) ───────────────
     ADMIN_OBJECT_CHANGED = "admin_object_changed", _("Admin Object Changed")
 
+    # ── User-kind classification (sticky guest accounts) ───────────
+    # Group changes on User.groups for the Basic Users / Guests
+    # classifier groups fire these. Forensic accountability for who
+    # promoted or demoted whom — operators reading the audit log need
+    # to be able to trace classification changes back to an actor and
+    # reason. The split between PROMOTED/DEMOTED and the generic
+    # GROUP_CHANGED captures intent: promote/demote are deliberate
+    # operator actions, group_changed is the catch-all for any other
+    # group flip (e.g. signal-driven default classification at signup).
+    USER_PROMOTED_TO_BASIC = (
+        "user_promoted_to_basic",
+        _("User Promoted to Basic"),
+    )
+    USER_DEMOTED_TO_GUEST = (
+        "user_demoted_to_guest",
+        _("User Demoted to Guest"),
+    )
+    USER_GROUPS_CHANGED = (
+        "user_groups_changed",
+        _("User Groups Changed"),
+    )
+
     # ── Privacy operations (auditing the erasure workflow itself) ──
     USER_ERASURE_REQUESTED = (
         "user_erasure_requested",

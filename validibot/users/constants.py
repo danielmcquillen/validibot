@@ -57,6 +57,35 @@ class PermissionCode(models.TextChoices):
     ANALYTICS_VIEW = "analytics_view", _("View analytics and reporting dashboards")
     ANALYTICS_REVIEW = "analytics_review", _("Review or approve analytics outputs")
     ADMIN_MANAGE_ORG = "admin_manage_org", _("Manage organization users and roles")
+    GUEST_INVITE = "guest_invite", _("Send guest invites for this organization")
+
+
+class UserKindGroup(models.TextChoices):
+    """Names of the user-kind classifier Django Groups.
+
+    Two groups label every user as either a basic user or a guest:
+
+    * ``Basic Users`` — regular accounts. Their per-org capabilities are
+      governed by ``Membership`` roles plus the per-org RBAC backend.
+    * ``Guests`` — external collaborators with workflow access grants.
+      Cannot join an organization as a member without an explicit
+      superuser-run promotion (see :mod:`~validibot.users.user_kind` and
+      the ``promote_user`` management command).
+
+    These are CLASSIFICATION groups, not permission containers — they
+    carry no permissions of their own. Every user is in exactly one.
+
+    Values are human-readable strings ("Basic Users", "Guests") because
+    they live in ``auth_group.name`` and surface directly in the Django
+    admin UI; the uppercase-values convention used by ``RoleCode`` /
+    ``PermissionCode`` does not apply to Django's own ``auth_group``
+    rows. Use ``UserKindGroup.BASIC.value`` to look up the group by
+    name (or just ``UserKindGroup.BASIC`` since ``TextChoices`` members
+    compare equal to their string value).
+    """
+
+    BASIC = "Basic Users", _("Basic Users")
+    GUEST = "Guests", _("Guests")
 
 
 # Reserved organization slugs that can only be created by superusers.

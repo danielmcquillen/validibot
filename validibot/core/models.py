@@ -66,6 +66,32 @@ class SiteSettings(TimeStampedModel):
         ),
     )
 
+    # ── Guest access kill-switches ─────────────────────────────────────
+    # Two booleans operators can flip to lock down the guest-account
+    # experience without a code change or migration. ``allow_guest_access``
+    # gates login for GUEST-classified users; ``allow_guest_invites``
+    # gates the creation AND acceptance of guest invites (two-sided so
+    # in-flight invites cannot sneak through during a temporary
+    # disable). Both default to True so an existing deployment that
+    # upgrades across the schema change keeps its previous behaviour.
+    allow_guest_access = models.BooleanField(
+        default=True,
+        help_text=_(
+            "When False, users classified as GUEST cannot log in. "
+            "Existing guest accounts are not deleted — just denied "
+            "access while the flag is False.",
+        ),
+    )
+    allow_guest_invites = models.BooleanField(
+        default=True,
+        help_text=_(
+            "When False, no user (other than superusers) can create OR "
+            "accept guest invites, regardless of role. Two-sided gate "
+            "so pending invites cannot be redeemed during a disable "
+            "window.",
+        ),
+    )
+
     # ── Catch-all for future complex settings ──────────────────────────
     data = models.JSONField(
         default=dict,

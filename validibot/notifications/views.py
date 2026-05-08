@@ -16,6 +16,7 @@ from django.views import View
 from django.views.generic import ListView
 
 from validibot.core.constants import InviteStatus
+from validibot.core.mixins import GuestInvitesEnabledMixin
 from validibot.events.constants import AppEventType
 from validibot.notifications.models import Notification
 from validibot.tracking.constants import TrackingEventType
@@ -253,8 +254,18 @@ def _notify_guest_inviter(invite, *, action: str):
     )
 
 
-class AcceptGuestInviteView(LoginRequiredMixin, View):
-    """Allow an invitee to accept a guest invite notification."""
+class AcceptGuestInviteView(GuestInvitesEnabledMixin, LoginRequiredMixin, View):
+    """Allow an invitee to accept a guest invite notification.
+
+    Gated by :class:`~validibot.core.mixins.GuestInvitesEnabledMixin`:
+    when the operator flips ``SiteSettings.allow_guest_invites`` to
+    False, the acceptance endpoint returns 403 even if the
+    notification and invite are still valid. The invite stays PENDING
+    in the database; flipping the flag back on lets the user redeem
+    it (assuming it hasn't expired in the meantime). Two-sided
+    enforcement makes the kill switch atomic from the operator's
+    perspective.
+    """
 
     def post(self, request, *args, **kwargs):
         notification = get_object_or_404(

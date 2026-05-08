@@ -136,27 +136,65 @@ def _member_org_ids_for_user(user) -> set[int]:
 
 def _latest_accessible_workflow_queryset(
     *,
-    member_org_ids: set[int],
+    user,
+    member_org_ids: set[int] | None = None,
 ) -> QuerySet[Workflow]:
-    """Return the latest MCP-accessible workflows for the current user.
+    """Return the latest MCP-accessible workflows for ``user``.
 
-    The result merges two branches:
+    The MCP catalog unions four access branches; an MCP request sees
+    a workflow if ANY branch matches:
 
-    - **Member branch**: workflows in the user's orgs with
-      ``agent_access_enabled=True`` (the master switch for org-level MCP
-      access).
-    - **Public branch**: workflows with ``agent_public_discovery=True``
-      (implies ``agent_access_enabled=True`` via model constraint).
+    1. **Member branch**: workflow is in one of the user's member orgs
+       AND has ``agent_access_enabled=True`` (the org-level master
+       switch for MCP exposure).
+    2. **Per-workflow grant branch**: the user holds an active
+       ``WorkflowAccessGrant`` for this workflow. Grants represent a
+       deliberate cross-org exception — they override the org-level
+       master switch by design.
+    3. **Org-wide guest access branch**: the user holds an active
+       ``OrgGuestAccess`` for the workflow's org. Same rationale as
+       per-workflow grants: explicit guest authorisation supersedes
+       the org-level MCP gate.
+    4. **Public branch**: the workflow is published for external
+       discovery (``agent_public_discovery=True``) OR is platform-wide
+       visible (``is_public=True``). Public workflows are visible to
+       any authenticated MCP user.
 
-    This separation allows org members to see workflows that aren't on
-    the public catalog, while the public catalog only shows workflows
-    the author has explicitly published for external discovery.
+    The function returns the *latest* version of each workflow family
+    that matches; ``get_latest_workflow_ids`` computes the latest pk
+    per ``(org_id, slug)`` pair.
+
+    ``member_org_ids`` is accepted as an optional kwarg so callers
+    that already compute it can avoid the round-trip; if omitted the
+    function derives it.
     """
 
-    access_filter = Q(
+    if member_org_ids is None:
+        member_org_ids = _member_org_ids_for_user(user)
+
+    member_filter = Q(
         org_id__in=member_org_ids,
         agent_access_enabled=True,
-    ) | Q(agent_public_discovery=True)
+    )
+    # Family-scoped per-workflow grant: any active grant on any version
+    # in the family makes the workflow visible. The double join through
+    # ``access_grants`` yields family rows because ``WorkflowAccessGrant``
+    # FKs the specific row, but the family invariant lives at
+    # ``(org_id, slug)``. Using ``access_grants`` with ``user`` and
+    # ``is_active=True`` is the simpler form that suffices for the MCP
+    # catalog — the more complex family-scoped lookup lives in
+    # ``WorkflowQuerySet.for_user`` and is reused there.
+    grant_filter = Q(
+        access_grants__user=user,
+        access_grants__is_active=True,
+    )
+    org_guest_filter = Q(
+        org__guest_accesses__user=user,
+        org__guest_accesses__is_active=True,
+    )
+    public_filter = Q(is_public=True) | Q(agent_public_discovery=True)
+
+    access_filter = member_filter | grant_filter | org_guest_filter | public_filter
 
     combined_queryset = Workflow.objects.filter(
         is_active=True,
@@ -165,12 +203,16 @@ def _latest_accessible_workflow_queryset(
     ).filter(access_filter)
 
     latest_ids = set(get_latest_workflow_ids(combined_queryset))
-    return Workflow.objects.filter(
-        Q(pk__in=latest_ids),
-        is_active=True,
-        is_archived=False,
-        is_tombstoned=False,
-    ).filter(access_filter)
+    return (
+        Workflow.objects.filter(
+            Q(pk__in=latest_ids),
+            is_active=True,
+            is_archived=False,
+            is_tombstoned=False,
+        )
+        .filter(access_filter)
+        .distinct()
+    )
 
 
 def _prefetch_workflow_detail_relations(
@@ -186,6 +228,7 @@ def _prefetch_workflow_detail_relations(
 
 def _resolve_accessible_workflow(
     *,
+    user,
     member_org_ids: set[int],
     workflow_ref: str,
 ) -> Workflow:
@@ -198,6 +241,7 @@ def _resolve_accessible_workflow(
 
     workflow = _prefetch_workflow_detail_relations(
         _latest_accessible_workflow_queryset(
+            user=user,
             member_org_ids=member_org_ids,
         ).filter(
             org__slug=org_slug,
@@ -335,7 +379,10 @@ class MCPWorkflowCatalogView(APIView):
 
         member_org_ids = _member_org_ids_for_user(request.user)
         workflows = (
-            _latest_accessible_workflow_queryset(member_org_ids=member_org_ids)
+            _latest_accessible_workflow_queryset(
+                user=request.user,
+                member_org_ids=member_org_ids,
+            )
             .select_related("org")
             .order_by("org__name", "name", "slug")
         )
@@ -393,6 +440,7 @@ class MCPWorkflowDetailView(APIView):
 
         member_org_ids = _member_org_ids_for_user(request.user)
         workflow = _resolve_accessible_workflow(
+            user=request.user,
             member_org_ids=member_org_ids,
             workflow_ref=workflow_ref,
         )
@@ -425,6 +473,7 @@ class MCPWorkflowRunCreateView(APIView):
 
         member_org_ids = _member_org_ids_for_user(request.user)
         workflow = _resolve_accessible_workflow(
+            user=request.user,
             member_org_ids=member_org_ids,
             workflow_ref=workflow_ref,
         )

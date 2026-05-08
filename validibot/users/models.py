@@ -79,12 +79,30 @@ def ensure_personal_workspace(user: User) -> Organization | None:
     - A default project
     - A subscription on the Starter plan with 14-day trial
 
-    Returns None for Workflow Guests (users with workflow grants but no
-    org memberships). Guests operate without a personal workspace and
-    their usage is billed to the workflow owner's org.
+    Returns ``None`` in two cases:
+
+    * **GUEST-classified accounts**: a guest's classification is
+      sticky and Membership creation would be blocked by
+      ``Membership.clean`` anyway. Returning early avoids tripping
+      that guard during normal request processing (e.g. the context
+      processor calling ``get_current_org`` on a logged-in guest).
+
+    * **Legacy workflow-guest predicate**: users with active grants
+      and no memberships under community deployments. The legacy
+      predicate is preserved so community-only behaviour is unchanged.
+
+    Guest accounts operate without a personal workspace; their usage is
+    billed to the workflow owner's org.
     """
-    # Check if user is a workflow guest (has grants but no memberships)
-    # Import here to avoid circular import
+    # Sticky GUEST kind takes precedence — provisioning a personal
+    # workspace for a guest would fail at ``Membership.clean`` anyway.
+    from validibot.users.constants import UserKindGroup
+
+    if user.user_kind == UserKindGroup.GUEST:
+        return None
+
+    # Legacy workflow-guest predicate (community deployments retain
+    # their pre-sticky behaviour). Import here to avoid circular import.
     from validibot.workflows.models import WorkflowAccessGrant
 
     has_memberships = user.memberships.filter(is_active=True).exists()
@@ -94,7 +112,7 @@ def ensure_personal_workspace(user: User) -> Organization | None:
     ).exists()
 
     if has_grants and not has_memberships:
-        # User is a workflow guest - no personal workspace needed
+        # Legacy workflow-guest path — no personal workspace needed.
         return None
 
     existing = (
@@ -381,30 +399,38 @@ class User(AbstractUser):
         return Membership.objects.filter(user=self, org=self.current_org).first()
 
     @property
-    def is_workflow_guest(self) -> bool:
+    def user_kind(self):
+        """Return the system-wide account classification.
+
+        Returns a :class:`~validibot.users.constants.UserKindGroup` value:
+
+        * ``UserKindGroup.GUEST`` — account is in the ``Guests`` Django
+          Group. The classifier is sticky: it only changes when a
+          superuser explicitly runs the ``promote_user`` management
+          command (or the matching admin action). Pro deployments only.
+        * ``UserKindGroup.BASIC`` — every other case. In community
+          deployments (no ``guest_management`` Pro feature), every user
+          is BASIC; there is no GUEST classification without Pro.
+
+        This is a SYSTEM-WIDE property of the account, not a workflow-
+        specific one. To ask "does this user have guest access to a
+        specific workflow?", use the per-workflow grant machinery
+        (:class:`~validibot.workflows.models.WorkflowAccessGrant`,
+        :meth:`~validibot.workflows.models.Workflow.can_view`) — a BASIC
+        user can hold a ``WorkflowAccessGrant`` for cross-org workflow
+        sharing without becoming a GUEST.
         """
-        Check if user is a Workflow Guest (has grants but no org memberships).
 
-        Workflow Guests are users who have been invited to specific workflows
-        but are not members of any organization. They operate on the Free Tier
-        plan and have a limited UI surface.
+        from validibot.core.features import CommercialFeature
+        from validibot.core.features import is_feature_enabled
+        from validibot.users.constants import UserKindGroup
 
-        Returns:
-            True if the user has active workflow grants but no active org
-            memberships, False otherwise.
-        """
-        # If user has any active org memberships, they're not a guest
-        if self.memberships.filter(is_active=True).exists():
-            return False
+        if not is_feature_enabled(CommercialFeature.GUEST_MANAGEMENT):
+            return UserKindGroup.BASIC
 
-        # Check if they have any active workflow grants
-        # Import here to avoid circular import
-        from validibot.workflows.models import WorkflowAccessGrant
-
-        return WorkflowAccessGrant.objects.filter(
-            user=self,
-            is_active=True,
-        ).exists()
+        if self.groups.filter(name=UserKindGroup.GUEST.value).exists():
+            return UserKindGroup.GUEST
+        return UserKindGroup.BASIC
 
     def get_absolute_url(self) -> str:
         """Get URL for user's detail view.
@@ -459,6 +485,59 @@ class Membership(TimeStampedModel):
 
     def __str__(self):
         return f"user '{self.user.username}' in org '{self.org.name}'"
+
+    def clean(self):
+        """Block adding GUEST-classified users as organization members.
+
+        Sticky guest semantics: a user whose system-wide
+        :attr:`~validibot.users.models.User.user_kind` is ``GUEST``
+        cannot be promoted to an org member silently. The sanctioned
+        path is the ``promote_user`` management command (or its admin-
+        action wrapper), which moves the user from ``Guests`` to
+        ``Basic Users`` first, then optionally creates a personal org
+        membership in one audited transaction.
+
+        Gated on the ``guest_management`` Pro feature: in community
+        deployments the GUEST classification doesn't exist, so the
+        guard is a no-op there. Within Pro it is the data-layer safety
+        net that catches direct ``Membership.objects.create(...)``
+        calls, fixtures, admin shortcuts, and any future code path
+        that would otherwise quietly upgrade a guest's authority.
+        """
+
+        super().clean()
+
+        from validibot.core.features import CommercialFeature
+        from validibot.core.features import is_feature_enabled
+        from validibot.users.constants import UserKindGroup
+
+        if not is_feature_enabled(CommercialFeature.GUEST_MANAGEMENT):
+            return
+
+        if not self.user_id:
+            return
+
+        if self.user.user_kind == UserKindGroup.GUEST:
+            raise ValidationError(
+                _(
+                    "Cannot add a guest user as an organization member. "
+                    "Run 'manage.py promote_user --email <email> --to basic' "
+                    "first, then create the membership.",
+                ),
+            )
+
+    def save(self, *args, **kwargs):
+        """Enforce :meth:`clean` on every write path.
+
+        Django's ``ModelForm`` runs ``full_clean`` automatically, but
+        direct ``Membership.objects.create`` calls and bulk shortcuts
+        do not. Routing every ``save`` through ``full_clean`` ensures
+        the GUEST-as-member guard fires on the data path too — without
+        this the guard is just a UI-form validator.
+        """
+
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     @property
     def joined_at(self):

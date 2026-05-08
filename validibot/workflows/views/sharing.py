@@ -22,6 +22,7 @@ from django.views import View
 from django.views.generic import ListView
 from django.views.generic import TemplateView
 
+from validibot.core.mixins import GuestInvitesEnabledMixin
 from validibot.core.utils import reverse_with_org
 from validibot.workflows.mixins import WorkflowObjectMixin
 
@@ -129,7 +130,7 @@ def _render_family_guest_section(request, workflow, view):
 # ------------------------------------------------------------------------------
 
 
-class WorkflowInviteAcceptView(View):
+class WorkflowInviteAcceptView(GuestInvitesEnabledMixin, View):
     """
     Handle workflow invite acceptance.
 
@@ -138,6 +139,12 @@ class WorkflowInviteAcceptView(View):
     2. For anonymous users: Stores the invite token in session and redirects to signup
 
     The invite token is passed as a URL parameter.
+
+    Gated by ``GuestInvitesEnabledMixin``: when
+    ``SiteSettings.allow_guest_invites`` is False, redemption of even
+    a previously-issued invite is blocked. The invite row remains
+    PENDING in the database; flipping the flag back on restores
+    acceptance until expiry.
     """
 
     WORKFLOW_INVITE_SESSION_KEY = "workflow_invite_token"
@@ -332,12 +339,18 @@ class WorkflowVisibilityUpdateView(WorkflowObjectMixin, View):
         return HttpResponse(html)
 
 
-class WorkflowGuestInviteView(WorkflowObjectMixin, View):
+class WorkflowGuestInviteView(GuestInvitesEnabledMixin, WorkflowObjectMixin, View):
     """
     Invite a guest to access this specific workflow.
 
     Creates a WorkflowInvite and optionally a notification if the invitee
     is an existing user.
+
+    Gated by ``GuestInvitesEnabledMixin``: when
+    ``SiteSettings.allow_guest_invites`` is False, the create endpoint
+    returns 403 even for users who otherwise hold ``GUEST_INVITE``
+    permission. The site-wide flag is the operator's incident-response
+    kill switch and overrides per-org RBAC.
     """
 
     def get(self, request, *args, **kwargs):

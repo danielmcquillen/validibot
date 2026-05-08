@@ -12,8 +12,8 @@
       </a>
     </div>
     <div class="app-left-nav-items">
-      {# Workflow guests (no org membership) see minimal navigation #}
-      {% if is_workflow_guest %}
+      {% comment %}GUEST-kind accounts see minimal navigation — no org membership, only their granted workflows.{% endcomment %}
+      {% if user_is_guest %}
         <ul class="nav nav-pills flex-column mt-3" role="menu">
           <li class="nav-item" role="none">
             <a href="{% url 'workflows:guest_workflow_list' %}"

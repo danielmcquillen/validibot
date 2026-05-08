@@ -95,6 +95,7 @@ nav:
       - Configure Scheduled Tasks: how-to/configure-scheduled-tasks.md
       - Debug a Run: how-to/debug-a-run.md
       - Doctor Check IDs: how-to/doctor-check-ids.md
+      - Manage Guest Accounts: how-to/manage-guest-accounts.md
       - Manage Organizations & Projects: organization_management.md
   - Testing:
       - Testing Overview: how-to/testing.md

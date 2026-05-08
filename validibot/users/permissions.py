@@ -162,6 +162,25 @@ PERMISSION_DEFINITIONS: tuple[PermissionDefinition, ...] = (
             ),
         ),
     ),
+    # Guest invite authority. Centralised here so AUTHOR can send
+    # guest invites alongside ADMIN/OWNER, rather than piggybacking on
+    # the broader ``ADMIN_MANAGE_ORG`` permission (which would have
+    # restricted invitations to admins). ``app_label="workflows"``
+    # because the invite records are owned by the workflows app
+    # (``GuestInvite``/``WorkflowInvite``).
+    PermissionDefinition(
+        code=PermissionCode.GUEST_INVITE,
+        name="Can send guest invites",
+        app_label="workflows",
+        model="guestinvite",
+        roles=frozenset(
+            (
+                RoleCode.AUTHOR,
+                RoleCode.ADMIN,
+                RoleCode.OWNER,
+            ),
+        ),
+    ),
 )
 
 PERMISSIONS_BY_CODE = {

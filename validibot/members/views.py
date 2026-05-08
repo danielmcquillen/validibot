@@ -20,16 +20,19 @@ from validibot.core.constants import InviteStatus
 from validibot.core.features import CommercialFeature
 from validibot.core.mixins import BreadcrumbMixin
 from validibot.core.mixins import FeatureRequiredMixin
+from validibot.core.mixins import GuestInvitesEnabledMixin
 from validibot.core.utils import reverse_with_org
 from validibot.events.constants import AppEventType
 from validibot.notifications.models import Notification
 from validibot.tracking.constants import TrackingEventType
 from validibot.tracking.services import TrackingEventService
+from validibot.users.constants import PermissionCode
 from validibot.users.constants import RoleCode
 from validibot.users.forms import InviteUserForm
 from validibot.users.forms import OrganizationMemberForm
 from validibot.users.forms import OrganizationMemberRolesForm
 from validibot.users.mixins import OrganizationAdminRequiredMixin
+from validibot.users.mixins import OrganizationPermissionRequiredMixin
 from validibot.users.models import MemberInvite
 from validibot.users.models import Membership
 from validibot.users.models import User
@@ -555,11 +558,31 @@ class GuestListView(
         return breadcrumbs
 
 
-class GuestInviteCreateView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
-    """Create a new org-level guest invite."""
+class GuestInviteCreateView(
+    GuestInvitesEnabledMixin,
+    FeatureRequiredMixin,
+    OrganizationPermissionRequiredMixin,
+    View,
+):
+    """Create a new org-level guest invite.
+
+    Authority is granted through ``GUEST_INVITE`` (held by ADMIN, AUTHOR,
+    and OWNER roles) rather than the broader ``ADMIN_MANAGE_ORG`` —
+    authors can send guest invites without admin-level authority. The
+    view subclasses :class:`OrganizationPermissionRequiredMixin`
+    directly so the permission required is exactly the one the action
+    represents.
+
+    The :class:`GuestInvitesEnabledMixin` site-wide kill-switch comes
+    first so an operator-flipped flag overrides feature gating and
+    per-org RBAC. Order matters here: a 403 from the site-wide gate is
+    a more honest answer than a 404 from the feature gate when the
+    feature *is* licensed but currently disabled.
+    """
 
     required_commercial_feature = CommercialFeature.GUEST_MANAGEMENT
     organization_context_attr = "organization"
+    required_org_permission = PermissionCode.GUEST_INVITE
 
     def get(self, request, *args, **kwargs):
         """Return the invite form modal content."""

@@ -94,21 +94,36 @@ class WorkflowQuerySet(models.QuerySet):
         user: User,
         required_role_code: RoleCode | None = None,
     ) -> WorkflowQuerySet:
+        """Return workflows accessible to ``user`` via any access path.
+
+        Access is granted by ANY of these paths (unioned):
+
+        1. **Membership**: an active ``Membership`` in the workflow's
+           org with a role that grants ``WORKFLOW_VIEW`` (or the
+           specific ``required_role_code``, if supplied).
+        2. **Creator**: the workflow's ``user`` field matches.
+        3. **Per-workflow grant**: an active ``WorkflowAccessGrant`` on
+           any workflow row in the same family (matching ``(org_id,
+           slug)``). The family-level join is what lets a guest's
+           access carry across version bumps without manual re-granting.
+        4. **Org-wide guest access**: an active ``OrgGuestAccess`` row
+           for the workflow's org. Authorises every CURRENT and FUTURE
+           workflow in that org with no per-workflow maintenance — the
+           "100 workflows, 10 new a month" simplification.
+        5. **Public**: the workflow's ``is_public`` flag is True. Public
+           workflows are visible to every authenticated user; their
+           visibility is the workflow author's deliberate choice.
+
+        If ``required_role_code`` is supplied, ONLY the membership path
+        is used and it must match that specific role. The grant /
+        OrgGuestAccess / public branches are intentionally excluded
+        because role-specific queries are for org-member capability
+        checks ("does this user have AUTHOR in this workflow's org?"),
+        not for read-side narrowing ("can this user see this workflow
+        at all?"). Mixing them would let a guest with a grant pass a
+        check meant to gate org-member-only actions.
         """
-        Get workflows accessible to the given user.
 
-        Access is granted via:
-        1. Org membership with appropriate role (existing behavior)
-        2. Being the workflow creator (existing behavior)
-        3. Having an active WorkflowAccessGrant (new - for guests)
-
-        If required_role is provided, only return workflows where the user
-        has that role in the workflow's organization. In this case, guest
-        grants are NOT included (role-specific queries are for org members).
-
-        Otherwise, return all workflows the user can access via any of the
-        three methods above.
-        """
         if not getattr(user, "is_authenticated", False):
             return self.none()
 
@@ -130,19 +145,16 @@ class WorkflowQuerySet(models.QuerySet):
 
         access_filter = Q(_has_membership=True) | Q(user_id=user.id)
 
-        # For non-role-specific queries, also include guest grant access.
+        # For non-role-specific queries, union in the guest-style access
+        # paths: per-workflow grants, org-wide guest access, and public
+        # workflows. Role-specific queries deliberately skip these
+        # (see docstring).
         if not required_role_code:
-            # ADR-2026-04-27 fix (issue #43): a guest grant targets the
-            # *workflow family* — every row sharing the granted row's
-            # ``(org, slug)`` pair — not just the exact pinned version
-            # the grant row points at. Without this expansion, cloning
-            # a workflow to v2 silently strips the guest's access until
-            # someone manually re-grants on the new version row.
-            #
-            # The subquery joins ``WorkflowAccessGrant.workflow`` back
-            # to the outer Workflow row by ``(org_id, slug)``, so any
-            # active grant the user holds on ANY version of the family
-            # makes every version of the family visible.
+            # Per-workflow grant: family-scoped to ``(org_id, slug)`` so
+            # any active grant on any version of the workflow family
+            # makes every version of that family visible. Without the
+            # family expansion, cloning a workflow to v2 would silently
+            # strip a guest's access until someone re-granted manually.
             grant_subq = WorkflowAccessGrant.objects.filter(
                 user=user,
                 is_active=True,
@@ -150,7 +162,24 @@ class WorkflowQuerySet(models.QuerySet):
                 workflow__slug=OuterRef("slug"),
             )
             qs = qs.annotate(_has_grant=Exists(grant_subq))
-            access_filter = access_filter | Q(_has_grant=True)
+
+            # Org-wide guest access: one row authorises every workflow
+            # in the org, current and future. The subquery joins back
+            # by ``org_id`` so the read-side picks up new workflows as
+            # they're added, with no acceptance-time snapshot.
+            org_guest_subq = OrgGuestAccess.objects.filter(
+                user=user,
+                is_active=True,
+                org_id=OuterRef("org_id"),
+            )
+            qs = qs.annotate(_has_org_guest_access=Exists(org_guest_subq))
+
+            access_filter = (
+                access_filter
+                | Q(_has_grant=True)
+                | Q(_has_org_guest_access=True)
+                | Q(is_public=True)
+            )
 
         return qs.filter(access_filter).distinct()
 
@@ -1776,6 +1805,74 @@ class WorkflowAccessGrant(TimeStampedModel):
         self.save(update_fields=["is_active", "modified"])
 
 
+class OrgGuestAccess(TimeStampedModel):
+    """Grant a guest user access to all current AND future workflows in an org.
+
+    Created when a ``GuestInvite`` with ``scope=ALL`` is accepted. The
+    guest sees every workflow in the org's catalog as it grows, with
+    no per-workflow grant maintenance. This solves the "100 workflows,
+    10 new a month" problem inherent to expanding ``scope=ALL`` into N
+    individual ``WorkflowAccessGrant`` rows at acceptance time only.
+
+    A user can simultaneously hold an ``OrgGuestAccess`` row for one
+    org AND per-workflow ``WorkflowAccessGrant`` rows for other orgs
+    (or for specific workflows in the same org that pre-existed the
+    org-wide grant). The read-side queryset (``Workflow.objects.for_user``)
+    unions all access paths.
+
+    Revocation is a flag flip rather than a delete so the audit trail
+    stays intact and a temporarily-disabled access can be restored
+    without losing the original grant timestamp.
+    """
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="org_guest_accesses",
+        help_text=_("The user who has been granted org-wide guest access."),
+    )
+    org = models.ForeignKey(
+        "users.Organization",
+        on_delete=models.CASCADE,
+        related_name="guest_accesses",
+        help_text=_("The organization this guest can access workflows in."),
+    )
+    granted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="granted_org_guest_accesses",
+        help_text=_("The user who created this grant."),
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text=_("Whether this org-wide guest access is currently active."),
+    )
+    notes = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Optional notes about this access grant."),
+    )
+
+    class Meta:
+        unique_together = [("user", "org")]
+        indexes = [
+            models.Index(fields=["user", "is_active"]),
+            models.Index(fields=["org", "is_active"]),
+        ]
+        verbose_name = _("organization guest access")
+        verbose_name_plural = _("organization guest accesses")
+
+    def __str__(self):
+        return f"{self.user} -> all workflows in {self.org}"
+
+    def revoke(self) -> None:
+        """Revoke this org-wide guest access (flag flip, not delete)."""
+        self.is_active = False
+        self.save(update_fields=["is_active", "modified"])
+
+
 class WorkflowInvite(TimeStampedModel):
     """
     Invitation for an external user to access a specific workflow as a guest.
@@ -2190,20 +2287,36 @@ class GuestInvite(TimeStampedModel):
 
         return False
 
-    def accept(self, user: User | None = None) -> list[WorkflowAccessGrant]:
-        """
-        Accept this invite and create WorkflowAccessGrants for all resolved workflows.
+    def accept(
+        self,
+        user: User | None = None,
+    ) -> list[WorkflowAccessGrant] | OrgGuestAccess:
+        """Accept this invite and create the appropriate access record(s).
+
+        Two return shapes depending on the invite's ``scope``:
+
+        * ``Scope.SELECTED`` → a list of ``WorkflowAccessGrant`` rows
+          (one per resolved workflow). Behaviour matches the
+          per-workflow ``WorkflowInvite.accept()`` for the selected
+          subset.
+        * ``Scope.ALL`` → a single ``OrgGuestAccess`` row that
+          authorises the user against every current AND future workflow
+          in the org. Acceptance time no longer snapshots the workflow
+          list, so a workflow added next month is automatically visible
+          to the guest with no admin action required.
 
         Args:
             user: The user accepting the invite. If not provided, uses
-                  invitee_user. Required if invitee_user is not set.
+                  ``invitee_user``. Required if ``invitee_user`` is not set.
 
         Returns:
-            List of created/updated WorkflowAccessGrant instances.
+            Either a list of ``WorkflowAccessGrant`` (SELECTED scope)
+            or a single ``OrgGuestAccess`` (ALL scope).
 
         Raises:
             ValueError: If invite is not in PENDING status or no user provided.
         """
+
         # Check for expiry first
         if self.mark_expired_if_needed():
             raise ValueError("Invite has expired")
@@ -2217,33 +2330,54 @@ class GuestInvite(TimeStampedModel):
             msg = "No user provided to accept invite"
             raise ValueError(msg)
 
-        # Create grants for all resolved workflows
-        grants = []
-        for workflow in self.get_resolved_workflows():
-            grant, _created = WorkflowAccessGrant.objects.get_or_create(
-                workflow=workflow,
+        if self.scope == GuestInvite.Scope.ALL:
+            access, created = OrgGuestAccess.objects.get_or_create(
                 user=accepting_user,
+                org=self.org,
                 defaults={
                     "granted_by": self.inviter,
                     "is_active": True,
                 },
             )
+            # Reactivate a previously-revoked row so a guest who was
+            # cut off and then re-invited regains access via the same
+            # OrgGuestAccess row (preserving the original grant
+            # timestamp + audit trail).
+            if not created and not access.is_active:
+                access.is_active = True
+                access.granted_by = self.inviter
+                access.save(
+                    update_fields=["is_active", "granted_by", "modified"],
+                )
+            result: list[WorkflowAccessGrant] | OrgGuestAccess = access
+        else:
+            # SELECTED scope: per-workflow grants (the legacy path).
+            grants: list[WorkflowAccessGrant] = []
+            for workflow in self.get_resolved_workflows():
+                grant, created = WorkflowAccessGrant.objects.get_or_create(
+                    workflow=workflow,
+                    user=accepting_user,
+                    defaults={
+                        "granted_by": self.inviter,
+                        "is_active": True,
+                    },
+                )
+                if not created and not grant.is_active:
+                    grant.is_active = True
+                    grant.granted_by = self.inviter
+                    grant.save(
+                        update_fields=["is_active", "granted_by", "modified"],
+                    )
+                grants.append(grant)
+            result = grants
 
-            # If grant already existed but was inactive, reactivate it
-            if not _created and not grant.is_active:
-                grant.is_active = True
-                grant.granted_by = self.inviter
-                grant.save(update_fields=["is_active", "granted_by", "modified"])
-
-            grants.append(grant)
-
-        # Update invite status
+        # Update invite status (same for both scopes)
         self.status = InviteStatus.ACCEPTED
         if not self.invitee_user:
             self.invitee_user = accepting_user
         self.save(update_fields=["status", "invitee_user", "modified"])
 
-        return grants
+        return result
 
     def decline(self) -> None:
         """Decline this invite."""

@@ -13,10 +13,54 @@ from django.dispatch import receiver
 from validibot.users.models import User
 from validibot.users.models import ensure_personal_workspace
 
+# Flag set during invite-driven user creation so the post_save
+# signals below skip the auto-personal-workspace and auto-BASIC
+# classification steps. The invite-acceptance flow takes over both
+# responsibilities once the user is created — provisioning a
+# personal workspace would conflict with sticky GUEST classification
+# (the workspace creates a Membership which ``Membership.clean``
+# would reject for GUEST users).
+_invite_driven_signup_var: ContextVar[bool] = ContextVar(
+    "invite_driven_signup",
+    default=False,
+)
+
+
+@contextlib.contextmanager
+def invite_driven_signup():
+    """Context manager: suppress default user-creation side effects.
+
+    The :class:`~validibot.users.adapters.AccountAdapter` wraps
+    ``save_user`` in this context manager when the request session
+    indicates an invite-driven signup (workflow invite or guest
+    invite). The post_save signals check the flag and skip work that
+    would otherwise conflict with the GUEST classification + grant
+    creation that the invite flow runs explicitly afterwards.
+
+    ``ContextVar`` semantics mean the flag is per-thread /
+    per-coroutine and resets on exit even if the wrapped code raises.
+    """
+
+    token = _invite_driven_signup_var.set(True)
+    try:
+        yield
+    finally:
+        _invite_driven_signup_var.reset(token)
+
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_personal_workspace(sender, instance, created, **kwargs):
+    """Provision a personal workspace for newly-created users.
+
+    Skipped during invite-driven signups: the invite-acceptance flow
+    reclassifies the user as GUEST after creation, and a guest must
+    not have a personal workspace (``Membership.clean`` would reject
+    the auto-creation anyway).
+    """
+
     if not created:
+        return
+    if _invite_driven_signup_var.get():
         return
     transaction.on_commit(lambda: ensure_personal_workspace(instance))
 
@@ -34,9 +78,17 @@ def classify_new_user_as_basic(sender, instance, created, **kwargs):
     deployments every user's ``user_kind`` is BASIC by definition (no
     GUEST classification exists without Pro), so leaving the groups
     unpopulated is correct.
+
+    Skipped during invite-driven signups: the invite-acceptance flow
+    explicitly classifies the new user as GUEST via
+    :func:`~validibot.users.user_kind.classify_as_guest`. Pre-classifying
+    as BASIC and then re-classifying would emit two audit rows per
+    invite-acceptance, which is noise.
     """
 
     if not created:
+        return
+    if _invite_driven_signup_var.get():
         return
 
     # Local imports avoid a circular dependency between the users app and

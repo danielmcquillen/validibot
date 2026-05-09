@@ -84,7 +84,10 @@ class OrgMembershipPermission(permissions.BasePermission):
     Access is granted if the user:
     - Is a superuser
     - Is a member of the org
-    - Has a workflow access grant for any workflow in the org (guest access)
+    - Has an active per-workflow grant for any workflow in the org
+      (cross-org sharing path)
+    - Has an active org-wide guest access row for the org (the
+      ALL-scope guest invite acceptance path)
 
     Requires the view to use OrgScopedMixin or provide get_org() and
     get_membership() methods.
@@ -106,17 +109,34 @@ class OrgMembershipPermission(permissions.BasePermission):
         if membership is not None:
             return True
 
-        # Check for guest grants (workflow access grants in this org)
+        # Check for guest-style access paths to this org. Three paths
+        # qualify; any one is sufficient. Order is cheapest-first
+        # (existence subqueries on indexed columns).
         if request.user.is_authenticated:
+            from validibot.workflows.models import OrgGuestAccess
             from validibot.workflows.models import WorkflowAccessGrant
 
             org = view.get_org()
-            has_grant = WorkflowAccessGrant.objects.filter(
+
+            # Per-workflow guest grant on any workflow in this org.
+            if WorkflowAccessGrant.objects.filter(
                 user=request.user,
                 workflow__org=org,
                 is_active=True,
-            ).exists()
-            if has_grant:
+            ).exists():
+                return True
+
+            # Org-wide guest access — one row authorises every current
+            # AND future workflow in the org. Without this branch an
+            # ALL-scope guest would be rejected at the permission layer
+            # before queryset narrowing ever ran, even though
+            # ``Workflow.objects.for_user`` would have shown them
+            # accessible workflows.
+            if OrgGuestAccess.objects.filter(
+                user=request.user,
+                org=org,
+                is_active=True,
+            ).exists():
                 return True
 
         return False

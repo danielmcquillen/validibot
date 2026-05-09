@@ -297,12 +297,26 @@ class AcceptGuestInviteView(GuestInvitesEnabledMixin, LoginRequiredMixin, View):
                 )
                 return HttpResponseRedirect(reverse("notifications:notification-list"))
 
-        # Accept invite and create workflow access grants
-        grants = invite.accept(user=request.user)
+        # Accept invite. Return shape depends on the invite's scope:
+        #   * SELECTED → list[WorkflowAccessGrant] (one per workflow).
+        #   * ALL      → a single OrgGuestAccess row authorising every
+        #               current AND future workflow in the org.
+        # Both shapes are valid; the tracking + flash-message paths
+        # below normalise them so the view doesn't trip over the union
+        # type.
+        from validibot.workflows.models import OrgGuestAccess
+
+        result = invite.accept(user=request.user)
+        is_org_wide = isinstance(result, OrgGuestAccess)
+
         notification.read_at = timezone.now()
         notification.save(update_fields=["read_at"])
         _notify_guest_inviter(invite, action=_("accepted"))
 
+        # Tracking metadata: ``workflows_granted`` is per-workflow grant
+        # count (still useful for SELECTED scope); ``access_kind`` names
+        # which acceptance shape was produced so dashboards can split
+        # the two flows apart.
         TrackingEventService().log_tracking_event(
             event_type=TrackingEventType.APP_EVENT,
             app_event_type=AppEventType.INVITE_ACCEPTED,
@@ -316,14 +330,25 @@ class AcceptGuestInviteView(GuestInvitesEnabledMixin, LoginRequiredMixin, View):
                 "invitee_user_id": getattr(invite.invitee_user, "id", None),
                 "invitee_email": invite.invitee_email,
                 "scope": invite.scope,
-                "workflows_granted": len(grants),
+                "access_kind": "org_wide" if is_org_wide else "per_workflow",
+                "workflows_granted": 0 if is_org_wide else len(result),
             },
             channel="web",
         )
-        workflow_count = len(grants)
-        msg = _(
-            "Guest invitation accepted. You now have access to %(count)d workflow(s)."
-        ) % {"count": workflow_count}
+
+        # Flash message: org-wide access doesn't have a meaningful
+        # per-workflow count to show, so we use phrasing that matches
+        # the actual shape the user got.
+        if is_org_wide:
+            msg = _(
+                "Guest invitation accepted. You now have access to all "
+                "workflows in %(org)s."
+            ) % {"org": invite.org.name}
+        else:
+            msg = _(
+                "Guest invitation accepted. You now have access to %(count)d "
+                "workflow(s)."
+            ) % {"count": len(result)}
         messages.success(request, msg)
         if request.headers.get("HX-Request"):
             notification.refresh_from_db()

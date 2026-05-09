@@ -69,7 +69,11 @@ def ensure_default_project(organization: Organization):
     )
 
 
-def ensure_personal_workspace(user: User) -> Organization | None:
+def ensure_personal_workspace(
+    user: User,
+    *,
+    force: bool = False,
+) -> Organization | None:
     """
     Ensure the user has a personal workspace organization.
 
@@ -79,41 +83,53 @@ def ensure_personal_workspace(user: User) -> Organization | None:
     - A default project
     - A subscription on the Starter plan with 14-day trial
 
-    Returns ``None`` in two cases:
+    Returns ``None`` in two cases (both bypassed when ``force=True``):
 
     * **GUEST-classified accounts**: a guest's classification is
-      sticky and Membership creation would be blocked by
-      ``Membership.clean`` anyway. Returning early avoids tripping
-      that guard during normal request processing (e.g. the context
-      processor calling ``get_current_org`` on a logged-in guest).
+      sticky and ``Membership.clean`` would block any ``Membership``
+      creation anyway. Returning early avoids tripping that guard
+      during normal request processing (e.g. the context processor
+      calling ``get_current_org`` on a logged-in guest).
 
     * **Legacy workflow-guest predicate**: users with active grants
-      and no memberships under community deployments. The legacy
-      predicate is preserved so community-only behaviour is unchanged.
+      and no memberships. Preserved so deployments without sticky
+      semantics retain their established behaviour — a freshly-invited
+      guest in community lands here and stays workspace-less.
 
-    Guest accounts operate without a personal workspace; their usage is
-    billed to the workflow owner's org.
+    The ``force=True`` flag is for the ``promote_user`` flow. After a
+    user is promoted from GUEST to BASIC, the previous-state predicates
+    don't apply — the call site has just changed the user's
+    classification and needs a workspace provisioned regardless of
+    grants or prior membership state. Without ``force`` the legacy
+    predicate would short-circuit and strand the newly-promoted user
+    with no operational org.
+
+    Guest accounts (when not being force-promoted) operate without a
+    personal workspace; their usage is billed to the workflow owner's
+    org.
     """
-    # Sticky GUEST kind takes precedence — provisioning a personal
-    # workspace for a guest would fail at ``Membership.clean`` anyway.
-    from validibot.users.constants import UserKindGroup
 
-    if user.user_kind == UserKindGroup.GUEST:
-        return None
+    if not force:
+        # Sticky GUEST kind takes precedence — provisioning a personal
+        # workspace for a guest would fail at ``Membership.clean`` anyway.
+        from validibot.users.constants import UserKindGroup
 
-    # Legacy workflow-guest predicate (community deployments retain
-    # their pre-sticky behaviour). Import here to avoid circular import.
-    from validibot.workflows.models import WorkflowAccessGrant
+        if user.user_kind == UserKindGroup.GUEST:
+            return None
 
-    has_memberships = user.memberships.filter(is_active=True).exists()
-    has_grants = WorkflowAccessGrant.objects.filter(
-        user=user,
-        is_active=True,
-    ).exists()
+        # Legacy workflow-guest predicate (community deployments retain
+        # their pre-sticky behaviour). Import here to avoid circular import.
+        from validibot.workflows.models import WorkflowAccessGrant
 
-    if has_grants and not has_memberships:
-        # Legacy workflow-guest path — no personal workspace needed.
-        return None
+        has_memberships = user.memberships.filter(is_active=True).exists()
+        has_grants = WorkflowAccessGrant.objects.filter(
+            user=user,
+            is_active=True,
+        ).exists()
+
+        if has_grants and not has_memberships:
+            # Legacy workflow-guest path — no personal workspace needed.
+            return None
 
     existing = (
         user.orgs.filter(is_personal=True, membership__is_active=True)

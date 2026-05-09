@@ -72,18 +72,25 @@ def promote_user_to_basic(*, target, actor, request_id: str = ""):
     previous_kind = target.user_kind
     if previous_kind == UserKindGroup.BASIC:
         # Idempotent no-op: still ensure they have an org so a stranded
-        # user can be repaired by re-running with no harm done.
-        ensure_personal_workspace(target)
+        # user can be repaired by re-running with no harm done. Use
+        # ``force=True`` because a user who is already BASIC but holds
+        # active grants and no memberships would otherwise hit the
+        # legacy "has grants and no memberships → return None"
+        # predicate and stay stranded.
+        ensure_personal_workspace(target, force=True)
         return target
 
     with transaction.atomic():
         with suppress_group_change_audit():
             classify_as_basic(target)
-        # Personal-org provisioning is conditional inside the helper:
-        # if the user already has memberships it returns the existing
-        # personal org or None. The promote path always calls it so a
-        # stranded user gets repaired in the same transaction.
-        ensure_personal_workspace(target)
+        # Personal-org provisioning with ``force=True``: at this point
+        # the user has just transitioned GUEST → BASIC, and any active
+        # grants they hold are exactly the canonical pre-promotion
+        # guest shape that the legacy predicate inside the helper would
+        # short-circuit on. Forcing through the predicate guarantees a
+        # workspace gets created in the same atomic transaction so the
+        # promoted user always has somewhere to operate.
+        ensure_personal_workspace(target, force=True)
 
         AuditLogService.record(
             action=AuditAction.USER_PROMOTED_TO_BASIC,

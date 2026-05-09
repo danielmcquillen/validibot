@@ -44,6 +44,7 @@ from validibot.workflows.views.public import PublicWorkflowInfoView
 from validibot.workflows.views.public import PublicWorkflowListView
 from validibot.workflows.views.public import WorkflowPublicInfoUpdateView
 from validibot.workflows.views.public import WorkflowPublicVisibilityUpdateView
+from validibot.workflows.views.sharing import GuestInviteAcceptView
 from validibot.workflows.views.sharing import GuestWorkflowListView
 from validibot.workflows.views.sharing import WorkflowGuestInviteView
 from validibot.workflows.views.sharing import WorkflowGuestRevokeView
@@ -71,6 +72,7 @@ from validibot.workflows.views.steps import WorkflowStepWizardView
 
 __all__ = [
     "MAX_STEP_COUNT",
+    "GuestInviteAcceptView",
     "GuestWorkflowListView",
     "PublicWorkflowInfoView",
     "PublicWorkflowListView",

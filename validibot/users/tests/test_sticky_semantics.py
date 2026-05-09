@@ -482,3 +482,92 @@ class TestPromoteUserCommand:
         # Organization. The membership is the proof; we don't assert on
         # the org slug because that helper is allowed to evolve.
         assert target.memberships.filter(is_active=True).exists()
+
+    def test_promote_provisions_workspace_for_guest_with_active_grants(self):
+        """The canonical pre-promotion shape: a guest with active grants.
+
+        Regression test for the stranding bug where
+        ``ensure_personal_workspace``'s legacy "has grants and no
+        memberships → return None" predicate short-circuited on the
+        very state a sticky guest holds at promotion time. After the
+        fix, ``promote_user`` passes ``force=True`` so the predicate
+        is bypassed and the newly-promoted user always lands with a
+        workspace.
+
+        Without this test, the ``force=True`` flag could silently
+        revert in a future refactor and the stranding bug would
+        return — the previous test happens to cover only the
+        no-grants case.
+        """
+
+        from validibot.workflows.models import WorkflowAccessGrant
+        from validibot.workflows.tests.factories import WorkflowFactory
+
+        set_license(_pro_license_with_guest_management())
+        target = UserFactory(orgs=[])
+        Membership.objects.filter(user=target).delete()
+        classify_as_guest(target)
+
+        # The canonical guest shape: one or more active grants, zero
+        # active memberships.
+        WorkflowAccessGrant.objects.create(
+            workflow=WorkflowFactory(),
+            user=target,
+            is_active=True,
+        )
+        assert not target.memberships.filter(is_active=True).exists()
+
+        out = StringIO()
+        call_command(
+            "promote_user",
+            "--email",
+            target.email,
+            "--to",
+            "basic",
+            stdout=out,
+        )
+
+        target.refresh_from_db()
+        # The promoted user MUST land with at least one membership —
+        # the whole point of force-provisioning the workspace is to
+        # avoid the stranded-with-no-org state.
+        assert target.memberships.filter(is_active=True).exists()
+        assert target.user_kind == UserKindGroup.BASIC
+
+    def test_idempotent_repromote_provisions_workspace_for_grants_only_user(
+        self,
+    ):
+        """Re-running promote on a basic user with grants but no membership
+        provisions a workspace (idempotent recovery path).
+
+        Pin: the early-return idempotent path also passes ``force=True``
+        so a re-run can repair a previously-stranded user without
+        requiring a demote → promote round-trip.
+        """
+
+        from validibot.workflows.models import WorkflowAccessGrant
+        from validibot.workflows.tests.factories import WorkflowFactory
+
+        set_license(_pro_license_with_guest_management())
+        target = UserFactory(orgs=[])
+        Membership.objects.filter(user=target).delete()
+        classify_as_basic(target)
+        WorkflowAccessGrant.objects.create(
+            workflow=WorkflowFactory(),
+            user=target,
+            is_active=True,
+        )
+        assert not target.memberships.filter(is_active=True).exists()
+
+        out = StringIO()
+        call_command(
+            "promote_user",
+            "--email",
+            target.email,
+            "--to",
+            "basic",
+            stdout=out,
+        )
+
+        target.refresh_from_db()
+        assert target.memberships.filter(is_active=True).exists()

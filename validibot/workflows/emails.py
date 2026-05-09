@@ -267,9 +267,15 @@ def send_guest_invite_email(invite) -> bool:
     inviter_name = invite.inviter.get_full_name() or invite.inviter.username
     org_name = invite.org.name
 
-    # Build the acceptance URL - guests accept via notifications
+    # Build the tokenized acceptance URL. The previous implementation
+    # pointed at ``/notifications/``, which only works for users who
+    # already have an account AND have a notification waiting — useless
+    # for a brand-new external invitee. The tokenized URL routes
+    # through ``GuestInviteAcceptView`` which handles both the logged-
+    # in and anonymous-then-signup flows.
     site_url = get_site_url()
-    accept_url = f"{site_url}/notifications/"
+    accept_path = reverse("guest_invite_accept", kwargs={"token": invite.token})
+    accept_url = f"{site_url}{accept_path}"
 
     # Describe the scope
     if invite.scope == "ALL":

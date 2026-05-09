@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 # Session key for storing workflow invite token during signup flow
 WORKFLOW_INVITE_SESSION_KEY = "workflow_invite_token"
 
+# Session key for storing org-level guest invite token during signup
+# flow. Set by ``GuestInviteAcceptView`` when an unauthenticated user
+# clicks an invite link; consumed by this adapter post-signup to call
+# ``invite.accept()`` and reclassify the new user as GUEST.
+GUEST_INVITE_SESSION_KEY = "guest_invite_token"
+
 # Session key for storing cloud trial invite token during signup flow.
 # Set by the cloud onboarding AcceptTrialInviteView, consumed after signup
 # to activate the trial on the user's personal organization.
@@ -81,14 +87,19 @@ class AccountAdapter(DefaultAccountAdapter):
         Signup is allowed if:
         1. ACCOUNT_ALLOW_REGISTRATION is True (open registration), OR
         2. The user has a workflow invite token in their session, OR
-        3. The user has a trial invite token in their session (cloud), OR
-        4. Cloud is installed with self-registration enabled
+        3. The user has a guest invite token in their session, OR
+        4. The user has a trial invite token in their session (cloud), OR
+        5. Cloud is installed with self-registration enabled
 
         This enables invite-only signup: set ACCOUNT_ALLOW_REGISTRATION=False to
         block public signup, but users with invite links can still register.
         """
         # Always allow signup if user has a workflow invite token
         if request.session.get(WORKFLOW_INVITE_SESSION_KEY):
+            return True
+
+        # Always allow signup if user has a guest invite token
+        if request.session.get(GUEST_INVITE_SESSION_KEY):
             return True
 
         # Always allow signup if user has a trial invite token (cloud)
@@ -100,6 +111,43 @@ class AccountAdapter(DefaultAccountAdapter):
             return True
 
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
+
+    def save_user(
+        self,
+        request: HttpRequest,
+        user,
+        form,
+        commit: bool = True,  # noqa: FBT001, FBT002 — must match allauth signature
+    ):
+        """Save the new user, suppressing default side effects for invite signups.
+
+        When the request session indicates an invite-driven signup
+        (workflow or guest invite), wrap the underlying user save in
+        :func:`~validibot.users.signals.invite_driven_signup` so the
+        post_save signals skip the auto-personal-workspace and auto-
+        BASIC classification. The invite-acceptance flow that runs
+        afterwards in :meth:`get_signup_redirect_url` handles
+        classification + grants explicitly.
+
+        Without this wrapper, a brand-new user invited as a guest
+        would land as BASIC with a personal workspace; the GUEST
+        classification we apply later wouldn't take because
+        ``Membership.clean()`` would reject any subsequent attempts
+        to add memberships. Worse, the personal-workspace creation
+        itself would conflict with sticky GUEST semantics.
+        """
+
+        from validibot.users.signals import invite_driven_signup
+
+        is_invite_signup = bool(
+            request.session.get(WORKFLOW_INVITE_SESSION_KEY)
+            or request.session.get(GUEST_INVITE_SESSION_KEY),
+        )
+
+        if is_invite_signup:
+            with invite_driven_signup():
+                return super().save_user(request, user, form, commit=commit)
+        return super().save_user(request, user, form, commit=commit)
 
     def pre_login(self, request: HttpRequest, user, **kwargs):
         """Block GUEST-classified users when ``allow_guest_access=False``.
@@ -180,6 +228,19 @@ class AccountAdapter(DefaultAccountAdapter):
             if redirect_url:
                 return redirect_url
 
+        # Check for org-level guest invite token (parallel flow to
+        # workflow invites). The new user accepted a GuestInvite link
+        # while unauthenticated; ``GuestInviteAcceptView`` stashed the
+        # token in session, and now we redeem it.
+        guest_invite_token = request.session.get(GUEST_INVITE_SESSION_KEY)
+        if guest_invite_token:
+            redirect_url = self._handle_guest_invite_signup(
+                request,
+                guest_invite_token,
+            )
+            if redirect_url:
+                return redirect_url
+
         # Trial invite tokens: activation is now handled by the
         # email_confirmed signal in validibot_cloud.onboarding.signals.
         # Just clear the session key if present (it was stashed by
@@ -214,6 +275,7 @@ class AccountAdapter(DefaultAccountAdapter):
         Handle workflow invite acceptance after signup.
 
         Accepts the workflow invite, creating a WorkflowAccessGrant,
+        classifying the brand-new user as GUEST (sticky semantics),
         and returns the redirect URL to the workflow launch page.
 
         Returns None if the invite is invalid, allowing fallback to
@@ -249,6 +311,14 @@ class AccountAdapter(DefaultAccountAdapter):
             # Accept the invite
             grant = invite.accept(user=request.user)
 
+            # Classify the new user as a GUEST. The auto-classify
+            # signal was suppressed during ``save_user``, so the user
+            # currently has no classifier group; this call is what
+            # actually places them in ``Guests``. Without it, the
+            # user would land as effectively unclassified — and on
+            # the next login, ``user_kind`` would default to BASIC.
+            self._classify_invite_signup_as_guest(request.user)
+
             # Send acceptance notification to the inviter
             from validibot.workflows.emails import send_workflow_invite_accepted_email
 
@@ -276,6 +346,100 @@ class AccountAdapter(DefaultAccountAdapter):
             logger.warning("Failed to accept workflow invite: %s", e)
             messages.error(request, str(e))
             return None
+
+    def _handle_guest_invite_signup(
+        self,
+        request: HttpRequest,
+        invite_token: str,
+    ) -> str | None:
+        """Handle org-level guest invite acceptance after signup.
+
+        Mirrors :meth:`_handle_workflow_invite_signup` but for
+        ``GuestInvite`` (org-level): redeems the token, creates the
+        appropriate access shape (per-workflow grants for SELECTED
+        scope, an ``OrgGuestAccess`` row for ALL scope), and
+        classifies the brand-new user as GUEST.
+
+        Returns the URL to redirect to after a successful redemption,
+        or None if the invite is invalid (allowing fallback to the
+        normal post-signup redirect).
+        """
+
+        from django.contrib import messages
+        from django.utils.translation import gettext_lazy as _
+
+        from validibot.core.constants import InviteStatus
+        from validibot.workflows.models import GuestInvite
+
+        del request.session[GUEST_INVITE_SESSION_KEY]
+
+        try:
+            invite = GuestInvite.objects.select_related("org").get(
+                token=invite_token,
+            )
+
+            invite.mark_expired_if_needed()
+            if invite.status != InviteStatus.PENDING:
+                logger.warning(
+                    "Guest invite %s is no longer pending (status: %s)",
+                    invite_token,
+                    invite.status,
+                )
+                messages.warning(
+                    request,
+                    _("The guest invite is no longer valid."),
+                )
+                return None
+
+            invite.accept(user=request.user)
+
+            # Sticky semantics: the new user's first relationship to
+            # Validibot is being a guest of this org, so classify them
+            # as GUEST. The auto-classify signal was suppressed during
+            # ``save_user`` precisely to leave this decision to the
+            # invite-flow code.
+            self._classify_invite_signup_as_guest(request.user)
+
+            messages.success(
+                request,
+                _(
+                    "Welcome! You now have guest access to %(org)s.",
+                )
+                % {"org": invite.org.name},
+            )
+
+            # Direct guests to their shared-workflows view, which is
+            # the dedicated guest-friendly listing. Other surfaces
+            # (workflow detail, dashboard) require an active org
+            # membership which guests don't have.
+            return reverse("workflows:guest_workflow_list")
+
+        except GuestInvite.DoesNotExist:
+            logger.warning("Guest invite not found: %s", invite_token)
+            return None
+        except ValueError as e:
+            logger.warning("Failed to accept guest invite: %s", e)
+            messages.error(request, str(e))
+            return None
+
+    def _classify_invite_signup_as_guest(self, user) -> None:
+        """Classify a brand-new invite-driven user as GUEST.
+
+        The classification is gated on the ``guest_management`` Pro
+        feature: in community deployments the GUEST kind doesn't
+        exist, so calling ``classify_as_guest`` would create an
+        unused ``Guests`` group entry. Skip cleanly in that case.
+        """
+
+        from validibot.core.features import CommercialFeature
+        from validibot.core.features import is_feature_enabled
+
+        if not is_feature_enabled(CommercialFeature.GUEST_MANAGEMENT):
+            return
+
+        from validibot.users.user_kind import classify_as_guest
+
+        classify_as_guest(user)
 
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):

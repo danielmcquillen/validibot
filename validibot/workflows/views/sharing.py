@@ -207,6 +207,84 @@ class WorkflowInviteAcceptView(GuestInvitesEnabledMixin, View):
         return HttpResponseRedirect(reverse("account_signup"))
 
 
+class GuestInviteAcceptView(GuestInvitesEnabledMixin, View):
+    """Handle org-level guest invite acceptance via tokenized URL.
+
+    Mirrors :class:`WorkflowInviteAcceptView` for the org-level
+    ``GuestInvite`` flow:
+
+    1. **Logged-in users** — accept the invite immediately. Returns
+       a single ``OrgGuestAccess`` row for ALL scope or per-workflow
+       grants for SELECTED scope. Either way, redirect to the
+       guest-workflows listing.
+    2. **Anonymous users** — stash the token in the session and
+       redirect to signup. After signup, the
+       :class:`~validibot.users.adapters.AccountAdapter` consumes the
+       token, calls ``invite.accept()`` on the new user, and
+       classifies them as GUEST (sticky semantics).
+
+    Without this view there was no anonymous-friendly redemption
+    path: the email pointed at ``/notifications/`` (which an
+    unauthenticated user can't see), and the only way to accept was
+    to already have an account and a notification — useless for a
+    brand-new external collaborator.
+
+    The ``GuestInvitesEnabledMixin`` is the operator's site-wide
+    kill switch: even with a valid token, redemption is denied while
+    ``allow_guest_invites=False``. The invite row stays PENDING and
+    can be redeemed once the flag is flipped back on (assuming it
+    hasn't expired).
+    """
+
+    GUEST_INVITE_SESSION_KEY = "guest_invite_token"
+
+    def get(self, request, token):
+        from validibot.workflows.models import GuestInvite
+
+        invite = get_object_or_404(
+            GuestInvite.objects.select_related("org", "inviter"),
+            token=token,
+        )
+
+        if not invite.is_pending:
+            messages.error(
+                request,
+                _("This guest invite is no longer valid (status: %(status)s).")
+                % {"status": invite.get_status_display()},
+            )
+            return HttpResponseRedirect(reverse("home:home"))
+
+        if request.user.is_authenticated:
+            try:
+                invite.accept(user=request.user)
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return HttpResponseRedirect(reverse("home:home"))
+
+            messages.success(
+                request,
+                _("You now have guest access to %(org)s.") % {"org": invite.org.name},
+            )
+            # Guest-workflow listing is the dedicated guest-friendly
+            # surface; sending the user there avoids landing them on
+            # views that require active memberships.
+            return HttpResponseRedirect(
+                reverse("workflows:guest_workflow_list"),
+            )
+
+        # Anonymous user: stash the token and route through signup. The
+        # AccountAdapter consumes the session key after signup completes,
+        # calls ``invite.accept()`` on the new user, and classifies them
+        # as GUEST.
+        request.session[self.GUEST_INVITE_SESSION_KEY] = str(token)
+        messages.info(
+            request,
+            _("Please sign up or log in to accept your guest invitation to %(org)s.")
+            % {"org": invite.org.name},
+        )
+        return HttpResponseRedirect(reverse("account_signup"))
+
+
 # Guest Workflow Views
 # ------------------------------------------------------------------------------
 

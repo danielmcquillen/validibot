@@ -15,6 +15,8 @@ from __future__ import annotations
 from http import HTTPStatus
 
 from django.core.exceptions import ImproperlyConfigured
+from django.db.models import Exists
+from django.db.models import OuterRef
 from django.db.models import Q
 from django.db.models import QuerySet
 from django.urls import reverse
@@ -141,78 +143,110 @@ def _latest_accessible_workflow_queryset(
 ) -> QuerySet[Workflow]:
     """Return the latest MCP-accessible workflows for ``user``.
 
-    The MCP catalog unions four access branches; an MCP request sees
-    a workflow if ANY branch matches:
+    Composes ``Workflow.objects.for_user(user)`` with two MCP-specific
+    layers:
 
-    1. **Member branch**: workflow is in one of the user's member orgs
-       AND has ``agent_access_enabled=True`` (the org-level master
-       switch for MCP exposure).
-    2. **Per-workflow grant branch**: the user holds an active
-       ``WorkflowAccessGrant`` for this workflow. Grants represent a
-       deliberate cross-org exception — they override the org-level
-       master switch by design.
-    3. **Org-wide guest access branch**: the user holds an active
-       ``OrgGuestAccess`` for the workflow's org. Same rationale as
-       per-workflow grants: explicit guest authorisation supersedes
-       the org-level MCP gate.
-    4. **Public branch**: the workflow is published for external
-       discovery (``agent_public_discovery=True``) OR is platform-wide
-       visible (``is_public=True``). Public workflows are visible to
-       any authenticated MCP user.
+    1. **Member-branch agent gate.** ``for_user`` includes workflows
+       the user can see via membership *unconditionally*. The MCP
+       catalog additionally requires the org-level ``agent_access_enabled``
+       master switch to be on for those workflows. This is enforced by
+       *removing* member-only rows that have the flag off — workflows
+       reachable via grant / org-guest / public stay visible regardless
+       of the flag because those access paths are deliberate cross-org
+       exceptions.
+    2. **agent_public_discovery cross-org branch.** Workflows published
+       for external discovery are visible to every authenticated MCP
+       user even if the user has no ``for_user`` access to them. This
+       is the public catalog: anyone with an MCP token can see and run
+       a workflow whose author flipped the discovery flag.
+
+    Delegating the access decision to ``for_user`` rather than
+    re-implementing it preserves the family-scoped grant logic
+    (``(org_id, slug)`` pair), the OrgGuestAccess branch, and the
+    ``is_public`` branch in ONE place — so a future fix to those paths
+    propagates to MCP automatically. Re-implementing the four branches
+    here previously regressed the family scope: a grant on v1 stopped
+    surfacing v2 of the same family in the catalog.
 
     The function returns the *latest* version of each workflow family
-    that matches; ``get_latest_workflow_ids`` computes the latest pk
-    per ``(org_id, slug)`` pair.
+    that matches.
 
     ``member_org_ids`` is accepted as an optional kwarg so callers
     that already compute it can avoid the round-trip; if omitted the
     function derives it.
     """
 
+    from validibot.workflows.models import OrgGuestAccess
+    from validibot.workflows.models import WorkflowAccessGrant
+
     if member_org_ids is None:
         member_org_ids = _member_org_ids_for_user(user)
 
-    member_filter = Q(
-        org_id__in=member_org_ids,
-        agent_access_enabled=True,
-    )
-    # Family-scoped per-workflow grant: any active grant on any version
-    # in the family makes the workflow visible. The double join through
-    # ``access_grants`` yields family rows because ``WorkflowAccessGrant``
-    # FKs the specific row, but the family invariant lives at
-    # ``(org_id, slug)``. Using ``access_grants`` with ``user`` and
-    # ``is_active=True`` is the simpler form that suffices for the MCP
-    # catalog — the more complex family-scoped lookup lives in
-    # ``WorkflowQuerySet.for_user`` and is reused there.
-    grant_filter = Q(
-        access_grants__user=user,
-        access_grants__is_active=True,
-    )
-    org_guest_filter = Q(
-        org__guest_accesses__user=user,
-        org__guest_accesses__is_active=True,
-    )
-    public_filter = Q(is_public=True) | Q(agent_public_discovery=True)
-
-    access_filter = member_filter | grant_filter | org_guest_filter | public_filter
-
-    combined_queryset = Workflow.objects.filter(
+    base_filters = Q(
         is_active=True,
         is_archived=False,
         is_tombstoned=False,
-    ).filter(access_filter)
-
-    latest_ids = set(get_latest_workflow_ids(combined_queryset))
-    return (
-        Workflow.objects.filter(
-            Q(pk__in=latest_ids),
-            is_active=True,
-            is_archived=False,
-            is_tombstoned=False,
-        )
-        .filter(access_filter)
-        .distinct()
     )
+
+    # Branch A: workflows reachable via for_user (membership, creator,
+    # family-scoped grant, OrgGuestAccess, is_public). ``for_user``
+    # already short-circuits to ``none()`` for unauthenticated users.
+    for_user_qs = Workflow.objects.for_user(user).filter(base_filters)
+
+    # The MCP-specific exclusion: member-only rows whose org has the
+    # MCP master switch off. "Member-only" means the user does NOT
+    # also have a non-member access path to the row. Without the
+    # "non-member access path" carve-out, a guest with a per-workflow
+    # grant for a workflow whose org has agent_access_enabled=False
+    # would be incorrectly hidden from MCP — the grant is supposed to
+    # be a cross-org exception that overrides the org gate.
+    #
+    # Build a subquery for "user has a non-member access path to this
+    # workflow row" (covers grants + OrgGuestAccess + public flags).
+    non_member_path = Exists(
+        WorkflowAccessGrant.objects.filter(
+            user=user,
+            is_active=True,
+            workflow__org_id=OuterRef("org_id"),
+            workflow__slug=OuterRef("slug"),
+        ),
+    ) | Exists(
+        OrgGuestAccess.objects.filter(
+            user=user,
+            is_active=True,
+            org_id=OuterRef("org_id"),
+        ),
+    )
+    for_user_qs = for_user_qs.annotate(_has_non_member_path=non_member_path)
+
+    # Member-only rows are those in member orgs that the user can ONLY
+    # reach via membership (no grant, no org_guest, not is_public).
+    # Exclude them when agent_access_enabled is off.
+    for_user_qs = for_user_qs.exclude(
+        Q(org_id__in=member_org_ids)
+        & Q(agent_access_enabled=False)
+        & Q(_has_non_member_path=False)
+        & Q(is_public=False),
+    )
+
+    # Branch B: workflows opted into agent_public_discovery. These are
+    # visible to every authenticated MCP user, including those with no
+    # for_user access.
+    public_agent_qs = Workflow.objects.filter(
+        base_filters,
+        agent_public_discovery=True,
+    )
+
+    # Combine. ``union`` would deduplicate, but we use a Q-based
+    # filter so the latest-version computation can run on a single
+    # queryset without losing the annotation.
+    combined_pks = set(for_user_qs.values_list("pk", flat=True)) | set(
+        public_agent_qs.values_list("pk", flat=True),
+    )
+    eligible = Workflow.objects.filter(pk__in=combined_pks).filter(base_filters)
+
+    latest_ids = set(get_latest_workflow_ids(eligible))
+    return Workflow.objects.filter(pk__in=latest_ids).filter(base_filters).distinct()
 
 
 def _prefetch_workflow_detail_relations(

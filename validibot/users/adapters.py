@@ -221,9 +221,17 @@ class AccountAdapter(DefaultAccountAdapter):
 
         Otherwise, redirect to the default login redirect URL.
         """
+        # Track whether we attempted an invite redemption that fell
+        # through. If so, we owe the user the default workspace +
+        # classification setup that ``save_user`` skipped. Without
+        # this, an expired/canceled/missing invite would strand the
+        # account with no workspace and no classifier group.
+        attempted_invite_redemption = False
+
         # Check for workflow invite token first
         invite_token = request.session.get(WORKFLOW_INVITE_SESSION_KEY)
         if invite_token:
+            attempted_invite_redemption = True
             redirect_url = self._handle_workflow_invite_signup(request, invite_token)
             if redirect_url:
                 return redirect_url
@@ -234,12 +242,23 @@ class AccountAdapter(DefaultAccountAdapter):
         # token in session, and now we redeem it.
         guest_invite_token = request.session.get(GUEST_INVITE_SESSION_KEY)
         if guest_invite_token:
+            attempted_invite_redemption = True
             redirect_url = self._handle_guest_invite_signup(
                 request,
                 guest_invite_token,
             )
             if redirect_url:
                 return redirect_url
+
+        # Invite redemption was attempted but produced no redirect —
+        # i.e. the token was missing/expired/canceled, the operator
+        # disabled invites between the click and signup, or
+        # ``invite.accept`` raised. The user was created via
+        # ``save_user`` with default-side-effect signals suppressed,
+        # so they currently have no workspace and no classifier
+        # group. Run the default setup now to avoid stranding them.
+        if attempted_invite_redemption:
+            self._finalize_default_signup(request.user)
 
         # Trial invite tokens: activation is now handled by the
         # email_confirmed signal in validibot_cloud.onboarding.signals.
@@ -278,8 +297,12 @@ class AccountAdapter(DefaultAccountAdapter):
         classifying the brand-new user as GUEST (sticky semantics),
         and returns the redirect URL to the workflow launch page.
 
-        Returns None if the invite is invalid, allowing fallback to
-        normal signup flow.
+        Returns None if the invite is invalid (expired, missing, or
+        the operator has disabled guest invites), allowing fallback
+        to normal signup flow. Whenever this method returns None, the
+        caller (``get_signup_redirect_url``) calls
+        :meth:`_finalize_default_signup` to provision the personal
+        workspace + BASIC classification that ``save_user`` skipped.
         """
         from django.contrib import messages
         from django.utils.translation import gettext_lazy as _
@@ -305,6 +328,29 @@ class AccountAdapter(DefaultAccountAdapter):
                 messages.warning(
                     request,
                     _("The workflow invite is no longer valid."),
+                )
+                return None
+
+            # Re-check the operator kill switch. The accept-view ran
+            # the same check before stashing the token in session, but
+            # the operator may have flipped ``allow_guest_invites`` to
+            # False between the anonymous click and signup completion.
+            # The kill switch is two-sided by design: pending invites
+            # cannot be redeemed during a disable window, even if the
+            # token survived in session.
+            if not self._invites_enabled():
+                logger.info(
+                    "Workflow invite %s blocked at signup: "
+                    "allow_guest_invites is False",
+                    invite_token,
+                )
+                messages.warning(
+                    request,
+                    _(
+                        "Guest invites are currently disabled by the "
+                        "administrator. Your account was created but the "
+                        "invite was not redeemed."
+                    ),
                 )
                 return None
 
@@ -391,6 +437,26 @@ class AccountAdapter(DefaultAccountAdapter):
                 )
                 return None
 
+            # Re-check the operator kill switch (mirrors the workflow
+            # invite handler). The accept-view also runs this check,
+            # but the operator may have flipped the flag between the
+            # anonymous click and signup completion. Two-sided
+            # enforcement means redemption is blocked here too.
+            if not self._invites_enabled():
+                logger.info(
+                    "Guest invite %s blocked at signup: allow_guest_invites is False",
+                    invite_token,
+                )
+                messages.warning(
+                    request,
+                    _(
+                        "Guest invites are currently disabled by the "
+                        "administrator. Your account was created but the "
+                        "invite was not redeemed."
+                    ),
+                )
+                return None
+
             invite.accept(user=request.user)
 
             # Sticky semantics: the new user's first relationship to
@@ -422,6 +488,65 @@ class AccountAdapter(DefaultAccountAdapter):
             messages.error(request, str(e))
             return None
 
+    def _invites_enabled(self) -> bool:
+        """Return True iff guest invites are currently enabled site-wide.
+
+        Wraps the ``SiteSettings.allow_guest_invites`` lookup so the
+        invite-handling methods don't have to repeat the import. The
+        check is gated on the ``guest_management`` Pro feature: in
+        community deployments the kill switch doesn't exist (and the
+        whole guest invite system is dormant), so this returns True
+        unconditionally — consistent with the convention that all
+        guest-management gating is a no-op without Pro.
+        """
+
+        from validibot.core.features import CommercialFeature
+        from validibot.core.features import is_feature_enabled
+
+        if not is_feature_enabled(CommercialFeature.GUEST_MANAGEMENT):
+            return True
+
+        from validibot.core.site_settings import get_site_settings
+
+        return get_site_settings().allow_guest_invites
+
+    def _finalize_default_signup(self, user) -> None:
+        """Provision the default workspace + classification for a new user.
+
+        Called from ``get_signup_redirect_url`` whenever an invite
+        redemption flow returned None — the user was created via
+        ``save_user`` with both default-side-effect signals
+        suppressed (``invite_driven_signup`` ContextVar), so without
+        this fallback they'd land stranded with no workspace and no
+        classifier group.
+
+        Idempotent: if the user already has a personal workspace or
+        a classifier group (e.g. signals fired anyway because the
+        ContextVar wasn't actually active), the helpers are no-ops.
+        """
+
+        from validibot.users.models import ensure_personal_workspace
+
+        ensure_personal_workspace(user)
+
+        # Classification is Pro-only; the helper checks the feature
+        # flag and skips cleanly in community.
+        from validibot.core.features import CommercialFeature
+        from validibot.core.features import is_feature_enabled
+
+        if not is_feature_enabled(CommercialFeature.GUEST_MANAGEMENT):
+            return
+
+        from validibot.users.constants import UserKindGroup
+        from validibot.users.user_kind import classify_as_basic
+
+        # Don't reclassify if the user already has a kind (e.g. they
+        # were placed in Guests by an earlier code path that we've
+        # since fallen back from). Default for an unclassified user
+        # is BASIC.
+        if user.user_kind != UserKindGroup.GUEST:
+            classify_as_basic(user)
+
     def _classify_invite_signup_as_guest(self, user) -> None:
         """Classify a brand-new invite-driven user as GUEST.
 
@@ -451,11 +576,20 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         """
         Determine if social signup is allowed for this request.
 
-        Same logic as AccountAdapter: allow if open registration, has an
-        invite token in session, or cloud self-registration is enabled.
+        Same logic as :meth:`AccountAdapter.is_open_for_signup` — must
+        stay in lockstep with the password-signup branch so a tokenized
+        guest invite redeems via either signup mechanism. Without the
+        guest invite branch, an operator running closed registration
+        (``ACCOUNT_ALLOW_REGISTRATION=False``) would accept guest
+        invites for password signups but reject the same invites for
+        social signups.
         """
         # Always allow signup if user has a workflow invite token
         if request.session.get(WORKFLOW_INVITE_SESSION_KEY):
+            return True
+
+        # Always allow signup if user has a guest invite token
+        if request.session.get(GUEST_INVITE_SESSION_KEY):
             return True
 
         # Always allow signup if user has a trial invite token (cloud)
@@ -467,6 +601,36 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
             return True
 
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
+
+    def save_user(
+        self,
+        request: HttpRequest,
+        sociallogin: SocialLogin,
+        form=None,
+    ):
+        """Wrap social signup in invite-driven suppression when applicable.
+
+        Mirrors :meth:`AccountAdapter.save_user` for the social flow.
+        Without this wrapper, a brand-new user invited as a guest who
+        then signs up with Google/GitHub/etc. would have the post_save
+        signals run normally — landing as BASIC with a personal
+        workspace, conflicting with the GUEST classification the
+        invite-flow code applies afterwards via
+        :meth:`AccountAdapter.get_signup_redirect_url` (which allauth
+        invokes for both password and social signups).
+        """
+
+        from validibot.users.signals import invite_driven_signup
+
+        is_invite_signup = bool(
+            request.session.get(WORKFLOW_INVITE_SESSION_KEY)
+            or request.session.get(GUEST_INVITE_SESSION_KEY),
+        )
+
+        if is_invite_signup:
+            with invite_driven_signup():
+                return super().save_user(request, sociallogin, form=form)
+        return super().save_user(request, sociallogin, form=form)
 
     def populate_user(
         self,

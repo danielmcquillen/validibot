@@ -97,6 +97,14 @@ class OrgScopedRunViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
             qs = ValidationRun.objects.filter(org=org)
         elif has_own_access:
             qs = ValidationRun.objects.filter(org=org, user=user)
+        elif self._user_has_guest_access_to_org(user, org):
+            # Guests can poll/inspect runs they themselves launched
+            # against workflows in this org. Without this branch a
+            # successful guest launch would hand back a polling URL
+            # (``api:org-runs-detail``) that resolves to no run —
+            # the launch helper points at this viewset and the guest
+            # would be locked out of their own results.
+            qs = ValidationRun.objects.filter(org=org, user=user)
         else:
             return ValidationRun.objects.none()
 
@@ -166,6 +174,39 @@ class OrgScopedRunViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
                 ),
             )
         )
+
+    @staticmethod
+    def _user_has_guest_access_to_org(user, org) -> bool:
+        """True iff ``user`` has any active guest-style access to ``org``.
+
+        Two qualifying paths:
+
+        * Active ``WorkflowAccessGrant`` on any workflow in the org
+          (per-workflow cross-org sharing).
+        * Active ``OrgGuestAccess`` for the org (the ALL-scope guest
+          invite acceptance path).
+
+        Used to decide whether a non-member user can view the runs
+        they themselves launched against this org. Without this
+        carve-out, a successful guest launch would hand back a
+        polling URL that 404s for the guest.
+        """
+
+        from validibot.workflows.models import OrgGuestAccess
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        if WorkflowAccessGrant.objects.filter(
+            user=user,
+            workflow__org=org,
+            is_active=True,
+        ).exists():
+            return True
+
+        return OrgGuestAccess.objects.filter(
+            user=user,
+            org=org,
+            is_active=True,
+        ).exists()
 
     @action(
         detail=True,

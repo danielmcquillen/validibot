@@ -99,12 +99,35 @@ class OrgScopedRunViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
             qs = ValidationRun.objects.filter(org=org, user=user)
         elif self._user_has_guest_access_to_org(user, org):
             # Guests can poll/inspect runs they themselves launched
-            # against workflows in this org. Without this branch a
-            # successful guest launch would hand back a polling URL
-            # (``api:org-runs-detail``) that resolves to no run —
-            # the launch helper points at this viewset and the guest
-            # would be locked out of their own results.
-            qs = ValidationRun.objects.filter(org=org, user=user)
+            # against workflows they currently have access to.
+            #
+            # Without the workflow narrowing, a per-workflow grant in
+            # this org would expose the guest's runs for OTHER
+            # workflows in the same org — including workflows whose
+            # grants were revoked or workflows the guest never had a
+            # grant for. The intersection with ``Workflow.objects.for_user``
+            # delegates the per-workflow visibility decision to the
+            # same helper the rest of the read-side uses, so a grant
+            # revocation immediately closes the run-polling surface
+            # too.
+            #
+            # ``OrgGuestAccess`` users see runs for every workflow in
+            # the org because ``for_user`` returns the whole catalog
+            # for them — that's the intended ALL-scope behaviour.
+            from validibot.workflows.models import Workflow
+
+            accessible_workflow_pks = (
+                Workflow.objects.for_user(user)
+                .filter(
+                    org=org,
+                )
+                .values_list("pk", flat=True)
+            )
+            qs = ValidationRun.objects.filter(
+                org=org,
+                user=user,
+                workflow__in=accessible_workflow_pks,
+            )
         else:
             return ValidationRun.objects.none()
 

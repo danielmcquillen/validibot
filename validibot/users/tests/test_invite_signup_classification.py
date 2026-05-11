@@ -612,27 +612,44 @@ class TestSocialAdapterMirrorsGuestInviteFlow:
     same invites when the user picks "Sign in with Google".
     """
 
-    def test_is_open_for_signup_allows_guest_invite_token(self, rf):
-        """Guest invite token in session opens social signup.
+    def test_is_open_for_signup_allows_redeemable_guest_invite_token(
+        self,
+        rf,
+    ):
+        """A redeemable guest invite token opens social signup.
 
         Pre-fix: ``SocialAccountAdapter.is_open_for_signup`` only
         knew about workflow invites + trial invites; guest invites
-        were rejected on closed-registration deployments.
+        were rejected on closed-registration deployments. The token
+        here must be a real, redeemable invite — the validation
+        layer rejects stale or fake tokens.
         """
 
-        # Closed registration baseline.
         from django.test import override_settings
 
         from validibot.users.adapters import GUEST_INVITE_SESSION_KEY
         from validibot.users.adapters import SocialAccountAdapter
 
+        set_license(_pro_license_with_guest_management())
+
+        org = OrganizationFactory()
+        inviter = UserFactory(orgs=[org])
+        grant_role(inviter, org, RoleCode.AUTHOR)
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email="brand-new@example.com",
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+
         request = rf.get("/accounts/signup/")
-        request.session = {GUEST_INVITE_SESSION_KEY: "some-token"}
+        request.session = {GUEST_INVITE_SESSION_KEY: str(invite.token)}
 
         adapter = SocialAccountAdapter()
 
         with override_settings(ACCOUNT_ALLOW_REGISTRATION=False):
-            # ``sociallogin`` argument is unused by the gate — pass None.
             assert adapter.is_open_for_signup(request, sociallogin=None) is True
 
     def test_save_user_wraps_social_invite_signup_in_suppression(self, rf):
@@ -799,3 +816,258 @@ class TestGuestRESTRunPolling:
             HTTPStatus.NOT_FOUND,
             HTTPStatus.FORBIDDEN,
         )
+
+    def test_per_workflow_grant_does_not_leak_runs_for_other_workflows(
+        self,
+        client,
+    ):
+        """A grant on workflow A does NOT expose runs for workflow B.
+
+        Regression for the over-broad guest run polling: the queryset
+        is now narrowed by ``Workflow.objects.for_user``, so a
+        per-workflow grant only exposes the guest's own runs against
+        workflows they currently have access to.
+
+        Without this narrowing, a guest with a grant for any workflow
+        in the org could see all of their own runs in that org —
+        including runs against workflows they were never granted, or
+        whose grants were revoked.
+        """
+
+        from validibot.validations.constants import ValidationRunSource
+        from validibot.validations.constants import ValidationRunStatus
+        from validibot.validations.models import ValidationRun
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        set_license(_pro_license_with_guest_management())
+
+        org = OrganizationFactory()
+        wf_granted = WorkflowFactory(org=org)
+        wf_other = WorkflowFactory(org=org)
+
+        guest = UserFactory(orgs=[])
+        Membership.objects.filter(user=guest).delete()
+        # Grant only to wf_granted; not wf_other.
+        WorkflowAccessGrant.objects.create(
+            workflow=wf_granted,
+            user=guest,
+            is_active=True,
+        )
+
+        # Create runs for the guest against BOTH workflows. Realistic
+        # scenario: the grant for wf_other was revoked after the run
+        # was launched, or the run was created via some other path
+        # (admin, fixture). The point is the queryset must narrow by
+        # current workflow access.
+        run_in_granted = ValidationRun.objects.create(
+            org=org,
+            workflow=wf_granted,
+            user=guest,
+            status=ValidationRunStatus.SUCCEEDED,
+            source=ValidationRunSource.LAUNCH_PAGE,
+        )
+        run_in_other = ValidationRun.objects.create(
+            org=org,
+            workflow=wf_other,
+            user=guest,
+            status=ValidationRunStatus.SUCCEEDED,
+            source=ValidationRunSource.LAUNCH_PAGE,
+        )
+
+        client.force_login(guest)
+
+        # Granted workflow run — visible.
+        url_granted = reverse(
+            "api:org-runs-detail",
+            kwargs={"org_slug": org.slug, "pk": run_in_granted.pk},
+        )
+        assert client.get(url_granted).status_code == HTTPStatus.OK
+
+        # Non-granted workflow run — NOT visible.
+        url_other = reverse(
+            "api:org-runs-detail",
+            kwargs={"org_slug": org.slug, "pk": run_in_other.pk},
+        )
+        response_other = client.get(url_other)
+        assert response_other.status_code in (
+            HTTPStatus.NOT_FOUND,
+            HTTPStatus.FORBIDDEN,
+        )
+
+
+# =============================================================================
+# Stale invite tokens must not open closed registration
+# =============================================================================
+
+
+class TestStaleTokenDoesNotBypassClosedRegistration:
+    """Token validation in is_open_for_signup blocks stale tokens.
+
+    Regression: previously, any invite token in session opened
+    signup regardless of token state — letting a stale (expired,
+    canceled, kill-switched) token bypass
+    ``ACCOUNT_ALLOW_REGISTRATION=False``. The validators now check
+    the token is redeemable before opening the gate.
+    """
+
+    def test_expired_workflow_token_does_not_open_closed_signup(self, rf):
+        """``ACCOUNT_ALLOW_REGISTRATION=False`` + expired token → denied."""
+
+        from django.test import override_settings
+
+        from validibot.users.adapters import WORKFLOW_INVITE_SESSION_KEY
+        from validibot.users.adapters import AccountAdapter
+
+        set_license(_pro_license_with_guest_management())
+
+        org = OrganizationFactory()
+        inviter = UserFactory(orgs=[org])
+        grant_role(inviter, org, RoleCode.AUTHOR)
+        wf = WorkflowFactory(org=org)
+
+        invite = WorkflowInvite.create_with_expiry(
+            workflow=wf,
+            inviter=inviter,
+            invitee_email="brand-new@example.com",
+            send_email=False,
+        )
+        invite.status = WorkflowInvite.Status.EXPIRED
+        invite.save(update_fields=["status"])
+
+        request = rf.get("/accounts/signup/")
+        request.session = {WORKFLOW_INVITE_SESSION_KEY: str(invite.token)}
+
+        adapter = AccountAdapter()
+
+        with override_settings(ACCOUNT_ALLOW_REGISTRATION=False):
+            assert adapter.is_open_for_signup(request) is False
+
+    def test_kill_switched_guest_token_does_not_open_closed_signup(self, rf):
+        """``allow_guest_invites=False`` + valid token → denied."""
+
+        from django.test import override_settings
+
+        from validibot.core.site_settings import get_site_settings
+        from validibot.users.adapters import GUEST_INVITE_SESSION_KEY
+        from validibot.users.adapters import AccountAdapter
+
+        set_license(_pro_license_with_guest_management())
+
+        org = OrganizationFactory()
+        inviter = UserFactory(orgs=[org])
+        grant_role(inviter, org, RoleCode.AUTHOR)
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email="brand-new@example.com",
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+
+        # Operator flips the kill switch — invite is still PENDING in
+        # the database but no longer redeemable site-wide.
+        settings = get_site_settings()
+        settings.allow_guest_invites = False
+        settings.save()
+
+        request = rf.get("/accounts/signup/")
+        request.session = {GUEST_INVITE_SESSION_KEY: str(invite.token)}
+
+        adapter = AccountAdapter()
+
+        with override_settings(ACCOUNT_ALLOW_REGISTRATION=False):
+            assert adapter.is_open_for_signup(request) is False
+
+    def test_garbage_token_does_not_open_closed_signup(self, rf):
+        """Malformed UUID / unknown invite → denied (no traceback)."""
+
+        from django.test import override_settings
+
+        from validibot.users.adapters import GUEST_INVITE_SESSION_KEY
+        from validibot.users.adapters import AccountAdapter
+
+        set_license(_pro_license_with_guest_management())
+
+        request = rf.get("/accounts/signup/")
+        request.session = {GUEST_INVITE_SESSION_KEY: "not-a-uuid"}
+
+        adapter = AccountAdapter()
+
+        with override_settings(ACCOUNT_ALLOW_REGISTRATION=False):
+            # Malformed token must not raise; just deny signup.
+            assert adapter.is_open_for_signup(request) is False
+
+    def test_redeemable_token_still_opens_closed_signup(self, rf):
+        """Pin the positive case: a valid PENDING token still works.
+
+        Without this assertion, the token-validation refactor could
+        accidentally over-restrict and break the legitimate invite-
+        only signup flow.
+        """
+
+        from django.test import override_settings
+
+        from validibot.users.adapters import GUEST_INVITE_SESSION_KEY
+        from validibot.users.adapters import AccountAdapter
+
+        set_license(_pro_license_with_guest_management())
+
+        org = OrganizationFactory()
+        inviter = UserFactory(orgs=[org])
+        grant_role(inviter, org, RoleCode.AUTHOR)
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email="brand-new@example.com",
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+
+        request = rf.get("/accounts/signup/")
+        request.session = {GUEST_INVITE_SESSION_KEY: str(invite.token)}
+
+        adapter = AccountAdapter()
+
+        with override_settings(ACCOUNT_ALLOW_REGISTRATION=False):
+            assert adapter.is_open_for_signup(request) is True
+
+    def test_social_adapter_also_validates_tokens(self, rf):
+        """SocialAccountAdapter must apply the same validation as AccountAdapter.
+
+        Without parity, an operator running closed registration
+        could accept stale tokens for social signups while password
+        signups correctly rejected them — exactly the asymmetry that
+        opens the bypass on a Google/GitHub login flow.
+        """
+
+        from django.test import override_settings
+
+        from validibot.users.adapters import GUEST_INVITE_SESSION_KEY
+        from validibot.users.adapters import SocialAccountAdapter
+
+        set_license(_pro_license_with_guest_management())
+
+        org = OrganizationFactory()
+        inviter = UserFactory(orgs=[org])
+        grant_role(inviter, org, RoleCode.AUTHOR)
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email="brand-new@example.com",
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+        # Mark expired.
+        invite.status = GuestInvite.Status.EXPIRED
+        invite.save(update_fields=["status"])
+
+        request = rf.get("/accounts/signup/")
+        request.session = {GUEST_INVITE_SESSION_KEY: str(invite.token)}
+
+        adapter = SocialAccountAdapter()
+
+        with override_settings(ACCOUNT_ALLOW_REGISTRATION=False):
+            assert adapter.is_open_for_signup(request, sociallogin=None) is False

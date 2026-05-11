@@ -37,6 +37,90 @@ TRIAL_INVITE_SESSION_KEY = "trial_invite_token"
 SELF_REGISTER_PLAN_SESSION_KEY = "signup_plan"
 
 
+def _site_invites_enabled() -> bool:
+    """True iff guest invites are currently enabled site-wide.
+
+    Module-level helper shared between :class:`AccountAdapter` and
+    :class:`SocialAccountAdapter` so both adapters apply the same
+    kill-switch logic when validating tokens. Without this, the two
+    ``is_open_for_signup`` implementations would have to duplicate
+    the SiteSettings lookup and could drift apart.
+
+    Gated on the ``guest_management`` Pro feature: in community
+    deployments the kill switch doesn't exist (the whole guest
+    invite system is dormant) and this returns True unconditionally,
+    matching the convention that all guest-management gating is a
+    no-op without Pro.
+    """
+
+    from validibot.core.features import CommercialFeature
+    from validibot.core.features import is_feature_enabled
+
+    if not is_feature_enabled(CommercialFeature.GUEST_MANAGEMENT):
+        return True
+
+    from validibot.core.site_settings import get_site_settings
+
+    return get_site_settings().allow_guest_invites
+
+
+def _workflow_invite_token_is_redeemable(token: str) -> bool:
+    """True iff a workflow invite token is currently redeemable.
+
+    Validates that:
+
+    * The site-wide ``allow_guest_invites`` kill switch is on.
+    * The token corresponds to an actual ``WorkflowInvite``.
+    * The invite is in PENDING status (not expired, canceled,
+      declined, or already accepted).
+
+    Used by both adapters' ``is_open_for_signup`` so a stale token
+    cannot open closed registration. One indexed lookup + status
+    check + flag read.
+    """
+
+    if not _site_invites_enabled():
+        return False
+
+    from django.core.exceptions import ValidationError
+
+    from validibot.workflows.models import WorkflowInvite
+
+    try:
+        invite = WorkflowInvite.objects.get(token=token)
+    except (WorkflowInvite.DoesNotExist, ValueError, ValidationError):
+        # ValueError covers some malformed UUIDs; ValidationError
+        # covers Django's UUIDField rejecting "not-a-uuid"-style input.
+        return False
+
+    invite.mark_expired_if_needed()
+    return invite.status == WorkflowInvite.Status.PENDING
+
+
+def _guest_invite_token_is_redeemable(token: str) -> bool:
+    """True iff a guest invite token is currently redeemable.
+
+    Mirrors :func:`_workflow_invite_token_is_redeemable` for the
+    org-level ``GuestInvite`` flow.
+    """
+
+    if not _site_invites_enabled():
+        return False
+
+    from django.core.exceptions import ValidationError
+
+    from validibot.core.constants import InviteStatus
+    from validibot.workflows.models import GuestInvite
+
+    try:
+        invite = GuestInvite.objects.get(token=token)
+    except (GuestInvite.DoesNotExist, ValueError, ValidationError):
+        return False
+
+    invite.mark_expired_if_needed()
+    return invite.status == InviteStatus.PENDING
+
+
 def _is_cloud_installed() -> bool:
     """Check whether the cloud layer is active in this deployment.
 
@@ -86,20 +170,32 @@ class AccountAdapter(DefaultAccountAdapter):
 
         Signup is allowed if:
         1. ACCOUNT_ALLOW_REGISTRATION is True (open registration), OR
-        2. The user has a workflow invite token in their session, OR
-        3. The user has a guest invite token in their session, OR
+        2. The user has a *redeemable* workflow invite token in their session, OR
+        3. The user has a *redeemable* guest invite token in their session, OR
         4. The user has a trial invite token in their session (cloud), OR
         5. Cloud is installed with self-registration enabled
 
-        This enables invite-only signup: set ACCOUNT_ALLOW_REGISTRATION=False to
-        block public signup, but users with invite links can still register.
+        Token validation matters here: a stale invite token (expired,
+        canceled, kill switch flipped) sitting in session must NOT
+        open closed registration. Without validation, an
+        ``ACCOUNT_ALLOW_REGISTRATION=False`` deployment could be
+        bypassed by sending oneself a guest invite, letting it
+        expire, then signing up with the dead token still in session.
+        The token is the authorization to sign up; if it's no longer
+        valid, signup must be denied.
+
+        Validation runs only when an invite token is the reason
+        signup would be allowed — open-registration deployments
+        skip the lookup entirely.
         """
-        # Always allow signup if user has a workflow invite token
-        if request.session.get(WORKFLOW_INVITE_SESSION_KEY):
+        # Workflow invite token: only opens signup if redeemable.
+        workflow_token = request.session.get(WORKFLOW_INVITE_SESSION_KEY)
+        if workflow_token and _workflow_invite_token_is_redeemable(workflow_token):
             return True
 
-        # Always allow signup if user has a guest invite token
-        if request.session.get(GUEST_INVITE_SESSION_KEY):
+        # Guest invite token: only opens signup if redeemable.
+        guest_token = request.session.get(GUEST_INVITE_SESSION_KEY)
+        if guest_token and _guest_invite_token_is_redeemable(guest_token):
             return True
 
         # Always allow signup if user has a trial invite token (cloud)
@@ -491,24 +587,14 @@ class AccountAdapter(DefaultAccountAdapter):
     def _invites_enabled(self) -> bool:
         """Return True iff guest invites are currently enabled site-wide.
 
-        Wraps the ``SiteSettings.allow_guest_invites`` lookup so the
-        invite-handling methods don't have to repeat the import. The
-        check is gated on the ``guest_management`` Pro feature: in
-        community deployments the kill switch doesn't exist (and the
-        whole guest invite system is dormant), so this returns True
-        unconditionally — consistent with the convention that all
-        guest-management gating is a no-op without Pro.
+        Thin wrapper over the module-level
+        :func:`_site_invites_enabled` so existing call sites
+        (``_handle_*_invite_signup``) don't need to be rewritten and
+        future logic that wants to read the same flag from instance
+        context still has a method to lean on.
         """
 
-        from validibot.core.features import CommercialFeature
-        from validibot.core.features import is_feature_enabled
-
-        if not is_feature_enabled(CommercialFeature.GUEST_MANAGEMENT):
-            return True
-
-        from validibot.core.site_settings import get_site_settings
-
-        return get_site_settings().allow_guest_invites
+        return _site_invites_enabled()
 
     def _finalize_default_signup(self, user) -> None:
         """Provision the default workspace + classification for a new user.
@@ -584,12 +670,17 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         invites for password signups but reject the same invites for
         social signups.
         """
-        # Always allow signup if user has a workflow invite token
-        if request.session.get(WORKFLOW_INVITE_SESSION_KEY):
+        # Workflow / guest invite tokens only open signup if currently
+        # redeemable. Validating here mirrors the password adapter and
+        # stops a stale (expired/canceled/kill-switched) token from
+        # bypassing closed registration just because it's still in
+        # session from an earlier click.
+        workflow_token = request.session.get(WORKFLOW_INVITE_SESSION_KEY)
+        if workflow_token and _workflow_invite_token_is_redeemable(workflow_token):
             return True
 
-        # Always allow signup if user has a guest invite token
-        if request.session.get(GUEST_INVITE_SESSION_KEY):
+        guest_token = request.session.get(GUEST_INVITE_SESSION_KEY)
+        if guest_token and _guest_invite_token_is_redeemable(guest_token):
             return True
 
         # Always allow signup if user has a trial invite token (cloud)

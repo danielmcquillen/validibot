@@ -84,20 +84,6 @@ Do **not** introduce "engine" as a new architecture term. Older docs and tests s
 | **Validator backend repo** | `validibot-validator-backends` (renamed from `validibot-validators` in March 2026). Houses Docker images that implement validator backends. The Python package and Docker image prefixes match the new name. |
 | **Profile** | A combination of (target, stage, edition) that controls doctor-check severity, feature gating, and defaults. Examples: `local-dev`, `local-eval`, `self-hosted`, `self-hosted-hardened`, `gcp`, `gcp-staging`. |
 
-## Retired terminology
-
-These names are gone; replaced in Phase 0 of the boring-self-hosting ADR:
-
-| Before | After |
-|---|---|
-| `just/docker-compose/mod.just` | `just/self-hosted/mod.just` |
-| `just docker-compose deploy` | `just self-hosted deploy` |
-| `.envs.example/.production/.docker-compose/` | `.envs.example/.production/.self-hosted/` |
-| `DEPLOYMENT_TARGET=docker_compose` | `DEPLOYMENT_TARGET=self_hosted` |
-| "Docker Compose production" (operator-facing) | "self-hosted" |
-
-The Compose file name itself stays as `docker-compose.production.yml` because Compose really is the underlying technology. The retirement is of the *audience-facing* labels, not the implementation labels.
-
 ## See also
 
 - [Validator Architecture](validator_architecture.md) — the input/output envelope contract

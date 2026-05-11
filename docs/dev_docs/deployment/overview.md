@@ -20,19 +20,6 @@ The same operator capabilities (`bootstrap`, `doctor`, `smoke-test`, `backup`, `
 
 For the architectural rationale, see the boring-self-hosting ADR.
 
-## Retired terminology
-
-The `docker-compose` operator label has been retired (Phase 0 of ADR-2026-04-27). Old name → new name:
-
-| Before | After |
-|---|---|
-| `just/docker-compose/mod.just` | `just/self-hosted/mod.just` |
-| `just docker-compose deploy` | `just self-hosted deploy` |
-| `.envs.example/.production/.docker-compose/` | `.envs.example/.production/.self-hosted/` |
-| `DEPLOYMENT_TARGET=docker_compose` | `DEPLOYMENT_TARGET=self_hosted` |
-
-The Compose **file name** stays as `docker-compose.production.yml` because Compose really is the technology. The retirement is of the *audience-facing* labels.
-
 ## Choose a target
 
 | Target | Best for | Start here |

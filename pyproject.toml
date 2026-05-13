@@ -81,7 +81,7 @@ dependencies = [
   # guerrillamail, tempmail, etc). Used by UserSignupForm when
   # REJECT_DISPOSABLE_EMAILS is enabled — off by default for community/
   # self-hosted deployments, on in cloud to deter free-trial abuse.
-  "disposable-email-domains==0.0.180",
+  "disposable-email-domains==0.0.182",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # 0.7.0 adds ``StepValidatorRecord.validator_backend_image_digest``;
   # 0.7.1–0.7.3 shipped publish-workflow fixes;
@@ -309,19 +309,19 @@ django-celery-beat = { git = "https://github.com/celery/django-celery-beat", rev
 [dependency-groups]
 dev = [
   # Testing
-  "coverage==7.13.5",
+  "coverage==7.14.0",
   "django-coverage-plugin==3.2.2",
   "factory-boy==3.3.3",
   "pytest==9.0.3",
   "pytest-django==4.12.0",
   "pytest-sugar==1.1.1",
-  "selenium==4.43.0",
+  "selenium==4.44.0",
   # Linting and formatting
   "djlint==1.36.4",
   "pre-commit==4.6.0",
   "ruff==0.15.12",
   # Type checking
-  "django-stubs[compatible-mypy]==6.0.3",
+  "django-stubs[compatible-mypy]==6.0.4",
   "djangorestframework-stubs==3.16.9",
   "mypy==1.20.2",
   # Debugging and development utilities
@@ -331,5 +331,5 @@ dev = [
   "watchfiles==1.1.1",
   "werkzeug[watchdog]==3.1.8",
   # Documentation
-  "zensical==0.0.40",
+  "zensical==0.0.41",
 ]

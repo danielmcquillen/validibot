@@ -827,7 +827,7 @@ class BackupRestoreRecipeShapeTests(SimpleTestCase):
         # Find the public ``backup:`` recipe (no args) and capture its body.
         # Recipes end at the next blank line followed by a non-indented line.
         match = re.search(
-            r"^backup:\n((?:    .*\n|    \n)*)",
+            r"^backup:\n((?:    .*\n|\n)*)",
             text,
             re.MULTILINE,
         )
@@ -847,7 +847,7 @@ class BackupRestoreRecipeShapeTests(SimpleTestCase):
         """``restore`` must not delegate to ``_phase0-stub`` anymore."""
         text = self._self_hosted_text()
         match = re.search(
-            r"^restore path=\"\":\n((?:    .*\n|    \n)*)",
+            r"^restore path=\"\":\n((?:    .*\n|\n)*)",
             text,
             re.MULTILINE,
         )
@@ -872,7 +872,7 @@ class BackupRestoreRecipeShapeTests(SimpleTestCase):
         text = self._self_hosted_text()
         # The block between _run-backup: and the next public recipe header.
         match = re.search(
-            r"^_run-backup:\n((?:    .*\n|    \n|\n)*?)^# ",
+            r"^_run-backup:\n((?:    .*\n|\n)*?)^# ",
             text,
             re.MULTILINE,
         )
@@ -889,7 +889,7 @@ class BackupRestoreRecipeShapeTests(SimpleTestCase):
         """ADR section 8 mandates zstd compression for both DB dump and data archive."""
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-backup:\n((?:    .*\n|    \n|\n)*?)^# ",
+            r"^_run-backup:\n((?:    .*\n|\n)*?)^# ",
             text,
             re.MULTILINE,
         )
@@ -908,7 +908,7 @@ class BackupRestoreRecipeShapeTests(SimpleTestCase):
         """
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-restore path:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-restore path:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -939,7 +939,7 @@ class BackupRestoreRecipeShapeTests(SimpleTestCase):
         """
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-restore path:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-restore path:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -961,7 +961,7 @@ class BackupRestoreRecipeShapeTests(SimpleTestCase):
         """
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-restore path:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-restore path:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1019,7 +1019,7 @@ class BackupRestoreRecipeShapeTests(SimpleTestCase):
         """
         text = self._self_hosted_text()
         match = re.search(
-            r"^validator-build name:\n((?:    .*\n|    \n)*)",
+            r"^validator-build name:\n((?:    .*\n|\n)*)",
             text,
             re.MULTILINE,
         )
@@ -1079,7 +1079,7 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         """``update`` no longer runs the old pull-latest flow."""
         text = self._self_hosted_text()
         match = re.search(
-            r"^update:\n((?:    .*\n|    \n)*)",
+            r"^update:\n((?:    .*\n|\n)*)",
             text,
             re.MULTILINE,
         )
@@ -1094,7 +1094,7 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         """``upgrade`` must not delegate to ``_phase0-stub`` anymore."""
         text = self._self_hosted_text()
         match = re.search(
-            r"^upgrade \*args:\n((?:    .*\n|    \n)*)",
+            r"^upgrade \*args:\n((?:    .*\n|\n)*)",
             text,
             re.MULTILINE,
         )
@@ -1114,7 +1114,7 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         """
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-upgrade args:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-upgrade args:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1133,7 +1133,7 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         """Pre-upgrade backup must call the Phase 3 manifested backup."""
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-upgrade args:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-upgrade args:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1149,7 +1149,7 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         """Post-flight: doctor + smoke-test, both reused from existing recipes."""
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-upgrade args:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-upgrade args:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1166,7 +1166,7 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         """
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-upgrade args:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-upgrade args:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1179,7 +1179,7 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         """``clean-all`` must require typing the short hostname."""
         text = self._self_hosted_text()
         match = re.search(
-            r"^clean-all:\n((?:    .*\n|    \n)*)",
+            r"^clean-all:\n((?:    .*\n|\n)*)",
             text,
             re.MULTILINE,
         )
@@ -1208,7 +1208,7 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         """
         text = self._gcp_text()
         match = re.search(
-            r"^_run-upgrade stage version flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-upgrade stage version flags:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1250,7 +1250,7 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         """
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-upgrade args:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-upgrade args:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1297,7 +1297,7 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         """
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-upgrade args:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-upgrade args:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1373,7 +1373,7 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         """
         text = self._gcp_text()
         match = re.search(
-            r"^_run-upgrade stage version flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-upgrade stage version flags:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1416,7 +1416,7 @@ class UpgradeRecipeShapeTests(SimpleTestCase):
         """
         text = self._gcp_text()
         match = re.search(
-            r"^_run-upgrade stage version flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-upgrade stage version flags:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1696,7 +1696,7 @@ class ValidatorsAndCleanupShapeTests(SimpleTestCase):
         """``cleanup`` must not delegate to ``_phase0-stub``."""
         text = self._self_hosted_text()
         match = re.search(
-            r"^cleanup \*flags:\n((?:    .*\n|    \n)*)",
+            r"^cleanup \*flags:\n((?:    .*\n|\n)*)",
             text,
             re.MULTILINE,
         )
@@ -1714,7 +1714,7 @@ class ValidatorsAndCleanupShapeTests(SimpleTestCase):
         """
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-cleanup flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-cleanup flags:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1727,7 +1727,7 @@ class ValidatorsAndCleanupShapeTests(SimpleTestCase):
         """Cleanup walks three retention scopes per ADR Phase 5."""
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-cleanup flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-cleanup flags:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1752,7 +1752,7 @@ class ValidatorsAndCleanupShapeTests(SimpleTestCase):
         """
         text = self._self_hosted_text()
         match = re.search(
-            r"^_run-cleanup flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-cleanup flags:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1780,7 +1780,7 @@ class ValidatorsAndCleanupShapeTests(SimpleTestCase):
         """GCP cleanup prunes Cloud Run Job executions + expired GCS backups."""
         text = self._gcp_text()
         match = re.search(
-            r"^_run-cleanup stage flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-cleanup stage flags:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1812,7 +1812,7 @@ class ValidatorsAndCleanupShapeTests(SimpleTestCase):
         """
         text = self._gcp_text()
         match = re.search(
-            r"^_run-cleanup stage flags:\n((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"^_run-cleanup stage flags:\n((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1963,7 +1963,7 @@ class SupportBundleRecipeShapeTests(SimpleTestCase):
         """``collect-support-bundle`` must not delegate to ``_phase0-stub``."""
         text = self._self_hosted_text()
         match = re.search(
-            r"^collect-support-bundle \*flags:\n((?:    .*\n|    \n)*)",
+            r"^collect-support-bundle \*flags:\n((?:    .*\n|\n)*)",
             text,
             re.MULTILINE,
         )
@@ -1977,7 +1977,7 @@ class SupportBundleRecipeShapeTests(SimpleTestCase):
         text = self._self_hosted_text()
         match = re.search(
             r"^_run-collect-support-bundle flags:\n"
-            r"((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -1994,7 +1994,7 @@ class SupportBundleRecipeShapeTests(SimpleTestCase):
         text = self._self_hosted_text()
         match = re.search(
             r"^_run-collect-support-bundle flags:\n"
-            r"((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -2037,7 +2037,7 @@ class SupportBundleRecipeShapeTests(SimpleTestCase):
         # private helper needed because the stage parameter scopes it).
         block_match = re.search(
             r"^collect-support-bundle stage \*flags:.*\n"
-            r"((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )
@@ -2055,7 +2055,7 @@ class SupportBundleRecipeShapeTests(SimpleTestCase):
         text = self._gcp_text()
         block_match = re.search(
             r"^collect-support-bundle stage \*flags:.*\n"
-            r"((?:    .*\n|    \n|\n)*?)(?=^# |\Z)",
+            r"((?:    .*\n|\n)*?)(?=^# |\Z)",
             text,
             re.MULTILINE,
         )

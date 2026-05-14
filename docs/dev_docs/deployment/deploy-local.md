@@ -115,11 +115,11 @@ is installed. So the practical picture is:
 - **Community-only stack**: the container can be built, but it will
   fail its license check on startup and exit. Useful for
   contributors hacking on the MCP code, not for end users.
-- **Pro/Cloud stack**: the license check passes, MCP serves requests
+- **Pro stack**: the license check passes, MCP serves requests
   normally.
 
-The container is defined in the `local-pro` and `local-cloud`
-compose overlays behind an opt-in `mcp` Compose profile, so an
+The container is defined in the `local-pro` 
+compose overlay behind an opt-in `mcp` Compose profile, so an
 empty `.build` file leaves it out by default.
 
 To include it, open `.envs/.local/.build` and set:
@@ -132,13 +132,11 @@ Then restart the stack:
 
 ```bash
 just local-pro up --build    # community + Pro + MCP
-# or
-just local-cloud up --build  # community + Pro + Cloud + MCP
 ```
 
 The recipe prints `"ENABLE_MCP_SERVER is set — including the MCP container (profile: mcp)"` on start, and the container listens on `http://localhost:8001`.
 
-`ENABLE_MCP_SERVER=true` is ignored by `just local up` because the community local compose file defines no `mcp` service — if you want to exercise MCP locally, use `local-pro` or `local-cloud`.
+`ENABLE_MCP_SERVER=true` is ignored by `just local up` because the community local compose file defines no `mcp` service — if you want to exercise MCP locally, use `local-pro`.
 
 ## Enable signed credentials locally
 
@@ -160,18 +158,6 @@ Then add this to `.envs/.local/.django`:
 SIGNING_KEY_PATH=/run/validibot-keys/credential-signing.pem
 CREDENTIAL_ISSUER_URL=http://localhost:8000
 ```
-
-That in-container path works for the standard `just local up` stack. If you are
-using the separate `just local-cloud ...` development flow, use this instead:
-
-```bash
-SIGNING_KEY_PATH=/app/.envs/.local/keys/credential-signing.pem
-CREDENTIAL_ISSUER_URL=http://localhost:8000
-```
-
-`local-cloud` mounts the full `validibot` repo at `/app`, so the key is
-available there even though that stack does not currently mount
-`/run/validibot-keys`.
 
 After updating the env file, rebuild or restart the stack:
 
@@ -221,26 +207,9 @@ If you plan to test advanced validators locally, check:
 - [Docker Setup](../docker.md)
 - [Execution Backends](../overview/execution_backends.md)
 
-## Important note about `local-cloud`
+## A note on `local-cloud`
 
-If you see `just local-cloud ...` elsewhere in the repo, that is for the separate `validibot-cloud` development workflow. It is not the standard self-host path for a customer running Validibot locally.
-
-If you hit a startup error in that separate `local-cloud` flow mentioning
-`psycopg_c`, the usual cause is a stale shared virtualenv volume. That issue is
-specific to `validibot-cloud`, not the standard `just local up` stack.
-
-`local-cloud` keeps a shared `.venv` volume for its web and worker containers.
-`psycopg[c]` includes a compiled extension, so after dependency changes or base
-image changes the compiled package can get out of sync with the rest of that
-persisted environment.
-
-Reset the shared virtualenv volume and rebuild:
-
-```bash
-docker compose -f ../validibot-cloud/docker-compose.cloud.yml down --remove-orphans
-docker volume rm validibot_validibot_local_venv
-just local-cloud up --build
-```
+You may notice `just local-cloud ...` recipes in the justfile. Those drive a separate development workflow for the hosted Validibot Cloud product and are not used for self-hosting — ignore them.
 
 ## Where to go next
 

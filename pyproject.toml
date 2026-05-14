@@ -61,7 +61,7 @@ dependencies = [
   "pydantic==2.13.4",
   "python-jsonpath==2.0.2",
   "python-slugify==8.0.4",
-  "sentry-sdk==2.59.0",
+  "sentry-sdk==2.60.0",
   # Task queue: Celery with Redis broker and periodic scheduling.
   # celery[redis] pulls in kombu's redis extra, which caps the redis version.
   # As of kombu 5.6.2 the cap is redis<6.5; kombu main has bumped to <7.1
@@ -81,7 +81,7 @@ dependencies = [
   # guerrillamail, tempmail, etc). Used by UserSignupForm when
   # REJECT_DISPOSABLE_EMAILS is enabled — off by default for community/
   # self-hosted deployments, on in cloud to deter free-trial abuse.
-  "disposable-email-domains==0.0.180",
+  "disposable-email-domains==0.0.183",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # 0.7.0 adds ``StepValidatorRecord.validator_backend_image_digest``;
   # 0.7.1–0.7.3 shipped publish-workflow fixes;
@@ -92,7 +92,7 @@ dependencies = [
   # behaviour in production.
   "validibot-shared==0.7.4",
   "django-csp==4.0",
-  "django-permissions-policy==4.29.0",
+  "django-permissions-policy==4.30.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in
   # INSTALLED_APPS (community's `validibot.idp` app extends the allauth
   # adapter for the MCP helper API's JWT access tokens), so these are
@@ -309,20 +309,20 @@ django-celery-beat = { git = "https://github.com/celery/django-celery-beat", rev
 [dependency-groups]
 dev = [
   # Testing
-  "coverage==7.13.5",
+  "coverage==7.14.0",
   "django-coverage-plugin==3.2.2",
   "factory-boy==3.3.3",
   "pytest==9.0.3",
   "pytest-django==4.12.0",
   "pytest-sugar==1.1.1",
-  "selenium==4.43.0",
+  "selenium==4.44.0",
   # Linting and formatting
   "djlint==1.36.4",
   "pre-commit==4.6.0",
   "ruff==0.15.12",
   # Type checking
-  "django-stubs[compatible-mypy]==6.0.3",
-  "djangorestframework-stubs==3.16.9",
+  "django-stubs[compatible-mypy]==6.0.4",
+  "djangorestframework-stubs==3.17.0",
   "mypy==1.20.2",
   # Debugging and development utilities
   "django-debug-toolbar==6.3.0",
@@ -331,5 +331,5 @@ dev = [
   "watchfiles==1.1.1",
   "werkzeug[watchdog]==3.1.8",
   # Documentation
-  "zensical==0.0.40",
+  "zensical==0.0.41",
 ]

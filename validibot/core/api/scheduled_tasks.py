@@ -261,6 +261,71 @@ class PurgeExpiredSubmissionsView(ScheduledTaskBaseView):
             )
 
 
+class PurgeExpiredOutputsView(ScheduledTaskBaseView):
+    """
+    Purge validation outputs that have passed their retention period.
+
+    This endpoint triggers the purge_expired_outputs management command,
+    which removes findings, artifacts, and output files from runs where
+    output_expires_at < now while preserving the run record.
+
+    URL: POST /api/v1/scheduled/purge-expired-outputs/
+    Recommended schedule: Hourly at :00
+    """
+
+    def post(self, request):
+        try:
+            batch_size = int(request.data.get("batch_size", 100))
+            max_batches = int(request.data.get("max_batches", 10))
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "batch_size and max_batches must be integers"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        logger.info(
+            "Starting scheduled purge of expired outputs "
+            "(batch_size=%d, max_batches=%d)",
+            batch_size,
+            max_batches,
+        )
+
+        try:
+            out = StringIO()
+            err = StringIO()
+            call_command(
+                "purge_expired_outputs",
+                f"--batch-size={batch_size}",
+                f"--max-batches={max_batches}",
+                stdout=out,
+                stderr=err,
+            )
+            output = out.getvalue()
+            errors = err.getvalue()
+
+            logger.info("Expired output purge completed: %s", output.strip())
+
+            response_data = {
+                "task": "purge_expired_outputs",
+                "status": "completed",
+                "output": output.strip(),
+            }
+            if errors:
+                response_data["errors"] = errors.strip()
+
+            return Response(response_data, status=status.HTTP_200_OK)
+        except Exception:
+            logger.exception("Failed to purge expired outputs")
+            return Response(
+                {
+                    "task": "purge_expired_outputs",
+                    "status": "failed",
+                    "error": "internal error",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
 class ProcessPurgeRetriesView(ScheduledTaskBaseView):
     """
     Process failed submission purge retries.

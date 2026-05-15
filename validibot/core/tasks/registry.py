@@ -147,8 +147,6 @@ SCHEDULED_ADMIN_TASKS: tuple[ScheduledAdminTaskDefinition, ...] = (
         api_endpoint="/api/v1/scheduled/purge-expired-outputs/",
         schedule_cron="0 * * * *",  # Hourly at :00
         description="Remove validation output content past retention period",
-        # Note: GCP endpoint not yet implemented, Celery-only for now
-        backends=(Backend.CELERY,),
     ),
     ScheduledAdminTaskDefinition(
         id="process-purge-retries",

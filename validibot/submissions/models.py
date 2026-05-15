@@ -21,6 +21,8 @@ from model_utils.models import TimeStampedModel
 from validibot.projects.models import Project
 from validibot.submissions.constants import DataRetention
 from validibot.submissions.constants import SubmissionFileType
+from validibot.submissions.constants import SubmissionRetention
+from validibot.submissions.constants import get_submission_retention_timedelta
 from validibot.users.models import Organization
 from validibot.users.models import User
 from validibot.workflows.models import Workflow
@@ -381,6 +383,55 @@ class Submission(TimeStampedModel):
         """Check if content is still available (not purged)."""
         return self.content_purged_at is None
 
+    def _user_has_submission_access(self) -> bool:
+        """Allow org members plus public/guest launchers to own submissions."""
+        if not self.user:
+            return True
+        if self.user.orgs.filter(id=self.org_id).exists():
+            return True
+        if self.workflow_id:
+            return self.workflow.can_execute(user=self.user)
+        return False
+
+    def _sync_retention_expiry(self) -> set[str]:
+        """Set ``expires_at`` from the snapped submission retention policy."""
+        touched: set[str] = set()
+        if self.content_purged_at:
+            if self.expires_at is not None:
+                self.expires_at = None
+                touched.add("expires_at")
+            return touched
+
+        try:
+            retention_policy = SubmissionRetention(self.retention_policy)
+        except ValueError:
+            retention_policy = SubmissionRetention.DO_NOT_STORE
+            if self.retention_policy != retention_policy:
+                self.retention_policy = retention_policy
+                touched.add("retention_policy")
+
+        retention_delta = get_submission_retention_timedelta(retention_policy)
+        if retention_delta is None or retention_delta.total_seconds() <= 0:
+            if self.expires_at is not None:
+                self.expires_at = None
+                touched.add("expires_at")
+            return touched
+
+        should_set_expiry = self._state.adding or self.expires_at is None
+        if not should_set_expiry and self.pk:
+            previous_policy = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values_list("retention_policy", flat=True)
+                .first()
+            )
+            should_set_expiry = previous_policy != self.retention_policy
+
+        if should_set_expiry:
+            self.expires_at = now() + retention_delta
+            touched.add("expires_at")
+        return touched
+
     def clean(self, *args, **kwargs):
         errors = {}
 
@@ -392,7 +443,7 @@ class Submission(TimeStampedModel):
         if errors:
             raise ValidationError(errors)
 
-        if self.user and self.user.orgs.filter(id=self.org_id).exists() is False:
+        if self.user and not self._user_has_submission_access():
             errors["user"] = _("User must belong to the same organization.")
 
         # Content presence: require exactly one of (content, input_file)
@@ -409,6 +460,9 @@ class Submission(TimeStampedModel):
         super().clean()
 
     def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        touched_fields: set[str] = set()
+
         # Backfill checksum for stored files with no checksum
         if self.input_file and not self.checksum_sha256:
             try:
@@ -416,6 +470,7 @@ class Submission(TimeStampedModel):
                     self.checksum_sha256 = self._compute_checksum_filelike(
                         self.input_file,
                     )
+                    touched_fields.add("checksum_sha256")
             except Exception:
                 logger.exception(
                     "Failed to compute checksum for submission",
@@ -429,6 +484,12 @@ class Submission(TimeStampedModel):
                 or getattr(self.input_file, "name", None),
                 text=self.content or None,
             )
+            touched_fields.add("file_type")
+
+        touched_fields.update(self._sync_retention_expiry())
+
+        if update_fields is not None and touched_fields:
+            kwargs["update_fields"] = set(update_fields) | touched_fields
 
         super().save(*args, **kwargs)
 

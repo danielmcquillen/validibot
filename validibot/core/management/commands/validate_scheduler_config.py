@@ -57,6 +57,8 @@ class Command(BaseCommand):
         justfile_jobs = {}
         for match in job_pattern.finditer(justfile_content):
             job_base = match.group(1)  # e.g., "validibot-clear-sessions"
+            if job_base.startswith("${APP_NAME}-"):
+                job_base = "validibot-" + job_base.removeprefix("${APP_NAME}-")
             schedule = match.group(2)  # e.g., "0 2 * * *"
             endpoint = match.group(3)  # e.g., "/api/v1/scheduled/clear-sessions/"
             justfile_jobs[job_base] = {

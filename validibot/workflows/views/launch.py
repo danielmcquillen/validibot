@@ -369,6 +369,8 @@ class WorkflowLaunchStatusView(WorkflowLaunchContextMixin, View):
         run = self.load_run_for_display(workflow=workflow, run_id=run_id)
         if run is None:
             raise Http404
+        if not self.user_can_cancel_run(run):
+            raise PermissionDenied
         context = self.build_run_detail_context(
             workflow=workflow,
             run=run,

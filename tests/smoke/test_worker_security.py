@@ -93,7 +93,11 @@ class TestWorkerServiceIAM:
             "/api/v1/scheduled/cleanup-callback-receipts/",
             "/api/v1/scheduled/clear-sessions/",
             "/api/v1/scheduled/purge-expired-submissions/",
+            "/api/v1/scheduled/purge-expired-outputs/",
+            "/api/v1/scheduled/process-purge-retries/",
             "/api/v1/scheduled/cleanup-stuck-runs/",
+            "/api/v1/scheduled/send-periodic-emails/",
+            "/api/v1/scheduled/enforce-audit-retention/",
         ]
 
         for endpoint in scheduled_endpoints:

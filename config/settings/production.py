@@ -249,6 +249,15 @@ if DEPLOYMENT_TARGET == "gcp":
             "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
             "OPTIONS": {
                 "bucket_name": STORAGE_BUCKET,
+                "location": "private",
+                "file_overwrite": False,
+                "querystring_auth": True,
+            },
+        },
+        "public": {
+            "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+            "OPTIONS": {
+                "bucket_name": STORAGE_BUCKET,
                 "location": "public",
                 "file_overwrite": False,
                 "querystring_auth": False,
@@ -279,6 +288,17 @@ elif DEPLOYMENT_TARGET == "aws":
 
     STORAGES = {
         "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            "OPTIONS": {
+                "bucket_name": STORAGE_BUCKET,
+                "location": "private",
+                "file_overwrite": False,
+                "querystring_auth": True,
+                "region_name": AWS_S3_REGION_NAME,
+                "endpoint_url": AWS_S3_ENDPOINT_URL,
+            },
+        },
+        "public": {
             "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
             "OPTIONS": {
                 "bucket_name": STORAGE_BUCKET,
@@ -313,6 +333,15 @@ elif STORAGE_BUCKET:
                 "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
                 "OPTIONS": {
                     "bucket_name": STORAGE_BUCKET,
+                    "location": "private",
+                    "file_overwrite": False,
+                    "querystring_auth": True,
+                },
+            },
+            "public": {
+                "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+                "OPTIONS": {
+                    "bucket_name": STORAGE_BUCKET,
                     "location": "public",
                     "file_overwrite": False,
                     "querystring_auth": False,
@@ -333,6 +362,17 @@ elif STORAGE_BUCKET:
 
         STORAGES = {
             "default": {
+                "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+                "OPTIONS": {
+                    "bucket_name": STORAGE_BUCKET,
+                    "location": "private",
+                    "file_overwrite": False,
+                    "querystring_auth": True,
+                    "region_name": AWS_S3_REGION_NAME,
+                    "endpoint_url": AWS_S3_ENDPOINT_URL,
+                },
+            },
+            "public": {
                 "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
                 "OPTIONS": {
                     "bucket_name": STORAGE_BUCKET,
@@ -369,6 +409,13 @@ else:
 
     STORAGES = {
         "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {
+                "location": str(PRIVATE_STORAGE_ROOT),
+                "base_url": "/private-media/",
+            },
+        },
+        "public": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
             "OPTIONS": {
                 "location": str(PUBLIC_STORAGE_ROOT),

@@ -193,7 +193,11 @@ Choose one of the two approaches below. See the [deployment guide](../google_clo
 
 - [ ] **Test Cloud Tasks** integration for async jobs
 
-- [ ] **Verify GCS media storage** is working
+- [ ] **Verify GCS media storage** is private-by-default
+
+  Upload a test submission and confirm an unauthenticated request to the
+  resulting `private/` object is denied. Upload an avatar or workflow image
+  and confirm only the `public/` object is directly readable.
 
 - [ ] **Test GitHub App integration** (if applicable)
 

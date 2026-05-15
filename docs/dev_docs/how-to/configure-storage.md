@@ -24,9 +24,25 @@ This guide explains how to configure storage for different deployment scenarios.
 
 ## Storage Systems Overview
 
-### Public Files (Django STORAGES "default")
+### Private Files (Django STORAGES "default")
 
-The default Django storage handles publicly accessible files:
+The default Django storage is private. Any model `FileField` or `ImageField`
+that does not explicitly select another storage backend writes under the
+`private/` prefix.
+
+This includes customer-owned uploads such as:
+
+- Submissions that spill to files
+- Uploaded rulesets, FMUs, validator resources, and step resources
+- Validation artifacts and evidence manifests
+
+These objects must not be made public. If a view needs to expose a private
+object to a user, use an authenticated view or a short-lived signed URL.
+
+### Public Files (Django STORAGES "public")
+
+Only fields that explicitly opt in to `STORAGES["public"]` handle publicly
+accessible files:
 
 - User profile pictures (avatars)
 - Workflow featured images
@@ -164,7 +180,16 @@ STORAGES = {
         "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
         "OPTIONS": {
             "bucket_name": STORAGE_BUCKET,
-            "location": "public",  # Files stored under public/ prefix
+            "location": "private",
+            "querystring_auth": True,
+        },
+    },
+    "public": {
+        "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+        "OPTIONS": {
+            "bucket_name": STORAGE_BUCKET,
+            "location": "public",
+            "querystring_auth": False,
         },
     },
 }
@@ -175,6 +200,21 @@ DATA_STORAGE_PREFIX = "private"
 ```
 
 ## GCS Bucket Setup
+
+### Migrating Older Public-Default Deployments
+
+If a deployment previously used `STORAGES["default"]` with `location="public"`,
+move every customer-data object out of `public/` before accepting cloud users.
+Only these prefixes should remain public:
+
+- `public/avatars/`
+- `public/workflow_images/`
+- Other documented marketing/public media prefixes
+
+Submission files, rulesets, FMUs, validator resources, step resources,
+artifacts, and evidence manifests belong under `private/`. After migration,
+test with an unauthenticated `curl` or `gsutil` request and confirm private
+objects return access denied.
 
 ### Creating the Bucket
 

@@ -67,7 +67,16 @@ if STORAGE_BUCKET:
             "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
             "OPTIONS": {
                 "bucket_name": STORAGE_BUCKET,
-                "location": "public",  # Public media under public/ prefix
+                "location": "private",
+                "file_overwrite": False,
+                "querystring_auth": True,
+            },
+        },
+        "public": {
+            "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+            "OPTIONS": {
+                "bucket_name": STORAGE_BUCKET,
+                "location": "public",
                 "file_overwrite": False,
                 "querystring_auth": False,
             },
@@ -97,6 +106,13 @@ else:
 
     STORAGES = {
         "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {
+                "location": str(PRIVATE_STORAGE_ROOT),
+                "base_url": "/private-media/",
+            },
+        },
+        "public": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
             "OPTIONS": {
                 "location": str(PUBLIC_STORAGE_ROOT),

@@ -18,12 +18,12 @@ from validibot.users.constants import RESERVED_ORG_SLUGS
 from validibot.users.constants import RoleCode
 
 
-# DEPRECATED: select_public_storage is no longer needed.
-# The default storage is now public media. This function is kept for migration
-# compatibility but simply returns the default storage.
 def select_public_storage():
-    """Return the default storage backend (public media)."""
-    return storages["default"]
+    """Return the explicitly public storage backend for public profile media."""
+    try:
+        return storages["public"]
+    except Exception:
+        return storages["default"]
 
 
 def _workspace_name_for(user: User) -> str:
@@ -285,7 +285,6 @@ class User(AbstractUser):
         upload_to="avatars/",
         blank=True,
         null=True,
-        # Use public media bucket - references STORAGES["public"] from settings
         storage=select_public_storage,
         help_text=_("Square image works best across the app."),
     )

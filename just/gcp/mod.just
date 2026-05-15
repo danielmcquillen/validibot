@@ -3055,28 +3055,35 @@ scheduler-setup stage: _require-gcp-config
         "/api/v1/scheduled/purge-expired-submissions/" \
         "Purge submission content past retention period ({{stage}})"
 
-    # Job 5: Process purge retries (every 5 minutes)
+    # Job 5: Purge expired outputs (hourly at :00)
+    create_or_update_job \
+        "${APP_NAME}-purge-expired-outputs${JOB_SUFFIX}" \
+        "0 * * * *" \
+        "/api/v1/scheduled/purge-expired-outputs/" \
+        "Purge validation outputs past retention period ({{stage}})"
+
+    # Job 6: Process purge retries (every 5 minutes)
     create_or_update_job \
         "${APP_NAME}-process-purge-retries${JOB_SUFFIX}" \
         "*/5 * * * *" \
         "/api/v1/scheduled/process-purge-retries/" \
         "Retry failed submission purges ({{stage}})"
 
-    # Job 6: Cleanup stuck runs (every 10 minutes)
+    # Job 7: Cleanup stuck runs (every 10 minutes)
     create_or_update_job \
         "${APP_NAME}-cleanup-stuck-runs${JOB_SUFFIX}" \
         "*/10 * * * *" \
         "/api/v1/scheduled/cleanup-stuck-runs/" \
         "Mark stuck validation runs as FAILED - 30min timeout ({{stage}})"
 
-    # Job 7: Send periodic emails (every 6 hours)
+    # Job 8: Send periodic emails (every 6 hours)
     create_or_update_job \
         "${APP_NAME}-send-periodic-emails${JOB_SUFFIX}" \
         "0 */6 * * *" \
         "/api/v1/scheduled/send-periodic-emails/" \
         "Run periodic email handlers - trial lifecycle etc ({{stage}})"
 
-    # Job 8: Enforce audit log retention (daily at 2:30 AM)
+    # Job 9: Enforce audit log retention (daily at 2:30 AM)
     # Archives AuditLogEntry rows past AUDIT_HOT_RETENTION_DAYS via
     # whatever ``AUDIT_ARCHIVE_BACKEND`` is configured (NullArchiveBackend
     # / FilesystemArchiveBackend in community, cloud add-ons can point
@@ -3124,7 +3131,7 @@ scheduler-delete-all stage: _require-gcp-config
     echo
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs; do
+        for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
             job="${job_base}${JOB_SUFFIX}"
             echo "Deleting $job..."
             gcloud scheduler jobs delete "$job" \
@@ -3156,7 +3163,7 @@ scheduler-pause-all stage: _require-gcp-config
     fi
 
     echo "Pausing all scheduler jobs for {{stage}}..."
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
         job="${job_base}${JOB_SUFFIX}"
         echo "Pausing $job..."
         gcloud scheduler jobs pause "$job" \
@@ -3185,7 +3192,7 @@ scheduler-resume-all stage: _require-gcp-config
     fi
 
     echo "Resuming all scheduler jobs for {{stage}}..."
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
         job="${job_base}${JOB_SUFFIX}"
         echo "Resuming $job..."
         gcloud scheduler jobs resume "$job" \
@@ -3535,7 +3542,7 @@ maintenance-on stage: _require-gcp-config
 
     # 3. Pause Cloud Scheduler jobs
     echo "3. Pausing Cloud Scheduler jobs..."
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
         job="${job_base}${JOB_SUFFIX}"
         gcloud scheduler jobs pause "$job" \
             --project {{gcp_project}} \
@@ -3629,7 +3636,7 @@ maintenance-off stage: _require-gcp-config
 
     # 3. Resume Cloud Scheduler jobs
     echo "3. Resuming Cloud Scheduler jobs..."
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
         job="${job_base}${JOB_SUFFIX}"
         gcloud scheduler jobs resume "$job" \
             --project {{gcp_project}} \

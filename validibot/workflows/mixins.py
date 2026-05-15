@@ -408,6 +408,37 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             )
         return step_runs, findings, run_in_progress
 
+    def get_displayable_run_queryset(self, workflow: Workflow):
+        """Return workflow runs the current user may inspect from launch UI."""
+        user = self.request.user
+        base_qs = ValidationRun.objects.filter(workflow=workflow)
+        if not getattr(user, "is_authenticated", False):
+            return base_qs.none()
+        if user.has_perm(
+            PermissionCode.VALIDATION_RESULTS_VIEW_ALL.value,
+            workflow.org,
+        ):
+            return base_qs
+        if user.has_perm(
+            PermissionCode.VALIDATION_RESULTS_VIEW_OWN.value,
+            workflow.org,
+        ):
+            return base_qs.filter(user=user)
+        # Public workflow and guest-grant launchers may not be org members.
+        # They can still inspect the runs they personally launched.
+        return base_qs.filter(user=user)
+
+    def user_can_cancel_run(self, run: ValidationRun) -> bool:
+        """Limit cancellation to the launcher or an org administrator."""
+        user = self.request.user
+        if not getattr(user, "is_authenticated", False):
+            return False
+        if getattr(user, "is_superuser", False):
+            return True
+        if run.user_id and run.user_id == getattr(user, "id", None):
+            return True
+        return user.has_perm(PermissionCode.ADMIN_MANAGE_ORG.value, run.org)
+
     def build_status_area_context(
         self,
         *,
@@ -434,7 +465,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
                 request=self.request,
                 kwargs={"pk": active_run.pk},
             )
-            if run_in_progress:
+            if run_in_progress and self.user_can_cancel_run(active_run):
                 cancel_url = reverse_with_org(
                     "workflows:workflow_launch_cancel",
                     request=self.request,
@@ -513,7 +544,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
 
     def get_recent_runs(self, workflow: Workflow, limit: int = 5):
         return list(
-            ValidationRun.objects.filter(workflow=workflow)
+            self.get_displayable_run_queryset(workflow)
             .select_related("submission", "user")
             .order_by("-created")[:limit],
         )
@@ -562,7 +593,8 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
         except (TypeError, ValueError):
             return None
         return (
-            ValidationRun.objects.filter(pk=uuid_val, workflow=workflow)
+            self.get_displayable_run_queryset(workflow)
+            .filter(pk=uuid_val)
             .select_related("submission", "user")
             .prefetch_related(
                 "step_runs",

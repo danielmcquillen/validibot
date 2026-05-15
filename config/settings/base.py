@@ -864,7 +864,8 @@ DEFAULT_FROM_EMAIL = env(
 # publicly readable via IAM policy (allUsers → objectViewer on public/* prefix).
 #
 # Django STORAGES:
-#   - "default": Public media files (uses public/ prefix)
+#   - "default": Private media files (uses private/ prefix)
+#   - "public": Public media files (uses public/ prefix)
 #
 # Data Storage (validibot.core.storage):
 #   - Validation pipeline files under private/runs/

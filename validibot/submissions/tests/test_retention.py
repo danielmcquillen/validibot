@@ -25,6 +25,8 @@ from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.validations.models import ValidationRun
 from validibot.validations.tests.factories import ValidationRunFactory
 
+EXPIRY_ASSERTION_TOLERANCE_SECONDS = 30
+
 
 @pytest.mark.django_db
 class TestSubmissionPurgeContent:
@@ -587,3 +589,47 @@ class TestSubmissionRetentionPolicy:
         submission.save()
         submission.refresh_from_db()
         assert submission.retention_policy == SubmissionRetention.STORE_30_DAYS
+
+    def test_finite_retention_sets_expiry_timestamp(self):
+        """Finite retention policies need an expiry for scheduled purge jobs."""
+        before = timezone.now()
+        submission = SubmissionFactory(
+            retention_policy=SubmissionRetention.STORE_7_DAYS,
+            expires_at=None,
+        )
+        submission.refresh_from_db()
+
+        assert submission.expires_at is not None
+        expected = before + timedelta(days=7)
+        assert (
+            abs((submission.expires_at - expected).total_seconds())
+            < EXPIRY_ASSERTION_TOLERANCE_SECONDS
+        )
+
+    def test_permanent_retention_clears_expiry_timestamp(self):
+        """Permanent storage must not leave a stale purge timestamp behind."""
+        submission = SubmissionFactory(
+            retention_policy=SubmissionRetention.STORE_7_DAYS,
+        )
+
+        submission.retention_policy = SubmissionRetention.STORE_PERMANENTLY
+        submission.save()
+        submission.refresh_from_db()
+
+        assert submission.expires_at is None
+
+    def test_public_workflow_launcher_can_own_submission(self):
+        """Public launches should not fail model validation for non-members."""
+        from validibot.users.tests.factories import UserFactory
+        from validibot.workflows.tests.factories import WorkflowFactory
+
+        workflow = WorkflowFactory(is_public=True)
+        user = UserFactory()
+        submission = SubmissionFactory(
+            org=workflow.org,
+            workflow=workflow,
+            project=workflow.project,
+            user=user,
+        )
+
+        submission.full_clean()

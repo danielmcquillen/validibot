@@ -74,12 +74,12 @@ def validate_workflow_version(value: str) -> None:
     )
 
 
-# DEPRECATED: select_public_storage is no longer needed.
-# The default storage is now public media. This function is kept for migration
-# compatibility but simply returns the default storage.
 def select_public_storage():
-    """Return the default storage backend (public media)."""
-    return storages["default"]
+    """Return the explicitly public storage backend for public workflow media."""
+    try:
+        return storages["public"]
+    except Exception:
+        return storages["default"]
 
 
 class WorkflowQuerySet(models.QuerySet):
@@ -212,7 +212,6 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     featured_image = models.FileField(
         null=True,
         blank=True,
-        # Use public media bucket - references STORAGES["public"] from settings
         storage=select_public_storage,
         help_text=_(
             "Optional image to represent the workflow Shown on the 'info' page.",

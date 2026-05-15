@@ -414,6 +414,7 @@ def test_cancel_run_updates_status(client):
         submission__org=workflow.org,
         workflow=workflow,
         org=workflow.org,
+        user=workflow.user,
         status=ValidationRunStatus.RUNNING,
     )
 
@@ -443,6 +444,7 @@ def test_cancel_run_reports_completed_before_cancel(client):
         submission__org=workflow.org,
         workflow=workflow,
         org=workflow.org,
+        user=user,
         status=ValidationRunStatus.SUCCEEDED,
     )
 
@@ -470,6 +472,7 @@ def test_cancel_run_requires_executor_role(client):
         submission__org=workflow.org,
         workflow=workflow,
         org=workflow.org,
+        user=workflow.user,
         status=ValidationRunStatus.RUNNING,
     )
 
@@ -484,6 +487,93 @@ def test_cancel_run_requires_executor_role(client):
     assert response.status_code == HTTPStatus.FORBIDDEN
 
 
+def test_executor_cannot_view_another_users_launch_run(client):
+    """Launch run details should hide another user's submission and findings."""
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    other_user = UserFactory()
+    grant_role(other_user, workflow.org, RoleCode.EXECUTOR)
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        user=other_user,
+        status=ValidationRunStatus.SUCCEEDED,
+    )
+
+    response = client.get(
+        reverse(
+            "workflows:workflow_run_detail",
+            kwargs={"pk": workflow.pk, "run_id": run.pk},
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+def test_executor_cannot_cancel_another_users_launch_run(client):
+    """Workflow launch permission alone must not cancel someone else's run."""
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    other_user = UserFactory()
+    grant_role(other_user, workflow.org, RoleCode.EXECUTOR)
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        user=other_user,
+        status=ValidationRunStatus.RUNNING,
+    )
+
+    response = client.post(
+        reverse(
+            "workflows:workflow_launch_cancel",
+            kwargs={"pk": workflow.pk, "run_id": run.pk},
+        ),
+        HTTP_HX_REQUEST="true",
+    )
+
+    run.refresh_from_db()
+    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert run.status == ValidationRunStatus.RUNNING
+
+
+def test_admin_can_cancel_another_users_launch_run(client):
+    """Org admins need break-glass cancellation for stuck customer runs."""
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    admin = _force_login_for_workflow(client, workflow)
+    grant_role(admin, workflow.org, RoleCode.ADMIN)
+    other_user = UserFactory()
+    grant_role(other_user, workflow.org, RoleCode.EXECUTOR)
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        user=other_user,
+        status=ValidationRunStatus.RUNNING,
+    )
+
+    response = client.post(
+        reverse(
+            "workflows:workflow_launch_cancel",
+            kwargs={"pk": workflow.pk, "run_id": run.pk},
+        ),
+        HTTP_HX_REQUEST="true",
+    )
+
+    run.refresh_from_db()
+    assert response.status_code == HTTPStatus.OK
+    assert run.status == ValidationRunStatus.CANCELED
+
+
 def test_run_detail_page_shows_status_area(client):
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
@@ -494,6 +584,7 @@ def test_run_detail_page_shows_status_area(client):
         submission__org=workflow.org,
         workflow=workflow,
         org=workflow.org,
+        user=user,
         status=ValidationRunStatus.RUNNING,
     )
 
@@ -520,6 +611,7 @@ def test_run_detail_page_shows_cancelled_actions(client):
         submission__org=workflow.org,
         workflow=workflow,
         org=workflow.org,
+        user=user,
         status=ValidationRunStatus.CANCELED,
     )
 
@@ -546,6 +638,7 @@ def test_run_detail_page_shows_completion_actions(client):
         submission__org=workflow.org,
         workflow=workflow,
         org=workflow.org,
+        user=user,
         status=ValidationRunStatus.SUCCEEDED,
     )
 
@@ -573,6 +666,7 @@ def test_run_detail_page_shows_signed_credential_card(client, pro_installed):
         submission__org=workflow.org,
         workflow=workflow,
         org=workflow.org,
+        user=user,
         status=ValidationRunStatus.SUCCEEDED,
     )
     credential = SimpleNamespace(
@@ -615,6 +709,7 @@ def test_launch_status_partial_shows_signed_credential_card(client, pro_installe
         submission__org=workflow.org,
         workflow=workflow,
         org=workflow.org,
+        user=user,
         status=ValidationRunStatus.SUCCEEDED,
     )
     credential = SimpleNamespace(

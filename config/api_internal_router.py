@@ -13,6 +13,7 @@ from validibot.core.api.scheduled_tasks import CleanupStuckRunsView
 from validibot.core.api.scheduled_tasks import ClearSessionsView
 from validibot.core.api.scheduled_tasks import EnforceAuditRetentionView
 from validibot.core.api.scheduled_tasks import ProcessPurgeRetriesView
+from validibot.core.api.scheduled_tasks import PurgeExpiredOutputsView
 from validibot.core.api.scheduled_tasks import PurgeExpiredSubmissionsView
 from validibot.core.api.scheduled_tasks import SendPeriodicEmailsView
 from validibot.tracking.api.log_event import LogTrackingEventView
@@ -62,6 +63,11 @@ urlpatterns = [
         "scheduled/purge-expired-submissions/",
         PurgeExpiredSubmissionsView.as_view(),
         name="scheduled-purge-expired-submissions",
+    ),
+    path(
+        "scheduled/purge-expired-outputs/",
+        PurgeExpiredOutputsView.as_view(),
+        name="scheduled-purge-expired-outputs",
     ),
     path(
         "scheduled/process-purge-retries/",

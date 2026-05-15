@@ -57,7 +57,8 @@ STORAGE_BUCKET=your-bucket-name
 
 ## Django Configuration
 
-Django's `default` storage uses the `public/` prefix for media files (avatars, workflow images):
+Django's `default` storage uses the `private/` prefix. Public media fields
+explicitly select the `public` storage alias:
 
 ```python
 STORAGES = {
@@ -65,7 +66,16 @@ STORAGES = {
         "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
         "OPTIONS": {
             "bucket_name": STORAGE_BUCKET,
-            "location": "public",  # Files under public/ prefix
+            "location": "private",
+            "querystring_auth": True,
+        },
+    },
+    "public": {
+        "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+        "OPTIONS": {
+            "bucket_name": STORAGE_BUCKET,
+            "location": "public",
+            "querystring_auth": False,
         },
     },
 }

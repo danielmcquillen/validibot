@@ -128,7 +128,7 @@ Use `docker-compose.production.yml` to test production-like behavior locally. Th
 
 4. Visit http://localhost:8000
 
-Production-style "web" serves user traffic via Gunicorn on port 8000. The "worker" processes background tasks via Celery. The "scheduler" runs Celery Beat for periodic tasks. This is the same stack used for [DigitalOcean deployments](deployment/digitalocean.md).
+Production-style "web" serves user traffic via Gunicorn on port 8000. The "worker" processes background tasks via Celery. The "scheduler" runs Celery Beat for periodic tasks. This is the same stack used for [DigitalOcean deployments](../operations/self-hosting/providers/digitalocean.md).
 
 ## VS Code: pytest "Run" button
 

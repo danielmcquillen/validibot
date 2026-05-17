@@ -8,8 +8,9 @@ If you're new here, **start with**:
 - `docs/operations/self-hosting/overview.md` — what self-hosted is and
   how to think about it.
 - `docs/operations/self-hosting/providers/digitalocean.md` — the
-  ten-step DigitalOcean tutorial (Phase 1 work — outline today, full
-  walkthrough lands later).
+  canonical end-to-end DigitalOcean tutorial. Single source of truth
+  for DigitalOcean deployments — every other doc that mentions DO
+  links there rather than repeating instructions.
 
 For day-to-day operations, use the `just self-hosted` recipes from the
 repo root (see `just self-hosted --list`).

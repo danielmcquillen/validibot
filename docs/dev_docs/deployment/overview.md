@@ -57,5 +57,5 @@ Once you have chosen a target, these supporting guides become relevant:
 - [Environment Configuration](environment-configuration.md)
 - [Reverse Proxy Setup](reverse-proxy.md)
 - [Docker Compose Deployment Responsibility](docker-compose-responsibility.md)
-- [Deploying to DigitalOcean](digitalocean.md)
+- [Self-Hosting on DigitalOcean](../../operations/self-hosting/providers/digitalocean.md) — canonical operator-facing tutorial
 - [Go-Live Checklist](go-live-checklist.md)

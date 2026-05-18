@@ -15,14 +15,33 @@ declared on a mixin become part of the concrete form's
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
 from django import forms
+from django.conf import settings as django_settings
 from django.forms.forms import DeclarativeFieldsMetaclass
 from django.utils.translation import gettext_lazy as _
 
+from validibot.validations.constants import Severity
+from validibot.validations.validators.shacl.sparql_security import SparqlScrubError
+from validibot.validations.validators.shacl.sparql_security import scrub_sparql_ask
+
 logger = logging.getLogger(__name__)
+
+# Map of lower-cased aliases → canonical ``Severity`` enum value the
+# engine and persistence layer use. Accepts both upper-case
+# (``"ERROR"``) and lower-case (``"error"``) author input; normalises
+# to the canonical enum string before saving so downstream comparisons
+# never have to handle both forms.
+_SEVERITY_ALIASES: dict[str, str] = {
+    "error": Severity.ERROR,
+    "warning": Severity.WARNING,
+    "warn": Severity.WARNING,
+    "info": Severity.INFO,
+}
+_VALID_TARGET_GRAPHS: frozenset[str] = frozenset({"data", "results", "union"})
 
 
 # Per-file cap matches the existing schema-upload limit. 10 MB aggregate
@@ -55,6 +74,43 @@ SHACL_SUBMISSION_FORMAT_CHOICES = (
 _SHACL_EXT_FORMAT: dict[str, str] = {
     "ttl": "turtle",
 }
+
+
+def _max_asks_per_step() -> int:
+    """Read the per-step SPARQL ASK cap from Django settings.
+
+    Defaults to 25 to match ``engine.DEFAULT_SPARQL_ASKS_PER_STEP``.
+    Operators tighten this via ``SHACL_SPARQL_ASKS_PER_STEP_MAX``.
+    """
+    raw = getattr(django_settings, "SHACL_SPARQL_ASKS_PER_STEP_MAX", 25)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 25
+    return value if value > 0 else 25
+
+
+def _normalise_sparql_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Coerce a validated assertion dict into the persistence shape.
+
+    All fields are stringified; severity is normalised through
+    :data:`_SEVERITY_ALIASES` to the canonical ``Severity`` enum value
+    (upper-case "ERROR" / "WARNING" / "INFO") so downstream code never
+    needs to handle case variations. Missing optional fields default to
+    empty strings. Called only after :meth:`_validate_sparql_entry`
+    accepts the entry.
+    """
+    severity_raw = str(entry.get("severity", Severity.ERROR)).strip().lower()
+    severity = _SEVERITY_ALIASES.get(severity_raw, Severity.ERROR)
+    return {
+        "target_graph": str(entry.get("target_graph", "data")),
+        "query": str(entry["query"]).strip(),
+        "severity": severity,
+        "description": str(entry.get("description", "") or ""),
+        "error_message_template": str(
+            entry.get("error_message_template", "") or "",
+        ),
+    }
 
 
 class _MultipleFileInput(forms.ClearableFileInput):
@@ -191,6 +247,48 @@ class ShaclConfigMixin(metaclass=DeclarativeFieldsMetaclass):
         required=False,
     )
 
+    # SPARQL ASK assertions. Authors paste a JSON list; each entry is one
+    # assertion. Validated at clean time by :meth:`shacl_clean_sparql_assertions`
+    # which:
+    #   1. Parses the JSON.
+    #   2. Validates per-entry shape (target_graph, query, severity).
+    #   3. Runs the SPARQL AST scrubber on each query.
+    #   4. Caps the total count at ``SHACL_SPARQL_ASKS_PER_STEP_MAX``.
+    # The cleaned value is a Python list of dicts ready to persist to
+    # ``Ruleset.metadata["sparql_assertions"]``. See ADR-2026-05-18
+    # "Phase 1c — SPARQL ASK assertions".
+    sparql_assertions_json = forms.CharField(
+        label=_("SPARQL ASK assertions (JSON)"),
+        widget=forms.Textarea(
+            attrs={
+                "rows": 10,
+                "spellcheck": "false",
+                "placeholder": (
+                    "[\n"
+                    "  {\n"
+                    '    "target_graph": "data",\n'
+                    '    "query": "ASK { ?s a <http://example.com/Thing> }",\n'
+                    '    "severity": "error",\n'
+                    '    "description": "Must contain at least one Thing",\n'
+                    '    "error_message_template": "No Thing instances found."\n'
+                    "  }\n"
+                    "]"
+                ),
+            },
+        ),
+        required=False,
+        help_text=_(
+            "Optional list of project-specific SPARQL ASK gates layered "
+            "on top of SHACL conformance. Each ASK runs against the "
+            "data, results, or union graph; a false answer raises a "
+            "finding at the chosen severity. Only SPARQL ASK is "
+            "supported in this release — SELECT, CONSTRUCT, DESCRIBE, "
+            "and all Update operations are rejected at save time, "
+            "as are SERVICE clauses and remote FROM references. "
+            "See the SHACL validator docs for example queries.",
+        ),
+    )
+
     # ------------------------------------------------------------------
     # Helpers consumers call from their own clean()
     # ------------------------------------------------------------------
@@ -311,3 +409,133 @@ class ShaclConfigMixin(metaclass=DeclarativeFieldsMetaclass):
                 field_name,
                 _("Inline text could not be parsed: %(err)s") % {"err": exc},
             )
+
+    def shacl_clean_sparql_assertions(
+        self,
+        raw_json: str,
+        field_name: str = "sparql_assertions_json",
+    ) -> list[dict[str, Any]]:
+        """Validate and normalise the SPARQL ASK assertions JSON textarea.
+
+        Returns a list of dicts ready to persist into
+        ``Ruleset.metadata["sparql_assertions"]``. Adds form errors and
+        returns ``[]`` when the input is malformed, the per-entry shape
+        is wrong, the count exceeds the per-step cap, or any query fails
+        the SPARQL AST scrub.
+
+        Accepts both lower-case (``"error"``) and upper-case
+        (``"ERROR"``) severity values; normalises to ``Severity`` enum
+        strings before returning.
+
+        Empty / whitespace-only input is treated as "no assertions" and
+        returns ``[]`` cleanly.
+        """
+        text = (raw_json or "").strip()
+        if not text:
+            return []
+
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            self.add_error(
+                field_name,
+                _("Could not parse JSON: %(err)s") % {"err": exc},
+            )
+            return []
+
+        if not isinstance(data, list):
+            self.add_error(
+                field_name,
+                _(
+                    "Top-level JSON value must be a list of assertion "
+                    "objects (got %(kind)s).",
+                )
+                % {"kind": type(data).__name__},
+            )
+            return []
+
+        cap = _max_asks_per_step()
+        if len(data) > cap:
+            self.add_error(
+                field_name,
+                _(
+                    "Too many SPARQL ASK assertions: %(count)d entries, "
+                    "limit is %(cap)d. Combine or remove some.",
+                )
+                % {"count": len(data), "cap": cap},
+            )
+            return []
+
+        cleaned: list[dict[str, Any]] = []
+        for index, entry in enumerate(data):
+            error = self._validate_sparql_entry(entry, index, field_name)
+            if error is None:
+                cleaned.append(_normalise_sparql_entry(entry))
+
+        return cleaned
+
+    def _validate_sparql_entry(
+        self,
+        entry: Any,
+        index: int,
+        field_name: str,
+    ) -> str | None:
+        """Run all per-entry checks; add form errors and return summary."""
+        prefix = f"Assertion #{index + 1}: "
+
+        if not isinstance(entry, dict):
+            self.add_error(
+                field_name,
+                _("%(p)sentry must be a JSON object, got %(t)s.")
+                % {"p": prefix, "t": type(entry).__name__},
+            )
+            return "not-an-object"
+
+        target = entry.get("target_graph", "data")
+        if not isinstance(target, str) or target not in _VALID_TARGET_GRAPHS:
+            self.add_error(
+                field_name,
+                _(
+                    "%(p)starget_graph must be one of "
+                    "'data' / 'results' / 'union' (got %(v)s).",
+                )
+                % {"p": prefix, "v": target},
+            )
+            return "bad-target"
+
+        query = entry.get("query", "")
+        if not isinstance(query, str) or not query.strip():
+            self.add_error(
+                field_name,
+                _("%(p)squery is required and must be a non-empty SPARQL ASK.")
+                % {"p": prefix},
+            )
+            return "no-query"
+
+        severity_raw = str(entry.get("severity", Severity.ERROR)).strip().lower()
+        if severity_raw not in _SEVERITY_ALIASES:
+            self.add_error(
+                field_name,
+                _(
+                    "%(p)sseverity must be one of "
+                    "'error' / 'warning' / 'info' (got %(v)s).",
+                )
+                % {"p": prefix, "v": severity_raw},
+            )
+            return "bad-severity"
+
+        # Description and error_message_template are optional strings;
+        # tolerate non-string values by coercing in _normalise_sparql_entry.
+
+        # Final, most expensive check: run the AST scrubber.
+        try:
+            scrub_sparql_ask(query)
+        except SparqlScrubError as exc:
+            self.add_error(
+                field_name,
+                _("%(p)squery failed security scrub: %(err)s")
+                % {"p": prefix, "err": exc},
+            )
+            return "scrub-rejected"
+
+        return None

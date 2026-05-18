@@ -1004,6 +1004,60 @@ COSIGN_VERIFY_PUBLIC_KEY_PATH = env(
 # the binary lives in a non-standard location.
 COSIGN_BINARY_PATH = env("COSIGN_BINARY_PATH", default="cosign")
 
+# SHACL validator resource limits (ADR-2026-05-18 "Security")
+# ------------------------------------------------------------------------------
+# Every limit is enforced inside the SHACL engine and produces a
+# ``ValidationIssue`` with severity ERROR when hit — the worker does not
+# crash. Operators can lower defaults for stricter deployments but
+# cannot exceed the hard caps (enforced by ``min(configured, cap)`` in
+# engine code). See validibot/validations/validators/shacl/engine.py.
+
+# Submission triple-count caps. Defaults sized for a typical
+# building-scale 223P model (largest published example is ~50K triples);
+# hard caps allow campus-scale graphs while keeping a finite ceiling.
+SHACL_MAX_DATA_TRIPLES = env.int("SHACL_MAX_DATA_TRIPLES", default=100_000)
+SHACL_MAX_SHAPE_TRIPLES = env.int("SHACL_MAX_SHAPE_TRIPLES", default=50_000)
+SHACL_MAX_ONTOLOGY_TRIPLES = env.int("SHACL_MAX_ONTOLOGY_TRIPLES", default=100_000)
+
+# pyshacl validation-depth cap. Bounds the recursion of constraint
+# evaluation; deeply nested constraint chains in malicious shapes are
+# capped here to prevent stack / time exhaustion.
+SHACL_MAX_VALIDATION_DEPTH = env.int("SHACL_MAX_VALIDATION_DEPTH", default=25)
+
+# SPARQL ASK assertion budgets. Authors write SPARQL ASK queries as
+# project-specific gates layered on top of SHACL. Each ASK gets its
+# own wall-clock budget enforced by a daemon-thread wrapper; the cap
+# protects against accidental or malicious cartesian-product queries.
+SHACL_SPARQL_QUERY_TIMEOUT_SECONDS = env.int(
+    "SHACL_SPARQL_QUERY_TIMEOUT_SECONDS",
+    default=10,
+)
+SHACL_SPARQL_QUERY_TIMEOUT_MAX_SECONDS = env.int(
+    "SHACL_SPARQL_QUERY_TIMEOUT_MAX_SECONDS",
+    default=60,
+)
+
+# SPARQL ASK AST-scrub caps. The scrubber runs at form save time and
+# rejects queries that exceed either of these limits, naming the
+# specific construct that triggered the refusal so the author can fix
+# it without consulting the source.
+SHACL_SPARQL_QUERY_LENGTH_MAX = env.int(
+    "SHACL_SPARQL_QUERY_LENGTH_MAX",
+    default=10_000,
+)
+SHACL_SPARQL_PROPERTY_PATH_DEPTH_MAX = env.int(
+    "SHACL_SPARQL_PROPERTY_PATH_DEPTH_MAX",
+    default=8,
+)
+
+# Form-level cap on the number of SPARQL ASK assertions a single step
+# may carry. Layered as a coarse rate-limit against authors who paste
+# in dozens of expensive assertions.
+SHACL_SPARQL_ASKS_PER_STEP_MAX = env.int(
+    "SHACL_SPARQL_ASKS_PER_STEP_MAX",
+    default=25,
+)
+
 # Cloud Run Job Validator Settings (overridden in production.py)
 # ------------------------------------------------------------------------------
 # These defaults allow local development without Cloud Run Jobs

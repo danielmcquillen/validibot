@@ -56,37 +56,125 @@ validator.
 3. Save the step. The form runs an rdflib parse pass on every upload,
    so Turtle syntax errors appear inline before the workflow saves.
 
-## Authoring CEL assertions
+## Authoring assertions
 
-The SHACL engine emits these signals (always present, no extra
-configuration needed):
+Authors have two languages to choose from when writing a gate on a
+SHACL step:
+
+- **CEL** (or the Basic-gate UI) for scalar engine-level signals —
+  parse status, triple counts, namespace lists, warning / info counts.
+- **SPARQL ASK** for any question about the *contents* of the graph —
+  per-shape conformance, project-specific rules, namespace allow-lists,
+  referential integrity. Anything that requires looking at triples is
+  a SPARQL ASK assertion.
+
+The two have non-overlapping jobs. The platform handles "did it parse"
+and "any SHACL violations" automatically via the step's ERROR auto-fail
+contract — those aren't gates you write; they happen by definition.
+
+### Engine signals available in CEL
+
+The SHACL engine emits a fixed set of signals on every run, identical
+regardless of which shapes or ontologies the author uploaded.
+
+**Gateable signals** (appear in the Basic-assertion picker):
 
 | Signal | Type | Meaning |
 |---|---|---|
-| `o.parse_ok` | bool | RDF parse succeeded. |
 | `o.parse_serialization` | string | The format used (`turtle`, `json-ld`, …). |
 | `o.triple_count` | number | Total triples after parse. |
 | `o.inferred_triple_count` | number | Triples added by the reasoner. |
 | `o.namespaces_present` | list[string] | Namespace URIs seen in any triple. |
-| `o.has_s223_namespace` | bool | Cheap check for ASHRAE 223P content. |
-| `o.has_g36_namespace` | bool | Same for Guideline 36. |
-| `o.has_brick_namespace` | bool | Same for Brick. |
-| `o.shacl_violation_count` | number | Count of `sh:Violation` results. |
 | `o.shacl_warning_count` | number | Count of `sh:Warning` results. |
 | `o.shacl_info_count` | number | Count of `sh:Info` results. |
-| `o.shacl_total_count` | number | All results across severities. |
 
-Typical workflow gates:
+**Internal signals** (in the CEL context for error-message templating
+but hidden from the Basic-assertion picker because gating on them is
+redundant with the step's auto-fail contract):
+
+| Signal | Type | Meaning |
+|---|---|---|
+| `o.parse_ok` | bool | RDF parse succeeded. Redundant — parse failure already auto-fails the step. |
+| `o.parse_error` | string \| null | Diagnostic; useful in error templates. |
+| `o.shacl_violation_count` | number | Count of `sh:Violation` results. Redundant — violations already auto-fail. |
+| `o.shacl_engine_error` | string \| null | Diagnostic if pyshacl crashed. |
+
+Typical CEL / Basic gates:
 
 ```cel
-o.parse_ok == true
-o.has_s223_namespace == true
-o.shacl_violation_count == 0
+o.triple_count >= 100              // sanity: file isn't effectively empty
+o.shacl_warning_count == 0         // strict mode: no warnings allowed
+"http://data.ashrae.org/standard223#" in o.namespaces_present
 ```
 
-These assert the file parsed, the contractor actually used 223P
-(not Brick), and the submission conforms to the SHACL shapes you
-attached.
+### SPARQL ASK assertions
+
+For any question that depends on graph contents — per-shape conformance,
+class composition, referential integrity, project rules — write a SPARQL
+ASK assertion in the step config form's **SPARQL ASK assertions (JSON)**
+field. Each assertion is one entry in a JSON list:
+
+```json
+[
+  {
+    "target_graph": "data",
+    "query": "PREFIX ex: <http://example.com/> ASK { ?p a ex:Person }",
+    "severity": "error",
+    "description": "Submission must contain at least one Person",
+    "error_message_template": "No Person instances found."
+  }
+]
+```
+
+Fields:
+
+- **`target_graph`** — which graph the ASK runs against:
+  - `"data"`: the parsed submission plus inferred triples (most common).
+  - `"results"`: the `sh:ValidationReport` graph produced by pyshacl.
+    Use this for per-shape gates: `ASK { FILTER NOT EXISTS { ?r a sh:ValidationResult ; sh:sourceShape ex:DamperShape . } }`.
+  - `"union"`: both graphs combined. Use this to join the SHACL report
+    with the data graph: `ASK { FILTER NOT EXISTS { ?r sh:focusNode <ex:AHU-1> . } }`.
+- **`query`** — a SPARQL 1.1 ASK query. Only ASK is supported in this
+  release; SELECT / CONSTRUCT / DESCRIBE and all Update operations are
+  rejected at save time.
+- **`severity`** — `"error"`, `"warning"`, or `"info"` (case-insensitive).
+  A false ASK answer raises a finding at this severity.
+- **`description`** — optional human label shown in finding lists.
+- **`error_message_template`** — optional message shown when the ASK
+  returns false. Currently stored verbatim; future versions will support
+  signal interpolation.
+
+Example: enforce that every `s223:Zone` has a CO2 sensor by checking
+the data graph for the inverse:
+
+```json
+[
+  {
+    "target_graph": "data",
+    "query": "PREFIX s223: <http://data.ashrae.org/standard223#>\nPREFIX qudt: <http://qudt.org/schema/qudt/>\nPREFIX quantitykind: <http://qudt.org/vocab/quantitykind/>\n\nASK {\n  FILTER NOT EXISTS {\n    ?zone a s223:Zone .\n    FILTER NOT EXISTS {\n      ?sensor s223:hasObservationLocation/^s223:hasDomainSpace ?zone ;\n              s223:observes ?p .\n      ?p qudt:hasQuantityKind quantitykind:MoleFraction .\n    }\n  }\n}",
+    "severity": "error",
+    "description": "Every Zone must have a CO2 sensor",
+    "error_message_template": "One or more Zones are missing a CO2 sensor."
+  }
+]
+```
+
+#### What the SPARQL scrubber refuses
+
+At form save time the scrubber walks the query's algebra tree and
+refuses any of:
+
+- Top-level form other than `ASK` (no SELECT, CONSTRUCT, DESCRIBE,
+  Update).
+- `SERVICE` federation clauses (the canonical exfiltration vector).
+- `LOAD` / `INSERT` / `DELETE` / `CLEAR` / `DROP` / `CREATE` / `ADD` /
+  `MOVE` / `COPY` operations.
+- `FROM` / `FROM NAMED` referencing non-default graphs.
+- Property paths nested past the configured depth cap (default 8).
+- Total query length above the cap (default 10,000 characters).
+
+Each rejection produces a clear inline error naming the construct that
+triggered it, so you can fix the query without consulting the source.
 
 ## What ends up in the run
 
@@ -224,15 +312,61 @@ recognised but the shapes file ships in Phase 2 …").
 Expected behaviour for Phase 1. Either upload the Brick shapes
 yourself or wait for Phase 2 to ship the bundled content.
 
+## Security
+
+The SHACL validator's threat surface is unusually large because it
+executes two distinct classes of attacker-controllable input — shapes
+and ontologies from the author, plus the RDF submission. Several
+hardenings run on every validation; see ADR-2026-05-18 "Security" for
+the full threat model and acceptance-test list.
+
+The headline mitigations:
+
+- **JSON-LD remote `@context` rejected pre-parse.** A submission whose
+  context references `http://attacker.com/log` is refused before
+  rdflib's parser sees it. The scanner is in
+  `engine.prevalidate_safety`.
+- **RDF/XML XXE constructs rejected pre-parse.** `<!DOCTYPE` and
+  `<!ENTITY` declarations are refused — the canonical local-file-
+  exfiltration vector. Same scanner.
+- **pyshacl JS off, owl:imports off.** Hard-coded as kwargs on every
+  `pyshacl.validate` call; the validate kwargs cannot be overridden.
+- **SPARQL ASK queries scrubbed at form save.** The scrubber
+  ([`sparql_security.py`](../../../validibot/validations/validators/shacl/sparql_security.py))
+  rejects SELECT / CONSTRUCT / DESCRIBE / Update operations,
+  `SERVICE` federation, `LOAD`, `FROM` / `FROM NAMED` with non-default
+  IRIs, deeply nested property paths, and pathologically long queries.
+- **Per-query wall-clock timeout.** Defaults to 10 s (capped at 60 s).
+  Daemon-thread wrapper enforces it without depending on POSIX-only
+  signal handlers.
+- **All engine errors become findings.** No exception escapes the
+  validator. Timeouts, scrub rejections, runtime crashes all surface
+  as `shacl.*_engine_error` findings; the worker is never abandoned
+  for one bad submission.
+
+Resource limits (overridable via Django settings, capped by hard
+maximums the operator cannot exceed):
+
+| Setting | Default | Hard cap |
+|---|---|---|
+| `SHACL_MAX_DATA_TRIPLES` | 100,000 | 1,000,000 |
+| `SHACL_MAX_SHAPE_TRIPLES` | 50,000 | 200,000 |
+| `SHACL_MAX_ONTOLOGY_TRIPLES` | 100,000 | 500,000 |
+| `SHACL_SPARQL_QUERY_TIMEOUT_SECONDS` | 10 | 60 |
+| `SHACL_SPARQL_QUERY_LENGTH_MAX` | 10,000 chars | — |
+| `SHACL_SPARQL_PROPERTY_PATH_DEPTH_MAX` | 8 | 32 |
+| `SHACL_SPARQL_ASKS_PER_STEP_MAX` | 25 | 100 |
+
 ## Future phases
 
-- **Phase 1b** — library-level custom SHACL validator creation UI
-  (forms + view + URL + template).
-- **Phase 2** — bundled Brick + QUDT static assets; 223P-specific
-  signal profile (``o.equipment_count``, ``o.zones_with_co2_sensor_count``).
+- **Phase 2** — bundled Brick + QUDT static assets (license-clean
+  redistributable content); re-enable the bundled-standards checkboxes
+  hidden in Phase 1.
 - **Phase 3** — curated fix-hint lookup table for the top 20 most
   common 223P shape violations.
 - **Phase 4** — signed attestation payload extended with the SHACL
   shape file hashes + result counts (Pro only).
-- **Phase 5+** — Haystack 4 / IFC-OWL preset shape collections; LLM-
-  assisted shape authoring.
+- **Phase 5+** — Haystack 4 / IFC-OWL preset shape collections;
+  named SPARQL SELECT signals for arithmetic composition (deferred
+  to a separate ADR triggered by real customer demand); LLM-assisted
+  shape authoring.

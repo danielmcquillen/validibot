@@ -519,6 +519,15 @@ def build_shacl_config(
         ruleset.rules_file.delete(save=False)
         ruleset.rules_file = None
 
+    # SPARQL ASK assertions: the form's clean() ran the AST scrubber on
+    # every entry and stashed the normalised list under "sparql_assertions".
+    # If the field was left blank when editing, fall back to whatever was
+    # already saved (keep-existing semantics, mirroring shapes / ontology).
+    sparql_assertions = cleaned.get("sparql_assertions")
+    raw_textarea = (cleaned.get("sparql_assertions_json") or "").strip()
+    if not raw_textarea and sparql_assertions == []:
+        sparql_assertions = existing_metadata.get("sparql_assertions", []) or []
+
     metadata = existing_metadata
     metadata.update(
         {
@@ -531,6 +540,7 @@ def build_shacl_config(
             "inference_mode": inference_mode,
             "advanced_shacl": advanced_shacl,
             "submission_format": submission_format,
+            "sparql_assertions": sparql_assertions,
         },
     )
     ruleset.metadata = metadata
@@ -547,6 +557,7 @@ def build_shacl_config(
         # First 1200 chars of the merged shapes for the step editor's
         # read-only preview, mirroring build_json_schema_config.
         "shapes_text_preview": preview,
+        "sparql_assertions": sparql_assertions,
     }
     return config, ruleset
 

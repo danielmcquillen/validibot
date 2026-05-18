@@ -188,7 +188,26 @@ class SHACLValidator(BaseValidator):
 
         # Map findings + signals.
         shacl_issues = engine.map_results_to_issues(results_graph)
-        all_issues: list[ValidationIssue] = [*bundle_warnings, *shacl_issues]
+
+        # Execute author-defined SPARQL ASK assertions after SHACL
+        # completes. Each false answer produces a finding at the
+        # severity the author configured; engine-level failures
+        # (timeouts, scrub rejections, runtime errors) always produce
+        # an ERROR finding regardless of configured severity.
+        sparql_assertions = engine.parse_sparql_assertions(
+            self._resolve_sparql_assertions(validator, ruleset),
+        )
+        sparql_issues = engine.evaluate_sparql_assertions(
+            assertions=sparql_assertions,
+            data_graph=data_graph,
+            results_graph=results_graph,
+        )
+
+        all_issues: list[ValidationIssue] = [
+            *bundle_warnings,
+            *shacl_issues,
+            *sparql_issues,
+        ]
         signals = engine.extract_signals(
             data_graph=data_graph,
             results_graph=results_graph,
@@ -283,6 +302,38 @@ class SHACLValidator(BaseValidator):
         if not isinstance(meta, dict):
             return {}
         return meta
+
+    def _resolve_sparql_assertions(
+        self,
+        validator: Validator,
+        ruleset: Ruleset | None,
+    ) -> list[Any]:
+        """Merge library-validator + step-level SPARQL ASK assertions.
+
+        Mirrors the merge pattern used for shapes / ontologies: the
+        library validator's ``default_ruleset`` provides the baseline
+        assertion list; the step-level ruleset's list extends it.
+        Authors who want to override a library-level assertion add a
+        new assertion with their own message at the step level —
+        Validibot evaluates every entry from both lists.
+
+        The raw lists live in ``Ruleset.metadata["sparql_assertions"]``
+        and are stored as plain dicts (one per assertion). Returning
+        the merged dict list rather than parsed dataclasses keeps the
+        engine the only place that validates the shape.
+        """
+        default_ruleset = getattr(validator, "default_ruleset", None)
+        default_metadata = self._safe_metadata(default_ruleset)
+        step_metadata = self._safe_metadata(ruleset)
+
+        merged: list[Any] = []
+        default_list = default_metadata.get("sparql_assertions") or []
+        step_list = step_metadata.get("sparql_assertions") or []
+        if isinstance(default_list, list):
+            merged.extend(default_list)
+        if isinstance(step_list, list):
+            merged.extend(step_list)
+        return merged
 
     @staticmethod
     def _pick_setting(

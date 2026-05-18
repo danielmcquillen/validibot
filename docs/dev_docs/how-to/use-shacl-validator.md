@@ -35,16 +35,17 @@ validator.
 1. Open a workflow, click **Add step**, pick **SHACL Validator** from
    the library.
 2. The step config dialog presents:
-   - **SHACL shapes (required)** — upload one or more `.ttl` (or
-     `.rdf`, `.jsonld`) files containing your shape declarations, or
-     paste inline.
-   - **Supplementary ontologies (optional)** — upload ontology files
-     to give the reasoner context. Skip if your shapes file is also
+   - **SHACL shapes (required)** — upload one or more Turtle `.ttl`
+     files containing your shape declarations, or paste inline. Submitted
+     RDF graphs may use Turtle, JSON-LD, RDF/XML, N-Triples, or N-Quads,
+     but Phase 1 shape and ontology configuration files are Turtle-only.
+   - **Supplementary ontologies (optional)** — upload Turtle `.ttl`
+     ontology files to give the reasoner context. Skip if your shapes file is also
      an ontology (true for ASHRAE 223P, where every class is
      simultaneously an ``sh:NodeShape``).
-   - **Bundled standards** — checkboxes for Brick 1.4 and QUDT 2.1
-     once Phase 2 ships their content. In Phase 1 these emit a
-     warning when checked.
+   - **Bundled standards** — Brick 1.4 and QUDT 2.1 are not exposed in
+     Phase 1. Phase 2 will add bundled-content controls once the
+     license-clean assets ship.
    - **Inference mode** — RDFS is the default and the right choice
      for 223P / Brick / Haystack work. Switch to OWL 2 RL only if your
      shapes genuinely need full OWL reasoning.

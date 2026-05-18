@@ -25,8 +25,12 @@ from validibot.projects.tests.factories import ProjectFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.validations.constants import RulesetType
+from validibot.validations.constants import ValidationType
+from validibot.validations.tests.factories import RulesetFactory
+from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.forms import ShaclStepConfigForm
 from validibot.workflows.tests.factories import WorkflowFactory
+from validibot.workflows.tests.factories import WorkflowStepFactory
 from validibot.workflows.views_helpers import build_shacl_config
 
 # Reusable inline Turtle fixtures kept tiny so the test diffs read well.
@@ -215,6 +219,87 @@ class ShaclStepConfigFormCleanTests(TestCase):
         assert "bundle_brick" not in form.fields
         assert "bundle_qudt" not in form.fields
 
+    def test_existing_step_initializes_when_bundle_fields_are_hidden(self):
+        """Editing a saved SHACL step should not reference hidden bundle fields."""
+
+        ruleset = RulesetFactory(
+            ruleset_type=RulesetType.SHACL,
+            rules_text=VALID_SHAPES,
+            metadata={"bundled_standards": []},
+        )
+        step = WorkflowStepFactory(
+            ruleset=ruleset,
+            config={
+                "bundled_standards": [],
+                "shapes_text_preview": VALID_SHAPES[:SHAPES_PREVIEW_MAX_CHARS],
+            },
+        )
+
+        form = ShaclStepConfigForm(step=step)
+
+        assert "bundle_brick" not in form.fields
+        assert "bundle_qudt" not in form.fields
+
+    def test_library_validator_default_shapes_allow_blank_step_shapes(self):
+        """Library SHACL validators carry reusable default shapes.
+
+        A workflow author should be able to add that validator without
+        re-uploading the shapes into every step; step-level shapes are
+        only project-specific extras.
+        """
+
+        default_ruleset = RulesetFactory(
+            ruleset_type=RulesetType.SHACL,
+            rules_text=VALID_SHAPES,
+        )
+        validator = ValidatorFactory(
+            validation_type=ValidationType.SHACL,
+            default_ruleset=default_ruleset,
+            is_system=False,
+            supports_assertions=True,
+        )
+
+        form = ShaclStepConfigForm(
+            data={
+                "name": "Reusable library validator",
+                "inference_mode": "rdfs",
+                "advanced_shacl": True,
+                "submission_format": "auto",
+            },
+            validator=validator,
+        )
+
+        assert form.is_valid(), form.errors
+
+    def test_non_turtle_shape_upload_is_rejected(self):
+        """Shape uploads must match the engine's Turtle persistence format.
+
+        Submission RDF can use other serializations, but shape/ontology
+        uploads are concatenated into one Turtle blob before the engine
+        reads them.
+        """
+
+        form = ShaclStepConfigForm(
+            data={
+                "name": "Step name",
+                "inference_mode": "rdfs",
+                "advanced_shacl": True,
+                "submission_format": "auto",
+            },
+            files={
+                "shapes_files": SimpleUploadedFile(
+                    "shapes.jsonld",
+                    b'{"@context": {"sh": "http://www.w3.org/ns/shacl#"}}',
+                    content_type="application/ld+json",
+                ),
+            },
+        )
+
+        assert not form.is_valid()
+        assert "shapes_files" in form.errors
+        joined = " ".join(form.errors["shapes_files"]).lower()
+        assert "turtle" in joined
+
 
 class BuildShaclConfigTests(TestCase):
     """Verify the builder helper that turns form data into Ruleset + config.
@@ -357,3 +442,47 @@ class BuildShaclConfigTests(TestCase):
 
         assert "# === File: file-a.ttl" in ruleset.rules_text
         assert "# === File: file-b.ttl" in ruleset.rules_text
+
+    def test_builder_ontology_only_edit_preserves_shapes(self):
+        """Updating ontology context should not require re-uploading shapes."""
+
+        ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text=VALID_SHAPES,
+            metadata={
+                "shape_files": [],
+                "has_inline_shapes": True,
+                "ontology_text": "",
+                "ontology_files": [],
+                "has_inline_ontology": False,
+            },
+        )
+        step = WorkflowStepFactory(
+            workflow=self.workflow,
+            ruleset=ruleset,
+            config={
+                "shape_files": [],
+                "ontology_files": [],
+                "shapes_text_preview": VALID_SHAPES[:SHAPES_PREVIEW_MAX_CHARS],
+            },
+        )
+        new_ontology = VALID_ONTOLOGY + "\nex:Building a rdfs:Class .\n"
+        form = ShaclStepConfigForm(
+            data={
+                "name": "Step name",
+                "ontology_text": new_ontology,
+                "inference_mode": "rdfs",
+                "advanced_shacl": True,
+                "submission_format": "auto",
+            },
+            step=step,
+        )
+        assert form.is_valid(), form.errors
+
+        config, updated_ruleset = build_shacl_config(self.workflow, form, step=step)
+        updated_ruleset.refresh_from_db()
+
+        assert "PersonShape" in updated_ruleset.rules_text
+        assert "ex:Building" in updated_ruleset.metadata["ontology_text"]
+        assert config["shapes_text_preview"] == step.config["shapes_text_preview"]

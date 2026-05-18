@@ -137,6 +137,7 @@ class ValidatorConfig(BaseModel):
     # --- Identity ---
     slug: str
     name: str
+    short_description: str = ""
     description: str = ""
     validation_type: str
     provider: str = ""

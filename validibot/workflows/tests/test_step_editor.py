@@ -1,3 +1,9 @@
+"""Tests for workflow step authoring, including the add-step wizard.
+
+These tests cover the selector-to-editor handoff because the wizard and
+create view enforce related but separate visibility rules.
+"""
+
 from __future__ import annotations
 
 import json
@@ -175,6 +181,63 @@ def test_wizard_lists_action_tabs(client):
     else:
         assert certification_def.name in html
         assert "Credentials" in html
+
+
+def test_wizard_shows_library_custom_validators(client):
+    """Library custom validators must remain selectable from the add-step modal."""
+
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    custom_validator = CustomValidatorFactory(org=workflow.org)
+
+    url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
+    response = client.get(url, HTTP_HX_REQUEST="true")
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert "Custom Validators" in html
+    assert custom_validator.validator.name in html
+    assert f'value="validator:{custom_validator.validator.pk}"' in html
+
+
+def test_custom_validator_selection_handles_stale_validator_org(client):
+    """Older library rows may rely on CustomValidator.org for ownership."""
+
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    custom_validator = CustomValidatorFactory(org=workflow.org)
+    Validator.objects.filter(pk=custom_validator.validator.pk).update(
+        org=None,
+        is_system=False,
+    )
+    custom_validator.validator.refresh_from_db()
+
+    create_url = _select_validator(client, workflow, custom_validator.validator)
+    response = client.get(create_url)
+
+    assert response.status_code == HTTPStatus.OK
+    assert "Add workflow step" in response.content.decode()
+
+
+def test_wizard_groups_shacl_with_basic_validators(client):
+    """SHACL should sit with local schema-style validators, not backend runners."""
+
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    shacl_validator = ensure_validator(
+        ValidationType.SHACL,
+        "shacl-validator",
+        "SHACL Validator",
+    )
+
+    url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
+    response = client.get(url, HTTP_HX_REQUEST="true")
+
+    assert response.status_code == HTTPStatus.OK
+    panes = _tab_panes_by_id(response.content.decode())
+    assert "Validate RDF graphs against SHACL shapes" in panes["workflow-tab-basic"]
+    assert shacl_validator.name in panes["workflow-tab-basic"]
+    assert shacl_validator.name not in panes["workflow-tab-advanced"]
 
 
 def test_wizard_shows_xml_validator_even_when_incompatible_file_type(client):
@@ -1175,6 +1238,50 @@ class _CardParser(HTMLParser):
         ):
             if any(name == "checked" for name, _ in attrs):
                 self.checked_values.append(str(attrs_dict.get("value")))
+
+
+def _tab_panes_by_id(html: str) -> dict[str, str]:
+    parser = _TabPaneParser()
+    parser.feed(html)
+    return parser.panes
+
+
+class _TabPaneParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.panes: dict[str, str] = {}
+        self._current_id: str | None = None
+        self._depth = 0
+        self._text_parts: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs_dict = dict(attrs)
+        classes = attrs_dict.get("class", "")
+        element_id = attrs_dict.get("id")
+        if (
+            tag == "div"
+            and element_id
+            and element_id.startswith("workflow-tab-")
+            and "tab-pane" in classes
+        ):
+            self._current_id = element_id
+            self._depth = 1
+            self._text_parts = []
+            return
+        if self._current_id:
+            self._depth += 1
+
+    def handle_endtag(self, tag):
+        if not self._current_id:
+            return
+        self._depth -= 1
+        if self._depth == 0:
+            self.panes[self._current_id] = " ".join(self._text_parts)
+            self._current_id = None
+
+    def handle_data(self, data):
+        if self._current_id:
+            self._text_parts.append(data)
 
 
 # ── Step detail: three-section layout for processor validators ────────

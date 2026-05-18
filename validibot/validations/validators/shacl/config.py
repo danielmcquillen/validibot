@@ -19,6 +19,10 @@ from validibot.validations.validators.base.config import ValidatorConfig
 config = ValidatorConfig(
     slug="shacl-validator",
     name="SHACL Validator",
+    short_description=(
+        "Validate RDF graphs against SHACL shapes to check required "
+        "classes, properties, and semantic constraints."
+    ),
     description=(
         "Validate RDF graphs (Turtle, JSON-LD, RDF/XML) against SHACL "
         "shapes. Common configurations include ASHRAE 223P, Guideline "

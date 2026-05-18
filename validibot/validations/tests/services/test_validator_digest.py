@@ -59,12 +59,13 @@ class TestSemanticFieldsConstant:
     def test_excludes_cosmetic_and_identity_fields(self):
         """Identity and cosmetic fields must NOT be in the digest."""
         # ``slug`` / ``version`` are the keys we hash *under*.
-        # ``name`` / ``description`` / ``icon`` / ``card_image`` are
-        # cosmetic. ``order`` is for UI display.
+        # ``name`` / ``short_description`` / ``description`` / ``icon`` /
+        # ``card_image`` are cosmetic. ``order`` is for UI display.
         non_semantic = {
             "slug",
             "version",
             "name",
+            "short_description",
             "description",
             "order",
             "icon",

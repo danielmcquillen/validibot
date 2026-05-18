@@ -472,62 +472,61 @@ def build_shacl_config(
     if cleaned.get("bundle_qudt"):
         bundled_standards.append("qudt-2.1")
 
-    keep_existing = bool(step and step.ruleset_id) and not (shape_files or shape_text)
-
     ruleset = ensure_ruleset(
         workflow=workflow,
         step=step,
         ruleset_type=RulesetType.SHACL,
     )
+    existing_metadata = dict(ruleset.metadata or {})
+    keep_existing_shapes = bool(step and step.ruleset_id) and not (
+        shape_files or shape_text
+    )
+    replace_ontology = bool(ontology_files or ontology_text)
 
-    if keep_existing:
-        # Refresh engine knobs and bundled-standards selection without
-        # touching the existing shapes content. Mirrors the "keep"
-        # branch in build_json_schema_config.
-        metadata = dict(ruleset.metadata or {})
-        metadata["inference_mode"] = inference_mode
-        metadata["advanced_shacl"] = advanced_shacl
-        metadata["submission_format"] = submission_format
-        metadata["bundled_standards"] = bundled_standards
-        ruleset.metadata = metadata
-        ruleset.full_clean()
-        ruleset.save()
-        config = dict(step.config or {})
-        config.update(
-            {
-                "inference_mode": inference_mode,
-                "advanced_shacl": advanced_shacl,
-                "submission_format": submission_format,
-                "bundled_standards": bundled_standards,
-            },
+    # Fresh SHACL uploads replace the step-owned shapes. When the author is
+    # editing an existing step and leaves shapes blank, keep the saved shapes
+    # while still allowing ontology-only edits below.
+    if keep_existing_shapes:
+        shapes_concat = ruleset.rules_text
+        shape_files_meta = existing_metadata.get("shape_files", []) or []
+        has_inline_shapes = bool(existing_metadata.get("has_inline_shapes"))
+        preview = (step.config or {}).get("shapes_text_preview", "") if step else ""
+        if not preview:
+            preview = shapes_concat[:1200]
+    else:
+        shapes_concat, shape_files_meta = concatenate_uploaded_files(
+            shape_files,
+            shape_text,
         )
-        return config, ruleset
+        has_inline_shapes = bool(shape_text)
+        preview = shapes_concat[:1200]
 
-    # Fresh shapes + ontology content. Concatenate uploads with inline
-    # text into single Turtle blobs; capture per-file metadata so the
-    # step editor can render a "currently attached" panel.
-    shapes_concat, shape_files_meta = concatenate_uploaded_files(
-        shape_files,
-        shape_text,
-    )
-    ontology_concat, ontology_files_meta = concatenate_uploaded_files(
-        ontology_files,
-        ontology_text,
-    )
+    # Ontologies have their own keep/replace semantics so authors can adjust
+    # inference context without re-uploading the usually much larger shapes.
+    if replace_ontology:
+        ontology_concat, ontology_files_meta = concatenate_uploaded_files(
+            ontology_files,
+            ontology_text,
+        )
+        has_inline_ontology = bool(ontology_text)
+    else:
+        ontology_concat = existing_metadata.get("ontology_text", "") or ""
+        ontology_files_meta = existing_metadata.get("ontology_files", []) or []
+        has_inline_ontology = bool(existing_metadata.get("has_inline_ontology"))
 
     ruleset.rules_text = shapes_concat
-    if ruleset.rules_file:
+    if not keep_existing_shapes and ruleset.rules_file:
         ruleset.rules_file.delete(save=False)
         ruleset.rules_file = None
 
-    metadata = dict(ruleset.metadata or {})
+    metadata = existing_metadata
     metadata.update(
         {
             "shape_files": shape_files_meta,
-            "has_inline_shapes": bool(shape_text),
+            "has_inline_shapes": has_inline_shapes,
             "ontology_text": ontology_concat,
             "ontology_files": ontology_files_meta,
-            "has_inline_ontology": bool(ontology_text),
+            "has_inline_ontology": has_inline_ontology,
             "bundled_standards": bundled_standards,
             "inference_mode": inference_mode,
             "advanced_shacl": advanced_shacl,
@@ -547,7 +546,7 @@ def build_shacl_config(
         "submission_format": submission_format,
         # First 1200 chars of the merged shapes for the step editor's
         # read-only preview, mirroring build_json_schema_config.
-        "shapes_text_preview": shapes_concat[:1200],
+        "shapes_text_preview": preview,
     }
     return config, ruleset
 

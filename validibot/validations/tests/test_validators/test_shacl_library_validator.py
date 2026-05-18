@@ -25,13 +25,17 @@ What's NOT tested here (intentionally):
 
 from __future__ import annotations
 
+from http import HTTPStatus
+
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
+from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import MembershipFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
+from validibot.users.tests.factories import grant_role
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationType
 from validibot.validations.forms import ShaclLibraryValidatorCreateForm
@@ -60,6 +64,13 @@ ex:PersonShape
     a sh:NodeShape ;
     sh:targetClass ex:Person ;
     sh:property [ sh:path ex:nickname ; sh:minCount 1 ] .
+"""
+
+ONTOLOGY_REVISED = """
+@prefix ex: <http://example.com/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+ex:Building a rdfs:Class .
 """
 
 # Constants broken out to avoid PLR2004 magic-value warnings in
@@ -393,6 +404,29 @@ class UpdateShaclLibraryValidatorServiceTests(TestCase):
         # The old shape is no longer there.
         assert "ex:name ; sh:minCount" not in updated.default_ruleset.rules_text
 
+    def test_update_with_only_ontology_preserves_shapes(self):
+        """Ontology-only updates refresh metadata without wiping shapes."""
+        validator = self._create()
+        original_shapes_text = validator.default_ruleset.rules_text
+
+        update_form = ShaclLibraryValidatorUpdateForm(
+            data={
+                "name": "Original",
+                "version": "v1",
+                "ontology_text": ONTOLOGY_REVISED,
+                "inference_mode": "rdfs",
+                "advanced_shacl": True,
+                "submission_format": "auto",
+            },
+        )
+        assert update_form.is_valid(), update_form.errors
+
+        updated = update_shacl_library_validator(validator, form=update_form)
+        updated.default_ruleset.refresh_from_db()
+
+        assert updated.default_ruleset.rules_text == original_shapes_text
+        assert "ex:Building" in updated.default_ruleset.metadata["ontology_text"]
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # View-level tests (request/response wiring)
@@ -412,10 +446,10 @@ class ShaclLibraryValidatorViewTests(TestCase):
     def setUpTestData(cls):
         cls.org = OrganizationFactory()
         cls.user = UserFactory()
-        # MembershipFactory associates the user with the org and grants
-        # the default role's permissions (which include VALIDATOR_EDIT
-        # for the owner/admin/author roles the library page requires).
+        # The create view requires validator-edit permission, so grant an
+        # author role rather than depending on implicit membership defaults.
         cls.membership = MembershipFactory(user=cls.user, org=cls.org)
+        grant_role(cls.user, cls.org, RoleCode.AUTHOR)
 
     def setUp(self):
         # Force middleware to resolve the active org for this user/request.
@@ -432,12 +466,8 @@ class ShaclLibraryValidatorViewTests(TestCase):
         """
         url = reverse("validations:shacl_library_validator_create")
         response = self.client.get(url)
-        # The view returns 200 OK with the form rendered, OR a redirect
-        # to the library page if the test user happens to lack the
-        # right permissions (the assertion below tolerates the latter
-        # without asserting form contents to keep the test independent
-        # of permission-system test plumbing).
-        assert response.status_code in {200, 302}
+        assert response.status_code == HTTPStatus.OK
+        assert 'enctype="multipart/form-data"' in response.content.decode()
 
     def test_delete_view_blocks_when_step_references_validator(self):
         """Delete is blocked when a workflow step still references the validator.

@@ -46,7 +46,7 @@ Not semantic (excluded — cosmetic, identity, or runtime-only):
 
 - ``slug`` / ``version`` — these are the *identity* keys we hash
   *under*, not part of the hash
-- ``name`` / ``description`` — display strings
+- ``name`` / ``short_description`` / ``description`` — display strings
 - ``order`` — UI ordering
 - ``is_system`` — lifecycle flag
 - ``icon`` / ``card_image`` — UI assets

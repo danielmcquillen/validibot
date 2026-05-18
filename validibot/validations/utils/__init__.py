@@ -419,9 +419,9 @@ def _shacl_form_data_to_ruleset_state(form):
     :func:`update_shacl_library_validator` so the persistence shape
     (concatenated rules_text + metadata) stays consistent across the
     create / update paths. Returns
-    ``(rules_text, metadata, has_uploads_or_text)``; the third value
-    lets the update path skip touching rules_text when the author left
-    everything blank (keep-existing semantics).
+    ``(rules_text, metadata, has_shapes_content, has_ontology_content)``.
+    The update path uses the two booleans to support ontology-only edits
+    without forcing the author to re-upload the existing shapes.
     """
     from validibot.validations.validators.shacl.persistence import (
         concatenate_uploaded_files,
@@ -462,7 +462,12 @@ def _shacl_form_data_to_ruleset_state(form):
         "advanced_shacl": advanced_shacl,
         "submission_format": submission_format,
     }
-    return shapes_concat, metadata, bool(shape_files or shape_text)
+    return (
+        shapes_concat,
+        metadata,
+        bool(shape_files or shape_text),
+        bool(ontology_files or ontology_text),
+    )
 
 
 def create_shacl_library_validator(
@@ -505,7 +510,9 @@ def create_shacl_library_validator(
     description = form.cleaned_data.get("description") or ""
     version = form.cleaned_data.get("version") or ""
 
-    rules_text, metadata, _has_content = _shacl_form_data_to_ruleset_state(form)
+    rules_text, metadata, _has_shapes_content, _has_ontology_content = (
+        _shacl_form_data_to_ruleset_state(form)
+    )
 
     slug = _unique_validator_slug(org, name)
     file_types = default_supported_file_types_for_validation(ValidationType.SHACL)
@@ -592,11 +599,25 @@ def update_shacl_library_validator(
         validator.default_ruleset = ruleset
         validator.save(update_fields=["default_ruleset", "modified"])
 
-    rules_text, metadata, has_content = _shacl_form_data_to_ruleset_state(form)
-    if has_content:
-        # Author supplied fresh shapes/ontologies — replace.
+    rules_text, metadata, has_shapes_content, has_ontology_content = (
+        _shacl_form_data_to_ruleset_state(form)
+    )
+    if has_shapes_content:
+        # Author supplied fresh shapes. Replace the whole SHACL content bundle;
+        # an omitted ontology means "clear ontology" in this branch.
         ruleset.rules_text = rules_text
         ruleset.metadata = metadata
+    elif has_ontology_content:
+        # Ontology-only edit: preserve shapes and replace the inference context.
+        existing_meta = dict(ruleset.metadata or {})
+        existing_meta["ontology_text"] = metadata["ontology_text"]
+        existing_meta["ontology_files"] = metadata["ontology_files"]
+        existing_meta["has_inline_ontology"] = metadata["has_inline_ontology"]
+        existing_meta["inference_mode"] = metadata["inference_mode"]
+        existing_meta["advanced_shacl"] = metadata["advanced_shacl"]
+        existing_meta["submission_format"] = metadata["submission_format"]
+        existing_meta["bundled_standards"] = metadata["bundled_standards"]
+        ruleset.metadata = existing_meta
     else:
         # Keep-existing: refresh only the engine-knob + bundled-standards
         # subset of metadata.
@@ -607,10 +628,9 @@ def update_shacl_library_validator(
         existing_meta["bundled_standards"] = metadata["bundled_standards"]
         ruleset.metadata = existing_meta
 
-    if notes:
-        meta = dict(ruleset.metadata or {})
-        meta["library_validator_notes"] = notes
-        ruleset.metadata = meta
+    meta = dict(ruleset.metadata or {})
+    meta["library_validator_notes"] = notes or ""
+    ruleset.metadata = meta
 
     ruleset.save()
     return validator

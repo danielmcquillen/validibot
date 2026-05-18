@@ -1714,8 +1714,10 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
         if "submission_format" in config:
             self.fields["submission_format"].initial = config["submission_format"]
         bundled = set(config.get("bundled_standards", []) or [])
-        self.fields["bundle_brick"].initial = "brick-1.4" in bundled
-        self.fields["bundle_qudt"].initial = "qudt-2.1" in bundled
+        if "bundle_brick" in self.fields:
+            self.fields["bundle_brick"].initial = "brick-1.4" in bundled
+        if "bundle_qudt" in self.fields:
+            self.fields["bundle_qudt"].initial = "qudt-2.1" in bundled
         # On edit, surface the existing concatenated shapes for paste-area
         # preview but make it clear they're optional to replace.
         preview = config.get("shapes_text_preview", "")
@@ -1734,11 +1736,22 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
         keep_existing_shapes = bool(self.step and self.step.ruleset_id) and not (
             shape_files or shape_text
         )
+        default_ruleset = getattr(
+            getattr(self, "validator", None),
+            "default_ruleset",
+            None,
+        )
+        inherit_library_shapes = bool(
+            default_ruleset and getattr(default_ruleset, "rules_text", "").strip(),
+        ) and not (shape_files or shape_text)
 
         # At least one shapes source is required, unless we're editing an
         # existing step and the author left both blank (keep-existing
-        # semantics, mirroring the JSON Schema form).
-        if not (shape_files or shape_text or keep_existing_shapes):
+        # semantics, mirroring the JSON Schema form), or the selected
+        # library SHACL validator already carries default shapes.
+        if not (
+            shape_files or shape_text or keep_existing_shapes or inherit_library_shapes
+        ):
             err = _(
                 "Provide at least one SHACL shape — upload one or more "
                 "files or paste shapes inline.",

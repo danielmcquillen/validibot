@@ -15,6 +15,7 @@ code path that ASHRAE 223P requires for medium-compatibility checks).
 from __future__ import annotations
 
 import pytest
+from django.test import override_settings
 from rdflib import Graph
 
 from validibot.submissions.constants import SubmissionFileType
@@ -410,6 +411,23 @@ class TestRunShaclValidation:
         issues = engine.map_results_to_issues(results)
         assert len(issues) == 1
         assert issues[0].severity == Severity.WARNING
+
+    @override_settings(SHACL_MAX_DATA_TRIPLES=1)
+    def test_data_graph_triple_limit_fails_before_pyshacl(self):
+        """Oversized submissions should fail before expensive SHACL execution."""
+
+        data_graph, _ = engine.parse_rdf(DATA_PASSING, "turtle")
+        results, err = engine.run_shacl_validation(
+            data_graph,
+            SHAPES_PERSON_REQUIRES_NAME,
+            "",
+            inference_mode="none",
+            advanced_shacl=False,
+        )
+
+        assert results is None
+        assert err is not None
+        assert "triple" in err.lower()
 
 
 # ════════════════════════════════════════════════════════════════════════════

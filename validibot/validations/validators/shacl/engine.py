@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import pyshacl
+from django.conf import settings as django_settings
 from rdflib import Graph
 from rdflib import URIRef
 from rdflib.exceptions import ParserError
@@ -35,6 +36,11 @@ from validibot.validations.constants import Severity
 from validibot.validations.validators.base.base import ValidationIssue
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_MAX_DATA_TRIPLES = 100_000
+DEFAULT_MAX_SHAPE_TRIPLES = 50_000
+DEFAULT_MAX_ONTOLOGY_TRIPLES = 100_000
+DEFAULT_MAX_VALIDATION_DEPTH = 25
 
 
 # Well-known building-domain namespaces. Used by signal extraction to
@@ -310,11 +316,24 @@ def run_shacl_validation(
             "from the library."
         )
 
+    data_limit = _setting_int("SHACL_MAX_DATA_TRIPLES", DEFAULT_MAX_DATA_TRIPLES)
+    if len(data_graph) > data_limit:
+        return None, (
+            f"Submitted RDF graph has {len(data_graph)} triples, over the "
+            f"{data_limit} triple SHACL validation limit."
+        )
+
     shapes_graph = Graph()
     try:
         shapes_graph.parse(data=shapes_text, format="turtle")
     except Exception as exc:
         return None, f"Shapes graph failed to parse as Turtle: {exc}"
+    shape_limit = _setting_int("SHACL_MAX_SHAPE_TRIPLES", DEFAULT_MAX_SHAPE_TRIPLES)
+    if len(shapes_graph) > shape_limit:
+        return None, (
+            f"SHACL shapes graph has {len(shapes_graph)} triples, over the "
+            f"{shape_limit} triple validation limit."
+        )
 
     ontology_graph: Graph | None = None
     if ontology_text.strip():
@@ -323,6 +342,15 @@ def run_shacl_validation(
             ontology_graph.parse(data=ontology_text, format="turtle")
         except Exception as exc:
             return None, f"Ontology graph failed to parse as Turtle: {exc}"
+        ontology_limit = _setting_int(
+            "SHACL_MAX_ONTOLOGY_TRIPLES",
+            DEFAULT_MAX_ONTOLOGY_TRIPLES,
+        )
+        if len(ontology_graph) > ontology_limit:
+            return None, (
+                f"SHACL ontology graph has {len(ontology_graph)} triples, over the "
+                f"{ontology_limit} triple validation limit."
+            )
 
     try:
         _conforms, results_graph, _results_text = pyshacl.validate(
@@ -331,6 +359,10 @@ def run_shacl_validation(
             ont_graph=ontology_graph,
             inference=inference_mode,
             advanced=advanced_shacl,
+            max_validation_depth=_setting_int(
+                "SHACL_MAX_VALIDATION_DEPTH",
+                DEFAULT_MAX_VALIDATION_DEPTH,
+            ),
             # Include Warning and Info findings in the report. Validibot
             # computes ``passed`` from severity counts after mapping, so
             # we want all findings in the report regardless of how
@@ -343,6 +375,15 @@ def run_shacl_validation(
         return None, f"SHACL engine error: {exc}"
 
     return results_graph, None
+
+
+def _setting_int(name: str, default: int) -> int:
+    """Read a positive integer Django setting, falling back on invalid values."""
+    try:
+        value = int(getattr(django_settings, name, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
 
 
 # =============================================================================

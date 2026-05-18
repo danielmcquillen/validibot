@@ -48,16 +48,12 @@ SHACL_SUBMISSION_FORMAT_CHOICES = (
 )
 
 
-# rdflib format slugs keyed by filename extension. Used by the form's
-# clean() syntax pre-flight to pick the right parser per uploaded file.
+# SHACL shape/ontology persistence concatenates saved content into one
+# ``Ruleset.rules_text`` blob that the engine parses as Turtle. Submission RDF
+# may still be JSON-LD/RDF-XML/N-Triples/N-Quads; this cap applies only to
+# uploaded SHACL configuration files.
 _SHACL_EXT_FORMAT: dict[str, str] = {
     "ttl": "turtle",
-    "n3": "n3",
-    "jsonld": "json-ld",
-    "rdf": "xml",
-    "xml": "xml",
-    "nt": "nt",
-    "nq": "nquads",
 }
 
 
@@ -132,7 +128,7 @@ class ShaclConfigMixin(metaclass=DeclarativeFieldsMetaclass):
         label=_("SHACL shape files"),
         required=False,
         help_text=_(
-            "Upload one or more SHACL shape files (.ttl, .rdf, .jsonld). "
+            "Upload one or more SHACL Turtle shape files (.ttl). "
             "Constraints from every uploaded file are merged into a "
             "single shapes graph and evaluated against the submitted "
             "RDF graph.",
@@ -152,7 +148,7 @@ class ShaclConfigMixin(metaclass=DeclarativeFieldsMetaclass):
         label=_("Supplementary ontology files"),
         required=False,
         help_text=_(
-            "Upload ontology files (.ttl) to give the reasoner context "
+            "Upload Turtle ontology files (.ttl) to give the reasoner context "
             "for subclass and property inference. If your shapes file "
             "is also an ontology (true for ASHRAE 223P, where every "
             "class is also a sh:NodeShape), you can leave this empty.",
@@ -245,10 +241,18 @@ class ShaclConfigMixin(metaclass=DeclarativeFieldsMetaclass):
 
         for f in files:
             name = getattr(f, "name", "<unknown>")
-            rdf_format = _SHACL_EXT_FORMAT.get(
-                name.rsplit(".", 1)[-1].lower() if "." in name else "",
-                "turtle",
-            )
+            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+            rdf_format = _SHACL_EXT_FORMAT.get(ext)
+            if rdf_format is None:
+                self.add_error(
+                    field_name,
+                    _(
+                        "%(name)s must be a Turtle .ttl file. Submission RDF "
+                        "can still use JSON-LD, RDF/XML, N-Triples, or N-Quads.",
+                    )
+                    % {"name": name},
+                )
+                continue
             try:
                 f.seek(0)
                 content = f.read()

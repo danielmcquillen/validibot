@@ -43,6 +43,7 @@ from validibot.validations.constants import XMLSchemaType
 from validibot.validations.models import SignalDefinition
 from validibot.validations.models import StepSignalBinding
 from validibot.validations.models import Validator
+from validibot.validations.validators.base.config import get_config
 from validibot.workflows.forms import SignalBindingEditForm
 from validibot.workflows.forms import WorkflowStepTypeForm
 from validibot.workflows.forms import get_config_form_class
@@ -56,6 +57,27 @@ from validibot.workflows.views_helpers import save_workflow_action_step
 from validibot.workflows.views_helpers import save_workflow_step
 
 logger = logging.getLogger(__name__)
+
+
+def workflow_step_validator_queryset(
+    workflow: Workflow,
+    *,
+    include_coming_soon: bool = False,
+):
+    """Return validators that are visible for workflow-step authoring."""
+
+    accessible_to_workflow = (
+        models.Q(is_system=True)
+        | models.Q(org=workflow.org)
+        | models.Q(custom_validator__org=workflow.org)
+    )
+    queryset = Validator.objects.filter(accessible_to_workflow, is_enabled=True)
+    if include_coming_soon:
+        queryset = queryset.exclude(release_state=ValidatorReleaseState.DRAFT)
+    else:
+        queryset = queryset.filter(release_state=ValidatorReleaseState.PUBLISHED)
+    return queryset.distinct()
+
 
 CREDENTIAL_PLACEMENT_GUIDANCE = _(
     "Signed credential steps must come after all validation steps and "
@@ -305,16 +327,10 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         are included but will be disabled in the UI.
         """
         validators: list[Validator] = []
-        for validator in (
-            Validator.objects.filter(
-                models.Q(org__isnull=True) | models.Q(org=workflow.org),
-                is_enabled=True,
-            )
-            .exclude(
-                release_state=ValidatorReleaseState.DRAFT,
-            )
-            .order_by("validation_type", "name", "pk")
-        ):
+        for validator in workflow_step_validator_queryset(
+            workflow,
+            include_coming_soon=True,
+        ).order_by("validation_type", "name", "pk"):
             self._ensure_validator_defaults(validator)
             validators.append(validator)
         return validators
@@ -393,6 +409,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                 {
                     ValidationType.BASIC,
                     ValidationType.JSON_SCHEMA,
+                    ValidationType.SHACL,
                     ValidationType.XML_SCHEMA,
                 },
             ),
@@ -504,10 +521,14 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         workflow: Workflow,
         validator: Validator,
     ) -> dict[str, object]:
+        cfg = get_config(validator.validation_type)
         is_compatible = workflow.validator_is_compatible(validator)
         allowed = ", ".join(workflow.allowed_file_type_labels())
         disabled_reason = None
         is_disabled = False
+        short_description = validator.short_description
+        if not short_description and cfg is not None:
+            short_description = cfg.short_description
 
         # Check if coming soon (takes precedence over compatibility)
         if validator.is_coming_soon:
@@ -525,7 +546,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             "name": validator.name,
             "subtitle": validator.get_validation_type_display(),
             "description": validator.description,
-            "short_description": validator.short_description,
+            "short_description": short_description,
             "icon": getattr(validator, "display_icon", "bi-sliders"),
             "kind": "validator",
             "object": validator,
@@ -613,13 +634,8 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         Only PUBLISHED validators can be used in workflows. DRAFT and
         COMING_SOON validators are excluded.
         """
-        from django.db.models import Q
-
         workflow = self.get_workflow()
-        return Validator.objects.filter(
-            Q(is_system=True) | Q(org=workflow.org),
-            release_state=ValidatorReleaseState.PUBLISHED,
-        )
+        return workflow_step_validator_queryset(workflow)
 
     def get_validator(self) -> Validator:
         if self.is_action_step():

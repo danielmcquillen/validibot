@@ -43,6 +43,9 @@ python -c "from django.core.management.utils import get_random_secret_key; print
 
 # DJANGO_MFA_ENCRYPTION_KEY (must be Fernet-format)
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# WORKER_API_KEY
+openssl rand -base64 48
 ```
 
 The doctor command (`VB001` family) checks for missing or development-default secrets.
@@ -87,7 +90,7 @@ Doctor's compatibility-matrix check (VB320) reports the running Docker version a
 
 ### 8. Back up database and data storage off-host
 
-The `backups/` directory is on the same VM by default. For production, copy backups off-host. Options: rsync to another machine, restic to S3-compatible storage, cloud provider snapshots (as a complement, not a replacement). See [Backups](backups.md).
+The `backups/` directory is on the same VM by default, under the repo checkout. On the recommended DigitalOcean layout that means `/srv/validibot/repo/backups/`, which is durable only because the repo lives on the attached Volume. For production, copy backups off-host. Options: rsync to another machine, restic to S3-compatible storage, cloud provider snapshots (as a complement, not a replacement). See [Backups](backups.md).
 
 ### 9. Test restore quarterly
 
@@ -123,7 +126,7 @@ The doctor command on self-hosted reports which outbound calls are enabled, so o
 
 For risk-averse customers, the `self-hosted-hardened` profile applies stricter defaults:
 
-- `VALIDATOR_IMAGE_POLICY=signed-digest` (when Phase 5 lands);
+- `VALIDATOR_IMAGE_POLICY=signed-digest` when signed validator images are available;
 - all telemetry off;
 - no runtime license phone-home;
 - local signing/JWKS checks;
@@ -133,17 +136,17 @@ Set with `DEPLOYMENT_PROFILE=self-hosted-hardened` in `.django`.
 
 ## Filesystem permissions
 
-The `bootstrap-host` script sets these permissions during install. If you skipped it or set up Docker yourself, verify:
+The default Compose stack stores app data in Docker named volumes, not in a hand-managed `/srv/validibot/data` tree. If you set up Docker yourself, verify the host paths and container storage boundary:
 
 | Path | Owner | Mode |
 |---|---|---|
-| `/srv/validibot/data/` | `1000:1000` | `755` |
-| `/srv/validibot/data/runs/` | `1000:1000` | `755` |
-| `/srv/validibot/data/evidence/` | `1000:1000` | `755` |
-| `/srv/validibot/data/backups/` | `1000:1000` | `750` |
-| `.envs/.production/.self-hosted/` | `1000:1000` | `700` |
+| `/srv/validibot/` | `root:root` | `755` |
+| `/srv/validibot/repo/` | `validibot:validibot` | `755` |
+| `/srv/validibot/docker/` | Docker-managed | do not recursively chown |
+| `/srv/validibot/repo/.envs/.production/.self-hosted/` | `validibot:validibot` | `700` |
+| `/app/storage/private` inside `web` / `worker` | app container user | writable by Django |
 
-Doctor's `VB201` check verifies the data root is writable by the app and not by root only.
+Doctor's `VB201` check verifies the in-container data root is writable by the app and not by root only. If it fails on the default Compose stack, inspect the `validibot_storage` Docker volume and the container user rather than recursively changing ownership of the whole Docker data root.
 
 ## Network architecture
 
@@ -181,7 +184,7 @@ If you suspect compromise:
 
 1. Generate a support bundle: `just self-hosted collect-support-bundle`. The bundle is redacted (no secrets, no raw submission contents).
 2. Email support@validibot.com with the bundle attached. Pro Team gets 24-hour response; Research/Studio and Organization tiers get 4-hour response.
-3. If the issue is severe, take the instance offline (`just self-hosted stop`) and preserve the data/database for forensics.
+3. If the issue is severe, take the instance offline (`just self-hosted down`) and preserve the data/database for forensics.
 4. Restore from the most recent uncompromised backup (see [Restore](restore.md)).
 
 The support bundle is the trust contract: if a customer can't trust that sending it preserves their data custody, they won't send it. See [Support Bundle](support-bundle.md) for what's included and what's redacted.

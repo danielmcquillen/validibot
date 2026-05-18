@@ -119,14 +119,15 @@ This is the difference between "we have backups" and "we have provably working b
 
 ## Restore vs DigitalOcean Droplet backups (and similar)
 
-A DigitalOcean snapshot or automatic Droplet backup is useful for infrastructure-level recovery — if the VM is corrupted, you can roll the entire VM back. But these snapshots **do not replace** Validibot's application-level backup/restore, because:
+A DigitalOcean snapshot or automatic Droplet backup is useful for infrastructure-level recovery — if the VM is corrupted, you can roll infrastructure back. But these snapshots **do not replace** Validibot's application-level backup/restore, because:
 
 1. They don't produce a manifest that records Validibot version, migration state, or evidence-bundle checksums.
 2. They're tied to a specific provider and a specific VM ID, which complicates "spin up a new host on a different provider."
 3. They don't pass through `verify_backup_compatibility` — restoring an old snapshot onto current code can resurrect schemas the ORM no longer knows about.
 4. They include the host OS, Docker daemon, and system-level state, much of which is not what you actually want during data recovery.
+5. On DigitalOcean specifically, automatic Droplet backups do not include attached Volumes. In the recommended layout, Docker named volumes and application backups live on the `/srv/validibot` Volume, so Droplet backups alone are incomplete.
 
-Use both: provider snapshots for "the VM is on fire," Validibot application backups for "the data is corrupted but the VM is fine," "the migration broke," "we need to spin up on a new provider."
+Use both: provider snapshots for "the infrastructure is broken," Validibot application backups for "the data is corrupted but the VM is fine," "the migration broke," "we need to spin up on a new provider." If you take a DigitalOcean Volume snapshot, first run `just self-hosted backup`, stop the stack with `just self-hosted down`, run `sync`, take the snapshot, then bring the stack back up.
 
 ## Restoring on a different host
 

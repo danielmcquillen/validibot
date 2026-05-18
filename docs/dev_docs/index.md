@@ -93,7 +93,7 @@ The customer-facing self-hosting docs live one level up at `docs/operations/self
 - **[Self-Hosting Overview](../operations/self-hosting/overview.md)** — three deployment targets, what's on the VM, recommended sizing, telemetry posture
 - **[Install](../operations/self-hosting/install.md)** — substrate-generic install on any Linux + Docker host
 - **[Configuration](../operations/self-hosting/configuration.md)** — env file reference, deployment profiles, settings module switching
-- **[Backups](../operations/self-hosting/backups.md)** and **[Restore](../operations/self-hosting/restore.md)** — application-level backup/restore with config/data component selection
+- **[Backups](../operations/self-hosting/backups.md)** and **[Restore](../operations/self-hosting/restore.md)** — application-level backup/restore with manifests and restore drills
 - **[Upgrades](../operations/self-hosting/upgrades.md)** — versioned upgrade lifecycle with idempotent retry
 - **[Validator Images](../operations/self-hosting/validator-images.md)** — what's installed, run-scoped isolation, image pinning
 - **[Security Hardening](../operations/self-hosting/security-hardening.md)** — recommended hardening checklist
@@ -102,7 +102,7 @@ The customer-facing self-hosting docs live one level up at `docs/operations/self
 - **[Release Notes Policy](../operations/self-hosting/release-notes-policy.md)** — what every release announces
 - **[Operator Recipes](../operations/self-hosting/operator-recipes.md)** — full `just self-hosted` reference
 - **[Doctor Check IDs](../operations/self-hosting/doctor-check-ids.md)** — every check ID and its fix
-- **[DigitalOcean Provider Tutorial](../operations/self-hosting/providers/digitalocean.md)** — first-supported PaaS quickstart
+- **[DigitalOcean Provider Tutorial](../operations/self-hosting/providers/digitalocean.md)** — first-supported VM provider tutorial
 
 ---
 

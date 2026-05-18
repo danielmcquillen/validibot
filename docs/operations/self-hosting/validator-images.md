@@ -66,7 +66,7 @@ The "BACKEND VERSION" column is the **human-readable identity** (e.g. EnergyPlus
 
 ## Smoke testing the validation pipeline
 
-There's no separate `validators smoke-test` subcommand — the main `just self-hosted smoke-test` (Phase 2) exercises the JSON Schema validator end-to-end through the same code path real validations use. If that passes, the pipeline (queue, worker, dispatcher) is healthy.
+There's no separate `validators smoke-test` subcommand — the main `just self-hosted smoke-test` exercises the JSON Schema validator end-to-end through the same code path real validations use. If that passes, the pipeline (queue, worker, dispatcher) is healthy.
 
 For verifying the *advanced* validators specifically (EnergyPlus, FMU), the operational path is:
 

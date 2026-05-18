@@ -50,7 +50,7 @@ just self-hosted restore backups/20260427T120000Z
   "created_at": "2026-04-27T12:00:01.234567+00:00",
   "target": "self_hosted",
   "stage": null,
-  "backup_uri": "file:///srv/validibot/backups/20260427T120000Z/",
+  "backup_uri": "file:///srv/validibot/repo/backups/20260427T120000Z/",
   "compatibility": {
     "validibot_version": "0.8.0",
     "python_version": "3.13.1",
@@ -132,13 +132,13 @@ Each step prints `Step N/6: ...` and `✓ ...` so an operator following along se
 
 ## Off-host storage
 
-The `backups/` directory lives on the same VM by default. **For production, copy backups off-host.** A backup that lives only on the host that produced it is one disk failure away from being no backup at all.
+The `backups/` directory lives on the same VM by default, relative to the repo checkout. On the recommended DigitalOcean layout this is `/srv/validibot/repo/backups/`. **For production, copy backups off-host.** A backup that lives only on the host that produced it is one disk failure away from being no backup at all.
 
 Options:
 
 - **rsync to a different machine.** Simplest; requires SSH access and a periodic timer. A nightly `rsync -a backups/ off-host:/srv/validibot-backups/` job is a reasonable starting point.
 - **restic.** Encrypted, deduplicated backups to S3-compatible storage, B2, GCS, Azure, SFTP, or local disk. The backup recipe writes to the local filesystem; pointing a `restic backup` at `backups/<id>/` after every run gives you encrypted off-host storage with retention.
-- **Cloud provider snapshots.** DigitalOcean automatic Droplet backups, AWS EBS snapshots, etc. Useful for *infrastructure*-level recovery, but **not a substitute** for application-level backups. They can't reconstruct a `manifest.json` and they don't pass through `verify_backup_compatibility` on restore.
+- **Cloud provider snapshots.** Useful for *infrastructure*-level recovery, but **not a substitute** for application-level backups. DigitalOcean automatic Droplet backups do not include attached Volumes, and DigitalOcean Volume snapshots are crash-consistent rather than application-aware. Snapshots can't reconstruct a `manifest.json` and they don't pass through `verify_backup_compatibility` on restore.
 
 For larger customers, document Postgres continuous archiving / PITR (Point-in-Time Recovery) as the recommended upgrade path. Not required for initial pilots.
 

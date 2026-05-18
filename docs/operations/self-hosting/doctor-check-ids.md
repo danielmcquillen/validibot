@@ -102,9 +102,9 @@ and the postgres container is healthy:
 ### `VB102` Migrations not applied
 **Severity:** warn
 **Trigger:** Django migration plan has unapplied migrations.
-**Fix:** Run `just self-hosted manage "migrate --noinput"`. If the
-upgrade recipe (Phase 4) is in use, this is part of the upgrade flow
-and shouldn't appear long-term.
+**Fix:** Run `just self-hosted manage "migrate --noinput"`. The
+versioned upgrade recipe runs migrations automatically, so this should
+not appear long-term after a successful upgrade.
 
 ### `VB103` Cannot check migrations
 **Severity:** error
@@ -117,8 +117,8 @@ with the doctor JSON output.
 ### `VB120` Postgres version
 **Severity:** error in self-hosted production, info on GCP, warn on dev
 **Trigger:** Postgres major.minor is below the minimum (currently 14.0).
-Older versions miss `pg_dump --load-via-partition-root`, which Phase 3
-backups rely on.
+Older versions miss `pg_dump --load-via-partition-root`, which the
+manifested backup workflow relies on.
 **Fix:** Upgrade Postgres to 14+ (16+ recommended). Take a full
 backup *before* a major-version upgrade — Postgres major upgrades
 require `pg_upgrade` or dump/restore.
@@ -146,8 +146,7 @@ self-hosted setup uses local filesystem.
 ### `VB203` Storage directory not writable
 **Severity:** error
 **Trigger:** Local filesystem storage exists but can't be written.
-**Fix:** Check ownership: `chown -R 1000:1000 /srv/validibot/data` (or
-whatever your data root is). The container runs as UID 1000 by default.
+**Fix:** Check the path printed by doctor from inside the `web` container. In the default Compose stack this is `/app/storage/private`, backed by the `validibot_storage` Docker named volume. Do not recursively chown `/srv/validibot/docker`; if ownership is wrong, fix the mounted volume from inside the container or recreate it from a verified backup.
 
 ### `VB204` Storage configured (informational OK)
 **Severity:** ok
@@ -243,12 +242,12 @@ appear on a normal install.
 **Severity:** warn if missing or stale
 **Trigger:** No `.last-restore-test` marker file in `DATA_STORAGE_ROOT`,
 or the marker is older than 90 days. The marker is written by the
-Phase 3 restore recipe after a successful restore drill.
+restore recipe after a successful restore drill.
 **Fix:** Run a restore drill on a clean test environment:
 `just self-hosted backup` followed by `just self-hosted restore <backup-path>`
-(both ship in Phase 3). Until Phase 3 lands, this warning will appear
-on every install — that's intentional. ADR section 5: "A backup that
-has never been restored is not considered valid."
+and then `just self-hosted doctor` plus `just self-hosted smoke-test`.
+ADR section 5: "A backup that has never been restored is not considered
+valid."
 
 ---
 
@@ -352,8 +351,8 @@ them automatically.
 catches these so the rest of the run continues, but the failing
 check's findings are lost.
 **Fix:** This is a doctor bug. Capture the doctor JSON and the
-container logs (`just self-hosted logs-service web`), file a support
-ticket with `just self-hosted collect-support-bundle` (Phase 6).
+container logs (`just self-hosted logs-service web`), then file a
+support ticket with `just self-hosted collect-support-bundle`.
 
 ---
 
@@ -372,18 +371,24 @@ without making outbound calls (which violate the telemetry-off
 principle). For full DNS-vs-host comparison, run `just self-hosted check-dns`
 from the host shell.
 **Fix:** Add a DNS A-record for `SITE_URL`'s hostname pointing at the
-Droplet's public IPv4. Wait for propagation, then re-run.
+Droplet's public IPv4 or the Reserved IP assigned to the Droplet. Wait
+for propagation, then re-run. If you use a Reserved IP, `check-dns`
+may need a manual confirmation because outbound traffic can still report
+the Droplet's primary public IPv4.
 
 ### `VB911` DigitalOcean volume mount
 **Severity:** warn if `/srv/validibot` exists but isn't a mount point
-**Trigger:** `DATA_STORAGE_ROOT` points at `/srv/validibot` (the
-recommended path) but `/proc/mounts` shows it's not a separate
-mount. That means data is on the boot disk and will be lost on
-Droplet rebuild.
+**Trigger:** Doctor checks the historical host-mounted layout where
+`DATA_STORAGE_ROOT` was under `/srv/validibot`. In the current default
+Compose layout, `DATA_STORAGE_ROOT` is `/app/storage/private` inside
+the container and persistence depends on Docker's data root being on
+the attached Volume.
 **Fix:** Create a DigitalOcean block-storage volume, attach it to
-the Droplet, and mount it at `/srv/validibot`. See the
-[DigitalOcean tutorial](providers/digitalocean.md) step 2 for the
-exact commands. The bootstrap-digitalocean script automates this.
+the Droplet, mount it at `/srv/validibot`, and configure Docker's data
+root as `/srv/validibot/docker` before the first Compose run. Verify
+with `docker info --format '{{ .DockerRootDir }}'`. See the
+[DigitalOcean tutorial](providers/digitalocean.md) step 2 and step 6
+for the exact commands.
 
 ### `VB912` DigitalOcean monitoring agent
 **Severity:** info (always)
@@ -405,18 +410,18 @@ internet, deny everything else inbound.
 
 ---
 
-## Reserved ranges (Phase 3+)
+## Reserved ranges
 
 These IDs are reserved for upcoming check categories and aren't
 emitted yet:
 
-- `VB4xx` (above 411) — Backups beyond restore-test marker (Phase 3
-  will add: backup destination reachable, last-backup-age check,
-  off-host replication status)
+- `VB4xx` (above 411) — future backup checks beyond the restore-test
+  marker, such as backup destination reachability, last-backup-age, and
+  off-host replication status
 - `VB9xx` (above the DO overlay) — Other provider overlays (AWS EC2,
   Hetzner, on-prem) when those guides ship
-- `VB1000+` — Upgrade pre-flight checks (Phase 4) and signing /
-  JWKS / TLS-cert checks for Pro signed credentials
+- `VB1000+` — upgrade pre-flight checks and signing / JWKS /
+  TLS-cert checks for Pro signed credentials
 
 When those ship, the new IDs will be added to this page in the
 release notes.

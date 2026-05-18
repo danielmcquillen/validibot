@@ -15,9 +15,9 @@ Every operator capability exists for both targets:
 | Smoke test | `smoke-test` | `smoke-test` |
 | Backup | `backup` | `backup` |
 | Restore | `restore <path>` | `restore <stage> <path>` |
-| Upgrade | `upgrade --to <version>` | `deploy <stage> --to <version>` |
+| Upgrade | `upgrade --to <version>` | `upgrade <stage> <version>` |
 | Support bundle | `collect-support-bundle` | `collect-support-bundle` |
-| Validator inventory | `validators list-images` | `validators list-images` |
+| Validator inventory | `validators` | `validators <stage>` |
 | Cleanup | `cleanup` | `cleanup` |
 | Errors since | `errors-since <window>` | `errors-since <stage> <window>` |
 
@@ -33,7 +33,7 @@ Idempotent — re-runnable after a partial failure. Each step prints `starting /
 
 ### `just self-hosted deploy`
 
-Deploy or upgrade. Pulls images, runs migrations, restarts services. Used both for first-time deploy after `bootstrap` and for routine updates.
+Deploy the currently checked-out version. Pulls or builds images as configured, runs migrations, and restarts services. Use this for routine redeploys after config or image changes.
 
 For versioned upgrades, prefer `upgrade --to <version>` — it adds pre-flight checks and a strict upgrade-path check.
 
@@ -77,50 +77,44 @@ Parses `.envs/.production/.self-hosted/*` and warns about missing or invalid set
 
 Verifies that `SITE_URL` resolves to this VM's public IP. Run before enabling Caddy / TLS to prevent certificate confusion.
 
-### `just self-hosted backup [--dry-run]`
+### `just self-hosted backup`
 
-Application-level backup. Captures Postgres dump + `DATA_STORAGE_ROOT` archive + env files + manifest with checksums.
+Application-level backup. Captures a Postgres dump, a `DATA_STORAGE_ROOT` archive, and a manifest with checksums. Env files are not included; keep them in your config-management or off-host backup system.
 
 Output: `backups/<timestamp>/`.
 
-`--dry-run` shows what would be captured without writing anything.
-
 See [backups.md](backups.md) for the full backup story.
 
-### `just self-hosted restore <path> [--dry-run] [--components <mode>] [--force]`
+### `just self-hosted restore <path>`
 
 Restore from a backup directory.
 
-Flags:
-
-- `--dry-run` — shows what would be restored without making changes.
-- `--components config-only|data-only|full` — selective restore. Default is `full`.
-- `--force` — required to overwrite existing data.
-
-Calls `doctor --strict` first. Refuses to start if doctor reports any `ERROR` or `FATAL`.
+Runs four pre-flight gates, asks the operator to confirm by typing the hostname, then restores the database and data archive. The current recipe does not support `--dry-run`, `--components`, or `--force`.
 
 See [restore.md](restore.md) for the full restore story.
 
-### `just self-hosted upgrade --to <version> [--no-backup] [--drain]`
+### `just self-hosted upgrade --to <version> [--no-backup]`
 
 Versioned upgrade.
 
 Lifecycle:
 
-1. `doctor --strict` pre-flight (refuses if anything is `ERROR` or `FATAL`).
-2. Backup (unless `--no-backup`).
-3. Pull version-pinned images.
-4. Run migrations in a one-off container.
-5. `collectstatic` if needed.
-6. Restart services.
-7. `doctor --post-upgrade`.
-8. `smoke-test`.
-9. Write upgrade report.
+1. `doctor --strict` pre-flight.
+2. Clean working tree check.
+3. Target tag exists check.
+4. Upgrade-path check.
+5. Backup unless `--no-backup`.
+6. Git checkout to the target tag.
+7. Build version-stamped images.
+8. Run migrations in a one-off container.
+9. Restart services.
+10. Run post-upgrade `doctor`.
+11. Run `smoke-test`.
+12. Write upgrade report.
 
 Flags:
 
 - `--no-backup` — skip the automatic backup. **Not recommended.**
-- `--drain` — stop accepting new runs, wait for active runs to finish (default 5 min, configurable), then proceed. Recommended for long-running validators.
 
 Refuses cross-major-version jumps (e.g. v0.8.x → v1.0.0) — the message points at intermediate stops.
 
@@ -134,21 +128,21 @@ Generates a redacted support archive. Includes doctor output, versions, resolved
 
 Excludes secrets, API tokens, signing keys, and raw submission contents.
 
-Output: `support-bundle-<timestamp>.zip` in the current directory.
+Output: `support-bundles/support-bundle-<host>-<timestamp>.zip` by default.
 
 See [support-bundle.md](support-bundle.md) for the full redaction rules.
 
-### `just self-hosted validators list-images`
+### `just self-hosted validators`
 
 Lists installed validator backend images with their tags and digests.
 
-### `just self-hosted validators smoke-test`
+### `just self-hosted validator-build <name>`
 
-Runs each advanced validator with a known-good demo input. Useful after upgrading validator images, after Docker daemon restarts, or when troubleshooting.
+Builds a single local validator backend image, such as `energyplus` or `fmu`.
 
-### `just self-hosted validators sync-manifests`
+### `just self-hosted validators-build-all`
 
-Re-synchronises the validator manifests from the installed `validibot-pro` package. Useful after a Pro upgrade if doctor reports `VALIDATOR_DIGEST_MISSING` for a system validator.
+Builds all local validator backend images.
 
 ### `just self-hosted cleanup [--dry-run]`
 
@@ -175,30 +169,18 @@ just self-hosted errors-since 7d
 
 Pattern adopted from GitLab's `gitlab-ctl tail`.
 
-### `just self-hosted check-updates`
-
-Optional, opt-in. Polls the upstream registry for newer Validibot/validator image versions. Reports without taking action.
-
-Not enabled by default for self-hosted — risk-averse operators reject outbound polling.
-
-### `just self-hosted license-status`
-
-Optional, opt-in. Checks the package-index credential against the Validibot license server. Reports tier and active/expired state.
-
-Not enabled by default. The package-index credential is the entitlement gate; runtime license checks are not required.
-
 ## Bash wrapper scripts
 
 Optional wrappers in `deploy/self-hosted/scripts/` for operators who don't have `just` installed:
 
 | Script | Purpose | Notes |
 |---|---|---|
-| `bootstrap-host` | Install Docker/Compose, create `validibot` user, create directories, set permissions | Generic Linux helper. Run once as root. |
-| `bootstrap-digitalocean` | DigitalOcean-tuned wrapper around `bootstrap-host` | Detects Ubuntu LTS, mounted volume, public IP, optional monitoring agent. |
+| `bootstrap-host` | Planned generic Linux host-prep helper | Stub today; use the install/provider guide for current host-prep steps. |
+| `bootstrap-digitalocean` | Planned DigitalOcean wrapper around `bootstrap-host` | Stub today; use the DigitalOcean guide's manual fallback. |
 | `check-dns` | Confirm `SITE_URL` resolves to this host before TLS setup | Same as `just self-hosted check-dns`, but runs without `just`. |
 | `build-pro-image` | Build a local Pro image from a wheel URL or staged wheel | Uses BuildKit secrets. Avoids leaking private PyPI credentials in image layers. |
 
-These are conveniences, not a parallel toolchain. They wrap the equivalent `just` recipe.
+These are conveniences, not a parallel toolchain. Once implemented, they should wrap the equivalent `just` recipe or pre-`just` host-prep step.
 
 ## Same recipes, different stages on GCP
 

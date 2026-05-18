@@ -39,7 +39,8 @@ Calls `just self-hosted doctor --strict` first. If anything is `ERROR`, `FATAL`,
 
 ```text
 [ERROR] VB201 DATA_STORAGE_ROOT is writable by root only
-        Fix: chown -R 1000:1000 /srv/validibot/data
+        Fix: inspect /app/storage/private in the web container and the
+             validibot_storage Docker volume ownership.
 Error: doctor --strict failed. Refusing to upgrade against
        an unhealthy deployment.
 ```

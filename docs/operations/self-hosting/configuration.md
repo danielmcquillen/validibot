@@ -28,8 +28,9 @@ Settings that must be set before the app starts.
 |---|---|
 | `SITE_URL` | The public URL of your Validibot instance (e.g. `https://validibot.example.org`). Used everywhere — emails, OIDC, callback URLs, evidence verification URLs. |
 | `DJANGO_SECRET_KEY` | Django's signing key. Generate with `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`. |
-| `ALLOWED_HOSTS` | Comma-separated list of domain names this instance serves. Must include the host portion of `SITE_URL`. |
+| `DJANGO_ALLOWED_HOSTS` | Comma-separated list of domain names this instance serves. Must include the host portion of `SITE_URL`. |
 | `DJANGO_MFA_ENCRYPTION_KEY` | Fernet key for encrypting TOTP secrets. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. |
+| `WORKER_API_KEY` | Shared secret used by the web and worker containers for internal worker API calls. Generate a high-entropy value with `openssl rand -base64 48`. |
 | `DJANGO_SETTINGS_MODULE` | `config.settings.production` for community, `config.settings.production_pro` for Pro. |
 
 The doctor command's VB001-VB099 range checks these.
@@ -57,9 +58,9 @@ The doctor command's VB001-VB099 range checks these.
 
 | Setting | Purpose |
 |---|---|
-| `DATA_STORAGE_ROOT` | Root directory for all persistent data: runs, evidence, validator resources, uploads. Default: `/srv/validibot/data`. |
-| `MEDIA_ROOT` | Django's media storage. Defaults to a subdirectory of `DATA_STORAGE_ROOT`. |
-| `STORAGE_BACKEND` | `local` for self-hosted (default). Future: `s3`, `gcs` for self-hosted with external object storage. |
+| `DATA_STORAGE_ROOT` | Container path for private validation data. The self-hosted Compose file sets `/app/storage/private` and backs it with the `validibot_storage` Docker named volume. Do not set this to a host path unless you also change the Compose storage layout deliberately. |
+| `MEDIA_ROOT` | Django's public media storage. Defaults to `/app/storage/public` in the container and is backed by the same storage volume in the default Compose stack. |
+| `STORAGE_BACKEND` | `local` for self-hosted (default). S3-compatible object storage for self-hosted installs is not yet operator-supported. |
 
 ### 5. Email
 

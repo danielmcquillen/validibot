@@ -34,7 +34,7 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
 1. Create the production env directory:
 
    ```bash
-   mkdir -p .envs/.production/.docker-compose
+	   mkdir -p .envs/.production/.self-hosted
    ```
 
 2. Copy the env templates:
@@ -57,12 +57,13 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
 
    Make sure you set:
 
-   - `DJANGO_SECRET_KEY`
-   - `DJANGO_ALLOWED_HOSTS`
-   - `SITE_URL`
-   - `WORKER_API_KEY`
-   - `POSTGRES_PASSWORD`
-   - `SUPERUSER_PASSWORD`
+	   - `DJANGO_SECRET_KEY`
+	   - `DJANGO_ALLOWED_HOSTS`
+	   - `SITE_URL`
+	   - `DJANGO_MFA_ENCRYPTION_KEY`
+	   - `WORKER_API_KEY`
+	   - `POSTGRES_PASSWORD`
+	   - `SUPERUSER_PASSWORD`
 
    If you are installing a commercial package, edit `.envs/.production/.self-hosted/.build` too:
 
@@ -193,13 +194,14 @@ Routine operations use the same `just self-hosted ...` namespace:
 
 ```bash
 just self-hosted deploy
-just self-hosted update
+just self-hosted upgrade --to v0.9.0
 just self-hosted logs
-just self-hosted backup-db
-just self-hosted restore-db backups/file.sql.gz
+just self-hosted backup
+just self-hosted list-backups
+just self-hosted restore backups/<id>
 ```
 
-`deploy` is for starting or rebuilding the stack. `update` is the safer day-two path because it takes a database backup and runs migrations as part of the update flow.
+`deploy` is for starting or rebuilding the currently checked-out stack. `upgrade --to <version>` is the safer day-two path because it takes a manifested backup and runs pre-flight and post-flight checks around the migration.
 
 ## Security and isolation notes
 

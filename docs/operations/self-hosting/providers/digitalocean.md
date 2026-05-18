@@ -5,7 +5,7 @@ This is the canonical end-to-end tutorial for getting a production-ready Validib
 By the end of this guide you'll have:
 
 - A Validibot instance reachable at your own domain with a valid Let's Encrypt TLS certificate.
-- Application data and Postgres files on a separate block-storage volume so they survive Droplet rebuilds.
+- Docker's data root on a separate block-storage volume, so Validibot's Docker named volumes (Postgres, uploads, evidence, Redis, Caddy certs) survive Droplet rebuilds.
 - A DigitalOcean Cloud Firewall locking inbound traffic down to SSH (your IP only) plus 80/443.
 - A documented backup, restore-drill, and upgrade workflow.
 - A clear path to activate Pro (signed credentials, teams, guests, MCP, advanced analytics) if and when you license it.
@@ -18,7 +18,7 @@ The same instance can run the community edition (free, AGPL) or be upgraded to P
 - A registered domain you can add an A-record to (e.g. `validibot.example.org`). You don't need to host DNS at DigitalOcean — any registrar works.
 - An SSH keypair already uploaded to DigitalOcean. Password auth is disabled throughout this guide.
 - A laptop with `git`, `ssh`, and (optionally) `doctl` installed.
-- Optional: a Validibot Pro license. Community works without one — see [Step 12](#step-12-optional-activate-pro).
+- Optional: a Validibot Pro license. Community works without one — see [Step 14](#step-14-optional-activate-pro).
 
 If you'd rather evaluate locally before committing to a Droplet, [Run Validibot Locally](../../../dev_docs/deployment/deploy-local.md) takes about ten minutes.
 
@@ -43,6 +43,8 @@ An EnergyPlus container layered on top of this needs another 2-4 GB. A 2 GB Drop
 
 ### Recommended Droplet sizes
 
+The prices below are planning examples, not quotes. DigitalOcean changes plan prices and backup options over time, so confirm the final monthly number in the Droplet create screen before quoting a customer.
+
 | Use case | Droplet | Monthly | Notes |
 |---|---|---|---|
 | Built-in validators only | 2 GB / 1 vCPU | $12 | JSON, XML, Basic, AI — no EnergyPlus or FMU |
@@ -50,7 +52,7 @@ An EnergyPlus container layered on top of this needs another 2-4 GB. A 2 GB Drop
 | **Paid pilot (recommended)** | **8 GB / 4 vCPU** | **$48** | **Regular advanced validator usage** |
 | High-volume production | 16 GB / 8 vCPU | $96 | Multiple concurrent advanced validations |
 
-For paid pilots we strongly recommend the 8 GB tier plus a **200 GB block-storage volume mounted at `/srv/validibot`** so application data and Postgres files are not on the disposable boot disk. That combination is what the rest of this guide assumes.
+For paid pilots we strongly recommend the 8 GB tier plus a **200 GB block-storage volume mounted at `/srv/validibot`**. This guide moves Docker's data root to `/srv/validibot/docker` before the first `docker compose up`, so Validibot's named volumes live on the block volume instead of the disposable boot disk.
 
 ### Total monthly cost
 
@@ -61,7 +63,7 @@ For paid pilots we strongly recommend the 8 GB tier plus a **200 GB block-storag
 | **Recommended (paid pilot)** | **8 GB Droplet + 200 GB volume** | **$48 + $20** |
 | Production (managed DB) | 8 GB Droplet + 200 GB volume + Managed Postgres | $83+ |
 
-Optional add-ons (covered in [Step 13](#step-13-optional-enhancements)): Managed PostgreSQL ($15-30/mo), Spaces ($5/mo for 250 GB + CDN), Load Balancer ($12/mo).
+Optional add-ons (covered in [Step 13](#step-13-optional-enhancements)): Managed PostgreSQL, Spaces, and Load Balancers. Confirm current pricing in the DigitalOcean control panel before quoting these to a customer.
 
 ## Architecture
 
@@ -80,8 +82,9 @@ Droplet (Ubuntu 24.04 LTS)
 ├── Docker Engine + Compose plugin
 ├── /srv/validibot/           (mounted block-storage volume)
 │   ├── repo/                 (this repository, cloned)
-│   ├── data/                 (DATA_STORAGE_ROOT — submissions, evidence)
-│   └── backups/              (application-level backups)
+│   │   └── backups/          (manifested application-level backups)
+│   └── docker/               (Docker data-root)
+│       └── volumes/          (Postgres, uploads/evidence, Redis, Caddy data)
 └── A Validibot Compose stack:
     ├── web        Django web application (Gunicorn)
     ├── worker     Celery worker (background tasks, validators)
@@ -103,7 +106,7 @@ Ubuntu 24.04 LTS x64, in your customer's preferred region, with SSH-key login on
 ### Using the DigitalOcean control panel
 
 1. **Create → Droplets**.
-2. **Choose an image:** Marketplace → **Docker on Ubuntu 24.04** (ships Docker + Compose plugin preinstalled).
+2. **Choose an image:** OS → **Ubuntu 24.04 LTS x64**. This guide installs Docker in [Step 6](#step-6-bootstrap-the-host) so the base OS and package setup are explicit. DigitalOcean's Docker 1-Click image is useful for quick experiments, but its base OS can lag the Ubuntu LTS baseline in this guide.
 3. **Choose a plan:** see the [sizing table](#recommended-droplet-sizes). Paid-pilot baseline is **Basic $48/mo (8 GB / 4 vCPU)**.
 4. **Datacenter region:** close to your users (latency) and your operator team (admin convenience).
 5. **Authentication:** select your SSH key. Never enable password auth.
@@ -116,7 +119,7 @@ Ubuntu 24.04 LTS x64, in your customer's preferred region, with SSH-key login on
 # Install doctl: https://docs.digitalocean.com/reference/doctl/how-to/install/
 
 doctl compute droplet create validibot-prod \
-  --image docker-20-04 \
+  --image ubuntu-24-04-x64 \
   --size s-4vcpu-8gb \
   --region syd1 \
   --ssh-keys $(doctl compute ssh-key list --format ID --no-header | head -1) \
@@ -124,31 +127,47 @@ doctl compute droplet create validibot-prod \
   --wait
 ```
 
-Adjust `--size` and `--region` to match your sizing decision. `--enable-monitoring` installs the DigitalOcean Monitoring agent — useful for graphs and alerts, optional if you'd rather keep telemetry off.
+Adjust `--size` and `--region` to match your sizing decision. Pick the SSH key explicitly if your account has more than one key; the command above uses the first key only as a compact example. `--enable-monitoring` installs the DigitalOcean Monitoring agent — useful for graphs and alerts, optional if you'd rather keep telemetry off.
 
 ## Step 2: Attach block-storage volume
 
-For paid pilots and anything in production, application data and Postgres files should live on a separate block-storage volume — not the boot disk. This means Droplet rebuilds (or resizes) don't destroy your data, and backups become an independent object.
+For paid pilots and anything in production, Docker's data root should live on a separate block-storage volume — not the boot disk. Validibot's Compose file uses Docker named volumes for Postgres, uploaded files, validation evidence, Redis, and Caddy certs. Moving Docker's data root before the first deploy puts all of those named volumes on the attached DigitalOcean Volume.
 
 1. **Create → Volumes**.
 2. Same region as the Droplet.
 3. **Size:** 200 GB for a paid pilot. Bump to 500 GB+ for heavy simulation workloads.
 4. **Choose a Droplet to attach to:** the one you just created.
-5. **Filesystem:** ext4.
-6. **Mount path:** `/srv/validibot`.
+5. **Configuration:** manually format and mount.
+6. **Filesystem:** ext4.
+7. **Mount path:** `/srv/validibot`.
 
-DigitalOcean's UI generates the exact `mkfs`, `mkdir`, `/etc/fstab`, and `mount` commands. Run them on the Droplet as root and confirm:
+DigitalOcean's UI generates the exact device path for the volume, usually under `/dev/disk/by-id/scsi-0DO_Volume_<name>`. Format only a brand-new empty volume. If you are reattaching a volume that already contains Validibot data, **do not run `mkfs`**.
+
+For a new volume, the shape should look like this:
 
 ```bash
-df -h /srv/validibot
-# Should show your volume mounted, ~200 GB available
+sudo mkfs.ext4 -F /dev/disk/by-id/scsi-0DO_Volume_<volume-name>
+sudo mkdir -p /srv/validibot
+echo '/dev/disk/by-id/scsi-0DO_Volume_<volume-name> /srv/validibot ext4 defaults,nofail,discard,noatime 0 2' \
+  | sudo tee -a /etc/fstab
+sudo mount -a
 ```
 
-The bootstrap step ([Step 6](#step-6-bootstrap-the-host)) will create `repo/`, `data/`, and `backups/` subdirectories under this mount with the right ownership.
+Confirm the mount before doing anything else:
+
+```bash
+findmnt /srv/validibot
+df -h /srv/validibot
+# Should show your DigitalOcean Volume mounted at /srv/validibot
+```
+
+The bootstrap step ([Step 6](#step-6-bootstrap-the-host)) creates `repo/` and `docker/` under this mount with the right ownership.
 
 ## Step 3: Configure DNS
 
-Add an A-record at your DNS provider pointing your chosen hostname (e.g. `validibot.example.org`) at the Droplet's public IPv4 address. TTL 3600 is fine.
+For quick evaluations, add an A-record at your DNS provider pointing your chosen hostname (e.g. `validibot.example.org`) at the Droplet's public IPv4 address. TTL 3600 is fine.
+
+For paid pilots or production, allocate a **DigitalOcean Reserved IP** in the same datacenter, assign it to the Droplet, and point DNS at the Reserved IP instead. Reserved IPs can be reassigned to a replacement Droplet in the same datacenter, which makes rebuild and restore drills less dependent on DNS propagation.
 
 You can host DNS at DigitalOcean (**Networking → Domains**) or at any other registrar — Validibot doesn't care.
 
@@ -156,10 +175,12 @@ Verify propagation from your laptop:
 
 ```bash
 dig +short validibot.example.org
-# Should print the Droplet IP
+# Should print the Droplet public IP or the Reserved IP you assigned
 ```
 
 After [Step 6](#step-6-bootstrap-the-host), you'll re-verify from the Droplet itself with `just self-hosted check-dns`. Doing that *before* enabling TLS prevents Caddy from burning Let's Encrypt rate-limit attempts against bad DNS.
+
+One caveat: `check-dns` compares DNS to the Droplet's detected outbound public IPv4. If DNS points at a Reserved IP and outbound traffic still uses the Droplet's primary public IPv4, `check-dns` can false-fail. In that case, verify the Reserved IP assignment in the DigitalOcean control panel and with `dig`, then continue.
 
 ## Step 4: Configure DigitalOcean Cloud Firewall
 
@@ -172,9 +193,11 @@ DigitalOcean Droplets ship with UFW installed but disabled. Do not enable UFW fo
    - **HTTP (TCP 80)** — *Sources:* all IPv4 + IPv6. Caddy needs port 80 for Let's Encrypt ACME challenges.
    - **HTTPS (TCP 443)** — *Sources:* all IPv4 + IPv6.
    - Everything else: omit (default-deny).
-4. **Outbound rules:** allow all (the default).
+4. **Outbound rules:** allow all (the default). If you create the firewall through the API or later remove defaults, remember that DigitalOcean Cloud Firewalls also filter egress: no outbound rules means no outbound traffic.
 5. **Apply to Droplets:** select `validibot-prod`.
 6. **Create Firewall**.
+
+If you enable IPv6 on the Droplet, add the matching AAAA DNS record and keep the IPv6 HTTP/HTTPS firewall sources. If you do not plan to serve IPv6, leave IPv6 disabled on the Droplet.
 
 ## Step 5: SSH hardening and non-root user
 
@@ -189,7 +212,6 @@ ssh root@<droplet-ip>
 ```bash
 adduser validibot
 usermod -aG sudo validibot
-usermod -aG docker validibot
 
 # Copy your SSH key from root to the new user
 rsync --archive --chown=validibot:validibot ~/.ssh /home/validibot
@@ -204,7 +226,13 @@ PasswordAuthentication no
 PermitRootLogin prohibit-password
 ```
 
-Then `systemctl restart sshd`.
+Restart SSH:
+
+```bash
+systemctl restart ssh
+```
+
+If your image uses `sshd` as the service name, run `systemctl restart sshd` instead.
 
 ### Install Fail2Ban (defence in depth)
 
@@ -224,7 +252,7 @@ Once that works, exit the root session.
 
 ## Step 6: Bootstrap the host
 
-There's a Validibot helper that installs Docker (if not already present), creates the `validibot` user (idempotent), installs `just`, and sets up the data directories under `/srv/validibot/`.
+There's a Validibot helper that will eventually install Docker, validate the DigitalOcean mount, move Docker's data root onto `/srv/validibot/docker`, install `just`, and set up the repo directory.
 
 > **Status note:** the bootstrap scripts (`bootstrap-host`, `bootstrap-digitalocean`) currently print "not yet implemented" — they're Phase-0 stubs of [ADR-2026-04-27](https://github.com/danielmcquillen/validibot-project). The fallback steps below are what they will eventually automate. Once the scripts ship, the fallback section will be removed from this guide.
 
@@ -245,22 +273,55 @@ That script will detect the Droplet (via the metadata service), validate the vol
 ```bash
 ssh validibot@<droplet-ip>
 
-# Install just (used to drive all subsequent operations)
-sudo curl -sSL https://github.com/casey/just/releases/latest/download/just-1.36.0-x86_64-unknown-linux-musl.tar.gz \
+# Base host tools used by the operator recipes.
+sudo apt update
+sudo apt install -y ca-certificates curl gnupg git jq zstd dnsutils
+
+# Install Docker Engine + Compose plugin from Docker's apt repository.
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+. /etc/os-release
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Put Docker's named volumes on the attached DigitalOcean Volume before
+# the first docker compose run. Do this while the install is still fresh.
+sudo systemctl stop docker.socket docker.service
+sudo mkdir -p /srv/validibot/docker
+sudo tee /etc/docker/daemon.json > /dev/null <<'EOF'
+{
+  "data-root": "/srv/validibot/docker"
+}
+EOF
+sudo systemctl start docker.service docker.socket
+
+# Now that the docker group exists, allow the validibot operator user to
+# run Docker commands. Log out/in after this so the new group is active.
+sudo usermod -aG docker validibot
+exit
+ssh validibot@<droplet-ip>
+
+docker info --format '{{.DockerRootDir}}'
+# Should print: /srv/validibot/docker
+
+# Install just (used to drive all subsequent operations). This pins the
+# version instead of using GitHub's moving "latest" redirect.
+JUST_VERSION=1.36.0
+curl -sSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
   | sudo tar -xz -C /usr/local/bin just
 
 # Clone the repo into the volume so the working tree survives Droplet rebuilds
 sudo git clone https://github.com/validibot/validibot.git /srv/validibot/repo
 sudo chown -R validibot:validibot /srv/validibot/repo
 
-# Set up the data directories
-sudo mkdir -p /srv/validibot/data /srv/validibot/backups
-sudo chown -R validibot:validibot /srv/validibot/data /srv/validibot/backups
-
 cd /srv/validibot/repo
 ```
 
-The Docker marketplace image already installed Docker Engine + Compose plugin, so there's nothing else to do at the host level.
+Do not run `docker compose` until `docker info --format '{{.DockerRootDir}}'` prints `/srv/validibot/docker`. If Docker creates named volumes under the boot disk first, you need to migrate them deliberately before relying on Droplet rebuild survival. See [Troubleshooting → I ran Compose before relocating Docker's data root](../troubleshooting.md#i-ran-compose-before-relocating-dockers-data-root).
 
 ## Step 7: Configure environment files
 
@@ -275,6 +336,7 @@ Validibot uses three env files for self-hosted deployments — all under `.envs/
 Copy the templates and edit them:
 
 ```bash
+mkdir -p .envs/.production
 cp -r .envs.example/.production/.self-hosted/ .envs/.production/.self-hosted/
 
 $EDITOR .envs/.production/.self-hosted/.django
@@ -290,13 +352,18 @@ SITE_URL=https://validibot.example.org
 DJANGO_ALLOWED_HOSTS=validibot.example.org
 DJANGO_SECRET_KEY=<see below>
 DJANGO_MFA_ENCRYPTION_KEY=<see below>
+WORKER_API_KEY=<see below>
 
 # Section 2: URLs/security
 DJANGO_CSRF_TRUSTED_ORIGINS=https://validibot.example.org
-DJANGO_SECURE_SSL_REDIRECT=false   # Caddy terminates TLS; Django serves plain HTTP behind it
+DJANGO_SECURE_SSL_REDIRECT=true
+DJANGO_ADMIN_URL=<random-admin-path>/
+MFA_TOTP_ISSUER="Acme Validibot"
 
 # Section 4: storage
-DATA_STORAGE_ROOT=/srv/validibot/data
+# Do not set DATA_STORAGE_ROOT for the default Compose deployment.
+# docker-compose.production.yml sets it to /app/storage/private inside
+# the container, backed by the validibot_storage Docker named volume.
 
 # Section 5: email — configure your provider (Mailgun, SES, SMTP relay)
 DJANGO_EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
@@ -309,7 +376,7 @@ SUPERUSER_EMAIL=admin@example.org
 SUPERUSER_PASSWORD=<strong password>
 ```
 
-Generate the two secrets:
+Generate the core Django secrets:
 
 ```bash
 # DJANGO_SECRET_KEY
@@ -319,6 +386,18 @@ docker run --rm python:3.13-alpine python -c \
 # DJANGO_MFA_ENCRYPTION_KEY (must be Fernet-format)
 docker run --rm python:3.13-alpine sh -c \
   "pip install -q cryptography && python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+```
+
+Generate the remaining secrets:
+
+```bash
+# WORKER_API_KEY
+docker run --rm python:3.13-alpine python -c \
+  "from secrets import token_urlsafe; print(token_urlsafe(32))"
+
+# DJANGO_ADMIN_URL
+docker run --rm python:3.13-alpine python -c \
+  "from secrets import token_urlsafe; print(token_urlsafe(16) + '/')"
 ```
 
 And in `.postgres`, set a strong password:
@@ -331,14 +410,14 @@ Validate before going further:
 
 ```bash
 just self-hosted check-env
-just self-hosted check-dns   # verifies SITE_URL resolves to this Droplet's public IP
+just self-hosted check-dns   # verifies SITE_URL before TLS
 ```
 
-`check-env` reports missing required vars and unchanged placeholders. `check-dns` is your last chance to catch a DNS typo before Let's Encrypt rate-limits you.
+`check-env` reports missing required vars and unchanged placeholders. `check-dns` is your last chance to catch a DNS typo before Let's Encrypt rate-limits you. If you pointed DNS at a Reserved IP, remember the Reserved IP caveat in [Step 3](#step-3-configure-dns).
 
 ## Step 8: Start the stack
 
-First, bring everything up without TLS — useful sanity check that the app boots and migrations succeed.
+First, bootstrap the app without the public Caddy profile — useful sanity check that the app boots and migrations succeed.
 
 ```bash
 just self-hosted bootstrap
@@ -356,9 +435,10 @@ Caddy requests a Let's Encrypt certificate for `SITE_URL` on first boot. If DNS 
 
 ### If you already run a reverse proxy
 
-Don't enable the `caddy` profile. Configure your existing proxy (nginx, Traefik, Cloudflare Tunnel, hosting-provider load balancer) to forward to the `web` container on port 8000, and set the following in `.django`:
+Don't enable the `caddy` profile. Configure your existing proxy (nginx, Traefik, Cloudflare Tunnel, hosting-provider load balancer) to forward to the `web` container on port 8000, and keep the following in `.django`:
 
 ```bash
+DJANGO_SECURE_SSL_REDIRECT=true
 DJANGO_SECURE_PROXY_SSL_HEADER=HTTP_X_FORWARDED_PROTO,https
 DJANGO_CSRF_TRUSTED_ORIGINS=https://validibot.example.org
 ```
@@ -373,12 +453,12 @@ just self-hosted doctor --provider digitalocean   # + DO-specific checks
 just self-hosted smoke-test     # end-to-end demo workflow
 ```
 
-> `doctor` is partially implemented (Phase 1, in progress). `smoke-test` is Phase 2 — it currently prints a "not yet implemented" message. Run them anyway so you can see which checks are live today.
+Treat any `ERROR` or `FATAL` result as a launch blocker. Warnings may be acceptable during an evaluation, but write them down in the final install report so the operator knows what remains.
 
 From your laptop:
 
 ```bash
-curl -I https://validibot.example.org/health/
+curl --fail --proto '=https' --tlsv1.2 --show-error --silent --head https://validibot.example.org/health/
 # HTTP/2 200
 # server: Caddy
 # ...
@@ -389,43 +469,33 @@ And in the browser at `https://validibot.example.org`: you should see the Validi
 ### What to check before declaring success
 
 - All containers are `running` and `healthy` in `just self-hosted status`.
-- HTTPS resolves with a valid cert (no browser warnings).
+- HTTPS resolves with a valid cert (`curl --fail --proto '=https' ... /health/` succeeds and the browser shows no certificate warnings).
 - The doctor command reports `OK`, `INFO`, `WARN`, or `SKIPPED` only — zero `ERROR` or `FATAL`.
 - The DO-specific overlay (`--provider digitalocean`) confirms DNS, volume mount, monitoring agent, and Cloud Firewall posture.
 - You can log in as the superuser and create a test workflow.
 
 ## Step 10: Configure automated backups
 
-Validibot's eventual story is a single `just self-hosted backup` recipe that produces a manifest-tagged tarball under `backups/`. That's Phase 3 work and not implemented today; the working approach right now is a database-only cron job plus a periodic restic snapshot of the data directory.
+Use the manifested application backup recipe. It captures:
 
-### Today's working approach: database dumps + restic for data
+- `db.sql.zst` — a plain SQL Postgres dump.
+- `data.tar.zst` — the full `DATA_STORAGE_ROOT` archive, including uploads, submissions, evidence, and validator resources.
+- `manifest.json` — Validibot version, migration head, Postgres version, file sizes, and checksums.
+- `checksums.sha256` — a sidecar you can verify without parsing JSON.
 
 ```bash
-# Create the backup script
-sudo tee /home/validibot/backup-validibot.sh > /dev/null <<'EOF'
-#!/bin/bash
-set -e
-BACKUP_DIR=/srv/validibot/backups
-DATE=$(date +%Y%m%d_%H%M%S)
-mkdir -p "$BACKUP_DIR"
-
 cd /srv/validibot/repo
-docker compose -f docker-compose.production.yml exec -T postgres \
-  pg_dump -U validibot validibot | gzip > "$BACKUP_DIR/db_$DATE.sql.gz"
-
-# Retain 14 days locally; off-host retention is handled by restic
-find "$BACKUP_DIR" -name "db_*.sql.gz" -mtime +14 -delete
-
-echo "Backup completed: db_$DATE.sql.gz"
-EOF
-sudo chmod +x /home/validibot/backup-validibot.sh
-sudo chown validibot:validibot /home/validibot/backup-validibot.sh
-
-# Run daily at 03:00 as the validibot user
-(crontab -u validibot -l 2>/dev/null; echo "0 3 * * * /home/validibot/backup-validibot.sh >> /srv/validibot/backups/backup.log 2>&1") | sudo crontab -u validibot -
+just self-hosted backup
+just self-hosted list-backups
 ```
 
-For off-host encrypted backups (strongly recommended), install [restic](https://restic.net/) and point it at the `/srv/validibot/` directory, sending the repository to S3, B2, GCS, Azure, or DigitalOcean Spaces. Restic gives you deduplication, encryption, and retention policies. The Validibot [Backups doc](../backups.md) covers patterns in more depth.
+The default backup directory is `/srv/validibot/repo/backups/`, which is on the attached volume because the repo lives under `/srv/validibot`. Schedule it nightly:
+
+```bash
+(crontab -l 2>/dev/null; echo "0 2 * * * cd /srv/validibot/repo && /usr/local/bin/just self-hosted backup >> backups/backup.log 2>&1") | crontab -
+```
+
+Local backups on the same volume are not enough. For off-host encrypted backups, install [restic](https://restic.net/) and point it at `/srv/validibot/repo/backups/`, sending the repository to S3, B2, GCS, Azure, SFTP, or DigitalOcean Spaces. The Validibot [Backups doc](../backups.md) covers retention and restore-test patterns in more depth.
 
 ### What DigitalOcean snapshots are good for
 
@@ -434,24 +504,18 @@ DigitalOcean **Droplet snapshots** and **automatic backups** are infrastructure-
 - They can't produce a `manifest.json` with migration state and checksums.
 - They can't pass through Validibot's restore compatibility check.
 - They can't be partially restored (e.g. just the database).
-- They snapshot the *whole disk* — including things you don't want, like in-flight task state.
+- DigitalOcean automatic Droplet backups do **not** include attached Volumes. In this guide, the real application state lives on the `/srv/validibot` Volume.
+- Volume snapshots are crash-consistent, not application-consistent. They do not coordinate with Postgres, Docker, or the filesystem to flush every in-memory write.
 
-Enable DigitalOcean automatic Droplet backups if you want — they're cheap insurance — but treat them as *additional to*, not a substitute for, application-level backups. See [Restore](../restore.md) for the full restore-vs-snapshot discussion.
+Enable DigitalOcean automatic Droplet backups if you want OS-level insurance, but treat them as additional to, not a substitute for, `just self-hosted backup`. If you also take a DigitalOcean Volume snapshot, first run a Validibot backup, schedule a maintenance window, stop the stack with `just self-hosted down`, run `sync`, take the Volume snapshot, then bring the stack back up.
 
-### Target state (Phase 3)
-
-```bash
-just self-hosted backup            # full application backup with manifest
-just self-hosted backup --dry-run  # show what would be backed up
-```
-
-Output structure when implemented:
+Backup output structure:
 
 ```text
-/srv/validibot/backups/
+/srv/validibot/repo/backups/
   2026-04-27T120000Z/
     manifest.json
-    database.sql.zst
+    db.sql.zst
     data.tar.zst
     checksums.sha256
 ```
@@ -460,66 +524,60 @@ Output structure when implemented:
 
 Backups you haven't restored are wishes, not backups. Before you call the install production-ready, restore one onto a clean test Droplet and verify it boots.
 
-### Today
+1. On the production Droplet: `cd /srv/validibot/repo && just self-hosted backup`.
+2. Create a second Droplet and Volume in the same region.
+3. Follow Steps 1-8 of this guide to get a fresh Validibot stack running on the test Droplet.
+4. Copy the chosen backup directory to the test Droplet, preserving the directory shape:
 
-1. Create a second Droplet of the same size in the same region.
-2. Follow Steps 1-8 of this guide to get a fresh Validibot stack running.
-3. SCP your most recent `db_*.sql.gz` to the test Droplet.
-4. `docker compose -f docker-compose.production.yml exec -T postgres dropdb -U validibot validibot && createdb -U validibot validibot`
-5. `gunzip -c db_TIMESTAMP.sql.gz | docker compose -f docker-compose.production.yml exec -T postgres psql -U validibot validibot`
-6. Run `just self-hosted doctor` and `just self-hosted health-check`. Log in. Confirm your data is there.
+   ```bash
+   rsync -a backups/20260427T120000Z/ \
+     validibot@<test-droplet-ip>:/srv/validibot/repo/backups/20260427T120000Z/
+   ```
 
-### Target state (Phase 3)
+5. On the test Droplet:
 
-```bash
-just self-hosted bootstrap
-just self-hosted restore /path/to/backups/2026-04-27T120000Z
-just self-hosted doctor
-just self-hosted smoke-test
-```
+   ```bash
+   cd /srv/validibot/repo
+   just self-hosted restore backups/20260427T120000Z
+   just self-hosted doctor
+   just self-hosted smoke-test
+   ```
 
 Doctor warns (check `VB411`) if a backup has never been restored. Make sure that warning is gone before you treat the install as production-ready.
 
 ## Step 12: Upgrade workflow
 
-Upgrades follow a fixed sequence: back up, pull, rebuild, migrate, restart, verify.
-
-### Today
+Upgrades follow a fixed sequence: doctor pre-flight, clean working tree, target tag check, manifested backup, checkout, rebuild, migrate, restart, doctor, smoke-test.
 
 ```bash
 cd /srv/validibot/repo
 
-# Always back up before upgrading
-/home/validibot/backup-validibot.sh
+# See available releases
+git fetch --tags origin
+git tag --list 'v*' --sort=-v:refname | head
 
-git pull origin main
-just self-hosted update     # pulls, rebuilds, migrates, restarts
-
-just self-hosted health-check
-just self-hosted logs-service web   # check for errors
-```
-
-### Target state (Phase 4)
-
-```bash
-just self-hosted backup
+# Upgrade to an exact release tag. This creates a manifested backup first.
 just self-hosted upgrade --to v0.9.0
+
 just self-hosted doctor
 just self-hosted smoke-test
 ```
 
-The Phase-4 `upgrade` recipe will enforce strict upgrade paths (no skipping a major version), surface migration plans before applying them, and handle in-flight validation runs gracefully.
+Do not use `just self-hosted update`; it is deprecated and exits with an error. Use `--no-backup` only if you have already taken and verified a backup for this exact upgrade window.
 
 ## Step 13: Optional enhancements
 
 ### Managed PostgreSQL
 
-For production workloads at scale, offload Postgres to DigitalOcean's managed database service. Benefits: automatic backups, failover options, easier scaling, and Postgres patches handled for you.
+For production workloads at scale, offload Postgres to DigitalOcean's managed database service. Benefits: point-in-time backups, failover options, easier scaling, and Postgres patches handled for you.
 
-1. **Databases → Create Database Cluster** → PostgreSQL 16, same region as your Droplet.
-2. Basic plan ($15/mo) suffices for most installs. Add a standby node ($30/mo total) for HA.
-3. **Trusted sources:** add your Droplet (lock the cluster down so only it can connect).
-4. Edit `.envs/.production/.self-hosted/.postgres`:
+Treat this as an advanced configuration today. The stock Compose file still defines a local `postgres` service and `web` has a `depends_on` relationship with it. Do **not** remove the local `postgres` service unless you also ship and test a Compose override that removes that dependency.
+
+1. **Databases → Create Database Cluster** → PostgreSQL. Choose the same major version as the bundled Validibot Postgres image unless the newer version has been tested for this Validibot release.
+2. Same region and VPC as the Droplet. Add a standby node if the customer needs HA.
+3. **Trusted sources:** add the Droplet or its tag so only the application host can connect.
+4. Download the cluster CA certificate into `.envs/.production/.self-hosted/keys/do-postgres-ca.crt`.
+5. Edit `.envs/.production/.self-hosted/.postgres` so the entrypoint waits for the managed cluster:
 
    ```bash
    POSTGRES_HOST=your-cluster.db.ondigitalocean.com
@@ -527,15 +585,22 @@ For production workloads at scale, offload Postgres to DigitalOcean's managed da
    POSTGRES_DB=validibot
    POSTGRES_USER=validibot
    POSTGRES_PASSWORD=<from the DO control panel>
-   POSTGRES_OPTIONS=?sslmode=require
    ```
 
-5. Remove (or override) the `postgres` service in `docker-compose.production.yml` so you're not running two databases.
-6. `just self-hosted deploy` to apply the change.
+6. Add a full `DATABASE_URL` to `.envs/.production/.self-hosted/.django`. URL-encode special characters in the password.
+
+   ```bash
+   DATABASE_URL=postgres://validibot:<url-encoded-password>@your-cluster.db.ondigitalocean.com:25060/validibot?sslmode=verify-full&sslrootcert=/run/validibot-keys/do-postgres-ca.crt
+   ```
+
+   Do not use `POSTGRES_OPTIONS`; the current production entrypoint ignores it when constructing `DATABASE_URL`.
+
+7. Leave the local `postgres` service running unless you have a tested override. It is unused by Django when `DATABASE_URL` points to the managed cluster, but it satisfies the current Compose dependency.
+8. `just self-hosted deploy`, then `just self-hosted doctor`.
 
 ### DigitalOcean Spaces (object storage)
 
-DigitalOcean Spaces is S3-compatible. Validibot's S3 storage backend isn't implemented yet, so for now:
+DigitalOcean Spaces is S3-compatible, but Validibot's self-hosted S3 path is not operator-supported yet. There is partial S3 plumbing in settings, but `s3://` URI routing and end-to-end self-hosted Spaces operation are not ready for a customer install. For now:
 
 - Stay on the default local volume storage (with the volume mounted at `/srv/validibot`, you're already on durable storage).
 - Or use the GCS-backed deployment path if you genuinely need object storage today.
@@ -566,7 +631,7 @@ Advanced validators run as short-lived sibling containers spawned by the worker 
 2. **Private registries:** authenticate Docker on the Droplet:
 
    ```bash
-   docker login ghcr.io -u USERNAME -p TOKEN
+   echo "$TOKEN" | docker login ghcr.io -u USERNAME --password-stdin
    ```
 
 3. **Network isolation:** by default validator containers run with no network access. If a validator legitimately needs to fetch external resources, set `VALIDATOR_NETWORK` in `.django`.
@@ -615,7 +680,7 @@ Most common causes:
 
 - **Database connection refused:** `POSTGRES_*` env vars don't match, or Postgres hasn't finished initialising yet. Wait 10 seconds and retry. If using Managed Postgres, confirm trusted-source rules include the Droplet.
 - **Permission denied on `/var/run/docker.sock`:** the `validibot` user isn't in the `docker` group. `groups validibot` should include `docker`. If not, `usermod -aG docker validibot` and log out/in.
-- **Permission denied on `/srv/validibot/data`:** `chown -R validibot:validibot /srv/validibot/data`.
+- **Permission denied on `/app/storage/private`:** confirm Docker's root directory is `/srv/validibot/docker`, then inspect the storage volume from the web container: `docker compose -f docker-compose.production.yml -p validibot exec web ls -ld /app/storage /app/storage/private`. If ownership is wrong, repair it inside the container as root: `docker compose -f docker-compose.production.yml -p validibot exec -u root web chown -R django:django /app/storage`.
 
 ### TLS / Let's Encrypt errors
 
@@ -633,10 +698,10 @@ Common causes:
 
 ```bash
 # From the Droplet, try connecting directly:
-psql "postgresql://validibot:PASSWORD@your-cluster.db.ondigitalocean.com:25060/validibot?sslmode=require"
+psql "postgresql://validibot:PASSWORD@your-cluster.db.ondigitalocean.com:25060/validibot?sslmode=verify-full&sslrootcert=/path/to/do-postgres-ca.crt"
 ```
 
-If this fails: trusted sources don't include the Droplet, the password is wrong, or `sslmode=require` is missing.
+If this fails: trusted sources don't include the Droplet, the password is wrong, the CA certificate path is wrong, or SSL verification is misconfigured.
 
 ### Out of memory
 
@@ -657,16 +722,14 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 Long-term fix: resize the Droplet up a tier, or move PostgreSQL to Managed Postgres to free ~300 MB.
 
-### "doctor" or "smoke-test" reports "not yet implemented"
-
-That's expected today. These commands ship across ADR phases 1-2. The recipe names exist so the operator surface is visible; the implementations land progressively. See `just self-hosted --list` for which recipes do real work today.
-
 ## Final install report
 
-When you've completed all twelve steps, capture these for your team's wiki so you (or whoever's on call next) can answer "what's running where?" in seconds:
+When you've completed the core install, capture these for your team's wiki so you (or whoever's on call next) can answer "what's running where?" in seconds:
 
 - Droplet size, region, and IP.
+- Reserved IP, if used.
 - Volume size and mount point.
+- Docker root directory (`docker info --format '{{.DockerRootDir}}'`).
 - Validibot version (`git rev-parse HEAD` in `/srv/validibot/repo`) and image digests.
 - DNS hostname.
 - Backup destination (local path + off-host bucket / restic repo).

@@ -126,7 +126,7 @@ The command exits 0 if every result is non-blocking (`ok`, `info`, `warn`, `skip
 The smoke test is fast (a few seconds in test mode, under a minute on Compose / Cloud Run with cold-start). Run it:
 
 - **After installing for the first time.** `just self-hosted bootstrap` runs `doctor` automatically; follow up with smoke-test before pointing real workflows at the install.
-- **After an upgrade.** Phase 4's upgrade recipe will call smoke-test as the final verification step. Until that lands, run it manually after every `just self-hosted update`.
+- **After an upgrade.** The versioned upgrade recipe calls smoke-test as the final verification step. If you make a manual deployment change outside `just self-hosted upgrade --to <version>`, run smoke-test yourself before declaring the instance healthy.
 - **After a restore drill.** Restore writes the `.last-restore-test` marker (silencing doctor's VB411), but the marker doesn't actually verify the restored deployment can validate things. Smoke test does.
 - **On a schedule.** A daily cron entry catches problems that slip past doctor — e.g. a worker that's running but not picking up jobs.
 
@@ -149,5 +149,5 @@ A passing smoke test means "the basic validation pipeline works end-to-end." It'
 
 - [Doctor Check IDs](doctor-check-ids.md) — the configuration-side counterpart; doctor's VB411 catches "no restore drill recorded" which complements the smoke test's runtime check
 - [Backups](backups.md) — quarterly drill explicitly includes running smoke test on the restore environment
-- [Upgrades](upgrades.md) — Phase 4 will gate the upgrade recipe on smoke test passing
+- [Upgrades](upgrades.md) — the upgrade recipe gates completion on smoke test passing
 - [Operator recipes](operator-recipes.md) — the full just recipe surface

@@ -143,7 +143,7 @@ Commands are prefixed with `gcp`:
 
 ```bash
 # List all GCP commands
-just --list gcp
+just -f just/gcp/mod.just --list
 
 # Deployment (web + worker)
 just gcp deploy prod         # Hotfix path: web only
@@ -198,28 +198,31 @@ Same module is also reachable as `just mcp ...` at the top level;
 `just mcp test` and `just mcp test-e2e` are the natural entry points
 for local test runs.
 
-### Docker Compose
+### Self-hosted Docker Compose
 
-Commands are prefixed with `docker-compose`:
+Commands are prefixed with `self-hosted`:
 
 ```bash
-# List all docker-compose commands
-just --list docker-compose
+# List all self-hosted commands
+just -f just/self-hosted/mod.just --list
 
 # Deployment
 just self-hosted bootstrap    # First-time self-host install
 just self-hosted deploy       # Build and start all services
-just self-hosted update       # Full update with backup
+just self-hosted upgrade --to v0.9.0  # Versioned upgrade with backup
 
 # Operations
 just self-hosted status       # Check container status
 just self-hosted logs         # Follow logs
 just self-hosted health-check # Verify services are running
+just self-hosted doctor       # Full diagnostic
+just self-hosted smoke-test   # End-to-end demo workflow
 
-# Database
+# Backup and restore
 just self-hosted migrate              # Run migrations
-just self-hosted backup-db            # Create database backup
-just self-hosted restore-db file.gz   # Restore from backup
+just self-hosted backup               # Manifested app backup
+just self-hosted list-backups         # Show available backups
+just self-hosted restore backups/<id> # Restore manifested backup
 
 # Maintenance
 just self-hosted maintenance-on       # Enter maintenance mode
@@ -264,8 +267,8 @@ just gcp deploy-all prod
 # Hotfix path: web-only deploy, skips worker and MCP
 just gcp deploy prod
 
-# Docker Compose: Single command update
-just self-hosted update
+# Self-hosted Docker Compose: versioned upgrade
+just self-hosted upgrade --to v0.9.0
 ```
 
 Migrations run automatically as part of `deploy-all` and `deploy`
@@ -326,8 +329,8 @@ just --dry-run gcp deploy prod
 
 ```bash
 just --list              # Root commands
-just --list gcp          # GCP commands
-just --list docker-compose   # Docker Compose commands
+just -f just/gcp/mod.just --list          # GCP commands
+just -f just/self-hosted/mod.just --list  # Self-hosted Docker Compose commands
 ```
 
 ### Run from Anywhere

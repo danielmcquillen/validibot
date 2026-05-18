@@ -29,7 +29,9 @@ SaaS).
 ```text
 your VM
 ├── Docker Engine + Compose plugin
-├── /srv/validibot/ (recommended data root)
+├── /srv/validibot/ (recommended mounted block-storage volume)
+│   ├── repo/          Validibot checkout and operator backups
+│   └── docker/        Docker data root, including named volumes
 └── A Validibot Compose stack:
     ├── web        Django web application (Gunicorn)
     ├── worker     Celery worker (background tasks, validators)
@@ -54,9 +56,11 @@ after themselves.
 | Heavy simulation | 8+ vCPU | 32 GB | 500 GB+ SSD | More validator concurrency |
 
 For paid pilots we recommend the "small team" size with a separate
-block-storage volume mounted at `/srv/validibot` so data and evidence
-aren't on a disposable boot disk. See the DigitalOcean tutorial under
-`providers/` for one provider's specifics.
+block-storage volume mounted at `/srv/validibot`, and Docker configured
+with `/srv/validibot/docker` as its data root before the first Compose
+run. That keeps Docker named volumes, validation evidence, and app
+backups off the disposable boot disk. See the DigitalOcean tutorial
+under `providers/` for one provider's specifics.
 
 ## What outbound calls happen by default
 
@@ -100,29 +104,18 @@ upgrade fails); it does not affect the running install.
 
 ## First install (one-page summary)
 
-This is the minimum sequence to get Validibot running on a VM. The
-provider-specific tutorials under `providers/` go through the same
-sequence with provider-specific steps (DNS, firewall, volumes).
+This is the minimum sequence after the host has Docker, the Compose
+plugin, `just`, a non-root operator user, and durable storage prepared.
+The bootstrap scripts under `deploy/self-hosted/scripts/` are still
+stubs, so use the DigitalOcean tutorial for exact current host-prep
+commands or perform the equivalent steps on your own provider.
 
 ```bash
-# On a fresh Ubuntu LTS VM with you SSH'd in (as root):
+# On the prepared VM as the operator user:
+cd /srv/validibot/repo
 
-# 1. Clone the repo (or extract a release tarball)
-git clone https://github.com/validibot/validibot.git
-cd validibot
-
-# 2. Bootstrap the host (installs Docker + Compose + just, creates
-#    the validibot user, sets up data dirs). This is the ONLY
-#    script you run — everything after this is a just recipe.
-#    Phase 0: stub. Implementation lands in a later phase.
-./deploy/self-hosted/scripts/bootstrap-host
-
-# Switch to the validibot user — root has nothing more to do.
-exit
-ssh validibot@<your-vm>
-cd /srv/validibot/repo  # or wherever bootstrap-host put the clone
-
-# 3. Copy and edit env files
+# 1. Copy and edit env files
+mkdir -p .envs/.production/.self-hosted
 cp .envs.example/.production/.self-hosted/.django \
    .envs/.production/.self-hosted/.django
 cp .envs.example/.production/.self-hosted/.postgres \
@@ -131,42 +124,34 @@ cp .envs.example/.production/.self-hosted/.build \
    .envs/.production/.self-hosted/.build
 $EDITOR .envs/.production/.self-hosted/.django  # set SITE_URL, secrets, etc.
 
-# 4. Validate config and DNS (in just, since just exists now)
+# 2. Validate config and DNS
 just self-hosted check-env
 just self-hosted check-dns        # verify SITE_URL resolves to this VM
 
-# 5. Bring up the stack
+# 3. Bring up the stack
 just self-hosted bootstrap   # builds, migrates, creates superuser, registers OIDC clients
 
-# 6. Verify
+# 4. Verify
 just self-hosted health-check
-
-# 7. (Phase 1) Run the doctor diagnostic
 just self-hosted doctor
-
-# 8. (Phase 2) Run the end-to-end smoke test
 just self-hosted smoke-test
 ```
-
-Step 7 and 8 print a "not yet implemented" message in Phase 0; the
-recipes exist so the operator surface is visible, and they will start
-doing real work in later phases. Step 4's `check-dns` is fully
-implemented today.
 
 ## Day-to-day operations
 
 ```bash
-just self-hosted --list        # see all recipes
+just -f just/self-hosted/mod.just --list  # see all recipes
 just self-hosted status        # are services running?
 just self-hosted logs          # follow logs from all services
 just self-hosted health-check  # quick service health
-just self-hosted backup-db     # database-only backup (Phase 3 will add full app backup)
-just self-hosted update        # pull, rebuild, migrate, restart
+just self-hosted doctor        # full diagnostic
+just self-hosted smoke-test    # end-to-end demo workflow
+just self-hosted backup        # manifested app backup
+just self-hosted list-backups  # show available backups
+just self-hosted restore backups/<backup-id>
+just self-hosted upgrade --to v0.9.0
+just self-hosted collect-support-bundle
 ```
-
-The fuller operator interface (`doctor`, `smoke-test`, `backup`,
-`restore`, `upgrade`, `collect-support-bundle`) lands in later phases.
-The names exist today; the implementations are phased.
 
 ## Reverse proxy: bring your own, or use bundled Caddy
 
@@ -197,9 +182,8 @@ The canonical deployment is "single Linux VM with Docker Compose."
 Provider-specific tutorials map that generic shape to real
 infrastructure:
 
-- [DigitalOcean](providers/digitalocean.md) — primary. The first
-  supported provider quickstart. Outline today; full ten-step tutorial
-  in Phase 1.
+- [DigitalOcean](providers/digitalocean.md) — primary supported provider
+  tutorial and the canonical worked example.
 - AWS EC2, Hetzner, on-prem — substrate-generic install instructions
   apply. Provider tutorials may follow on customer demand. (No
   comparable self-hosted product writes per-provider reference docs;
@@ -211,7 +195,6 @@ For paid Pro support, generate a redacted support bundle and email it
 to support@validibot.com:
 
 ```bash
-# Phase 6 — implementation lands later. The recipe exists today.
 just self-hosted collect-support-bundle
 ```
 
@@ -219,23 +202,28 @@ The bundle includes versions, doctor output, recent logs, migration
 state, and validator manifests. It excludes secrets, signing keys,
 API tokens, and raw submission contents.
 
-## What's not yet implemented
+## Known remaining gaps
 
-This page documents the **target shape**. The full deployment kit
-lands across ADR phases 0-6:
+Most operator lifecycle recipes now do real work. The remaining gaps to
+account for during a paid pilot are:
 
-| Phase | Status | Scope |
-|---|---|---|
-| Phase 0 | ✓ Done | Naming/terminology rename, kit skeleton, stub recipes, this overview |
-| Phase 1 | Sessions 1-2 done | `doctor` command, JSON output, provider overlays, compatibility matrix |
-| Phase 2 | Planned | `smoke-test` command, demo workflow |
-| Phase 3 | Planned | `backup` and `restore` commands, manifest schema |
-| Phase 4 | Planned | `upgrade` workflow with versioned images |
-| Phase 5 | Planned | Validator operations (`validators list-images`, etc.), `cleanup` |
-| Phase 6 | Planned | Support bundle and pilot kit |
+- the pre-`just` bootstrap helper scripts are still stubs, so host prep
+  is manual or provider-guide driven;
+- self-hosted S3-compatible object storage is documented as a future
+  option but is not yet an operator-supported path;
+- using an external managed Postgres service requires careful env and
+  TLS configuration, and the bundled Compose Postgres service remains
+  the default supported path.
 
-Run `just self-hosted --list` to see which recipes exist today (some
-work, some print a Phase 0 stub message — that's expected).
+High-value implementation follow-ups:
+
+- replace the DigitalOcean guide's manual Docker-install/data-root block
+  with an idempotent one-shot installer script;
+- add a DigitalOcean doctor check that verifies Docker's data root is
+  under the expected mounted volume path;
+- add doctor findings for database configuration mode, especially
+  `DATABASE_URL` pointing off-host while the bundled local Postgres
+  service is still running.
 
 ## Detailed guides
 

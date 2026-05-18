@@ -270,7 +270,7 @@ By default, validator images are pulled from Docker Hub. If you're using a priva
 
 ```bash
 # Log in to your registry on the Docker host
-docker login ghcr.io -u USERNAME -p TOKEN
+echo "$TOKEN" | docker login ghcr.io -u USERNAME --password-stdin
 
 # Or for AWS ECR
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com

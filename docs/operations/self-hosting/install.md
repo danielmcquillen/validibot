@@ -14,7 +14,7 @@ A Linux VM with:
 - a public IP and DNS record if you want HTTPS;
 - root or sudo access for the initial bootstrap.
 
-The `bootstrap-host` helper installs Docker, creates the `validibot` user, and sets up data directories. If you already have Docker installed and a non-root user with Docker access, you can skip `bootstrap-host` and run the `just self-hosted bootstrap` step directly.
+The `bootstrap-host` helper is still a stub. For current installs, prepare the host manually or follow the [DigitalOcean provider guide](providers/digitalocean.md) for exact commands, then run the `just self-hosted bootstrap` step from the prepared checkout.
 
 ## Recommended VM sizing
 
@@ -24,11 +24,23 @@ The `bootstrap-host` helper installs Docker, creates the `validibot` user, and s
 | Small team | 4 vCPU | 8-16 GB | 200 GB SSD | EnergyPlus/FMU light use |
 | Heavy simulation | 8+ vCPU | 32 GB | 500 GB+ SSD | More worker/validator concurrency |
 
-For paid pilots we recommend the "small team" size with a separate block-storage volume mounted at `/srv/validibot` so data and evidence aren't on a disposable boot disk.
+For paid pilots we recommend the "small team" size with a separate block-storage volume mounted at `/srv/validibot`, and Docker configured with `/srv/validibot/docker` as its data root before the first Compose run. That keeps Docker named volumes, validation evidence, and app backups off the disposable boot disk.
 
 ## Install steps
 
-### 1. Clone the repo (or extract a release tarball)
+### 1. Prepare the host
+
+On a fresh VM, complete these host-prep steps before cloning the repo:
+
+- install Docker Engine and the Compose plugin;
+- install `just`;
+- create a non-root `validibot` operator user with Docker access;
+- mount durable storage at `/srv/validibot` for production installs;
+- configure Docker's data root to `/srv/validibot/docker` before the first Compose run if you are using that mounted volume layout.
+
+The helper scripts in `deploy/self-hosted/scripts/` are reserved for this role, but they are still stubs. Do not rely on them for production host preparation yet.
+
+### 2. Clone the repo (or extract a release tarball)
 
 ```bash
 git clone https://github.com/validibot/validibot.git
@@ -37,43 +49,20 @@ cd validibot
 
 For air-gapped or release-tarball installs, extract the tarball and `cd` into the resulting directory. The tarball bundles `docker-compose.production.yml`, the `deploy/self-hosted/` directory, the `just/self-hosted/` module, and a copy of the env templates.
 
-### 2. Bootstrap the host (as root)
-
-```bash
-./deploy/self-hosted/scripts/bootstrap-host
-```
-
-What it does:
-
-- installs Docker Engine + Compose plugin;
-- installs `just` (a small Rust binary);
-- creates a `validibot` system user with Docker group membership;
-- creates `/srv/validibot/` (or your `--data-root`) and sets ownership;
-- creates the data, runs, and evidence subdirectories with the right modes.
-
-This is the **only** script you run as root. Everything after this is a `just` recipe run as the `validibot` user.
-
-After bootstrap, switch users:
-
-```bash
-exit  # leave root
-ssh validibot@<your-vm>
-cd /srv/validibot/repo  # or wherever bootstrap-host put the clone
-```
-
 ### 3. Copy and edit env files
 
 ```bash
+mkdir -p .envs/.production
 cp -r .envs.example/.production/.self-hosted/ .envs/.production/.self-hosted/
 $EDITOR .envs/.production/.self-hosted/.django
 ```
 
 The `.django` file has eight grouped sections you'll need to customise:
 
-1. **Required** — `SITE_URL`, `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `DJANGO_MFA_ENCRYPTION_KEY`;
+1. **Required** — `SITE_URL`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_SECRET_KEY`, `DJANGO_MFA_ENCRYPTION_KEY`, `WORKER_API_KEY`;
 2. **URLs/security** — `DJANGO_CSRF_TRUSTED_ORIGINS`, secure cookies, HSTS;
 3. **Database/cache** — usually defaults;
-4. **Storage** — `DATA_STORAGE_ROOT`;
+4. **Storage** — default Compose uses `/app/storage/private` backed by the `validibot_storage` Docker named volume;
 5. **Email** — `DJANGO_EMAIL_BACKEND`, sender addresses;
 6. **Validators** — runner selection, image policy;
 7. **Pro/signing** — empty for community, set when activating Pro;
@@ -87,6 +76,9 @@ python -c "from django.core.management.utils import get_random_secret_key; print
 
 # DJANGO_MFA_ENCRYPTION_KEY (must be Fernet-format)
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# WORKER_API_KEY
+openssl rand -base64 48
 ```
 
 Also edit `.postgres` and `.build` from the same template.
@@ -119,7 +111,7 @@ The doctor command is target-aware and emits a stable JSON schema (`validibot.do
 Once installed:
 
 ```bash
-just self-hosted --list           # all recipes
+just -f just/self-hosted/mod.just --list  # all recipes
 just self-hosted status           # are services running?
 just self-hosted logs             # follow logs from all services
 just self-hosted health-check     # quick service health
@@ -182,21 +174,9 @@ If you've bought a Pro license:
 
 That's it. Existing data, users, workflows, and runs are preserved across the upgrade. Pro migrations are additive — they add tables (teams, guests, signed credentials, MCP, advanced analytics) but never reshape community tables. The package-index credential is the entitlement gate; there is no runtime license phone-home.
 
-## What's not yet implemented
+## Known remaining gaps
 
-This page documents the **target shape**. The full deployment kit lands across ADR phases 0-6:
-
-| Phase | Status | Scope |
-|---|---|---|
-| Phase 0 | ✓ Done | Naming/terminology rename, kit skeleton, stub recipes, this overview |
-| Phase 1 | Sessions 1-2 done | `doctor` command, JSON output, provider overlays, compatibility matrix |
-| Phase 2 | Planned | `smoke-test` command, demo workflow |
-| Phase 3 | Planned | `backup` and `restore` commands, manifest schema |
-| Phase 4 | Planned | `upgrade` workflow with versioned images |
-| Phase 5 | Planned | Validator operations (`validators list-images`, etc.), `cleanup` |
-| Phase 6 | Planned | Support bundle and pilot kit |
-
-Run `just self-hosted --list` to see which recipes exist today (some work, some print a Phase 0 stub message — that's expected).
+Most lifecycle recipes now do real work. The pre-`just` bootstrap helper scripts remain stubs, self-hosted S3-compatible object storage is not yet an operator-supported path, and external managed Postgres requires the careful TLS configuration described in the provider guide.
 
 ## See also
 

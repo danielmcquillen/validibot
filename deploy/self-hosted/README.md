@@ -13,7 +13,7 @@ If you're new here, **start with**:
   links there rather than repeating instructions.
 
 For day-to-day operations, use the `just self-hosted` recipes from the
-repo root (see `just self-hosted --list`).
+repo root (see `just -f just/self-hosted/mod.just --list`).
 
 ## Layout
 
@@ -23,20 +23,21 @@ deploy/self-hosted/
   caddy/
     Caddyfile                 ← reverse proxy config (opt-in via Compose profile)
   scripts/
-    bootstrap-host            ← prep a fresh VM (Docker, just, user, dirs)
-    bootstrap-digitalocean    ← DigitalOcean-tuned bootstrap
+    bootstrap-host            ← planned fresh-VM helper (stub today)
+    bootstrap-digitalocean    ← planned DigitalOcean helper (stub today)
 ```
 
 These two scripts are the **only** scripts in the kit. Everything
-else is a `just` recipe — see `just self-hosted --list` from the
+else is a `just` recipe — see `just -f just/self-hosted/mod.just --list` from the
 repo root.
 
 Why only two scripts? Because they're the only operations that have
-to run *before* `just` is installed on the VM. After `bootstrap-host`
-finishes, `just` exists, and every subsequent operation
-(`check-dns`, `build-pro-image`, `bootstrap`, `deploy`, `doctor`,
-`backup`, etc.) is a `just self-hosted <recipe>`. See ADR-2026-04-27
-section 4.
+to run *before* `just` is installed on the VM. They are intentionally
+thin stubs until the bootstrap implementation lands; use the provider
+guide or substrate-generic install guide for current host-prep steps.
+After Docker and `just` exist, every subsequent operation (`check-dns`,
+`build-pro-image`, `bootstrap`, `deploy`, `doctor`, `backup`, etc.) is
+a `just self-hosted <recipe>`. See ADR-2026-04-27 section 4.
 
 ## Relationship to the rest of the repo
 
@@ -47,9 +48,12 @@ backup, restore, upgrade) is driven from the repo root via:
 ```bash
 just self-hosted bootstrap   # first-time install
 just self-hosted deploy       # upgrades and rebuilds
-just self-hosted doctor       # health diagnostic (Phase 1 — stub today)
-just self-hosted backup       # application-level backup (Phase 3 — stub today)
-just self-hosted --list       # see all recipes
+just self-hosted doctor       # full health diagnostic
+just self-hosted smoke-test   # end-to-end demo workflow
+just self-hosted backup       # manifested application backup
+just self-hosted restore backups/<backup-id>
+just self-hosted upgrade --to v0.9.0
+just -f just/self-hosted/mod.just --list  # see all recipes
 ```
 
 The Compose stack itself lives at `docker-compose.production.yml` in

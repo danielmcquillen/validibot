@@ -37,7 +37,7 @@ support-bundle-<host>-<timestamp>.zip
   recent-worker.log       # last 200 lines of worker container logs
   recent-postgres.log     # last 200 lines of postgres container logs
   disk-usage.txt          # `df -h` output
-  validators.txt          # validator backend inventory (Phase 5 recipe output)
+  validators.txt          # validator backend inventory
   versions.txt            # Docker / OS / just versions on the host
 ```
 

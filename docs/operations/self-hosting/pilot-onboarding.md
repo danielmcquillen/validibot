@@ -23,8 +23,9 @@ If the customer is using DigitalOcean specifically, also pre-read the [DigitalOc
 - [ ] Clone the repo to `/srv/validibot/repo` (or wherever the customer's convention puts deployments)
 - [ ] Copy env templates and edit:
   ```bash
+  mkdir -p .envs/.production
   cp -r .envs.example/.production/.self-hosted/ .envs/.production/.self-hosted/
-  $EDITOR .envs/.production/.self-hosted/.django  # SITE_URL, SECRET_KEY, ALLOWED_HOSTS
+  $EDITOR .envs/.production/.self-hosted/.django  # SITE_URL, DJANGO_ALLOWED_HOSTS, secrets
   $EDITOR .envs/.production/.self-hosted/.postgres  # POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
   ```
 - [ ] If Pro: also edit `.envs/.production/.self-hosted/.build` to set `VALIDIBOT_COMMERCIAL_PACKAGE` and `VALIDIBOT_PRIVATE_INDEX_URL` from the purchase email
@@ -37,10 +38,11 @@ If the customer is using DigitalOcean specifically, also pre-read the [DigitalOc
 If the customer is on DigitalOcean, walk through the provider-specific checklist together — most of these have a one-time setup cost and pay back many times over:
 
 - [ ] Droplet size matches workload (paid pilot baseline: 4 vCPU / 8-16 GB / 200 GB volume mounted at `/srv/validibot`)
+- [ ] Docker data root is on the mounted Volume (`docker info --format '{{ .DockerRootDir }}'` prints `/srv/validibot/docker`)
 - [ ] DigitalOcean Cloud Firewall configured (`22` from operator IPs only, `80`/`443` from anywhere, everything else denied)
-- [ ] DigitalOcean automatic Droplet backups enabled (or alternative infrastructure-level backup — note this is *additional* to Validibot application backups)
+- [ ] DigitalOcean automatic Droplet backups enabled only as OS-level insurance; they do not include attached Volumes, so Validibot backups plus off-host replication are still required
 - [ ] DigitalOcean monitoring agent installed (free, gives Validibot doctor's `--provider digitalocean` checks something to consume)
-- [ ] DNS A-record at the customer's DNS provider points to the Droplet's public IP
+- [ ] DNS A-record at the customer's DNS provider points to a Reserved IP assigned to the Droplet, or directly to the Droplet public IP for evaluation installs
 
 For other providers, replace these with the equivalent: VPC firewall rules, infrastructure-level snapshots, host-OS metric collection, DNS record.
 

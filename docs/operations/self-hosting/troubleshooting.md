@@ -7,7 +7,7 @@ This page captures the common operator issues and how to diagnose them. The firs
 The doctor command's check IDs are documented at [doctor-check-ids.md](doctor-check-ids.md). Each ID has a stable meaning, a severity, and a suggested fix. Examples:
 
 - `VB001 SECRET_KEY missing` — set `DJANGO_SECRET_KEY` in `.envs/.production/.self-hosted/.django`.
-- `VB201 storage root not writable` — `chown -R 1000:1000 /srv/validibot/data`.
+- `VB201 storage root not writable` — inspect the path doctor prints inside the `web` container; on the default stack it should be `/app/storage/private` backed by the `validibot_storage` Docker volume.
 - `VB411 backups configured but no restore test recorded` — run a restore drill (see [restore.md](restore.md)).
 - `VB320 Docker version below minimum` — upgrade Docker Engine.
 
@@ -35,12 +35,35 @@ Common causes:
 - **`postgres` failing to start** — usually a permissions issue on the data volume. `docker compose logs postgres` will show the specific error.
 - **`worker` running but not picking up tasks** — Redis unreachable. `just self-hosted health-check` will catch this.
 
+## "I ran Compose before relocating Docker's data root"
+
+The recommended DigitalOcean layout moves Docker's data root to `/srv/validibot/docker` before the first `docker compose` run. If you accidentally ran Compose while Docker still used `/var/lib/docker`, choose one recovery path before putting real data into the instance.
+
+For a pre-bootstrap or disposable install, destroy the accidentally created volumes and restart from the corrected data root:
+
+```bash
+docker compose -f docker-compose.production.yml -p validibot down -v
+sudo systemctl stop docker.socket docker.service
+sudo mkdir -p /srv/validibot/docker
+sudo tee /etc/docker/daemon.json > /dev/null <<'EOF'
+{
+  "data-root": "/srv/validibot/docker"
+}
+EOF
+sudo systemctl start docker.service docker.socket
+docker info --format '{{.DockerRootDir}}'
+```
+
+The final command must print `/srv/validibot/docker` before you run `just self-hosted bootstrap` or `just self-hosted deploy` again.
+
+If the instance already contains data you need to keep, do not run `down -v`. Take `just self-hosted backup` first, copy the backup off-host, then restore onto a fresh host prepared with the correct Docker data root. Manual migration of `/var/lib/docker/volumes/validibot_*` is possible only during a maintenance window with Docker stopped, and is easier to get wrong than a backup-and-restore drill.
+
 ## "validations are queueing but not running"
 
 The worker is up but not processing tasks. Likely causes:
 
 1. **Docker socket unreachable from worker container.** The worker dispatches advanced validators by talking to Docker. Check `just self-hosted doctor` for `VB320` (Docker socket).
-2. **Validator image not pulled.** Run `just self-hosted validators list-images`. If an image is missing, `docker compose pull` or trigger a deploy.
+2. **Validator image not built or present.** Run `just self-hosted validators`. If an image is missing, build it with `just self-hosted validator-build <name>` or trigger the relevant validator-image deployment path.
 3. **Validator manifest missing.** Less common; usually shows up in worker logs as a `ValidatorNotFound` error.
 4. **Storage permissions wrong.** The worker can't materialise the per-run workspace. Check `VB201`.
 
@@ -74,13 +97,7 @@ Most likely you broke an env file. Check:
 1. `just self-hosted check-env` — does it parse?
 2. `just self-hosted doctor` — does it identify the missing/invalid setting?
 
-If the config change was meant to add a new feature (e.g. external Postgres, S3 storage backend), check the corresponding Phase doc. If you've made multiple changes and want to roll back the env files only:
-
-```bash
-just self-hosted restore backups/<timestamp> --components config-only
-```
-
-This restores `.envs/.production/.self-hosted/*` without touching the database or `DATA_STORAGE_ROOT`. See [restore.md](restore.md).
+If the config change was meant to add a new feature, check the corresponding operator guide first. External managed Postgres is supported only with careful TLS settings; self-hosted S3-compatible object storage is not yet an operator-supported path. Component-selective restore is not implemented, so roll env files back from your config-management system or another copy of `.envs/.production/.self-hosted/`. See [restore.md](restore.md).
 
 ## "the upgrade failed half-way through"
 
@@ -95,7 +112,7 @@ It picks up at the failed step. Each step prints `starting / done / skipped (alr
 If you can't recover at the failed step (e.g. a destructive migration corrupted state):
 
 ```bash
-just self-hosted stop
+just self-hosted down
 just self-hosted restore backups/<pre-upgrade-timestamp>
 $EDITOR .envs/.production/.self-hosted/.build  # set VALIDIBOT_IMAGE_TAG back to the old version
 just self-hosted deploy
@@ -136,10 +153,10 @@ docker compose logs worker --since 24h | grep -A 20 "Traceback"
 
 Two paths:
 
-1. **Restore from backup.** If you've been running backups, the env files are in there:
+1. **Restore from config management or an off-host copy.** Validibot application backups do not include secret env files, so use the system where you keep `.envs/.production/.self-hosted/`:
 
    ```bash
-   just self-hosted restore backups/<timestamp> --components config-only
+   rsync -a off-host:/path/to/.self-hosted/ .envs/.production/.self-hosted/
    ```
 
 2. **Recreate from templates.** Copy `.envs.example/.production/.self-hosted/` to `.envs/.production/.self-hosted/` and re-edit each file. Generate fresh secrets with the commands from [install.md](install.md). **You will need to re-encrypt user MFA secrets** — the new `DJANGO_MFA_ENCRYPTION_KEY` won't decrypt the old ones. Plan to ask all MFA users to re-enroll, or restore from a backup with the correct key.
@@ -156,7 +173,7 @@ just self-hosted backup
 scp -r backups/<timestamp> validibot@new-host:/srv/validibot/repo/backups/
 
 # On the new host (after install steps):
-just self-hosted restore backups/<timestamp> --components full
+just self-hosted restore backups/<timestamp>
 just self-hosted doctor
 just self-hosted smoke-test
 
@@ -183,7 +200,7 @@ Without the bundle, response time is 1 week. With the bundle, response time is 2
 - you can't restore from a backup;
 - you suspect compromise (unexpected outbound calls, unfamiliar processes, mysterious database changes).
 
-For compromise specifically: take the instance offline (`just self-hosted stop`), preserve the data and database for forensics, and email support immediately.
+For compromise specifically: take the instance offline (`just self-hosted down`), preserve the data and database for forensics, and email support immediately.
 
 ## See also
 

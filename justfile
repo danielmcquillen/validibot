@@ -50,7 +50,7 @@
 #   - See what a command does: just --show <command>
 #   - Dry run: just --dry-run <command>
 #   - List all commands: just --list
-#   - List module commands: just gcp --list
+#   - List module commands: just -f just/gcp/mod.just --list
 #
 # ADDING A NEW PLATFORM
 # =====================
@@ -151,7 +151,7 @@ mod aws 'just/aws'
 # Examples:
 #   just self-hosted deploy
 #   just self-hosted doctor
-#   just self-hosted backup-db
+#   just self-hosted backup
 #   just self-hosted health-check
 mod self-hosted 'just/self-hosted'
 
@@ -195,10 +195,10 @@ default:
     @echo "    just local up             # Start community dev stack"
     @echo "    just local-pro up         # Start community + pro"
     @echo "    just gcp deploy prod      # Deploy to GCP production"
-    @echo "    just gcp --list           # List all GCP commands"
+    @echo "    just -f just/gcp/mod.just --list   # List all GCP commands"
     @echo ""
     @echo "Run 'just --list' for full command list"
-    @echo "Run 'just <module> --list' for module commands (e.g., just local --list)"
+    @echo "Run 'just -f just/<module>/mod.just --list' for module command lists"
     @echo ""
 
 # =============================================================================

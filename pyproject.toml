@@ -42,7 +42,7 @@ dependencies = [
   "django-crispy-forms==2.6",
   "django-environ==0.13.0",
   "django-filter==25.2",
-  "django-markdownify==0.9.6",
+  "django-markdownify==0.9.7",
   "django-model-utils==5.0.0",
   "django-storages[google]==1.14.6",
   "djangorestframework==3.17.1",
@@ -81,7 +81,7 @@ dependencies = [
   # guerrillamail, tempmail, etc). Used by UserSignupForm when
   # REJECT_DISPOSABLE_EMAILS is enabled — off by default for community/
   # self-hosted deployments, on in cloud to deter free-trial abuse.
-  "disposable-email-domains==0.0.184",
+  "disposable-email-domains==0.0.185",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # 0.7.0 adds ``StepValidatorRecord.validator_backend_image_digest``;
   # 0.7.1–0.7.3 shipped publish-workflow fixes;
@@ -331,8 +331,8 @@ dev = [
   "django-debug-toolbar==6.3.0",
   "django-extensions==4.1",
   "ipdb==0.13.13",
-  "watchfiles==1.1.1",
+  "watchfiles==1.2.0",
   "werkzeug[watchdog]==3.1.8",
   # Documentation
-  "zensical==0.0.41",
+  "zensical==0.0.42",
 ]

@@ -433,3 +433,277 @@ class SHACLValidatorLibraryPathTests(TestCase):
         # two bundle-not-yet-shipped warnings instead.
         bundle_warnings = [i for i in result.issues if i.code and "bundle" in i.code]
         assert bundle_warnings == []
+
+
+# ──────────────────────────────────────────────────────────────────────
+# End-to-end SPARQL ASK assertion flow (Phase 1c).
+#
+# These tests exercise the full pipeline: a Ruleset.metadata.sparql_assertions
+# list flows through the validator's _resolve_sparql_assertions(), the
+# engine's parse_sparql_assertions() rehydration, run_sparql_ask
+# execution, and finally a ValidationIssue surfacing in result.issues.
+#
+# Maps to ADR-2026-05-18 "Phase 1c — SPARQL ASK assertions" acceptance
+# tests: functional happy paths, severity routing, and engine-error
+# escalation. The library-validator + step merge semantic is also
+# exercised here so we know assertions inherit correctly.
+# ──────────────────────────────────────────────────────────────────────
+
+
+class SHACLValidatorSparqlAskFlowTests(TestCase):
+    """End-to-end SPARQL ASK execution from Ruleset.metadata to findings."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = OrganizationFactory()
+        cls.user = UserFactory()
+        cls.project = ProjectFactory(org=cls.org)
+        cls.validator = ValidatorFactory(
+            validation_type=ValidationType.SHACL,
+            org=cls.org,
+            is_system=False,
+        )
+
+    def _submission(self, content: str):
+        """Build a submission with arbitrary inline Turtle content."""
+        submission = SubmissionFactory(
+            org=self.org,
+            project=self.project,
+            user=self.user,
+            file_type=SubmissionFileType.TEXT,
+        )
+        submission.content = content
+        submission.save(update_fields=["content"])
+        return submission
+
+    def test_passing_ask_produces_no_finding(self):
+        """A SPARQL ASK that returns true contributes no issue.
+
+        The basic proof that ASK execution is wired in: a passing query
+        leaves ``result.passed`` and ``result.issues`` unchanged from
+        what SHACL alone would produce.
+        """
+        ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text=SHAPES_PERSON_REQUIRES_NAME,
+            metadata={
+                "sparql_assertions": [
+                    {
+                        "target_graph": "data",
+                        "query": (
+                            "PREFIX ex: <http://example.com/> ASK { ?p a ex:Person }"
+                        ),
+                        "severity": Severity.ERROR,
+                        "description": "Must have a Person",
+                        "error_message_template": "",
+                    },
+                ],
+            },
+        )
+        submission = self._submission(
+            "@prefix ex: <http://example.com/> .\n"
+            'ex:alice a ex:Person ; ex:name "Alice" .',
+        )
+
+        result = SHACLValidator().validate(self.validator, submission, ruleset)
+
+        assert result.passed is True
+        sparql_findings = [
+            i for i in result.issues if i.code and "sparql_ask" in i.code
+        ]
+        assert sparql_findings == []
+
+    def test_failing_ask_produces_finding_with_template_message(self):
+        """A SPARQL ASK that returns false produces one finding.
+
+        The author's ``error_message_template`` becomes the finding's
+        message (verbatim — V1 does not interpolate signals into the
+        template; that feature lands when named-SELECT signals do).
+        """
+        ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text=SHAPES_PERSON_REQUIRES_NAME,
+            metadata={
+                "sparql_assertions": [
+                    {
+                        "target_graph": "data",
+                        "query": (
+                            "PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }"
+                        ),
+                        "severity": Severity.ERROR,
+                        "description": "Must have at least one Robot",
+                        "error_message_template": "No Robot instances found.",
+                    },
+                ],
+            },
+        )
+        submission = self._submission(
+            "@prefix ex: <http://example.com/> .\n"
+            'ex:alice a ex:Person ; ex:name "Alice" .',
+        )
+
+        result = SHACLValidator().validate(self.validator, submission, ruleset)
+
+        assert result.passed is False
+        sparql_findings = [
+            i for i in result.issues if i.code == "shacl.sparql_ask_failed"
+        ]
+        assert len(sparql_findings) == 1
+        assert sparql_findings[0].message == "No Robot instances found."
+        assert sparql_findings[0].severity == Severity.ERROR
+
+    def test_warning_severity_does_not_block_passing(self):
+        """A failing ASK at WARNING severity allows the step to pass.
+
+        Validates the severity routing: only ERROR-tier findings flip
+        ``result.passed`` to False. Authors layering advisory checks
+        on top of hard gates must be able to do so without escalating
+        every finding to a step failure.
+        """
+        ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text=SHAPES_PERSON_REQUIRES_NAME,
+            metadata={
+                "sparql_assertions": [
+                    {
+                        "target_graph": "data",
+                        "query": (
+                            "PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }"
+                        ),
+                        "severity": Severity.WARNING,
+                        "description": "Robot expected (advisory)",
+                        "error_message_template": "Advisory: no Robot found.",
+                    },
+                ],
+            },
+        )
+        submission = self._submission(
+            "@prefix ex: <http://example.com/> .\n"
+            'ex:alice a ex:Person ; ex:name "Alice" .',
+        )
+
+        result = SHACLValidator().validate(self.validator, submission, ruleset)
+
+        assert result.passed is True  # WARNING doesn't block
+        sparql_findings = [
+            i for i in result.issues if i.code == "shacl.sparql_ask_failed"
+        ]
+        assert len(sparql_findings) == 1
+        assert sparql_findings[0].severity == Severity.WARNING
+
+    def test_library_and_step_assertions_both_run(self):
+        """Library-validator and step-level ASKs both execute and contribute.
+
+        Mirrors the shapes / ontology merge semantic for assertions:
+        a library validator can carry baseline gates that every workflow
+        inherits; individual steps add project-specific gates on top.
+        Both lists evaluate against the same submission.
+        """
+        # Library validator with a baseline assertion.
+        library_ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text=SHAPES_PERSON_REQUIRES_NAME,
+            metadata={
+                "sparql_assertions": [
+                    {
+                        "target_graph": "data",
+                        "query": (
+                            "PREFIX ex: <http://example.com/> "
+                            "ASK { ?p a ex:Person }"  # passes
+                        ),
+                        "severity": Severity.ERROR,
+                        "description": "Library: must have a Person",
+                        "error_message_template": "library failed",
+                    },
+                ],
+            },
+        )
+        library_validator = ValidatorFactory(
+            validation_type=ValidationType.SHACL,
+            org=self.org,
+            is_system=False,
+            default_ruleset=library_ruleset,
+        )
+        # Step-level ruleset with a different assertion that fails.
+        step_ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text="",
+            metadata={
+                "sparql_assertions": [
+                    {
+                        "target_graph": "data",
+                        "query": (
+                            "PREFIX ex: <http://example.com/> "
+                            "ASK { ?r a ex:Robot }"  # fails
+                        ),
+                        "severity": Severity.ERROR,
+                        "description": "Step: must have a Robot",
+                        "error_message_template": "step failed",
+                    },
+                ],
+            },
+        )
+        submission = self._submission(
+            "@prefix ex: <http://example.com/> .\n"
+            'ex:alice a ex:Person ; ex:name "Alice" .',
+        )
+
+        result = SHACLValidator().validate(
+            library_validator,
+            submission,
+            step_ruleset,
+        )
+
+        # Library assertion passes; step assertion fails. Exactly one
+        # SPARQL finding should surface, attributed to the step entry.
+        sparql_findings = [
+            i for i in result.issues if i.code == "shacl.sparql_ask_failed"
+        ]
+        assert len(sparql_findings) == 1
+        assert sparql_findings[0].message == "step failed"
+
+    def test_engine_error_escalates_to_error_finding(self):
+        """A malformed assertion that bypassed the form scrub still gets caught.
+
+        Simulates a persistence-layer bypass: someone (admin import,
+        broken migration, manual SQL) writes a SELECT into
+        ``sparql_assertions``. The engine's re-scrub catches it and
+        emits an ERROR finding regardless of the configured severity,
+        because the run cannot be trusted while the config is broken.
+        """
+        ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text=SHAPES_PERSON_REQUIRES_NAME,
+            metadata={
+                "sparql_assertions": [
+                    {
+                        "target_graph": "data",
+                        # Malformed (SELECT, not ASK) — would never pass
+                        # the form scrub, simulating a bypass.
+                        "query": "SELECT * WHERE { ?s ?p ?o }",
+                        "severity": Severity.WARNING,  # author chose advisory
+                        "description": "Bad assertion smuggled in",
+                        "error_message_template": "",
+                    },
+                ],
+            },
+        )
+        submission = self._submission(
+            "@prefix ex: <http://example.com/> .\n"
+            'ex:alice a ex:Person ; ex:name "Alice" .',
+        )
+
+        result = SHACLValidator().validate(self.validator, submission, ruleset)
+
+        assert result.passed is False  # ERROR escalation forces failure
+        engine_errors = [
+            i for i in result.issues if i.code == "shacl.sparql_ask_engine_error"
+        ]
+        assert len(engine_errors) == 1
+        assert engine_errors[0].severity == Severity.ERROR

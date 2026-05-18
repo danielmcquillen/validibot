@@ -21,6 +21,8 @@ See ADR-2026-05-18 for the architecture rationale.
 from __future__ import annotations
 
 import logging
+import re
+import threading
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,13 +36,33 @@ from rdflib.namespace import SH
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import Severity
 from validibot.validations.validators.base.base import ValidationIssue
+from validibot.validations.validators.shacl.sparql_security import SparqlScrubError
+from validibot.validations.validators.shacl.sparql_security import scrub_sparql_ask
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Resource limits
+# =============================================================================
+#
+# These constants are the engine's safety net. Every limit is overridable
+# via Django settings (see ``_setting_int``) up to a hard cap defined in
+# the ADR's "Resource limits" table. Hitting any of these produces a
+# ``ValidationIssue`` with severity ERROR — the worker does not crash.
+#
+# See ADR-2026-05-18 "Security" → "Resource limits".
 
 DEFAULT_MAX_DATA_TRIPLES = 100_000
 DEFAULT_MAX_SHAPE_TRIPLES = 50_000
 DEFAULT_MAX_ONTOLOGY_TRIPLES = 100_000
 DEFAULT_MAX_VALIDATION_DEPTH = 25
+
+# SPARQL ASK execution budget (wall clock).
+DEFAULT_SPARQL_QUERY_TIMEOUT_SECONDS = 10
+DEFAULT_SPARQL_QUERY_TIMEOUT_MAX_SECONDS = 60
+
+# Maximum number of SPARQL ASK assertions per step (form-level cap).
+DEFAULT_SPARQL_ASKS_PER_STEP = 25
 
 
 # Well-known building-domain namespaces. Used by signal extraction to
@@ -145,9 +167,19 @@ def parse_rdf(content: str, rdf_format: str) -> tuple[Graph | None, str | None]:
     Returns ``(graph, error_message)`` where exactly one is ``None``.
     On parse failure the error message is suitable for surfacing as a
     ``ValidationIssue`` with severity ERROR.
+
+    Security: every call passes through :func:`prevalidate_safety` before
+    rdflib touches the bytes. Submissions or shape files containing
+    XXE-style XML constructs (DOCTYPE, ENTITY) or JSON-LD with remote
+    ``@context`` references are refused at this layer — never reaching
+    rdflib's parser. See ADR-2026-05-18 "Security".
     """
     if not content:
         return None, "Submission is empty."
+
+    safety_error = prevalidate_safety(content, rdf_format)
+    if safety_error is not None:
+        return None, safety_error
 
     g = Graph()
     try:
@@ -155,9 +187,117 @@ def parse_rdf(content: str, rdf_format: str) -> tuple[Graph | None, str | None]:
     except ParserError as exc:
         return None, f"RDF parse error ({rdf_format}): {exc}"
     except Exception as exc:
+        # Catch-all per the Security section's error-handling discipline:
+        # rdflib parsers can raise a variety of exceptions on malformed
+        # input; we translate them all into a generic, user-safe message.
+        # The raw exception detail is logged for operator forensics but
+        # not exposed downstream.
+        logger.warning(
+            "RDF parse raised unexpected exception",
+            extra={"rdf_format": rdf_format, "exc_type": type(exc).__name__},
+        )
         return None, f"Unexpected error parsing RDF as {rdf_format}: {exc}"
 
     return g, None
+
+
+# =============================================================================
+# Pre-parse safety scanning
+# =============================================================================
+#
+# These checks run on the raw bytes BEFORE rdflib's parsers see them.
+# The goal is to refuse known-dangerous content at the earliest possible
+# point in the pipeline, before any third-party parser can be tricked
+# into a fetch or an entity expansion. The patterns are deliberately
+# conservative — false positives produce a clear refusal message; false
+# negatives are mitigated by additional layers (engine kwargs, process-
+# level isolation, egress deny). See ADR-2026-05-18 "Security" →
+# "Network isolation" and "V1 hardenings".
+
+# Match XML constructs that indicate DTD declarations or external
+# entities. These are the building blocks of XXE attacks.
+_XML_XXE_PATTERN = re.compile(
+    r"<!DOCTYPE\b|<!ENTITY\b|<!ELEMENT\b|SYSTEM\s+['\"]|PUBLIC\s+['\"]",
+    re.IGNORECASE,
+)
+
+# Match a JSON-LD ``@context`` value that points at a remote URL.
+# The check is intentionally broad — anything starting with http(s):// or
+# file:// or another non-data scheme. ``data:`` URIs are safe because
+# they carry the context inline. Local relative paths (no scheme) also
+# pass; rdflib treats them as inline once we hand it the parsed JSON.
+_JSONLD_REMOTE_CONTEXT_PATTERN = re.compile(
+    r'"@context"\s*:\s*(?:"(?P<single>(?!data:)[a-z][a-z0-9+\-.]*:[^"]*)"'
+    r'|\[\s*"(?P<first>(?!data:)[a-z][a-z0-9+\-.]*:[^"]*)")',
+    re.IGNORECASE,
+)
+
+
+def prevalidate_safety(content: str, rdf_format: str) -> str | None:
+    """Reject RDF content containing known-dangerous constructs.
+
+    Runs before rdflib parsing. Returns an error message string if the
+    content must be refused, otherwise ``None``. Designed to be cheap —
+    two regex scans at most — and to fail closed (any unexpected error
+    in the scan returns an error rather than silently passing through).
+
+    Specifically refused:
+
+    - RDF/XML containing ``<!DOCTYPE``, ``<!ENTITY``, ``<!ELEMENT``, or
+      ``SYSTEM`` / ``PUBLIC`` external-entity declarations. These are
+      the XXE family — they would let an attacker exfiltrate local
+      files (``file:///etc/passwd``) or trigger SSRF.
+    - JSON-LD whose top-level ``@context`` references a non-``data:``
+      URL. rdflib's JSON-LD plugin will fetch remote contexts at parse
+      time, which is both an SSRF vector and an exfiltration vector
+      (the attacker logs the request).
+
+    Other serializations (Turtle, N-Triples, N-Quads) do not have a
+    network-fetching surface in rdflib's parser; they are passed
+    through unchanged.
+
+    Args:
+        content: The raw RDF text.
+        rdf_format: The rdflib format slug (``turtle``, ``json-ld``,
+            ``xml``, ``nt``, ``nquads``). Determines which scan runs.
+
+    Returns:
+        ``None`` if the content is safe to hand to rdflib;
+        otherwise a user-facing error message naming the construct
+        that triggered the refusal.
+    """
+    if not content:
+        return None
+
+    # RDF/XML XXE refusal. The check runs only on the RDF/XML format;
+    # ``<!DOCTYPE`` inside a Turtle literal would be a false positive
+    # we want to avoid.
+    if rdf_format == "xml":
+        match = _XML_XXE_PATTERN.search(content)
+        if match is not None:
+            return (
+                f"RDF/XML content contains '{match.group(0).strip()}', "
+                "which the validator refuses as an XXE / external-entity "
+                "vector. Remove the DTD / entity declaration and resubmit, "
+                "or convert the file to Turtle, JSON-LD, or N-Triples."
+            )
+
+    # JSON-LD remote-context refusal. We check the raw text rather than
+    # parsing the JSON because parsing is what we're trying to prevent
+    # from making network calls.
+    if rdf_format == "json-ld":
+        match = _JSONLD_REMOTE_CONTEXT_PATTERN.search(content)
+        if match is not None:
+            url = match.group("single") or match.group("first")
+            return (
+                f"JSON-LD content references remote @context '{url}'. "
+                "The validator refuses remote contexts to prevent SSRF "
+                "and data-exfiltration vectors. Inline the @context "
+                "object in the JSON-LD, use a data: URI, or convert the "
+                "file to Turtle."
+            )
+
+    return None
 
 
 # =============================================================================
@@ -363,6 +503,17 @@ def run_shacl_validation(
                 "SHACL_MAX_VALIDATION_DEPTH",
                 DEFAULT_MAX_VALIDATION_DEPTH,
             ),
+            # SECURITY: pyshacl's JavaScript-constraint engine
+            # (``sh:JSConstraint``) executes attacker-controlled JS via
+            # pyduktape3. We disable it unconditionally and rely on the
+            # absence of pyduktape3 in the wheel as belt-and-suspenders.
+            # See ADR-2026-05-18 "Security" → "Code execution".
+            js=False,
+            # SECURITY: pyshacl can follow ``owl:imports`` and fetch the
+            # imported ontology over the network. We hard-code False
+            # (also the default) and never read this from a setting —
+            # there is no operator-facing override.
+            do_owl_imports=False,
             # Include Warning and Info findings in the report. Validibot
             # computes ``passed`` from severity counts after mapping, so
             # we want all findings in the report regardless of how
@@ -375,6 +526,378 @@ def run_shacl_validation(
         return None, f"SHACL engine error: {exc}"
 
     return results_graph, None
+
+
+# =============================================================================
+# SPARQL ASK assertion execution
+# =============================================================================
+#
+# Author-defined SPARQL ASK assertions run after pyshacl completes. Each
+# ASK gets its own wall-clock budget enforced by a daemon thread; the
+# return value is the boolean answer of the query, with errors mapped to
+# a finding rather than a raised exception (per the Security section's
+# error-handling discipline). See ADR-2026-05-18 "Phase 1c — SPARQL ASK
+# assertions" and "Assertions against the SHACL output".
+
+
+# Allowed values for an ASK assertion's ``target_graph`` field. Kept here
+# rather than in ``constants.py`` because the validator package owns
+# this small enum and we want it co-located with the engine that
+# evaluates it.
+SPARQL_ASK_TARGET_DATA = "data"
+SPARQL_ASK_TARGET_RESULTS = "results"
+SPARQL_ASK_TARGET_UNION = "union"
+_VALID_TARGET_GRAPHS: frozenset[str] = frozenset(
+    {SPARQL_ASK_TARGET_DATA, SPARQL_ASK_TARGET_RESULTS, SPARQL_ASK_TARGET_UNION},
+)
+
+
+@dataclass(frozen=True)
+class SparqlAskAssertion:
+    """One author-defined SPARQL ASK assertion attached to a SHACL step.
+
+    Persisted as a dict inside ``Ruleset.metadata["sparql_assertions"]``;
+    the engine rehydrates that dict into one of these dataclass
+    instances per call.
+
+    Fields:
+        target_graph: ``"data"`` / ``"results"`` / ``"union"``. Decides
+            which graph the ASK runs against.
+        query: The raw SPARQL ASK text (already scrubbed at form save
+            time but re-scrubbed at run time as belt-and-suspenders).
+        severity: The Validibot severity the engine emits when the ASK
+            returns ``false``. Authors typically pick ``ERROR`` for hard
+            gates and ``WARNING`` for advisory checks.
+        description: Optional human-readable label shown in finding lists.
+        error_message_template: Optional CEL-style template — currently
+            stored verbatim, with future plans to support ``{{ o.foo }}``
+            substitution once the named-signal ADR lands.
+    """
+
+    target_graph: str
+    query: str
+    severity: str  # one of Severity.ERROR / .WARNING / .INFO
+    description: str = ""
+    error_message_template: str = ""
+
+
+def run_sparql_ask(
+    *,
+    query_text: str,
+    target_graph_name: str,
+    data_graph: Graph,
+    results_graph: Graph | None,
+    timeout_seconds: int | None = None,
+) -> tuple[bool | None, str | None]:
+    """Execute one SPARQL ASK against the requested target graph.
+
+    Returns ``(answer, error_message)`` with exactly one not-None.
+    ``answer`` is the boolean result; ``error_message`` carries a
+    user-facing description if the query was rejected by the AST scrub,
+    raised at execution time, or exceeded its wall-clock budget.
+
+    Args:
+        query_text: The raw SPARQL ASK text.
+        target_graph_name: Which graph to run the ASK against.
+            Must be one of ``"data"``, ``"results"``, ``"union"``.
+        data_graph: The submission's parsed RDF graph (post-inference).
+        results_graph: The SHACL ``sh:ValidationReport`` graph, or
+            ``None`` if SHACL did not run (e.g. parse failed earlier).
+        timeout_seconds: Wall-clock budget. ``None`` reads from
+            ``SHACL_SPARQL_QUERY_TIMEOUT_SECONDS`` setting (default 10).
+            Hard-capped by ``SHACL_SPARQL_QUERY_TIMEOUT_MAX_SECONDS``
+            (default 60) — operators can lower the default but not
+            exceed the cap.
+
+    Returns:
+        ``(answer, None)`` on success — ``answer`` is the ASK's boolean.
+        ``(None, error_message)`` on any policy / parse / runtime
+        failure. The engine never raises out of this function.
+    """
+    if target_graph_name not in _VALID_TARGET_GRAPHS:
+        return None, (
+            f"Unknown SPARQL target graph '{target_graph_name}'. "
+            f"Expected one of: {sorted(_VALID_TARGET_GRAPHS)}."
+        )
+
+    # Re-scrub at run time. The form already rejected this at save, but
+    # nothing prevents a fixture, an admin import, or a downstream API
+    # consumer from inserting an unscrubbed query. The cost of an extra
+    # parse is microseconds; the cost of a missed scrub could be data
+    # exfiltration.
+    try:
+        scrub_sparql_ask(query_text)
+    except SparqlScrubError as exc:
+        return None, f"SPARQL ASK rejected by security scrub: {exc}"
+
+    target = _select_target_graph(
+        target_graph_name=target_graph_name,
+        data_graph=data_graph,
+        results_graph=results_graph,
+    )
+    if target is None:
+        # ``results`` or ``union`` requested but SHACL didn't produce a
+        # report graph. Surface a clear message rather than crashing the
+        # ASK with a missing-target error.
+        return None, (
+            f"SPARQL target '{target_graph_name}' is not available "
+            "because no SHACL results graph was produced. Did SHACL "
+            "fail to run, or did parsing fail earlier in the pipeline?"
+        )
+
+    effective_timeout = _resolve_sparql_timeout(timeout_seconds)
+
+    answer, error = _execute_ask_with_timeout(
+        query_text=query_text,
+        graph=target,
+        timeout_seconds=effective_timeout,
+    )
+    return answer, error
+
+
+def _select_target_graph(
+    *,
+    target_graph_name: str,
+    data_graph: Graph,
+    results_graph: Graph | None,
+) -> Graph | None:
+    """Resolve a ``target_graph`` name to an rdflib Graph instance.
+
+    For the ``union`` target we build a fresh ``Graph`` containing every
+    triple from both inputs. This is O(|data| + |results|) and creates
+    one extra graph in memory per ASK that uses it — acceptable at the
+    triple-count limits the engine already enforces.
+    """
+    if target_graph_name == SPARQL_ASK_TARGET_DATA:
+        return data_graph
+    if target_graph_name == SPARQL_ASK_TARGET_RESULTS:
+        return results_graph
+    if target_graph_name == SPARQL_ASK_TARGET_UNION:
+        if results_graph is None:
+            return data_graph
+        union = Graph()
+        for triple in data_graph:
+            union.add(triple)
+        for triple in results_graph:
+            union.add(triple)
+        return union
+    return None
+
+
+def _resolve_sparql_timeout(explicit_timeout: int | None) -> int:
+    """Compute the effective per-ASK timeout, clamped to the hard cap.
+
+    Settings overrides:
+
+    - ``SHACL_SPARQL_QUERY_TIMEOUT_SECONDS`` — operator default (10).
+    - ``SHACL_SPARQL_QUERY_TIMEOUT_MAX_SECONDS`` — hard cap (60).
+      Operators may lower the cap but not raise it above this constant.
+    """
+    if explicit_timeout is not None and explicit_timeout > 0:
+        configured = explicit_timeout
+    else:
+        configured = _setting_int(
+            "SHACL_SPARQL_QUERY_TIMEOUT_SECONDS",
+            DEFAULT_SPARQL_QUERY_TIMEOUT_SECONDS,
+        )
+    cap = _setting_int(
+        "SHACL_SPARQL_QUERY_TIMEOUT_MAX_SECONDS",
+        DEFAULT_SPARQL_QUERY_TIMEOUT_MAX_SECONDS,
+    )
+    return min(configured, cap)
+
+
+def _execute_ask_with_timeout(
+    *,
+    query_text: str,
+    graph: Graph,
+    timeout_seconds: int,
+) -> tuple[bool | None, str | None]:
+    """Run an ASK in a daemon thread, return on first to complete.
+
+    rdflib's ``Graph.query()`` is synchronous and CPU-bound, so a
+    daemon-thread wrapper is the most portable way to enforce a
+    wall-clock budget without depending on POSIX-only ``signal.alarm``
+    (which fails on non-main threads — i.e. Celery workers).
+
+    On timeout we report a clear message and let the underlying thread
+    terminate when it next yields to the interpreter; Python cannot
+    forcibly kill a thread, so brief over-budget compute may leak. The
+    Celery hard-task timeout is the ultimate stop. See ADR-2026-05-18
+    "Process-level isolation".
+
+    Returns ``(answer, None)`` or ``(None, error_message)``.
+    """
+    # We pass result and error back from the thread via mutable containers.
+    # Threading.Event signals completion.
+    result_holder: list[bool | None] = [None]
+    error_holder: list[str | None] = [None]
+    done = threading.Event()
+
+    def runner() -> None:
+        try:
+            qres = graph.query(query_text)
+            # ``askAnswer`` is the canonical attribute for ASK queries
+            # in rdflib's QueryResult. Fall back to bool() of the
+            # result iterator if the attribute is absent (older
+            # rdflib versions).
+            answer = getattr(qres, "askAnswer", None)
+            if answer is None:
+                answer = bool(qres)
+            result_holder[0] = bool(answer)
+        except Exception as exc:
+            # Per Security section: every external call is wrapped; the
+            # exception class name (only) is exposed downstream.
+            logger.warning(
+                "SPARQL ASK raised",
+                extra={"exc_type": type(exc).__name__},
+            )
+            error_holder[0] = (
+                f"SPARQL ASK execution failed: {type(exc).__name__}: {exc}"
+            )
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=runner, name="shacl-sparql-ask", daemon=True)
+    thread.start()
+    finished = done.wait(timeout=timeout_seconds)
+    if not finished:
+        return None, (
+            f"SPARQL ASK exceeded the {timeout_seconds}s wall-clock "
+            "budget. Simplify the query, narrow the target graph, or "
+            "increase the SHACL_SPARQL_QUERY_TIMEOUT_SECONDS setting "
+            "(up to the configured hard cap)."
+        )
+
+    if error_holder[0] is not None:
+        return None, error_holder[0]
+    return result_holder[0], None
+
+
+def evaluate_sparql_assertions(
+    *,
+    assertions: list[SparqlAskAssertion],
+    data_graph: Graph,
+    results_graph: Graph | None,
+) -> list[ValidationIssue]:
+    """Run every assertion in order, return one finding per failing ASK.
+
+    Each assertion's ``severity`` determines whether a ``false`` answer
+    contributes an ERROR / WARNING / INFO finding. Engine errors
+    (timeouts, scrub rejections that slipped past form save, runtime
+    exceptions) always produce an ERROR finding regardless of the
+    assertion's configured severity — they indicate a configuration
+    problem the author needs to see.
+
+    Args:
+        assertions: Parsed assertion list from
+            ``Ruleset.metadata["sparql_assertions"]``.
+        data_graph: The parsed submission graph.
+        results_graph: The SHACL ``sh:ValidationReport``, or ``None`` if
+            SHACL did not run (e.g. parse failed). Assertions targeting
+            ``results`` or ``union`` produce a clear configuration
+            finding rather than running.
+
+    Returns:
+        A list of ``ValidationIssue`` rows. Empty if every ASK returned
+        ``true``.
+    """
+    issues: list[ValidationIssue] = []
+    for index, assertion in enumerate(assertions):
+        label = assertion.description or f"SPARQL ASK #{index + 1}"
+        answer, error = run_sparql_ask(
+            query_text=assertion.query,
+            target_graph_name=assertion.target_graph,
+            data_graph=data_graph,
+            results_graph=results_graph,
+        )
+        if error is not None:
+            # Engine-level failure (timeout / scrub / runtime). Always
+            # ERROR — the author needs to fix the assertion config.
+            issues.append(
+                ValidationIssue(
+                    path="",
+                    message=f"{label}: {error}",
+                    severity=Severity.ERROR,
+                    code="shacl.sparql_ask_engine_error",
+                    meta={
+                        "assertion_index": index,
+                        "target_graph": assertion.target_graph,
+                    },
+                ),
+            )
+            continue
+
+        if answer is False:
+            issues.append(
+                ValidationIssue(
+                    path="",
+                    message=(
+                        assertion.error_message_template
+                        or f"{label}: assertion returned false."
+                    ),
+                    severity=assertion.severity,
+                    code="shacl.sparql_ask_failed",
+                    meta={
+                        "assertion_index": index,
+                        "target_graph": assertion.target_graph,
+                        "description": assertion.description,
+                    },
+                ),
+            )
+    return issues
+
+
+def parse_sparql_assertions(raw: Any) -> list[SparqlAskAssertion]:
+    """Rehydrate a raw metadata list into typed assertion dataclasses.
+
+    Tolerant of malformed entries — anything that doesn't look like a
+    valid assertion dict is silently skipped, with a warning logged for
+    operator forensics. This protects the engine from a corrupted
+    metadata blob, e.g. one that survived a partial migration.
+    """
+    if not isinstance(raw, list):
+        return []
+    out: list[SparqlAskAssertion] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            logger.warning(
+                "Skipping non-dict SPARQL assertion entry",
+                extra={"entry_type": type(entry).__name__},
+            )
+            continue
+        try:
+            target = str(entry.get("target_graph", SPARQL_ASK_TARGET_DATA))
+            query = str(entry.get("query", "")).strip()
+            severity = str(entry.get("severity", Severity.ERROR))
+            description = str(entry.get("description", "") or "")
+            error_message_template = str(
+                entry.get("error_message_template", "") or "",
+            )
+        except Exception as exc:
+            logger.warning(
+                "Skipping malformed SPARQL assertion entry",
+                extra={"exc_type": type(exc).__name__},
+            )
+            continue
+
+        if not query or target not in _VALID_TARGET_GRAPHS:
+            logger.warning(
+                "Skipping invalid SPARQL assertion entry",
+                extra={"target": target, "has_query": bool(query)},
+            )
+            continue
+
+        out.append(
+            SparqlAskAssertion(
+                target_graph=target,
+                query=query,
+                severity=severity,
+                description=description,
+                error_message_template=error_message_template,
+            ),
+        )
+    return out
 
 
 def _setting_int(name: str, default: int) -> int:

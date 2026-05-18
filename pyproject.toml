@@ -104,6 +104,10 @@ dependencies = [
   "pyshacl==0.31.0",
   "rdflib==7.6.0",
   "owlrl==7.1.4",
+  # NOTE: defusedxml is already listed above as a base dep (used elsewhere
+  # in the platform) — it is load-bearing for the SHACL validator's
+  # RDF/XML hardening against XXE / billion-laughs / external-DTD attacks.
+  # See ADR-2026-05-18 "Security" section.
 ]
 
 [project.optional-dependencies]

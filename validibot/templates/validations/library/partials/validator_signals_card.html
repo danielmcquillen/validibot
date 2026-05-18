@@ -146,7 +146,13 @@
           <td colspan="5" class="text-muted small ">
             <div class="my-5 w-100 text-center">
               {% if validator.is_system %}
-                {% trans "Signals are defined after an FMU is uploaded into this validator within a validation workflow." %}
+                {% if validator.validation_type == "FMU" %}
+                  {% trans "Signals are defined after an FMU is uploaded into this validator within a validation workflow." %}
+                {% elif validator.validation_type == "SHACL" %}
+                  {% trans "Output signals (parse_ok, shacl_violation_count, namespace detection, etc.) are emitted automatically when this validator runs. Gate on them with CEL assertions in the step config; there is nothing to configure here." %}
+                {% else %}
+                  {% trans "This system validator does not declare author-editable signals." %}
+                {% endif %}
               {% else %}
                 {% trans "No signals have been added yet." %}
               {% endif %}
@@ -158,7 +164,13 @@
           <td colspan="5" class="text-muted small my-5">
             <div class="my-5 w-100 text-center">
               {% if validator.is_system %}
-                {% trans "Signals are defined after an FMU is uploaded into this validator within a validation workflow." %}
+                {% if validator.validation_type == "FMU" %}
+                  {% trans "Signals are defined after an FMU is uploaded into this validator within a validation workflow." %}
+                {% elif validator.validation_type == "SHACL" %}
+                  {% trans "Output signals (parse_ok, shacl_violation_count, namespace detection, etc.) are emitted automatically when this validator runs. Gate on them with CEL assertions in the step config; there is nothing to configure here." %}
+                {% else %}
+                  {% trans "This system validator does not declare author-editable signals." %}
+                {% endif %}
               {% else %}
                 {% trans "No signals have been added yet." %}
               {% endif %}

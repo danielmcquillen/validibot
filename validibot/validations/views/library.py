@@ -323,6 +323,22 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                     request=self.request,
                 ),
             },
+            {
+                "value": "shacl",
+                "name": str(_("SHACL Validator")),
+                "subtitle": str(_("RDF graph rules")),
+                "description": str(
+                    _(
+                        "Bundle SHACL shapes and ontologies (ASHRAE 223P, "
+                        "Brick, custom) once. Reuse across many workflows.",
+                    ),
+                ),
+                "icon": "bi-diagram-3",
+                "url": reverse_with_org(
+                    "validations:shacl_library_validator_create",
+                    request=self.request,
+                ),
+            },
         ]
 
 

@@ -7,6 +7,7 @@ from decimal import InvalidOperation
 from typing import Any
 
 from crispy_forms.helper import FormHelper
+from crispy_forms.layout import HTML
 from crispy_forms.layout import Column
 from crispy_forms.layout import Layout
 from crispy_forms.layout import Row
@@ -32,6 +33,7 @@ from validibot.validations.constants import get_resource_type_config
 from validibot.validations.constants import get_resource_types_for_validator
 from validibot.validations.models import SignalDefinition
 from validibot.validations.models import ValidatorResourceFile
+from validibot.validations.validators.shacl.form_fields import ShaclConfigMixin
 
 # Hard upper bound on CEL expression length, enforced before regex-based
 # identifier extraction. CEL expressions in practice are short (a few
@@ -92,6 +94,161 @@ class CelHelpLabelMixin:
             field.label,
             self._cel_help_markup(),
         )
+
+
+class ShaclLibraryValidatorCreateForm(ShaclConfigMixin, forms.Form):
+    """Form to create an org-owned SHACL validator in the library.
+
+    Mirrors the existing Custom + FMU library-validator forms in shape:
+    name + version + descriptions at the top, validator-specific config
+    fields below. The SHACL-specific fields (shapes, ontologies,
+    bundled standards, engine knobs) come from
+    :class:`validibot.validations.validators.shacl.form_fields.ShaclConfigMixin`
+    so they stay in sync with the workflow step config form.
+
+    On save, the create view calls
+    :func:`validibot.validations.utils.create_shacl_library_validator`,
+    which atomically creates a ``Validator`` row with
+    ``validation_type=SHACL``, ``is_system=False``, plus a default
+    ``Ruleset`` carrying the uploaded shapes + metadata. Workflow steps
+    later reference the validator by slug and inherit its default
+    ruleset's shapes via the engine's library + step merge.
+
+    See ADR-2026-05-18 ``SHACL Validator for RDF Graph Validation``,
+    section "Library-level custom SHACL validators".
+    """
+
+    name = forms.CharField(
+        label=_("Name"),
+        max_length=120,
+        help_text=_(
+            "Descriptive name shown in the validator library and the step "
+            "picker. Use something specific so colleagues can tell several "
+            "SHACL validators apart (e.g. 'MeridianCx 223P + G36').",
+        ),
+    )
+    short_description = forms.CharField(
+        label=_("Short description"),
+        max_length=255,
+        required=False,
+        help_text=_("Shown in lists and cards."),
+    )
+    description = forms.CharField(
+        label=_("Description"),
+        widget=forms.Textarea(attrs={"rows": 3}),
+        required=False,
+        help_text=_("Supports Markdown. Plain text also works."),
+    )
+    version = forms.CharField(
+        label=_("Version"),
+        max_length=40,
+        required=False,
+        help_text=_("Version label (e.g. '1.0', '2026-05')."),
+    )
+    notes = forms.CharField(
+        label=_("Notes"),
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 3}),
+        help_text=_("Optional notes shown to other authors in your org."),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            "name",
+            "short_description",
+            "description",
+            "version",
+            HTML(
+                "<hr><h6 class='text-uppercase text-muted mt-3 mb-3'>{}</h6>".format(
+                    _("SHACL shapes (required)")
+                )
+            ),
+            "shapes_files",
+            "shapes_text",
+            HTML(
+                "<hr><h6 class='text-uppercase text-muted mt-3 mb-3'>{}</h6>".format(
+                    _("Supplementary ontologies (optional)")
+                )
+            ),
+            "ontology_files",
+            "ontology_text",
+            # Bundled-standards section hidden pending Phase 2 (Brick +
+            # QUDT bundle content ships then). Re-add the section here
+            # when the bundles ship.
+            HTML(
+                "<hr><h6 class='text-uppercase text-muted mt-3 mb-3'>{}</h6>".format(
+                    _("Advanced options")
+                )
+            ),
+            "inference_mode",
+            "advanced_shacl",
+            "submission_format",
+            HTML("<hr>"),
+            "notes",
+        )
+
+    def clean(self) -> dict[str, Any]:
+        cleaned = super().clean()
+        shape_files = cleaned.get("shapes_files") or []
+        shape_text = (cleaned.get("shapes_text") or "").strip()
+        ontology_files = cleaned.get("ontology_files") or []
+        ontology_text = (cleaned.get("ontology_text") or "").strip()
+
+        # Library validator creation always requires shapes — unlike the
+        # step config form, there's no "keep-existing" mode at create
+        # time.
+        if not (shape_files or shape_text):
+            err = _(
+                "Provide at least one SHACL shape — upload one or more "
+                "files or paste shapes inline.",
+            )
+            self.add_error("shapes_files", err)
+            self.add_error("shapes_text", err)
+
+        self.shacl_enforce_size_caps(shape_files, "shapes_files")
+        self.shacl_enforce_size_caps(ontology_files, "ontology_files")
+        self.shacl_syntax_pre_flight_files(shape_files, "shapes_files")
+        self.shacl_syntax_pre_flight_files(ontology_files, "ontology_files")
+        if shape_text:
+            self.shacl_syntax_pre_flight_text(shape_text, "shapes_text")
+        if ontology_text:
+            self.shacl_syntax_pre_flight_text(ontology_text, "ontology_text")
+
+        return cleaned
+
+
+class ShaclLibraryValidatorUpdateForm(ShaclLibraryValidatorCreateForm):
+    """Edit form for an existing org-owned SHACL library validator.
+
+    Identical surface to the create form, with one important
+    semantic difference: leaving the shapes upload + paste areas blank
+    is treated as "keep the existing shapes" rather than a validation
+    error. This mirrors the JSON Schema step config form's keep-mode.
+    """
+
+    def clean(self) -> dict[str, Any]:
+        # Skip the parent's "shapes required" check; on update the
+        # author can leave everything blank to keep existing content.
+        # Run only the size caps + syntax pre-flight.
+        cleaned = forms.Form.clean(self)  # bypass create-form's clean()
+        shape_files = cleaned.get("shapes_files") or []
+        shape_text = (cleaned.get("shapes_text") or "").strip()
+        ontology_files = cleaned.get("ontology_files") or []
+        ontology_text = (cleaned.get("ontology_text") or "").strip()
+
+        self.shacl_enforce_size_caps(shape_files, "shapes_files")
+        self.shacl_enforce_size_caps(ontology_files, "ontology_files")
+        self.shacl_syntax_pre_flight_files(shape_files, "shapes_files")
+        self.shacl_syntax_pre_flight_files(ontology_files, "ontology_files")
+        if shape_text:
+            self.shacl_syntax_pre_flight_text(shape_text, "shapes_text")
+        if ontology_text:
+            self.shacl_syntax_pre_flight_text(ontology_text, "ontology_text")
+
+        return cleaned
 
 
 class CustomValidatorCreateForm(forms.Form):

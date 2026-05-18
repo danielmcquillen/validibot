@@ -101,6 +101,9 @@ dependencies = [
   # only ran in the hosted offering.
   "oauthlib==3.3.1",
   "pyjwt[crypto]==2.12.1",
+  "pyshacl==0.31.0",
+  "rdflib==7.6.0",
+  "owlrl==7.1.4",
 ]
 
 [project.optional-dependencies]

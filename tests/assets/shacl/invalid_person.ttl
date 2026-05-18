@@ -1,0 +1,7 @@
+# A submission that violates example_person_shapes.ttl.
+# Bob is a Person but has no name, so PersonShape's sh:minCount
+# constraint on ex:name fires a Violation.
+
+@prefix ex: <http://example.com/> .
+
+ex:bob a ex:Person .

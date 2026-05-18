@@ -23,13 +23,17 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.forms import CustomValidatorCreateForm
 from validibot.validations.forms import CustomValidatorUpdateForm
 from validibot.validations.forms import FMUValidatorCreateForm
+from validibot.validations.forms import ShaclLibraryValidatorCreateForm
+from validibot.validations.forms import ShaclLibraryValidatorUpdateForm
 from validibot.validations.models import Validator
 from validibot.validations.models import default_supported_data_formats_for_validation
 from validibot.validations.services.fmu import FMUIntrospectionError
 from validibot.validations.services.fmu import create_fmu_validator
 from validibot.validations.services.fmu import run_fmu_probe
 from validibot.validations.utils import create_custom_validator
+from validibot.validations.utils import create_shacl_library_validator
 from validibot.validations.utils import update_custom_validator
+from validibot.validations.utils import update_shacl_library_validator
 from validibot.validations.views.library import ValidatorLibraryMixin
 from validibot.workflows.models import WorkflowStep
 
@@ -438,3 +442,240 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
         if reswap:
             response["HX-Reswap"] = reswap
         return response
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# SHACL library validators
+# ════════════════════════════════════════════════════════════════════════════
+#
+# Org-owned, named SHACL validators an organisation creates once and
+# references from many workflows. Mirror the existing Custom + FMU
+# validator UI surfaces so the validator-library experience is
+# consistent regardless of validator type. The underlying data shape
+# differs (SHACL uses the existing Validator + default_ruleset, no
+# wrapper model) but the operator-facing view contract is identical:
+# create / update / delete from the library page.
+#
+# See ADR-2026-05-18 ``SHACL Validator for RDF Graph Validation``
+# section "Library-level custom SHACL validators".
+
+
+class ShaclLibraryValidatorCreateView(CustomValidatorManageMixin, FormView):
+    """Create a new SHACL library validator from the validator library page."""
+
+    template_name = "validations/library/custom_validator_form.html"
+    form_class = ShaclLibraryValidatorCreateForm
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["form_title"] = _("Create SHACL Library Validator")
+        context["can_manage_validators"] = self.can_manage_validators()
+        context["validator"] = None
+        return context
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Create SHACL library validator"),
+                "url": "",
+            },
+        )
+        return breadcrumbs
+
+    def form_valid(self, form):
+        org = self.get_active_org()
+        validator = create_shacl_library_validator(
+            org=org,
+            user=self.request.user,
+            form=form,
+        )
+        messages.success(
+            self.request,
+            _("Created SHACL library validator “%(name)s”.") % {"name": validator.name},
+        )
+        return redirect(self.get_success_url(validator))
+
+
+class ShaclLibraryValidatorUpdateView(CustomValidatorManageMixin, FormView):
+    """Edit metadata + shapes for an existing SHACL library validator."""
+
+    template_name = "validations/library/custom_validator_form.html"
+    form_class = ShaclLibraryValidatorUpdateForm
+
+    def dispatch(self, request, *args, **kwargs):
+        try:
+            self.validator = self.get_validator()
+        except ObjectDoesNotExist:
+            messages.error(
+                request,
+                _(
+                    "This SHACL library validator could not be loaded. "
+                    "It may have been deleted.",
+                ),
+            )
+            return redirect(
+                reverse_with_org(
+                    "validations:validation_library",
+                    request=request,
+                ),
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_validator(self):
+        org = self.get_active_org()
+        return get_object_or_404(
+            Validator,
+            slug=self.kwargs["slug"],
+            org=org,
+            is_system=False,
+            validation_type=ValidationType.SHACL,
+        )
+
+    def get_initial(self):
+        validator = self.validator
+        ruleset = validator.default_ruleset
+        metadata = (ruleset.metadata if ruleset else {}) or {}
+        return {
+            "name": validator.name,
+            "short_description": validator.short_description,
+            "description": validator.description,
+            "version": validator.version,
+            "inference_mode": metadata.get("inference_mode", "rdfs"),
+            "advanced_shacl": metadata.get("advanced_shacl", True),
+            "submission_format": metadata.get("submission_format", "auto"),
+            "bundle_brick": "brick-1.4" in (metadata.get("bundled_standards") or []),
+            "bundle_qudt": "qudt-2.1" in (metadata.get("bundled_standards") or []),
+            "notes": metadata.get("library_validator_notes", ""),
+        }
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "form_title": _("Edit %(name)s") % {"name": self.validator.name},
+                "validator": self.validator,
+                "can_manage_validators": self.can_manage_validators(),
+            },
+        )
+        return context
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        label = self.validator.name or self.validator.slug
+        breadcrumbs.append(
+            {
+                "name": _("Edit “%(name)s”") % {"name": label},
+                "url": reverse_with_org(
+                    "validations:validator_detail",
+                    request=self.request,
+                    kwargs={"slug": self.validator.slug},
+                ),
+            },
+        )
+        return breadcrumbs
+
+    def form_valid(self, form):
+        validator = update_shacl_library_validator(
+            self.validator,
+            form=form,
+        )
+        messages.success(
+            self.request,
+            _("Updated SHACL library validator “%(name)s”.") % {"name": validator.name},
+        )
+        return redirect(self.get_success_url(validator))
+
+
+class ShaclLibraryValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
+    """Delete a SHACL library validator (blocked if workflow steps reference it)."""
+
+    template_name = "validations/library/custom_validator_confirm_delete.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.validator = self.get_validator()
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_validator(self):
+        org = self.get_active_org()
+        return get_object_or_404(
+            Validator,
+            slug=self.kwargs["slug"],
+            org=org,
+            is_system=False,
+            validation_type=ValidationType.SHACL,
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        blockers = self._list_delete_blockers(self.validator)
+        context.update(
+            {
+                "validator": self.validator,
+                "can_manage_validators": self.can_manage_validators(),
+                "delete_blockers": blockers,
+                "can_delete": not blockers,
+            },
+        )
+        return context
+
+    def post(self, request, *args, **kwargs):
+        return self.handle_delete(request)
+
+    def delete(self, request, *args, **kwargs):
+        return self.handle_delete(request)
+
+    def handle_delete(self, request):
+        if WorkflowStep.objects.filter(validator=self.validator).exists():
+            message = _(
+                "Cannot delete %(name)s because workflow steps "
+                "still reference this validator.",
+            ) % {"name": self.validator.name}
+            messages.error(request, message)
+            return redirect(
+                reverse_with_org(
+                    "validations:validator_detail",
+                    request=request,
+                    kwargs={"slug": self.validator.slug},
+                ),
+            )
+
+        success_message = _(
+            "Deleted SHACL library validator “%(name)s”.",
+        ) % {"name": self.validator.name}
+        # Deleting the validator cascades to delete its default_ruleset
+        # via Validator.default_ruleset's on_delete behaviour; if the
+        # FK is configured as SET_NULL, the orphan ruleset is left
+        # behind (acceptable — it's invisible without its parent).
+        self.validator.delete()
+        messages.success(request, success_message)
+        return redirect(
+            reverse_with_org(
+                "validations:validation_library",
+                request=request,
+            ),
+        )
+
+    def _list_delete_blockers(self, validator):
+        blockers: list[dict[str, str]] = []
+        steps = WorkflowStep.objects.filter(validator=validator).select_related(
+            "workflow",
+        )
+        for step in steps:
+            workflow_name = step.workflow.name if step.workflow else _("Unknown")
+            blockers.append(
+                {
+                    "label": _(
+                        "Workflow step “%(step)s” (workflow: %(workflow)s)",
+                    )
+                    % {"step": step.name, "workflow": workflow_name},
+                    "url": reverse_with_org(
+                        "workflows:workflow_detail",
+                        request=self.request,
+                        kwargs={"pk": step.workflow_id},
+                    )
+                    if step.workflow_id
+                    else "",
+                },
+            )
+        return blockers

@@ -78,7 +78,13 @@
                   {% trans "Type" %}
                 </dt>
                 <dd class="col-7">
-                  {{ validator.custom_validator.custom_type }}
+                  {# SHACL library validators don't have a custom_validator wrapper;
+                     fall back to the validator's validation_type label. #}
+                  {% if validator.custom_validator %}
+                    {{ validator.custom_validator.custom_type }}
+                  {% else %}
+                    {{ validator.get_validation_type_display }}
+                  {% endif %}
                 </dd>
               </dl>
             {% endif %}

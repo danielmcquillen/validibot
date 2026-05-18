@@ -31,6 +31,21 @@ urlpatterns = [
         name="custom_validator_create",
     ),
     path(
+        "library/shacl/new/",
+        views.ShaclLibraryValidatorCreateView.as_view(),
+        name="shacl_library_validator_create",
+    ),
+    path(
+        "library/shacl/<slug:slug>/edit/",
+        views.ShaclLibraryValidatorUpdateView.as_view(),
+        name="shacl_library_validator_update",
+    ),
+    path(
+        "library/shacl/<slug:slug>/delete/",
+        views.ShaclLibraryValidatorDeleteView.as_view(),
+        name="shacl_library_validator_delete",
+    ),
+    path(
         "library/custom/<slug:slug>/edit/",
         views.CustomValidatorUpdateView.as_view(),
         name="custom_validator_update",

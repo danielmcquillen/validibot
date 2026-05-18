@@ -167,6 +167,7 @@ class RulesetType(TextChoices):
     BASIC = "BASIC", _("Basic Assertions")
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
+    SHACL = "SHACL", _("SHACL Shapes")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
     FMU = "FMU", _("FMU Validator")
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
@@ -184,6 +185,7 @@ class ValidationType(TextChoices):
     - FMU: Supports CEL assertions against output signals
     - JSON_SCHEMA: Schema-only (no assertion support)
     - XML_SCHEMA: Schema-only (no assertion support)
+    - SHACL: Supports CEL assertions against output signals
     - CUSTOM_VALIDATOR: Supports BASIC and CEL assertions
     - THERM: Supports CEL assertions against output signals
     """
@@ -191,6 +193,7 @@ class ValidationType(TextChoices):
     BASIC = "BASIC", _("Basic Assertions")
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
+    SHACL = "SHACL", _("SHACL (RDF Graph)")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
     FMU = "FMU", _("FMU Validator")
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
@@ -293,6 +296,7 @@ DEFAULT_COMPUTE_TIERS: dict[str, str] = {
     ValidationType.BASIC: ComputeTier.LOW,
     ValidationType.JSON_SCHEMA: ComputeTier.LOW,
     ValidationType.XML_SCHEMA: ComputeTier.LOW,
+    ValidationType.SHACL: ComputeTier.LOW,
     ValidationType.CUSTOM_VALIDATOR: ComputeTier.LOW,
     ValidationType.ENERGYPLUS: ComputeTier.HIGH,
     ValidationType.FMU: ComputeTier.HIGH,

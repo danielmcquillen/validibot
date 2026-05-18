@@ -29,5 +29,6 @@ from validibot.validations.validators import custom  # noqa: F401
 from validibot.validations.validators import energyplus  # noqa: F401
 from validibot.validations.validators import fmu  # noqa: F401
 from validibot.validations.validators import json_schema  # noqa: F401
+from validibot.validations.validators import shacl  # noqa: F401
 from validibot.validations.validators import therm  # noqa: F401
 from validibot.validations.validators import xml_schema  # noqa: F401

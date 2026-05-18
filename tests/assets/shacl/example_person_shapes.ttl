@@ -1,0 +1,22 @@
+# Minimal SHACL shapes file used by SHACLValidator integration tests.
+#
+# One shape: every ex:Person must have at least one ex:name. Mirrors
+# the smallest realistic SHACL constraint pattern (sh:minCount on a
+# required property) so the test can show both a passing path (Alice
+# has a name) and a failing path (Bob has no name) without bringing
+# in the ASHRAE 223P shapes file (which is 537 KB and ASHRAE-licensed).
+#
+# Keep this file tiny — it exists only to exercise the engine, not to
+# stand in for any real-world SHACL workflow.
+
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix ex: <http://example.com/> .
+
+ex:PersonShape
+    a sh:NodeShape ;
+    sh:targetClass ex:Person ;
+    sh:property [
+        sh:path ex:name ;
+        sh:minCount 1 ;
+        sh:message "Person needs at least one name." ;
+    ] .

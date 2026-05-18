@@ -46,6 +46,9 @@ from validibot.validations.views.validators import CustomValidatorUpdateView
 from validibot.validations.views.validators import FMUProbeStartView
 from validibot.validations.views.validators import FMUProbeStatusView
 from validibot.validations.views.validators import FMUValidatorCreateView
+from validibot.validations.views.validators import ShaclLibraryValidatorCreateView
+from validibot.validations.views.validators import ShaclLibraryValidatorDeleteView
+from validibot.validations.views.validators import ShaclLibraryValidatorUpdateView
 
 __all__ = [
     "CatalogEntryDetailView",
@@ -64,6 +67,9 @@ __all__ = [
     "ResourceFileDeleteView",
     "ResourceFileMixin",
     "ResourceFileUpdateView",
+    "ShaclLibraryValidatorCreateView",
+    "ShaclLibraryValidatorDeleteView",
+    "ShaclLibraryValidatorUpdateView",
     "ValidationLibraryView",
     "ValidationRunAccessMixin",
     "ValidationRunDeleteView",

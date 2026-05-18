@@ -1,0 +1,18 @@
+# Minimal ontology file paired with example_person_shapes.ttl.
+#
+# Declares ex:Person and ex:name. The SHACL engine uses ontology files
+# to give the reasoner context for subclass and property inference —
+# when no inference is required (as in our person/name example) the
+# ontology is optional, but we include it so the integration tests
+# exercise the "ontology supplied alongside shapes" code path.
+
+@prefix ex: <http://example.com/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+ex:Person a owl:Class ;
+    rdfs:label "Person" .
+
+ex:name a owl:DatatypeProperty ;
+    rdfs:label "name" ;
+    rdfs:domain ex:Person .

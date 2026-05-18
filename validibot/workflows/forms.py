@@ -24,6 +24,15 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
+
+# SHACL form pieces (field declarations, multi-file widget, size caps,
+# clean helpers) live under the validator's own package so the library-
+# validator forms in validibot.validations.forms can use the same
+# mixin. Imported here for the workflow step config form below; the
+# SHACL_PER_FILE_MAX_BYTES re-export keeps existing form tests that
+# import the constant from this module working unchanged.
+from validibot.validations.validators.shacl.form_fields import SHACL_PER_FILE_MAX_BYTES
+from validibot.validations.validators.shacl.form_fields import ShaclConfigMixin
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowPublicInfo
 from validibot.workflows.models import WorkflowSignalMapping
@@ -64,6 +73,15 @@ JSON_SCHEMA_2020_12_URIS = {
     "https://json-schema.org/draft/2020-12/schema",
     "http://json-schema.org/draft/2020-12/schema",
 }
+
+
+# SHACL_PER_FILE_MAX_BYTES + ShaclConfigMixin are imported above; the
+# names re-exported via __all__ so existing form tests that import them
+# from this module continue to resolve.
+__all__ = [
+    "SHACL_PER_FILE_MAX_BYTES",
+    "ShaclConfigMixin",
+]
 
 
 def _detect_xml_schema_type(payload: str) -> str | None:
@@ -1648,6 +1666,102 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
         return cleaned
 
 
+class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
+    """Collects SHACL step configuration: shapes, ontologies, engine knobs.
+
+    The SHACL field declarations come from
+    :class:`validibot.validations.validators.shacl.form_fields.ShaclConfigMixin`
+    so the library-validator create/update forms can declare the same
+    UI without duplication. The mixin contributes multi-file uploads
+    for shapes and ontologies, an inline-text fallback each, bundled-
+    standards checkboxes (Brick, QUDT — content ships in Phase 2),
+    and the engine knobs (inference mode, advanced SHACL toggle,
+    submission format override).
+
+    The form's ``clean()`` runs an rdflib parse pass on every uploaded
+    file so syntax errors surface immediately at save time rather than
+    at validation time.
+
+    See ADR-2026-05-18 for the architecture and the step config dialog
+    spec this form implements.
+
+    The cleaned data is consumed by ``build_shacl_config()`` in
+    :mod:`validibot.workflows.views_helpers`, which writes the
+    concatenated shapes Turtle to ``Ruleset.rules_text`` and the rest
+    to ``Ruleset.metadata``.
+    """
+
+    show_display_schema = True
+
+    def __init__(self, *args, step=None, **kwargs):
+        super().__init__(*args, step=step, **kwargs)
+        if step and step.ruleset_id:
+            self._initial_from_step(step)
+
+    def _initial_from_step(self, step) -> None:
+        """Pre-fill engine knobs and inline text from a saved step.
+
+        Multi-file uploads can't be pre-filled (browsers refuse to
+        populate file inputs from server state), so on edit the existing
+        uploaded files are shown read-only above the form via the
+        step's ``config["shape_files"]`` list.
+        """
+        config = step.config or {}
+        if "inference_mode" in config:
+            self.fields["inference_mode"].initial = config["inference_mode"]
+        if "advanced_shacl" in config:
+            self.fields["advanced_shacl"].initial = config["advanced_shacl"]
+        if "submission_format" in config:
+            self.fields["submission_format"].initial = config["submission_format"]
+        bundled = set(config.get("bundled_standards", []) or [])
+        self.fields["bundle_brick"].initial = "brick-1.4" in bundled
+        self.fields["bundle_qudt"].initial = "qudt-2.1" in bundled
+        # On edit, surface the existing concatenated shapes for paste-area
+        # preview but make it clear they're optional to replace.
+        preview = config.get("shapes_text_preview", "")
+        if preview:
+            self.fields["shapes_text"].help_text = _(
+                "Leave blank to keep the existing shapes. Paste new "
+                "shapes here (or upload files above) to replace them.",
+            )
+
+    def clean(self) -> dict[str, Any]:
+        cleaned = super().clean()
+        shape_files = cleaned.get("shapes_files") or []
+        shape_text = (cleaned.get("shapes_text") or "").strip()
+        ontology_files = cleaned.get("ontology_files") or []
+        ontology_text = (cleaned.get("ontology_text") or "").strip()
+        keep_existing_shapes = bool(self.step and self.step.ruleset_id) and not (
+            shape_files or shape_text
+        )
+
+        # At least one shapes source is required, unless we're editing an
+        # existing step and the author left both blank (keep-existing
+        # semantics, mirroring the JSON Schema form).
+        if not (shape_files or shape_text or keep_existing_shapes):
+            err = _(
+                "Provide at least one SHACL shape — upload one or more "
+                "files or paste shapes inline.",
+            )
+            self.add_error("shapes_files", err)
+            self.add_error("shapes_text", err)
+
+        self.shacl_enforce_size_caps(shape_files, "shapes_files")
+        self.shacl_enforce_size_caps(ontology_files, "ontology_files")
+
+        # Surface Turtle/JSON-LD/RDF-XML parse errors as form errors
+        # before the workflow saves. Cheaper-than-validation-time and
+        # gives the author immediate feedback at edit time.
+        self.shacl_syntax_pre_flight_files(shape_files, "shapes_files")
+        self.shacl_syntax_pre_flight_files(ontology_files, "ontology_files")
+        if shape_text:
+            self.shacl_syntax_pre_flight_text(shape_text, "shapes_text")
+        if ontology_text:
+            self.shacl_syntax_pre_flight_text(ontology_text, "ontology_text")
+
+        return cleaned
+
+
 class EnergyPlusStepConfigForm(BaseStepConfigForm):
     """Collects EnergyPlus step configuration options.
 
@@ -2422,6 +2536,7 @@ def get_config_form_class(validation_type: str) -> type[forms.Form]:
         ValidationType.BASIC: BasicStepConfigForm,
         ValidationType.JSON_SCHEMA: JsonSchemaStepConfigForm,
         ValidationType.XML_SCHEMA: XmlSchemaStepConfigForm,
+        ValidationType.SHACL: ShaclStepConfigForm,
         ValidationType.ENERGYPLUS: EnergyPlusStepConfigForm,
         ValidationType.FMU: FMUValidatorStepConfigForm,
         ValidationType.AI_ASSIST: AiAssistStepConfigForm,

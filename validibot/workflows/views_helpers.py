@@ -25,10 +25,14 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.models import Ruleset
 from validibot.validations.models import Validator
+from validibot.validations.validators.shacl.persistence import (
+    concatenate_uploaded_files,
+)
 from validibot.workflows.forms import AiAssistStepConfigForm
 from validibot.workflows.forms import EnergyPlusStepConfigForm
 from validibot.workflows.forms import FMUValidatorStepConfigForm
 from validibot.workflows.forms import JsonSchemaStepConfigForm
+from validibot.workflows.forms import ShaclStepConfigForm
 from validibot.workflows.forms import XmlSchemaStepConfigForm
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
@@ -425,6 +429,125 @@ def build_xml_schema_config(
         "schema_type": schema_type,
         "schema_text_preview": preview,
         "schema_type_label": str(XMLSchemaType(schema_type).label),
+    }
+    return config, ruleset
+
+
+def build_shacl_config(
+    workflow: Workflow,
+    form: ShaclStepConfigForm,
+    step: WorkflowStep | None,
+) -> tuple[dict[str, Any], Ruleset]:
+    """Materialise a SHACL step config + Ruleset from form data.
+
+    Parallels :func:`build_json_schema_config` and
+    :func:`build_xml_schema_config`. Differences:
+
+    - **Multi-file uploads.** Shapes and ontologies each accept a list
+      of files (plus optional inline text). All shapes are concatenated
+      into ``Ruleset.rules_text`` with file-boundary comments; all
+      ontologies go into ``Ruleset.metadata['ontology_text']``.
+    - **Bundled standards.** Brick and QUDT checkboxes write the
+      selected slugs to ``Ruleset.metadata['bundled_standards']``. The
+      engine loads them at validation time (Phase 1 stubs them; Phase 2
+      ships the static asset content).
+    - **Engine knobs.** ``inference_mode``, ``advanced_shacl``, and
+      ``submission_format`` live in ``Ruleset.metadata`` so the engine
+      can resolve them per step without an extra DB column.
+
+    See ADR-2026-05-18 ``SHACL Validator for RDF Graph Validation``
+    section "Ruleset persistence" for the data shape.
+    """
+    cleaned = form.cleaned_data
+    shape_files = cleaned.get("shapes_files") or []
+    shape_text = (cleaned.get("shapes_text") or "").strip()
+    ontology_files = cleaned.get("ontology_files") or []
+    ontology_text = (cleaned.get("ontology_text") or "").strip()
+    inference_mode = cleaned.get("inference_mode") or "rdfs"
+    advanced_shacl = bool(cleaned.get("advanced_shacl"))
+    submission_format = cleaned.get("submission_format") or "auto"
+    bundled_standards: list[str] = []
+    if cleaned.get("bundle_brick"):
+        bundled_standards.append("brick-1.4")
+    if cleaned.get("bundle_qudt"):
+        bundled_standards.append("qudt-2.1")
+
+    keep_existing = bool(step and step.ruleset_id) and not (shape_files or shape_text)
+
+    ruleset = ensure_ruleset(
+        workflow=workflow,
+        step=step,
+        ruleset_type=RulesetType.SHACL,
+    )
+
+    if keep_existing:
+        # Refresh engine knobs and bundled-standards selection without
+        # touching the existing shapes content. Mirrors the "keep"
+        # branch in build_json_schema_config.
+        metadata = dict(ruleset.metadata or {})
+        metadata["inference_mode"] = inference_mode
+        metadata["advanced_shacl"] = advanced_shacl
+        metadata["submission_format"] = submission_format
+        metadata["bundled_standards"] = bundled_standards
+        ruleset.metadata = metadata
+        ruleset.full_clean()
+        ruleset.save()
+        config = dict(step.config or {})
+        config.update(
+            {
+                "inference_mode": inference_mode,
+                "advanced_shacl": advanced_shacl,
+                "submission_format": submission_format,
+                "bundled_standards": bundled_standards,
+            },
+        )
+        return config, ruleset
+
+    # Fresh shapes + ontology content. Concatenate uploads with inline
+    # text into single Turtle blobs; capture per-file metadata so the
+    # step editor can render a "currently attached" panel.
+    shapes_concat, shape_files_meta = concatenate_uploaded_files(
+        shape_files,
+        shape_text,
+    )
+    ontology_concat, ontology_files_meta = concatenate_uploaded_files(
+        ontology_files,
+        ontology_text,
+    )
+
+    ruleset.rules_text = shapes_concat
+    if ruleset.rules_file:
+        ruleset.rules_file.delete(save=False)
+        ruleset.rules_file = None
+
+    metadata = dict(ruleset.metadata or {})
+    metadata.update(
+        {
+            "shape_files": shape_files_meta,
+            "has_inline_shapes": bool(shape_text),
+            "ontology_text": ontology_concat,
+            "ontology_files": ontology_files_meta,
+            "has_inline_ontology": bool(ontology_text),
+            "bundled_standards": bundled_standards,
+            "inference_mode": inference_mode,
+            "advanced_shacl": advanced_shacl,
+            "submission_format": submission_format,
+        },
+    )
+    ruleset.metadata = metadata
+    ruleset.full_clean()
+    ruleset.save()
+
+    config = {
+        "shape_files": shape_files_meta,
+        "ontology_files": ontology_files_meta,
+        "bundled_standards": bundled_standards,
+        "inference_mode": inference_mode,
+        "advanced_shacl": advanced_shacl,
+        "submission_format": submission_format,
+        # First 1200 chars of the merged shapes for the step editor's
+        # read-only preview, mirroring build_json_schema_config.
+        "shapes_text_preview": shapes_concat[:1200],
     }
     return config, ruleset
 
@@ -1221,6 +1344,8 @@ def save_workflow_step(
         config, ruleset = build_json_schema_config(workflow, form, step)
     elif vtype == ValidationType.XML_SCHEMA:
         config, ruleset = build_xml_schema_config(workflow, form, step)
+    elif vtype == ValidationType.SHACL:
+        config, ruleset = build_shacl_config(workflow, form, step)
     elif vtype == ValidationType.ENERGYPLUS:
         config, template_vars = build_energyplus_config(form, step)
         # File type enforcement: parameterized templates require JSON-only

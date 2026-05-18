@@ -70,6 +70,17 @@ SUPPORTED_CONTENT_TYPES = {
     "text/yaml": SubmissionFileType.YAML,
     "application/yaml": SubmissionFileType.YAML,
     "application/octet-stream": SubmissionFileType.BINARY,
+    # RDF serializations used by the SHACL validator. Turtle is the
+    # most common; the others cover JSON-LD, RDF/XML, N-Triples, and
+    # N-Quads so the API accepts whichever serialization a submitter's
+    # HTTP client sets as the Content-Type. Mapped to the closest
+    # underlying SubmissionFileType so existing storage paths work
+    # without bespoke RDF file-type machinery.
+    "text/turtle": SubmissionFileType.TEXT,
+    "application/n-triples": SubmissionFileType.TEXT,
+    "application/n-quads": SubmissionFileType.TEXT,
+    "application/ld+json": SubmissionFileType.JSON,
+    "application/rdf+xml": SubmissionFileType.XML,
 }
 
 DEFAULT_CONTENT_TYPE_BY_FILE_TYPE = {
@@ -83,10 +94,19 @@ DEFAULT_CONTENT_TYPE_BY_FILE_TYPE = {
 _SPECIAL_EXT_CONTENT_TYPES: dict[str, dict[str, str]] = {
     SubmissionFileType.TEXT: {
         ".idf": "text/x-idf",
+        ".ttl": "text/turtle",
+        ".nt": "application/n-triples",
+        ".nq": "application/n-quads",
     },
     SubmissionFileType.YAML: {
         ".yaml": "application/yaml",
         ".yml": "application/yaml",
+    },
+    SubmissionFileType.JSON: {
+        ".jsonld": "application/ld+json",
+    },
+    SubmissionFileType.XML: {
+        ".rdf": "application/rdf+xml",
     },
 }
 

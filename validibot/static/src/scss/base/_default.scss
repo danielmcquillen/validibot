@@ -41,4 +41,60 @@ h4 {
   flex-direction: column;
   overflow: hidden;
   max-height: 100%;
+  width: 100%;
+  color: var(--bs-modal-color);
+  background-color: var(--bs-modal-bg);
+  background-clip: padding-box;
+  border-radius: inherit;
+}
+
+.modal-dialog-scrollable .modal-content > form > .modal-header,
+.modal-dialog-scrollable .modal-content > form > .modal-footer {
+  flex: 0 0 auto;
+}
+
+.modal-dialog-scrollable .modal-content > form > .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+#workflowAssertionModal {
+  .modal-dialog {
+    --bs-modal-width: min(1100px, 95vw);
+  }
+
+  .modal-content {
+    background-color: var(--bs-modal-bg, #fff);
+    border: var(--bs-modal-border-width, 1px) solid
+      var(--bs-modal-border-color, rgba(0, 0, 0, 0.175));
+    border-radius: var(--bs-modal-border-radius, 0.5rem);
+    box-shadow: var(--bs-modal-box-shadow, 0 0.5rem 1rem rgba(0, 0, 0, 0.15));
+    display: flex;
+    max-height: calc(100vh - 3rem);
+    overflow: hidden;
+  }
+
+  .assertion-modal-form {
+    background-color: var(--bs-modal-bg, #fff);
+    border-radius: inherit;
+    color: var(--bs-modal-color, inherit);
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    width: 100%;
+  }
+
+  .assertion-modal-form > .modal-header,
+  .assertion-modal-form > .modal-footer {
+    flex: 0 0 auto;
+  }
+
+  .assertion-modal-form > .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
 }

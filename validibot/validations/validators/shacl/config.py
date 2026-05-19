@@ -9,6 +9,15 @@ Library-level custom SHACL validators (org-owned ``Validator`` rows
 with ``is_system=False`` and a populated ``default_ruleset``) reuse
 the same engine class and the same ``validation_type`` but are created
 through the validator-library UI rather than declared here.
+
+NOTE on translations: ``ValidatorConfig`` and ``CatalogEntrySpec`` are
+pydantic BaseModels with strict ``str`` fields. ``gettext_lazy`` proxies
+are NOT valid strings to pydantic and raise ``ValidationError`` on
+import — crashing app boot. Plain strings are intentional here and match
+the convention used by every other validator config. If translation is
+needed for these labels in the future, translate at the render site
+(template ``{% trans %}`` or view-layer ``_()``), not at the config
+definition.
 """
 
 from validibot.submissions.constants import SubmissionDataFormat

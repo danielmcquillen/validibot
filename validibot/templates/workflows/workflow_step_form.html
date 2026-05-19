@@ -25,6 +25,7 @@
               {% trans "Edit step details" %} : {{ step.name|default_if_none:"( no name )" }}
             {% endif %}
           </h1>
+          {% include "workflows/partials/workflow_version_badge.html" %}
         </div>
       </div>
     </div>

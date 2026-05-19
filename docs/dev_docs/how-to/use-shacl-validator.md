@@ -2,8 +2,8 @@
 
 The SHACL validator validates RDF graphs (Turtle, JSON-LD, RDF/XML,
 N-Triples, N-Quads) against SHACL shape collections. It is a built-in
-validator that runs pySHACL in a killable child process — no Docker or
-JVM required. It ships with the community edition.
+validator that runs pySHACL in a killable Python subprocess — no Docker
+or JVM required. It ships with the community edition.
 
 Common configurations include ASHRAE 223P, Guideline 36, Brick Schema,
 Project Haystack 4, and project-specific shapes the author uploads.
@@ -62,6 +62,11 @@ validator.
 Workflow allowed file types should match the RDF serializations authors
 expect from submitters: **Plain Text** for Turtle, N-Triples, and
 N-Quads; **JSON** for JSON-LD; and **XML** for RDF/XML.
+These workflow-level choices are enforced before the SHACL validator
+runs. A workflow that allows only **JSON** accepts JSON and JSON-LD
+uploads, but rejects Turtle, N-Triples, N-Quads, and RDF/XML even though
+the SHACL engine can parse them when the matching workflow file type is
+enabled.
 
 ## Authoring assertions
 
@@ -222,7 +227,9 @@ See the ADR for the cost-benefit analysis — short version: pyshacl is
 fast enough for the published 223P examples (largest is 2.6 MB / ~50K
 triples), and Docker boot overhead would dwarf the actual validation
 work. The pySHACL call still runs out-of-process so the engine can
-terminate pathological shape/data combinations on timeout.
+terminate pathological shape/data combinations on timeout. This uses a
+plain subprocess rather than ``multiprocessing.Process`` so it works
+inside Celery prefork workers, whose task processes are daemonic.
 
 ## Library-level custom SHACL validators
 
@@ -355,10 +362,11 @@ The headline mitigations:
   Embedded SHACL-AF/SPARQL constraints and SHACL Rules require both the
   step/library toggle and `SHACL_ENABLE_ADVANCED_FEATURES=True`.
   SHACL-JS constructs are rejected before pySHACL starts.
-- **pyshacl child-process timeout.** The engine launches pySHACL in a
-  child process and terminates it if it exceeds
+- **pyshacl subprocess timeout.** The engine launches pySHACL in a
+  plain Python subprocess and terminates it if it exceeds
   `SHACL_VALIDATION_TIMEOUT_SECONDS` (default 30 s, hard-capped at
-  120 s).
+  120 s). This avoids Celery prefork's restriction against
+  multiprocessing children from daemonic task processes.
 - **pyshacl JS off, owl:imports off.** Hard-coded as kwargs on every
   `pyshacl.validate` call; the validate kwargs cannot be overridden.
 - **SPARQL ASK queries scrubbed at form save.** The scrubber
@@ -367,10 +375,9 @@ The headline mitigations:
   `SERVICE` federation, `LOAD`, `FROM` / `FROM NAMED` with non-default
   IRIs, deeply nested property paths, and pathologically long queries.
 - **Per-query wall-clock timeout.** Defaults to 10 s (capped at 60 s).
-  A daemon-thread wrapper returns a finding when a custom ASK exceeds
-  its budget. Python cannot forcibly kill that individual thread, so
-  the pySHACL subprocess timeout and Celery hard task timeout remain the
-  outer stop.
+  Each custom ASK runs in a short-lived Python subprocess, so timeout
+  can terminate the query instead of leaving `rdflib.Graph.query()`
+  running inside the Django or Celery worker.
 - **All engine errors become findings.** No exception escapes the
   validator. Timeouts, scrub rejections, runtime crashes, and corrupted
   SPARQL assertion metadata all surface as `shacl.*` findings.

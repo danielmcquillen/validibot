@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 
     from validibot.workflows.models import Workflow
 
-# Pattern for validating/parsing semantic versions
+# Pattern for validating/parsing strict semantic versions.
 SEMVER_PATTERN = re.compile(
-    r"^(?P<major>0|[1-9]\d*)(?:\.(?P<minor>0|[1-9]\d*)(?:\.(?P<patch>0|[1-9]\d*))?)?$"
+    r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)$"
 )
 
 
@@ -35,7 +35,7 @@ class ParsedVersion:
         True
         >>> ParsedVersion("1") == ParsedVersion("1.0.0")
         True
-        >>> ParsedVersion("1.2") < ParsedVersion("1.10")
+        >>> ParsedVersion("1.2.0") < ParsedVersion("1.10.0")
         True
     """
 
@@ -55,12 +55,17 @@ class ParsedVersion:
             self.major = int(version_str)
             return
 
-        # Handle semantic versions
+        # Handle strict semantic versions
         match = SEMVER_PATTERN.match(version_str)
         if match:
             self.major = int(match.group("major"))
-            self.minor = int(match.group("minor") or 0)
-            self.patch = int(match.group("patch") or 0)
+            self.minor = int(match.group("minor"))
+            self.patch = int(match.group("patch"))
+            return
+
+        raise ValueError(
+            "Workflow version must be an integer or major.minor.patch string.",
+        )
 
     def as_tuple(self) -> tuple[int, int, int]:
         """Return version as (major, minor, patch) tuple."""
@@ -84,6 +89,22 @@ class ParsedVersion:
 
     def __str__(self) -> str:
         return self.original
+
+
+def compare_workflow_versions(left: str, right: str) -> int:
+    """Compare two workflow version labels.
+
+    Returns ``-1`` when ``left < right``, ``0`` when they are equal, and
+    ``1`` when ``left > right``. Accepted labels are integers or strict
+    ``major.minor.patch`` strings.
+    """
+    left_version = ParsedVersion(left)
+    right_version = ParsedVersion(right)
+    if left_version < right_version:
+        return -1
+    if left_version > right_version:
+        return 1
+    return 0
 
 
 def get_latest_workflow(
@@ -147,7 +168,13 @@ def get_latest_workflow_ids(
 
     # Fetch all non-archived workflows in a single query
     workflows = list(
-        queryset.filter(is_archived=False, is_tombstoned=False).only(
+        queryset.filter(is_archived=False, is_tombstoned=False)
+        # This helper only needs scalar fields for version comparison.
+        # Callers may pass a display queryset with select_related()
+        # already attached; clear it before using only() so Django
+        # does not see a relation as both traversed and deferred.
+        .select_related(None)
+        .only(
             "id",
             "org_id",
             "slug",

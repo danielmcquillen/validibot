@@ -1,0 +1,32 @@
+{% load i18n core_tags %}
+
+{% if not line_only %}
+  {% org_url 'workflows:workflow_step_assertion_create' workflow.pk step.pk as assertion_create_url %}
+{% endif %}
+
+<div class="assertion-add-connector
+            {% if line_only %}
+              assertion-add-connector--line-only
+            {% else %}
+              assertion-add-connector--terminal
+            {% endif %}"
+     {% if line_only %}
+       aria-hidden="true"
+     {% endif %}>
+  <div class="assertion-add-dotted-line">
+  </div>
+  {% if not line_only %}
+    <button class="assertion-add-button"
+            type="button"
+            data-bs-toggle="modal"
+            data-bs-target="#workflowAssertionModal"
+            hx-get="{{ assertion_create_url }}"
+            hx-target="#workflow-assertion-modal-content"
+            hx-swap="innerHTML"
+            hx-trigger="click"
+            title="{% trans 'Add assertion' %}">
+      <i class="bi bi-plus-lg"></i>
+      <span class="visually-hidden">{% trans "Add assertion" %}</span>
+    </button>
+  {% endif %}
+</div>

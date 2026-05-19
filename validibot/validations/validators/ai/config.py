@@ -8,6 +8,7 @@ from validibot.validations.validators.base.config import ValidatorConfig
 config = ValidatorConfig(
     slug="ai-assisted-validator",
     name="AI Assisted Validator",
+    short_description=("Use AI to validate submission content against your criteria."),
     description="AI-powered validation using language models.",
     validation_type=ValidationType.AI_ASSIST,
     validator_class=("validibot.validations.validators.ai.validator.AIValidator"),

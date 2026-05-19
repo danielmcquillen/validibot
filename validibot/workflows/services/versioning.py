@@ -31,23 +31,22 @@ In scope (this module):
 - :class:`WorkflowStep` rows including the ``config`` JSONField
 - :class:`WorkflowStepResource` rows (both catalog references and
   step-owned files)
+- Step-level rulesets and their assertions
+- Step-owned signal definitions, bindings, and derivations
 - :class:`WorkflowPublicInfo` (the public-facing info page)
 - :class:`WorkflowRoleAccess` (per-role permission grants)
 - :class:`WorkflowSignalMapping` (cross-step signal flow)
 
 Out of scope (deferred to later Phase 3 sessions):
 
-- **Ruleset immutability** (Phase 3 Session C, task 10). For now the
-  cloned step references the same ``Ruleset`` row as the source — if
-  someone mutates the ruleset, both versions see the change. Session
-  C adds the immutability check.
 - **Validator semantic digest** (Phase 3 Session B, tasks 7–9). The
   cloned step references the same ``Validator`` row; we don't yet
   capture a snapshot of the validator's behavior at clone time.
-- **Resource-file hashing** (Phase 3 Session C, task 11). Step-owned
-  resource file content is copied today, so this is partially
-  addressed; the catalog-reference path will gain hash enforcement
-  in Session C.
+
+Resource-file boundaries are in scope: step-owned files are copied to
+new ``WorkflowStepResource`` rows, and catalog resources stay shared by
+reference only because ``ValidatorResourceFile`` enforces content-hash
+drift checks for versioned workflows that have runs or are locked.
 
 The structured report's ``warnings`` field surfaces these gaps to the
 caller so operators using the API today know what their "new version"
@@ -57,14 +56,18 @@ does and does not yet protect against.
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from dataclasses import dataclass
 from dataclasses import field
 from typing import TYPE_CHECKING
+from typing import Any
 
 from django.core.files.base import ContentFile
 from django.db import transaction
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from django.contrib.auth.models import AbstractBaseUser
 
     from validibot.workflows.models import Workflow
@@ -72,13 +75,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Fields that constitute the "launch contract" — the rules under
-# which a previously-launched run was operating. Editing any of
-# these on a workflow that has runs (or is locked) requires a new
-# version, not an in-place edit. See
-# :meth:`Workflow.requires_new_version_for_contract_edits`.
+# Fields that constitute the "validation contract" — the rules that
+# define what a previously-launched run actually validated. Editing any
+# of these on a workflow that has runs (or is locked) MAY require a new
+# version depending on the *direction* of the edit; widening the
+# contract (accepting more files, keeping data longer) is safe in place
+# because no past run is invalidated by it. Narrowing the contract
+# (removing a file type, shortening retention) IS unsafe because past
+# runs depended on the broader rules. The direction logic lives in
+# ``CONTRACT_FIELD_SAFETY`` below.
 #
-# What's NOT contract:
+# What is NOT a contract field:
 #   - name, description (cosmetic)
 #   - is_active, is_archived, is_tombstoned (lifecycle flags;
 #     editing them changes which workflows are *visible*, not the
@@ -87,18 +94,93 @@ logger = logging.getLogger(__name__)
 #   - slug, version (identifiers; changing requires care but is a
 #     separate concern)
 #   - make_info_page_public, featured_image (presentation)
+#   - agent_* fields (commercial/access settings, not validation
+#     behaviour — a past run's outcome doesn't depend on the current
+#     agent price, billing mode, rate limit, or discovery flag. These
+#     can change in place without touching reproducibility. The form
+#     layer separately gates agent_* fields to superusers because
+#     they're commercial settings, but that's an access-control
+#     concern, not a contract-immutability concern.)
 CONTRACT_FIELDS = frozenset(
     {
         "allowed_file_types",
         "input_retention",
         "output_retention",
-        "agent_billing_mode",
-        "agent_price_cents",
-        "agent_max_launches_per_hour",
-        "agent_public_discovery",
-        "agent_access_enabled",
     },
 )
+
+
+# Per-field safety classifiers for in-place edits on workflows that
+# already have runs (or are locked). Each classifier answers a single
+# question: "is this proposed change safe to apply in place, or does
+# it invalidate past runs?". Safe changes (widening, extending) pass
+# through the form gate; unsafe changes (narrowing, shortening) are
+# blocked unless the user is a superuser.
+#
+# The classifier functions take ``(current, proposed)`` and return
+# True for "safe in place", False for "blocked unless superuser".
+# Returning True for a value that's actually identical to current is
+# harmless — the upstream ``changed_contract_fields`` already filters
+# unchanged values before the safety check runs.
+
+
+def _set_widening_safe(current: Any, proposed: Any) -> bool:
+    """Set-valued change is safe iff every current item is still allowed.
+
+    For ``allowed_file_types``: adding new types is fine (past runs
+    accepted what they accepted; future runs accept more). Removing
+    a type breaks reproducibility for past runs that used it.
+    """
+    current_set = set(current or [])
+    proposed_set = set(proposed or [])
+    return current_set.issubset(proposed_set)
+
+
+def _retention_extending_safe(current: Any, proposed: Any) -> bool:
+    """Retention change is safe iff the new value keeps data at least as long.
+
+    Delegates to the existing day-count maps in ``submissions.constants``
+    so this safety check stays in sync with the enums automatically. The
+    maps express retention in days; ``None`` means "store permanently"
+    (the strongest extension). The comparison uses a sortable rank so
+    permanently > any-finite-days > 0-days (DO_NOT_STORE).
+
+    Extending retention is safe — files that past runs were promised
+    to retain are still retained, just longer. Shortening is unsafe —
+    files past runs expected to keep may be purged sooner than promised.
+    """
+    return _retention_rank(proposed) >= _retention_rank(current)
+
+
+def _retention_rank(value: Any) -> int:
+    """Numeric rank where bigger = longer retention.
+
+    Walks the submission-retention and output-retention day-count maps
+    so this helper handles both ``input_retention`` and
+    ``output_retention`` fields uniformly. Permanent retention sorts
+    above any finite-day value; finite days sort by day count;
+    unknown values sort below zero so any real retention beats them.
+    """
+    from validibot.submissions.constants import OUTPUT_RETENTION_DAYS
+    from validibot.submissions.constants import SUBMISSION_RETENTION_DAYS
+
+    if value is None:
+        return -1
+    for table in (SUBMISSION_RETENTION_DAYS, OUTPUT_RETENTION_DAYS):
+        if value in table:
+            days = table[value]
+            if days is None:
+                # Permanent retention — beats every finite-day value.
+                return 1_000_000
+            return int(days)
+    return -1
+
+
+CONTRACT_FIELD_SAFETY: dict[str, Callable[[Any, Any], bool]] = {
+    "allowed_file_types": _set_widening_safe,
+    "input_retention": _retention_extending_safe,
+    "output_retention": _retention_extending_safe,
+}
 
 
 @dataclass(frozen=True)
@@ -139,11 +221,9 @@ class WorkflowVersioningService:
     :class:`validibot.workflows.services.access.WorkflowAccessResolver`
     for the rationale on class-vs-free-functions.
 
-    The service deliberately does NOT mark the source workflow as
-    locked here. The existing ``Workflow.clone_to_new_version()``
-    method does that as part of its contract; preserving that
-    behaviour means existing callers don't notice the refactor.
-    Tests verify the locking still happens.
+    The service locks the source workflow after the clone succeeds.
+    That preserves the historical ``Workflow.clone_to_new_version()``
+    contract while making the clone boundary explicit and testable.
     """
 
     @staticmethod
@@ -179,6 +259,9 @@ class WorkflowVersioningService:
         # Local imports to avoid a circular import (services
         # import models, and models in turn pull in some service-
         # level helpers via signals).
+        from validibot.validations.models import Ruleset
+        from validibot.validations.models import RulesetAssertion
+        from validibot.validations.models import SignalDefinition
         from validibot.workflows.models import Workflow
         from validibot.workflows.models import WorkflowPublicInfo
         from validibot.workflows.models import WorkflowRoleAccess
@@ -204,15 +287,27 @@ class WorkflowVersioningService:
         # 2. Create the new workflow row with all contract fields
         new_workflow = Workflow.objects.create(
             org=workflow.org,
+            project=workflow.project,
             user=user,
             name=workflow.name,
+            description=workflow.description,
             slug=workflow.slug,
             version=next_version,
+            history_policy=workflow.history_policy,
             is_locked=False,
             is_active=workflow.is_active,
+            allow_submission_name=workflow.allow_submission_name,
+            allow_submission_meta_data=workflow.allow_submission_meta_data,
+            allow_submission_short_description=workflow.allow_submission_short_description,
+            make_info_page_public=workflow.make_info_page_public,
+            is_public=workflow.is_public,
             allowed_file_types=list(workflow.allowed_file_types or []),
             input_retention=workflow.input_retention,
             output_retention=workflow.output_retention,
+            success_message=workflow.success_message,
+            input_schema=deepcopy(workflow.input_schema),
+            input_schema_source_mode=workflow.input_schema_source_mode,
+            input_schema_source_text=workflow.input_schema_source_text,
             # Phase 3: copy the agent-launch contract too. The
             # historical clone_to_new_version omitted these,
             # meaning a new version of an x402-published workflow
@@ -223,27 +318,141 @@ class WorkflowVersioningService:
             agent_public_discovery=workflow.agent_public_discovery,
             agent_access_enabled=workflow.agent_access_enabled,
         )
+        if workflow.featured_image:
+            with workflow.featured_image.open("rb") as source_image:
+                new_workflow.featured_image.save(
+                    workflow.featured_image.name.rsplit("/", 1)[-1],
+                    ContentFile(source_image.read()),
+                    save=True,
+                )
 
-        # 3. + 4. Steps and step resources.
-        # Snapshot original steps and their step_resources before
-        # mutating .pk = None, because prefetch_related results
-        # are cached on the Python objects.
+        # 3. + 4. Steps, step-owned contract rows, and step resources.
+        # Snapshot original related rows before mutating .pk = None,
+        # because prefetch_related results are cached on the Python objects.
         original_steps = list(
-            workflow.steps.prefetch_related("step_resources").order_by("order"),
+            workflow.steps.select_related("ruleset")
+            .prefetch_related(
+                "step_resources",
+                "signal_definitions",
+                "signal_bindings",
+                "derivations",
+            )
+            .order_by("order"),
         )
         old_pks = [step.pk for step in original_steps]
         step_resource_map = {
             step.pk: list(step.step_resources.all()) for step in original_steps
         }
+        step_signal_map = {
+            step.pk: list(step.signal_definitions.all()) for step in original_steps
+        }
+        step_binding_map = {
+            step.pk: list(step.signal_bindings.all()) for step in original_steps
+        }
+        step_derivation_map = {
+            step.pk: list(step.derivations.all()) for step in original_steps
+        }
+
+        source_rulesets = {
+            step.ruleset_id: step.ruleset
+            for step in original_steps
+            if step.ruleset_id and step.ruleset
+        }
+        ruleset_clone_map: dict[int, Ruleset] = {}
+        for source_ruleset_id, source_ruleset in source_rulesets.items():
+            ruleset_clone_map[source_ruleset_id] = (
+                WorkflowVersioningService._clone_ruleset(
+                    source_ruleset,
+                    user=user,
+                    version_label=next_version,
+                )
+            )
 
         for step in original_steps:
+            source_ruleset_id = step.ruleset_id
             step.pk = None
             step.workflow = new_workflow
+            if source_ruleset_id:
+                step.ruleset = ruleset_clone_map[source_ruleset_id]
         WorkflowStep.objects.bulk_create(original_steps)
         components_copied["steps"] = len(original_steps)
 
+        step_clone_map = {
+            old_pk: new_step
+            for old_pk, new_step in zip(old_pks, original_steps, strict=True)
+        }
+
+        signal_clone_map: dict[int, SignalDefinition] = {}
+        signal_count = 0
+        binding_count = 0
+        derivation_count = 0
+        for old_pk, new_step in step_clone_map.items():
+            for old_signal in step_signal_map.get(old_pk, []):
+                old_signal_pk = old_signal.pk
+                old_signal.pk = None
+                old_signal.workflow_step = new_step
+                old_signal.validator = None
+                old_signal.provider_binding = deepcopy(old_signal.provider_binding)
+                old_signal.metadata = deepcopy(old_signal.metadata)
+                old_signal.save()
+                signal_clone_map[old_signal_pk] = old_signal
+                signal_count += 1
+
+            for old_binding in step_binding_map.get(old_pk, []):
+                signal_definition = signal_clone_map.get(
+                    old_binding.signal_definition_id,
+                    old_binding.signal_definition,
+                )
+                old_binding.pk = None
+                old_binding.workflow_step = new_step
+                old_binding.signal_definition = signal_definition
+                old_binding.default_value = deepcopy(old_binding.default_value)
+                old_binding.save()
+                binding_count += 1
+
+            for old_derivation in step_derivation_map.get(old_pk, []):
+                old_derivation.pk = None
+                old_derivation.validator = None
+                old_derivation.workflow_step = new_step
+                old_derivation.metadata = deepcopy(old_derivation.metadata)
+                old_derivation.save()
+                derivation_count += 1
+
+        assertion_count = 0
+        for source_ruleset_id, cloned_ruleset in ruleset_clone_map.items():
+            source_assertions = RulesetAssertion.objects.filter(
+                ruleset_id=source_ruleset_id,
+            ).order_by("order", "pk")
+            for assertion in source_assertions:
+                target_signal = signal_clone_map.get(
+                    assertion.target_signal_definition_id,
+                    assertion.target_signal_definition,
+                )
+                RulesetAssertion.objects.create(
+                    ruleset=cloned_ruleset,
+                    order=assertion.order,
+                    assertion_type=assertion.assertion_type,
+                    operator=assertion.operator,
+                    target_signal_definition=target_signal,
+                    target_data_path=assertion.target_data_path,
+                    severity=assertion.severity,
+                    when_expression=assertion.when_expression,
+                    rhs=deepcopy(assertion.rhs),
+                    options=deepcopy(assertion.options),
+                    message_template=assertion.message_template,
+                    success_message=assertion.success_message,
+                    cel_cache=assertion.cel_cache,
+                    spec_version=assertion.spec_version,
+                )
+                assertion_count += 1
+        components_copied["rulesets"] = len(ruleset_clone_map)
+        components_copied["assertions"] = assertion_count
+        components_copied["signal_definitions"] = signal_count
+        components_copied["signal_bindings"] = binding_count
+        components_copied["derivations"] = derivation_count
+
         step_resource_count = 0
-        for old_pk, new_step in zip(old_pks, original_steps, strict=True):
+        for old_pk, new_step in step_clone_map.items():
             for old_res in step_resource_map.get(old_pk, []):
                 if old_res.is_catalog_reference:
                     WorkflowStepResource.objects.create(
@@ -305,12 +514,6 @@ class WorkflowVersioningService:
         workflow.save(update_fields=["is_locked"])
 
         # Surface deferred-Phase warnings.
-        if any(step.ruleset_id for step in original_steps):
-            warnings.append(
-                "Cloned steps reference the same Ruleset rows as the "
-                "source workflow; ruleset immutability lands in Phase 3 "
-                "Session C (task 10).",
-            )
         if any(step.validator_id for step in original_steps):
             warnings.append(
                 "Cloned steps reference the same Validator rows as the "
@@ -334,6 +537,61 @@ class WorkflowVersioningService:
             components_copied,
         )
         return report
+
+    @staticmethod
+    def _clone_ruleset(source_ruleset, *, user: AbstractBaseUser, version_label: str):
+        """Create an editable copy of a step-level ruleset for a workflow clone."""
+
+        from validibot.validations.models import Ruleset
+
+        clone = Ruleset(
+            org=source_ruleset.org,
+            user=user if getattr(user, "pk", None) else source_ruleset.user,
+            name=WorkflowVersioningService._unique_ruleset_clone_name(
+                org=source_ruleset.org,
+                ruleset_type=source_ruleset.ruleset_type,
+                base_name=f"{source_ruleset.name}-workflow-v{version_label}",
+                version=source_ruleset.version or "1",
+            ),
+            ruleset_type=source_ruleset.ruleset_type,
+            version=source_ruleset.version or "1",
+            rules_text=source_ruleset.rules_text,
+            metadata=deepcopy(source_ruleset.metadata),
+        )
+        if source_ruleset.rules_file:
+            with source_ruleset.rules_file.open("rb") as source_file:
+                clone.rules_file = ContentFile(
+                    source_file.read(),
+                    name=source_ruleset.rules_file.name.rsplit("/", 1)[-1],
+                )
+        clone.full_clean()
+        clone.save()
+        return clone
+
+    @staticmethod
+    def _unique_ruleset_clone_name(
+        *,
+        org,
+        ruleset_type: str,
+        base_name: str,
+        version: str,
+    ) -> str:
+        """Return a ruleset name unique within the model's natural key."""
+
+        from validibot.validations.models import Ruleset
+
+        name = base_name[:200]
+        suffix = 2
+        while Ruleset.objects.filter(
+            org=org,
+            ruleset_type=ruleset_type,
+            name=name,
+            version=version,
+        ).exists():
+            suffix_text = f"-{suffix}"
+            name = f"{base_name[: 200 - len(suffix_text)]}{suffix_text}"
+            suffix += 1
+        return name
 
 
 __all__ = ["CONTRACT_FIELDS", "CloneReport", "WorkflowVersioningService"]

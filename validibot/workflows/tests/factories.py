@@ -9,6 +9,7 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.users.models import Membership
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
+from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.models import WorkflowStepResource
@@ -29,6 +30,7 @@ class WorkflowFactory(DjangoModelFactory):
     slug = factory.LazyFunction(lambda: f"test-workflow-{uuid4().hex[:12]}")
     project = factory.SubFactory(ProjectFactory, org=factory.SelfAttribute("..org"))
     version = "1"
+    history_policy = WorkflowHistoryPolicy.VERSIONED
     is_locked = False
     is_active = True
     allow_submission_meta_data = True

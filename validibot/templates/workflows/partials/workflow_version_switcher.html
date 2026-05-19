@@ -1,0 +1,27 @@
+{% load i18n %}
+
+{% if workflow_versions %}
+  <form class="workflow-version-switcher d-flex align-items-center gap-2"
+        method="get">
+    <label class="form-label text-muted small mb-0"
+           for="workflow-version-switcher">
+      {% trans "Version" %}
+    </label>
+    <select id="workflow-version-switcher"
+            class="form-select form-select-sm w-auto"
+            aria-label="{% trans 'Workflow version' ?>"
+            onchange="if (this.value) window.location.href = this.value;">
+      {% for option in workflow_versions %}
+        <option value="{{ option.url }}"
+                {% if option.is_current %}
+                  selected
+                {% endif %}>
+          {{ option.label }}
+          {% if option.is_latest %}
+            · {% trans "latest" %}
+          {% endif %}
+        </option>
+      {% endfor %}
+    </select>
+  </form>
+{% endif %}

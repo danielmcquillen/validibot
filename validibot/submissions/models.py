@@ -634,10 +634,16 @@ def detect_file_type(
     name = (filename or "").lower()
     if name.endswith((".json", ".epjson")):
         return SubmissionFileType.JSON
+    if name.endswith(".jsonld"):
+        return SubmissionFileType.JSON
     if name.endswith(".xml"):
+        return SubmissionFileType.XML
+    if name.endswith(".rdf"):
         return SubmissionFileType.XML
     if name.endswith((".yaml", ".yml")):
         return SubmissionFileType.YAML
+    if name.endswith((".ttl", ".nt", ".nq")):
+        return SubmissionFileType.TEXT
     if name.endswith(".idf") or "energyplus" in name:
         return SubmissionFileType.TEXT
     if name.endswith(".thmx"):

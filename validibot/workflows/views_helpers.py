@@ -87,6 +87,53 @@ def file_type_label(value: str) -> str:
         return value
 
 
+def get_validator_operation_display(
+    validator: Validator | None,
+) -> dict[str, Any] | None:
+    """Return display copy for inline validators that have a real validation step.
+
+    Processor validators already render their processor between input and output
+    assertions. Schema/RDF validators do not have that staged processor view, but
+    authors still need to see that the schema validation runs before any
+    step-level assertions.
+    """
+    if not validator:
+        return None
+
+    operation_copy = {
+        ValidationType.JSON_SCHEMA: {
+            "label": _("JSON Schema Validation"),
+            "description": _(
+                "Validates the submitted JSON document against the configured "
+                "JSON Schema before any step assertions run.",
+            ),
+        },
+        ValidationType.XML_SCHEMA: {
+            "label": _("XML Validation"),
+            "description": _(
+                "Validates the submitted XML document against the configured "
+                "XSD, RelaxNG, or DTD schema before any step assertions run.",
+            ),
+        },
+        ValidationType.SHACL: {
+            "label": _("SHACL Validation"),
+            "description": _(
+                "Validates the submitted RDF graph against the configured "
+                "SHACL shapes and optional ontology files before any step "
+                "assertions run.",
+            ),
+        },
+    }
+    display = operation_copy.get(validator.validation_type)
+    if display is None:
+        return None
+    return {
+        "badge": _("Validation"),
+        "label": display["label"],
+        "description": display["description"],
+    }
+
+
 def describe_workflow_file_type_violation(
     workflow: Workflow,
     file_type: str,

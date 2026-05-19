@@ -102,6 +102,11 @@ urlpatterns = [
         name="workflow_update",
     ),
     path(
+        "<int:pk>/clone/",
+        views.WorkflowCloneView.as_view(),
+        name="workflow_clone",
+    ),
+    path(
         "<int:pk>/delete/",
         views.WorkflowDeleteView.as_view(),
         name="workflow_delete",

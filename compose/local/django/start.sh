@@ -16,7 +16,15 @@ if ! python manage.py shell -c "from validibot.users.models import Role; exit(0 
 else
   # Sync system validators on every startup to ensure catalog entries are current.
   # This is fast (idempotent) and ensures EnergyPlus/FMU/THERM signals are available.
-  python manage.py sync_validators
+  #
+  # ``--allow-drift`` is the LOCAL stance: a developer iterating on a
+  # validator config naturally changes the semantic digest, and blocking
+  # container startup on every config edit makes the dev loop unusable.
+  # The production start script (compose/production/django/start.sh) keeps
+  # drift detection strict — that's where catching an un-bumped config
+  # version actually matters, because workflows pinned to (slug, version)
+  # would silently change behavior under load.
+  python manage.py sync_validators --allow-drift
 fi
 
 python manage.py runserver 0.0.0.0:8000

@@ -88,7 +88,7 @@ class Command(BaseCommand):
         workflow, _ = Workflow.objects.get_or_create(
             org=org,
             slug=self.workflow_slug,
-            version="1.0",
+            version="1.0.0",
             defaults={
                 "name": "Example Custom Validation Workflow",
                 "user": user,
@@ -142,7 +142,7 @@ class Command(BaseCommand):
                 "name": f"Example Custom Validator {index}",
                 "description": "Demonstration validator used by the example command.",
                 "validation_type": ValidationType.CUSTOM_VALIDATOR,
-                "version": "1.0",
+                "version": "1.0.0",
                 "supported_file_types": [SubmissionFileType.JSON],
                 "is_system": False,
             },
@@ -159,7 +159,7 @@ class Command(BaseCommand):
             name=ruleset_name,
             defaults={
                 "ruleset_type": RulesetType.CUSTOM_VALIDATOR,
-                "version": "1.0",
+                "version": "1.0.0",
             },
         )
         ruleset.ruleset_type = RulesetType.CUSTOM_VALIDATOR

@@ -9,9 +9,12 @@ from django.utils.translation import gettext as _
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import XMLSchemaType
+from validibot.validations.validators.base.base import AssertionStats
 from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
+from validibot.validations.xml_utils import XmlParseError
+from validibot.validations.xml_utils import xml_to_dict
 
 if TYPE_CHECKING:
     from validibot.actions.protocols import RunContext
@@ -24,10 +27,10 @@ class XmlSchemaValidator(BaseValidator):
     """
     XML validator that supports XSD (default), Relax NG, and DTD.
 
-    This is a **schema-only** validator. It validates XML documents against an
-    XML schema (XSD, Relax NG, or DTD) and reports structural violations. It does
-    NOT support ruleset assertions (BASIC or CEL) - assertions are not applicable
-    to XML schema validation.
+    It validates XML documents against an XML schema (XSD, Relax NG, or DTD)
+    and reports structural violations. Step-level assertions run afterward
+    against the parsed XML-as-dict payload, which lets workflow authors layer
+    business rules on top of the schema contract.
 
     Ruleset requirements:
       * ``ruleset.metadata['schema_type']`` must be one of ``XMLSchemaType``.
@@ -52,6 +55,8 @@ class XmlSchemaValidator(BaseValidator):
         Validate the provided XML against the configured schema (XSD or Relax NG).
         Returns a ValidationResult with ERROR issues for any schema violations.
         """
+        self.run_context = run_context
+
         if submission.file_type != SubmissionFileType.XML:
             return ValidationResult(
                 passed=False,
@@ -165,12 +170,50 @@ class XmlSchemaValidator(BaseValidator):
                 path = self._extract_error_path(err)
                 issues.append(ValidationIssue(path, str(err.message), Severity.ERROR))
 
+        schema_issue_count = len(issues)
+        assertion_total = 0
+        assertion_failures = 0
+        default_ruleset = getattr(validator, "default_ruleset", None)
+        has_assertions = any(
+            self._count_stage_assertions(
+                ruleset,
+                stage,
+                default_ruleset=default_ruleset,
+            )
+            for stage in ("input", "output")
+        )
+        if has_assertions:
+            try:
+                assertion_payload = xml_to_dict(content)
+            except XmlParseError as exc:
+                issues.append(
+                    ValidationIssue(
+                        "",
+                        _("Could not prepare XML payload for assertions: ") + str(exc),
+                        Severity.ERROR,
+                    )
+                )
+            else:
+                assertion_result = self.evaluate_assertions_for_stages(
+                    validator=validator,
+                    ruleset=ruleset,
+                    payload=assertion_payload,
+                )
+                issues.extend(assertion_result.issues)
+                assertion_total = assertion_result.total
+                assertion_failures = assertion_result.failures
+
         passed = not any(issue.severity == Severity.ERROR for issue in issues)
         return ValidationResult(
             passed=passed,
             issues=issues,
+            assertion_stats=AssertionStats(
+                total=assertion_total,
+                failures=assertion_failures,
+            ),
             stats={
-                "error_count": len(issues),
+                "error_count": schema_issue_count,
+                "schema_error_count": schema_issue_count,
                 "schema_type": schema_type,
             },
         )

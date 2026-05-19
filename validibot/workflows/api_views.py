@@ -17,17 +17,20 @@ from django.shortcuts import get_object_or_404
 from rest_framework import permissions
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response as APIResponse
 
 from validibot.core.api.org_scoped import OrgMembershipPermission
 from validibot.core.api.org_scoped import OrgScopedMixin
 from validibot.core.idempotency import idempotent
+from validibot.users.permissions import PermissionCode
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.serializers import ValidationRunStartSerializer
 from validibot.workflows.models import Workflow
 from validibot.workflows.serializers import WorkflowFullSerializer
 from validibot.workflows.serializers import WorkflowSlimSerializer
 from validibot.workflows.services.access import WorkflowAccessResolver
+from validibot.workflows.services.versioning import WorkflowVersioningService
 from validibot.workflows.version_utils import get_latest_workflow
 from validibot.workflows.version_utils import get_latest_workflow_ids
 from validibot.workflows.views_helpers import resolve_project
@@ -37,6 +40,37 @@ from validibot.workflows.views_launch_helpers import launch_api_validation_run
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
+
+
+def _clone_response_for_viewset(viewset, workflow: Workflow) -> APIResponse:
+    """Clone ``workflow`` for API callers with workflow-edit permission."""
+
+    user = viewset.request.user
+    if workflow.is_tombstoned or not user.has_perm(
+        PermissionCode.WORKFLOW_EDIT.value,
+        workflow.org,
+    ):
+        raise PermissionDenied("You do not have permission to clone this workflow.")
+
+    report = WorkflowVersioningService.clone(workflow, user=user)
+    new_workflow = Workflow.objects.get(pk=report.new_workflow_id)
+    serializer = WorkflowFullSerializer(
+        new_workflow,
+        context=viewset.get_serializer_context(),
+    )
+    return APIResponse(
+        {
+            "workflow": serializer.data,
+            "clone_report": {
+                "source_workflow_id": report.source_workflow_id,
+                "new_workflow_id": report.new_workflow_id,
+                "new_version_label": report.new_version_label,
+                "components_copied": report.components_copied,
+                "warnings": report.warnings,
+            },
+        },
+        status=HTTPStatus.CREATED,
+    )
 
 
 class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
@@ -163,7 +197,7 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         action = getattr(self, "action", None)
         if action == "runs":
             return ValidationRunStartSerializer
-        if action == "retrieve":
+        if action in {"retrieve", "clone"}:
             return WorkflowFullSerializer
         return WorkflowSlimSerializer
 
@@ -172,6 +206,17 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         context = super().get_serializer_context()
         context["org_slug"] = self.kwargs.get("org_slug")
         return context
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="clone",
+        url_name="clone",
+    )
+    def clone(self, request, *args, **kwargs):
+        """Create a new workflow version from the resolved workflow."""
+
+        return _clone_response_for_viewset(self, self.get_object())
 
     @action(
         detail=True,
@@ -284,7 +329,7 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         action = getattr(self, "action", None)
         if action == "runs":
             return ValidationRunStartSerializer
-        if action == "retrieve":
+        if action in {"retrieve", "clone"}:
             return WorkflowFullSerializer
         return WorkflowSlimSerializer
 
@@ -293,6 +338,17 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         context = super().get_serializer_context()
         context["org_slug"] = self.kwargs.get("org_slug")
         return context
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="clone",
+        url_name="clone",
+    )
+    def clone(self, request, *args, **kwargs):
+        """Create a new workflow version from this exact source version."""
+
+        return _clone_response_for_viewset(self, self.get_object())
 
     @action(
         detail=True,

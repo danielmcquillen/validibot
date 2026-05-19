@@ -26,6 +26,7 @@ from validibot.workflows.forms import WorkflowForm
 from validibot.workflows.forms import WorkflowLaunchForm
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
+from validibot.workflows.services.version_context import build_workflow_version_context
 from validibot.workflows.views_helpers import ensure_advanced_ruleset
 
 logger = logging.getLogger(__name__)
@@ -181,6 +182,14 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
 
 
 class WorkflowObjectMixin(WorkflowAccessMixin):
+    """Resolve a workflow object and attach version-family context.
+
+    Workflow pages generally operate on one concrete workflow version. The
+    mixin keeps that exact-row lookup in one place and also gives templates the
+    small version-family context they need to show a consistent version badge or
+    switcher without each view repeating the same query.
+    """
+
     workflow_url_kwarg = "pk"
 
     def get_workflow(self) -> Workflow:
@@ -200,6 +209,18 @@ class WorkflowObjectMixin(WorkflowAccessMixin):
             workflow_id = self.kwargs.get(self.workflow_url_kwarg)
             self._workflow = get_object_or_404(queryset, pk=workflow_id)
         return self._workflow
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = context.get("workflow") or self.get_workflow()
+        context["workflow"] = workflow
+        context.update(
+            build_workflow_version_context(
+                request=self.request,
+                workflow=workflow,
+            ),
+        )
+        return context
 
 
 class WorkflowStepAssertionsMixin(WorkflowObjectMixin):

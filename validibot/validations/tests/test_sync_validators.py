@@ -216,6 +216,8 @@ class SyncValidatorsCommandTests(TestCase):
         # Validators that support assertions
         for slug in (
             "basic-validator",
+            "json-schema-validator",
+            "xml-validator",
             "energyplus-idf-validator",
             "fmu-validator",
             "ai-assisted-validator",
@@ -226,14 +228,6 @@ class SyncValidatorsCommandTests(TestCase):
             self.assertTrue(
                 validator.supports_assertions,
                 f"{slug} should support assertions",
-            )
-
-        # Validators that do NOT support assertions (schema-only)
-        for slug in ("json-schema-validator", "xml-validator"):
-            validator = Validator.objects.get(slug=slug)
-            self.assertFalse(
-                validator.supports_assertions,
-                f"{slug} should not support assertions",
             )
 
     def test_command_creates_shacl_output_signals(self):
@@ -370,6 +364,8 @@ class CreateDefaultValidatorsTests(TestCase):
         # Validators that support assertions
         for slug in (
             "basic-validator",
+            "json-schema-validator",
+            "xml-validator",
             "energyplus-idf-validator",
             "fmu-validator",
             "ai-assisted-validator",
@@ -381,12 +377,62 @@ class CreateDefaultValidatorsTests(TestCase):
                 f"{slug} should support assertions",
             )
 
-        # Validators that do NOT support assertions
-        for slug in ("json-schema-validator", "xml-validator"):
-            validator = Validator.objects.get(slug=slug)
-            self.assertFalse(
-                validator.supports_assertions,
-                f"{slug} should not support assertions",
+
+class SystemValidatorShortDescriptionTests(TestCase):
+    """Regression coverage for the validator-card short-description fight.
+
+    Two commands wrote the same Validator rows:
+
+      - ``create_default_validators`` (community legacy seed)
+      - ``sync_validators``           (the new ADR-2026-04-27 source of truth)
+
+    ``setup_validibot`` calls ``create_default_validators`` first and
+    ``sync_validators`` second, so the sync command's view of the world wins.
+    If a validator config silently omitted ``short_description``, sync would
+    overwrite the seeded value with the empty Pydantic default, leaving the
+    "Add workflow step" cards with blank subtitles for Basic / JSON Schema /
+    XML / FMU / etc. — only SHACL survived because its config was the only
+    one that declared the field.
+
+    These tests pin every system validator config to a non-empty
+    ``short_description`` so we never quietly regress to blank cards again.
+    """
+
+    def test_every_system_config_declares_short_description(self):
+        """Each discovered validator config must set ``short_description``.
+
+        This guards the source side of the bug: if anyone adds a new system
+        validator or refactors an existing one and forgets the field, the
+        DB row will be silently blanked the next time ``sync_validators``
+        runs. Catching it in the config dump is much cheaper than chasing
+        a blank-card UI bug in QA.
+        """
+        for cfg in get_all_configs():
+            self.assertTrue(
+                cfg.short_description.strip(),
+                f"validator config {cfg.slug!r} is missing short_description "
+                f"— sync_validators will blank the card subtitle on next run.",
+            )
+
+    def test_sync_validators_persists_short_description(self):
+        """``sync_validators`` must write the config's ``short_description``.
+
+        Guards the destination side: confirms that after a real sync run the
+        Validator rows in the DB carry the same ``short_description`` as the
+        config. If the sync command stops writing this field (e.g. someone
+        adds it to the ``exclude`` set in ``cfg.model_dump``), this test
+        fails immediately.
+        """
+        call_command("sync_validators", stdout=StringIO(), stderr=StringIO())
+
+        for cfg in get_all_configs():
+            validator = Validator.objects.get(slug=cfg.slug, version=cfg.version)
+            self.assertEqual(
+                validator.short_description,
+                cfg.short_description,
+                f"{cfg.slug!r}: sync_validators didn't persist short_description "
+                f"(got {validator.short_description!r}, "
+                f"expected {cfg.short_description!r})",
             )
 
 
@@ -526,24 +572,20 @@ class ConfigRegistryTests(TestCase):
         """Configs correctly declare assertion support."""
         assertion_slugs = {
             "basic-validator",
+            "json-schema-validator",
+            "xml-validator",
             "energyplus-idf-validator",
             "fmu-validator",
             "ai-assisted-validator",
             "therm-validator",
             "custom-validator",
         }
-        no_assertion_slugs = {"json-schema-validator", "xml-validator"}
 
         for cfg in get_all_configs():
             if cfg.slug in assertion_slugs:
                 self.assertTrue(
                     cfg.supports_assertions,
                     f"Config {cfg.slug} should declare supports_assertions=True",
-                )
-            elif cfg.slug in no_assertion_slugs:
-                self.assertFalse(
-                    cfg.supports_assertions,
-                    f"Config {cfg.slug} should declare supports_assertions=False",
                 )
 
     def test_registry_count(self):

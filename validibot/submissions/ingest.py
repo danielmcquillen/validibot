@@ -20,7 +20,12 @@ class IngestResult:
 TEXTUAL_CT = {
     "application/json",
     "application/xml",
+    "application/ld+json",
+    "application/n-quads",
+    "application/n-triples",
+    "application/rdf+xml",
     "text/plain",
+    "text/turtle",
     "text/x-idf",
     "application/yaml",
     "text/yaml",

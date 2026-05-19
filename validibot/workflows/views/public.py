@@ -26,6 +26,7 @@ from validibot.workflows.forms import WorkflowPublicInfoForm
 from validibot.workflows.mixins import WorkflowObjectMixin
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
+from validibot.workflows.version_utils import get_latest_workflow_ids
 from validibot.workflows.views_helpers import public_info_card_context
 
 logger = logging.getLogger(__name__)
@@ -74,12 +75,13 @@ class PublicWorkflowListView(ListView):
                 | models.Q(slug__icontains=search_query),
             )
 
-        return (
+        queryset = (
             queryset.select_related("org", "project", "user")
             .prefetch_related("steps")
-            .order_by("name", "pk")
             .distinct()
         )
+        latest_ids = get_latest_workflow_ids(queryset)
+        return queryset.filter(pk__in=latest_ids).order_by("name", "pk")
 
     def get_paginate_by(self, queryset):
         per_page = self.request.GET.get("per_page")

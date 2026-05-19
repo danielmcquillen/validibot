@@ -266,6 +266,118 @@ def test_launch_upload_flow_accepts_file_and_creates_submission(client, monkeypa
     assert client.session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] == "upload"
 
 
+def test_launch_upload_detects_turtle_file_despite_default_json_choice(
+    client,
+    monkeypatch,
+):
+    """A .ttl upload should stay TEXT/Turtle even when JSON is the first choice.
+
+    SHACL workflows often allow JSON-LD and Turtle. If the launch form defaults
+    to JSON but the uploaded file is Turtle, filename detection must win so the
+    SHACL engine does not try to parse Turtle as JSON-LD.
+    """
+    workflow = WorkflowFactory(
+        allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.TEXT],
+    )
+    validator = ValidatorFactory(
+        validation_type=ValidationType.SHACL,
+        supports_assertions=True,
+    )
+    WorkflowStepFactory(workflow=workflow, validator=validator)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    asset_path = Path("tests/assets/shacl/223p_example_building.ttl")
+    uploaded = SimpleUploadedFile(
+        asset_path.name,
+        asset_path.read_bytes(),
+        content_type="text/turtle",
+    )
+    captured = {}
+
+    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):
+        captured["submission"] = submission
+        run = ValidationRun.objects.create(
+            org=org,
+            workflow=workflow,
+            submission=submission,
+            project=workflow.project,
+            user=request.user,
+            status=ValidationRunStatus.PENDING,
+        )
+        return ValidationRunLaunchResults(
+            validation_run=run,
+            data={"id": str(run.pk), "status": ValidationRunStatus.PENDING},
+            status=HTTPStatus.ACCEPTED,
+        )
+
+    monkeypatch.setattr(
+        "validibot.workflows.views.launch.ValidationRunService.launch",
+        fake_launch,
+    )
+
+    response = client.post(
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
+        data={
+            "file_type": SubmissionFileType.JSON,
+            "attachment": uploaded,
+        },
+    )
+
+    assert response.status_code == HTTPStatus.ACCEPTED
+    submission: Submission = captured["submission"]
+    submission.refresh_from_db()
+    assert submission.file_type == SubmissionFileType.TEXT
+    assert submission.original_filename == asset_path.name
+    assert submission.input_file.name.endswith(".ttl")
+
+
+def test_launch_upload_rejects_turtle_when_workflow_allows_only_json(
+    client,
+    monkeypatch,
+):
+    """A JSON-only workflow must not accept Turtle just because SHACL can parse it.
+
+    Filename detection happens before contract enforcement. This test pins the
+    second half: after `.ttl` is detected as TEXT, the launch form must reject
+    it when the workflow contract only allows JSON.
+    """
+    workflow = WorkflowFactory(allowed_file_types=[SubmissionFileType.JSON])
+    validator = ValidatorFactory(
+        validation_type=ValidationType.SHACL,
+        supports_assertions=True,
+    )
+    WorkflowStepFactory(workflow=workflow, validator=validator)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    asset_path = Path("tests/assets/shacl/223p_example_building.ttl")
+    uploaded = SimpleUploadedFile(
+        asset_path.name,
+        asset_path.read_bytes(),
+        content_type="text/turtle",
+    )
+
+    def fail_if_launched(*_args, **_kwargs):
+        raise AssertionError("JSON-only workflow should reject Turtle before launch")
+
+    monkeypatch.setattr(
+        "validibot.workflows.views.launch.ValidationRunService.launch",
+        fail_if_launched,
+    )
+
+    response = client.post(
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
+        data={
+            "file_type": SubmissionFileType.JSON,
+            "attachment": uploaded,
+        },
+    )
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    body = response.content.decode()
+    assert "This workflow accepts JSON submissions." in body
+    assert ValidationRun.objects.filter(workflow=workflow).count() == 0
+
+
 def test_launch_inline_flow_accepts_json_payload(client, monkeypatch):
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)

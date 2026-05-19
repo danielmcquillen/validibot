@@ -8,7 +8,7 @@ This work lands in Phase 5 of the boring-self-hosting ADR.
 
 Validibot has two classes of validator:
 
-- **Simple validators** run synchronously inside the Django process. Examples: JSON Schema, XML Schema, Basic (CEL assertions), AI (LLM-backed checks). They never touch a container.
+- **Simple validators** run synchronously inside the Django process. Examples: JSON Schema and XML Schema (with optional step assertions afterward), Basic (CEL assertions), and AI (LLM-backed checks). They never touch a container.
 - **Advanced validators** delegate the heavyweight work to an external Docker container — usually a third-party simulation engine like EnergyPlus or FMU. The Django code dispatches an input envelope and reads the output envelope when the container exits.
 
 Advanced validators are a Pro feature. Community deployments only see simple validators.

@@ -21,16 +21,15 @@ See ADR-2026-05-18 for the architecture rationale.
 from __future__ import annotations
 
 import logging
-import multiprocessing
-import queue
 import re
-import threading
+import subprocess
+import sys
 from dataclasses import dataclass
 from json import JSONDecodeError
+from json import dumps as json_dumps
 from json import loads as json_loads
 from typing import Any
 
-import pyshacl
 from django.conf import settings as django_settings
 from rdflib import Graph
 from rdflib import URIRef
@@ -67,8 +66,9 @@ HARD_MAX_SHAPE_TRIPLES = 200_000
 HARD_MAX_ONTOLOGY_TRIPLES = 500_000
 HARD_MAX_VALIDATION_DEPTH = 50
 
-# pySHACL execution budget. The engine runs pySHACL in a child process so
-# a pathological shape/data pair can be terminated cleanly on timeout.
+# pySHACL execution budget. The engine runs pySHACL in a Python subprocess so
+# a pathological shape/data pair can be terminated cleanly on timeout, including
+# when the caller is a daemonic Celery prefork task process.
 DEFAULT_PYSHACL_TIMEOUT_SECONDS = 30
 HARD_MAX_PYSHACL_TIMEOUT_SECONDS = 120
 
@@ -736,7 +736,13 @@ def _run_pyshacl_with_timeout(
     max_validation_depth: int,
     timeout_seconds: int,
 ) -> tuple[Graph | None, str | None]:
-    """Run pySHACL in a child process and terminate it on timeout."""
+    """Run pySHACL in a killable subprocess and terminate it on timeout.
+
+    Celery prefork task processes are daemonic, and Python forbids daemonic
+    processes from spawning ``multiprocessing.Process`` children. A plain
+    subprocess gives the validator the same OS-level kill boundary without
+    tripping that worker-pool restriction.
+    """
     try:
         payload = {
             "data_graph_ntriples": data_graph.serialize(format="nt"),
@@ -754,35 +760,57 @@ def _run_pyshacl_with_timeout(
         logger.exception("Failed to serialise SHACL subprocess payload")
         return None, f"SHACL engine error before subprocess launch: {exc}"
 
-    context = _multiprocessing_context()
-    result_queue = context.Queue(maxsize=1)
-    process = context.Process(
-        target=_pyshacl_worker,
-        kwargs={"payload": payload, "result_queue": result_queue},
-        name="validibot-shacl-pyshacl",
-    )
-    process.start()
-    process.join(timeout_seconds)
-    if process.is_alive():
-        process.terminate()
-        process.join(5)
-        if process.is_alive() and hasattr(process, "kill"):
-            process.kill()
-            process.join(5)
+    try:
+        # The executable and module name are fixed by the application; user
+        # data is passed only as JSON on stdin and shell execution is disabled.
+        completed = subprocess.run(  # noqa: S603
+            [
+                sys.executable,
+                "-m",
+                "validibot.validations.validators.shacl.pyshacl_worker",
+            ],
+            input=json_dumps(payload),
+            text=True,
+            capture_output=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
         return None, (
             f"SHACL validation exceeded the {timeout_seconds}s wall-clock "
             "budget and was terminated. Reduce graph size, simplify shapes, "
             "or lower the inference/advanced SHACL settings."
         )
+    except OSError as exc:
+        logger.exception("Failed to launch SHACL subprocess")
+        return None, f"SHACL engine error launching worker subprocess: {exc}"
 
     try:
-        status, body = result_queue.get_nowait()
-    except queue.Empty:
+        response = json_loads(completed.stdout or "{}")
+    except JSONDecodeError:
+        logger.exception(
+            "Failed to decode SHACL subprocess response",
+            extra={
+                "returncode": completed.returncode,
+                "stdout": completed.stdout[:1000],
+                "stderr": completed.stderr[:1000],
+            },
+        )
+        detail = completed.stderr.strip() or completed.stdout.strip() or "no output"
         return None, (
-            "SHACL validation worker exited without returning a result "
-            f"(exit code {process.exitcode})."
+            "SHACL validation worker exited without a valid response "
+            f"(exit code {completed.returncode}): {detail}"
         )
 
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or str(response.get("body", "")).strip()
+        return None, (
+            "SHACL validation worker failed "
+            f"(exit code {completed.returncode}): {detail or 'no output'}"
+        )
+
+    status = response.get("status")
+    body = response.get("body", "")
     if status == "error":
         return None, str(body)
     if status != "ok":
@@ -795,64 +823,6 @@ def _run_pyshacl_with_timeout(
         logger.exception("Failed to parse SHACL subprocess result graph")
         return None, f"SHACL engine error parsing result graph: {exc}"
     return results_graph, None
-
-
-def _pyshacl_worker(
-    *,
-    payload: dict[str, Any],
-    result_queue: multiprocessing.Queue,
-) -> None:
-    """Child-process entry point for pySHACL execution."""
-    try:
-        data_graph = Graph()
-        data_graph.parse(data=payload["data_graph_ntriples"], format="nt")
-
-        shapes_graph = Graph()
-        shapes_graph.parse(data=payload["shapes_graph_turtle"], format="turtle")
-
-        ontology_graph: Graph | None = None
-        if payload.get("ontology_graph_turtle"):
-            ontology_graph = Graph()
-            ontology_graph.parse(
-                data=payload["ontology_graph_turtle"],
-                format="turtle",
-            )
-
-        _conforms, results_graph, _results_text = pyshacl.validate(
-            data_graph,
-            shacl_graph=shapes_graph,
-            ont_graph=ontology_graph,
-            inference=payload["inference_mode"],
-            advanced=payload["advanced_shacl"],
-            max_validation_depth=payload["max_validation_depth"],
-            # SECURITY: pyshacl's JavaScript-constraint engine
-            # (``sh:JSConstraint``) executes attacker-controlled JS via
-            # pyduktape3. We disable it unconditionally and also reject
-            # JS constructs before launching the subprocess.
-            js=False,
-            # SECURITY: pyshacl can follow ``owl:imports`` and fetch the
-            # imported ontology over the network. We hard-code False
-            # and never read this from a setting.
-            do_owl_imports=False,
-            # Include Warning and Info findings in the report. Validibot
-            # computes ``passed`` from severity counts after mapping, so
-            # we want all findings in the report regardless of how
-            # pyshacl interprets conformance.
-            allow_warnings=True,
-            allow_infos=True,
-        )
-        result_queue.put(("ok", results_graph.serialize(format="turtle")))
-    except Exception as exc:
-        logger.exception("pyshacl.validate raised")
-        result_queue.put(("error", f"SHACL engine error: {exc}"))
-
-
-def _multiprocessing_context() -> multiprocessing.context.BaseContext:
-    """Pick a multiprocessing context that works in workers and tests."""
-    methods = multiprocessing.get_all_start_methods()
-    if "fork" in methods:
-        return multiprocessing.get_context("fork")
-    return multiprocessing.get_context()
 
 
 # =============================================================================
@@ -1045,55 +1015,35 @@ def _execute_ask_with_timeout(
     graph: Graph,
     timeout_seconds: int,
 ) -> tuple[bool | None, str | None]:
-    """Run an ASK in a daemon thread, return on first to complete.
+    """Run an ASK in a killable subprocess.
 
-    rdflib's ``Graph.query()`` is synchronous and CPU-bound, so a
-    daemon-thread wrapper is the most portable way to enforce a
-    wall-clock budget without depending on POSIX-only ``signal.alarm``
-    (which fails on non-main threads — i.e. Celery workers).
-
-    On timeout we report a clear message and let the underlying thread
-    terminate when it next yields to the interpreter; Python cannot
-    forcibly kill a thread, so brief over-budget compute may leak. The
-    Celery hard-task timeout is the ultimate stop. See ADR-2026-05-18
-    "Process-level isolation".
-
-    Returns ``(answer, None)`` or ``(None, error_message)``.
+    ``rdflib.Graph.query()`` is synchronous and can spend unbounded CPU on a
+    pathological query. A thread timeout returns control to the caller but
+    leaves the query running in the worker process. Running the ASK in a plain
+    subprocess gives Celery prefork workers a killable boundary without using
+    ``multiprocessing.Process`` children, which daemonic task workers reject.
     """
-    # We pass result and error back from the thread via mutable containers.
-    # Threading.Event signals completion.
-    result_holder: list[bool | None] = [None]
-    error_holder: list[str | None] = [None]
-    done = threading.Event()
 
-    def runner() -> None:
-        try:
-            qres = graph.query(query_text)
-            # ``askAnswer`` is the canonical attribute for ASK queries
-            # in rdflib's QueryResult. Fall back to bool() of the
-            # result iterator if the attribute is absent (older
-            # rdflib versions).
-            answer = getattr(qres, "askAnswer", None)
-            if answer is None:
-                answer = bool(qres)
-            result_holder[0] = bool(answer)
-        except Exception as exc:
-            # Per Security section: every external call is wrapped; the
-            # exception class name (only) is exposed downstream.
-            logger.warning(
-                "SPARQL ASK raised",
-                extra={"exc_type": type(exc).__name__},
-            )
-            error_holder[0] = (
-                f"SPARQL ASK execution failed: {type(exc).__name__}: {exc}"
-            )
-        finally:
-            done.set()
-
-    thread = threading.Thread(target=runner, name="shacl-sparql-ask", daemon=True)
-    thread.start()
-    finished = done.wait(timeout=timeout_seconds)
-    if not finished:
+    payload = {
+        "query": query_text,
+        "graph_ntriples": graph.serialize(format="nt"),
+    }
+    try:
+        # The executable and module name are fixed by the application; user
+        # data is passed only as JSON on stdin and shell execution is disabled.
+        completed = subprocess.run(  # noqa: S603
+            [
+                sys.executable,
+                "-m",
+                "validibot.validations.validators.shacl.sparql_ask_worker",
+            ],
+            input=json_dumps(payload),
+            text=True,
+            capture_output=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
         return None, (
             f"SPARQL ASK exceeded the {timeout_seconds}s wall-clock "
             "budget. Simplify the query, narrow the target graph, or "
@@ -1101,9 +1051,27 @@ def _execute_ask_with_timeout(
             "(up to the configured hard cap)."
         )
 
-    if error_holder[0] is not None:
-        return None, error_holder[0]
-    return result_holder[0], None
+    stdout = completed.stdout.strip()
+    if not stdout:
+        stderr = completed.stderr.strip()
+        return None, (
+            "SPARQL ASK worker returned no result" + (f": {stderr}" if stderr else ".")
+        )
+    try:
+        response = json_loads(stdout)
+    except JSONDecodeError as exc:
+        stderr = completed.stderr.strip()
+        return None, (
+            "SPARQL ASK worker returned invalid JSON: "
+            f"{exc}" + (f" stderr={stderr}" if stderr else "")
+        )
+
+    if response.get("status") == "ok":
+        return bool(response.get("answer")), None
+    return None, str(
+        response.get("body")
+        or f"SPARQL ASK worker failed with exit code {completed.returncode}.",
+    )
 
 
 def evaluate_sparql_assertions(

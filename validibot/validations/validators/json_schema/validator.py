@@ -10,6 +10,7 @@ from jsonschema import FormatChecker
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import Severity
+from validibot.validations.validators.base.base import AssertionStats
 from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
@@ -25,10 +26,10 @@ class JsonSchemaValidator(BaseValidator):
     """
     JSON Schema validator (Draft 2020-12 compatible).
 
-    This is a **schema-only** validator. It validates JSON documents against a
-    JSON Schema and reports structural violations. It does NOT support ruleset
-    assertions (BASIC or CEL) - use the Basic validator type for assertion-based
-    validation of JSON data.
+    It validates JSON documents against a JSON Schema and reports structural
+    violations. Step-level assertions run afterward against the parsed JSON
+    payload, which lets workflow authors layer business rules on top of the
+    schema contract.
 
     Expects a JSON Schema stored on the associated ruleset via ``rules_text`` or
     ``rules_file`` (retrieved through ``ruleset.rules``).
@@ -51,6 +52,8 @@ class JsonSchemaValidator(BaseValidator):
         Draft 2020-12 JSON Schema stored in the ruleset. Returns ERROR issues
         for any schema violations.
         """
+        self.run_context = run_context
+
         # JSON Schema validators require JSON content. This check is a safety
         # net - the handler also validates file type before calling validate().
         if submission.file_type != SubmissionFileType.JSON:
@@ -103,11 +106,25 @@ class JsonSchemaValidator(BaseValidator):
             ValidationIssue("/".join(map(str, e.path)), e.message) for e in errors
         ]
 
+        assertion_result = self.evaluate_assertions_for_stages(
+            validator=validator,
+            ruleset=ruleset,
+            payload=data,
+        )
+        issues.extend(assertion_result.issues)
+
         passed = not any(issue.severity == Severity.ERROR for issue in issues)
         return ValidationResult(
             passed=passed,
             issues=issues,
-            stats={"error_count": len(errors)},
+            assertion_stats=AssertionStats(
+                total=assertion_result.total,
+                failures=assertion_result.failures,
+            ),
+            stats={
+                "error_count": len(errors),
+                "schema_error_count": len(errors),
+            },
         )
 
     # PRIVATE METHODS

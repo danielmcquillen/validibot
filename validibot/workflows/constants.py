@@ -15,6 +15,11 @@ class WorkflowListLayout(models.TextChoices):
     TABLE = "table", _("Table")
 
 
+class WorkflowHistoryPolicy(models.TextChoices):
+    VERSIONED = "versioned", _("Versioned history")
+    MUTABLE = "mutable", _("Mutable history")
+
+
 class AccessScope(models.TextChoices):
     ORG_ALL = "ORG_ALL", _("All members of the workflow's organization")
     RESTRICTED = "RESTRICTED", _("Restricted to allowed users and/or roles")

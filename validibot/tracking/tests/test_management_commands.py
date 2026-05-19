@@ -1,3 +1,10 @@
+"""Tests for tracking management commands.
+
+These commands seed analytics/demo data. The tests keep their model fixtures
+valid as workflow contracts evolve so dashboard seed data does not drift away
+from production validation rules.
+"""
+
 from __future__ import annotations
 
 import pytest
@@ -10,6 +17,7 @@ from validibot.users.tests.factories import UserFactory
 
 @pytest.mark.django_db
 def test_seed_tracking_events_command_invokes_helper(monkeypatch):
+    """The command should resolve seed context and delegate event creation."""
     org = OrganizationFactory(slug="seed-org")
     UserFactory(orgs=[org])
 

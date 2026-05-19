@@ -34,24 +34,25 @@ from validibot.users.models import User
 from validibot.users.permissions import PermissionCode
 from validibot.users.permissions import roles_for_permission
 from validibot.workflows.constants import AgentBillingMode
+from validibot.workflows.constants import WorkflowHistoryPolicy
 
 if TYPE_CHECKING:
     from validibot.users.constants import RoleCode
 
 logger = logging.getLogger(__name__)
 
-# Pattern for validating semantic versions (e.g., "1", "1.0", "1.0.0")
+# Pattern for validating strict semantic versions (e.g., "1.0.0").
 SEMVER_PATTERN = re.compile(
-    r"^(?P<major>0|[1-9]\d*)(?:\.(?P<minor>0|[1-9]\d*)(?:\.(?P<patch>0|[1-9]\d*))?)?$"
+    r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)$"
 )
 
 
 def validate_workflow_version(value: str) -> None:
     """
-    Validate that version is either an integer or semantic version.
+    Validate that version is either an integer or strict semantic version.
 
-    Valid examples: "1", "2", "1.0", "1.0.0", "2.1.3"
-    Invalid examples: "v1", "1.0.0-beta", "latest", arbitrary strings
+    Valid examples: "1", "2", "1.0.0", "2.1.3"
+    Invalid examples: "v1", "1.0", "1.0.0-beta", "latest", arbitrary strings
 
     This ensures versions can be reliably compared and ordered.
     """
@@ -69,7 +70,7 @@ def validate_workflow_version(value: str) -> None:
     raise ValidationError(
         _(
             "Version must be an integer (e.g., '1') or semantic version "
-            "(e.g., '1.0.0')."
+            "with major, minor, and patch numbers (e.g., '1.0.0')."
         ),
     )
 
@@ -401,7 +402,19 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         default="",
         validators=[validate_workflow_version],
         help_text=_(
-            "Version identifier (integer or semantic version, e.g., '1' or '1.0.0')."
+            "Version identifier (integer or semantic version with major, "
+            "minor, and patch numbers, e.g., '1' or '1.0.0')."
+        ),
+    )
+
+    history_policy = models.CharField(
+        max_length=16,
+        choices=WorkflowHistoryPolicy.choices,
+        default=WorkflowHistoryPolicy.VERSIONED,
+        help_text=_(
+            "Controls whether this workflow preserves historical run "
+            "reproducibility by requiring new versions for semantic edits, "
+            "or allows in-place changes after runs."
         ),
     )
 
@@ -972,12 +985,14 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         publication state, etc.). Non-contract fields (name,
         description, lifecycle flags) can always be edited in place.
 
-        Once a workflow is locked OR has runs, contract-field
-        edits should be rejected by forms / API serializers, and the
-        operator should be directed to clone the workflow to a new
-        version using
-        :meth:`WorkflowVersioningService.clone`.
+        Versioned-history workflows reject unsafe contract edits once
+        locked OR once runs exist, and the operator should be directed
+        to clone the workflow to a new version using
+        :meth:`WorkflowVersioningService.clone`. Mutable-history workflows
+        opt out of this reproducibility gate.
         """
+        if self.history_policy == WorkflowHistoryPolicy.MUTABLE:
+            return False
         return self.is_locked or self.has_runs()
 
     def changed_contract_fields(self, proposed: dict) -> set[str]:
@@ -1029,6 +1044,47 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
             elif current != new_value:
                 changed.add(field_name)
         return changed
+
+    def unsafely_changed_contract_fields(self, proposed: dict) -> set[str]:
+        """Return contract-field names whose change would invalidate past runs.
+
+        Layers safety semantics on top of :meth:`changed_contract_fields`.
+        A change is "unsafe" only when it narrows or shortens the contract
+        in a way that breaks reproducibility for already-launched runs:
+
+        - ``allowed_file_types``: removing a previously-allowed type is
+          unsafe; adding a new type is safe in place.
+        - ``input_retention`` / ``output_retention``: shortening retention
+          is unsafe; extending it is safe in place.
+
+        Callers (form gates, API serializers) use this to allow safe
+        edits without forcing a workflow clone. The blanket
+        :meth:`changed_contract_fields` remains for callers that want
+        the raw drift answer regardless of direction (e.g. the cloning
+        service that mirrors every change into the new version).
+
+        Returns the subset of contract field names whose proposed value
+        would unsafely change the contract. Empty set if every change is
+        either safe in place or absent.
+        """
+        from validibot.workflows.services.versioning import CONTRACT_FIELD_SAFETY
+
+        changed = self.changed_contract_fields(proposed)
+        unsafe: set[str] = set()
+        for field_name in changed:
+            safety_check = CONTRACT_FIELD_SAFETY.get(field_name)
+            if safety_check is None:
+                # A contract field with no safety classifier is treated
+                # as always unsafe — the default protects the integrity
+                # story when new contract fields are added without
+                # explicit per-direction reasoning.
+                unsafe.add(field_name)
+                continue
+            current = getattr(self, field_name, None)
+            new_value = proposed[field_name]
+            if not safety_check(current, new_value):
+                unsafe.add(field_name)
+        return unsafe
 
     @transaction.atomic
     def clone_to_new_version(self, user) -> Workflow:
@@ -1646,16 +1702,19 @@ class WorkflowStepResource(models.Model):
         return self.validator_resource_file_id is None
 
     def is_used_by_locked_workflow(self) -> bool:
-        """Return True if our step lives on a locked or used workflow.
+        """Return True if our step lives on a versioned locked/used workflow.
 
         Step-owned resources are scoped to a single step (one row,
         one workflow). The check therefore walks ``step.workflow``
-        and applies the standard locked-or-has-runs gate.
+        and applies the same history-policy-aware locked-or-has-runs
+        gate as rulesets and catalog resources.
         """
         if not self.step_id:
             return False
         workflow = self.step.workflow
-        return workflow.is_locked or workflow.has_runs()
+        return workflow.history_policy == WorkflowHistoryPolicy.VERSIONED and (
+            workflow.is_locked or workflow.has_runs()
+        )
 
     def get_storage_uri(self) -> str:
         """Return the storage URI for this resource, regardless of mode.

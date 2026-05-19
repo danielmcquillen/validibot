@@ -27,6 +27,7 @@ from validibot.core.filesafety import sha256_hexdigest
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.models import WorkflowStepResource
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -257,6 +258,25 @@ class WorkflowStepResourceDriftGateTests(TestCase):
     def test_step_owned_change_allowed_on_unlocked_workflow(self):
         """Same change on an unlocked workflow -> save succeeds."""
         workflow = WorkflowFactory(is_locked=False)
+        step = WorkflowStepFactory(workflow=workflow)
+        resource = WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+            step_resource_file=ContentFile(b"v1", name="t.idf"),
+            filename="t.idf",
+            resource_type="MODEL_TEMPLATE",
+        )
+        resource.step_resource_file = ContentFile(b"v2", name="t.idf")
+        resource.save()
+        resource.refresh_from_db()
+        assert resource.content_hash == sha256_hexdigest(b"v2")
+
+    def test_step_owned_change_allowed_on_locked_mutable_workflow(self):
+        """Mutable history opts out of the step-owned resource drift gate."""
+        workflow = WorkflowFactory(
+            is_locked=True,
+            history_policy=WorkflowHistoryPolicy.MUTABLE,
+        )
         step = WorkflowStepFactory(workflow=workflow)
         resource = WorkflowStepResource.objects.create(
             step=step,

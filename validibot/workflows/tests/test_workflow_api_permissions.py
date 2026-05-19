@@ -1,17 +1,18 @@
-"""
-Tests for workflow API permissions.
+"""Tests for workflow API permissions.
 
-The WorkflowViewSet is read-only to minimize API attack surface during
-the initial CLI rollout. Write operations (create, update, delete)
-are only available through the web interface.
+The workflow API is intentionally narrow: clients can read workflows, launch
+runs, and explicitly clone a workflow version, but they still cannot create,
+update, or delete workflow definitions directly. That keeps normal authoring
+in the web UI while giving external clients a safe versioning escape hatch.
 
 Uses org-scoped API routes.
 
 These tests verify that:
 1. Read operations (list, retrieve) work correctly with proper permissions.
-2. Write operations return 405 Method Not Allowed for all users.
+2. Generic write operations return 405 Method Not Allowed for all users.
 3. Guests with a workflow grant cannot enumerate other workflows in the
    same org.
+4. Clone actions require workflow-edit permission and preserve version history.
 """
 
 import json
@@ -25,6 +26,7 @@ from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
+from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowAccessGrant
 from validibot.workflows.tests.factories import WorkflowFactory
 
@@ -64,7 +66,7 @@ def workflow(db, org):
 
 
 def test_create_not_allowed_for_any_user(api_client: APIClient, manager, org):
-    """Create operations return 405 since the API is read-only."""
+    """Create operations stay web-only even though clone is exposed."""
     api_client.force_authenticate(user=manager)
     payload = {
         "name": "API Workflow",
@@ -82,7 +84,7 @@ def test_create_not_allowed_for_any_user(api_client: APIClient, manager, org):
 
 
 def test_update_not_allowed_for_any_user(api_client: APIClient, manager, workflow, org):
-    """Update operations return 405 since the API is read-only."""
+    """Patch operations stay blocked so API clients cannot mutate history."""
     api_client.force_authenticate(user=manager)
 
     resp = api_client.patch(
@@ -95,7 +97,7 @@ def test_update_not_allowed_for_any_user(api_client: APIClient, manager, workflo
 
 
 def test_delete_not_allowed_for_any_user(api_client: APIClient, manager, workflow, org):
-    """Delete operations return 405 since the API is read-only."""
+    """Delete operations stay blocked; lifecycle changes remain web-only."""
     api_client.force_authenticate(user=manager)
 
     resp = api_client.delete(f"/api/v1/orgs/{org.slug}/workflows/{workflow.pk}/")
@@ -125,6 +127,53 @@ def test_viewer_can_retrieve_workflow(api_client: APIClient, viewer, workflow, o
 
     assert resp.status_code == status.HTTP_200_OK
     assert resp.data["id"] == workflow.pk
+
+
+def test_manager_can_clone_workflow_via_latest_api(api_client, manager, workflow, org):
+    """Workflow-edit users can create a new version through the API."""
+    api_client.force_authenticate(user=manager)
+
+    resp = api_client.post(f"/api/v1/orgs/{org.slug}/workflows/{workflow.pk}/clone/")
+
+    workflow.refresh_from_db()
+    clone = Workflow.objects.get(org=org, slug=workflow.slug, version="2")
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.data["clone_report"]["source_workflow_id"] == workflow.pk
+    assert resp.data["clone_report"]["new_workflow_id"] == clone.pk
+    assert resp.data["clone_report"]["new_version_label"] == "2"
+    assert resp.data["workflow"]["id"] == clone.pk
+    assert workflow.is_locked is True
+    assert clone.is_locked is False
+
+
+def test_manager_can_clone_specific_workflow_version(
+    api_client,
+    manager,
+    workflow,
+    org,
+):
+    """Version-pinned clone routes should clone the exact requested row."""
+    api_client.force_authenticate(user=manager)
+
+    resp = api_client.post(
+        f"/api/v1/orgs/{org.slug}/workflows/{workflow.slug}/versions/"
+        f"{workflow.version}/clone/",
+    )
+
+    clone = Workflow.objects.get(org=org, slug=workflow.slug, version="2")
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.data["workflow"]["id"] == clone.pk
+    assert resp.data["clone_report"]["source_workflow_id"] == workflow.pk
+
+
+def test_viewer_cannot_clone_workflow_via_api(api_client, viewer, workflow, org):
+    """View-only users can inspect workflows but cannot fork versions."""
+    api_client.force_authenticate(user=viewer)
+
+    resp = api_client.post(f"/api/v1/orgs/{org.slug}/workflows/{workflow.pk}/clone/")
+
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+    assert Workflow.objects.filter(org=org, slug=workflow.slug).count() == 1
 
 
 # ---------------------------------------------------------------------------

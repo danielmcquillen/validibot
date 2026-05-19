@@ -27,7 +27,15 @@ Context:
     <div class="card app-card flex-grow-1 mb-3" data-sv-catalog>
       <div class="card-header">
         <div class="card-title">
-          {% trans "Inputs and Outputs" %}
+          {% if show_both_tabs %}
+            {% trans "Inputs and Outputs" %}
+          {% elif has_inputs and has_outputs %}
+            {% trans "Inputs and Outputs" %}
+          {% elif has_inputs %}
+            {% trans "Inputs" %}
+          {% else %}
+            {% trans "Outputs" %}
+          {% endif %}
         </div>
       </div>
       {% if show_both_tabs %}

@@ -9,6 +9,10 @@ This is the developer-facing reference: it summarises how the trust
 contract is enforced, how to extend it, and how to run the auditor in
 production.
 
+For the full architecture rationale, clone boundary, and future-feature
+checklist, see
+`validibot-project/docs/architecture/workflow-versioning-policy.md`.
+
 ## Why trust matters here
 
 A validation run is a fact: "submission X passed workflow Y at time T".
@@ -23,33 +27,136 @@ The trust contract in our model is the set of fields and dependent
 rows that determine *what gets checked* when a workflow runs. We
 enforce three properties:
 
-1. **The workflow row's contract fields are immutable** once the
-   workflow has runs (or is locked) — operators must clone to a new
-   version.
+1. **Versioned workflow contract fields are protected** once the
+   workflow has runs (or is locked). Operators must clone to a new
+   version for unsafe semantic edits.
 2. **The validator a step uses is immutable** under the same `(slug,
-   version)` — bumping the config's behavior requires a version bump,
+   version)` - bumping the config's behavior requires a version bump,
    so old workflows stay pinned to the old validator row.
-3. **The rules and resources a step depends on are immutable** —
+3. **The rules and resources a step depends on are immutable** -
    rulesets, assertions, and uploaded files cannot silently mutate
-   under a locked workflow.
+   under a versioned locked/run-having workflow.
+
+`Workflow.history_policy` controls whether a workflow uses this
+versioned-history behavior or mutable-history behavior:
+
+- `versioned` (default): unsafe semantic edits are blocked after runs;
+  clone the workflow and edit the new version.
+- `mutable`: semantic edits may happen in place after runs; old runs are
+  records of outcomes, not reproducible evidence against the current
+  workflow definition.
+
+History policy can change freely before runs exist. Once a workflow has
+runs or is locked, changing history policy itself requires a new workflow
+version. This applies in both directions: `mutable -> versioned` would
+overstate what old mutable-history runs can prove, and `versioned ->
+mutable` would let future edits rewrite the definition older
+versioned-history runs point at.
+
+Existing workflows from before the `history_policy` field are backfilled
+to `versioned`. This is the conservative upgrade path: it preserves the
+strongest future edit gate instead of silently treating historical runs as
+mutable draft data.
+
+Workflow versions are family-local identifiers. The database enforces
+`uq_workflow_org_slug_version`, so one organization cannot have two rows
+with the same workflow `slug` and `version`. Accepted version labels are
+integer strings (`1`, `2`) or full semantic versions (`1.0.0`,
+`2.1.3`). Partial versions such as `1.0` and labels such as `latest` are
+invalid. Use `ParsedVersion` / `compare_workflow_versions()` from
+`validibot.workflows.version_utils` for ordering; do not sort version
+strings lexicographically.
 
 ## Where the gates live
 
 | Concern | Field of truth | Where the gate is enforced |
 |---|---|---|
-| Workflow contract fields | `Workflow.allowed_file_types`, `data_retention`, `output_retention`, `agent_*` | `WorkflowForm.clean()` rejects edits via `Workflow.changed_contract_fields()` |
+| Workflow history mode | `Workflow.history_policy` | `WorkflowForm.clean()` blocks policy changes in either direction when runs exist or the row is locked |
+| Workflow contract fields | `Workflow.allowed_file_types`, `input_retention`, `output_retention` | `WorkflowForm.clean()` rejects unsafe edits via `Workflow.unsafely_changed_contract_fields()` when `history_policy=versioned` |
 | Validator semantic config | `Validator.semantic_digest` (SHA-256) | `sync_validators` raises `CommandError` on mismatch under the same `(slug, version)`; `--allow-drift` for dev override |
 | Validator class identity | `Validator.slug` + `Validator.version` (unique constraint `uq_validator_slug_version`) | `sync_validators` keys by `(slug, version)`; bumping `version` creates a new row |
 | Ruleset rules | `Ruleset.rules_text`, `rules_file`, `metadata`, `ruleset_type` | `Ruleset.clean()` rejects mutation when `is_used_by_locked_workflow()` is true |
 | Ruleset assertions | `RulesetAssertion.operator`, `target`, `rhs`, `options`, `when_expression`, `severity`, `spec_version`, `assertion_type` | `RulesetAssertion.clean()` rejects mutation AND rejects adding new rows when parent is in use |
-| Catalog file content | `ValidatorResourceFile.content_hash` (SHA-256) | `ValidatorResourceFile.save()` raises if hash differs and the row is referenced by a locked workflow |
-| Step-owned file content | `WorkflowStepResource.content_hash` (SHA-256) | `WorkflowStepResource.save()` raises if hash differs and the step's workflow is locked |
+| Catalog file content | `ValidatorResourceFile.content_hash` (SHA-256) | `ValidatorResourceFile.save()` raises if hash differs and the row is referenced by a versioned locked/run-having workflow |
+| Step-owned file content | `WorkflowStepResource.content_hash` (SHA-256) | `WorkflowStepResource.save()` raises if hash differs and the step's workflow is versioned and locked/run-having |
 
 The unifying pattern is **"`is_used_by_locked_workflow()` + diff
-detection in `clean()` or `save()`"**. Both `Workflow.has_runs()` and
-`Workflow.is_locked` count as "in use" — once a contract has been
-exercised by a real run or explicitly committed via locking, mutation
-is rejected.
+detection in `clean()` or `save()`"**. For versioned workflows, both
+`Workflow.has_runs()` and `Workflow.is_locked` count as "in use". Mutable
+workflows opt out of this immutability gate and must be labelled as
+non-reproducible history in user-facing surfaces.
+
+## Clone Boundary
+
+`WorkflowVersioningService.clone()` clones the workflow-owned contract
+tree. Copying only the top-level workflow row is not enough; child rows
+must be independent so edits to the new version cannot mutate historical
+meaning on the source version.
+
+Copied rows include:
+
+- the `Workflow` row, including `history_policy`;
+- `WorkflowStep` rows and step config;
+- step-level `Ruleset` rows;
+- `RulesetAssertion` rows attached to cloned rulesets;
+- step-owned `SignalDefinition`, `StepSignalBinding`, and `Derivation`
+  rows;
+- step-owned `WorkflowStepResource` files;
+- `WorkflowPublicInfo`;
+- `WorkflowRoleAccess`;
+- `WorkflowSignalMapping`.
+
+Referenced rows include:
+
+- system and library `Validator` rows, because validators have their own
+  `(slug, version)` trust boundary;
+- validator-owned signal definitions and derivations;
+- catalog `ValidatorResourceFile` rows, because content hashes protect
+  shared file bytes;
+- historical rows such as submissions, validation runs, findings,
+  evidence, and artifacts.
+
+## Authoring and API Surfaces
+
+Workflow versions are visible in the authoring UI. The shared
+`build_workflow_version_context()` helper in
+`validibot.workflows.services.version_context` builds the version badge
+and switcher context used by workflow detail, launch, step-edit, sharing,
+signal-mapping, JSON, run-detail, and other workflow-scoped pages.
+
+The workflow detail page includes a version selector for the visible
+versions in the same `(org, slug)` family. Each option links to that
+exact workflow row; primary-key URLs never silently resolve to "latest".
+The public workflow directory is different: it groups by `(org, slug)`
+and shows only the latest active, non-archived, non-tombstoned version
+of each family.
+
+The edit form uses two paths:
+
+1. A normal save for edits that are allowed in place.
+2. An explicit **Create version and apply** submit when
+   `WorkflowForm.requires_new_version_for_save` is set by the
+   history/contract gate.
+
+The second path validates the submitted settings against the source row
+without enforcing the history lock, clones the workflow with
+`WorkflowVersioningService.clone()`, then applies the submitted settings
+to the new row inside one transaction. If the apply step fails, the
+transaction rolls back and no partial clone remains.
+
+The org-scoped REST API remains read-mostly: clients still cannot create,
+patch, or delete workflow definitions directly. The explicit versioning
+exception is:
+
+```text
+POST /api/v1/orgs/{org_slug}/workflows/{identifier}/clone/
+POST /api/v1/orgs/{org_slug}/workflows/{workflow_slug}/versions/{version}/clone/
+```
+
+Both routes require workflow-edit permission, clone the resolved source
+row, and return the new workflow plus the `CloneReport` payload. The
+latest-version route resolves slugs to the latest visible version; the
+version-pinned route clones the exact requested version.
 
 ## Why this is a *gate*, not a check
 
@@ -313,4 +420,18 @@ Verify (Session C/4) consumes the bundle: parses the JWS in
 public key, recomputes SHA-256 of `manifest.json` bytes, and
 compares to the credential's `manifestHash` claim.
 
+### Credential workflow definition hash
 
+Signed credentials also include a workflow definition hash in
+`credentialSubject.validationRun.workflow.definitionHash`. The hash is
+computed at issuance time by
+`validibot_pro.credentials.workflow_digest.compute_workflow_definition_hash()`
+and persisted in `ValidationCredentialDigestMetadata`.
+
+This is the bridge between workflow history policy and credentials:
+even if a mutable workflow changes after issuance, the signed payload
+still names the exact definition digest that produced the credential.
+Versioned history remains the recommended mode for credential-bearing
+workflows because it gives operators a normal workflow row to inspect,
+but the credential does not rely on the row staying mutable-state-identical
+forever.

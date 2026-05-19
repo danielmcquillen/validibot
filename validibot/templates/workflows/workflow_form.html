@@ -25,6 +25,13 @@
             {% trans "New Workflow" %}
           {% endif %}
         </h1>
+        {% if object %}
+          <div class="ms-2 mt-1">
+            {% with workflow=object %}
+              {% include "workflows/partials/workflow_version_badge.html" %}
+            {% endwith %}
+          </div>
+        {% endif %}
       </div>
     </div>
     <div class="row">
@@ -34,6 +41,20 @@
             <form method="post" enctype="multipart/form-data" novalidate>
               {% csrf_token %}
               {% include "core/partial/_form_errors_summary.html" %}
+              {% if show_clone_apply_action %}
+                <div class="alert alert-warning d-flex align-items-start gap-2"
+                     role="alert">
+                  <i class="bi-files fs-4 flex-shrink-0"></i>
+                  <div>
+                    <p class="mb-2 fw-semibold">
+                      {% trans "This edit needs a new workflow version." %}
+                    </p>
+                    <p class="mb-0">
+                      {% trans "Create a new editable version and apply these settings there. Existing runs stay attached to the current version." %}
+                    </p>
+                  </div>
+                </div>
+              {% endif %}
               {% crispy form %}
               <div class="d-flex justify-content-between align-items-center mt-4">
                 <a class="btn btn-secondary"
@@ -44,13 +65,23 @@
                    {% endif %}>
                   {% trans "Cancel" %}
                 </a>
-                <button type="submit" class="btn btn-secondary">
-                  {% if object %}
-                    {% trans "Save changes" %}
-                  {% else %}
-                    {% trans "Create workflow" %}
+                <div class="d-flex gap-2">
+                  <button type="submit" class="btn btn-secondary">
+                    {% if object %}
+                      {% trans "Save changes" %}
+                    {% else %}
+                      {% trans "Create workflow" %}
+                    {% endif %}
+                  </button>
+                  {% if show_clone_apply_action %}
+                    <button type="submit"
+                            name="clone_and_apply"
+                            value="1"
+                            class="btn btn-primary">
+                      <i class="bi-files me-1"></i>{% trans "Create version and apply" %}
+                    </button>
                   {% endif %}
-                </button>
+                </div>
               </div>
             </form>
           </div>
@@ -70,5 +101,4 @@
       </div>
     </div>
   </div>
-</div>
 {% endblock app_content %}

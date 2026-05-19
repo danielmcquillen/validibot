@@ -1,6 +1,7 @@
 {% load i18n crispy_forms_tags %}
 
 <form method="post"
+      class="assertion-modal-form"
       hx-post="{{ form_action }}"
       hx-target="#workflow-assertion-modal-content"
       hx-swap="innerHTML"
@@ -18,7 +19,7 @@
   <div class="modal-body">
     {% csrf_token %}
     {% include "core/partial/_form_errors_summary.html" %}
-    {{ form|crispy }}
+    {% crispy form %}
     <datalist id="{{ target_slug_datalist_id }}">
       {% for value, label in catalog_choices %}
         <option value="{{ value }}" label="{{ label }}">

@@ -15,6 +15,7 @@ from validibot.validations.validators.base.config import ValidatorConfig
 config = ValidatorConfig(
     slug="fmu-validator",
     name="FMU Validation",
+    short_description="Run FMUs and assert against inputs and outputs.",
     description="Validate and simulate Functional Mock-up Units (FMUs).",
     validation_type=ValidationType.FMU,
     validator_class="validibot.validations.validators.fmu.validator.FMUValidator",

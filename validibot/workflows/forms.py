@@ -17,6 +17,9 @@ from crispy_forms.layout import Layout
 from crispy_forms.layout import Row
 from django import forms
 from django.core.exceptions import ValidationError
+from django.template.defaultfilters import filesizeformat
+from django.utils.html import format_html
+from django.utils.html import format_html_join
 from django.utils.translation import gettext_lazy as _
 
 from validibot.projects.models import Project
@@ -33,6 +36,7 @@ from validibot.validations.constants import XMLSchemaType
 # import the constant from this module working unchanged.
 from validibot.validations.validators.shacl.form_fields import SHACL_PER_FILE_MAX_BYTES
 from validibot.validations.validators.shacl.form_fields import ShaclConfigMixin
+from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowPublicInfo
 from validibot.workflows.models import WorkflowSignalMapping
@@ -361,6 +365,7 @@ class WorkflowForm(forms.ModelForm):
             "allow_submission_short_description",
             "featured_image",
             "version",
+            "history_policy",
             "is_active",
         ]
         help_texts = {
@@ -371,6 +376,12 @@ class WorkflowForm(forms.ModelForm):
             "allowed_file_types": _(
                 "Choose the submission file types this workflow accepts. "
                 "Launchers can only upload/run content using these formats."
+            ),
+            "history_policy": _(
+                "Versioned history preserves reproducibility by requiring a "
+                "new workflow version for semantic edits after runs exist. "
+                "Mutable history permits in-place edits after runs, but old "
+                "run results may no longer match the current workflow definition."
             ),
             "input_retention": _(
                 "Controls how long the user's submission data is kept after "
@@ -384,8 +395,16 @@ class WorkflowForm(forms.ModelForm):
             ),
         }
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(
+        self,
+        *args,
+        user=None,
+        enforce_history_lock: bool = True,
+        **kwargs,
+    ):
         self.user = user
+        self.enforce_history_lock = enforce_history_lock
+        self.requires_new_version_for_save = False
         super().__init__(*args, **kwargs)
         self.helper = FormHelper()
         self.helper.form_tag = False
@@ -401,7 +420,63 @@ class WorkflowForm(forms.ModelForm):
         self.fields["featured_image"].help_text = _(
             "Optional image shown on the workflow info page.",
         )
+        self.fields["history_policy"].label = _("History policy")
+        self.fields["history_policy"].required = False
+        self.fields["history_policy"].widget.attrs.update({"class": "form-select"})
+        self.fields["history_policy"].initial = (
+            self.instance.history_policy
+            if self.instance and self.instance.pk
+            else WorkflowHistoryPolicy.VERSIONED
+        )
+        self.fields["history_policy"].help_text = _(
+            "Choose how this workflow treats edits after validation runs exist. "
+            "Versioned history is recommended: semantic edits create a new "
+            "workflow version so old runs remain tied to the definition that "
+            "produced them. Mutable history allows in-place edits for faster "
+            "iteration, but historical run results may not be reproducible "
+            "against the current workflow definition. After runs exist, change "
+            "history policy by creating a new workflow version."
+        )
         allowed_field = self.fields["allowed_file_types"]
+        # Override the enum's bare labels with extension hints so authors
+        # don't have to guess which broad category covers (say) ``.ttl``.
+        # The enum labels stay clean in admin / API / audit surfaces;
+        # only this form sees the longer hint strings.
+        allowed_field.choices = [
+            (
+                SubmissionFileType.JSON.value,
+                _("JSON · .json, .jsonld"),
+            ),
+            (
+                SubmissionFileType.XML.value,
+                _("XML · .xml, .rdf, .xsd"),
+            ),
+            (
+                SubmissionFileType.TEXT.value,
+                _("Plain Text · .txt, .csv, .ttl, .nt, .nq"),
+            ),
+            (
+                SubmissionFileType.YAML.value,
+                _("YAML · .yml, .yaml"),
+            ),
+            (
+                SubmissionFileType.BINARY.value,
+                _("Binary · .fmu, .zip"),
+            ),
+            (
+                SubmissionFileType.UNKNOWN.value,
+                _("Unknown (any extension)"),
+            ),
+        ]
+        # Surface the layering relationship in the help text so authors
+        # know the validator step does its own extension check on top.
+        allowed_field.help_text = _(
+            "Choose the submission file types this workflow accepts. "
+            "Each validator in the workflow may further restrict to its "
+            "specific format — for example, the SHACL validator only "
+            "accepts .ttl, .rdf, .jsonld, .nt, and .nq regardless of "
+            "which broad types you allow here.",
+        )
         if self.instance and self.instance.pk:
             allowed_field.initial = list(self.instance.allowed_file_types or [])
         elif not allowed_field.initial:
@@ -667,7 +742,8 @@ class WorkflowForm(forms.ModelForm):
                     ),
                 ),
                 Field("featured_image"),
-                Field("version", placeholder="e.g. 1.0"),
+                Field("version", placeholder="e.g. 1 or 1.0.0"),
+                Field("history_policy"),
                 Field("is_active"),
                 css_class="border rounded-3 p-3 mb-4",
             ),
@@ -741,6 +817,45 @@ class WorkflowForm(forms.ModelForm):
             raise ValidationError(_("Select at least one file type."))
         return deduped
 
+    @staticmethod
+    def _contract_lock_message(
+        *,
+        field_name: str,
+        current: Any,
+        proposed: Any,
+    ) -> str:
+        """Build a per-field, direction-aware error message for the gate.
+
+        Generic "cannot change in place" doesn't tell the author what
+        specifically broke the safety check. This helper produces a
+        message that names the field, identifies whether they tried to
+        narrow or shorten, and points at the safe-change escape hatch
+        (add types in place; create a new version only to remove them).
+        """
+        if field_name == "allowed_file_types":
+            current_set = set(current or [])
+            proposed_set = set(proposed or [])
+            removed = current_set - proposed_set
+            if removed:
+                removed_labels = ", ".join(sorted(removed))
+                return _(
+                    "Removing %(removed)s from allowed file types would "
+                    "invalidate past runs that accepted those types. You "
+                    "can add new types in place — to remove one, create "
+                    "a new version of the workflow.",
+                ) % {"removed": removed_labels}
+        if field_name in {"input_retention", "output_retention"}:
+            return _(
+                "Shortening %(field)s would purge data sooner than past "
+                "runs were promised. You can extend retention in place — "
+                "to shorten it, create a new version of the workflow.",
+            ) % {"field": field_name.replace("_", " ")}
+        return _(
+            "Changing %(field)s on a workflow that already has runs would "
+            "invalidate them. Create a new version of the workflow to "
+            "make this change.",
+        ) % {"field": field_name}
+
     def clean(self):
         """Run the input-contract authoring pipeline.
 
@@ -762,41 +877,105 @@ class WorkflowForm(forms.ModelForm):
         if cleaned.get("agent_public_discovery"):
             cleaned["agent_billing_mode"] = AgentBillingMode.AGENT_PAYS_X402
 
-        # ── Contract-edit gate (ADR-2026-04-27 Phase 3) ───────────────
-        # A workflow that has runs, or is locked, has a frozen launch
-        # contract: anyone who launched a run did so under a specific
-        # set of file-type / retention / agent-publication rules.
-        # Editing those rules in place would silently re-write history.
-        # The policy is: the user must clone-to-new-version instead.
+        # ── History policy + contract-edit gate ───────────────────────
+        # Versioned workflows that have runs, or are locked, have a
+        # frozen validation contract: every past run executed under
+        # specific file-type / retention rules. The gate blocks edits
+        # that would invalidate that history (narrowing the file-type
+        # set, shortening retention) while allowing edits that only
+        # widen the contract (adding file types, extending retention).
+        #
+        # Mutable workflows intentionally trade away that reproducibility
+        # guarantee. They can be edited in place after runs. History
+        # policy itself cannot change in place once runs exist or the row
+        # is locked: otherwise one workflow row would mix run guarantees
+        # from before and after the policy switch.
+        #
+        # Direction matters because:
+        # - Widening: past runs executed under broader-or-equal rules,
+        #   so the new contract is a superset of what they relied on.
+        #   Future runs accept more. No past run is invalidated.
+        # - Narrowing: past runs relied on rules that no longer hold.
+        #   A credential or audit lookup that says "this ran under
+        #   workflow X" now means something different than before.
+        #
+        # Superusers bypass the gate entirely (for operational repairs)
+        # and we record an audit entry so the integrity story remains
+        # intact — the trail explains why the workflow definition
+        # drifted in place.
         #
         # We run this gate AFTER the cascade above so the user gets one
-        # clear error per affected field rather than mysteriously seeing
-        # agent_billing_mode flagged when they only touched
-        # agent_public_discovery. ``self.instance`` still carries the DB
-        # values here because ``_post_clean()`` hasn't merged
+        # clear error per affected field. ``self.instance`` still carries
+        # the DB values here because ``_post_clean()`` hasn't merged
         # ``cleaned_data`` into it yet.
-        if (
-            self.instance
-            and self.instance.pk
-            and self.instance.requires_new_version_for_contract_edits()
-        ):
-            changed = self.instance.changed_contract_fields(cleaned)
-            for field_name in changed:
+        self._superuser_overrode_contract_lock = False
+        self._superuser_overridden_fields: set[str] = set()
+        proposed_history_policy = (
+            cleaned.get("history_policy")
+            or getattr(self.instance, "history_policy", None)
+            or WorkflowHistoryPolicy.VERSIONED
+        )
+        cleaned["history_policy"] = proposed_history_policy
+        if self.instance and self.instance.pk and self.enforce_history_lock:
+            current_history_policy = self.instance.history_policy
+            if current_history_policy != proposed_history_policy and (
+                self.instance.is_locked or self.instance.has_runs()
+            ):
+                self.requires_new_version_for_save = True
                 self.add_error(
-                    field_name,
+                    "history_policy",
                     ValidationError(
                         _(
-                            "This workflow already has runs (or is locked). "
-                            "Launch-contract fields like this one are part of "
-                            "the rules every past run executed under, so they "
-                            "cannot change in place. Create a new version of "
-                            "the workflow to modify them."
+                            "This workflow already has validation history or "
+                            "is locked. Create a new workflow version to "
+                            "change its history policy.",
                         ),
-                        code="contract_field_locked",
+                        code="history_policy_locked",
                     ),
                 )
 
-        # ── Public discovery requires agent access ────────���───────────
+        if (
+            self.instance
+            and self.instance.pk
+            and self.enforce_history_lock
+            and proposed_history_policy == WorkflowHistoryPolicy.VERSIONED
+            and (self.instance.is_locked or self.instance.has_runs())
+        ):
+            is_superuser = self.user and getattr(
+                self.user,
+                "is_superuser",
+                False,
+            )
+            if is_superuser:
+                # Record which contract fields are being overridden so
+                # the post-save audit entry can name them. Use the
+                # narrower "unsafely changed" set rather than the raw
+                # "changed" set — safe widenings don't need an audit
+                # entry because they don't carry integrity risk.
+                self._superuser_overridden_fields = (
+                    self.instance.unsafely_changed_contract_fields(cleaned)
+                )
+                self._superuser_overrode_contract_lock = bool(
+                    self._superuser_overridden_fields,
+                )
+            else:
+                unsafe = self.instance.unsafely_changed_contract_fields(cleaned)
+                if unsafe:
+                    self.requires_new_version_for_save = True
+                for field_name in unsafe:
+                    self.add_error(
+                        field_name,
+                        ValidationError(
+                            self._contract_lock_message(
+                                field_name=field_name,
+                                current=getattr(self.instance, field_name, None),
+                                proposed=cleaned.get(field_name),
+                            ),
+                            code="contract_field_locked",
+                        ),
+                    )
+
+        # ── Public discovery requires agent access ──────────────────────
         if cleaned.get("agent_public_discovery") and not cleaned.get(
             "agent_access_enabled"
         ):
@@ -991,7 +1170,50 @@ class WorkflowForm(forms.ModelForm):
             if public_info.content_md != description_md:
                 public_info.content_md = description_md
                 public_info.save()
+
+        # Record a superuser contract-lock override in the audit log so
+        # the integrity story stays intact even though the workflow
+        # definition drifted in place. We piggy-back on the existing
+        # ``workflow_updated`` action with a structured ``metadata``
+        # payload — that keeps the audit-action enum compact while
+        # still giving compliance reviewers a searchable marker
+        # (``metadata.contract_override = True``).
+        if commit and workflow.pk and self._superuser_overrode_contract_lock:
+            self._record_contract_override_audit(workflow)
+
         return workflow
+
+    def _record_contract_override_audit(self, workflow: Workflow) -> None:
+        """Write an audit entry naming the bypassed contract fields.
+
+        Wraps the audit call in a broad ``except`` so a logging
+        misconfiguration cannot prevent the actual save from
+        succeeding. The audit subsystem is best-effort observability,
+        not part of the save's correctness contract.
+        """
+        try:
+            from validibot.audit.constants import AuditAction
+            from validibot.audit.services import ActorSpec
+            from validibot.audit.services import AuditLogService
+
+            AuditLogService.record(
+                action=AuditAction.WORKFLOW_UPDATED,
+                actor=ActorSpec(user=self.user),
+                org=workflow.org,
+                target=workflow,
+                metadata={
+                    "contract_override": True,
+                    "fields_overridden": sorted(
+                        self._superuser_overridden_fields,
+                    ),
+                    "reason": ("superuser_in_place_edit_of_locked_workflow_contract"),
+                },
+            )
+        except Exception:
+            logger.exception(
+                "Failed to write contract-override audit entry for workflow %s",
+                workflow.pk,
+            )
 
 
 class WorkflowLaunchForm(forms.Form):
@@ -1695,18 +1917,42 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
 
     def __init__(self, *args, step=None, **kwargs):
         super().__init__(*args, step=step, **kwargs)
+        self.existing_shape_files: list[dict[str, Any]] = []
+        self.existing_ontology_files: list[dict[str, Any]] = []
+        self.has_existing_inline_shapes = False
+        self.has_existing_inline_ontology = False
+        self.library_default_snapshot: dict[str, Any] | None = None
+        self.has_library_ontology = False
         if step and step.ruleset_id:
             self._initial_from_step(step)
+        self.helper.layout = self._build_layout()
 
     def _initial_from_step(self, step) -> None:
         """Pre-fill engine knobs and inline text from a saved step.
 
         Multi-file uploads can't be pre-filled (browsers refuse to
         populate file inputs from server state), so on edit the existing
-        uploaded files are shown read-only above the form via the
-        step's ``config["shape_files"]`` list.
+        uploaded files are shown read-only above the file fields.
         """
         config = step.config or {}
+        metadata = dict(getattr(step.ruleset, "metadata", None) or {})
+        self.existing_shape_files = (
+            config.get("shape_files") or metadata.get("shape_files") or []
+        )
+        self.existing_ontology_files = (
+            config.get("ontology_files") or metadata.get("ontology_files") or []
+        )
+        self.has_existing_inline_shapes = bool(
+            metadata.get("has_inline_shapes")
+            or (config.get("shapes_text_preview") and not self.existing_shape_files)
+        )
+        self.has_existing_inline_ontology = bool(metadata.get("has_inline_ontology"))
+        self.library_default_snapshot = config.get(
+            "library_default_snapshot"
+        ) or metadata.get("library_default_snapshot")
+        self.has_library_ontology = bool(
+            metadata.get("library_default_inlined") and metadata.get("ontology_text")
+        )
         if "inference_mode" in config:
             self.fields["inference_mode"].initial = config["inference_mode"]
         if "advanced_shacl" in config:
@@ -1722,10 +1968,153 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
         # preview but make it clear they're optional to replace.
         preview = config.get("shapes_text_preview", "")
         if preview:
+            self.fields["shapes_files"].help_text = _(
+                "Leave blank to keep the current shapes. Upload one or more "
+                "new SHACL Turtle shape files (.ttl) to replace them.",
+            )
             self.fields["shapes_text"].help_text = _(
                 "Leave blank to keep the existing shapes. Paste new "
                 "shapes here (or upload files above) to replace them.",
             )
+        if (
+            self.existing_ontology_files
+            or self.has_existing_inline_ontology
+            or self.has_library_ontology
+        ):
+            self.fields["ontology_files"].help_text = _(
+                "Leave blank to keep the current supplementary ontologies. "
+                "Upload new Turtle ontology files (.ttl) to replace them.",
+            )
+            self.fields["ontology_text"].help_text = _(
+                "Leave blank to keep the existing ontology text. Paste new "
+                "ontology Turtle here (or upload files above) to replace it.",
+            )
+
+    def _build_layout(self) -> Layout:
+        """Render SHACL configuration with saved-file summaries near uploads."""
+        return Layout(
+            "name",
+            "description",
+            "display_schema",
+            "show_success_messages",
+            "notes",
+            HTML(
+                "<hr><h6 class='text-uppercase text-muted mt-3 mb-3'>{}</h6>".format(
+                    _("SHACL shapes")
+                )
+            ),
+            HTML(
+                self._existing_sources_html(
+                    title=_("Current SHACL shapes"),
+                    files=self.existing_shape_files,
+                    has_inline=self.has_existing_inline_shapes,
+                    inherited_snapshot=self.library_default_snapshot,
+                    inline_label=_("Inline shapes are saved on this step."),
+                    empty_keep_label=_("Leave the fields below blank to keep them."),
+                )
+            ),
+            "shapes_files",
+            "shapes_text",
+            HTML(
+                "<hr><h6 class='text-uppercase text-muted mt-3 mb-3'>{}</h6>".format(
+                    _("Supplementary ontologies")
+                )
+            ),
+            HTML(
+                self._existing_sources_html(
+                    title=_("Current supplementary ontologies"),
+                    files=self.existing_ontology_files,
+                    has_inline=self.has_existing_inline_ontology,
+                    inherited_snapshot=(
+                        self.library_default_snapshot
+                        if self.has_library_ontology
+                        else None
+                    ),
+                    inline_label=_("Inline ontology text is saved on this step."),
+                    empty_keep_label=_("Leave the fields below blank to keep them."),
+                )
+            ),
+            "ontology_files",
+            "ontology_text",
+            HTML(
+                "<hr><h6 class='text-uppercase text-muted mt-3 mb-3'>{}</h6>".format(
+                    _("Advanced options")
+                )
+            ),
+            "inference_mode",
+            "advanced_shacl",
+            "submission_format",
+        )
+
+    @staticmethod
+    def _existing_sources_html(
+        *,
+        title: str,
+        files: list[dict[str, Any]],
+        has_inline: bool,
+        inherited_snapshot: dict[str, Any] | None,
+        inline_label: str,
+        empty_keep_label: str,
+    ) -> str:
+        """Return a read-only summary of saved SHACL sources for edit forms."""
+        if not files and not has_inline and not inherited_snapshot:
+            return ""
+
+        file_rows = ""
+        if files:
+            file_rows = format_html(
+                "<ul class='mb-2 ps-3'>{}</ul>",
+                format_html_join(
+                    "",
+                    (
+                        "<li><span class='fw-semibold'>{}</span>"
+                        "<span class='text-muted ms-2'>{}</span>"
+                        "<span class='text-muted ms-2'>{}</span></li>"
+                    ),
+                    (
+                        (
+                            file_meta.get("name") or _("Unnamed file"),
+                            filesizeformat(file_meta.get("size_bytes") or 0),
+                            (
+                                f"sha256:{str(file_meta.get('sha256', ''))[:12]}"
+                                if file_meta.get("sha256")
+                                else ""
+                            ),
+                        )
+                        for file_meta in files
+                    ),
+                ),
+            )
+
+        inline_row = (
+            format_html(
+                "<div class='small mb-1'><i class='bi bi-file-text me-1'></i>{}</div>",
+                inline_label,
+            )
+            if has_inline
+            else ""
+        )
+        inherited_row = ""
+        if inherited_snapshot:
+            inherited_row = format_html(
+                "<div class='small mb-1'><i class='bi bi-link-45deg me-1'></i>"
+                "Inherited from library validator <span class='fw-semibold'>{}</span>"
+                "</div>",
+                inherited_snapshot.get("validator_slug") or _("unknown"),
+            )
+
+        return format_html(
+            "<div class='alert alert-secondary py-2 px-3 mb-3'>"
+            "<div class='fw-semibold mb-1'>{}</div>"
+            "{}{}{}"
+            "<div class='small text-muted'>{}</div>"
+            "</div>",
+            title,
+            file_rows,
+            inline_row,
+            inherited_row,
+            empty_keep_label,
+        )
 
     def clean(self) -> dict[str, Any]:
         cleaned = super().clean()

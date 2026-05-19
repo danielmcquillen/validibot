@@ -1,0 +1,24 @@
+{% load i18n %}
+
+<div class="assertion-step-wrapper validator-operation-card-wrapper">
+  <div class="assertion-card validator-operation-card card shadow-sm">
+    <div class="card-body">
+      <div class="d-flex align-items-start gap-3">
+        <div class="validator-operation-icon flex-shrink-0" aria-hidden="true">
+          <i class="bi bi-check2-circle"></i>
+        </div>
+        <div class="min-w-0">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <span class="badge text-bg-light text-uppercase">{{ operation.badge }}</span>
+          </div>
+          <h2 class="h6 mb-1">
+            {{ operation.label }}
+          </h2>
+          <p class="text-muted small mb-0">
+            {{ operation.description }}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

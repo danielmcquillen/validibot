@@ -58,9 +58,10 @@ class SHACLValidator(BaseValidator):
     :meth:`BaseValidator.evaluate_assertions_for_stage`.
 
     The engine is pure Python (pyshacl + rdflib + owlrl). pySHACL runs
-    in a short-lived child process so pathological shape/data pairs can
-    be terminated on timeout. It is NOT an advanced (Docker) validator
-    — see ADR-2026-05-18 for the cost-benefit analysis.
+    in a short-lived Python subprocess so pathological shape/data pairs
+    can be terminated on timeout, including inside Celery prefork
+    workers. It is NOT an advanced (Docker) validator — see
+    ADR-2026-05-18 for the cost-benefit analysis.
 
     Output:
 
@@ -135,8 +136,13 @@ class SHACLValidator(BaseValidator):
             merged_ontology = merged_ontology + engine.FILE_SEPARATOR + bundled_ontology
 
         # Parse the submission.
+        submission_file_name = (
+            getattr(submission, "original_filename", None)
+            or getattr(getattr(submission, "input_file", None), "name", None)
+            or getattr(submission, "filename", None)
+        )
         serialization = engine.detect_serialization(
-            file_name=getattr(submission, "file_name", None),
+            file_name=submission_file_name,
             file_type=getattr(submission, "file_type", None),
             explicit_format=settings["submission_format"],
         )
@@ -224,6 +230,7 @@ class SHACLValidator(BaseValidator):
             ruleset=ruleset,
             payload=signals,
             stage="output",
+            exclude_assertion_types={AssertionType.SHACL},
         )
 
         all_issues: list[ValidationIssue] = [

@@ -30,11 +30,13 @@ from validibot.users.tests.factories import grant_role
 from validibot.users.tests.utils import ensure_all_roles_exist
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import JSONSchemaVersion
+from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import Validator
 from validibot.validations.tests.factories import CustomValidatorFactory
+from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import SignalDefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.models import WorkflowStep
@@ -686,6 +688,66 @@ def test_step_settings_does_not_expose_validator_selector(client):
     assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
     assert 'name="validator_choice"' not in body
+
+
+def test_shacl_step_settings_shows_current_shapes_and_ontologies(client):
+    """Editing a SHACL step should show saved files as current state.
+
+    Browser file inputs always render as "No file chosen", so the form needs a
+    read-only summary to make the keep-existing behavior obvious.
+    """
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ValidatorFactory(
+        validation_type=ValidationType.SHACL,
+        supports_assertions=True,
+    )
+    ruleset = RulesetFactory(
+        org=workflow.org,
+        ruleset_type=RulesetType.SHACL,
+        rules_text="@prefix sh: <http://www.w3.org/ns/shacl#> .",
+        metadata={
+            "shape_files": [
+                {
+                    "name": "223p-shapes.ttl",
+                    "size_bytes": 128,
+                    "sha256": "a" * 64,
+                },
+            ],
+            "has_inline_shapes": False,
+            "ontology_text": "@prefix ex: <http://example.com/> .",
+            "ontology_files": [
+                {
+                    "name": "g36-ontology.ttl",
+                    "size_bytes": 64,
+                    "sha256": "b" * 64,
+                },
+            ],
+            "has_inline_ontology": False,
+        },
+    )
+    step = WorkflowStepFactory(
+        workflow=workflow,
+        validator=validator,
+        ruleset=ruleset,
+        config={
+            "shape_files": ruleset.metadata["shape_files"],
+            "ontology_files": ruleset.metadata["ontology_files"],
+            "shapes_text_preview": ruleset.rules_text,
+        },
+    )
+
+    response = client.get(
+        reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk]),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Current SHACL shapes" in body
+    assert "223p-shapes.ttl" in body
+    assert "Current supplementary ontologies" in body
+    assert "g36-ontology.ttl" in body
+    assert "Leave the fields below blank to keep them." in body
 
 
 def test_create_basic_step_uses_minimal_fields(client):
@@ -1354,6 +1416,7 @@ def test_processor_step_shows_both_io_tabs(client):
     assert "signals-output-tab" in html
     assert "Validator Inputs" in html
     assert "Validator Outputs" in html
+    assert "Inputs and Outputs" in html
 
 
 def test_non_processor_step_hides_empty_io_card(client):
@@ -1388,6 +1451,128 @@ def test_non_processor_step_hides_empty_io_card(client):
     assert "validator-process-chip" not in html
     # No IO tabs when there are no signals and no processor
     assert "signals-input-tab" not in html
+
+
+# ── Step detail: visible operation item for inline validators ─────────
+# Schema/RDF validators run a core validation before optional assertions, so
+# the editor needs a display-only card for that operation even when no
+# assertions exist yet.
+
+
+@pytest.mark.parametrize(
+    ("validation_type", "expected_label", "expected_detail"),
+    [
+        (
+            ValidationType.JSON_SCHEMA,
+            "JSON Schema Validation",
+            "Validates the submitted JSON document",
+        ),
+        (
+            ValidationType.XML_SCHEMA,
+            "XML Validation",
+            "Validates the submitted XML document",
+        ),
+    ],
+)
+def test_schema_steps_show_operation_card_and_first_assertion_connector(
+    client,
+    validation_type,
+    expected_label,
+    expected_detail,
+):
+    """JSON/XML schema steps should show validation plus an assertion add lane.
+
+    Schema validation is the built-in operation. Authors can then add
+    independent step assertions underneath it, so a no-assertions state needs
+    the same dotted connector and terminal plus button used by SHACL.
+    """
+    validator = ValidatorFactory(
+        validation_type=validation_type,
+        supports_assertions=True,
+    )
+    workflow = WorkflowFactory()
+    step = WorkflowStepFactory(workflow=workflow, validator=validator)
+    _login_for_workflow(client, workflow)
+
+    response = client.get(
+        reverse(
+            "workflows:workflow_step_edit",
+            args=[workflow.pk, step.pk],
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert "validator-operation-card" in html
+    assert expected_label in html
+    assert expected_detail in html
+    assert "This validator does not support assertions" not in html
+    assert "assertion-add-connector--terminal" in html
+    assert html.count("assertion-add-button") == 1
+
+
+def test_assertions_partial_keeps_schema_operation_card_after_refresh(client):
+    """The HTMx refresh endpoint must preserve the inline validation card.
+
+    Assertion changes refresh only the editor body, so the partial view needs
+    the same operation-card context as the full step detail page.
+    """
+    validator = ValidatorFactory(
+        validation_type=ValidationType.JSON_SCHEMA,
+        supports_assertions=True,
+    )
+    workflow = WorkflowFactory()
+    step = WorkflowStepFactory(workflow=workflow, validator=validator)
+    _login_for_workflow(client, workflow)
+
+    response = client.get(
+        reverse(
+            "workflows:workflow_step_assertions_partial",
+            args=[workflow.pk, step.pk],
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert "validator-operation-card" in html
+    assert "JSON Schema Validation" in html
+    assert "This validator does not support assertions" not in html
+    assert "assertion-add-connector--terminal" in html
+
+
+def test_shacl_step_shows_validation_operation_before_assertions(client):
+    """SHACL steps should show SHACL Validation before assertion cards.
+
+    SHACL assertions are optional checks that run after the SHACL validation
+    itself, so the editor needs to make the base validation visible at the top
+    of the assertion lane.
+    """
+    validator = ValidatorFactory(
+        validation_type=ValidationType.SHACL,
+        supports_assertions=True,
+    )
+    workflow = WorkflowFactory()
+    step = WorkflowStepFactory(workflow=workflow, validator=validator)
+    _login_for_workflow(client, workflow)
+
+    response = client.get(
+        reverse(
+            "workflows:workflow_step_edit",
+            args=[workflow.pk, step.pk],
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    operation_index = html.index("SHACL Validation")
+    connector_index = html.index("assertion-add-connector")
+    assert "validator-operation-card" in html
+    assert "Validates the submitted RDF graph" in html
+    assert operation_index < connector_index
+    assert "assertion-add-connector--terminal" in html
+    assert html.count("assertion-add-button") == 1
+    assert "insert_at_start=1" not in html
+    assert "No assertions have been added yet." not in html
 
 
 def test_step_delete_with_runs_returns_warning(client):

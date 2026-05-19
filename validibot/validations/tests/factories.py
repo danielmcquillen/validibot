@@ -99,6 +99,8 @@ class ValidatorFactory(DjangoModelFactory):
             obj.validation_type
             in (
                 ValidationType.BASIC,
+                ValidationType.JSON_SCHEMA,
+                ValidationType.XML_SCHEMA,
                 ValidationType.ENERGYPLUS,
                 ValidationType.FMU,
                 ValidationType.AI_ASSIST,

@@ -52,6 +52,7 @@ from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.views.management import MAX_STEP_COUNT
 from validibot.workflows.views_helpers import ensure_advanced_ruleset
+from validibot.workflows.views_helpers import get_validator_operation_display
 from validibot.workflows.views_helpers import resequence_workflow_steps
 from validibot.workflows.views_helpers import save_workflow_action_step
 from validibot.workflows.views_helpers import save_workflow_step
@@ -789,8 +790,8 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         if hasattr(self, "saved_step") and self.saved_step:
             validator = self.saved_step.validator
             supports_assertions = validator and validator.supports_assertions
-            # Schema-only validators don't support assertions — skip
-            # the step edit screen and return to the workflow detail.
+            # Validators without an assertion surface are fully configured by
+            # the settings form, so return to the workflow detail.
             if not supports_assertions:
                 return f"{detail_url}#workflow-steps-col"
 
@@ -1056,6 +1057,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
         uses_signal_stages = bool(
             validator and _step_has_signal_stages(self.step) and allow_assertions,
         )
+        validator_operation = get_validator_operation_display(validator)
         default_assertions_count = (
             validator.default_ruleset.assertions.count()
             if validator and validator.default_ruleset_id
@@ -1151,6 +1153,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "assertions": assertions,
                 "assertion_groups": grouped_assertions,
                 "uses_signal_stages": uses_signal_stages,
+                "validator_operation": validator_operation,
                 "ruleset": ruleset,
                 "can_manage_assertions": self.user_can_manage_workflow()
                 and allow_assertions,

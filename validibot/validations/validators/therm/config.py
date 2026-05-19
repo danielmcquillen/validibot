@@ -23,6 +23,10 @@ from validibot.validations.validators.base.config import ValidatorConfig
 config = ValidatorConfig(
     slug="therm-validator",
     name="THERM Validator",
+    short_description=(
+        "Validate THERM thermal analysis files (THMX/THMZ) for "
+        "geometry, materials, and boundary conditions."
+    ),
     description=(
         "Validate LBNL THERM thermal analysis files (THMX/THMZ). "
         "Checks geometry closure, material property ranges, boundary "

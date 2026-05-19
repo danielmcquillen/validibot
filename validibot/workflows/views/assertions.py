@@ -8,9 +8,7 @@ import logging
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
-from django.db import models
-from django.db import transaction
-from django.db.models import Q
+from django.core.exceptions import ValidationError
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
@@ -31,7 +29,9 @@ from validibot.workflows.mixins import WorkflowAccessMixin
 from validibot.workflows.mixins import WorkflowObjectMixin
 from validibot.workflows.mixins import WorkflowStepAssertionsMixin
 from validibot.workflows.models import WorkflowStep
+from validibot.workflows.services.assertion_mutations import AssertionMutationService
 from validibot.workflows.views_helpers import ensure_advanced_ruleset
+from validibot.workflows.views_helpers import get_validator_operation_display
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +139,7 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
         context.update(
             {
                 "modal_title": getattr(self, "modal_title", _("Assertion")),
-                "form_action": self.request.path,
+                "form_action": self.request.get_full_path(),
                 "submit_label": getattr(self, "submit_label", _("Save")),
                 "target_slug_datalist_id": self.get_target_slug_datalist_id(),
                 "catalog_choices": self.get_catalog_choices(),
@@ -153,33 +153,6 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
             },
         )
         return context
-
-    def _determine_run_stage_from_form(self, form: RulesetAssertionForm) -> str:
-        resolved_stage = form.cleaned_data.get("resolved_stage")
-        if resolved_stage:
-            return resolved_stage
-        signal = form.cleaned_data.get("resolved_signal")
-        if signal and getattr(signal, "direction", None):
-            return signal.direction
-        return CatalogRunStage.OUTPUT
-
-    def _resolve_signal_definition(self, form: RulesetAssertionForm):
-        """Get the resolved SignalDefinition from the form's cleaned data.
-
-        Returns the SignalDefinition object for signal-backed assertions,
-        or None for custom targets (which use target_data_path instead).
-        """
-        return form.cleaned_data.get("resolved_signal")
-
-    def _stage_filter(self, stage: str) -> Q:
-        if stage == CatalogRunStage.INPUT:
-            return Q(
-                target_signal_definition__direction=CatalogRunStage.INPUT,
-            )
-        return Q(
-            Q(target_signal_definition__direction=CatalogRunStage.OUTPUT)
-            | Q(target_signal_definition__isnull=True),
-        )
 
     def get_shacl_sparql_assertion_count(self) -> int:
         return (
@@ -202,30 +175,14 @@ class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
 
     def form_valid(self, form):
         ruleset = self.get_ruleset()
-        stage = self._determine_run_stage_from_form(form)
-        stage_q = self._stage_filter(stage)
-        max_order = (
-            ruleset.assertions.filter(stage_q).aggregate(max_order=models.Max("order"))[
-                "max_order"
-            ]
-            or 0
-        )
-        signal_def = self._resolve_signal_definition(form)
-        assertion = RulesetAssertion.objects.create(
-            ruleset=ruleset,
-            order=max_order + 10,
-            assertion_type=form.cleaned_data["assertion_type"],
-            operator=form.cleaned_data["resolved_operator"],
-            target_signal_definition=signal_def,
-            target_data_path=form.cleaned_data.get("target_data_path_value") or "",
-            severity=form.cleaned_data["severity"],
-            when_expression=form.cleaned_data.get("when_expression") or "",
-            rhs=form.cleaned_data["rhs_payload"],
-            options=form.cleaned_data["options_payload"],
-            message_template=form.cleaned_data.get("message_template") or "",
-            success_message=form.cleaned_data.get("success_message") or "",
-            cel_cache=form.cleaned_data.get("cel_cache") or "",
-        )
+        try:
+            assertion = AssertionMutationService.create_from_cleaned_data(
+                ruleset=ruleset,
+                cleaned_data=form.cleaned_data,
+            )
+        except ValidationError as exc:
+            _attach_validation_error(form, exc)
+            return self.form_invalid(form)
         messages.success(self.request, _("Assertion added."))
         return hx_trigger_response(
             message=_("Assertion added."),
@@ -269,20 +226,14 @@ class WorkflowStepAssertionUpdateView(WorkflowStepAssertionModalBase):
 
     def form_valid(self, form):
         assertion = self._get_assertion()
-        signal_def = self._resolve_signal_definition(form)
-        RulesetAssertion.objects.filter(pk=assertion.pk).update(
-            assertion_type=form.cleaned_data["assertion_type"],
-            operator=form.cleaned_data["resolved_operator"],
-            target_signal_definition=signal_def,
-            target_data_path=form.cleaned_data.get("target_data_path_value") or "",
-            severity=form.cleaned_data["severity"],
-            when_expression=form.cleaned_data.get("when_expression") or "",
-            rhs=form.cleaned_data["rhs_payload"],
-            options=form.cleaned_data["options_payload"],
-            message_template=form.cleaned_data.get("message_template") or "",
-            success_message=form.cleaned_data.get("success_message") or "",
-            cel_cache=form.cleaned_data.get("cel_cache") or "",
-        )
+        try:
+            AssertionMutationService.update_from_cleaned_data(
+                assertion=assertion,
+                cleaned_data=form.cleaned_data,
+            )
+        except ValidationError as exc:
+            _attach_validation_error(form, exc)
+            return self.form_invalid(form)
         messages.success(self.request, _("Assertion updated."))
         return hx_trigger_response(
             message=_("Assertion updated."),
@@ -305,7 +256,29 @@ class WorkflowStepAssertionDeleteView(WorkflowStepAssertionsMixin, View):
             pk=self.kwargs.get("assertion_id"),
             ruleset=ruleset,
         )
-        assertion.delete()
+        try:
+            AssertionMutationService.delete(assertion=assertion)
+        except ValidationError as exc:
+            error_message = _validation_error_message(exc)
+            messages.error(request, error_message)
+            if request.headers.get("HX-Request"):
+                return hx_trigger_response(
+                    status_code=400,
+                    level="error",
+                    message=error_message,
+                    close_modal=None,
+                    include_steps_changed=False,
+                )
+            return HttpResponseRedirect(
+                reverse_with_org(
+                    "workflows:workflow_step_edit",
+                    request=request,
+                    kwargs={
+                        "pk": self.get_workflow().pk,
+                        "step_id": self.step.pk,
+                    },
+                ),
+            )
         messages.success(request, _("Assertion removed."))
         if request.headers.get("HX-Request"):
             return hx_trigger_response(
@@ -336,68 +309,16 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
             ruleset=ruleset,
         )
         direction = request.POST.get("direction")
-        assertions = list(ruleset.assertions.order_by("order", "pk"))
         validator = getattr(self.step, "validator", None)
         use_stage_buckets = bool(validator and validator.has_processor)
-
-        if use_stage_buckets:
-            grouped = {"input": [], "output": []}
-            for item in assertions:
-                key = (
-                    "input"
-                    if item.resolved_run_stage == CatalogRunStage.INPUT
-                    else "output"
-                )
-                grouped[key].append(item)
-            target_key = (
-                "input"
-                if assertion.resolved_run_stage == CatalogRunStage.INPUT
-                else "output"
-            )
-            target_list = grouped[target_key]
-            try:
-                index = target_list.index(assertion)
-            except ValueError:
-                return hx_trigger_response(
-                    status_code=400,
-                    message=_("Assertion not found."),
-                )
-            if direction == "up" and index > 0:
-                target_list[index - 1], target_list[index] = (
-                    target_list[index],
-                    target_list[index - 1],
-                )
-            elif direction == "down" and index < len(target_list) - 1:
-                target_list[index], target_list[index + 1] = (
-                    target_list[index + 1],
-                    target_list[index],
-                )
-            else:
-                return hx_trigger_response(status_code=204)
-            assertions = grouped["input"] + grouped["output"]
-        else:
-            try:
-                index = assertions.index(assertion)
-            except ValueError:
-                return hx_trigger_response(
-                    status_code=400,
-                    message=_("Assertion not found."),
-                )
-            if direction == "up" and index > 0:
-                assertions[index - 1], assertions[index] = (
-                    assertions[index],
-                    assertions[index - 1],
-                )
-            elif direction == "down" and index < len(assertions) - 1:
-                assertions[index], assertions[index + 1] = (
-                    assertions[index + 1],
-                    assertions[index],
-                )
-            else:
-                return hx_trigger_response(status_code=204)
-        with transaction.atomic():
-            for pos, item in enumerate(assertions, start=1):
-                RulesetAssertion.objects.filter(pk=item.pk).update(order=pos * 10)
+        moved = AssertionMutationService.move(
+            ruleset=ruleset,
+            assertion=assertion,
+            direction=direction,
+            use_stage_buckets=use_stage_buckets,
+        )
+        if not moved:
+            return hx_trigger_response(status_code=204)
         return hx_trigger_response(
             message=_("Assertion moved."),
             extra_payload={
@@ -406,6 +327,24 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
                 },
             },
         )
+
+
+def _attach_validation_error(form: RulesetAssertionForm, exc: ValidationError) -> None:
+    """Attach model/service validation errors to an unbound form shape."""
+
+    if hasattr(exc, "message_dict"):
+        for field, field_messages in exc.message_dict.items():
+            form_field = field if field in form.fields else None
+            for message in field_messages:
+                form.add_error(form_field, message)
+        return
+    form.add_error(None, exc)
+
+
+def _validation_error_message(exc: ValidationError) -> str:
+    """Return a plain text summary for toast responses."""
+
+    return " ".join(str(message) for message in exc.messages) or str(exc)
 
 
 class WorkflowStepAssertionsPartialView(WorkflowObjectMixin, TemplateView):
@@ -453,6 +392,7 @@ class WorkflowStepAssertionsPartialView(WorkflowObjectMixin, TemplateView):
         uses_signal_stages = bool(
             validator and _step_has_signal_stages(self.step) and allow_assertions,
         )
+        validator_operation = get_validator_operation_display(validator)
         default_assertions_count = (
             validator.default_ruleset.assertions.count()
             if validator and validator.default_ruleset_id
@@ -467,6 +407,7 @@ class WorkflowStepAssertionsPartialView(WorkflowObjectMixin, TemplateView):
                 "assertions": assertions,
                 "assertion_groups": grouped_assertions,
                 "uses_signal_stages": uses_signal_stages,
+                "validator_operation": validator_operation,
                 "can_manage_assertions": self.user_can_manage_workflow()
                 and allow_assertions,
                 "supports_assertions": allow_assertions,

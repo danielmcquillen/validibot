@@ -14,6 +14,8 @@ code path that ASHRAE 223P requires for medium-compatibility checks).
 
 from __future__ import annotations
 
+import multiprocessing
+
 import pytest
 from django.test import override_settings
 from rdflib import Graph
@@ -203,6 +205,16 @@ class TestDetectSerialization:
         """``.jsonld`` extension maps to rdflib's "json-ld"."""
         result = engine.detect_serialization("model.jsonld", None, "auto")
         assert result == "json-ld"
+
+    def test_extension_ntriples_detected(self):
+        """``.nt`` extension maps to rdflib's N-Triples parser."""
+        result = engine.detect_serialization("building.nt", None, "auto")
+        assert result == "nt"
+
+    def test_extension_nquads_detected(self):
+        """``.nq`` extension maps to rdflib's N-Quads parser."""
+        result = engine.detect_serialization("building.nq", None, "auto")
+        assert result == "nquads"
 
     def test_file_type_xml_falls_back_to_rdf_xml(self):
         """No extension hint + XML file_type → RDF/XML.
@@ -412,6 +424,33 @@ class TestRunShaclValidation:
         # Verify the focus_node detail rode through to meta for
         # downstream display.
         assert "bob" in issues[0].meta["shacl_focus_node"].lower()
+
+    def test_pyshacl_runner_works_inside_daemonic_worker_process(self):
+        """Celery prefork workers mark task processes as daemonic.
+
+        Python refuses to start ``multiprocessing.Process`` children from
+        those task processes. The pySHACL isolation layer must therefore use a
+        subprocess boundary so normal SHACL validations still run in Celery.
+        """
+        current_process = multiprocessing.current_process()
+        original_config = current_process._config.copy()
+        current_process._config["daemon"] = True
+        try:
+            data_graph, _ = engine.parse_rdf(DATA_PASSING, "turtle")
+            results, err = engine.run_shacl_validation(
+                data_graph,
+                SHAPES_PERSON_REQUIRES_NAME,
+                "",
+                inference_mode="none",
+                advanced_shacl=False,
+            )
+        finally:
+            current_process._config.clear()
+            current_process._config.update(original_config)
+
+        assert err is None
+        assert results is not None
+        assert engine.map_results_to_issues(results) == []
 
     def test_empty_shapes_returns_clear_error(self):
         """No shapes at all → engine error, not silent pass.

@@ -92,6 +92,8 @@ class AssertionFormController {
   private targetCatalogInput: HTMLInputElement | null;
   private celField: HTMLElement | null;
   private typeWrapper: HTMLElement | null;
+  private shaclQueryField: HTMLTextAreaElement | null;
+  private shaclFileInputInjected = false;
   private focusApplied = false;
 
   constructor(private form: HTMLFormElement) {
@@ -103,6 +105,7 @@ class AssertionFormController {
     this.targetCatalogField = this.targetCatalogInput?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
     this.celField = this.form.querySelector<HTMLElement>('[name="cel_expression"]')?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
     this.typeWrapper = this.typeField?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
+    this.shaclQueryField = this.form.querySelector<HTMLTextAreaElement>('#id_shacl_query');
   }
 
   init(): void {
@@ -110,6 +113,7 @@ class AssertionFormController {
       return;
     }
     this.bindEvents();
+    this.injectShaclFileUpload();
     this.refresh();
   }
 
@@ -210,6 +214,98 @@ class AssertionFormController {
       STRING_OPTION_FIELDS.forEach((name) => visible.add(name));
     }
     this.showFields(visible);
+  }
+
+  /**
+   * Insert a small "Load from file" affordance above the SPARQL textarea
+   * so authors can pick a .sparql or .rq file from disk and have its
+   * contents loaded into the textarea. No server round-trip: the file is
+   * read locally via FileReader and the existing save-time scrubber +
+   * length cap run on the loaded text exactly as if it had been typed.
+   *
+   * Injected once per form instance. Subsequent refresh() calls leave
+   * the existing input in place (idempotent via shaclFileInputInjected).
+   *
+   * Why JS injection rather than a Django form field: the load button
+   * never carries a value to the server, so making it a Field on the
+   * Django form would add a phantom field and force the crispy layout
+   * to manage something it shouldn't. Injecting it in the controller
+   * keeps both the UI and the JS that handles it in one file.
+   */
+  private injectShaclFileUpload(): void {
+    if (this.shaclFileInputInjected || !this.shaclQueryField) {
+      return;
+    }
+    const textarea = this.shaclQueryField;
+    const wrapper = textarea.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS);
+    if (!wrapper) {
+      return;
+    }
+
+    const container = document.createElement('div');
+    container.className = 'd-flex align-items-center gap-2 mb-2 small text-muted';
+
+    const label = document.createElement('label');
+    label.className = 'btn btn-sm btn-outline-secondary mb-0';
+    label.textContent = 'Load from file…';
+    label.style.cursor = 'pointer';
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.sparql,.rq,application/sparql-query,text/plain';
+    input.className = 'visually-hidden';
+    input.setAttribute('aria-label', 'Load a SPARQL query from a file');
+    label.appendChild(input);
+
+    const hint = document.createElement('span');
+    hint.textContent = 'Accepts .sparql or .rq files';
+
+    const status = document.createElement('span');
+    status.className = 'ms-auto small fst-italic';
+    status.style.minHeight = '1em';
+
+    container.appendChild(label);
+    container.appendChild(hint);
+    container.appendChild(status);
+
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      if (!file) {
+        return;
+      }
+      // Cap the read at the textarea's own maxlength when available, so
+      // we don't load a 10 MB file just to have the form scrubber
+      // reject it. Falls back to 50,000 chars (the engine's hard cap).
+      const maxLength = textarea.maxLength > 0 ? textarea.maxLength : 50_000;
+      if (file.size > maxLength * 2) {
+        status.textContent = `${file.name} is too large to load (cap ~${maxLength} chars).`;
+        status.classList.add('text-danger');
+        input.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.addEventListener('load', () => {
+        const result = reader.result;
+        if (typeof result !== 'string') {
+          return;
+        }
+        textarea.value = result;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        status.textContent = `Loaded ${file.name} (${result.length.toLocaleString()} chars).`;
+        status.classList.remove('text-danger');
+        // Allow re-selecting the same file later (otherwise the change
+        // event won't fire on a second pick of the same filename).
+        input.value = '';
+      });
+      reader.addEventListener('error', () => {
+        status.textContent = `Could not read ${file.name}.`;
+        status.classList.add('text-danger');
+      });
+      reader.readAsText(file);
+    });
+
+    wrapper.insertBefore(container, textarea);
+    this.shaclFileInputInjected = true;
   }
 
   /**

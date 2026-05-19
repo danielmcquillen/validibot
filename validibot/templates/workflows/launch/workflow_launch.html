@@ -15,6 +15,9 @@
         <h1 class="app-page-title">
           <i class="bi bi-boxes me-2"></i>{% trans "Launch Validation Workflow " %} : "{{ workflow.name }}"
         </h1>
+        <div class="ms-2 mt-1">
+          {% include "workflows/partials/workflow_version_badge.html" %}
+        </div>
       </div>
     </div>
     <div id="workflow-launch-panel">

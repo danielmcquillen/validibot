@@ -27,6 +27,36 @@ From the workflow detail page, you can:
 
 Inactive workflows show **View** instead of **Edit**. Activate the workflow to enable editing.
 
+Every workflow page shows a small version label near the workflow name. Use the
+version selector on the workflow detail page to move between earlier and newer
+versions in the same workflow family.
+
+---
+
+## History Policy
+
+Each workflow has a **history policy** that controls what happens after it has validation runs.
+
+| Policy | What it means |
+|--------|---------------|
+| **Versioned history** | Recommended. Once the workflow has runs, changes that would alter what the workflow validates should be made in a new workflow version. Old runs stay tied to the version that produced them. |
+| **Mutable history** | Allows in-place edits after runs. This is useful for experiments and personal drafts, but old run results may no longer match the current workflow definition. |
+
+Versioned history is the default for new workflows.
+
+You can change the history policy before the workflow has runs. After a workflow has runs, change history policy by creating a new workflow version. This keeps one workflow row from mixing versioned-history and mutable-history guarantees.
+
+When a versioned workflow already has runs, Validibot still allows safe edits in
+place, such as renaming the workflow or adding a new accepted file type. If an
+edit would remove part of the existing validation contract, the form explains
+that a new version is required and offers **Create version and apply**. That
+button creates the new version, applies your submitted settings there, and keeps
+existing runs attached to the old version.
+
+Public workflow listings show the latest active version of each workflow family.
+Earlier versions remain available to users with access through the version
+selector and direct workflow links.
+
 ---
 
 ## Running a Workflow

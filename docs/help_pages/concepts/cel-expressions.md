@@ -127,7 +127,8 @@ See the [Signals](/app/help/validators/signals/) guide for a worked example, and
 
 - Expressions run against the submission payload, signals, and validator outputs.
 - Keep them deterministic -- no network or external state.
-- Use step assertions to tighten a workflow; default assertions always run for the validator.
+- Use step assertions to tighten a workflow. On JSON Schema, XML Schema, and SHACL steps, the built-in validation runs first and your assertions run afterward.
+- Default assertions always run for the validator before step-level assertions.
 - Use the namespace prefix (`p.`, `s.`, `output.`) to make it clear where your data comes from. In the UI we color the target portion to help you distinguish it from the rest of the expression.
 
 For more syntax details, visit the CEL specification at <https://github.com/google/cel-spec>.

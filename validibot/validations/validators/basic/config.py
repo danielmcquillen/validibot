@@ -8,6 +8,10 @@ from validibot.validations.validators.base.config import ValidatorConfig
 config = ValidatorConfig(
     slug="basic-validator",
     name="Basic Validator",
+    short_description=(
+        "The simplest validator. Allows workflow author to add signals "
+        "and assertions directly without a validator catalog."
+    ),
     description=(
         "The simplest validator. Allows workflow author to add signals"
         " and assertions directly without a validator catalog."

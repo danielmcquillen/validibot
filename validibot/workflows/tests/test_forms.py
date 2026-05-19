@@ -15,6 +15,7 @@ from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import XMLSchemaType
+from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.forms import JsonSchemaStepConfigForm
 from validibot.workflows.forms import WorkflowForm
 from validibot.workflows.forms import WorkflowLaunchForm
@@ -66,7 +67,7 @@ def test_workflow_form_saves_selected_project():
             "allowed_file_types": [SubmissionFileType.JSON],
             "input_retention": DataRetention.DO_NOT_STORE,
             "output_retention": "STORE_30_DAYS",
-            "version": "1.0",
+            "version": "1.0.0",
             "is_active": "on",
         },
         user=user,
@@ -162,7 +163,7 @@ def test_workflow_form_requires_mode_when_schema_text_is_present():
             ),
             "input_retention": DataRetention.DO_NOT_STORE,
             "output_retention": "STORE_30_DAYS",
-            "version": "1.0",
+            "version": "1.0.0",
             "is_active": "on",
         },
         user=user,
@@ -200,7 +201,7 @@ def test_workflow_form_round_trips_pydantic_source_text():
             "input_schema_pydantic": source_text,
             "input_retention": DataRetention.DO_NOT_STORE,
             "output_retention": "STORE_30_DAYS",
-            "version": "1.0",
+            "version": "1.0.0",
             "is_active": "on",
         },
         user=user,
@@ -704,20 +705,61 @@ def _post_payload_for(workflow, **overrides):
         "input_retention": workflow.input_retention or DataRetention.DO_NOT_STORE,
         "output_retention": workflow.output_retention or "STORE_30_DAYS",
         "version": workflow.version,
+        "history_policy": workflow.history_policy,
         "is_active": "on" if workflow.is_active else "",
     }
     payload.update(overrides)
     return payload
 
 
-def test_workflow_form_blocks_contract_edit_on_locked_workflow():
-    """Locked workflow + changed contract field -> form invalid with helpful error.
+def test_workflow_form_blocks_narrowing_retention_on_locked_workflow():
+    """Locked workflow + SHORTENED retention -> form invalid with helpful error.
 
     Why this matters: ``is_locked`` is the marker that a workflow's
-    launch contract is the source of truth for past or pending runs.
-    Allowing the input_retention field to flip silently from
-    DO_NOT_STORE to STORE_INDEFINITELY would re-write the privacy
-    contract those runs operated under.
+    contract is the source of truth for past runs. Shortening retention
+    from STORE_PERMANENTLY to DO_NOT_STORE would purge submissions sooner
+    than past runs were promised — a real integrity breach for any
+    downstream credential or audit trail that referenced them.
+
+    Extending retention is allowed in place (covered by the
+    ``allows_extending_retention`` test below) — only shortening trips
+    the gate.
+    """
+    from validibot.submissions.constants import DataRetention
+
+    workflow = WorkflowFactory(
+        is_locked=True,
+        input_retention=DataRetention.STORE_PERMANENTLY,
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    workflow.user.set_current_org(workflow.org)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            input_retention=DataRetention.DO_NOT_STORE,
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert not form.is_valid()
+    assert "input_retention" in form.errors
+    # The error message should be direction-aware — name shortening
+    # specifically and point at the new-version escape hatch.
+    error_text = " ".join(form.errors["input_retention"]).lower()
+    assert "shorten" in error_text
+    assert "new version" in error_text
+
+
+def test_workflow_form_allows_extending_retention_on_locked_workflow():
+    """Locked workflow + EXTENDED retention -> form valid (safe widening).
+
+    Extending retention is a safe in-place edit: every past run was
+    promised at most the old retention horizon, and the new horizon is
+    longer-or-equal. No past run is invalidated by keeping data longer
+    than promised. Requiring a new-version clone for this would be
+    pure friction.
     """
     from validibot.submissions.constants import DataRetention
 
@@ -737,12 +779,128 @@ def test_workflow_form_blocks_contract_edit_on_locked_workflow():
         user=workflow.user,
     )
 
-    assert not form.is_valid()
-    assert "input_retention" in form.errors
-    # The error message should direct the user to clone-to-new-version
-    # rather than just saying "no, can't change."
-    error_text = " ".join(form.errors["input_retention"]).lower()
-    assert "new version" in error_text
+    assert form.is_valid(), form.errors
+
+
+def test_workflow_form_allows_widening_file_types_on_locked_workflow():
+    """Locked workflow + ADDING a file type -> form valid (safe widening).
+
+    Adding a file type is the most common reason an author wants to
+    edit a locked workflow ("I just need to also accept Plain Text").
+    Past runs ran against the narrower set; the new set is a superset,
+    so no past run is invalidated. Forcing a clone for this is the
+    user-visible reason the original lock felt overzealous.
+    """
+    workflow = WorkflowFactory(
+        is_locked=True,
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    workflow.user.set_current_org(workflow.org)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.TEXT],
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert form.is_valid(), form.errors
+
+
+def test_workflow_form_superuser_bypasses_contract_lock():
+    """Superuser + narrowing change on locked workflow -> form valid.
+
+    Operational escape hatch: a superuser can apply contract-narrowing
+    changes in place (e.g. removing a file type after a customer
+    request). The bypass writes an audit log entry (covered by the
+    next test) so the integrity story stays intact even though the
+    workflow definition drifts in place.
+    """
+    from validibot.users.tests.factories import UserFactory
+
+    workflow = WorkflowFactory(
+        is_locked=True,
+        allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.TEXT],
+    )
+    # Make the superuser a member of the workflow's org so the form's
+    # project-clean check (which scopes projects to the user's current
+    # org) doesn't trip on an unrelated membership rule.
+    superuser = UserFactory(
+        is_superuser=True,
+        is_staff=True,
+        orgs=[workflow.org],
+    )
+    workflow.user.set_current_org(workflow.org)
+    superuser.set_current_org(workflow.org)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            allowed_file_types=[SubmissionFileType.JSON],
+            # Superusers see the agent_* fields; provide the
+            # required billing-mode default so the bind succeeds.
+            agent_billing_mode=workflow.agent_billing_mode,
+        ),
+        instance=workflow,
+        user=superuser,
+    )
+
+    assert form.is_valid(), form.errors
+
+
+@pytest.mark.django_db
+def test_workflow_form_superuser_bypass_writes_audit_entry():
+    """Superuser bypass + save -> audit log records the override.
+
+    The audit entry is what makes the bypass safe from a compliance
+    angle: even though the workflow definition silently drifted, the
+    audit trail names who did it, when, and which contract fields
+    were affected. Searchable via ``metadata.contract_override = True``.
+    """
+    from validibot.audit.models import AuditLogEntry
+    from validibot.users.tests.factories import UserFactory
+
+    workflow = WorkflowFactory(
+        is_locked=True,
+        allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.TEXT],
+    )
+    # Make the superuser a member of the workflow's org so the form's
+    # project-clean check (which scopes projects to the user's current
+    # org) doesn't trip on an unrelated membership rule.
+    superuser = UserFactory(
+        is_superuser=True,
+        is_staff=True,
+        orgs=[workflow.org],
+    )
+    workflow.user.set_current_org(workflow.org)
+    superuser.set_current_org(workflow.org)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            allowed_file_types=[SubmissionFileType.JSON],
+            # Superusers see the agent_* fields; provide the
+            # required billing-mode default so the bind succeeds.
+            agent_billing_mode=workflow.agent_billing_mode,
+        ),
+        instance=workflow,
+        user=superuser,
+    )
+    assert form.is_valid(), form.errors
+    form.save()
+
+    override_entries = AuditLogEntry.objects.filter(
+        target_type="workflows.Workflow",
+        target_id=str(workflow.pk),
+        metadata__contract_override=True,
+    )
+    assert override_entries.exists(), (
+        "Expected a contract_override audit entry after superuser bypass"
+    )
+    entry = override_entries.first()
+    assert "allowed_file_types" in entry.metadata["fields_overridden"]
 
 
 def test_workflow_form_blocks_contract_edit_on_workflow_with_runs():
@@ -778,6 +936,143 @@ def test_workflow_form_blocks_contract_edit_on_workflow_with_runs():
 
     assert not form.is_valid()
     assert "allowed_file_types" in form.errors
+
+
+def test_workflow_form_blocks_versioned_to_mutable_with_existing_runs():
+    """A used versioned workflow cannot change policy in place.
+
+    Once a versioned workflow has runs, flipping the same row to mutable
+    would let future edits alter the definition older runs point at. The
+    author should clone and make the new version mutable instead.
+    """
+    from validibot.submissions.tests.factories import SubmissionFactory
+    from validibot.validations.tests.factories import ValidationRunFactory
+
+    workflow = WorkflowFactory(
+        history_policy=WorkflowHistoryPolicy.VERSIONED,
+        allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.TEXT],
+    )
+    workflow.user.set_current_org(workflow.org)
+    submission = SubmissionFactory(workflow=workflow)
+    ValidationRunFactory(workflow=workflow, submission=submission)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            history_policy=WorkflowHistoryPolicy.MUTABLE,
+            allowed_file_types=[SubmissionFileType.JSON],
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert not form.is_valid()
+    assert "history_policy" in form.errors
+    assert "new workflow version" in " ".join(form.errors["history_policy"]).lower()
+
+
+def test_workflow_form_allows_versioned_to_mutable_before_runs():
+    """Policy can change freely before any run guarantee has been exercised."""
+    workflow = WorkflowFactory(
+        history_policy=WorkflowHistoryPolicy.VERSIONED,
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    workflow.user.set_current_org(workflow.org)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            history_policy=WorkflowHistoryPolicy.MUTABLE,
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert form.is_valid(), form.errors
+
+
+def test_workflow_form_blocks_history_policy_change_on_locked_workflow():
+    """An explicit lock is also a definition boundary, even before runs exist."""
+    workflow = WorkflowFactory(
+        is_locked=True,
+        history_policy=WorkflowHistoryPolicy.VERSIONED,
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    workflow.user.set_current_org(workflow.org)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            history_policy=WorkflowHistoryPolicy.MUTABLE,
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert not form.is_valid()
+    assert "history_policy" in form.errors
+
+
+def test_workflow_form_blocks_mutable_to_versioned_with_existing_runs():
+    """A used mutable workflow cannot be retroactively made versioned.
+
+    Existing runs were created without the versioned-history guarantee. The
+    author should clone to a fresh version and enable versioned history there
+    for future runs.
+    """
+    from validibot.submissions.tests.factories import SubmissionFactory
+    from validibot.validations.tests.factories import ValidationRunFactory
+
+    workflow = WorkflowFactory(
+        history_policy=WorkflowHistoryPolicy.MUTABLE,
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    workflow.user.set_current_org(workflow.org)
+    submission = SubmissionFactory(workflow=workflow)
+    ValidationRunFactory(workflow=workflow, submission=submission)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            history_policy=WorkflowHistoryPolicy.VERSIONED,
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert not form.is_valid()
+    assert "history_policy" in form.errors
+    assert "new workflow version" in " ".join(form.errors["history_policy"]).lower()
+
+
+def test_workflow_form_allows_mutable_contract_edit_with_existing_runs():
+    """Mutable history permits in-place contract narrowing after runs exist.
+
+    This pins the product meaning of the mutable policy: the workflow remains
+    editable, and historical runs are records of outcomes rather than a
+    reproducible evidence trail tied to immutable definitions.
+    """
+    from validibot.submissions.tests.factories import SubmissionFactory
+    from validibot.validations.tests.factories import ValidationRunFactory
+
+    workflow = WorkflowFactory(
+        history_policy=WorkflowHistoryPolicy.MUTABLE,
+        allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.TEXT],
+    )
+    workflow.user.set_current_org(workflow.org)
+    submission = SubmissionFactory(workflow=workflow)
+    ValidationRunFactory(workflow=workflow, submission=submission)
+
+    form = WorkflowForm(
+        data=_post_payload_for(
+            workflow,
+            allowed_file_types=[SubmissionFileType.JSON],
+        ),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert form.is_valid(), form.errors
 
 
 def test_workflow_form_allows_non_contract_edit_on_locked_workflow():

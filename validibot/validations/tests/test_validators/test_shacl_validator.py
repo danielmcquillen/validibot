@@ -126,6 +126,36 @@ ex:alice a ex:Person ; ex:name "Alice" ."""
         assert result.signals["shacl_violation_count"] == 0
         assert result.signals["parse_ok"] is True
 
+    def test_turtle_original_filename_overrides_broad_file_type(self):
+        """RDF serialization detection uses the original upload filename.
+
+        Workflow file types are broad categories. A Turtle upload may arrive as
+        ``file_type=TEXT`` or from an older path as ``file_type=JSON``. The
+        SHACL validator must prefer ``original_filename=.ttl`` so it does not
+        try to parse Turtle as JSON-LD.
+        """
+        ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text=SHAPES_PERSON_REQUIRES_NAME,
+        )
+        submission = SubmissionFactory(
+            org=self.org,
+            project=self.project,
+            user=self.user,
+            file_type=SubmissionFileType.JSON,
+            original_filename="building.ttl",
+        )
+        submission.content = """@prefix ex: <http://example.com/> .
+ex:alice a ex:Person ; ex:name "Alice" ."""
+        submission.save(update_fields=["content", "original_filename", "file_type"])
+
+        result = SHACLValidator().validate(self.validator, submission, ruleset)
+
+        assert result.passed is True
+        assert result.stats["parse_serialization"] == "turtle"
+        assert result.signals["parse_ok"] is True
+
     def test_failing_submission_returns_passed_false_with_error_finding(self):
         """A SHACL Violation surfaces as Severity.ERROR and blocks passing."""
         ruleset = RulesetFactory(

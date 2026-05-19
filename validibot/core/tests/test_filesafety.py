@@ -172,6 +172,18 @@ class TestForceExtension:
         """IDF content type maps to .idf extension."""
         assert force_extension("model.txt", content_type="text/x-idf") == "model.idf"
 
+    def test_rdf_content_types_preserve_rdf_extensions(self):
+        """RDF MIME types keep RDF-specific extensions instead of becoming .txt."""
+        assert force_extension("model.txt", content_type="text/turtle") == "model.ttl"
+        assert (
+            force_extension("model.txt", content_type="application/ld+json")
+            == "model.jsonld"
+        )
+        assert (
+            force_extension("model.xml", content_type="application/rdf+xml")
+            == "model.rdf"
+        )
+
 
 # ---------------------------------------------------------------------------
 # build_safe_filename
@@ -213,6 +225,14 @@ class TestBuildSafeFilename:
             content_type="application/json",
         )
         assert result == "weather_data.json"
+
+    def test_preserves_turtle_upload_extension(self):
+        """Turtle uploads must not be renamed to .txt before SHACL parsing."""
+        result = build_safe_filename(
+            "223p_example_building.ttl",
+            content_type="text/turtle",
+        )
+        assert result == "223p_example_building.ttl"
 
 
 # ---------------------------------------------------------------------------

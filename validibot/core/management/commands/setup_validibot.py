@@ -532,8 +532,20 @@ class Command(BaseCommand):
 
         from django.core.management import call_command
 
+        # ``setup_validibot`` is fundamentally a "reset the DB to match the
+        # current code state" command — operators run it precisely because
+        # they want the DB updated. ``--allow-drift`` matches that intent:
+        # without it, every dev iteration that touches a semantic config
+        # field (catalog_entries, supported_file_types, etc.) blocks
+        # setup_validibot until the operator manually runs
+        # ``sync_validators --allow-drift`` to clear the digest mismatch.
+        #
+        # The drift detector still does its job in two places where it
+        # actually matters: the production container start script (which
+        # keeps the strict check) and audit_workflow_versions (the
+        # tamper-detection report). Both run *outside* setup_validibot.
         out = StringIO()
-        call_command("sync_validators", stdout=out)
+        call_command("sync_validators", "--allow-drift", stdout=out)
 
         # Log the output for debugging
         output = out.getvalue()

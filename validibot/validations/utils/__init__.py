@@ -63,6 +63,7 @@ def create_default_validators():
             "validation_type": ValidationType.JSON_SCHEMA,
             "version": "1.0",
             "order": 1,
+            "supports_assertions": True,
         },
         {
             "name": _("XML Validator"),
@@ -84,6 +85,7 @@ def create_default_validators():
             "validation_type": ValidationType.XML_SCHEMA,
             "version": "1.0",
             "order": 2,
+            "supports_assertions": True,
         },
         {
             "name": _("EnergyPlus™ Validator"),

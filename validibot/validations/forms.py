@@ -163,6 +163,7 @@ class ShaclLibraryValidatorCreateForm(ShaclConfigMixin, forms.Form):
         super().__init__(*args, **kwargs)
         self.helper = FormHelper()
         self.helper.form_tag = False
+        self.helper.render_hidden_fields = True
         self.helper.layout = Layout(
             "name",
             "short_description",

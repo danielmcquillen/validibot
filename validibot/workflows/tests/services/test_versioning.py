@@ -34,6 +34,7 @@ needs to be added to the service.
 from __future__ import annotations
 
 import pytest
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from validibot.submissions.constants import OutputRetention
@@ -41,15 +42,28 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.constants import SubmissionRetention
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
+from validibot.validations.constants import AssertionOperator
+from validibot.validations.constants import AssertionType
+from validibot.validations.constants import RulesetType
+from validibot.validations.constants import SignalDirection
+from validibot.validations.tests.factories import DerivationFactory
+from validibot.validations.tests.factories import RulesetAssertionFactory
+from validibot.validations.tests.factories import RulesetFactory
+from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepSignalBindingFactory
 from validibot.workflows.constants import AgentBillingMode
+from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowPublicInfo
 from validibot.workflows.models import WorkflowRoleAccess
+from validibot.workflows.models import validate_workflow_version
 from validibot.workflows.services.versioning import CONTRACT_FIELDS
 from validibot.workflows.services.versioning import CloneReport
 from validibot.workflows.services.versioning import WorkflowVersioningService
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
+from validibot.workflows.version_utils import ParsedVersion
+from validibot.workflows.version_utils import compare_workflow_versions
 
 pytestmark = pytest.mark.django_db
 
@@ -73,6 +87,36 @@ class WorkflowHasRunsTests(TestCase):
         workflow = WorkflowFactory(org=org)
         WorkflowStepFactory(workflow=workflow)
         assert workflow.has_runs() is False
+
+
+class WorkflowVersionLabelTests(TestCase):
+    """Workflow versions accept only integers or full major.minor.patch labels.
+
+    The architecture depends on deterministic ordering inside a workflow family.
+    Allowing ad-hoc labels like ``draft`` or partial semver like ``1.0`` would
+    make "latest" resolution and clone version arithmetic ambiguous.
+    """
+
+    def test_model_rejects_partial_semver_label(self):
+        """``1.0`` used to be accepted, but now must be written as ``1.0.0``."""
+        with pytest.raises(ValidationError):
+            validate_workflow_version("1.0")
+
+    def test_model_accepts_integer_and_full_semver_labels(self):
+        """The two supported label shapes are integer and major.minor.patch."""
+        validate_workflow_version("2")
+        validate_workflow_version("2.1.3")
+
+    def test_compare_utility_orders_integer_and_semver_versions(self):
+        """The comparison helper normalizes integers to x.0.0 semantics."""
+        assert compare_workflow_versions("1", "1.0.0") == 0
+        assert compare_workflow_versions("1.2.0", "1.10.0") == -1
+        assert compare_workflow_versions("2", "1.9.9") == 1
+
+    def test_parsed_version_rejects_invalid_label(self):
+        """Invalid persisted labels should fail loudly, not sort as 0.0.0."""
+        with pytest.raises(ValueError, match=r"major\.minor\.patch"):
+            ParsedVersion("latest")
 
 
 class WorkflowRequiresNewVersionTests(TestCase):
@@ -99,6 +143,18 @@ class WorkflowRequiresNewVersionTests(TestCase):
         """
         workflow = WorkflowFactory(is_locked=True)
         assert workflow.requires_new_version_for_contract_edits() is True
+
+    def test_mutable_workflow_does_not_require_new_version_after_lock(self):
+        """Mutable history opts out of the versioned edit gate.
+
+        This does not make old runs reproducible; it means the workflow author
+        has explicitly chosen in-place editing semantics for this workflow.
+        """
+        workflow = WorkflowFactory(
+            is_locked=True,
+            history_policy=WorkflowHistoryPolicy.MUTABLE,
+        )
+        assert workflow.requires_new_version_for_contract_edits() is False
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -196,28 +252,54 @@ class WorkflowChangedContractFieldsTests(TestCase):
 class ContractFieldsTests(TestCase):
     """Basic shape checks on the CONTRACT_FIELDS constant.
 
-    The constant is the source of truth for "which fields trigger
-    versioning?". Removing a field from this set is a meaningful
-    semantic change — older code that previously rejected an
-    in-place edit may now silently allow it. These tests pin the
-    expected membership.
+    The constant is the source of truth for "which fields are the
+    validation contract a past run was operating under?". Removing a
+    field from this set is a meaningful semantic change — older code
+    that previously rejected an in-place edit may now silently allow
+    it. These tests pin the expected membership.
     """
 
     def test_contract_fields_includes_all_expected_runtime_fields(self):
-        """Every documented contract field is in the set."""
-        # File-type / retention / agent contract — the runtime
-        # contract a previously-launched run was operating under.
+        """Every documented validation-contract field is in the set.
+
+        After the agent-fields cleanup, CONTRACT_FIELDS only covers
+        fields that genuinely change what a past run validated.
+        Agent fields (price, billing mode, rate limits, discovery
+        flags) are commercial settings — past run outcomes don't
+        depend on the current value — so they intentionally are NOT
+        in this set and can change in place.
+        """
         expected = {
             "allowed_file_types",
             "input_retention",
             "output_retention",
+        }
+        assert expected == set(CONTRACT_FIELDS)
+
+    def test_contract_fields_excludes_agent_commercial_settings(self):
+        """Agent commercial settings are NOT validation-contract fields.
+
+        A past run's outcome doesn't depend on the current agent price,
+        billing mode, rate limit, or discovery flag — those affect what
+        future callers see and pay, not what the past run validated.
+        Forcing a workflow clone just to change a price would be
+        friction for no integrity benefit. The form layer separately
+        gates these fields to superusers because they're commercial
+        settings, but that's an access-control concern, not a
+        contract-immutability concern.
+        """
+        agent_fields = {
             "agent_billing_mode",
             "agent_price_cents",
             "agent_max_launches_per_hour",
             "agent_public_discovery",
             "agent_access_enabled",
         }
-        assert expected.issubset(CONTRACT_FIELDS)
+        for field in agent_fields:
+            assert field not in CONTRACT_FIELDS, (
+                f"{field} should not be a contract field — it's a "
+                "commercial setting, not part of the validation contract."
+            )
 
     def test_contract_fields_excludes_lifecycle_and_cosmetic(self):
         """Lifecycle and cosmetic fields are NOT contract fields.
@@ -342,6 +424,62 @@ class WorkflowVersioningServiceCloneTests(TestCase):
                 f"source={source_value!r} new={new_value!r}"
             )
 
+    def test_clone_copies_history_policy(self):
+        """The clone inherits whether the source is versioned or mutable.
+
+        History policy controls how future edits behave on the cloned row. If
+        the clone silently reset this value, authors would get different edit
+        semantics immediately after creating the new version.
+        """
+        workflow = WorkflowFactory(history_policy=WorkflowHistoryPolicy.MUTABLE)
+        WorkflowStepFactory(workflow=workflow)
+        user = UserFactory()
+
+        report = WorkflowVersioningService.clone(workflow, user=user)
+        new_workflow = Workflow.objects.get(pk=report.new_workflow_id)
+
+        assert new_workflow.history_policy == WorkflowHistoryPolicy.MUTABLE
+
+    def test_clone_copies_workflow_authoring_and_launch_settings(self):
+        """Workflow-owned settings should not reset on a new version.
+
+        The clone is the author's next editable version of the same workflow,
+        so descriptive fields, launch-form options, input schema authoring
+        metadata, and public visibility settings must carry forward.
+        """
+        workflow = WorkflowFactory(
+            description="Original description",
+            allow_submission_name=False,
+            allow_submission_meta_data=True,
+            allow_submission_short_description=True,
+            make_info_page_public=True,
+            is_public=True,
+            success_message="Validation succeeded.",
+            input_schema={
+                "type": "object",
+                "properties": {"area": {"type": "number"}},
+            },
+            input_schema_source_mode="json_schema",
+            input_schema_source_text='{"type":"object"}',
+        )
+        WorkflowStepFactory(workflow=workflow)
+        user = UserFactory()
+
+        report = WorkflowVersioningService.clone(workflow, user=user)
+        new_workflow = Workflow.objects.get(pk=report.new_workflow_id)
+
+        assert new_workflow.project_id == workflow.project_id
+        assert new_workflow.description == workflow.description
+        assert new_workflow.allow_submission_name is False
+        assert new_workflow.allow_submission_meta_data is True
+        assert new_workflow.allow_submission_short_description is True
+        assert new_workflow.make_info_page_public is True
+        assert new_workflow.is_public is True
+        assert new_workflow.success_message == "Validation succeeded."
+        assert new_workflow.input_schema == workflow.input_schema
+        assert new_workflow.input_schema_source_mode == "json_schema"
+        assert new_workflow.input_schema_source_text == '{"type":"object"}'
+
     def test_clone_copies_step_resources(self):
         """Step-resource rows appear on the clone's steps too."""
         # The existing clone_to_new_version test exercises this
@@ -353,6 +491,65 @@ class WorkflowVersioningServiceCloneTests(TestCase):
         report = WorkflowVersioningService.clone(workflow, user=user)
         # Default step has no resources; expect 0.
         assert report.components_copied["step_resources"] == 0
+
+    def test_clone_deep_copies_step_owned_contract_tree(self):
+        """A new workflow version gets independent editable child rows.
+
+        Step-level rulesets, assertions, and step-owned signal/binding rows are
+        part of the workflow-owned contract. If the clone reused them, editing
+        the new version would silently mutate the meaning of old runs attached
+        to the source version.
+        """
+        workflow = WorkflowFactory()
+        ruleset = RulesetFactory(
+            org=workflow.org,
+            ruleset_type=RulesetType.BASIC,
+        )
+        step = WorkflowStepFactory(workflow=workflow, ruleset=ruleset)
+        signal = SignalDefinitionFactory(
+            validator=None,
+            workflow_step=step,
+            contract_key="shacl_total_count",
+            direction=SignalDirection.OUTPUT,
+        )
+        StepSignalBindingFactory(
+            workflow_step=step,
+            signal_definition=signal,
+            default_value=0,
+        )
+        DerivationFactory(
+            validator=None,
+            workflow_step=step,
+            contract_key="has_findings",
+            expression="shacl_total_count > 0",
+        )
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.BASIC,
+            operator=AssertionOperator.LE,
+            target_signal_definition=signal,
+            target_data_path="",
+            rhs={"value": 0},
+        )
+        user = UserFactory()
+
+        report = WorkflowVersioningService.clone(workflow, user=user)
+        new_workflow = Workflow.objects.get(pk=report.new_workflow_id)
+        new_step = new_workflow.steps.get()
+        new_signal = new_step.signal_definitions.get(contract_key="shacl_total_count")
+        new_assertion = new_step.ruleset.assertions.get()
+
+        assert new_step.pk != step.pk
+        assert new_step.ruleset_id != ruleset.pk
+        assert new_signal.pk != signal.pk
+        assert new_assertion.target_signal_definition_id == new_signal.pk
+        assert new_step.signal_bindings.get().signal_definition_id == new_signal.pk
+        assert new_step.derivations.get(contract_key="has_findings").pk is not None
+        assert report.components_copied["rulesets"] == 1
+        assert report.components_copied["assertions"] == 1
+        assert report.components_copied["signal_definitions"] == 1
+        assert report.components_copied["signal_bindings"] == 1
+        assert report.components_copied["derivations"] == 1
 
     def test_clone_copies_workflow_public_info_when_present(self):
         """``WorkflowPublicInfo`` (one-to-one) copies if the source has it."""

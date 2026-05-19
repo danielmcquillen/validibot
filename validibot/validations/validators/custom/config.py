@@ -8,6 +8,7 @@ from validibot.validations.validators.base.config import ValidatorConfig
 config = ValidatorConfig(
     slug="custom-validator",
     name="Custom Validator",
+    short_description=("User-defined validator backed by your own container image."),
     description="User-defined validator with custom container logic.",
     validation_type=ValidationType.CUSTOM_VALIDATOR,
     validator_class=(

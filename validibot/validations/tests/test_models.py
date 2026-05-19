@@ -1,3 +1,10 @@
+"""Model-level validation tests for validation runs, findings, and validators.
+
+These tests cover small invariants that are easy to regress outside the
+end-to-end validator suites: finding/run alignment and the capability flags
+that drive assertion availability in workflow authoring.
+"""
+
 import pytest
 from django.core.exceptions import ValidationError
 
@@ -58,8 +65,8 @@ def test_validator_supports_assertions_true_for_energyplus(db):
     assert validator.supports_assertions is True
 
 
-def test_validator_supports_assertions_false_for_schema_types(db):
-    """Schema-only validators do not support assertions."""
+def test_validator_supports_assertions_true_for_schema_types(db):
+    """Schema validators support business-rule assertions after schema checks."""
     for vtype in (ValidationType.JSON_SCHEMA, ValidationType.XML_SCHEMA):
         validator = ValidatorFactory(validation_type=vtype)
-        assert validator.supports_assertions is False, f"{vtype} should be False"
+        assert validator.supports_assertions is True, f"{vtype} should be True"

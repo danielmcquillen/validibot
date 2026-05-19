@@ -16,6 +16,7 @@ from django.core.exceptions import ValidationError
 from django.db import DatabaseError
 from django.db import connection
 from django.db import models
+from django.db import transaction
 from django.db.models import Count
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
@@ -45,6 +46,8 @@ from validibot.workflows.mixins import WorkflowObjectMixin
 from validibot.workflows.models import Workflow
 from validibot.workflows.schema_builder import workflow_has_input_form
 from validibot.workflows.serializers import WorkflowFullSerializer
+from validibot.workflows.services.version_context import build_workflow_version_context
+from validibot.workflows.services.versioning import WorkflowVersioningService
 from validibot.workflows.views_helpers import public_info_card_context
 
 logger = logging.getLogger(__name__)
@@ -375,6 +378,10 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
             workflow,
             can_manage=can_manage_public_info,
         )
+        version_context = build_workflow_version_context(
+            request=self.request,
+            workflow=workflow,
+        )
         context.update(
             {
                 "related_validations_url": reverse_with_org(
@@ -407,6 +414,7 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
                 ),
             },
         )
+        context.update(version_context)
         return context
 
 
@@ -463,6 +471,32 @@ class WorkflowJsonView(WorkflowObjectMixin, TemplateView):
         context["workflow"] = workflow
         context["json_data"] = json.dumps(serializer.data, indent=2, ensure_ascii=False)
         return context
+
+
+class WorkflowCloneView(WorkflowObjectMixin, View):
+    """Create an explicit new workflow version from an existing version."""
+
+    http_method_names = ["post"]
+
+    def post(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        if workflow.is_tombstoned or not self.user_can_manage_workflow():
+            raise PermissionDenied
+
+        report = WorkflowVersioningService.clone(workflow, user=request.user)
+        new_workflow = Workflow.objects.get(pk=report.new_workflow_id)
+        messages.success(
+            request,
+            _("Created workflow version %(version)s.")
+            % {"version": new_workflow.version},
+        )
+        return HttpResponseRedirect(
+            reverse_with_org(
+                "workflows:workflow_detail",
+                request=request,
+                kwargs={"pk": new_workflow.pk},
+            ),
+        )
 
 
 class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
@@ -536,12 +570,21 @@ class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
 
 
 class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
+    """Edit workflow settings, including clone-and-apply for locked versions."""
+
     template_name = "workflows/workflow_form.html"
+    clone_apply_post_key = "clone_and_apply"
 
     def dispatch(self, request, *args, **kwargs):
         if not self.user_can_manage_workflow():
             raise PermissionDenied
         return super().dispatch(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if request.POST.get(self.clone_apply_post_key):
+            return self._clone_and_apply(request)
+        return super().post(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -550,6 +593,19 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
             context["schema_requirement_rows"] = schema_to_requirement_rows(
                 workflow.input_schema,
             )
+        context.update(
+            build_workflow_version_context(
+                request=self.request,
+                workflow=workflow,
+            ),
+        )
+        form = context.get("form")
+        context["show_clone_apply_action"] = bool(
+            form is not None
+            and getattr(form, "requires_new_version_for_save", False)
+            and self.user_can_manage_workflow()
+            and not workflow.is_tombstoned
+        )
         return context
 
     def get_breadcrumbs(self):
@@ -585,6 +641,55 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
             return self.form_invalid(form)
         messages.success(self.request, _("Workflow updated."))
         return response
+
+    def _clone_and_apply(self, request):
+        """Create a new version and apply the submitted settings to it."""
+
+        source_workflow = self.object
+        validation_form = self.get_form_class()(
+            request.POST,
+            request.FILES,
+            instance=source_workflow,
+            user=request.user,
+            enforce_history_lock=False,
+        )
+        if not validation_form.is_valid():
+            return self.form_invalid(validation_form)
+
+        with transaction.atomic():
+            report = WorkflowVersioningService.clone(
+                source_workflow,
+                user=request.user,
+            )
+            new_workflow = Workflow.objects.get(pk=report.new_workflow_id)
+            data = request.POST.copy()
+            data["version"] = new_workflow.version
+            apply_form = self.get_form_class()(
+                data,
+                request.FILES,
+                instance=new_workflow,
+                user=request.user,
+                enforce_history_lock=False,
+            )
+            if not apply_form.is_valid():
+                transaction.set_rollback(True)
+                self.object = source_workflow
+                validation_form.add_error(
+                    None,
+                    _(
+                        "A new version could not be created because the submitted "
+                        "settings still need attention.",
+                    ),
+                )
+                return self.form_invalid(validation_form)
+            self.object = apply_form.save()
+
+        messages.success(
+            request,
+            _("Created version %(version)s and applied your changes.")
+            % {"version": self.object.version},
+        )
+        return HttpResponseRedirect(self.get_success_url())
 
     def get_success_url(self):
         return reverse_with_org(

@@ -1,3 +1,11 @@
+"""Integration coverage for workflow authoring and launch surfaces.
+
+These tests exercise the HTTP and API paths that stitch workflows,
+validators, assertions, submissions, and versioning together. They protect
+the product-level behavior authors rely on rather than only model/service
+units.
+"""
+
 from http import HTTPStatus
 
 import pytest
@@ -22,9 +30,12 @@ from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import Validator
+from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
+from validibot.workflows.tests.factories import WorkflowFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -87,7 +98,7 @@ def test_create_workflow_with_custom_step_and_assertion(client):
         data={
             "name": "Price check",
             "slug": "price-check",
-            "version": "1.0",
+            "version": "1.0.0",
             "is_active": "on",
             "project": str(project.pk),
             "allowed_file_types": [SubmissionFileType.JSON],
@@ -142,6 +153,146 @@ def test_create_workflow_with_custom_step_and_assertion(client):
     )
 
 
+def test_workflow_clone_view_creates_explicit_new_version(client):
+    """Authors need a concrete path when versioned-history edits require clone."""
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    workflow = WorkflowFactory(org=org, user=user, version="1.0.0")
+
+    response = client.post(
+        reverse("workflows:workflow_clone", kwargs={"pk": workflow.pk}),
+    )
+
+    workflow.refresh_from_db()
+    clone = Workflow.objects.get(slug=workflow.slug, version="2")
+    assert response.status_code == HTTPStatus.FOUND
+    assert str(clone.pk) in response.url
+    assert workflow.is_locked is True
+    assert clone.is_locked is False
+    assert clone.history_policy == workflow.history_policy
+
+
+def test_workflow_detail_shows_version_switcher_for_visible_family(client):
+    """The detail page must make sibling versions discoverable to authors."""
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    slug = "building-energy-check"
+    v1 = WorkflowFactory(org=org, user=user, slug=slug, version="1")
+    v2 = WorkflowFactory(org=org, user=user, slug=slug, version="2")
+
+    response = client.get(reverse("workflows:workflow_detail", kwargs={"pk": v1.pk}))
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    v1_url = reverse("workflows:workflow_detail", kwargs={"pk": v1.pk})
+    v2_url = reverse("workflows:workflow_detail", kwargs={"pk": v2.pk})
+    assert 'id="workflow-version-switcher"' in body
+    assert f'value="{v1_url}"' in body
+    assert f'value="{v2_url}"' in body
+    assert "v1" in body
+    assert "v2" in body
+    assert "latest" in body
+
+
+def test_workflow_update_can_clone_and_apply_locked_contract_change(client):
+    """A blocked semantic edit can be applied to a new version in one action.
+
+    Versioned workflows with runs should not silently mutate their historical
+    contract, but the author still needs an efficient way to keep iterating.
+    This verifies the two-step UX: the first submit explains that a new version
+    is required, and the explicit clone-and-apply submit preserves the old row
+    while applying the change to the clone.
+    """
+    from validibot.submissions.tests.factories import SubmissionFactory
+
+    user = UserFactory()
+    org = OrganizationFactory()
+    project = ProjectFactory(org=org, is_default=True)
+    _login_user_for_org(client, user, org)
+    workflow = WorkflowFactory(
+        org=org,
+        user=user,
+        project=project,
+        slug="contracted-workflow",
+        version="1",
+        history_policy=WorkflowHistoryPolicy.VERSIONED,
+        allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.TEXT],
+    )
+    submission = SubmissionFactory(workflow=workflow)
+    ValidationRunFactory(workflow=workflow, submission=submission)
+    update_url = reverse("workflows:workflow_update", kwargs={"pk": workflow.pk})
+    payload = {
+        "name": workflow.name,
+        "description": workflow.description,
+        "slug": workflow.slug,
+        "project": str(project.pk),
+        "allowed_file_types": [SubmissionFileType.JSON],
+        "input_schema_source_mode": "json_schema",
+        "input_schema_source_text": "",
+        "input_retention": DataRetention.DO_NOT_STORE,
+        "output_retention": "STORE_30_DAYS",
+        "success_message": workflow.success_message,
+        "allow_submission_name": "on",
+        "allow_submission_meta_data": "on",
+        "allow_submission_short_description": "on",
+        "version": workflow.version,
+        "history_policy": WorkflowHistoryPolicy.VERSIONED,
+        "is_active": "on",
+    }
+
+    blocked_response = client.post(update_url, data=payload)
+
+    assert blocked_response.status_code == HTTPStatus.OK
+    blocked_body = blocked_response.content.decode()
+    assert "This edit needs a new workflow version." in blocked_body
+    workflow.refresh_from_db()
+    assert workflow.allowed_file_types == [
+        SubmissionFileType.JSON,
+        SubmissionFileType.TEXT,
+    ]
+
+    clone_response = client.post(
+        update_url,
+        data={**payload, "clone_and_apply": "1"},
+    )
+
+    workflow.refresh_from_db()
+    clone = Workflow.objects.get(slug=workflow.slug, version="2")
+    assert clone_response.status_code == HTTPStatus.FOUND
+    assert str(clone.pk) in clone_response.url
+    assert workflow.allowed_file_types == [
+        SubmissionFileType.JSON,
+        SubmissionFileType.TEXT,
+    ]
+    assert workflow.is_locked is True
+    assert clone.allowed_file_types == [SubmissionFileType.JSON]
+    assert clone.history_policy == WorkflowHistoryPolicy.VERSIONED
+
+
+def test_workflow_clone_view_requires_workflow_edit_permission(client):
+    """View-only users may inspect workflow history but cannot fork versions."""
+    org = OrganizationFactory()
+    author = UserFactory()
+    viewer = UserFactory()
+    grant_role(author, org, RoleCode.OWNER)
+    grant_role(viewer, org, RoleCode.WORKFLOW_VIEWER)
+    viewer.set_current_org(org)
+    workflow = WorkflowFactory(org=org, user=author)
+    client.force_login(viewer)
+    session = client.session
+    session["active_org_id"] = org.pk
+    session.save()
+
+    response = client.post(
+        reverse("workflows:workflow_clone", kwargs={"pk": workflow.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
+    assert Workflow.objects.filter(slug=workflow.slug).count() == 1
+
+
 def test_basic_workflow_api_flow_returns_failure_when_price_high(
     api_client,
     run_validation_tasks_inline,
@@ -163,7 +314,7 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
         user=user,
         name="Price check",
         slug="price-check",
-        version="1.0",
+        version="1.0.0",
         is_active=True,
         allowed_file_types=[SubmissionFileType.JSON],
     )
@@ -179,7 +330,7 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
         user=user,
         name="price-check-rules",
         ruleset_type=RulesetType.BASIC,
-        version="1.0",
+        version="1.0.0",
     )
     WorkflowStep.objects.create(
         workflow=workflow,

@@ -183,8 +183,8 @@ class ValidationType(TextChoices):
     - AI_ASSIST: Supports CEL assertions against JSON payload
     - ENERGYPLUS: Supports CEL assertions against output signals
     - FMU: Supports CEL assertions against output signals
-    - JSON_SCHEMA: Schema-only (no assertion support)
-    - XML_SCHEMA: Schema-only (no assertion support)
+    - JSON_SCHEMA: Supports BASIC and CEL assertions after schema validation
+    - XML_SCHEMA: Supports BASIC and CEL assertions after schema validation
     - SHACL: Supports CEL assertions against output signals
     - CUSTOM_VALIDATOR: Supports BASIC and CEL assertions
     - THERM: Supports CEL assertions against output signals

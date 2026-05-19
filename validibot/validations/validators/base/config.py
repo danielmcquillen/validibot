@@ -146,7 +146,7 @@ class ValidatorConfig(BaseModel):
     has_processor: bool = False
     processor_name: str = ""
     is_system: bool = True
-    # Whether this validator supports step-level assertions (Basic + CEL).
+    # Whether this validator supports step-level assertions.
     # May evolve into a more granular field (e.g. list of assertion types)
     # if different validators need different assertion capabilities.
     supports_assertions: bool = False

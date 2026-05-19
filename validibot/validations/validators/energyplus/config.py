@@ -21,6 +21,7 @@ from validibot.validations.validators.base.config import ValidatorConfig
 config = ValidatorConfig(
     slug="energyplus-idf-validator",
     name="EnergyPlus\u2122 Validator",
+    short_description="Validate EnergyPlus IDF files and outputs.",
     description="Validate EnergyPlus\u2122 IDF models and run simulations.",
     validation_type=ValidationType.ENERGYPLUS,
     validator_class=(

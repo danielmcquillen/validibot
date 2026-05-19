@@ -352,7 +352,7 @@ class Ruleset(TimeStampedModel):
     )
 
     def is_used_by_locked_workflow(self) -> bool:
-        """Return True if any step on a locked or run-having workflow uses this ruleset.
+        """Return True if a versioned locked/run-having workflow uses this ruleset.
 
         Only considers the *direct* ``WorkflowStep.ruleset`` linkage —
         system validators' ``default_ruleset`` rows are managed by
@@ -362,11 +362,13 @@ class Ruleset(TimeStampedModel):
         """
         # Local import — workflows.models imports validations.models,
         # so importing the other way at module-load time would cycle.
+        from validibot.workflows.constants import WorkflowHistoryPolicy
         from validibot.workflows.models import WorkflowStep
 
         return (
             WorkflowStep.objects.filter(
                 ruleset=self,
+                workflow__history_policy=WorkflowHistoryPolicy.VERSIONED,
             )
             .filter(
                 Q(workflow__is_locked=True)
@@ -668,10 +670,34 @@ class RulesetAssertion(TimeStampedModel):
             raise ValidationError(errors)
 
     @property
+    def short_type_label(self) -> str:
+        """Short, mechanism-oriented pill label for the assertion card.
+
+        Replaces ``get_assertion_type_display()`` on the card view because
+        the underlying enum label is the *validator family* ("SHACL",
+        "Basic Assertion", "CEL expression") whereas what an author
+        actually wants to see at a glance is the assertion *mechanism* —
+        is this a SPARQL query, a CEL expression, or a plain comparison?
+
+        - ``SHACL`` family → "SPARQL" (the assertion is always a SPARQL
+          ASK; "SHACL" on a SHACL step is redundant)
+        - ``CEL_EXPRESSION`` family → "CEL"
+        - ``BASIC`` family → "Basic"
+
+        Kept as a property so the template stays free of magic strings
+        and the mapping has a single source of truth.
+        """
+        if self.assertion_type == AssertionType.SHACL:
+            return _("SPARQL")
+        if self.assertion_type == AssertionType.CEL_EXPRESSION:
+            return _("CEL")
+        return _("Basic")
+
+    @property
     def target_display(self) -> str:
         if self.assertion_type == AssertionType.SHACL:
             description = (self.rhs or {}).get("description") or ""
-            return description or _("SHACL SPARQL ASK")
+            return description or _("SPARQL ASK")
         if self.target_signal_definition_id and self.target_signal_definition:
             sig = self.target_signal_definition
             prefix = "o." if sig.direction == SignalDirection.OUTPUT else "s."
@@ -682,8 +708,18 @@ class RulesetAssertion(TimeStampedModel):
     def condition_display(self) -> str:
         if self.assertion_type == AssertionType.SHACL:
             target_graph = (self.rhs or {}).get("target_graph", "data")
-            return _("SPARQL ASK against %(target)s graph") % {
-                "target": target_graph,
+            target_label = {
+                "data": _("submitted RDF data graph"),
+                "results": _("SHACL results graph"),
+                "union": _("data + results graph"),
+            }.get(target_graph, _("%(target)s graph") % {"target": target_graph})
+            description = (self.rhs or {}).get("description") or ""
+            if description:
+                return _("SPARQL ASK against %(target)s") % {
+                    "target": target_label,
+                }
+            return _("Against %(target)s") % {
+                "target": target_label,
             }
         if self.assertion_type == AssertionType.CEL_EXPRESSION:
             # CEL expression is already shown via target_display (stored in
@@ -1012,8 +1048,7 @@ class Validator(TimeStampedModel):
         default=False,
         help_text=_(
             "True when this validator supports step-level assertions "
-            "(Basic and CEL). Schema-only validators (JSON Schema, "
-            "XML Schema) do not support assertions."
+            "(Basic, CEL, or validator-specific assertion types)."
         ),
     )
     fmu_model = models.ForeignKey(
@@ -3001,20 +3036,22 @@ class ValidatorResourceFile(TimeStampedModel):
         ]
 
     def is_used_by_locked_workflow(self) -> bool:
-        """Return True if any locked/used workflow's step references this file.
+        """Return True if any versioned locked/used workflow references this file.
 
         Catalog files are referenced from a workflow step via
         ``WorkflowStepResource.validator_resource_file``. The check
-        walks that one FK and gates on the same workflow signal as
-        Ruleset (locked OR has-runs).
+        walks that one FK and gates on the same workflow signal as Ruleset
+        (versioned history AND locked OR has-runs).
         """
         # Local import to avoid the circular workflows<->validations
         # module load.
+        from validibot.workflows.constants import WorkflowHistoryPolicy
         from validibot.workflows.models import WorkflowStepResource
 
         return (
             WorkflowStepResource.objects.filter(
                 validator_resource_file=self,
+                step__workflow__history_policy=WorkflowHistoryPolicy.VERSIONED,
             )
             .filter(
                 Q(step__workflow__is_locked=True)

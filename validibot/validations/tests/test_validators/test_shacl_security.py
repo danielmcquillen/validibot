@@ -560,8 +560,8 @@ class TestTimeoutEnforcement:
     """The per-query wall-clock budget kicks in for long-running queries.
 
     We avoid an actual pathological query in tests (it would slow the
-    suite). Instead we set the timeout to zero and confirm the daemon-
-    thread wrapper reports the timeout cleanly rather than crashing.
+    suite). Instead we set the timeout to zero and confirm the subprocess
+    wrapper reports the timeout cleanly rather than crashing.
     """
 
     def test_zero_timeout_produces_timeout_error(self):
@@ -569,11 +569,8 @@ class TestTimeoutEnforcement:
 
         Edge-case but defensive: even a query that returns instantly
         would not have time to complete with a sub-millisecond budget.
-        The wrapper's ``done.wait(timeout=0)`` returns immediately and
-        produces the timeout message; the underlying daemon thread
-        continues briefly and is garbage-collected. This proves the
-        wrapper does not crash on zero or negative timeout boundary
-        conditions.
+        The subprocess timeout path should return a structured error
+        instead of leaking a running query in the Django or Celery worker.
         """
         g = _build_person_graph()
         # We must call the internal function directly to set timeout=0.

@@ -42,6 +42,19 @@
       min-height: 70vh;
       padding-bottom: 10rem;
     }
+    // Wrapper that holds each .assertion-card. The card's own
+    // margin-bottom carves the gap below the card; when this wrapper
+    // is immediately followed by a connector (dotted line), we zero
+    // that gap so the connector sits flush against the card edge.
+    // Matches the workflow editor's step → arrow → step layout.
+    //
+    // The :has() selector targets the wrapper (the actual sibling of
+    // the connector) rather than the card; the card is one level
+    // deeper inside the wrapper, so a :has() on the card itself
+    // would never match the connector.
+    .assertion-step-wrapper:has(+ .assertion-add-connector) > .assertion-card {
+      margin-bottom: 0;
+    }
     .assertion-card {
       background: #fff;
       width: 100%;
@@ -50,11 +63,70 @@
         border-top: 4px solid var(--bs-primary);
         box-shadow: 0 4px 12px rgba(0, 102, 204, 0.15);
       }
+      &.validator-operation-card {
+        border-left: 4px solid var(--bs-primary);
+
+        .validator-operation-icon {
+          align-items: center;
+          background: var(--bs-primary-bg-subtle);
+          border-radius: 0.5rem;
+          color: var(--bs-primary);
+          display: inline-flex;
+          font-size: 1.25rem;
+          height: 2.5rem;
+          justify-content: center;
+          width: 2.5rem;
+        }
+      }
     }
     .assertion-actions {
       .btn {
         &:disabled {
           opacity: 0.4;
+        }
+      }
+    }
+    .assertion-add-connector {
+      // Matches the workflow editor's ``.workflow-step-connector`` —
+      // no top/bottom margin and a 1.5rem dotted line, so the
+      // connector sits flush against the cards above and below
+      // rather than carving a visible gap on each side.
+      align-items: center;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      justify-content: flex-end;
+      position: relative;
+
+      .assertion-add-dotted-line {
+        border-left: 2px dotted rgba(var(--bs-primary-rgb), 0.45);
+        height: 1.5rem;
+        width: 2px;
+      }
+
+      &.assertion-add-connector--line-only {
+        pointer-events: none;
+      }
+
+      .assertion-add-button {
+        align-items: center;
+        background-color: var(--bs-white);
+        border: 2px solid var(--bs-primary);
+        border-radius: 50%;
+        color: var(--bs-primary);
+        display: inline-flex;
+        font-size: 1.2rem;
+        height: 2.75rem;
+        justify-content: center;
+        transition: background-color 0.2s ease, color 0.2s ease,
+          box-shadow 0.2s ease;
+        width: 2.75rem;
+
+        &:hover,
+        &:focus {
+          background-color: var(--bs-primary);
+          box-shadow: 0 0.35rem 1.1rem rgba(var(--bs-primary-rgb), 0.25);
+          color: var(--bs-white);
         }
       }
     }

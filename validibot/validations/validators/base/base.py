@@ -624,6 +624,7 @@ class BaseValidator(ABC):
         ruleset: Ruleset | None,
         payload: Any,
         stage: str,
+        exclude_assertion_types: set[str] | None = None,
     ) -> AssertionEvaluationResult:
         """
         Evaluate all assertions for a given stage using the evaluator registry.
@@ -646,6 +647,8 @@ class BaseValidator(ABC):
             payload: The data to evaluate assertions against.
             stage: "input" or "output" - only assertions matching this stage
                 are evaluated.
+            exclude_assertion_types: Assertion types already handled by the
+                caller and intentionally skipped by the generic evaluator.
 
         Returns:
             AssertionEvaluationResult with issues, total count, and failure count.
@@ -660,6 +663,8 @@ class BaseValidator(ABC):
         from validibot.validations.assertions.evaluators.base import AssertionContext
         from validibot.validations.assertions.evaluators.registry import get_evaluator
 
+        excluded = set(exclude_assertion_types or ())
+
         # Merge assertions: default_ruleset first, then step-level ruleset.
         # Default assertions always run and are evaluated first.
         stage_assertions: list = []
@@ -672,7 +677,9 @@ class BaseValidator(ABC):
                 .order_by("order", "pk")
             )
             stage_assertions.extend(
-                a for a in assertions if a.resolved_run_stage == stage
+                a
+                for a in assertions
+                if a.resolved_run_stage == stage and a.assertion_type not in excluded
             )
 
         if not stage_assertions:
@@ -706,6 +713,45 @@ class BaseValidator(ABC):
             issues=issues,
             total=total,
             failures=failures,
+        )
+
+    def evaluate_assertions_for_stages(
+        self,
+        *,
+        validator: Validator,
+        ruleset: Ruleset | None,
+        payload: Any,
+        stages: tuple[str, ...] = ("input", "output"),
+        exclude_assertion_types: set[str] | None = None,
+    ) -> AssertionEvaluationResult:
+        """Evaluate assertions for multiple stages against one payload.
+
+        Inline validators such as Basic, JSON Schema, and XML Schema do not
+        have a separate processor boundary, but authors can still add
+        assertions that resolve as either input-stage or output-stage checks.
+        This helper keeps the aggregation of issues and assertion counts
+        consistent across those validators.
+        """
+        issues: list[ValidationIssue] = []
+        total_assertions = 0
+        total_failures = 0
+
+        for stage in stages:
+            result = self.evaluate_assertions_for_stage(
+                validator=validator,
+                ruleset=ruleset,
+                payload=payload,
+                stage=stage,
+                exclude_assertion_types=exclude_assertion_types,
+            )
+            issues.extend(result.issues)
+            total_assertions += result.total
+            total_failures += result.failures
+
+        return AssertionEvaluationResult(
+            issues=issues,
+            total=total_assertions,
+            failures=total_failures,
         )
 
     @abstractmethod

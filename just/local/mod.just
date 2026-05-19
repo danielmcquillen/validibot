@@ -49,6 +49,14 @@ local_compose_env_args := `bash -lc 'if [ -f ".envs/.local/.build" ]; then print
 # Start all local Docker containers in detached mode
 # This brings up PostgreSQL, Redis, Django, and any other services defined
 # in docker-compose.local.yml
+#
+# [no-cd] keeps the recipe running from the project root (Just's default
+# for mod recipes is the module's own directory). Without it, the relative
+# {{local_compose}} path would resolve to just/local/docker-compose.local.yml
+# and fail. The same applies to every recipe in this file that touches
+# {{local_compose}} or relative paths like .envs/ — see local-pro/mod.just
+# and local-cloud/mod.just for the same pattern.
+[no-cd]
 up:
     #!/usr/bin/env bash
     # Check for port conflicts before starting
@@ -76,6 +84,7 @@ up:
 
 # Stop all local Docker containers
 # Containers are stopped but not removed - data persists in volumes
+[no-cd]
 down:
     docker compose {{local_compose_env_args}} -f {{local_compose}} down
 
@@ -83,6 +92,7 @@ down:
 # Use this after changing Dockerfile, requirements, or dependencies
 # Usage: just local build           # detached (background)
 # Usage: just local build --attach  # attached (shows logs, Ctrl+C to stop)
+[no-cd]
 build *args:
     docker compose {{local_compose_env_args}} -f {{local_compose}} up {{ if args == "--attach" { "" } else { "-d" } }} --build
 
@@ -96,6 +106,7 @@ build *args:
 # Usage: just local rebuild              # cached rebuild + fresh venv
 #        just local rebuild --no-cache   # full clean rebuild (slow)
 #        just local rebuild worker       # rebuild specific service
+[no-cd]
 rebuild *args:
     docker compose {{local_compose_env_args}} -f {{local_compose}} down
     -docker volume rm validibot_validibot_local_venv
@@ -104,10 +115,12 @@ rebuild *args:
 
 # Follow logs from all containers (Ctrl+C to exit)
 # Shows interleaved logs from all services
+[no-cd]
 logs:
     docker compose {{local_compose_env_args}} -f {{local_compose}} logs -f
 
 # Show status of all containers
+[no-cd]
 ps:
     docker compose {{local_compose_env_args}} -f {{local_compose}} ps
 
@@ -116,6 +129,7 @@ restart: down up
 
 # Stop containers and remove volumes (clean slate)
 # WARNING: This deletes all database data! Use for clean slate only.
+[no-cd]
 clean:
     docker compose {{local_compose_env_args}} -f {{local_compose}} down -v --remove-orphans
 
@@ -129,16 +143,19 @@ _db_url := 'DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POS
 
 # Open a bash shell in the Django container
 # Useful for running arbitrary commands, debugging, or exploring
+[no-cd]
 shell:
     docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} exec bash'
 
 # Open a Django shell in the container
 # Usage: just local djshell
+[no-cd]
 djshell:
     docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py shell'
 
 # Run Django migrations in the local container
 # Applies any pending database migrations
+[no-cd]
 migrate:
     docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py migrate'
 
@@ -146,6 +163,7 @@ migrate:
 # Usage: just local manage createsuperuser
 # Usage: just local manage "shell_plus --ipython"
 # Usage: just local manage seed_weather_files
+[no-cd]
 manage +command:
     docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py {{command}}'
 
@@ -158,12 +176,14 @@ manage +command:
 # Usage: just local test
 # Usage: just local test -k "test_name"    # Run specific test
 # Usage: just local test --collect-only    # See what tests would run
+[no-cd]
 test *args:
     uv run pytest {{args}} --log-cli-level=INFO
 
 # Run integration tests end-to-end (starts/stops isolated Postgres + mailpit)
 # Uses a separate Docker Compose project name to avoid affecting dev containers.
 # Prereqs: Docker Compose available; BUILD_DJANGO_IMAGE=1 to force image rebuild
+[no-cd]
 test-integration *args:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -198,6 +218,7 @@ test-integration *args:
 # See: docs/dev_docs/how-to/run-e2e-tests.md
 #
 # Usage: just local test-e2e
+[no-cd]
 test-e2e *args:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -227,6 +248,7 @@ test-e2e *args:
 # The EnergyPlus simulation takes ~2-5 minutes per test case.
 #
 # Usage: just local test-e2e-energyplus
+[no-cd]
 test-e2e-energyplus *args:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -269,11 +291,13 @@ test-e2e-energyplus *args:
 # =============================================================================
 
 # Build developer documentation with Zensical
+[no-cd]
 docs-build:
     uv run zensical build -f mkdocs.dev.yml --clean
 
 # Serve developer documentation locally with Zensical (port 9000)
 # For contributors and maintainers
+[no-cd]
 docs-dev:
     -lsof -ti :9000 | xargs kill 2>/dev/null
     uv run zensical serve -f mkdocs.dev.yml -a localhost:9000

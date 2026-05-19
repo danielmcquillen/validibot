@@ -17,16 +17,15 @@
           <div class="d-flex flex-wrap align-items-center gap-2">
             <h1 class="app-page-title mb-0 text-truncate">
               <i class="bi bi-box me-2"></i>Workflow: {{ workflow.name }}
-              {% if workflow.version %}
-                <span class="text-muted xs-small ms-2">( {% trans "Version" %} {{ workflow.version }} )</span>
-              {% endif %}
             </h1>
+            {% include "workflows/partials/workflow_version_badge.html" %}
           </div>
         </div>
       </div>
       <div class="col-12 col-lg-6 ">
 
         <div class="d-flex flex-wrap gap-2 justify-content-end">
+          {% include "workflows/partials/workflow_version_switcher.html" %}
           {% if not workflow.is_tombstoned %}
             <a class="btn btn-light text-dark"
                data-bs-toggle="tooltip"
@@ -45,7 +44,7 @@
               <i class="bi-diagram-3"></i>
             </a>
           {% endif %}
-          {% if can_manage_workflow %}
+          {% if can_manage_workflow and not workflow.is_tombstoned %}
             <a class="btn btn-light text-dark"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
@@ -53,6 +52,19 @@
                href="{% url 'workflows:workflow_signal_mapping' workflow.pk %}">
               <i class="bi-bullseye"></i>
             </a>
+            <form method="post"
+                  action="{% org_url 'workflows:workflow_clone' pk=workflow.pk %}"
+                  onsubmit="return confirm('{% trans "Create a new editable version of this workflow?" %}');">
+              {% csrf_token %}
+              <button type="submit"
+                      class="btn btn-light text-dark"
+                      data-bs-toggle="tooltip"
+                      data-bs-placement="top"
+                      title="{% trans "Create new workflow version" %}"
+                      aria-label="{% trans "Create new workflow version" %}">
+                <i class="bi-files"></i>
+              </button>
+            </form>
           {% endif %}
           {% if can_manage_workflow %}
             <a class="btn btn-light text-dark"
@@ -307,6 +319,12 @@
               </dt>
               <dd class="col-sm-8">
                 <span class="text-muted">{{ workflow.version|default:_("not set") }}</span>
+              </dd>
+              <dt class="col-sm-4">
+                {% trans "History policy" %}
+              </dt>
+              <dd class="col-sm-8">
+                <span class="text-muted">{{ workflow.get_history_policy_display }}</span>
               </dd>
               <dt class="col-sm-4">
                 {% trans "File types" %}

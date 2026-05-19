@@ -5,8 +5,11 @@ This module verifies that ``build_display_signals()`` and
 ``build_template_params_display()`` correctly:
 
 - Extract raw signals from ``step_run.output["signals"]``
-- Filter signals by the author's ``display_signals`` selection (or show all
-  when the list is empty)
+- Filter signals by the author's ``display_signals`` selection.
+  **Empty list means show NONE** — authors opt in to each signal
+  they want surfaced. Tests that need to verify formatting,
+  enrichment, or ordering explicitly set ``display_signals`` to
+  the slugs they want exposed.
 - Enrich each signal with signal definition metadata (labels, units, precision)
 - Format numeric values with thousands separators and configurable decimal
   precision
@@ -49,7 +52,10 @@ def _make_energyplus_step_run(
     Args:
         output: The ``step_run.output`` JSONField value.
         display_signals: Author-selected signal slugs.  When None,
-            defaults to empty list (show all signals).
+            the ``display_signals`` key is omitted from the step
+            config, which (with the opt-in default) results in NO
+            signals being surfaced. Tests that need signals visible
+            must pass an explicit list of slugs.
         template_variables: Optional list of template variable dicts
             stored in step config as test setup data. In production,
             these are passed to ``sync_step_template_signals()`` to
@@ -74,8 +80,10 @@ def _make_energyplus_step_run(
 def _make_fmu_step_run(output: dict | None = None):
     """Create a ValidationStepRun backed by an FMU validator.
 
-    FMU step configs do NOT have a ``display_signals`` field, so this
-    verifies the cross-validator fallback behavior (show all signals).
+    FMU step configs do NOT have a ``display_signals`` field of their
+    own, so this verifies the cross-validator fallback path.  With the
+    opt-in default, the missing field reads as an empty list and the
+    helper surfaces no signals.
     """
     validator = ValidatorFactory(validation_type=ValidationType.FMU)
     step = WorkflowStepFactory(validator=validator, config={})
@@ -106,10 +114,16 @@ class TestBuildDisplaySignals:
         sr = _make_energyplus_step_run(output={"some_other_key": 42})
         assert build_display_signals(sr) == []
 
-    def test_returns_all_signals_when_display_signals_empty(self):
-        """When ``display_signals`` is ``[]`` (the default), all signals
-        should be shown.  This is the backward-compatible behavior for
-        validators that haven't been configured with signal selection."""
+    def test_returns_no_signals_when_display_signals_empty(self):
+        """When ``display_signals`` is ``[]`` (the default), NO signals
+        are surfaced.
+
+        The opt-in default protects against accidentally exposing
+        internal diagnostic signals to the submitter, and it matches
+        the principle of least surprise — the API returns only what
+        the workflow author explicitly chose. To show signals, the
+        author must enumerate them in ``display_signals``.
+        """
         sr = _make_energyplus_step_run(
             output={
                 "signals": {
@@ -120,9 +134,7 @@ class TestBuildDisplaySignals:
             display_signals=[],
         )
         result = build_display_signals(sr)
-        slugs = [s.slug for s in result]
-        assert "electricity_kwh" in slugs
-        assert "gas_kwh" in slugs
+        assert result == []
 
     def test_filters_by_display_signals(self):
         """When ``display_signals`` contains specific slugs, only those
@@ -145,7 +157,12 @@ class TestBuildDisplaySignals:
     def test_enriches_with_catalog_metadata(self):
         """Each signal should get its label, units, and description from
         the matching ``SignalDefinition``.  This test creates a
-        signal definition with specific metadata and verifies enrichment."""
+        signal definition with specific metadata and verifies enrichment.
+
+        ``display_signals`` is set explicitly because the opt-in default
+        would otherwise return an empty list and we'd never reach the
+        enrichment assertions below.
+        """
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
         SignalDefinitionFactory(
             validator=validator,
@@ -158,7 +175,10 @@ class TestBuildDisplaySignals:
             metadata={"precision": 1},
             order=10,
         )
-        step = WorkflowStepFactory(validator=validator, config={})
+        step = WorkflowStepFactory(
+            validator=validator,
+            config={"display_signals": ["electricity_kwh"]},
+        )
         sr = ValidationStepRunFactory(
             workflow_step=step,
             output={"signals": {"electricity_kwh": 12345.6}},
@@ -174,36 +194,44 @@ class TestBuildDisplaySignals:
     def test_formats_float_with_default_precision(self):
         """Float values should be formatted with 2 decimal places and
         thousands separators when no precision is specified in catalog
-        metadata."""
+        metadata. ``display_signals`` opts the test signal in so the
+        formatting path actually runs."""
         sr = _make_energyplus_step_run(
             output={"signals": {"value": 12345.6}},
+            display_signals=["value"],
         )
         result = build_display_signals(sr)
         assert result[0].formatted_value == "12,345.60"
 
     def test_formats_integer_with_thousands_separator(self):
         """Integer values should get thousands separators and no decimal
-        places (e.g., 12345 → '12,345')."""
+        places (e.g., 12345 → '12,345'). ``display_signals`` opts the
+        test signal in so the formatting path actually runs."""
         sr = _make_energyplus_step_run(
             output={"signals": {"count": 12345}},
+            display_signals=["count"],
         )
         result = build_display_signals(sr)
         assert result[0].formatted_value == "12,345"
 
     def test_formats_none_as_na(self):
         """``None`` signal values should be formatted as 'N/A' rather
-        than displaying Python's ``None`` string."""
+        than displaying Python's ``None`` string. ``display_signals``
+        opts the test signal in so the formatting path actually runs."""
         sr = _make_energyplus_step_run(
             output={"signals": {"missing_value": None}},
+            display_signals=["missing_value"],
         )
         result = build_display_signals(sr)
         assert result[0].formatted_value == "N/A"
 
     def test_formats_string_as_passthrough(self):
         """String signal values should pass through unchanged, without
-        any numeric formatting applied."""
+        any numeric formatting applied. ``display_signals`` opts the
+        test signal in so the formatting path actually runs."""
         sr = _make_energyplus_step_run(
             output={"signals": {"status": "Autosize"}},
+            display_signals=["status"],
         )
         result = build_display_signals(sr)
         assert result[0].formatted_value == "Autosize"
@@ -211,7 +239,12 @@ class TestBuildDisplaySignals:
     def test_orders_by_catalog_order(self):
         """Signals should be sorted by their signal definition's ``order``
         field, not by their slug or insertion order in the output dict.
-        This lets authors control the display order via catalog config."""
+        This lets authors control the display order via catalog config.
+
+        ``display_signals`` is set so both signals are exposed; without
+        it the opt-in default would return an empty list before the
+        ordering logic runs.
+        """
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
         SignalDefinitionFactory(
             validator=validator,
@@ -225,7 +258,10 @@ class TestBuildDisplaySignals:
             order=10,
             direction="output",
         )
-        step = WorkflowStepFactory(validator=validator, config={})
+        step = WorkflowStepFactory(
+            validator=validator,
+            config={"display_signals": ["alpha", "beta"]},
+        )
         sr = ValidationStepRunFactory(
             workflow_step=step,
             output={"signals": {"beta": 2.0, "alpha": 1.0}},
@@ -236,18 +272,28 @@ class TestBuildDisplaySignals:
     def test_falls_back_to_slug_label_when_no_catalog(self):
         """When a signal slug has no matching signal definition, the label
         should be derived from the slug itself by replacing underscores
-        with spaces and title-casing."""
+        with spaces and title-casing. ``display_signals`` opts the test
+        signal in so the slug-fallback path actually runs."""
         sr = _make_energyplus_step_run(
             output={"signals": {"site_electricity_kwh": 100.0}},
+            display_signals=["site_electricity_kwh"],
         )
         result = build_display_signals(sr)
         assert result[0].label == "Site Electricity Kwh"
 
     def test_cross_validator_no_display_signals_attribute(self):
         """For validators whose step config model has no
-        ``display_signals`` field (e.g., FMU), all signals should be
-        shown.  This verifies the cross-validator generality using
-        ``getattr(typed_config, 'display_signals', [])``."""
+        ``display_signals`` field (e.g., FMU), NO signals are shown
+        by default — the missing field reads as an empty list via
+        ``getattr(typed_config, 'display_signals', [])`` which, under
+        the opt-in default, means "expose nothing".
+
+        Authors of those validators surface signals by adding
+        ``display_signals`` to the step config (the ``BaseStepConfig``
+        model already declares the field, so the value lands on the
+        ``step.config`` JSONField even without a validator-specific
+        config class).
+        """
         sr = _make_fmu_step_run(
             output={
                 "signals": {
@@ -257,9 +303,7 @@ class TestBuildDisplaySignals:
             },
         )
         result = build_display_signals(sr)
-        slugs = [s.slug for s in result]
-        assert "metric_a" in slugs
-        assert "metric_b" in slugs
+        assert result == []
 
     def test_display_signals_with_nonexistent_slug(self):
         """If ``display_signals`` references a slug not present in the

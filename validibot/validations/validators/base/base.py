@@ -682,6 +682,7 @@ class BaseValidator(ABC):
         context = AssertionContext(validator=validator, engine=self, stage=stage)
 
         issues: list[ValidationIssue] = []
+        evaluated_total = 0
         for assertion in stage_assertions:
             evaluator = get_evaluator(assertion.assertion_type)
             if not evaluator:
@@ -691,6 +692,7 @@ class BaseValidator(ABC):
                 )
                 continue
 
+            evaluated_total += 1
             assertion_issues = evaluator.evaluate(
                 assertion=assertion,
                 payload=payload,
@@ -698,7 +700,7 @@ class BaseValidator(ABC):
             )
             issues.extend(assertion_issues)
 
-        total = len(stage_assertions)
+        total = evaluated_total
         failures = self._count_assertion_failures(issues)
         return AssertionEvaluationResult(
             issues=issues,

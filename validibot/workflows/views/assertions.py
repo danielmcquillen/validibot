@@ -22,6 +22,7 @@ from django.views.generic.edit import FormView
 
 from validibot.core.utils import reverse_with_org
 from validibot.core.view_helpers import hx_trigger_response
+from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.forms import RulesetAssertionForm
 from validibot.validations.models import RulesetAssertion
@@ -103,6 +104,7 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
             "_workflow_signal_names_cache",
             set(),
         )
+        kwargs["shacl_sparql_assertion_count"] = self.get_shacl_sparql_assertion_count()
         return kwargs
 
     def get_target_slug_datalist_id(self) -> str:
@@ -179,6 +181,15 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
             | Q(target_signal_definition__isnull=True),
         )
 
+    def get_shacl_sparql_assertion_count(self) -> int:
+        return (
+            self.get_ruleset()
+            .assertions.filter(
+                assertion_type=AssertionType.SHACL,
+            )
+            .count()
+        )
+
 
 class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
     modal_title = _("Add Assertion")
@@ -247,6 +258,14 @@ class WorkflowStepAssertionUpdateView(WorkflowStepAssertionModalBase):
 
     def get_initial(self):
         return RulesetAssertionForm.initial_from_instance(self._get_assertion())
+
+    def get_shacl_sparql_assertion_count(self) -> int:
+        return (
+            self.get_ruleset()
+            .assertions.filter(assertion_type=AssertionType.SHACL)
+            .exclude(pk=self._get_assertion().pk)
+            .count()
+        )
 
     def form_valid(self, form):
         assertion = self._get_assertion()

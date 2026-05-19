@@ -1,5 +1,6 @@
 import logging
 from dataclasses import asdict
+from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
@@ -25,6 +26,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.models import Ruleset
 from validibot.validations.models import Validator
+from validibot.validations.validators.shacl.engine import FILE_SEPARATOR
 from validibot.validations.validators.shacl.persistence import (
     concatenate_uploaded_files,
 )
@@ -437,6 +439,7 @@ def build_shacl_config(
     workflow: Workflow,
     form: ShaclStepConfigForm,
     step: WorkflowStep | None,
+    validator: Validator | None = None,
 ) -> tuple[dict[str, Any], Ruleset]:
     """Materialise a SHACL step config + Ruleset from form data.
 
@@ -466,6 +469,25 @@ def build_shacl_config(
     inference_mode = cleaned.get("inference_mode") or "rdfs"
     advanced_shacl = bool(cleaned.get("advanced_shacl"))
     submission_format = cleaned.get("submission_format") or "auto"
+    library_shapes_text = ""
+    library_metadata: dict[str, Any] = {}
+    library_snapshot: dict[str, Any] | None = None
+    library_ruleset = getattr(validator, "default_ruleset", None)
+    if library_ruleset is not None and not getattr(validator, "is_system", False):
+        library_shapes_text = getattr(library_ruleset, "rules", "") or ""
+        library_metadata = dict(getattr(library_ruleset, "metadata", None) or {})
+        library_snapshot = {
+            "validator_id": validator.pk,
+            "validator_slug": validator.slug,
+            "default_ruleset_id": library_ruleset.pk,
+            "default_ruleset_version": library_ruleset.version,
+            "rules_sha256": sha256(
+                library_shapes_text.encode("utf-8"),
+            ).hexdigest(),
+            "ontology_sha256": sha256(
+                (library_metadata.get("ontology_text", "") or "").encode("utf-8"),
+            ).hexdigest(),
+        }
     bundled_standards: list[str] = []
     if cleaned.get("bundle_brick"):
         bundled_standards.append("brick-1.4")
@@ -481,6 +503,11 @@ def build_shacl_config(
     keep_existing_shapes = bool(step and step.ruleset_id) and not (
         shape_files or shape_text
     )
+    snapshot_to_persist = (
+        existing_metadata.get("library_default_snapshot")
+        if keep_existing_shapes
+        else library_snapshot
+    )
     replace_ontology = bool(ontology_files or ontology_text)
 
     # Fresh SHACL uploads replace the step-owned shapes. When the author is
@@ -494,21 +521,36 @@ def build_shacl_config(
         if not preview:
             preview = shapes_concat[:1200]
     else:
-        shapes_concat, shape_files_meta = concatenate_uploaded_files(
+        step_shapes_concat, shape_files_meta = concatenate_uploaded_files(
             shape_files,
             shape_text,
         )
+        shapes_parts = [p for p in (library_shapes_text, step_shapes_concat) if p]
+        shapes_concat = FILE_SEPARATOR.join(shapes_parts)
         has_inline_shapes = bool(shape_text)
         preview = shapes_concat[:1200]
 
     # Ontologies have their own keep/replace semantics so authors can adjust
     # inference context without re-uploading the usually much larger shapes.
     if replace_ontology:
-        ontology_concat, ontology_files_meta = concatenate_uploaded_files(
+        step_ontology_concat, ontology_files_meta = concatenate_uploaded_files(
             ontology_files,
             ontology_text,
         )
+        ontology_parts = [
+            p
+            for p in (
+                library_metadata.get("ontology_text", "") or "",
+                step_ontology_concat,
+            )
+            if p
+        ]
+        ontology_concat = FILE_SEPARATOR.join(ontology_parts)
         has_inline_ontology = bool(ontology_text)
+    elif not keep_existing_shapes:
+        ontology_concat = library_metadata.get("ontology_text", "") or ""
+        ontology_files_meta = []
+        has_inline_ontology = bool(ontology_concat)
     else:
         ontology_concat = existing_metadata.get("ontology_text", "") or ""
         ontology_files_meta = existing_metadata.get("ontology_files", []) or []
@@ -519,16 +561,8 @@ def build_shacl_config(
         ruleset.rules_file.delete(save=False)
         ruleset.rules_file = None
 
-    # SPARQL ASK assertions: the form's clean() ran the AST scrubber on
-    # every entry and stashed the normalised list under "sparql_assertions".
-    # If the field was left blank when editing, fall back to whatever was
-    # already saved (keep-existing semantics, mirroring shapes / ontology).
-    sparql_assertions = cleaned.get("sparql_assertions")
-    raw_textarea = (cleaned.get("sparql_assertions_json") or "").strip()
-    if not raw_textarea and sparql_assertions == []:
-        sparql_assertions = existing_metadata.get("sparql_assertions", []) or []
-
     metadata = existing_metadata
+    metadata.pop("sparql_assertions", None)
     metadata.update(
         {
             "shape_files": shape_files_meta,
@@ -540,7 +574,9 @@ def build_shacl_config(
             "inference_mode": inference_mode,
             "advanced_shacl": advanced_shacl,
             "submission_format": submission_format,
-            "sparql_assertions": sparql_assertions,
+            "library_default_inlined": snapshot_to_persist is not None
+            or bool(existing_metadata.get("library_default_inlined")),
+            "library_default_snapshot": snapshot_to_persist,
         },
     )
     ruleset.metadata = metadata
@@ -557,7 +593,7 @@ def build_shacl_config(
         # First 1200 chars of the merged shapes for the step editor's
         # read-only preview, mirroring build_json_schema_config.
         "shapes_text_preview": preview,
-        "sparql_assertions": sparql_assertions,
+        "library_default_snapshot": metadata.get("library_default_snapshot"),
     }
     return config, ruleset
 
@@ -1355,7 +1391,12 @@ def save_workflow_step(
     elif vtype == ValidationType.XML_SCHEMA:
         config, ruleset = build_xml_schema_config(workflow, form, step)
     elif vtype == ValidationType.SHACL:
-        config, ruleset = build_shacl_config(workflow, form, step)
+        config, ruleset = build_shacl_config(
+            workflow,
+            form,
+            step,
+            validator=validator,
+        )
     elif vtype == ValidationType.ENERGYPLUS:
         config, template_vars = build_energyplus_config(form, step)
         # File type enforcement: parameterized templates require JSON-only

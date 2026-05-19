@@ -16,12 +16,15 @@ step-level ``ruleset`` adds project-specific extras).
 from __future__ import annotations
 
 import logging
+from hashlib import sha256
 from typing import TYPE_CHECKING
 from typing import Any
 
 from django.utils.translation import gettext as _
 
+from validibot.validations.constants import AssertionType
 from validibot.validations.constants import Severity
+from validibot.validations.validators.base.base import AssertionStats
 from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
@@ -54,9 +57,10 @@ class SHACLValidator(BaseValidator):
     The merge mirrors the assertion-merge pattern in
     :meth:`BaseValidator.evaluate_assertions_for_stage`.
 
-    The engine is pure Python (pyshacl + rdflib + owlrl) and runs
-    in-process. It is NOT an advanced (Docker) validator — see
-    ADR-2026-05-18 for the cost-benefit analysis.
+    The engine is pure Python (pyshacl + rdflib + owlrl). pySHACL runs
+    in a short-lived child process so pathological shape/data pairs can
+    be terminated on timeout. It is NOT an advanced (Docker) validator
+    — see ADR-2026-05-18 for the cost-benefit analysis.
 
     Output:
 
@@ -97,10 +101,12 @@ class SHACLValidator(BaseValidator):
         5. Run pyshacl with the resolved inference mode + advanced flag.
         6. Map ``sh:ValidationResult`` nodes to ``ValidationIssue`` rows.
         7. Extract output signals for CEL.
-        8. Return ``ValidationResult(passed, issues, signals, stats)``.
+        8. Run SHACL SPARQL ASK assertion rows individually.
+        9. Evaluate Basic/CEL output assertions against the SHACL signals.
+        10. Return ``ValidationResult(passed, issues, signals, stats)``.
 
         The ``run_context`` argument is accepted for protocol consistency
-        but the simple in-process path does not need it.
+        but the built-in pySHACL path does not need it.
         """
         self.run_context = run_context
 
@@ -188,14 +194,21 @@ class SHACLValidator(BaseValidator):
 
         # Map findings + signals.
         shacl_issues = engine.map_results_to_issues(results_graph)
+        signals = engine.extract_signals(
+            data_graph=data_graph,
+            results_graph=results_graph,
+            parse_ok=True,
+            parse_serialization=serialization,
+        )
 
         # Execute author-defined SPARQL ASK assertions after SHACL
-        # completes. Each false answer produces a finding at the
-        # severity the author configured; engine-level failures
-        # (timeouts, scrub rejections, runtime errors) always produce
-        # an ERROR finding regardless of configured severity.
+        # completes. These are stored as RulesetAssertion rows rather
+        # than step-config metadata so each row keeps its own severity,
+        # message, ordering, and assertion_id attribution.
+        sparql_config_issues: list[ValidationIssue] = []
         sparql_assertions = engine.parse_sparql_assertions(
             self._resolve_sparql_assertions(validator, ruleset),
+            error_issues=sparql_config_issues,
         )
         sparql_issues = engine.evaluate_sparql_assertions(
             assertions=sparql_assertions,
@@ -203,17 +216,27 @@ class SHACLValidator(BaseValidator):
             results_graph=results_graph,
         )
 
+        # Evaluate the regular assertion types (Basic + CEL) against the
+        # SHACL output signals. The base evaluator skips SHACL-specific
+        # assertion rows because those were handled above.
+        output_assertion_result = self.evaluate_assertions_for_stage(
+            validator=validator,
+            ruleset=ruleset,
+            payload=signals,
+            stage="output",
+        )
+
         all_issues: list[ValidationIssue] = [
             *bundle_warnings,
             *shacl_issues,
+            *sparql_config_issues,
             *sparql_issues,
+            *output_assertion_result.issues,
         ]
-        signals = engine.extract_signals(
-            data_graph=data_graph,
-            results_graph=results_graph,
-            parse_ok=True,
-            parse_serialization=serialization,
+        assertion_failures = self._count_assertion_failures(
+            sparql_config_issues + sparql_issues,
         )
+        assertion_failures += output_assertion_result.failures
 
         # Serialise the native SHACL ValidationReport for download. Stored
         # under stats so the existing run-detail UI can surface it as an
@@ -229,11 +252,24 @@ class SHACLValidator(BaseValidator):
         return ValidationResult(
             passed=passed,
             issues=all_issues,
+            assertion_stats=AssertionStats(
+                total=len(sparql_assertions) + output_assertion_result.total,
+                failures=assertion_failures,
+            ),
             signals=signals,
             stats={
                 "parse_serialization": serialization,
                 "triple_count": signals["triple_count"],
                 "shacl_total_count": signals["shacl_total_count"],
+                "shacl_shapes_sha256": sha256(
+                    merged_shapes.encode("utf-8"),
+                ).hexdigest(),
+                "shacl_ontology_sha256": (
+                    sha256(merged_ontology.encode("utf-8")).hexdigest()
+                    if merged_ontology
+                    else ""
+                ),
+                "advanced_shacl_requested": bool(settings["advanced_shacl"]),
                 "results_graph_turtle": report_turtle,
             },
         )
@@ -261,34 +297,45 @@ class SHACLValidator(BaseValidator):
         default_ruleset = getattr(validator, "default_ruleset", None)
         default_metadata = self._safe_metadata(default_ruleset)
         step_metadata = self._safe_metadata(ruleset)
+        library_default_inlined = bool(step_metadata.get("library_default_inlined"))
+        if library_default_inlined:
+            default_shapes_text = ""
+            default_ontology_text = ""
+            default_bundled_standards = None
+            default_metadata_for_settings: dict[str, Any] = {}
+        else:
+            default_shapes_text = (
+                getattr(default_ruleset, "rules", "") if default_ruleset else ""
+            )
+            default_ontology_text = default_metadata.get("ontology_text", "") or ""
+            default_bundled_standards = default_metadata.get("bundled_standards")
+            default_metadata_for_settings = default_metadata
 
         # Engine knobs: step-level value wins if explicitly set; otherwise
         # inherit from the library validator's default_ruleset; otherwise
         # fall back to the SHACLValidator defaults documented in the ADR.
         return {
-            "default_shapes_text": (
-                getattr(default_ruleset, "rules", "") if default_ruleset else ""
-            ),
-            "default_ontology_text": default_metadata.get("ontology_text", "") or "",
-            "default_bundled_standards": default_metadata.get("bundled_standards"),
+            "default_shapes_text": default_shapes_text,
+            "default_ontology_text": default_ontology_text,
+            "default_bundled_standards": default_bundled_standards,
             "step_shapes_text": getattr(ruleset, "rules", "") if ruleset else "",
             "step_ontology_text": step_metadata.get("ontology_text", "") or "",
             "step_bundled_standards": step_metadata.get("bundled_standards"),
             "inference_mode": self._pick_setting(
                 step_metadata,
-                default_metadata,
+                default_metadata_for_settings,
                 "inference_mode",
                 "rdfs",
             ),
             "advanced_shacl": self._pick_setting(
                 step_metadata,
-                default_metadata,
+                default_metadata_for_settings,
                 "advanced_shacl",
-                fallback=True,
+                fallback=False,
             ),
             "submission_format": self._pick_setting(
                 step_metadata,
-                default_metadata,
+                default_metadata_for_settings,
                 "submission_format",
                 "auto",
             ),
@@ -308,31 +355,33 @@ class SHACLValidator(BaseValidator):
         validator: Validator,
         ruleset: Ruleset | None,
     ) -> list[Any]:
-        """Merge library-validator + step-level SPARQL ASK assertions.
+        """Merge library-validator + step-level SHACL assertion rows.
 
-        Mirrors the merge pattern used for shapes / ontologies: the
-        library validator's ``default_ruleset`` provides the baseline
-        assertion list; the step-level ruleset's list extends it.
-        Authors who want to override a library-level assertion add a
-        new assertion with their own message at the step level —
-        Validibot evaluates every entry from both lists.
-
-        The raw lists live in ``Ruleset.metadata["sparql_assertions"]``
-        and are stored as plain dicts (one per assertion). Returning
-        the merged dict list rather than parsed dataclasses keeps the
-        engine the only place that validates the shape.
+        Mirrors the merge pattern used by
+        :meth:`BaseValidator.evaluate_assertions_for_stage`: validator
+        default assertions run first, then step assertions. Application
+        UI only creates SHACL SPARQL assertions at the step level, but
+        keeping the default-ruleset path makes admin imports and future
+        library defaults deterministic.
         """
         default_ruleset = getattr(validator, "default_ruleset", None)
-        default_metadata = self._safe_metadata(default_ruleset)
         step_metadata = self._safe_metadata(ruleset)
 
         merged: list[Any] = []
-        default_list = default_metadata.get("sparql_assertions") or []
-        step_list = step_metadata.get("sparql_assertions") or []
-        if isinstance(default_list, list):
-            merged.extend(default_list)
-        if isinstance(step_list, list):
-            merged.extend(step_list)
+        if default_ruleset is not None and not step_metadata.get(
+            "library_default_inlined",
+        ):
+            merged.extend(
+                default_ruleset.assertions.filter(
+                    assertion_type=AssertionType.SHACL,
+                ).order_by("order", "pk"),
+            )
+        if ruleset is not None:
+            merged.extend(
+                ruleset.assertions.filter(
+                    assertion_type=AssertionType.SHACL,
+                ).order_by("order", "pk"),
+            )
         return merged
 
     @staticmethod

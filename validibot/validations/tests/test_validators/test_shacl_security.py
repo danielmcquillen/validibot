@@ -39,6 +39,8 @@ from validibot.validations.validators.shacl.engine import parse_sparql_assertion
 from validibot.validations.validators.shacl.engine import prevalidate_safety
 from validibot.validations.validators.shacl.engine import run_sparql_ask
 
+MALFORMED_ASSERTION_ISSUE_COUNT = 2
+
 # ── prevalidate_safety: XXE refusal ────────────────────────────────
 #
 # RDF/XML containing DTD or external-entity declarations is refused
@@ -120,11 +122,11 @@ class TestRdfXmlXxeRefusal:
 
 # ── prevalidate_safety: JSON-LD remote context refusal ─────────────
 #
-# A JSON-LD submission whose top-level @context points at an
-# attacker-controlled URL would cause rdflib's JSON-LD parser to
-# GET that URL at parse time — leaking the fact that the workflow
-# ran, and (worse) letting the attacker control the parsed
-# semantics by returning a context document of their choosing.
+# A JSON-LD submission whose @context points at an attacker-controlled
+# URL would cause rdflib's JSON-LD parser to GET that URL at parse time
+# — leaking the fact that the workflow ran, and (worse) letting the
+# attacker control the parsed semantics by returning a context document
+# of their choosing.
 
 
 class TestJsonLdRemoteContextRefusal:
@@ -193,6 +195,28 @@ class TestJsonLdRemoteContextRefusal:
         URL in any position.
         """
         payload = '{"@context": ["http://attacker.com/", {"ex": "ex:"}]}'
+        err = prevalidate_safety(payload, "json-ld")
+        assert err is not None
+
+    def test_later_context_in_array_refused(self):
+        """Every array item is scanned, not just the first one."""
+        payload = '{"@context": [{"ex": "http://example.com/"}, "https://evil.test/"]}'
+        err = prevalidate_safety(payload, "json-ld")
+        assert err is not None
+        assert "@context" in err
+
+    def test_nested_context_refused(self):
+        """Nested/property-scoped contexts are also document-load surfaces."""
+        payload = (
+            '{"@context": {"ex": "http://example.com/"}, '
+            '"child": {"@context": "https://evil.test/context.jsonld"}}'
+        )
+        err = prevalidate_safety(payload, "json-ld")
+        assert err is not None
+
+    def test_relative_context_refused(self):
+        """Relative context references can still trigger document loading."""
+        payload = '{"@context": "./context.jsonld"}'
         err = prevalidate_safety(payload, "json-ld")
         assert err is not None
 
@@ -445,13 +469,14 @@ class TestEvaluateSparqlAssertions:
 
 
 class TestParseSparqlAssertions:
-    """Malformed metadata blobs are skipped, not raised."""
+    """Malformed persisted SPARQL assertion payloads are skipped, not raised."""
 
     def test_well_formed_list_rehydrates(self):
         """A complete dict becomes a SparqlAskAssertion instance.
 
-        This is the happy path: the persistence layer wrote dicts;
-        the engine reads them back into typed dataclasses.
+        This keeps the low-level parser compatible with admin imports
+        and older metadata-shaped fixtures while the production path now
+        passes ``RulesetAssertion`` rows.
         """
         result = parse_sparql_assertions(
             [
@@ -471,11 +496,11 @@ class TestParseSparqlAssertions:
     def test_non_list_returns_empty(self):
         """A corrupted blob (not a list) returns ``[]``, not a crash.
 
-        Defensive: ``Ruleset.metadata`` is a JSONField; an admin or a
-        bad migration could leave ``sparql_assertions`` as a string or
-        a dict. The engine must degrade gracefully — equivalent to
-        "no assertions configured" — rather than crashing every run
-        for that org until manual repair.
+        Defensive: an admin import or migration could pass a string or
+        a dict instead of the expected list of assertion rows/payloads.
+        The engine must degrade gracefully — equivalent to "no
+        assertions configured" — rather than crashing every run for
+        that org until manual repair.
         """
         assert parse_sparql_assertions("not a list") == []
         assert parse_sparql_assertions({"foo": "bar"}) == []
@@ -502,6 +527,30 @@ class TestParseSparqlAssertions:
         )
         assert len(result) == 1
         assert result[0].severity == Severity.INFO
+
+    def test_malformed_entries_can_emit_config_errors(self):
+        """Validator orchestration turns stored assertion corruption into findings.
+
+        Direct helper calls stay tolerant for low-level callers, but the
+        production validator passes an issue list so bad stored config
+        cannot silently remove SPARQL gates.
+        """
+        issues = []
+        result = parse_sparql_assertions(
+            [
+                {"target_graph": "invalid", "query": "ASK { ?s ?p ?o }"},
+                {
+                    "target_graph": "data",
+                    "query": "ASK { ?s ?p ?o }",
+                    "severity": "NOT_A_SEVERITY",
+                },
+            ],
+            error_issues=issues,
+        )
+        assert result == []
+        assert len(issues) == MALFORMED_ASSERTION_ISSUE_COUNT
+        assert all(issue.severity == Severity.ERROR for issue in issues)
+        assert {issue.code for issue in issues} == {"shacl.sparql_ask_config_error"}
 
 
 # ── Timeout enforcement ────────────────────────────────────────────

@@ -28,18 +28,25 @@ from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import Severity
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorRuleType
 from validibot.validations.constants import get_resource_type_config
 from validibot.validations.constants import get_resource_types_for_validator
 from validibot.validations.models import SignalDefinition
 from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.validators.shacl.form_fields import ShaclConfigMixin
+from validibot.validations.validators.shacl.form_fields import _max_asks_per_step
 
 # Hard upper bound on CEL expression length, enforced before regex-based
 # identifier extraction. CEL expressions in practice are short (a few
 # hundred characters at most); 4096 is generous headroom while bounding
 # worst-case time on the string-literal stripper below.
 _MAX_CEL_EXPRESSION_LEN = 4096
+_SHACL_TARGET_GRAPH_CHOICES = (
+    ("data", _("Submitted RDF data graph")),
+    ("results", _("SHACL results graph")),
+    ("union", _("Data + results graph")),
+)
 
 
 def _strip_cel_string_literals(expression: str) -> str:
@@ -624,6 +631,37 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         required=False,
         widget=forms.Textarea(attrs={"rows": 4}),
     )
+    shacl_description = forms.CharField(
+        label=_("Description"),
+        required=False,
+        max_length=255,
+        help_text=_("Short label shown on the assertion card and findings."),
+    )
+    shacl_target_graph = forms.ChoiceField(
+        label=_("SHACL graph"),
+        choices=_SHACL_TARGET_GRAPH_CHOICES,
+        initial="data",
+        required=False,
+        help_text=_(
+            "Run against the submitted data graph, the SHACL report graph, "
+            "or a union of both.",
+        ),
+    )
+    shacl_query = forms.CharField(
+        label=_("SPARQL ASK query"),
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 8,
+                "spellcheck": "false",
+                "placeholder": "ASK { ?s ?p ?o }",
+            },
+        ),
+        help_text=_(
+            "Only SPARQL ASK is supported. SERVICE, FROM, and update "
+            "operations are rejected.",
+        ),
+    )
 
     def __init__(
         self,
@@ -633,11 +671,13 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         validator=None,
         target_slug_datalist_id=None,
         workflow_signal_names=None,
+        shacl_sparql_assertion_count=0,
         **kwargs,
     ):
         # Ignore fmu_variables kwarg if passed.
         kwargs.pop("fmu_variables", None)
         super().__init__(*args, **kwargs)
+        self.shacl_query_max_length = self._resolve_shacl_query_max_length()
         self.catalog_choices = list(catalog_choices or [])
         # catalog_entries parameter contains SignalDefinition objects
         # (passed from the mixin's signal_definitions query).
@@ -673,7 +713,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             list(self.inputs_by_slug.keys()) + list(self.outputs_by_slug.keys())
         )
         self.validator = validator
+        self.shacl_sparql_assertion_count = shacl_sparql_assertion_count
         self.target_slug_datalist_id = target_slug_datalist_id
+        self._configure_shacl_query_field()
         signal_choices = []
         for sig in self.signal_definitions:
             role = (
@@ -743,6 +785,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         operator_choices = [("", _("(Select one)"))]
         operator_choices.extend(self._basic_operator_choices())
         self.fields["operator"].choices = operator_choices
+        self.fields["assertion_type"].choices = self._assertion_type_choices()
+        if self._validator_is_shacl() and not self.initial.get("assertion_type"):
+            self.fields["assertion_type"].initial = AssertionType.SHACL
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.layout = Layout(
@@ -750,6 +795,11 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 Column("assertion_type", css_class="col-12 col-lg-3"),
                 Column("cel_expression", css_class="col-12 col-lg-9"),
             ),
+            Row(
+                Column("shacl_description", css_class="col-12 col-lg-4"),
+                Column("shacl_target_graph", css_class="col-12 col-lg-4"),
+            ),
+            "shacl_query",
             Row(
                 Column("target_data_path", css_class="col-12"),
             ),
@@ -796,6 +846,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             self.cleaned_data["resolved_signal"] = None
             self.cleaned_data["target_catalog_entry"] = None
             self.cleaned_data["target_data_path_value"] = ""
+        elif assertion_type == AssertionType.SHACL:
+            self._clean_shacl_assertion()
         else:
             self._resolve_target_data_path()
         if assertion_type == AssertionType.BASIC:
@@ -813,7 +865,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 options,
                 cleaned.get("when_expression") or "",
             )
-        else:
+        elif assertion_type == AssertionType.CEL_EXPRESSION:
             expression = self._clean_cel_expression()
             # Always enforce namespace prefixes (p., s., output., steps.)
             # regardless of allow_custom_assertion_targets. The runtime
@@ -829,11 +881,128 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             cleaned["target_data_path_value"] = expression or "__cel__"
         return cleaned
 
+    def _assertion_type_choices(self):
+        base = [
+            (AssertionType.BASIC.value, AssertionType.BASIC.label),
+            (
+                AssertionType.CEL_EXPRESSION.value,
+                AssertionType.CEL_EXPRESSION.label,
+            ),
+        ]
+        if self._validator_is_shacl():
+            return [(AssertionType.SHACL.value, AssertionType.SHACL.label), *base]
+        return base
+
+    def _validator_is_shacl(self) -> bool:
+        return getattr(self.validator, "validation_type", None) == ValidationType.SHACL
+
+    @staticmethod
+    def _resolve_shacl_query_max_length() -> int:
+        """Return the configured SPARQL ASK query length cap."""
+        from validibot.validations.validators.shacl.sparql_security import (
+            resolve_limits,
+        )
+
+        return resolve_limits().max_query_length
+
+    def _configure_shacl_query_field(self) -> None:
+        """Expose the SPARQL length cap in the textarea and field help."""
+        field = self.fields["shacl_query"]
+        field.widget.attrs["maxlength"] = str(self.shacl_query_max_length)
+        field.help_text = _(
+            "Only SPARQL ASK is supported. SERVICE, FROM, and update "
+            "operations are rejected. Maximum length: %(limit)s characters.",
+        ) % {"limit": f"{self.shacl_query_max_length:,}"}
+
+    def _clean_shacl_assertion(self) -> None:
+        """Validate and normalize a SHACL SPARQL ASK assertion row."""
+        if not self._validator_is_shacl():
+            raise ValidationError(
+                {
+                    "assertion_type": _(
+                        "SHACL assertions are only available on SHACL validator steps.",
+                    ),
+                },
+            )
+
+        cap = _max_asks_per_step()
+        if self.shacl_sparql_assertion_count >= cap:
+            raise ValidationError(
+                {
+                    "assertion_type": _(
+                        "This step already has %(cap)d SHACL SPARQL assertions. "
+                        "Remove one before adding another.",
+                    )
+                    % {"cap": cap},
+                },
+            )
+
+        target_graph = self.cleaned_data.get("shacl_target_graph") or "data"
+        valid_targets = {choice[0] for choice in _SHACL_TARGET_GRAPH_CHOICES}
+        if target_graph not in valid_targets:
+            raise ValidationError(
+                {"shacl_target_graph": _("Select a SHACL target graph.")},
+            )
+
+        query = (self.cleaned_data.get("shacl_query") or "").strip()
+        if not query:
+            raise ValidationError(
+                {"shacl_query": _("Provide a SPARQL ASK query.")},
+            )
+        if len(query) > self.shacl_query_max_length:
+            raise ValidationError(
+                {
+                    "shacl_query": _(
+                        "SPARQL query exceeds the maximum length of "
+                        "%(limit)s characters (got %(got)s).",
+                    )
+                    % {
+                        "limit": f"{self.shacl_query_max_length:,}",
+                        "got": f"{len(query):,}",
+                    },
+                },
+            )
+
+        try:
+            from validibot.validations.validators.shacl.sparql_security import (
+                SparqlScrubError,
+            )
+            from validibot.validations.validators.shacl.sparql_security import (
+                scrub_sparql_ask,
+            )
+
+            scrub_sparql_ask(query)
+        except SparqlScrubError as exc:
+            raise ValidationError(
+                {
+                    "shacl_query": _(
+                        "SPARQL query failed security scrub: %(err)s",
+                    )
+                    % {"err": exc},
+                },
+            ) from exc
+
+        description = (self.cleaned_data.get("shacl_description") or "").strip()
+        self.cleaned_data["resolved_signal"] = None
+        self.cleaned_data["target_catalog_entry"] = None
+        self.cleaned_data["target_data_path_value"] = f"shacl.{target_graph}"
+        self.cleaned_data["resolved_stage"] = CatalogRunStage.OUTPUT
+        self.cleaned_data["when_expression"] = ""
+        self.cleaned_data["rhs_payload"] = {
+            "target_graph": target_graph,
+            "query": query,
+            "description": description,
+        }
+        self.cleaned_data["options_payload"] = {}
+        self.cleaned_data["resolved_operator"] = AssertionOperator.SPARQL_ASK
+        self.cleaned_data["cel_expression"] = ""
+        self.cleaned_data["cel_cache"] = query
+
     def _basic_operator_choices(self):
         return [
             (choice.value, choice.label)
             for choice in AssertionOperator
-            if choice != AssertionOperator.CEL_EXPR
+            if choice not in {AssertionOperator.CEL_EXPR, AssertionOperator.SPARQL_ASK}
         ]
 
     def _validate_cel_identifiers(self, expression: str) -> None:
@@ -1512,7 +1681,12 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 initial["target_data_path"] = f"s.{sig.contract_key}"
         else:
             initial["target_data_path"] = assertion.target_data_path
-        if assertion.assertion_type == AssertionType.BASIC:
+        if assertion.assertion_type == AssertionType.SHACL:
+            rhs = assertion.rhs or {}
+            initial["shacl_description"] = rhs.get("description", "")
+            initial["shacl_target_graph"] = rhs.get("target_graph", "data")
+            initial["shacl_query"] = rhs.get("query", "")
+        elif assertion.assertion_type == AssertionType.BASIC:
             initial["operator"] = assertion.operator
             rhs = assertion.rhs or {}
             options = assertion.options or {}

@@ -103,6 +103,7 @@ class ValidatorFactory(DjangoModelFactory):
                 ValidationType.FMU,
                 ValidationType.AI_ASSIST,
                 ValidationType.CUSTOM_VALIDATOR,
+                ValidationType.SHACL,
                 ValidationType.THERM,
             )
         )

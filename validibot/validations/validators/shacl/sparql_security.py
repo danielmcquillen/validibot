@@ -75,6 +75,8 @@ from rdflib.plugins.sparql.parserutils import CompValue
 # Defaults match the resource-limits table in ADR-2026-05-18.
 DEFAULT_MAX_QUERY_LENGTH = 10_000
 DEFAULT_MAX_PROPERTY_PATH_DEPTH = 8
+HARD_MAX_QUERY_LENGTH = 50_000
+HARD_MAX_PROPERTY_PATH_DEPTH = 32
 
 # Algebra-tree node names that must not appear anywhere in the query.
 # rdflib's parser refuses Update operations entirely (see module
@@ -139,17 +141,21 @@ def resolve_limits() -> ScrubLimits:
 
     Returns a frozen :class:`ScrubLimits`. Settings keys:
 
-    - ``SHACL_SPARQL_QUERY_LENGTH_MAX`` (default ``10_000``)
-    - ``SHACL_SPARQL_PROPERTY_PATH_DEPTH_MAX`` (default ``8``)
+    - ``SHACL_SPARQL_QUERY_LENGTH_MAX`` (default ``10_000``, hard cap
+      ``50_000``)
+    - ``SHACL_SPARQL_PROPERTY_PATH_DEPTH_MAX`` (default ``8``, hard cap
+      ``32``)
     """
     return ScrubLimits(
         max_query_length=_positive_int_setting(
             "SHACL_SPARQL_QUERY_LENGTH_MAX",
             DEFAULT_MAX_QUERY_LENGTH,
+            HARD_MAX_QUERY_LENGTH,
         ),
         max_property_path_depth=_positive_int_setting(
             "SHACL_SPARQL_PROPERTY_PATH_DEPTH_MAX",
             DEFAULT_MAX_PROPERTY_PATH_DEPTH,
+            HARD_MAX_PROPERTY_PATH_DEPTH,
         ),
     )
 
@@ -366,10 +372,12 @@ def _forbidden_node_message(name: str) -> str:
     )
 
 
-def _positive_int_setting(name: str, default: int) -> int:
-    """Read a positive integer Django setting, falling back on invalid values."""
+def _positive_int_setting(name: str, default: int, hard_max: int) -> int:
+    """Read a positive integer Django setting and clamp it to a hard maximum."""
     try:
         value = int(getattr(django_settings, name, default))
     except (TypeError, ValueError):
         return default
-    return value if value > 0 else default
+    if value <= 0:
+        return default
+    return min(value, hard_max)

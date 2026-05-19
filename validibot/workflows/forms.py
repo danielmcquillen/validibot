@@ -1726,14 +1726,6 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
                 "Leave blank to keep the existing shapes. Paste new "
                 "shapes here (or upload files above) to replace them.",
             )
-        # Pre-fill SPARQL ASK assertions JSON from the saved step so the
-        # author can edit them in-place.
-        existing_asks = config.get("sparql_assertions") or []
-        if existing_asks:
-            self.fields["sparql_assertions_json"].initial = json.dumps(
-                existing_asks,
-                indent=2,
-            )
 
     def clean(self) -> dict[str, Any]:
         cleaned = super().clean()
@@ -1779,14 +1771,6 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
             self.shacl_syntax_pre_flight_text(shape_text, "shapes_text")
         if ontology_text:
             self.shacl_syntax_pre_flight_text(ontology_text, "ontology_text")
-
-        # Validate and normalise the SPARQL ASK assertions JSON. The
-        # cleaned list is stashed in cleaned_data under the normalised
-        # ``sparql_assertions`` key so build_shacl_config() can persist
-        # it without re-parsing.
-        cleaned["sparql_assertions"] = self.shacl_clean_sparql_assertions(
-            cleaned.get("sparql_assertions_json", ""),
-        )
 
         return cleaned
 

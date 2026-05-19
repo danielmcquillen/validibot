@@ -1,9 +1,9 @@
 # SHACL validator
 
 The SHACL validator validates RDF graphs (Turtle, JSON-LD, RDF/XML,
-N-Triples, N-Quads) against SHACL shape collections. It is a built-in,
-in-process validator — no Docker, no JVM, no network. It ships with the
-community edition.
+N-Triples, N-Quads) against SHACL shape collections. It is a built-in
+validator that runs pySHACL in a killable child process — no Docker or
+JVM required. It ships with the community edition.
 
 Common configurations include ASHRAE 223P, Guideline 36, Brick Schema,
 Project Haystack 4, and project-specific shapes the author uploads.
@@ -49,12 +49,19 @@ validator.
    - **Inference mode** — RDFS is the default and the right choice
      for 223P / Brick / Haystack work. Switch to OWL 2 RL only if your
      shapes genuinely need full OWL reasoning.
-   - **Advanced SHACL** — leave on. Required for ASHRAE 223P (its
-     shapes use ``sh:SPARQLConstraint`` for medium compatibility).
+   - **Advanced SHACL** — leave off unless the shapes require SHACL-AF
+     features such as ``sh:SPARQLConstraint`` or SHACL Rules. Even when
+     the step toggle is on, the deployment must also set
+     ``SHACL_ENABLE_ADVANCED_FEATURES=True`` before embedded SHACL-AF
+     constructs will run. SHACL-JS is never executed.
    - **Submission RDF format** — leave on **Auto-detect** unless the
      submitter's filename doesn't match the actual serialisation.
 3. Save the step. The form runs an rdflib parse pass on every upload,
    so Turtle syntax errors appear inline before the workflow saves.
+
+Workflow allowed file types should match the RDF serializations authors
+expect from submitters: **Plain Text** for Turtle, N-Triples, and
+N-Quads; **JSON** for JSON-LD; and **XML** for RDF/XML.
 
 ## Authoring assertions
 
@@ -74,30 +81,23 @@ contract — those aren't gates you write; they happen by definition.
 
 ### Engine signals available in CEL
 
-The SHACL engine emits a fixed set of signals on every run, identical
-regardless of which shapes or ontologies the author uploaded.
-
-**Gateable signals** (appear in the Basic-assertion picker):
+The SHACL engine emits a fixed set of output signals on every run,
+identical regardless of which shapes or ontologies the author uploaded.
+These appear in the Basic/CEL assertion picker as `o.*` targets.
 
 | Signal | Type | Meaning |
 |---|---|---|
+| `o.parse_ok` | bool | Whether RDF parse succeeded. Parse failure already auto-fails the step, but the signal is available for reporting and CEL templates. |
 | `o.parse_serialization` | string | The format used (`turtle`, `json-ld`, …). |
 | `o.triple_count` | number | Total triples after parse. |
-| `o.inferred_triple_count` | number | Triples added by the reasoner. |
 | `o.namespaces_present` | list[string] | Namespace URIs seen in any triple. |
+| `o.has_s223_namespace` | bool | Whether the graph uses the ASHRAE 223P namespace. |
+| `o.has_g36_namespace` | bool | Whether the graph uses the Guideline 36 namespace. |
+| `o.has_brick_namespace` | bool | Whether the graph uses the Brick namespace. |
+| `o.shacl_violation_count` | number | Count of `sh:Violation` results. Violations already auto-fail the step. |
 | `o.shacl_warning_count` | number | Count of `sh:Warning` results. |
 | `o.shacl_info_count` | number | Count of `sh:Info` results. |
-
-**Internal signals** (in the CEL context for error-message templating
-but hidden from the Basic-assertion picker because gating on them is
-redundant with the step's auto-fail contract):
-
-| Signal | Type | Meaning |
-|---|---|---|
-| `o.parse_ok` | bool | RDF parse succeeded. Redundant — parse failure already auto-fails the step. |
-| `o.parse_error` | string \| null | Diagnostic; useful in error templates. |
-| `o.shacl_violation_count` | number | Count of `sh:Violation` results. Redundant — violations already auto-fail. |
-| `o.shacl_engine_error` | string \| null | Diagnostic if pyshacl crashed. |
+| `o.shacl_total_count` | number | Total number of SHACL results at all severities. |
 
 Typical CEL / Basic gates:
 
@@ -111,57 +111,61 @@ o.shacl_warning_count == 0         // strict mode: no warnings allowed
 
 For any question that depends on graph contents — per-shape conformance,
 class composition, referential integrity, project rules — write a SPARQL
-ASK assertion in the step config form's **SPARQL ASK assertions (JSON)**
-field. Each assertion is one entry in a JSON list:
+ASK assertion from the step editor:
 
-```json
-[
-  {
-    "target_graph": "data",
-    "query": "PREFIX ex: <http://example.com/> ASK { ?p a ex:Person }",
-    "severity": "error",
-    "description": "Submission must contain at least one Person",
-    "error_message_template": "No Person instances found."
-  }
-]
-```
+1. Open the SHACL step.
+2. Click **Add assertion**.
+3. Choose **SHACL** as the assertion type. This option appears only for
+   steps whose validator is `ValidationType.SHACL`.
+4. Fill in the description, target graph, SPARQL ASK query, severity,
+   and failure/success messages.
 
-Fields:
+Each saved ASK is a normal `RulesetAssertion` row with
+`assertion_type=SHACL`, `operator=SPARQL_ASK`, and its query stored in
+`rhs`. That keeps ordering, severity, messages, and `assertion_id`
+attribution consistent with the rest of the assertion system.
 
-- **`target_graph`** — which graph the ASK runs against:
-  - `"data"`: the parsed submission plus inferred triples (most common).
-  - `"results"`: the `sh:ValidationReport` graph produced by pyshacl.
-    Use this for per-shape gates: `ASK { FILTER NOT EXISTS { ?r a sh:ValidationResult ; sh:sourceShape ex:DamperShape . } }`.
-  - `"union"`: both graphs combined. Use this to join the SHACL report
-    with the data graph: `ASK { FILTER NOT EXISTS { ?r sh:focusNode <ex:AHU-1> . } }`.
-- **`query`** — a SPARQL 1.1 ASK query. Only ASK is supported in this
-  release; SELECT / CONSTRUCT / DESCRIBE and all Update operations are
-  rejected at save time.
-- **`severity`** — `"error"`, `"warning"`, or `"info"` (case-insensitive).
-  A false ASK answer raises a finding at this severity.
-- **`description`** — optional human label shown in finding lists.
-- **`error_message_template`** — optional message shown when the ASK
-  returns false. Currently stored verbatim; future versions will support
-  signal interpolation.
+Target graph options:
+
+- **Submitted RDF data graph** (`data`) — the parsed submission graph
+  and the most common target.
+- **SHACL results graph** (`results`) — the `sh:ValidationReport` graph
+  produced by pySHACL. Use this for report-level gates such as
+  `ASK { FILTER NOT EXISTS { ?r a sh:ValidationResult ; sh:sourceShape ex:DamperShape . } }`.
+- **Data + results graph** (`union`) — both graphs combined. Use this
+  to join findings back to submitted resources.
+
+Only SPARQL 1.1 `ASK` is supported in this release. `SELECT`,
+`CONSTRUCT`, `DESCRIBE`, Update operations, `SERVICE`, and remote
+`FROM`/`FROM NAMED` references are rejected at assertion save time and
+re-scrubbed again at validation time. The assertion textarea exposes
+the same configured length cap via `maxlength`; server-side validation
+also rejects anything over `SHACL_SPARQL_QUERY_LENGTH_MAX` (default
+10,000 characters, hard-clamped to 50,000).
 
 Example: enforce that every `s223:Zone` has a CO2 sensor by checking
 the data graph for the inverse:
 
-```json
-[
-  {
-    "target_graph": "data",
-    "query": "PREFIX s223: <http://data.ashrae.org/standard223#>\nPREFIX qudt: <http://qudt.org/schema/qudt/>\nPREFIX quantitykind: <http://qudt.org/vocab/quantitykind/>\n\nASK {\n  FILTER NOT EXISTS {\n    ?zone a s223:Zone .\n    FILTER NOT EXISTS {\n      ?sensor s223:hasObservationLocation/^s223:hasDomainSpace ?zone ;\n              s223:observes ?p .\n      ?p qudt:hasQuantityKind quantitykind:MoleFraction .\n    }\n  }\n}",
-    "severity": "error",
-    "description": "Every Zone must have a CO2 sensor",
-    "error_message_template": "One or more Zones are missing a CO2 sensor."
+```sparql
+PREFIX s223: <http://data.ashrae.org/standard223#>
+PREFIX qudt: <http://qudt.org/schema/qudt/>
+PREFIX quantitykind: <http://qudt.org/vocab/quantitykind/>
+
+ASK {
+  FILTER NOT EXISTS {
+    ?zone a s223:Zone .
+    FILTER NOT EXISTS {
+      ?sensor s223:hasObservationLocation/^s223:hasDomainSpace ?zone ;
+              s223:observes ?p .
+      ?p qudt:hasQuantityKind quantitykind:MoleFraction .
+    }
   }
-]
+}
 ```
 
 #### What the SPARQL scrubber refuses
 
-At form save time the scrubber walks the query's algebra tree and
+At assertion save time the scrubber walks the query's algebra tree and
 refuses any of:
 
 - Top-level form other than `ASK` (no SELECT, CONSTRUCT, DESCRIBE,
@@ -215,33 +219,42 @@ Dependencies (all pure Python):
 
 The validator does NOT run in an advanced (Docker) validator container.
 See the ADR for the cost-benefit analysis — short version: pyshacl is
-fast enough in-process for the published 223P examples (largest is 2.6
-MB / ~50K triples), and Docker boot overhead would dwarf the actual
-validation work.
+fast enough for the published 223P examples (largest is 2.6 MB / ~50K
+triples), and Docker boot overhead would dwarf the actual validation
+work. The pySHACL call still runs out-of-process so the engine can
+terminate pathological shape/data combinations on timeout.
 
 ## Library-level custom SHACL validators
 
 An organisation can create a named, org-owned SHACL validator (e.g.
 ``MeridianCx 223P + G36 Validator``) that bundles its shapes once and
-gets reused across many workflows. The engine merges the library
-validator's `default_ruleset` shapes with the step-level ruleset extras,
-mirroring the assertion-merge pattern in
-``BaseValidator.evaluate_assertions_for_stage``.
+gets reused across many workflows.
+
+For new workflow steps, the step builder snapshots the library
+validator's `default_ruleset` into the step-owned SHACL ruleset at save
+time. That snapshot includes the library shapes, ontology text, and
+hashes/provenance metadata. SHACL SPARQL ASK assertions are authored on
+individual workflow steps through the **Add assertion** dialog. This
+means a later edit to the library validator does not silently change an
+existing workflow step. Older steps that predate the snapshot flag still
+use the legacy live-merge path: the engine merges `validator.default_ruleset`
+with the step-level ruleset extras.
 
 ### Creation flow (operator-facing)
 
 1. **Validator Library → New Validator** opens the validator-type
    picker modal. Pick **SHACL Validator (RDF graph rules)**.
 2. Fill in the create form. The fields mirror the workflow step config
-   form (shapes upload, ontology upload, bundled-standards checkboxes,
-   engine knobs) plus validator-level metadata at the top (name,
-   version, short description, description, notes).
+   form (shapes upload, ontology upload, engine knobs) plus
+   validator-level metadata at the top (name, version, short
+   description, description, notes).
 3. Save. The service creates an org-owned `Validator` row
    (``validation_type=SHACL``, ``is_system=False``) with a populated
    ``default_ruleset`` carrying the shapes and metadata.
 4. Workflow authors now see the new validator in the **Custom** tab of
-   the validator library. Adding it to a workflow step inherits the
-   bundled shapes via the engine's library + step ruleset merge.
+   the validator library. Adding it to a workflow step snapshots the
+   bundled shapes into the step ruleset so the workflow has stable
+   validation behavior.
 
 ### Edit + delete
 
@@ -265,6 +278,7 @@ mirroring the assertion-merge pattern in
 | Template | ``validations/library/custom_validator_form.html`` — shared with Custom validator forms; renders any crispy-forms layout |
 | Shared form mixin | ``ShaclConfigMixin`` in [validibot/validations/validators/shacl/form_fields.py](../../../validibot/validations/validators/shacl/form_fields.py) — used by both the workflow step config form and the library validator forms |
 | Persistence helpers | ``concatenate_uploaded_files`` / ``read_uploaded_text`` in [validibot/validations/validators/shacl/persistence.py](../../../validibot/validations/validators/shacl/persistence.py) |
+| SPARQL assertion form | ``RulesetAssertionForm`` in [validibot/validations/forms.py](../../../validibot/validations/forms.py) — exposes the SHACL assertion type only for SHACL validator steps |
 
 ## Testing patterns
 
@@ -274,11 +288,14 @@ Engine tests live in
 
 Integration tests live in
 [`test_shacl_validator.py`](../../../validibot/validations/tests/test_validators/test_shacl_validator.py)
-— exercise the full Django path including the library-validator
-`default_ruleset` merge.
+— exercise the full Django path including legacy library-validator
+`default_ruleset` merge and the newer step-level snapshot path.
 
 Form + builder tests live in
 [`validibot/workflows/tests/test_shacl_form.py`](../../../validibot/workflows/tests/test_shacl_form.py).
+The Add Assertion dialog and SHACL `RulesetAssertion` persistence are
+covered in
+[`validibot/workflows/tests/test_workflow_assertions.py`](../../../validibot/workflows/tests/test_workflow_assertions.py).
 
 Run all SHACL tests:
 
@@ -286,8 +303,11 @@ Run all SHACL tests:
 source set-env.sh
 uv run --group dev pytest \
     validibot/validations/tests/test_validators/test_shacl_engine.py \
+    validibot/validations/tests/test_validators/test_shacl_security.py \
     validibot/validations/tests/test_validators/test_shacl_validator.py \
-    validibot/workflows/tests/test_shacl_form.py
+    validibot/validations/tests/test_validators/test_shacl_library_validator.py \
+    validibot/workflows/tests/test_shacl_form.py \
+    validibot/workflows/tests/test_workflow_assertions.py
 ```
 
 ## Common issues
@@ -322,13 +342,23 @@ the full threat model and acceptance-test list.
 
 The headline mitigations:
 
-- **JSON-LD remote `@context` rejected pre-parse.** A submission whose
-  context references `http://attacker.com/log` is refused before
-  rdflib's parser sees it. The scanner is in
+- **JSON-LD context documents rejected pre-parse.** A submission whose
+  context references `http://attacker.com/log`, a relative
+  `./context.jsonld`, or a nested/property-scoped context document is
+  refused before rdflib's parser sees it. Inline context objects and
+  `data:` contexts are allowed. The scanner is in
   `engine.prevalidate_safety`.
 - **RDF/XML XXE constructs rejected pre-parse.** `<!DOCTYPE` and
   `<!ENTITY` declarations are refused — the canonical local-file-
   exfiltration vector. Same scanner.
+- **Advanced SHACL is deployment-gated.** Core SHACL runs by default.
+  Embedded SHACL-AF/SPARQL constraints and SHACL Rules require both the
+  step/library toggle and `SHACL_ENABLE_ADVANCED_FEATURES=True`.
+  SHACL-JS constructs are rejected before pySHACL starts.
+- **pyshacl child-process timeout.** The engine launches pySHACL in a
+  child process and terminates it if it exceeds
+  `SHACL_VALIDATION_TIMEOUT_SECONDS` (default 30 s, hard-capped at
+  120 s).
 - **pyshacl JS off, owl:imports off.** Hard-coded as kwargs on every
   `pyshacl.validate` call; the validate kwargs cannot be overridden.
 - **SPARQL ASK queries scrubbed at form save.** The scrubber
@@ -337,23 +367,27 @@ The headline mitigations:
   `SERVICE` federation, `LOAD`, `FROM` / `FROM NAMED` with non-default
   IRIs, deeply nested property paths, and pathologically long queries.
 - **Per-query wall-clock timeout.** Defaults to 10 s (capped at 60 s).
-  Daemon-thread wrapper enforces it without depending on POSIX-only
-  signal handlers.
+  A daemon-thread wrapper returns a finding when a custom ASK exceeds
+  its budget. Python cannot forcibly kill that individual thread, so
+  the pySHACL subprocess timeout and Celery hard task timeout remain the
+  outer stop.
 - **All engine errors become findings.** No exception escapes the
-  validator. Timeouts, scrub rejections, runtime crashes all surface
-  as `shacl.*_engine_error` findings; the worker is never abandoned
-  for one bad submission.
+  validator. Timeouts, scrub rejections, runtime crashes, and corrupted
+  SPARQL assertion metadata all surface as `shacl.*` findings.
 
 Resource limits (overridable via Django settings, capped by hard
 maximums the operator cannot exceed):
 
 | Setting | Default | Hard cap |
 |---|---|---|
+| `SHACL_ENABLE_ADVANCED_FEATURES` | `False` | n/a |
 | `SHACL_MAX_DATA_TRIPLES` | 100,000 | 1,000,000 |
 | `SHACL_MAX_SHAPE_TRIPLES` | 50,000 | 200,000 |
 | `SHACL_MAX_ONTOLOGY_TRIPLES` | 100,000 | 500,000 |
+| `SHACL_MAX_VALIDATION_DEPTH` | 25 | 50 |
+| `SHACL_VALIDATION_TIMEOUT_SECONDS` | 30 | 120 |
 | `SHACL_SPARQL_QUERY_TIMEOUT_SECONDS` | 10 | 60 |
-| `SHACL_SPARQL_QUERY_LENGTH_MAX` | 10,000 chars | — |
+| `SHACL_SPARQL_QUERY_LENGTH_MAX` | 10,000 chars | 50,000 chars |
 | `SHACL_SPARQL_PROPERTY_PATH_DEPTH_MAX` | 8 | 32 |
 | `SHACL_SPARQL_ASKS_PER_STEP_MAX` | 25 | 100 |
 

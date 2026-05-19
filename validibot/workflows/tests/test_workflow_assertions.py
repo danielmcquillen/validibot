@@ -1,5 +1,13 @@
+"""Tests for workflow-step assertion authoring and assertion-stage behavior.
+
+These cover the modal used by workflow authors to create assertions, the
+server-side persistence of assertion rows, and the step editor surfaces that
+show validator signals used by those assertions.
+"""
+
 from django.test import Client
 from django.test import TestCase
+from django.test import override_settings
 from django.urls import reverse
 
 from validibot.users.constants import RoleCode
@@ -68,6 +76,31 @@ class WorkflowStepAssertionsTests(TestCase):
             step.save(update_fields=["ruleset"])
         return step
 
+    def _make_shacl_step(self, workflow):
+        """Create a SHACL step with output signal definitions for assertions."""
+        validator = ValidatorFactory(
+            validation_type=ValidationType.SHACL,
+            supports_assertions=True,
+        )
+        SignalDefinitionFactory(
+            validator=validator,
+            contract_key="shacl_violation_count",
+            label="SHACL Violation Count",
+            direction="output",
+        )
+        SignalDefinitionFactory(
+            validator=validator,
+            contract_key="triple_count",
+            label="Triple Count",
+            direction="output",
+        )
+        step = WorkflowStepFactory(workflow=workflow, validator=validator)
+        if not step.ruleset_id:
+            ruleset = RulesetFactory(org=workflow.org)
+            step.ruleset = ruleset
+            step.save(update_fields=["ruleset"])
+        return step
+
     def test_assertions_page_renders(self):
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
@@ -126,6 +159,211 @@ class WorkflowStepAssertionsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
         self.assertIn("Assertion Type", body)
+
+    def test_shacl_assertion_modal_shows_shacl_type_first(self):
+        """SHACL steps should expose SHACL SPARQL assertions as the first type."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_shacl_step(workflow)
+
+        url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = self.client.get(url, headers={"hx-request": "true"})
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('value="shacl"', body)
+        self.assertLess(body.index('value="shacl"'), body.index('value="basic"'))
+
+    def test_non_shacl_assertion_modal_hides_shacl_type(self):
+        """Non-SHACL validators should not show the SHACL assertion type."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_energyplus_step(workflow)
+
+        url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = self.client.get(url, headers={"hx-request": "true"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('value="shacl"', response.content.decode())
+
+    def test_create_shacl_sparql_assertion(self):
+        """A SHACL assertion post creates a SPARQL ASK RulesetAssertion row."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_shacl_step(workflow)
+
+        create_url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = self.client.post(
+            create_url,
+            data={
+                "assertion_type": AssertionType.SHACL,
+                "shacl_description": "Graph is not empty",
+                "shacl_target_graph": "data",
+                "shacl_query": "ASK { ?s ?p ?o }",
+                "severity": "ERROR",
+                "when_expression": "o.triple_count > 0",
+                "message_template": "No RDF triples were found.",
+            },
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 204)
+        assertion = step.ruleset.assertions.get(assertion_type=AssertionType.SHACL)
+        self.assertEqual(assertion.operator, AssertionOperator.SPARQL_ASK)
+        self.assertEqual(assertion.target_data_path, "shacl.data")
+        self.assertEqual(assertion.rhs["query"], "ASK { ?s ?p ?o }")
+        self.assertEqual(assertion.rhs["description"], "Graph is not empty")
+        self.assertEqual(assertion.message_template, "No RDF triples were found.")
+        self.assertEqual(assertion.when_expression, "")
+
+    @override_settings(SHACL_SPARQL_QUERY_LENGTH_MAX=64)
+    def test_shacl_assertion_modal_sets_query_maxlength(self):
+        """The SHACL query textarea should expose the configured length cap."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_shacl_step(workflow)
+
+        url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = self.client.get(url, headers={"hx-request": "true"})
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('name="shacl_query"', body)
+        self.assertIn('maxlength="64"', body)
+
+    def test_shacl_sparql_assertion_rejects_non_ask_queries(self):
+        """Form validation should reject every non-ASK SPARQL form."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_shacl_step(workflow)
+
+        create_url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        queries = {
+            "select": "SELECT * WHERE { ?s ?p ?o }",
+            "construct": "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }",
+            "describe": "DESCRIBE ?s WHERE { ?s ?p ?o }",
+            "insert": "INSERT DATA { <urn:s> <urn:p> <urn:o> }",
+        }
+        for query_type, query in queries.items():
+            with self.subTest(query_type=query_type):
+                response = self.client.post(
+                    create_url,
+                    data={
+                        "assertion_type": AssertionType.SHACL,
+                        "shacl_target_graph": "data",
+                        "shacl_query": query,
+                        "severity": "ERROR",
+                    },
+                    headers={"hx-request": "true"},
+                )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("ASK", response.content.decode())
+
+        self.assertEqual(step.ruleset.assertions.count(), 0)
+
+    @override_settings(SHACL_SPARQL_QUERY_LENGTH_MAX=20)
+    def test_shacl_sparql_assertion_rejects_oversized_query(self):
+        """Server-side validation should enforce the configured query size."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_shacl_step(workflow)
+
+        create_url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = self.client.post(
+            create_url,
+            data={
+                "assertion_type": AssertionType.SHACL,
+                "shacl_target_graph": "data",
+                "shacl_query": "ASK { ?s ?p ?o . ?s ?p ?o }",
+                "severity": "ERROR",
+            },
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "maximum length of 20 characters",
+            response.content.decode(),
+        )
+        self.assertEqual(step.ruleset.assertions.count(), 0)
+
+    @override_settings(SHACL_SPARQL_ASKS_PER_STEP_MAX=1)
+    def test_shacl_sparql_assertion_count_cap_is_enforced(self):
+        """The per-step SPARQL assertion cap should apply to row-based ASKs."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_shacl_step(workflow)
+        RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            assertion_type=AssertionType.SHACL,
+            operator=AssertionOperator.SPARQL_ASK,
+            target_data_path="shacl.data",
+            rhs={
+                "target_graph": "data",
+                "query": "ASK { ?s ?p ?o }",
+                "description": "Existing",
+            },
+        )
+
+        create_url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = self.client.post(
+            create_url,
+            data={
+                "assertion_type": AssertionType.SHACL,
+                "shacl_target_graph": "data",
+                "shacl_query": "ASK { ?s ?p ?o }",
+                "severity": "ERROR",
+            },
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "already has 1 SHACL SPARQL assertions", response.content.decode()
+        )
+        self.assertEqual(
+            step.ruleset.assertions.filter(assertion_type=AssertionType.SHACL).count(),
+            1,
+        )
+
+    def test_shacl_step_editor_shows_output_signals(self):
+        """SHACL output signals should appear in the step editor right column."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_shacl_step(workflow)
+
+        url = reverse(
+            "workflows:workflow_step_edit",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("o.shacl_violation_count", body)
+        self.assertIn("o.triple_count", body)
 
     def test_move_assertion_single_stage(self):
         """Verify assertions can be reordered within a single stage."""

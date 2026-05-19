@@ -1011,6 +1011,15 @@ COSIGN_BINARY_PATH = env("COSIGN_BINARY_PATH", default="cosign")
 # crash. Operators can lower defaults for stricter deployments but
 # cannot exceed the hard caps (enforced by ``min(configured, cap)`` in
 # engine code). See validibot/validations/validators/shacl/engine.py.
+#
+# Core SHACL is enabled by default. Advanced SHACL-AF constructs
+# (embedded SPARQL constraints and SHACL Rules) are disabled at the
+# deployment level until the operator explicitly opts in for trusted,
+# isolated worker environments. SHACL-JS is always rejected.
+SHACL_ENABLE_ADVANCED_FEATURES = env.bool(
+    "SHACL_ENABLE_ADVANCED_FEATURES",
+    default=False,
+)
 
 # Submission triple-count caps. Defaults sized for a typical
 # building-scale 223P model (largest published example is ~50K triples);
@@ -1023,6 +1032,14 @@ SHACL_MAX_ONTOLOGY_TRIPLES = env.int("SHACL_MAX_ONTOLOGY_TRIPLES", default=100_0
 # evaluation; deeply nested constraint chains in malicious shapes are
 # capped here to prevent stack / time exhaustion.
 SHACL_MAX_VALIDATION_DEPTH = env.int("SHACL_MAX_VALIDATION_DEPTH", default=25)
+
+# pySHACL process timeout. The engine launches pySHACL in a child
+# process and terminates it if validation exceeds this wall-clock
+# budget. The code hard-caps this at 120 seconds.
+SHACL_VALIDATION_TIMEOUT_SECONDS = env.int(
+    "SHACL_VALIDATION_TIMEOUT_SECONDS",
+    default=30,
+)
 
 # SPARQL ASK assertion budgets. Authors write SPARQL ASK queries as
 # project-specific gates layered on top of SHACL. Each ASK gets its

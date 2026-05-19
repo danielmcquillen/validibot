@@ -58,8 +58,13 @@ class BaseStepConfig(BaseModel):
     """Catalog entry slugs for output signals to display to the submitter.
 
     Controls which output signals are shown in the results view and
-    returned by the API.  Empty means show all signals (backward-compatible
-    default).  This is cross-validator — any step type can use it."""
+    returned by the API.  **Empty means show NONE** — authors opt in to
+    each signal they want exposed.  This is cross-validator — any step
+    type can use it.
+
+    A workflow-step toggle to "show all output signals" is on the
+    roadmap (tracked in validibot-project); until then, authors who
+    want every signal exposed must list every slug here."""
 
 
 # ---------------------------------------------------------------------------

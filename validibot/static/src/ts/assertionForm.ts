@@ -23,11 +23,19 @@ const CONDITIONAL_FIELDS = [
   'collection_operator',
   'collection_value',
   'cel_expression',
+  'when_expression',
+  'shacl_description',
+  'shacl_target_graph',
+  'shacl_query',
 ] as const;
 
 type ConditionalFieldName = (typeof CONDITIONAL_FIELDS)[number];
 
-const GENERAL_BASIC_FIELDS: ConditionalFieldName[] = ['coerce_types', 'treat_missing_as_null'];
+const GENERAL_BASIC_FIELDS: ConditionalFieldName[] = [
+  'coerce_types',
+  'treat_missing_as_null',
+  'when_expression',
+];
 const STRING_OPTION_FIELDS: ConditionalFieldName[] = ['case_insensitive', 'unicode_fold'];
 
 const OPERATOR_FIELDS: Record<string, readonly ConditionalFieldName[]> = {
@@ -176,8 +184,14 @@ class AssertionFormController {
     this.hideAllConditional();
     this.ensureCelPosition();
     const typeValue = this.typeField.value;
+    if (typeValue === 'shacl') {
+      this.showFields(['shacl_description', 'shacl_target_graph', 'shacl_query']);
+      this.operatorField.value = '';
+      this.toggleTargetVisibility(false);
+      return;
+    }
     if (typeValue === 'cel_expr') {
-      this.showFields(['cel_expression', 'cel_allow_custom_signals']);
+      this.showFields(['cel_expression', 'when_expression']);
       this.operatorField.value = '';
       this.toggleTargetVisibility(false);
       return;

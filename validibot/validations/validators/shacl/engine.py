@@ -21,9 +21,13 @@ See ADR-2026-05-18 for the architecture rationale.
 from __future__ import annotations
 
 import logging
+import multiprocessing
+import queue
 import re
 import threading
 from dataclasses import dataclass
+from json import JSONDecodeError
+from json import loads as json_loads
 from typing import Any
 
 import pyshacl
@@ -31,6 +35,7 @@ from django.conf import settings as django_settings
 from rdflib import Graph
 from rdflib import URIRef
 from rdflib.exceptions import ParserError
+from rdflib.namespace import RDF
 from rdflib.namespace import SH
 
 from validibot.submissions.constants import SubmissionFileType
@@ -57,12 +62,66 @@ DEFAULT_MAX_SHAPE_TRIPLES = 50_000
 DEFAULT_MAX_ONTOLOGY_TRIPLES = 100_000
 DEFAULT_MAX_VALIDATION_DEPTH = 25
 
+HARD_MAX_DATA_TRIPLES = 1_000_000
+HARD_MAX_SHAPE_TRIPLES = 200_000
+HARD_MAX_ONTOLOGY_TRIPLES = 500_000
+HARD_MAX_VALIDATION_DEPTH = 50
+
+# pySHACL execution budget. The engine runs pySHACL in a child process so
+# a pathological shape/data pair can be terminated cleanly on timeout.
+DEFAULT_PYSHACL_TIMEOUT_SECONDS = 30
+HARD_MAX_PYSHACL_TIMEOUT_SECONDS = 120
+
 # SPARQL ASK execution budget (wall clock).
 DEFAULT_SPARQL_QUERY_TIMEOUT_SECONDS = 10
 DEFAULT_SPARQL_QUERY_TIMEOUT_MAX_SECONDS = 60
+HARD_MAX_SPARQL_QUERY_TIMEOUT_SECONDS = 60
 
 # Maximum number of SPARQL ASK assertions per step (form-level cap).
 DEFAULT_SPARQL_ASKS_PER_STEP = 25
+
+
+# SHACL-AF / SHACL-JS constructs. Core SHACL remains available by default.
+# Advanced constructs are deployment-gated because they can evaluate embedded
+# SPARQL/rules supplied by workflow authors.
+_SHACL_ADVANCED_PREDICATES: frozenset[URIRef] = frozenset(
+    {
+        SH.sparql,
+        SH.select,
+        SH.ask,
+        SH.construct,
+        SH.rule,
+    },
+)
+_SHACL_ADVANCED_CLASSES: frozenset[URIRef] = frozenset(
+    {
+        SH.SPARQLConstraint,
+        SH.SPARQLRule,
+        SH.TripleRule,
+    },
+)
+_SHACL_JS_PREDICATES: frozenset[URIRef] = frozenset(
+    {
+        SH.js,
+        SH.jsFunctionName,
+        SH.jsLibrary,
+        SH.jsLibraryURL,
+    },
+)
+_SHACL_JS_CLASSES: frozenset[URIRef] = frozenset(
+    {
+        SH.JSConstraint,
+        SH.JSRule,
+        SH.JSTarget,
+        SH.JSTargetType,
+        SH.JSFunction,
+    },
+)
+_EMBEDDED_SPARQL_FORBIDDEN_PATTERN = re.compile(
+    r"\b(SERVICE|LOAD|CLEAR|DROP|CREATE|ADD|MOVE|COPY|INSERT|DELETE)\b"
+    r"|\bFROM\s+(?:NAMED\s+)?<",
+    re.IGNORECASE,
+)
 
 
 # Well-known building-domain namespaces. Used by signal extraction to
@@ -221,17 +280,6 @@ _XML_XXE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Match a JSON-LD ``@context`` value that points at a remote URL.
-# The check is intentionally broad — anything starting with http(s):// or
-# file:// or another non-data scheme. ``data:`` URIs are safe because
-# they carry the context inline. Local relative paths (no scheme) also
-# pass; rdflib treats them as inline once we hand it the parsed JSON.
-_JSONLD_REMOTE_CONTEXT_PATTERN = re.compile(
-    r'"@context"\s*:\s*(?:"(?P<single>(?!data:)[a-z][a-z0-9+\-.]*:[^"]*)"'
-    r'|\[\s*"(?P<first>(?!data:)[a-z][a-z0-9+\-.]*:[^"]*)")',
-    re.IGNORECASE,
-)
-
 
 def prevalidate_safety(content: str, rdf_format: str) -> str | None:
     """Reject RDF content containing known-dangerous constructs.
@@ -247,10 +295,11 @@ def prevalidate_safety(content: str, rdf_format: str) -> str | None:
       ``SYSTEM`` / ``PUBLIC`` external-entity declarations. These are
       the XXE family — they would let an attacker exfiltrate local
       files (``file:///etc/passwd``) or trigger SSRF.
-    - JSON-LD whose top-level ``@context`` references a non-``data:``
-      URL. rdflib's JSON-LD plugin will fetch remote contexts at parse
-      time, which is both an SSRF vector and an exfiltration vector
-      (the attacker logs the request).
+    - JSON-LD whose ``@context`` value is a context-document reference
+      instead of an inline object or ``data:`` URI. rdflib's JSON-LD
+      plugin can fetch context documents at parse time, which is both
+      an SSRF vector and an exfiltration vector (the attacker logs the
+      request).
 
     Other serializations (Turtle, N-Triples, N-Quads) do not have a
     network-fetching surface in rdflib's parser; they are passed
@@ -282,21 +331,79 @@ def prevalidate_safety(content: str, rdf_format: str) -> str | None:
                 "or convert the file to Turtle, JSON-LD, or N-Triples."
             )
 
-    # JSON-LD remote-context refusal. We check the raw text rather than
-    # parsing the JSON because parsing is what we're trying to prevent
-    # from making network calls.
+    # JSON-LD context-document refusal. Parse with the stdlib JSON
+    # parser, then recursively inspect every @context value before
+    # rdflib's JSON-LD plugin sees the bytes. String contexts are
+    # document references (remote or relative) except data: URIs, so
+    # they are refused. Inline context objects pass.
     if rdf_format == "json-ld":
-        match = _JSONLD_REMOTE_CONTEXT_PATTERN.search(content)
-        if match is not None:
-            url = match.group("single") or match.group("first")
-            return (
-                f"JSON-LD content references remote @context '{url}'. "
-                "The validator refuses remote contexts to prevent SSRF "
-                "and data-exfiltration vectors. Inline the @context "
-                "object in the JSON-LD, use a data: URI, or convert the "
-                "file to Turtle."
+        try:
+            parsed_json = json_loads(content)
+        except JSONDecodeError:
+            # Let rdflib return the canonical parse error later. The
+            # safety scan's job is to catch valid JSON-LD that would
+            # otherwise fetch a context document.
+            return None
+        except Exception as exc:
+            logger.warning(
+                "JSON-LD prevalidation raised unexpected exception",
+                extra={"exc_type": type(exc).__name__},
             )
+            return (
+                "JSON-LD safety prevalidation failed unexpectedly. "
+                "The validator refuses the submission rather than "
+                "risking remote context loading."
+            )
+        context_error = _find_jsonld_context_document_reference(parsed_json)
+        if context_error is not None:
+            return context_error
 
+    return None
+
+
+def _find_jsonld_context_document_reference(value: Any) -> str | None:
+    """Find any JSON-LD @context value that may trigger a document load."""
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key == "@context":
+                error = _validate_jsonld_context_value(child)
+            else:
+                error = _find_jsonld_context_document_reference(child)
+            if error is not None:
+                return error
+    elif isinstance(value, list):
+        for child in value:
+            error = _find_jsonld_context_document_reference(child)
+            if error is not None:
+                return error
+    return None
+
+
+def _validate_jsonld_context_value(context_value: Any) -> str | None:
+    """Validate one JSON-LD @context value.
+
+    JSON-LD allows @context to be an object, array, string, or null. A
+    string is a context-document reference. rdflib may dereference it,
+    including relative paths against a base IRI, so v1 accepts only
+    inline objects/arrays and data: URI strings.
+    """
+    if isinstance(context_value, str):
+        if context_value.lower().startswith("data:"):
+            return None
+        return (
+            f"JSON-LD content references @context document '{context_value}'. "
+            "The validator refuses context documents to prevent SSRF, "
+            "local-file reads, and context substitution. Inline the "
+            "@context object in the JSON-LD, use a data: URI, or convert "
+            "the file to Turtle."
+        )
+    if isinstance(context_value, dict):
+        return _find_jsonld_context_document_reference(context_value)
+    if isinstance(context_value, list):
+        for item in context_value:
+            error = _validate_jsonld_context_value(item)
+            if error is not None:
+                return error
     return None
 
 
@@ -441,8 +548,10 @@ def run_shacl_validation(
             when the shapes file is also the ontology (true for ASHRAE
             223P where classes are simultaneously sh:NodeShape).
         inference_mode: "none" | "rdfs" | "owlrl" | "both".
-        advanced_shacl: Enable ``sh:SPARQLConstraint``, ``sh:JSConstraint``,
-            and SHACL Rules. Required for ASHRAE 223P.
+        advanced_shacl: Request SHACL-AF features such as
+            ``sh:SPARQLConstraint`` and SHACL Rules. Deployments must
+            also enable ``SHACL_ENABLE_ADVANCED_FEATURES`` before those
+            constructs are accepted.
 
     Returns:
         ``(results_graph, error_message)`` — exactly one is ``None``.
@@ -456,7 +565,11 @@ def run_shacl_validation(
             "from the library."
         )
 
-    data_limit = _setting_int("SHACL_MAX_DATA_TRIPLES", DEFAULT_MAX_DATA_TRIPLES)
+    data_limit = _setting_int(
+        "SHACL_MAX_DATA_TRIPLES",
+        DEFAULT_MAX_DATA_TRIPLES,
+        HARD_MAX_DATA_TRIPLES,
+    )
     if len(data_graph) > data_limit:
         return None, (
             f"Submitted RDF graph has {len(data_graph)} triples, over the "
@@ -468,12 +581,22 @@ def run_shacl_validation(
         shapes_graph.parse(data=shapes_text, format="turtle")
     except Exception as exc:
         return None, f"Shapes graph failed to parse as Turtle: {exc}"
-    shape_limit = _setting_int("SHACL_MAX_SHAPE_TRIPLES", DEFAULT_MAX_SHAPE_TRIPLES)
+    shape_limit = _setting_int(
+        "SHACL_MAX_SHAPE_TRIPLES",
+        DEFAULT_MAX_SHAPE_TRIPLES,
+        HARD_MAX_SHAPE_TRIPLES,
+    )
     if len(shapes_graph) > shape_limit:
         return None, (
             f"SHACL shapes graph has {len(shapes_graph)} triples, over the "
             f"{shape_limit} triple validation limit."
         )
+    policy_error = inspect_shapes_policy(
+        shapes_graph,
+        advanced_shacl_requested=advanced_shacl,
+    )
+    if policy_error is not None:
+        return None, policy_error
 
     ontology_graph: Graph | None = None
     if ontology_text.strip():
@@ -485,6 +608,7 @@ def run_shacl_validation(
         ontology_limit = _setting_int(
             "SHACL_MAX_ONTOLOGY_TRIPLES",
             DEFAULT_MAX_ONTOLOGY_TRIPLES,
+            HARD_MAX_ONTOLOGY_TRIPLES,
         )
         if len(ontology_graph) > ontology_limit:
             return None, (
@@ -492,27 +616,223 @@ def run_shacl_validation(
                 f"{ontology_limit} triple validation limit."
             )
 
+    pyshacl_result, pyshacl_error = _run_pyshacl_with_timeout(
+        data_graph=data_graph,
+        shapes_graph=shapes_graph,
+        ontology_graph=ontology_graph,
+        inference_mode=inference_mode,
+        advanced_shacl=(
+            advanced_shacl
+            and _setting_bool("SHACL_ENABLE_ADVANCED_FEATURES", default=False)
+        ),
+        max_validation_depth=_setting_int(
+            "SHACL_MAX_VALIDATION_DEPTH",
+            DEFAULT_MAX_VALIDATION_DEPTH,
+            HARD_MAX_VALIDATION_DEPTH,
+        ),
+        timeout_seconds=_setting_int(
+            "SHACL_VALIDATION_TIMEOUT_SECONDS",
+            DEFAULT_PYSHACL_TIMEOUT_SECONDS,
+            HARD_MAX_PYSHACL_TIMEOUT_SECONDS,
+        ),
+    )
+    if pyshacl_error is not None:
+        return None, pyshacl_error
+    return pyshacl_result, None
+
+
+def inspect_shapes_policy(
+    shapes_graph: Graph,
+    *,
+    advanced_shacl_requested: bool,
+) -> str | None:
+    """Reject SHACL constructs that are unsafe for the current deployment.
+
+    Core SHACL is always allowed. SHACL-JS is never allowed. SHACL-AF
+    SPARQL constraints and rules require both the workflow/library
+    config toggle and the deployment-level
+    ``SHACL_ENABLE_ADVANCED_FEATURES`` flag.
+    """
+    js_hit = _first_shape_policy_hit(
+        shapes_graph,
+        predicates=_SHACL_JS_PREDICATES,
+        classes=_SHACL_JS_CLASSES,
+    )
+    if js_hit is not None:
+        return (
+            f"SHACL-JS construct '{js_hit}' was found in the shapes graph. "
+            "Validibot v1 does not execute SHACL-JS because it would run "
+            "author-supplied JavaScript."
+        )
+
+    embedded_sparql_error = _inspect_embedded_shacl_sparql(shapes_graph)
+    if embedded_sparql_error is not None:
+        return embedded_sparql_error
+
+    advanced_hit = _first_shape_policy_hit(
+        shapes_graph,
+        predicates=_SHACL_ADVANCED_PREDICATES,
+        classes=_SHACL_ADVANCED_CLASSES,
+    )
+    if advanced_hit is None:
+        return None
+
+    if not advanced_shacl_requested:
+        return (
+            f"Advanced SHACL construct '{advanced_hit}' was found in the "
+            "shapes graph, but Advanced SHACL is disabled for this validator. "
+            "Remove the construct or enable Advanced SHACL for the step."
+        )
+    if not _setting_bool("SHACL_ENABLE_ADVANCED_FEATURES", default=False):
+        return (
+            f"Advanced SHACL construct '{advanced_hit}' was found in the "
+            "shapes graph. This deployment has "
+            "SHACL_ENABLE_ADVANCED_FEATURES disabled, so v1 refuses embedded "
+            "SHACL-AF/SPARQL execution. Enable that setting only for trusted "
+            "authors and isolated worker deployments."
+        )
+    return None
+
+
+def _first_shape_policy_hit(
+    graph: Graph,
+    *,
+    predicates: frozenset[URIRef],
+    classes: frozenset[URIRef],
+) -> str | None:
+    """Return a compact description of the first forbidden shape term."""
+    for _subject, predicate, _object in graph:
+        if predicate in predicates:
+            return str(predicate)
+    for class_uri in classes:
+        if (None, RDF.type, class_uri) in graph:
+            return str(class_uri)
+    return None
+
+
+def _inspect_embedded_shacl_sparql(shapes_graph: Graph) -> str | None:
+    """Reject network/update features inside embedded SHACL SPARQL text."""
+    for predicate in (SH.select, SH.ask, SH.construct):
+        for sparql_text in shapes_graph.objects(predicate=predicate):
+            text = str(sparql_text)
+            match = _EMBEDDED_SPARQL_FORBIDDEN_PATTERN.search(text)
+            if match is not None:
+                return (
+                    f"Embedded SHACL SPARQL contains forbidden construct "
+                    f"'{match.group(0).strip()}'. SERVICE, FROM, LOAD, "
+                    "SPARQL Update, and remote graph operations are not "
+                    "permitted in v1 shapes."
+                )
+    return None
+
+
+def _run_pyshacl_with_timeout(
+    *,
+    data_graph: Graph,
+    shapes_graph: Graph,
+    ontology_graph: Graph | None,
+    inference_mode: str,
+    advanced_shacl: bool,
+    max_validation_depth: int,
+    timeout_seconds: int,
+) -> tuple[Graph | None, str | None]:
+    """Run pySHACL in a child process and terminate it on timeout."""
     try:
+        payload = {
+            "data_graph_ntriples": data_graph.serialize(format="nt"),
+            "shapes_graph_turtle": shapes_graph.serialize(format="turtle"),
+            "ontology_graph_turtle": (
+                ontology_graph.serialize(format="turtle")
+                if ontology_graph is not None
+                else ""
+            ),
+            "inference_mode": inference_mode,
+            "advanced_shacl": advanced_shacl,
+            "max_validation_depth": max_validation_depth,
+        }
+    except Exception as exc:
+        logger.exception("Failed to serialise SHACL subprocess payload")
+        return None, f"SHACL engine error before subprocess launch: {exc}"
+
+    context = _multiprocessing_context()
+    result_queue = context.Queue(maxsize=1)
+    process = context.Process(
+        target=_pyshacl_worker,
+        kwargs={"payload": payload, "result_queue": result_queue},
+        name="validibot-shacl-pyshacl",
+    )
+    process.start()
+    process.join(timeout_seconds)
+    if process.is_alive():
+        process.terminate()
+        process.join(5)
+        if process.is_alive() and hasattr(process, "kill"):
+            process.kill()
+            process.join(5)
+        return None, (
+            f"SHACL validation exceeded the {timeout_seconds}s wall-clock "
+            "budget and was terminated. Reduce graph size, simplify shapes, "
+            "or lower the inference/advanced SHACL settings."
+        )
+
+    try:
+        status, body = result_queue.get_nowait()
+    except queue.Empty:
+        return None, (
+            "SHACL validation worker exited without returning a result "
+            f"(exit code {process.exitcode})."
+        )
+
+    if status == "error":
+        return None, str(body)
+    if status != "ok":
+        return None, f"SHACL validation worker returned unknown status '{status}'."
+
+    results_graph = Graph()
+    try:
+        results_graph.parse(data=str(body), format="turtle")
+    except Exception as exc:
+        logger.exception("Failed to parse SHACL subprocess result graph")
+        return None, f"SHACL engine error parsing result graph: {exc}"
+    return results_graph, None
+
+
+def _pyshacl_worker(
+    *,
+    payload: dict[str, Any],
+    result_queue: multiprocessing.Queue,
+) -> None:
+    """Child-process entry point for pySHACL execution."""
+    try:
+        data_graph = Graph()
+        data_graph.parse(data=payload["data_graph_ntriples"], format="nt")
+
+        shapes_graph = Graph()
+        shapes_graph.parse(data=payload["shapes_graph_turtle"], format="turtle")
+
+        ontology_graph: Graph | None = None
+        if payload.get("ontology_graph_turtle"):
+            ontology_graph = Graph()
+            ontology_graph.parse(
+                data=payload["ontology_graph_turtle"],
+                format="turtle",
+            )
+
         _conforms, results_graph, _results_text = pyshacl.validate(
             data_graph,
             shacl_graph=shapes_graph,
             ont_graph=ontology_graph,
-            inference=inference_mode,
-            advanced=advanced_shacl,
-            max_validation_depth=_setting_int(
-                "SHACL_MAX_VALIDATION_DEPTH",
-                DEFAULT_MAX_VALIDATION_DEPTH,
-            ),
+            inference=payload["inference_mode"],
+            advanced=payload["advanced_shacl"],
+            max_validation_depth=payload["max_validation_depth"],
             # SECURITY: pyshacl's JavaScript-constraint engine
             # (``sh:JSConstraint``) executes attacker-controlled JS via
-            # pyduktape3. We disable it unconditionally and rely on the
-            # absence of pyduktape3 in the wheel as belt-and-suspenders.
-            # See ADR-2026-05-18 "Security" → "Code execution".
+            # pyduktape3. We disable it unconditionally and also reject
+            # JS constructs before launching the subprocess.
             js=False,
             # SECURITY: pyshacl can follow ``owl:imports`` and fetch the
             # imported ontology over the network. We hard-code False
-            # (also the default) and never read this from a setting —
-            # there is no operator-facing override.
+            # and never read this from a setting.
             do_owl_imports=False,
             # Include Warning and Info findings in the report. Validibot
             # computes ``passed`` from severity counts after mapping, so
@@ -521,11 +841,18 @@ def run_shacl_validation(
             allow_warnings=True,
             allow_infos=True,
         )
+        result_queue.put(("ok", results_graph.serialize(format="turtle")))
     except Exception as exc:
         logger.exception("pyshacl.validate raised")
-        return None, f"SHACL engine error: {exc}"
+        result_queue.put(("error", f"SHACL engine error: {exc}"))
 
-    return results_graph, None
+
+def _multiprocessing_context() -> multiprocessing.context.BaseContext:
+    """Pick a multiprocessing context that works in workers and tests."""
+    methods = multiprocessing.get_all_start_methods()
+    if "fork" in methods:
+        return multiprocessing.get_context("fork")
+    return multiprocessing.get_context()
 
 
 # =============================================================================
@@ -556,9 +883,9 @@ _VALID_TARGET_GRAPHS: frozenset[str] = frozenset(
 class SparqlAskAssertion:
     """One author-defined SPARQL ASK assertion attached to a SHACL step.
 
-    Persisted as a dict inside ``Ruleset.metadata["sparql_assertions"]``;
-    the engine rehydrates that dict into one of these dataclass
-    instances per call.
+    Persisted as a ``RulesetAssertion`` row with
+    ``assertion_type=AssertionType.SHACL``. The engine rehydrates each
+    row into one of these dataclass instances per call.
 
     Fields:
         target_graph: ``"data"`` / ``"results"`` / ``"union"``. Decides
@@ -572,6 +899,7 @@ class SparqlAskAssertion:
         error_message_template: Optional CEL-style template — currently
             stored verbatim, with future plans to support ``{{ o.foo }}``
             substitution once the named-signal ADR lands.
+        assertion_id: ``RulesetAssertion.pk`` for finding attribution.
     """
 
     target_graph: str
@@ -579,6 +907,8 @@ class SparqlAskAssertion:
     severity: str  # one of Severity.ERROR / .WARNING / .INFO
     description: str = ""
     error_message_template: str = ""
+    success_message: str = ""
+    assertion_id: int | None = None
 
 
 def run_sparql_ask(
@@ -699,10 +1029,12 @@ def _resolve_sparql_timeout(explicit_timeout: int | None) -> int:
         configured = _setting_int(
             "SHACL_SPARQL_QUERY_TIMEOUT_SECONDS",
             DEFAULT_SPARQL_QUERY_TIMEOUT_SECONDS,
+            HARD_MAX_SPARQL_QUERY_TIMEOUT_SECONDS,
         )
     cap = _setting_int(
         "SHACL_SPARQL_QUERY_TIMEOUT_MAX_SECONDS",
         DEFAULT_SPARQL_QUERY_TIMEOUT_MAX_SECONDS,
+        HARD_MAX_SPARQL_QUERY_TIMEOUT_SECONDS,
     )
     return min(configured, cap)
 
@@ -790,8 +1122,9 @@ def evaluate_sparql_assertions(
     problem the author needs to see.
 
     Args:
-        assertions: Parsed assertion list from
-            ``Ruleset.metadata["sparql_assertions"]``.
+        assertions: Parsed assertion list from SHACL ``RulesetAssertion``
+            rows attached to the validator default ruleset and/or step
+            ruleset.
         data_graph: The parsed submission graph.
         results_graph: The SHACL ``sh:ValidationReport``, or ``None`` if
             SHACL did not run (e.g. parse failed). Assertions targeting
@@ -824,6 +1157,7 @@ def evaluate_sparql_assertions(
                         "assertion_index": index,
                         "target_graph": assertion.target_graph,
                     },
+                    assertion_id=assertion.assertion_id,
                 ),
             )
             continue
@@ -843,48 +1177,146 @@ def evaluate_sparql_assertions(
                         "target_graph": assertion.target_graph,
                         "description": assertion.description,
                     },
+                    assertion_id=assertion.assertion_id,
+                ),
+            )
+        elif assertion.success_message:
+            issues.append(
+                ValidationIssue(
+                    path="",
+                    message=assertion.success_message,
+                    severity=Severity.SUCCESS,
+                    code="assertion_passed",
+                    meta={
+                        "assertion_index": index,
+                        "target_graph": assertion.target_graph,
+                        "description": assertion.description,
+                    },
+                    assertion_id=assertion.assertion_id,
                 ),
             )
     return issues
 
 
-def parse_sparql_assertions(raw: Any) -> list[SparqlAskAssertion]:
-    """Rehydrate a raw metadata list into typed assertion dataclasses.
+def parse_sparql_assertions(
+    raw: Any,
+    *,
+    error_issues: list[ValidationIssue] | None = None,
+) -> list[SparqlAskAssertion]:
+    """Rehydrate RulesetAssertion rows into typed assertion dataclasses.
 
-    Tolerant of malformed entries — anything that doesn't look like a
-    valid assertion dict is silently skipped, with a warning logged for
-    operator forensics. This protects the engine from a corrupted
-    metadata blob, e.g. one that survived a partial migration.
+    Tolerant of malformed entries when called directly: anything that doesn't
+    look like a valid SHACL assertion row is skipped, with a warning logged for
+    operator forensics. Callers that pass ``error_issues`` get a user-visible
+    ERROR finding for every skipped entry so stored configuration corruption
+    cannot fail open.
     """
+
+    def record_error(
+        message: str,
+        index: int | None = None,
+        assertion_id: int | None = None,
+    ) -> None:
+        logger.warning(
+            "Invalid SPARQL assertion metadata",
+            extra={"assertion_index": index, "config_error": message},
+        )
+        if error_issues is not None:
+            meta: dict[str, Any] = {}
+            if index is not None:
+                meta["assertion_index"] = index
+            if assertion_id is not None:
+                meta["assertion_id"] = assertion_id
+            error_issues.append(
+                ValidationIssue(
+                    path="",
+                    message=message,
+                    severity=Severity.ERROR,
+                    code="shacl.sparql_ask_config_error",
+                    meta=meta,
+                    assertion_id=assertion_id,
+                ),
+            )
+
     if not isinstance(raw, list):
+        if raw not in (None, []):
+            record_error(
+                "Stored SPARQL ASK assertions must be a list of objects; "
+                f"got {type(raw).__name__}.",
+            )
         return []
     out: list[SparqlAskAssertion] = []
-    for entry in raw:
-        if not isinstance(entry, dict):
-            logger.warning(
-                "Skipping non-dict SPARQL assertion entry",
-                extra={"entry_type": type(entry).__name__},
-            )
-            continue
-        try:
-            target = str(entry.get("target_graph", SPARQL_ASK_TARGET_DATA))
-            query = str(entry.get("query", "")).strip()
-            severity = str(entry.get("severity", Severity.ERROR))
-            description = str(entry.get("description", "") or "")
-            error_message_template = str(
-                entry.get("error_message_template", "") or "",
-            )
-        except Exception as exc:
-            logger.warning(
-                "Skipping malformed SPARQL assertion entry",
-                extra={"exc_type": type(exc).__name__},
+    valid_severities = {Severity.ERROR, Severity.WARNING, Severity.INFO}
+    for index, entry in enumerate(raw):
+        assertion_id: int | None = getattr(entry, "pk", None)
+        if hasattr(entry, "rhs"):
+            rhs = getattr(entry, "rhs", None) or {}
+            if not isinstance(rhs, dict):
+                record_error(
+                    "Stored SHACL assertion payload must be an object.",
+                    index=index,
+                    assertion_id=assertion_id,
+                )
+                continue
+            try:
+                target = str(rhs.get("target_graph", SPARQL_ASK_TARGET_DATA))
+                query = str(rhs.get("query", "")).strip()
+                severity = str(getattr(entry, "severity", Severity.ERROR))
+                description = str(rhs.get("description", "") or "")
+                error_message_template = str(
+                    getattr(entry, "message_template", "") or "",
+                )
+                success_message = str(getattr(entry, "success_message", "") or "")
+            except Exception as exc:
+                record_error(
+                    "Stored SHACL assertion row could not be read: "
+                    f"{type(exc).__name__}.",
+                    index=index,
+                    assertion_id=assertion_id,
+                )
+                continue
+        elif isinstance(entry, dict):
+            # Backward-compatible parser for pre-release fixtures/imports that
+            # still pass raw metadata dicts. New application code stores SHACL
+            # assertions as RulesetAssertion rows.
+            try:
+                target = str(entry.get("target_graph", SPARQL_ASK_TARGET_DATA))
+                query = str(entry.get("query", "")).strip()
+                severity = str(entry.get("severity", Severity.ERROR))
+                description = str(entry.get("description", "") or "")
+                error_message_template = str(
+                    entry.get("error_message_template", "") or "",
+                )
+                success_message = str(entry.get("success_message", "") or "")
+            except Exception as exc:
+                record_error(
+                    "Stored SPARQL ASK assertion entry could not be read: "
+                    f"{type(exc).__name__}.",
+                    index=index,
+                )
+                continue
+        else:
+            record_error(
+                "Stored SPARQL ASK assertion entry must be an object; "
+                f"got {type(entry).__name__}.",
+                index=index,
             )
             continue
 
         if not query or target not in _VALID_TARGET_GRAPHS:
-            logger.warning(
-                "Skipping invalid SPARQL assertion entry",
-                extra={"target": target, "has_query": bool(query)},
+            record_error(
+                "Stored SPARQL ASK assertion entry is invalid: query is "
+                "required and target_graph must be one of data/results/union.",
+                index=index,
+                assertion_id=assertion_id,
+            )
+            continue
+        if severity not in valid_severities:
+            record_error(
+                "Stored SPARQL ASK assertion entry has invalid severity "
+                f"'{severity}'. Expected ERROR, WARNING, or INFO.",
+                index=index,
+                assertion_id=assertion_id,
             )
             continue
 
@@ -895,18 +1327,32 @@ def parse_sparql_assertions(raw: Any) -> list[SparqlAskAssertion]:
                 severity=severity,
                 description=description,
                 error_message_template=error_message_template,
+                success_message=success_message,
+                assertion_id=assertion_id,
             ),
         )
     return out
 
 
-def _setting_int(name: str, default: int) -> int:
-    """Read a positive integer Django setting, falling back on invalid values."""
+def _setting_int(name: str, default: int, hard_max: int | None = None) -> int:
+    """Read a positive integer Django setting and clamp to a hard maximum."""
     try:
         value = int(getattr(django_settings, name, default))
     except (TypeError, ValueError):
         return default
-    return value if value > 0 else default
+    if value <= 0:
+        return default
+    if hard_max is not None:
+        return min(value, hard_max)
+    return value
+
+
+def _setting_bool(name: str, *, default: bool = False) -> bool:
+    """Read a boolean Django setting with permissive string support."""
+    value = getattr(django_settings, name, default)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 # =============================================================================
@@ -1027,7 +1473,6 @@ def extract_signals(
     *,
     parse_ok: bool,
     parse_serialization: str,
-    inferred_triple_count: int = 0,
 ) -> dict[str, Any]:
     """Compute the ``o.*`` output signal dict for CEL assertions.
 
@@ -1040,7 +1485,6 @@ def extract_signals(
         "parse_ok": parse_ok,
         "parse_serialization": parse_serialization,
         "triple_count": len(data_graph) if data_graph is not None else 0,
-        "inferred_triple_count": inferred_triple_count,
         "namespaces_present": [],
         "has_s223_namespace": False,
         "has_g36_namespace": False,

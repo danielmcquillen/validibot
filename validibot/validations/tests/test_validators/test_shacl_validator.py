@@ -19,9 +19,12 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
+from validibot.validations.constants import AssertionOperator
+from validibot.validations.constants import AssertionType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
+from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.shacl.validator import SHACLValidator
@@ -328,6 +331,45 @@ class SHACLValidatorLibraryPathTests(TestCase):
         assert len(error_issues) == 1
         assert "nickname" in error_issues[0].message.lower()
 
+    def test_inlined_library_snapshot_ignores_later_default_ruleset_edits(self):
+        """Snapshotted steps do not live-merge the current library default.
+
+        New SHACL workflow steps inline the library validator's default
+        ruleset into the step ruleset. If Priya later edits the library
+        default, Anna's existing workflow step should keep validating
+        against the snapshot captured when the step was authored.
+        """
+        self.default_ruleset.rules_text = SHAPES_PERSON_REQUIRES_NICKNAME
+        self.default_ruleset.save(update_fields=["rules_text"])
+        step_ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text=SHAPES_PERSON_REQUIRES_NAME,
+            metadata={
+                "library_default_inlined": True,
+                "library_default_snapshot": {
+                    "default_ruleset_id": self.default_ruleset.pk,
+                },
+            },
+        )
+        submission = SubmissionFactory(
+            org=self.org,
+            project=self.project,
+            user=self.user,
+            file_type=SubmissionFileType.TEXT,
+        )
+        submission.content = DATA_ALICE_WITH_NAME_NO_NICKNAME
+        submission.save(update_fields=["content"])
+
+        result = SHACLValidator().validate(
+            self.library_validator,
+            submission,
+            step_ruleset,
+        )
+
+        error_issues = [i for i in result.issues if i.severity == Severity.ERROR]
+        assert error_issues == []
+
     def test_both_rules_fire_when_data_violates_both(self):
         """When the submission violates both library + step rules, both surface.
 
@@ -438,10 +480,10 @@ class SHACLValidatorLibraryPathTests(TestCase):
 # ──────────────────────────────────────────────────────────────────────
 # End-to-end SPARQL ASK assertion flow (Phase 1c).
 #
-# These tests exercise the full pipeline: a Ruleset.metadata.sparql_assertions
-# list flows through the validator's _resolve_sparql_assertions(), the
-# engine's parse_sparql_assertions() rehydration, run_sparql_ask
-# execution, and finally a ValidationIssue surfacing in result.issues.
+# These tests exercise the full pipeline: RulesetAssertion rows with
+# assertion_type=SHACL flow through the validator's _resolve_sparql_assertions(),
+# the engine's parse_sparql_assertions() rehydration, run_sparql_ask execution,
+# and finally a ValidationIssue surfacing in result.issues.
 #
 # Maps to ADR-2026-05-18 "Phase 1c — SPARQL ASK assertions" acceptance
 # tests: functional happy paths, severity routing, and engine-error
@@ -451,7 +493,7 @@ class SHACLValidatorLibraryPathTests(TestCase):
 
 
 class SHACLValidatorSparqlAskFlowTests(TestCase):
-    """End-to-end SPARQL ASK execution from Ruleset.metadata to findings."""
+    """End-to-end SPARQL ASK execution from assertion rows to findings."""
 
     @classmethod
     def setUpTestData(cls):
@@ -476,6 +518,33 @@ class SHACLValidatorSparqlAskFlowTests(TestCase):
         submission.save(update_fields=["content"])
         return submission
 
+    def _sparql_assertion(
+        self,
+        ruleset,
+        *,
+        query: str,
+        severity: str = Severity.ERROR,
+        description: str = "",
+        message: str = "",
+        target_graph: str = "data",
+    ):
+        """Attach one SHACL SPARQL ASK assertion row to a ruleset."""
+        return RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.SHACL,
+            operator=AssertionOperator.SPARQL_ASK,
+            target_data_path=f"shacl.{target_graph}",
+            severity=severity,
+            rhs={
+                "target_graph": target_graph,
+                "query": query,
+                "description": description,
+            },
+            options={},
+            message_template=message,
+            cel_cache=query,
+        )
+
     def test_passing_ask_produces_no_finding(self):
         """A SPARQL ASK that returns true contributes no issue.
 
@@ -487,19 +556,12 @@ class SHACLValidatorSparqlAskFlowTests(TestCase):
             org=self.org,
             ruleset_type=RulesetType.SHACL,
             rules_text=SHAPES_PERSON_REQUIRES_NAME,
-            metadata={
-                "sparql_assertions": [
-                    {
-                        "target_graph": "data",
-                        "query": (
-                            "PREFIX ex: <http://example.com/> ASK { ?p a ex:Person }"
-                        ),
-                        "severity": Severity.ERROR,
-                        "description": "Must have a Person",
-                        "error_message_template": "",
-                    },
-                ],
-            },
+        )
+        self._sparql_assertion(
+            ruleset,
+            query="PREFIX ex: <http://example.com/> ASK { ?p a ex:Person }",
+            severity=Severity.ERROR,
+            description="Must have a Person",
         )
         submission = self._submission(
             "@prefix ex: <http://example.com/> .\n"
@@ -525,19 +587,13 @@ class SHACLValidatorSparqlAskFlowTests(TestCase):
             org=self.org,
             ruleset_type=RulesetType.SHACL,
             rules_text=SHAPES_PERSON_REQUIRES_NAME,
-            metadata={
-                "sparql_assertions": [
-                    {
-                        "target_graph": "data",
-                        "query": (
-                            "PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }"
-                        ),
-                        "severity": Severity.ERROR,
-                        "description": "Must have at least one Robot",
-                        "error_message_template": "No Robot instances found.",
-                    },
-                ],
-            },
+        )
+        self._sparql_assertion(
+            ruleset,
+            query="PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }",
+            severity=Severity.ERROR,
+            description="Must have at least one Robot",
+            message="No Robot instances found.",
         )
         submission = self._submission(
             "@prefix ex: <http://example.com/> .\n"
@@ -566,19 +622,13 @@ class SHACLValidatorSparqlAskFlowTests(TestCase):
             org=self.org,
             ruleset_type=RulesetType.SHACL,
             rules_text=SHAPES_PERSON_REQUIRES_NAME,
-            metadata={
-                "sparql_assertions": [
-                    {
-                        "target_graph": "data",
-                        "query": (
-                            "PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }"
-                        ),
-                        "severity": Severity.WARNING,
-                        "description": "Robot expected (advisory)",
-                        "error_message_template": "Advisory: no Robot found.",
-                    },
-                ],
-            },
+        )
+        self._sparql_assertion(
+            ruleset,
+            query="PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }",
+            severity=Severity.WARNING,
+            description="Robot expected (advisory)",
+            message="Advisory: no Robot found.",
         )
         submission = self._submission(
             "@prefix ex: <http://example.com/> .\n"
@@ -607,20 +657,13 @@ class SHACLValidatorSparqlAskFlowTests(TestCase):
             org=self.org,
             ruleset_type=RulesetType.SHACL,
             rules_text=SHAPES_PERSON_REQUIRES_NAME,
-            metadata={
-                "sparql_assertions": [
-                    {
-                        "target_graph": "data",
-                        "query": (
-                            "PREFIX ex: <http://example.com/> "
-                            "ASK { ?p a ex:Person }"  # passes
-                        ),
-                        "severity": Severity.ERROR,
-                        "description": "Library: must have a Person",
-                        "error_message_template": "library failed",
-                    },
-                ],
-            },
+        )
+        self._sparql_assertion(
+            library_ruleset,
+            query="PREFIX ex: <http://example.com/> ASK { ?p a ex:Person }",
+            severity=Severity.ERROR,
+            description="Library: must have a Person",
+            message="library failed",
         )
         library_validator = ValidatorFactory(
             validation_type=ValidationType.SHACL,
@@ -633,20 +676,13 @@ class SHACLValidatorSparqlAskFlowTests(TestCase):
             org=self.org,
             ruleset_type=RulesetType.SHACL,
             rules_text="",
-            metadata={
-                "sparql_assertions": [
-                    {
-                        "target_graph": "data",
-                        "query": (
-                            "PREFIX ex: <http://example.com/> "
-                            "ASK { ?r a ex:Robot }"  # fails
-                        ),
-                        "severity": Severity.ERROR,
-                        "description": "Step: must have a Robot",
-                        "error_message_template": "step failed",
-                    },
-                ],
-            },
+        )
+        self._sparql_assertion(
+            step_ruleset,
+            query="PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }",
+            severity=Severity.ERROR,
+            description="Step: must have a Robot",
+            message="step failed",
         )
         submission = self._submission(
             "@prefix ex: <http://example.com/> .\n"
@@ -672,7 +708,7 @@ class SHACLValidatorSparqlAskFlowTests(TestCase):
 
         Simulates a persistence-layer bypass: someone (admin import,
         broken migration, manual SQL) writes a SELECT into
-        ``sparql_assertions``. The engine's re-scrub catches it and
+        ``RulesetAssertion.rhs``. The engine's re-scrub catches it and
         emits an ERROR finding regardless of the configured severity,
         because the run cannot be trusted while the config is broken.
         """
@@ -680,19 +716,14 @@ class SHACLValidatorSparqlAskFlowTests(TestCase):
             org=self.org,
             ruleset_type=RulesetType.SHACL,
             rules_text=SHAPES_PERSON_REQUIRES_NAME,
-            metadata={
-                "sparql_assertions": [
-                    {
-                        "target_graph": "data",
-                        # Malformed (SELECT, not ASK) — would never pass
-                        # the form scrub, simulating a bypass.
-                        "query": "SELECT * WHERE { ?s ?p ?o }",
-                        "severity": Severity.WARNING,  # author chose advisory
-                        "description": "Bad assertion smuggled in",
-                        "error_message_template": "",
-                    },
-                ],
-            },
+        )
+        self._sparql_assertion(
+            ruleset,
+            # Malformed (SELECT, not ASK) — would never pass the form scrub,
+            # simulating a persistence-layer bypass.
+            query="SELECT * WHERE { ?s ?p ?o }",
+            severity=Severity.WARNING,
+            description="Bad assertion smuggled in",
         )
         submission = self._submission(
             "@prefix ex: <http://example.com/> .\n"

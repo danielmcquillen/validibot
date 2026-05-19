@@ -407,6 +407,7 @@ class BindingSourceScope(TextChoices):
 
 
 class AssertionType(TextChoices):
+    SHACL = "shacl", _("SHACL")
     BASIC = "basic", _("Basic Assertion")
     CEL_EXPRESSION = "cel_expr", _("CEL expression")
 
@@ -416,6 +417,10 @@ class ValidatorRuleType(TextChoices):
 
 
 class AssertionOperator(TextChoices):
+    # SHACL-specific assertion execution. Stored as a RulesetAssertion row
+    # but evaluated by SHACLValidator after pySHACL has produced the report graph.
+    SPARQL_ASK = "sparql_ask", _("SPARQL ASK")
+
     # Comparisons (numeric/text/temporal where applicable)
     EQ = "eq", _("Equals")
     NE = "ne", _("Not equals")

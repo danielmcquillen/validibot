@@ -451,16 +451,6 @@ def _shacl_form_data_to_ruleset_state(form):
         ontology_text,
     )
 
-    # SPARQL ASK assertions: cleaned by the form's
-    # shacl_clean_sparql_assertions() and stashed under the normalised
-    # ``sparql_assertions`` key. Treat the raw textarea as the
-    # has-content signal so leaving it blank during an edit means
-    # "keep existing" (handled by callers).
-    sparql_assertions = cleaned.get("sparql_assertions") or []
-    raw_sparql_textarea = bool(
-        (cleaned.get("sparql_assertions_json") or "").strip(),
-    )
-
     metadata = {
         "shape_files": shape_files_meta,
         "has_inline_shapes": bool(shape_text),
@@ -471,11 +461,6 @@ def _shacl_form_data_to_ruleset_state(form):
         "inference_mode": inference_mode,
         "advanced_shacl": advanced_shacl,
         "submission_format": submission_format,
-        "sparql_assertions": sparql_assertions,
-        # Sentinel used only by the caller to decide keep-existing
-        # semantics on edit. Stripped before persistence so it doesn't
-        # leak into ``Ruleset.metadata``.
-        "_has_sparql_textarea_content": raw_sparql_textarea,
     }
     return (
         shapes_concat,
@@ -529,10 +514,6 @@ def create_shacl_library_validator(
         _shacl_form_data_to_ruleset_state(form)
     )
 
-    # Strip the textarea-content sentinel before persisting — it's a
-    # caller-side hint, not real metadata.
-    metadata.pop("_has_sparql_textarea_content", None)
-
     slug = _unique_validator_slug(org, name)
     file_types = default_supported_file_types_for_validation(ValidationType.SHACL)
 
@@ -561,14 +542,13 @@ def create_shacl_library_validator(
         version=version or "",
         default_ruleset=ruleset,
     )
-    if notes:
-        # SHACL library validators do not currently have a separate
-        # CustomValidator-style wrapper for notes. Stuff into the
-        # ruleset metadata so we can surface them later.
-        metadata = dict(ruleset.metadata or {})
-        metadata["library_validator_notes"] = notes
-        ruleset.metadata = metadata
-        ruleset.save(update_fields=["metadata"])
+    # SHACL library validators do not currently have a separate
+    # CustomValidator-style wrapper for notes. Store them in the ruleset
+    # metadata so the create/edit surfaces round-trip the field.
+    metadata = dict(ruleset.metadata or {})
+    metadata["library_validator_notes"] = notes or ""
+    ruleset.metadata = metadata
+    ruleset.save(update_fields=["metadata"])
     return validator
 
 
@@ -622,30 +602,15 @@ def update_shacl_library_validator(
         _shacl_form_data_to_ruleset_state(form)
     )
 
-    # SPARQL textarea keep-existing semantic: a blank textarea on edit
-    # means "keep what was saved last time", same as shapes / ontology.
-    # A filled textarea (even with ``[]``) means "replace with this list".
-    sparql_textarea_filled = metadata.pop(
-        "_has_sparql_textarea_content",
-        False,
-    )
-
     if has_shapes_content:
         # Author supplied fresh shapes. Replace the whole SHACL content bundle;
-        # an omitted ontology means "clear ontology" in this branch. Preserve
-        # SPARQL assertions if the textarea was left blank — they're an
-        # independent concern from shapes content.
+        # an omitted ontology means "clear ontology" in this branch.
         ruleset.rules_text = rules_text
-        if not sparql_textarea_filled:
-            existing_asks = (ruleset.metadata or {}).get(
-                "sparql_assertions",
-                [],
-            ) or []
-            metadata["sparql_assertions"] = existing_asks
         ruleset.metadata = metadata
     elif has_ontology_content:
         # Ontology-only edit: preserve shapes and replace the inference context.
         existing_meta = dict(ruleset.metadata or {})
+        existing_meta.pop("sparql_assertions", None)
         existing_meta["ontology_text"] = metadata["ontology_text"]
         existing_meta["ontology_files"] = metadata["ontology_files"]
         existing_meta["has_inline_ontology"] = metadata["has_inline_ontology"]
@@ -653,20 +618,16 @@ def update_shacl_library_validator(
         existing_meta["advanced_shacl"] = metadata["advanced_shacl"]
         existing_meta["submission_format"] = metadata["submission_format"]
         existing_meta["bundled_standards"] = metadata["bundled_standards"]
-        if sparql_textarea_filled:
-            existing_meta["sparql_assertions"] = metadata["sparql_assertions"]
         ruleset.metadata = existing_meta
     else:
         # Keep-existing: refresh only the engine-knob + bundled-standards
-        # subset of metadata. SPARQL assertions follow the same
-        # textarea-filled rule as the other branches.
+        # subset of metadata.
         existing_meta = dict(ruleset.metadata or {})
+        existing_meta.pop("sparql_assertions", None)
         existing_meta["inference_mode"] = metadata["inference_mode"]
         existing_meta["advanced_shacl"] = metadata["advanced_shacl"]
         existing_meta["submission_format"] = metadata["submission_format"]
         existing_meta["bundled_standards"] = metadata["bundled_standards"]
-        if sparql_textarea_filled:
-            existing_meta["sparql_assertions"] = metadata["sparql_assertions"]
         ruleset.metadata = existing_meta
 
     meta = dict(ruleset.metadata or {})

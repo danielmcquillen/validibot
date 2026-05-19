@@ -1,0 +1,11 @@
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix s223: <http://data.ashrae.org/standard223#> .
+@prefix bld:  <http://example.com/building/> .
+
+bld:ZoneShape a sh:NodeShape ;
+   sh:targetClass s223:Zone ;
+   sh:property [
+       sh:path s223:hasDomain ;
+       sh:minCount 1 ;
+       sh:message "Every Zone must declare a Domain (e.g. s223:Domain-HVAC)." ;
+   ] .

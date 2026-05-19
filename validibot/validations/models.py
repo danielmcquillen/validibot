@@ -434,6 +434,9 @@ class RulesetAssertion(TimeStampedModel):
       inclusive bounds, case folding, etc.).
     - **CEL_EXPRESSION** - free-form: the CEL source lives in ``rhs["expr"]``
       and is evaluated directly by the CEL evaluator.
+    - **SHACL** - SHACL-validator-only SPARQL ASK assertion. The ASK query
+      and target graph live in ``rhs`` and are evaluated by ``SHACLValidator``
+      after pySHACL produces the SHACL results graph.
 
     Targeting:
 
@@ -666,6 +669,9 @@ class RulesetAssertion(TimeStampedModel):
 
     @property
     def target_display(self) -> str:
+        if self.assertion_type == AssertionType.SHACL:
+            description = (self.rhs or {}).get("description") or ""
+            return description or _("SHACL SPARQL ASK")
         if self.target_signal_definition_id and self.target_signal_definition:
             sig = self.target_signal_definition
             prefix = "o." if sig.direction == SignalDirection.OUTPUT else "s."
@@ -674,6 +680,11 @@ class RulesetAssertion(TimeStampedModel):
 
     @property
     def condition_display(self) -> str:
+        if self.assertion_type == AssertionType.SHACL:
+            target_graph = (self.rhs or {}).get("target_graph", "data")
+            return _("SPARQL ASK against %(target)s graph") % {
+                "target": target_graph,
+            }
         if self.assertion_type == AssertionType.CEL_EXPRESSION:
             # CEL expression is already shown via target_display (stored in
             # target_data_path). Returning it here would duplicate it on the card.

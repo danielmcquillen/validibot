@@ -6,8 +6,11 @@ Provides shared enrichment logic used by both the web UI
 Given a ``ValidationStepRun`` whose ``output`` contains raw signal data,
 these helpers:
 
-1. Filter signals by the author's ``display_signals`` selection (or show
-   all when the list is empty — backward-compatible default).
+1. Filter signals by the author's ``display_signals`` selection.
+   **Empty list means show NONE** — the author must opt in to each
+   signal they want surfaced to the submitter. A future workflow-step
+   toggle ("show all output signals") will give one-click access for
+   cases where every signal is wanted.
 2. Enrich each signal with human-readable metadata (label, units,
    precision) from the validator's ``SignalDefinition`` records.
 3. Format numeric values with thousands separators and configurable
@@ -17,7 +20,8 @@ This is a **cross-validator capability** — any validator type that
 populates ``step_run.output["signals"]`` gets signal display
 automatically.  The ``display_signals`` filter is read via
 ``getattr(typed_config, "display_signals", [])`` so validators whose
-config model lacks that field simply show all signals.
+config model lacks that field simply surface no signals (consistent
+with the opt-in default).
 
 See Also:
     - ``EnergyPlusStepConfig.display_signals`` (``workflows/step_configs.py``)
@@ -94,12 +98,21 @@ def build_display_signals(step_run: ValidationStepRun) -> list[DisplaySignal]:
         return []
 
     # Determine which signals to display.
+    #
+    # Default (empty filter) is now "show NONE" — authors opt in to
+    # each signal they want exposed in the run response. This protects
+    # against accidentally surfacing internal diagnostic signals to
+    # the submitter, and it matches the principle of least surprise:
+    # the API only returns what the workflow author explicitly chose.
+    #
+    # A future "Show all output signals" workflow-step toggle is
+    # tracked in validibot-project. Until that ships, the only way to
+    # show all signals is to enumerate them in ``display_signals``.
     display_filter = _get_display_signals_filter(step_run)
-    if display_filter:
-        # Preserve the author's ordering by iterating display_filter.
-        visible_slugs = [s for s in display_filter if s in raw_signals]
-    else:
-        visible_slugs = list(raw_signals.keys())
+    if not display_filter:
+        return []
+    # Preserve the author's ordering by iterating display_filter.
+    visible_slugs = [s for s in display_filter if s in raw_signals]
 
     if not visible_slugs:
         return []

@@ -275,6 +275,24 @@ class CreateShaclLibraryValidatorServiceTests(TestCase):
         assert metadata["submission_format"] == "jsonld"
         assert metadata["bundled_standards"] == []
 
+    def test_notes_persist(self):
+        """Library-level notes round-trip into metadata.
+
+        SHACL library validators still use metadata for human notes even
+        though SPARQL gates now belong to workflow step assertions.
+        """
+        validator = create_shacl_library_validator(
+            org=self.org,
+            user=self.user,
+            form=self._bound_form(
+                notes="Maintained by Priya.",
+            ),
+            notes="Maintained by Priya.",
+        )
+
+        metadata = validator.default_ruleset.metadata
+        assert metadata["library_validator_notes"] == "Maintained by Priya."
+
     def test_uploaded_files_get_sha256_metadata(self):
         """Each uploaded shapes file gets {name, size_bytes, sha256} captured.
 
@@ -426,6 +444,32 @@ class UpdateShaclLibraryValidatorServiceTests(TestCase):
 
         assert updated.default_ruleset.rules_text == original_shapes_text
         assert "ex:Building" in updated.default_ruleset.metadata["ontology_text"]
+
+    def test_update_can_replace_notes(self):
+        """Editing a library validator can intentionally replace notes."""
+        validator = self._create()
+
+        update_form = ShaclLibraryValidatorUpdateForm(
+            data={
+                "name": "Original",
+                "version": "v1",
+                "inference_mode": "rdfs",
+                "advanced_shacl": True,
+                "submission_format": "auto",
+                "notes": "Updated notes.",
+            },
+        )
+        assert update_form.is_valid(), update_form.errors
+
+        updated = update_shacl_library_validator(
+            validator,
+            form=update_form,
+            notes="Updated notes.",
+        )
+        updated.default_ruleset.refresh_from_db()
+
+        metadata = updated.default_ruleset.metadata
+        assert metadata["library_validator_notes"] == "Updated notes."
 
 
 # ════════════════════════════════════════════════════════════════════════════

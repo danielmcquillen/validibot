@@ -1,0 +1,5 @@
+@prefix s223: <http://data.ashrae.org/standard223#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+s223:Zone a rdfs:Class ;
+    rdfs:label "Zone" .

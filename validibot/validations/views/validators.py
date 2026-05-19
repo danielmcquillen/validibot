@@ -489,6 +489,7 @@ class ShaclLibraryValidatorCreateView(CustomValidatorManageMixin, FormView):
             org=org,
             user=self.request.user,
             form=form,
+            notes=form.cleaned_data.get("notes") or "",
         )
         messages.success(
             self.request,
@@ -542,7 +543,7 @@ class ShaclLibraryValidatorUpdateView(CustomValidatorManageMixin, FormView):
             "description": validator.description,
             "version": validator.version,
             "inference_mode": metadata.get("inference_mode", "rdfs"),
-            "advanced_shacl": metadata.get("advanced_shacl", True),
+            "advanced_shacl": metadata.get("advanced_shacl", False),
             "submission_format": metadata.get("submission_format", "auto"),
             "bundle_brick": "brick-1.4" in (metadata.get("bundled_standards") or []),
             "bundle_qudt": "qudt-2.1" in (metadata.get("bundled_standards") or []),
@@ -579,6 +580,7 @@ class ShaclLibraryValidatorUpdateView(CustomValidatorManageMixin, FormView):
         validator = update_shacl_library_validator(
             self.validator,
             form=form,
+            notes=form.cleaned_data.get("notes") or "",
         )
         messages.success(
             self.request,
@@ -643,11 +645,14 @@ class ShaclLibraryValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
         success_message = _(
             "Deleted SHACL library validator “%(name)s”.",
         ) % {"name": self.validator.name}
-        # Deleting the validator cascades to delete its default_ruleset
-        # via Validator.default_ruleset's on_delete behaviour; if the
-        # FK is configured as SET_NULL, the orphan ruleset is left
-        # behind (acceptable — it's invisible without its parent).
+        default_ruleset = self.validator.default_ruleset
         self.validator.delete()
+        if (
+            default_ruleset is not None
+            and not Validator.objects.filter(default_ruleset=default_ruleset).exists()
+            and not WorkflowStep.objects.filter(ruleset=default_ruleset).exists()
+        ):
+            default_ruleset.delete()
         messages.success(request, success_message)
         return redirect(
             reverse_with_org(

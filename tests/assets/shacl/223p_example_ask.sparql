@@ -1,0 +1,11 @@
+PREFIX s223: <http://data.ashrae.org/standard223#>
+
+ASK {
+    FILTER NOT EXISTS {
+        ?zone a s223:Zone ;
+              s223:hasDomain s223:Domain-HVAC .
+        FILTER NOT EXISTS {
+            ?eq s223:serves ?zone .
+        }
+    }
+}

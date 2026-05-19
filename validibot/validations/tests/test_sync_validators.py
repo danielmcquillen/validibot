@@ -219,6 +219,7 @@ class SyncValidatorsCommandTests(TestCase):
             "energyplus-idf-validator",
             "fmu-validator",
             "ai-assisted-validator",
+            "shacl-validator",
             "therm-validator",
         ):
             validator = Validator.objects.get(slug=slug)
@@ -233,6 +234,33 @@ class SyncValidatorsCommandTests(TestCase):
             self.assertFalse(
                 validator.supports_assertions,
                 f"{slug} should not support assertions",
+            )
+
+    def test_command_creates_shacl_output_signals(self):
+        """SHACL output signals should be synced for the step editor.
+
+        The SHACL validator is inline, but it still emits output signals
+        such as ``shacl_violation_count``. The step editor and assertion
+        form need those SignalDefinition rows to show default targets.
+        """
+        self.call_command()
+
+        validator = Validator.objects.get(slug="shacl-validator")
+
+        for key in (
+            "parse_ok",
+            "triple_count",
+            "has_s223_namespace",
+            "shacl_violation_count",
+            "shacl_total_count",
+        ):
+            self.assertTrue(
+                SignalDefinition.objects.filter(
+                    validator=validator,
+                    contract_key=key,
+                    direction="output",
+                ).exists(),
+                f"SHACL signal {key} should exist",
             )
 
     def test_command_reports_creation_counts(self):

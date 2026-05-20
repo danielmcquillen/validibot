@@ -17,7 +17,7 @@ config = ValidatorConfig(
     validator_class=(
         "validibot.validations.validators.xml_schema.validator.XmlSchemaValidator"
     ),
-    version="1.0",
+    version="1.1",
     order=2,
     supported_file_types=[SubmissionFileType.XML],
     supported_data_formats=[SubmissionDataFormat.XML],

@@ -33,6 +33,30 @@
         text-decoration: underline;
       }
     }
+
+    &.breadcrumb-item--workflow {
+      text-overflow: clip;
+
+      .breadcrumb-workflow-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        max-width: 100%;
+        min-width: 0;
+        vertical-align: middle;
+      }
+
+      .workflow-version-badge {
+        flex: 0 0 auto;
+      }
+
+      .breadcrumb-workflow-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
   }
 
   .breadcrumb-item + .breadcrumb-item::before {

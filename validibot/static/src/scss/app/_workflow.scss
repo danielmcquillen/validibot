@@ -30,6 +30,50 @@
   }
 }
 
+.workflow-version-badges {
+  min-width: 0;
+}
+
+.workflow-version-badge {
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  line-height: 1.15;
+  max-width: 100%;
+
+  &:hover,
+  &:focus {
+    text-decoration: none;
+  }
+}
+
+.workflow-version-badge--sm {
+  font-size: 0.68rem;
+  line-height: 1;
+  padding: 0.12rem 0.3rem;
+}
+
+.workflow-version-badge--current {
+  border-color: var(--bs-primary-border-subtle);
+
+  &:hover,
+  &:focus {
+    border-color: rgba(var(--bs-primary-rgb), 0.45);
+  }
+}
+
+.workflow-version-badge--previous {
+  background-color: var(--bs-danger-bg-subtle);
+  border-color: var(--bs-danger-border-subtle);
+  color: var(--bs-danger-text-emphasis);
+
+  &:hover,
+  &:focus {
+    background-color: rgba(var(--bs-danger-rgb), 0.18);
+    color: var(--bs-danger-text-emphasis);
+  }
+}
+
 .workflow-card {
   &.archived {
     .card-body, .card-footer {

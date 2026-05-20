@@ -116,7 +116,7 @@ class OrgScopedWorkflowAPITestCase(TransactionTestCase):
             data = data["results"]
         # Should only return 1 workflow (the latest version)
         self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["version"], "3")
+        self.assertEqual(data[0]["version"], 3)
 
     def test_retrieve_workflow_by_slug(self):
         """Should retrieve workflow by slug."""
@@ -157,7 +157,7 @@ class OrgScopedWorkflowAPITestCase(TransactionTestCase):
         )
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["version"], "2")
+        self.assertEqual(response.data["version"], 2)
 
     def test_retrieve_nonexistent_workflow_404(self):
         """Should return 404 for nonexistent workflow."""
@@ -245,7 +245,7 @@ class WorkflowVersionAPITestCase(TransactionTestCase):
             data = data["results"]
         self.assertEqual(len(data), 2)
         versions = {w["version"] for w in data}
-        self.assertEqual(versions, {"1", "2"})
+        self.assertEqual(versions, {1, 2})
 
     def test_retrieve_specific_version(self):
         """Should retrieve a specific version."""
@@ -260,7 +260,7 @@ class WorkflowVersionAPITestCase(TransactionTestCase):
         )
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["version"], "1")
+        self.assertEqual(response.data["version"], 1)
 
     def test_retrieve_nonexistent_version_404(self):
         """Should return 404 for nonexistent version."""

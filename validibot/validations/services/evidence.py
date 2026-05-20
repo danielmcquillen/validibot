@@ -210,7 +210,11 @@ class EvidenceManifestBuilder:
             "run_id": str(run.id),
             "workflow_id": workflow.pk,
             "workflow_slug": workflow.slug,
-            "workflow_version": workflow.version,
+            # Evidence manifests use the external validibot-shared v1 schema,
+            # where workflow_version is a string identifier. The authoritative
+            # Django model stores workflow versions as positive integers; cast
+            # at this boundary so canonical evidence JSON stays schema-valid.
+            "workflow_version": str(workflow.version),
             "org_id": run.org_id,
             "executed_at": executed_at_iso,
             "status": str(run.status),

@@ -29,7 +29,7 @@ class WorkflowFactory(DjangoModelFactory):
     uuid = factory.Faker("uuid4")
     slug = factory.LazyFunction(lambda: f"test-workflow-{uuid4().hex[:12]}")
     project = factory.SubFactory(ProjectFactory, org=factory.SelfAttribute("..org"))
-    version = "1"
+    version = 1
     history_policy = WorkflowHistoryPolicy.VERSIONED
     is_locked = False
     is_active = True

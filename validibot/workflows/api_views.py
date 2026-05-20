@@ -280,7 +280,7 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = WorkflowSlimSerializer
     permission_classes = [permissions.IsAuthenticated, OrgMembershipPermission]
     lookup_field = "version"
-    lookup_value_regex = r"[^/]+"
+    lookup_value_regex = r"[1-9]\d*"
 
     def get_queryset(self) -> QuerySet[Workflow]:
         """
@@ -320,7 +320,7 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
             "steps__validator__default_ruleset__assertions__target_signal_definition",
             "steps__ruleset__assertions__target_signal_definition",
         )
-        version = self.kwargs.get(self.lookup_field)
+        version = int(self.kwargs[self.lookup_field])
         obj = get_object_or_404(queryset, version=version)
         self.check_object_permissions(self.request, obj)
         return obj

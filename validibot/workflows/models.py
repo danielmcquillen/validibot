@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import logging
 import math
-import re
 import uuid
 from typing import TYPE_CHECKING
 
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import storages
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db import transaction
 from django.db.models import Exists
@@ -41,38 +41,42 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Pattern for validating strict semantic versions (e.g., "1.0.0").
-SEMVER_PATTERN = re.compile(
-    r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)$"
-)
 
-
-def validate_workflow_version(value: str) -> None:
+def validate_workflow_version(value: int | str) -> None:
     """
-    Validate that version is either an integer or strict semantic version.
+    Validate that a workflow version is a positive integer.
 
-    Valid examples: "1", "2", "1.0.0", "2.1.3"
-    Invalid examples: "v1", "1.0", "1.0.0-beta", "latest", arbitrary strings
+    Workflow versions are ordering keys, not human release labels. Keeping
+    them as plain positive integers avoids implying semantic-version
+    compatibility rules that the product does not enforce. Historical
+    migrations import this function by dotted path, so it remains module-level
+    even though the current model field also enforces the rule with
+    ``PositiveIntegerField`` and ``MinValueValidator``.
 
-    This ensures versions can be reliably compared and ordered.
+    A non-empty label is required: ``Workflow.version`` is part of the
+    ``(org, slug, version)`` uniqueness constraint and feeds the version-
+    arithmetic helpers, so a blank value would silently break both the
+    family-uniqueness story and "latest version" resolution. Existing
+    blank rows are backfilled to ``1`` (with collision-safe bumping)
+    by migration ``0023_backfill_empty_workflow_versions`` and non-integer
+    legacy labels are collapsed by migration ``0025``.
     """
-    if not value:
-        return  # Empty is allowed (will be backfilled)
+    if value is None or value == "":
+        raise ValidationError(
+            _(
+                "Workflow version is required. Use a positive integer (e.g., 1).",
+            ),
+        )
 
-    # Check if it's a simple integer
-    if value.isdigit():
-        return
+    try:
+        version = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(
+            _("Version must be a positive integer (e.g., 1)."),
+        ) from exc
 
-    # Check if it's a valid semantic version
-    if SEMVER_PATTERN.match(value):
-        return
-
-    raise ValidationError(
-        _(
-            "Version must be an integer (e.g., '1') or semantic version "
-            "with major, minor, and patch numbers (e.g., '1.0.0')."
-        ),
-    )
+    if version < 1:
+        raise ValidationError(_("Version must be a positive integer (e.g., 1)."))
 
 
 def select_public_storage():
@@ -396,14 +400,13 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
             "their data for validation.",
         ),
     )
-    version = models.CharField(
-        max_length=40,
-        blank=True,
-        default="",
-        validators=[validate_workflow_version],
+    version = models.PositiveIntegerField(
+        default=1,
+        validators=[MinValueValidator(1)],
         help_text=_(
-            "Version identifier (integer or semantic version with major, "
-            "minor, and patch numbers, e.g., '1' or '1.0.0')."
+            "Positive integer version number. Every workflow row must carry "
+            "a version so the family identity ``(org, slug, version)`` stays "
+            "unique and 'latest version' resolution stays deterministic."
         ),
     )
 
@@ -1107,36 +1110,26 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         report = WorkflowVersioningService.clone(self, user=user)
         return Workflow.objects.get(pk=report.new_workflow_id)
 
-    def _determine_next_version_label(self, versions) -> str:
+    def _determine_next_version_label(self, versions) -> int:
         """
-        Return a simple integer version label for the cloned workflow.
+        Return the next positive integer version for the cloned workflow.
 
-        Parses existing versions (integer or semver) and returns the next
-        major version as an integer string. This ensures cloned versions
-        are always valid integers (e.g., "1", "2", "3") and never produce
-        invalid versions like "2.5".
+        Existing rows should already carry integers, but the helper remains
+        defensive so clone creation can still recover cleanly if legacy
+        fixture data reaches it before migrations normalize the database.
         """
-        max_major = 0
+        max_version = 0
         for raw in versions:
             if raw is None:
                 continue
-            candidate = str(raw).strip()
-            if not candidate:
+            try:
+                candidate = int(raw)
+            except (TypeError, ValueError):
                 continue
+            if candidate > 0:
+                max_version = max(max_version, candidate)
 
-            # Parse as integer
-            if candidate.isdigit():
-                max_major = max(max_major, int(candidate))
-                continue
-
-            # Parse as semver - extract major version
-            match = SEMVER_PATTERN.match(candidate)
-            if match:
-                major = int(match.group("major"))
-                max_major = max(max_major, major)
-
-        # Return next integer version
-        return str(max_major + 1)
+        return max_version + 1
 
     @property
     def has_signed_credential_action(self) -> bool:

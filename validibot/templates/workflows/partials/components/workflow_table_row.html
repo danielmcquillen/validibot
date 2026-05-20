@@ -22,13 +22,6 @@
     {% endif %}
   </td>
   <td class="align-middle">
-    {% if workflow.version %}
-      <span class="badge text-bg-light">{{ workflow.version }}</span>
-    {% else %}
-      <span class="text-muted small">{% trans "Unversioned" %}</span>
-    {% endif %}
-  </td>
-  <td class="align-middle">
     {% if workflow.is_archived %}
       <span class="badge text-bg-warning">{% trans "Archived" %}</span>
     {% elif workflow.is_active %}
@@ -36,6 +29,9 @@
     {% else %}
       <span class="badge text-bg-secondary">{% trans "Inactive" %}</span>
     {% endif %}
+  </td>
+  <td class="align-middle">
+    {% include "workflows/partials/components/workflow_version_badges.html" with workflow=workflow %}
   </td>
   <td class="align-middle">
     {% if workflow.guest_count %}

@@ -1,0 +1,117 @@
+{% load i18n %}
+
+{% comment %}
+Workflow version-history panel.
+
+Renders the (org, slug) family of workflow versions as a compact table.
+This panel is the only authoring UI navigation surface for opening an older
+workflow version. It shows enough metadata (run count, policy,
+locked/archived qualifiers, timestamps) for authors to understand what each
+version is for before clicking through.
+
+Context expected (built by ``build_workflow_version_context``):
+  - ``workflow_versions``: list of dicts, newest-first, each with
+    ``version``, ``url``, ``is_current``, ``is_latest``, ``is_active``,
+    ``is_archived``, ``is_tombstoned``, ``is_locked``, ``run_count``,
+    ``history_policy``, ``created``, ``modified``.
+  - ``has_workflow_versions``: True when there are 2 or more versions.
+
+When there's only one version in the family the panel hides itself entirely.
+A single version is its own history — there's nothing to switch to and
+nothing useful to compare against.
+{% endcomment %}
+{% if has_workflow_versions %}
+  <div class="card app-card mb-3 workflow-version-history-card">
+    <div class="card-header">
+      <div class="card-title d-flex align-items-center gap-2">
+        <i class="bi-clock-history"></i>
+        <span class="fw-semibold">{% trans "Version history" %}</span>
+        <span class="text-muted small ms-auto">
+          {% blocktrans count counter=workflow_version_count %}
+            {{ counter }} version
+          {% plural %}
+            {{ counter }} versions
+          {% endblocktrans %}
+        </span>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 workflow-version-history-table">
+          <thead class="text-muted small">
+            <tr>
+              <th scope="col" class="text-nowrap" style="min-width: 8rem;">
+                {% trans "Version" %}
+              </th>
+              <th scope="col" class="text-end">
+                {% trans "Runs" %}
+              </th>
+              <th scope="col">
+                {% trans "Policy" %}
+              </th>
+              <th scope="col">
+                {% trans "Status" %}
+              </th>
+              <th scope="col">
+                {% trans "Created" %}
+              </th>
+              <th scope="col" class="text-end">
+                {% trans "Modified" %}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for option in workflow_versions %}
+              <tr class="{% if option.is_current %}table-active{% endif %}">
+                <td class="text-nowrap" style="min-width: 8rem;">
+                  {% if option.is_current %}
+                    <span class="fw-semibold">v{{ option.version }}</span>
+                  {% else %}
+                    <a href="{{ option.url }}" class="text-decoration-none">v{{ option.version }}</a>
+                  {% endif %}
+                  {% if option.is_current %}
+                    <span class="badge text-bg-primary ms-1">{% trans "current" %}</span>
+                  {% endif %}
+                  {% if option.is_latest and not option.is_current %}
+                    <span class="badge text-bg-success ms-1">{% trans "latest" %}</span>
+                  {% endif %}
+                </td>
+                <td class="text-end font-monospace small">
+                  {{ option.run_count }}
+                </td>
+                <td>
+                  <span class="text-muted small">{{ option.history_policy }}</span>
+                </td>
+                <td>
+                  {% if option.is_tombstoned %}
+                    <span class="badge text-bg-dark">{% trans "Tombstoned" %}</span>
+                  {% elif option.is_archived %}
+                    <span class="badge text-bg-secondary">{% trans "Archived" %}</span>
+                  {% elif not option.is_active %}
+                    <span class="badge text-bg-warning">{% trans "Inactive" %}</span>
+                  {% else %}
+                    <span class="badge text-bg-light text-dark">{% trans "Active" %}</span>
+                  {% endif %}
+                  {% if option.is_locked %}
+                    <span class="badge text-bg-light text-dark ms-1"
+                          data-bs-toggle="tooltip"
+                          title="{% trans 'Semantic edits on a versioned/locked workflow require creating a new version.' %}">
+                      <i class="bi-lock-fill"></i>
+                      {% trans "Locked" %}
+                    </span>
+                  {% endif %}
+                </td>
+                <td class="text-muted small">
+                  {{ option.created|date:"SHORT_DATE_FORMAT" }}
+                </td>
+                <td class="text-end text-muted small">
+                  {{ option.modified|date:"SHORT_DATE_FORMAT" }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endif %}

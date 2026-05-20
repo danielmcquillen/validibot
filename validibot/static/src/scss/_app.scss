@@ -69,8 +69,8 @@ h6 {
     padding: 0;
     h1 {
       margin: 0;
-      font-size: 1.2rem;
-      font-weight: 600;
+      font-size: 1.1rem;
+      font-weight: 500;
     }
     .app-page-title {
       border: 0;
@@ -89,9 +89,10 @@ h6 {
   }
 }
 
-.validation-success-alert {
+.validation-run-status-alert {
   margin-right: 30px;
-  .green-check {
+  .green-check,
+  .red-error {
     width: 3rem;
     height: 3rem;
   }
@@ -128,6 +129,12 @@ h6 {
 .cel-tooltip .tooltip-inner {
   max-width: 28rem;
   white-space: normal;
+}
+
+.app-form-section {
+  background-color: rgba(248, 249, 250, 0.45);
+  border: 1px dotted #d7dde3;
+  border-radius: 0.5rem;
 }
 
 .catalog-entry-list {

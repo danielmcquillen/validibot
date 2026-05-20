@@ -98,7 +98,7 @@ def test_create_workflow_with_custom_step_and_assertion(client):
         data={
             "name": "Price check",
             "slug": "price-check",
-            "version": "1.0.0",
+            "version": "1",
             "is_active": "on",
             "project": str(project.pk),
             "allowed_file_types": [SubmissionFileType.JSON],
@@ -154,27 +154,105 @@ def test_create_workflow_with_custom_step_and_assertion(client):
 
 
 def test_workflow_clone_view_creates_explicit_new_version(client):
-    """Authors need a concrete path when versioned-history edits require clone."""
+    """Authors need a concrete path when versioned-history edits require clone.
+
+    Beyond proving the clone happens, this also pins the post-clone redirect
+    target to the new version's *edit* screen. The policy doc (workflow-
+    versioning-policy.md §"User Experience Rules") explicitly requires putting
+    the author on the edit screen so their next click is an edit — landing on
+    the read-only detail page would defeat the whole reason they cloned.
+    """
     user = UserFactory()
     org = OrganizationFactory()
     _login_user_for_org(client, user, org)
-    workflow = WorkflowFactory(org=org, user=user, version="1.0.0")
+    workflow = WorkflowFactory(org=org, user=user, version=1)
 
     response = client.post(
         reverse("workflows:workflow_clone", kwargs={"pk": workflow.pk}),
     )
 
     workflow.refresh_from_db()
-    clone = Workflow.objects.get(slug=workflow.slug, version="2")
+    clone = Workflow.objects.get(slug=workflow.slug, version=2)
     assert response.status_code == HTTPStatus.FOUND
-    assert str(clone.pk) in response.url
+    expected_edit_url = reverse(
+        "workflows:workflow_update",
+        kwargs={"pk": clone.pk},
+    )
+    assert response.url == expected_edit_url, (
+        f"Standalone clone should redirect to the new version's edit screen, "
+        f"got {response.url!r}"
+    )
     assert workflow.is_locked is True
     assert clone.is_locked is False
     assert clone.history_policy == workflow.history_policy
 
 
-def test_workflow_detail_shows_version_switcher_for_visible_family(client):
-    """The detail page must make sibling versions discoverable to authors."""
+def test_workflow_update_header_uses_shared_version_badge(client):
+    """The workflow settings editor should show version context in the header.
+
+    Authors often land on the edit screen immediately after cloning or from an
+    older detail page. The header badge keeps the edited workflow row explicit
+    and should use the same component classes as the list and step editors.
+    """
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    slug = "header-version-context"
+    older = WorkflowFactory(org=org, user=user, slug=slug, version="1")
+    WorkflowFactory(org=org, user=user, slug=slug, version="2")
+
+    response = client.get(reverse("workflows:workflow_update", kwargs={"pk": older.pk}))
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Edit Workflow Settings" in body
+    assert "v1" in body
+    assert "workflow-version-badge--previous" in body
+    assert "Previous version" in body
+    assert "app-form-section" in body
+    assert "Workflow basics" in body
+    assert "Submission settings" in body
+
+
+def test_workflow_breadcrumb_places_version_badge_before_truncated_name(client):
+    """The workflow breadcrumb should keep the version visible before the name.
+
+    Breadcrumb items have a tight max width, so the workflow name is the part
+    that should truncate. The version badge must render before the name so
+    authors can still see which row they are on.
+    """
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    workflow = WorkflowFactory(
+        org=org,
+        user=user,
+        name="A very long workflow name that should be truncated in breadcrumbs",
+        version="1",
+    )
+
+    response = client.get(
+        reverse("workflows:workflow_detail", kwargs={"pk": workflow.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    breadcrumb_html = body[
+        body.index('<nav id="breadcrumbs"') : body.index("</nav>") + len("</nav>")
+    ]
+    badge_index = breadcrumb_html.index("workflow-version-badge--sm")
+    name_index = breadcrumb_html.index('<span class="breadcrumb-workflow-name">')
+    assert badge_index < name_index
+    assert "breadcrumb-workflow-name" in breadcrumb_html
+
+
+def test_workflow_detail_uses_history_card_for_version_navigation(client):
+    """The detail page must expose version navigation only through history.
+
+    Older versions should be discoverable without putting a global selector in
+    the header. Keeping navigation in the right-column history card makes the
+    page chrome calmer while still linking to exact workflow rows.
+    """
     user = UserFactory()
     org = OrganizationFactory()
     _login_user_for_org(client, user, org)
@@ -186,14 +264,150 @@ def test_workflow_detail_shows_version_switcher_for_visible_family(client):
 
     assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
-    v1_url = reverse("workflows:workflow_detail", kwargs={"pk": v1.pk})
     v2_url = reverse("workflows:workflow_detail", kwargs={"pk": v2.pk})
-    assert 'id="workflow-version-switcher"' in body
-    assert f'value="{v1_url}"' in body
-    assert f'value="{v2_url}"' in body
+    assert 'id="workflow-version-switcher"' not in body
+    assert "workflow-version-history-card" in body
+    assert f'href="{v2_url}"' in body
     assert "v1" in body
     assert "v2" in body
     assert "latest" in body
+    assert "workflow-version-badge--previous" in body
+    assert "Previous version" in body
+
+
+def test_workflow_detail_toolbar_orders_launch_actions_and_delete(client):
+    """The detail toolbar should group actions without changing permissions.
+
+    Launch is the primary action, workflow tools sit together after the first
+    3rem gap, and delete/destructive lifecycle actions sit after the second
+    3rem gap. The settings action must stay in the grey group immediately
+    before the destructive group.
+    """
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    workflow = WorkflowFactory(org=org, user=user, is_active=True)
+
+    response = client.get(
+        reverse("workflows:workflow_detail", kwargs={"pk": workflow.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    launch_url = reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk})
+    json_url = reverse("workflows:workflow_json", kwargs={"pk": workflow.pk})
+    settings_url = reverse("workflows:workflow_update", kwargs={"pk": workflow.pk})
+    delete_url = reverse("workflows:workflow_delete", kwargs={"pk": workflow.pk})
+    launch_index = body.find(f'href="{launch_url}"')
+    json_index = body.find(f'href="{json_url}"')
+    settings_index = body.find(f'href="{settings_url}"')
+    delete_index = body.find(f'hx-delete="{delete_url}"')
+    assert -1 not in {launch_index, json_index, settings_index, delete_index}
+    assert launch_index < json_index < settings_index < delete_index
+    expected_toolbar_gaps = 2
+    assert body.count("d-flex flex-wrap gap-2 ms-5") >= expected_toolbar_gaps
+    assert 'title="Workflow settings"' in body
+    settings_anchor_start = body.rfind(
+        '<a class="btn btn-light text-dark"',
+        0,
+        settings_index,
+    )
+    assert settings_anchor_start != -1
+
+
+def test_workflow_detail_toolbar_hides_manage_actions_for_executor(client):
+    """Executor-only users can launch but cannot see manage/delete actions."""
+    org = OrganizationFactory()
+    author = UserFactory()
+    executor = UserFactory()
+    grant_role(author, org, RoleCode.OWNER)
+    grant_role(executor, org, RoleCode.EXECUTOR)
+    executor.set_current_org(org)
+    workflow = WorkflowFactory(org=org, user=author, is_active=True)
+    client.force_login(executor)
+    session = client.session
+    session["active_org_id"] = org.pk
+    session.save()
+
+    response = client.get(
+        reverse("workflows:workflow_detail", kwargs={"pk": workflow.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    launch_url = reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk})
+    settings_url = reverse("workflows:workflow_update", kwargs={"pk": workflow.pk})
+    delete_url = reverse("workflows:workflow_delete", kwargs={"pk": workflow.pk})
+    assert f'href="{launch_url}"' in body
+    assert f'href="{settings_url}"' not in body
+    assert f'hx-delete="{delete_url}"' not in body
+    assert "Create new workflow version" not in body
+
+
+def test_workflow_detail_shows_version_history_panel_with_run_count(client):
+    """The version-history panel must surface per-version run counts.
+
+    Run count is one of the columns the policy doc (workflow-versioning-
+    policy.md §"Viewing Earlier Workflow Versions") explicitly requires —
+    an author deciding which old version to inspect needs to know which ones
+    actually carry validation history. A panel that hides run counts forces
+    the author to click through each version to find that out.
+
+    This test pins three things:
+      - the panel renders when more than one version exists;
+      - the current version shows a "current" badge;
+      - run counts surface for the version that has runs.
+    """
+    from validibot.submissions.tests.factories import SubmissionFactory
+
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    slug = "building-energy-check"
+    v1 = WorkflowFactory(org=org, user=user, slug=slug, version="1")
+    v2 = WorkflowFactory(org=org, user=user, slug=slug, version="2")
+    # Attach two runs to v1 so the panel has a non-zero run count to display.
+    for _ in range(2):
+        ValidationRunFactory(workflow=v1, submission=SubmissionFactory(workflow=v1))
+
+    response = client.get(reverse("workflows:workflow_detail", kwargs={"pk": v2.pk}))
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "workflow-version-history-card" in body, (
+        "Version history panel should render when a family has 2+ versions"
+    )
+    assert "Version history" in body
+    # The viewed version (v2) is the current row — its row should carry the
+    # "current" badge.
+    assert ">current<" in body
+    # v1 has two attached runs; the panel must display that count somewhere.
+    # We assert on the table body to avoid matching incidental "2" strings
+    # elsewhere on the page.
+    assert "workflow-version-history-table" in body
+
+
+def test_workflow_detail_hides_version_history_panel_for_single_version(client):
+    """A single-version family should not render an empty history panel.
+
+    The panel exists to compare/switch between versions. With only one row
+    there is nothing to compare, and showing an empty card wastes vertical
+    space and signals more state than there is.
+    """
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    workflow = WorkflowFactory(org=org, user=user, slug="single-family", version="1")
+
+    response = client.get(
+        reverse("workflows:workflow_detail", kwargs={"pk": workflow.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "workflow-version-history-card" not in body, (
+        "Version history panel should be hidden for single-version families"
+    )
 
 
 def test_workflow_update_can_clone_and_apply_locked_contract_change(client):
@@ -259,7 +473,7 @@ def test_workflow_update_can_clone_and_apply_locked_contract_change(client):
     )
 
     workflow.refresh_from_db()
-    clone = Workflow.objects.get(slug=workflow.slug, version="2")
+    clone = Workflow.objects.get(slug=workflow.slug, version=2)
     assert clone_response.status_code == HTTPStatus.FOUND
     assert str(clone.pk) in clone_response.url
     assert workflow.allowed_file_types == [
@@ -314,7 +528,7 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
         user=user,
         name="Price check",
         slug="price-check",
-        version="1.0.0",
+        version=1,
         is_active=True,
         allowed_file_types=[SubmissionFileType.JSON],
     )

@@ -350,7 +350,7 @@ If validation completes within the timeout window, the API returns immediately:
   "workflow": {
     "id": 42,
     "name": "JSON Product Validation",
-    "version": "1.0"
+    "version": 1
   },
   "submission": {
     "name": "product.json",

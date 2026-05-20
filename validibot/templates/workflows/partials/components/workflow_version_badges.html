@@ -1,0 +1,10 @@
+{% load i18n %}
+
+<div class="workflow-version-badges d-flex flex-wrap gap-1"
+     aria-label="{% trans "Workflow versions" %}">
+  {% for badge in workflow.version_badges %}
+    {% include "workflows/partials/components/workflow_version_badge.html" with badge=badge %}
+  {% empty %}
+    <span class="text-muted">--</span>
+  {% endfor %}
+</div>

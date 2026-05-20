@@ -27,9 +27,8 @@ From the workflow detail page, you can:
 
 Inactive workflows show **View** instead of **Edit**. Activate the workflow to enable editing.
 
-Every workflow page shows a small version label near the workflow name. Use the
-version selector on the workflow detail page to move between earlier and newer
-versions in the same workflow family.
+To open an older version, use the **Version history** card on the workflow
+detail page.
 
 ---
 
@@ -54,8 +53,8 @@ button creates the new version, applies your submitted settings there, and keeps
 existing runs attached to the old version.
 
 Public workflow listings show the latest active version of each workflow family.
-Earlier versions remain available to users with access through the version
-selector and direct workflow links.
+Earlier versions remain available to users with access through the **Version
+history** card on the workflow detail page and exact workflow links.
 
 ---
 

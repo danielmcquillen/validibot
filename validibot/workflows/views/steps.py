@@ -50,6 +50,7 @@ from validibot.workflows.forms import get_config_form_class
 from validibot.workflows.mixins import WorkflowObjectMixin
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
+from validibot.workflows.services.version_context import build_workflow_version_context
 from validibot.workflows.views.management import MAX_STEP_COUNT
 from validibot.workflows.views_helpers import ensure_advanced_ruleset
 from validibot.workflows.views_helpers import get_validator_operation_display
@@ -853,6 +854,12 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
             }
         prev_step, next_step = self.get_neighbor_steps()
         context.update(
+            build_workflow_version_context(
+                request=self.request,
+                workflow=workflow,
+            ),
+        )
+        context.update(
             {
                 "workflow": workflow,
                 "step": step,
@@ -944,14 +951,14 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         else:
             step = self.get_step()
             breadcrumbs.append(
-                {
-                    "name": workflow.name,
-                    "url": reverse_with_org(
+                self.workflow_breadcrumb_item(
+                    workflow,
+                    url=reverse_with_org(
                         "workflows:workflow_detail",
                         request=self.request,
                         kwargs={"pk": workflow.pk},
                     ),
-                },
+                ),
             )
             if self._has_dedicated_step_edit_view():
                 step_url = reverse_with_org(
@@ -1166,6 +1173,12 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "upstream_outputs": upstream_outputs,
             },
         )
+        context.update(
+            build_workflow_version_context(
+                request=self.request,
+                workflow=workflow,
+            ),
+        )
         return context
 
     def get_breadcrumbs(self):
@@ -1181,14 +1194,14 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
             },
         )
         breadcrumbs.append(
-            {
-                "name": workflow.name,
-                "url": reverse_with_org(
+            self.workflow_breadcrumb_item(
+                workflow,
+                url=reverse_with_org(
                     "workflows:workflow_detail",
                     request=self.request,
                     kwargs={"pk": workflow.pk},
                 ),
-            },
+            ),
         )
         breadcrumbs.append(
             {

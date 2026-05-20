@@ -18,8 +18,11 @@ from crispy_forms.layout import Row
 from django import forms
 from django.core.exceptions import ValidationError
 from django.template.defaultfilters import filesizeformat
+from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.html import format_html_join
+from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
 from validibot.projects.models import Project
@@ -27,6 +30,16 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
+from validibot.validations.validators.shacl.constants import (
+    SHACL_RESULT_FAIL_AFTER_ASSERTIONS,
+)
+from validibot.validations.validators.shacl.constants import (
+    SHACL_RESULT_FAIL_IMMEDIATELY,
+)
+from validibot.validations.validators.shacl.constants import (
+    SHACL_RESULT_HANDLING_DEFAULT,
+)
+from validibot.validations.validators.shacl.constants import SHACL_RESULT_REPORT_ONLY
 
 # SHACL form pieces (field declarations, multi-file widget, size caps,
 # clean helpers) live under the validator's own package so the library-
@@ -77,6 +90,8 @@ JSON_SCHEMA_2020_12_URIS = {
     "https://json-schema.org/draft/2020-12/schema",
     "http://json-schema.org/draft/2020-12/schema",
 }
+APP_FORM_SECTION_CLASS = "app-form-section p-3 mb-4"
+APP_FORM_SUBSECTION_CLASS = "app-form-section p-3 mb-3"
 
 
 # SHACL_PER_FILE_MAX_BYTES + ShaclConfigMixin are imported above; the
@@ -140,6 +155,16 @@ def _detect_xml_schema_type(payload: str) -> str | None:
         logger.info("XML Schema detection failed for DTD.")
         return None
     return XMLSchemaType.DTD.value
+
+
+def form_section_intro(title: str, body: str) -> HTML:
+    """Render the standard intro block for grouped app form sections."""
+    return HTML(
+        '<div class="mb-3">'
+        f'<h6 class="mb-1">{title}</h6>'
+        f'<p class="text-muted small mb-0">{body}</p>'
+        "</div>",
+    )
 
 
 @dataclass(slots=True)
@@ -369,7 +394,10 @@ class WorkflowForm(forms.ModelForm):
             "is_active",
         ]
         help_texts = {
-            "version": _("Optional label to help you track iterations."),
+            "version": _(
+                "Required number to track workflow iterations. Use a positive "
+                "integer (e.g. 1). Defaults to 1 for a brand-new workflow.",
+            ),
             "is_active": _(
                 "Disable a workflow to pause new validation runs without removing it.",
             ),
@@ -436,6 +464,13 @@ class WorkflowForm(forms.ModelForm):
             "iteration, but historical run results may not be reproducible "
             "against the current workflow definition. After runs exist, change "
             "history policy by creating a new workflow version."
+        )
+        self.fields["version"].widget.attrs.update(
+            {
+                "class": "form-control",
+                "min": "1",
+                "step": "1",
+            },
         )
         allowed_field = self.fields["allowed_file_types"]
         # Override the enum's bare labels with extension hints so authors
@@ -638,7 +673,7 @@ class WorkflowForm(forms.ModelForm):
                 Field("description_md"),
                 Field("slug", placeholder=""),
                 Field("project"),
-                css_class="border rounded-3 p-3 mb-4",
+                css_class=APP_FORM_SECTION_CLASS,
             ),
             Div(
                 self._section_intro(
@@ -655,7 +690,7 @@ class WorkflowForm(forms.ModelForm):
                 Field("allow_submission_name"),
                 Field("allow_submission_meta_data"),
                 Field("allow_submission_short_description"),
-                css_class="border rounded-3 p-3 mb-4",
+                css_class=APP_FORM_SECTION_CLASS,
             ),
             Div(
                 self._section_intro(
@@ -701,7 +736,7 @@ class WorkflowForm(forms.ModelForm):
                     ),
                     Field("input_schema_json"),
                     css_id="input-schema-json-wrapper",
-                    css_class="border rounded-3 p-3 mb-3",
+                    css_class=APP_FORM_SUBSECTION_CLASS,
                     data_input_schema_mode_value="json_schema",
                 ),
                 Div(
@@ -723,14 +758,14 @@ class WorkflowForm(forms.ModelForm):
                     ),
                     Field("input_schema_pydantic"),
                     css_id="input-schema-pydantic-wrapper",
-                    css_class="border rounded-3 p-3 mb-3",
+                    css_class=APP_FORM_SUBSECTION_CLASS,
                     data_input_schema_mode_value="pydantic",
                 ),
                 # Hidden model fields — populated by clean()
                 Field("input_schema", type="hidden"),
                 Field("input_schema_source_mode", type="hidden"),
                 Field("input_schema_source_text", type="hidden"),
-                css_class="border rounded-3 p-3 mb-4",
+                css_class=APP_FORM_SECTION_CLASS,
                 data_input_schema_section="true",
             ),
             Div(
@@ -742,10 +777,19 @@ class WorkflowForm(forms.ModelForm):
                     ),
                 ),
                 Field("featured_image"),
-                Field("version", placeholder="e.g. 1 or 1.0.0"),
-                Field("history_policy"),
+                Row(
+                    Column(
+                        Field("version", placeholder="e.g. 1"),
+                        css_class="col-12 col-md-4 col-xl-3",
+                    ),
+                    Column(
+                        Field("history_policy"),
+                        css_class="col-12 col-md-5 col-xl-4",
+                    ),
+                    css_class="g-3",
+                ),
                 Field("is_active"),
-                css_class="border rounded-3 p-3 mb-4",
+                css_class=APP_FORM_SECTION_CLASS,
             ),
         ]
 
@@ -764,7 +808,7 @@ class WorkflowForm(forms.ModelForm):
                     Field("agent_billing_mode"),
                     Field("agent_price_cents"),
                     Field("agent_max_launches_per_hour"),
-                    css_class="border border-warning rounded-3 p-3",
+                    css_class=APP_FORM_SECTION_CLASS,
                 ),
             )
 
@@ -772,12 +816,7 @@ class WorkflowForm(forms.ModelForm):
 
     def _section_intro(self, title: str, body: str) -> HTML:
         """Render a compact section heading for the crispy form layout."""
-        return HTML(
-            '<div class="mb-3">'
-            f'<h6 class="mb-1">{title}</h6>'
-            f'<p class="text-muted small mb-0">{body}</p>'
-            "</div>",
-        )
+        return form_section_intro(title, body)
 
     def clean_name(self):
         name = (self.cleaned_data.get("name") or "").strip()
@@ -1914,6 +1953,31 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
     """
 
     show_display_schema = True
+    SHACL_RESULT_HANDLING_CHOICES = (
+        (
+            SHACL_RESULT_FAIL_IMMEDIATELY,
+            _("Fail immediately on violations"),
+        ),
+        (
+            SHACL_RESULT_FAIL_AFTER_ASSERTIONS,
+            _("Fail after assertions"),
+        ),
+        (
+            SHACL_RESULT_REPORT_ONLY,
+            _("Report only"),
+        ),
+    )
+    shacl_result_handling = forms.ChoiceField(
+        label=_("SHACL result handling"),
+        choices=SHACL_RESULT_HANDLING_CHOICES,
+        initial=SHACL_RESULT_HANDLING_DEFAULT,
+        required=False,
+        help_text=_(
+            "Controls how SHACL validation results affect this step. "
+            "Parse errors, invalid shapes, timeouts, and engine failures "
+            "always fail the step immediately.",
+        ),
+    )
 
     def __init__(self, *args, step=None, **kwargs):
         super().__init__(*args, step=step, **kwargs)
@@ -1923,6 +1987,7 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
         self.has_existing_inline_ontology = False
         self.library_default_snapshot: dict[str, Any] | None = None
         self.has_library_ontology = False
+        self.fields["shacl_result_handling"].label = self._shacl_result_handling_label()
         if step and step.ruleset_id:
             self._initial_from_step(step)
         self.helper.layout = self._build_layout()
@@ -1959,6 +2024,10 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
             self.fields["advanced_shacl"].initial = config["advanced_shacl"]
         if "submission_format" in config:
             self.fields["submission_format"].initial = config["submission_format"]
+        if "shacl_result_handling" in config:
+            self.fields["shacl_result_handling"].initial = config[
+                "shacl_result_handling"
+            ]
         bundled = set(config.get("bundled_standards", []) or [])
         if "bundle_brick" in self.fields:
             self.fields["bundle_brick"].initial = "brick-1.4" in bundled
@@ -1992,58 +2061,138 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
 
     def _build_layout(self) -> Layout:
         """Render SHACL configuration with saved-file summaries near uploads."""
+        help_drawer_url = reverse(
+            "core:help_drawer",
+            kwargs={"slug": "shacl-validator"},
+        )
         return Layout(
-            "name",
-            "description",
-            "display_schema",
-            "show_success_messages",
-            "notes",
-            HTML(
-                "<hr><h6 class='text-uppercase text-muted mt-3 mb-3'>{}</h6>".format(
-                    _("SHACL shapes")
-                )
-            ),
-            HTML(
-                self._existing_sources_html(
-                    title=_("Current SHACL shapes"),
-                    files=self.existing_shape_files,
-                    has_inline=self.has_existing_inline_shapes,
-                    inherited_snapshot=self.library_default_snapshot,
-                    inline_label=_("Inline shapes are saved on this step."),
-                    empty_keep_label=_("Leave the fields below blank to keep them."),
-                )
-            ),
-            "shapes_files",
-            "shapes_text",
-            HTML(
-                "<hr><h6 class='text-uppercase text-muted mt-3 mb-3'>{}</h6>".format(
-                    _("Supplementary ontologies")
-                )
-            ),
-            HTML(
-                self._existing_sources_html(
-                    title=_("Current supplementary ontologies"),
-                    files=self.existing_ontology_files,
-                    has_inline=self.has_existing_inline_ontology,
-                    inherited_snapshot=(
-                        self.library_default_snapshot
-                        if self.has_library_ontology
-                        else None
+            Div(
+                form_section_intro(
+                    _("Basic settings"),
+                    _(
+                        "Name this step and control the basic information shown "
+                        "to workflow authors and submitters."
                     ),
-                    inline_label=_("Inline ontology text is saved on this step."),
-                    empty_keep_label=_("Leave the fields below blank to keep them."),
-                )
+                ),
+                "name",
+                "description",
+                "display_schema",
+                "show_success_messages",
+                "notes",
+                css_class=APP_FORM_SECTION_CLASS,
             ),
-            "ontology_files",
-            "ontology_text",
-            HTML(
-                "<hr><h6 class='text-uppercase text-muted mt-3 mb-3'>{}</h6>".format(
-                    _("Advanced options")
-                )
+            Div(
+                form_section_intro(
+                    _("SHACL shapes"),
+                    _(
+                        "Upload or paste the SHACL Turtle shapes that will be "
+                        "merged and evaluated against the submitted RDF graph."
+                    ),
+                ),
+                HTML(
+                    self._existing_sources_html(
+                        title=_("Current SHACL shapes"),
+                        files=self.existing_shape_files,
+                        has_inline=self.has_existing_inline_shapes,
+                        inherited_snapshot=self.library_default_snapshot,
+                        inline_label=_("Inline shapes are saved on this step."),
+                        empty_keep_label=_(
+                            "Leave the fields below blank to keep them."
+                        ),
+                    )
+                ),
+                "shapes_files",
+                "shapes_text",
+                css_class=APP_FORM_SECTION_CLASS,
             ),
-            "inference_mode",
-            "advanced_shacl",
-            "submission_format",
+            Div(
+                form_section_intro(
+                    _("Supplementary ontologies"),
+                    _(
+                        "Optionally provide ontology Turtle files that give the "
+                        "reasoner extra class and property context."
+                    ),
+                ),
+                HTML(
+                    self._existing_sources_html(
+                        title=_("Current supplementary ontologies"),
+                        files=self.existing_ontology_files,
+                        has_inline=self.has_existing_inline_ontology,
+                        inherited_snapshot=(
+                            self.library_default_snapshot
+                            if self.has_library_ontology
+                            else None
+                        ),
+                        inline_label=_("Inline ontology text is saved on this step."),
+                        empty_keep_label=_(
+                            "Leave the fields below blank to keep them."
+                        ),
+                    )
+                ),
+                "ontology_files",
+                "ontology_text",
+                css_class=APP_FORM_SECTION_CLASS,
+            ),
+            Div(
+                self._advanced_options_intro(help_drawer_url),
+                "shacl_result_handling",
+                "inference_mode",
+                "advanced_shacl",
+                "submission_format",
+                css_class=APP_FORM_SECTION_CLASS,
+            ),
+        )
+
+    @staticmethod
+    def _advanced_options_intro(help_drawer_url: str) -> HTML:
+        """Render the SHACL advanced-options heading with drawer help."""
+
+        return HTML(
+            format_html(
+                "<div class='d-flex align-items-start justify-content-between "
+                "gap-3 mb-3'>"
+                "<div>"
+                "<h6 class='mb-1'>{}</h6>"
+                "<p class='text-muted small mb-0'>{}</p>"
+                "</div>"
+                "<button type='button' class='btn btn-light btn-sm text-dark' "
+                "data-help-drawer-trigger hx-get='{}' "
+                "hx-target='#helpDrawerBody' hx-swap='innerHTML' "
+                "data-bs-toggle='tooltip' data-bs-placement='top' "
+                "title='{}' aria-label='{}'>"
+                "<i class='bi bi-info-circle'></i>"
+                "</button></div>",
+                _("Advanced options"),
+                _(
+                    "Control SHACL result handling, inference, advanced SHACL "
+                    "features, and serialization detection."
+                ),
+                help_drawer_url,
+                _("SHACL validator help"),
+                _("SHACL validator help"),
+            ),
+        )
+
+    @staticmethod
+    def _shacl_result_handling_label() -> str:
+        """Return the result-handling label with a rich explanatory tooltip."""
+
+        tooltip = render_to_string(
+            "help/partials/shacl_result_handling_hint.html",
+        ).strip()
+        return format_html(
+            "{} <span class='ms-1 align-middle help-tooltip'>"
+            "<span tabindex='0' role='button' class='text-muted' "
+            "data-bs-toggle='tooltip' data-bs-html='true' "
+            "data-bs-custom-class='cel-tooltip shacl-tooltip' "
+            "aria-label='{}'>"
+            "<i class='bi bi-info-circle'></i>"
+            "</span>"
+            "<template class='cel-tooltip-content'>{}</template>"
+            "</span>",
+            _("SHACL result handling"),
+            _("About SHACL result handling"),
+            mark_safe(tooltip),  # noqa: S308
         )
 
     @staticmethod
@@ -2122,6 +2271,9 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
         shape_text = (cleaned.get("shapes_text") or "").strip()
         ontology_files = cleaned.get("ontology_files") or []
         ontology_text = (cleaned.get("ontology_text") or "").strip()
+        cleaned["shacl_result_handling"] = (
+            cleaned.get("shacl_result_handling") or SHACL_RESULT_HANDLING_DEFAULT
+        )
         keep_existing_shapes = bool(self.step and self.step.ruleset_id) and not (
             shape_files or shape_text
         )

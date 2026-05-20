@@ -76,14 +76,14 @@ class WorkflowValidationListView(WorkflowAccessMixin, ListView):
             },
         )
         breadcrumbs.append(
-            {
-                "name": workflow.name,
-                "url": reverse_with_org(
+            self.workflow_breadcrumb_item(
+                workflow,
+                url=reverse_with_org(
                     "workflows:workflow_detail",
                     request=self.request,
                     kwargs={"pk": workflow.pk},
                 ),
-            },
+            ),
         )
         breadcrumbs.append({"name": _("Validations"), "url": ""})
         return breadcrumbs

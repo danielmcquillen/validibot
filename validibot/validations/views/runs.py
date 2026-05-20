@@ -236,15 +236,14 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
             if warnings:
                 step_template_warnings[sr.pk] = warnings
 
-        # Submission content for the "View" modal (file uploads only).
-        # For inline content the template reads run.submission.content directly.
+        # Submission content for the "View" modal.
+        # Retention policies are enforced here so the template never receives
+        # content that should not be interactively displayed.
         submission_content = ""
-        if (
-            run.submission
-            and run.submission.input_file
-            and run.submission.is_content_available
-        ):
-            submission_content = run.submission.get_content()
+        submission_content_can_be_viewed = False
+        if run.submission:
+            submission_content = run.submission.get_viewable_content()
+            submission_content_can_be_viewed = bool(submission_content)
 
         # Flatten all signals across steps for the "Workflow Outputs" summary.
         all_signals = [
@@ -279,6 +278,7 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
                 "step_params": step_params,
                 "step_template_warnings": step_template_warnings,
                 "submission_content": submission_content,
+                "submission_content_can_be_viewed": submission_content_can_be_viewed,
                 "evidence_artifact": evidence_artifact,
             },
         )

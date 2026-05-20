@@ -131,16 +131,21 @@ def test_viewer_can_retrieve_workflow(api_client: APIClient, viewer, workflow, o
 
 def test_manager_can_clone_workflow_via_latest_api(api_client, manager, workflow, org):
     """Workflow-edit users can create a new version through the API."""
+    expected_clone_version = 2
     api_client.force_authenticate(user=manager)
 
     resp = api_client.post(f"/api/v1/orgs/{org.slug}/workflows/{workflow.pk}/clone/")
 
     workflow.refresh_from_db()
-    clone = Workflow.objects.get(org=org, slug=workflow.slug, version="2")
+    clone = Workflow.objects.get(
+        org=org,
+        slug=workflow.slug,
+        version=expected_clone_version,
+    )
     assert resp.status_code == status.HTTP_201_CREATED
     assert resp.data["clone_report"]["source_workflow_id"] == workflow.pk
     assert resp.data["clone_report"]["new_workflow_id"] == clone.pk
-    assert resp.data["clone_report"]["new_version_label"] == "2"
+    assert resp.data["clone_report"]["new_version_label"] == expected_clone_version
     assert resp.data["workflow"]["id"] == clone.pk
     assert workflow.is_locked is True
     assert clone.is_locked is False
@@ -160,10 +165,31 @@ def test_manager_can_clone_specific_workflow_version(
         f"{workflow.version}/clone/",
     )
 
-    clone = Workflow.objects.get(org=org, slug=workflow.slug, version="2")
+    clone = Workflow.objects.get(org=org, slug=workflow.slug, version=2)
     assert resp.status_code == status.HTTP_201_CREATED
     assert resp.data["workflow"]["id"] == clone.pk
     assert resp.data["clone_report"]["source_workflow_id"] == workflow.pk
+
+
+def test_version_pinned_api_rejects_non_integer_version_label(
+    api_client,
+    manager,
+    workflow,
+    org,
+):
+    """Semver-shaped workflow version URLs should not reach ORM filtering.
+
+    ``Workflow.version`` is an integer column now. The route itself should
+    reject labels such as ``1.0.0`` instead of letting Django attempt to cast
+    them and returning a server error.
+    """
+    api_client.force_authenticate(user=manager)
+
+    resp = api_client.get(
+        f"/api/v1/orgs/{org.slug}/workflows/{workflow.slug}/versions/1.0.0/",
+    )
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
 
 
 def test_viewer_cannot_clone_workflow_via_api(api_client, viewer, workflow, org):

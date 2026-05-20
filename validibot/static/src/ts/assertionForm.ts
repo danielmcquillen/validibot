@@ -90,8 +90,6 @@ class AssertionFormController {
   private targetCatalogField: HTMLElement | null;
   private targetPathInput: HTMLInputElement | null;
   private targetCatalogInput: HTMLInputElement | null;
-  private celField: HTMLElement | null;
-  private typeWrapper: HTMLElement | null;
   private shaclQueryField: HTMLTextAreaElement | null;
   private shaclFileInputInjected = false;
   private focusApplied = false;
@@ -103,8 +101,6 @@ class AssertionFormController {
     this.targetCatalogInput = this.form.querySelector<HTMLInputElement>('[name="target_catalog_entry"]');
     this.targetField = this.targetPathInput?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
     this.targetCatalogField = this.targetCatalogInput?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
-    this.celField = this.form.querySelector<HTMLElement>('[name="cel_expression"]')?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
-    this.typeWrapper = this.typeField?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
     this.shaclQueryField = this.form.querySelector<HTMLTextAreaElement>('#id_shacl_query');
   }
 
@@ -186,7 +182,6 @@ class AssertionFormController {
       return;
     }
     this.hideAllConditional();
-    this.ensureCelPosition();
     const typeValue = this.typeField.value;
     if (typeValue === 'shacl') {
       this.showFields(['shacl_description', 'shacl_target_graph', 'shacl_query']);
@@ -306,23 +301,6 @@ class AssertionFormController {
 
     wrapper.insertBefore(container, textarea);
     this.shaclFileInputInjected = true;
-  }
-
-  /**
-   * Force the CEL expression field to appear directly after the assertion type field.
-   */
-  private ensureCelPosition(): void {
-    if (!this.celField || !this.typeWrapper) {
-      return;
-    }
-    const parent = this.typeWrapper.parentElement;
-    if (!parent) {
-      return;
-    }
-    if (this.celField.previousElementSibling === this.typeWrapper) {
-      return;
-    }
-    parent.insertBefore(this.celField, this.typeWrapper.nextElementSibling);
   }
 
   private toggleTargetVisibility(show: boolean): void {

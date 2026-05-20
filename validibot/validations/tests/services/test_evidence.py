@@ -92,7 +92,7 @@ class TestBuildManifest:
         assert manifest.run_id == str(run.id)
         assert manifest.workflow_id == run.workflow_id
         assert manifest.workflow_slug == run.workflow.slug
-        assert manifest.workflow_version == run.workflow.version
+        assert manifest.workflow_version == str(run.workflow.version)
         assert manifest.org_id == run.org_id
         # ``executed_at`` is the ISO 8601 form of run.ended_at — string
         # rather than datetime so canonical JSON is byte-stable.

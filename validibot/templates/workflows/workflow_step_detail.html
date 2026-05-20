@@ -11,26 +11,33 @@
 {% block app_content %}
   <div id="assertion-step-builder"
        class="container-fluid d-flex flex-column flex-grow-1">
-    <div class="app-content-header-bar row p-0">
-      <div class="app-content-header">
-        <div class="badge-wrapper h-100 ">
-          <a href="{% url 'workflows:workflow_detail' workflow.pk %}"
-             class="btn btn-link btn-sm d-flex flex-row"
-             title="{% trans 'Back to workflow' %}">
-            <i class="bi bi-chevron-double-left me-2"></i>
-            <h1 class="app-page-title mb-0 text-truncate">
-              <i class="bi bi-box me-2"></i>Workflow
-            </h1>
-            <span class="ms-2">
-              {% include "workflows/partials/workflow_version_badge.html" %}
-            </span>
-          </a>
-        </div>
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 col-lg-6">
         <div class="d-flex flex-wrap align-items-center gap-2 title-wrapper">
+          <div class="btn btn-primary bg-blue-lt border-0">
+            <a href="{% url 'workflows:workflow_detail' workflow.pk %}"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="Back to parent workflow">
+              <i class="bi bi-chevron-double-left"></i>
+            </a>
+          </div>
           <h1 class="app-page-title mb-0">
             {% trans 'Step' %} {{ step.step_number }}:
             {{ step.name|default:"( no name )" }}
           </h1>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="d-flex flex-wrap gap-2 justify-content-end align-items-center">
+          <a class="btn btn-secondary"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             title="{% trans 'Edit step details' %}"
+             aria-label="{% trans 'Edit step details' %}"
+             href="{% org_url 'workflows:workflow_step_settings' workflow.pk step.pk %}">
+            <i class="bi bi-pencil-square"></i>
+          </a>
         </div>
       </div>
     </div>
@@ -62,7 +69,7 @@
           {% include 'workflows/partials/assertions_editor_content.html' %}
         </div>
       </div>
-      <div class="resizable-panel d-flex flex-column gap-4 pb-3">
+      <div class="resizable-panel d-flex flex-column gap-2 pb-3">
         {% include 'workflows/partials/components/step_details_card.html' %}
         {% include 'workflows/partials/unified_signals_card.html' %}
       </div>

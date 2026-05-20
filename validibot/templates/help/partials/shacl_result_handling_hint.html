@@ -1,0 +1,28 @@
+{% load i18n %}
+
+<div class="text-start">
+  <p class="mb-2">
+    {% blocktrans trimmed %}
+      SHACL produces a validation report after comparing the submitted RDF
+      data graph with the configured shapes graph.
+    {% endblocktrans %}
+  </p>
+  <ul class="mb-2 ps-3">
+    <li>
+      <strong>{% trans "Fail immediately" %}</strong>:
+      {% trans "stop before step assertions when SHACL has violations." %}
+    </li>
+    <li>
+      <strong>{% trans "Fail after assertions" %}</strong>:
+      {% trans "run assertions, then fail if SHACL had violations. Recommended default." %}
+    </li>
+    <li>
+      <strong>{% trans "Report only" %}</strong>:
+      {% trans "expose SHACL counts and the report graph, but let assertions decide pass/fail." %}
+    </li>
+  </ul>
+  <p class="mb-0">
+    <strong>{% trans "Always fail immediately" %}</strong>:
+    {% trans "RDF parse errors, invalid shapes, timeouts, and engine failures." %}
+  </p>
+</div>

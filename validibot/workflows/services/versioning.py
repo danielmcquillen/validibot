@@ -194,8 +194,8 @@ class CloneReport:
     Attributes:
         source_workflow_id: PK of the source workflow.
         new_workflow_id: PK of the newly-created workflow row.
-        new_version_label: The version string assigned to the clone
-            (e.g. ``"2"``, ``"1.0.1"``).
+        new_version_label: The positive integer version assigned to the clone
+            (e.g. ``2``).
         components_copied: Per-component counts. Keys are short
             names (``steps``, ``step_resources``, ``public_info``,
             ``role_access``, ``signal_mappings``); values are counts.
@@ -209,7 +209,7 @@ class CloneReport:
 
     source_workflow_id: int
     new_workflow_id: int
-    new_version_label: str
+    new_version_label: int
     components_copied: dict[str, int] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
@@ -539,7 +539,7 @@ class WorkflowVersioningService:
         return report
 
     @staticmethod
-    def _clone_ruleset(source_ruleset, *, user: AbstractBaseUser, version_label: str):
+    def _clone_ruleset(source_ruleset, *, user: AbstractBaseUser, version_label: int):
         """Create an editable copy of a step-level ruleset for a workflow clone."""
 
         from validibot.validations.models import Ruleset

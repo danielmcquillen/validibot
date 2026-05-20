@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -28,6 +29,8 @@ from validibot.actions.constants import CredentialActionType
 from validibot.actions.models import Action
 from validibot.actions.models import ActionDefinition
 from validibot.projects.tests.factories import ProjectFactory
+from validibot.submissions.constants import SubmissionFileType
+from validibot.submissions.constants import SubmissionRetention
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.constants import RoleCode
 from validibot.users.models import Membership
@@ -168,6 +171,48 @@ class ValidationRunViewSetTestCase(TestCase):
         with contextlib.suppress(ValueError):
             self.user.set_current_org(self.org)
             self.other_user.set_current_org(self.other_org)
+
+    def _create_file_backed_run(
+        self,
+        *,
+        retention_policy: str,
+        filename: str,
+        payload: bytes,
+        expires_at=None,
+    ):
+        """Create a run whose submission file still exists in storage."""
+        upload = SimpleUploadedFile(
+            filename,
+            payload,
+            content_type="application/json",
+        )
+        submission = SubmissionFactory(
+            org=self.org,
+            project=self.project,
+            workflow=self.workflow,
+            user=self.user,
+            retention_policy=retention_policy,
+        )
+        submission.set_content(
+            uploaded_file=upload,
+            filename=filename,
+            file_type=SubmissionFileType.JSON,
+        )
+        submission.save()
+        if expires_at is not None:
+            submission.expires_at = expires_at
+            submission.save(update_fields=["expires_at"])
+        self.assertTrue(
+            submission.input_file.storage.exists(submission.input_file.name),
+        )
+        return ValidationRunFactory(
+            submission=submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            user=self.user,
+            status=ValidationRunStatus.SUCCEEDED,
+        )
 
     def test_authentication_required(self):
         """Test that authentication is required for all endpoints."""
@@ -359,6 +404,41 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0]["message"], finding.message)
         self.assertEqual(issues[0]["path"], finding.path)
+
+    def test_detail_does_not_expose_do_not_store_submission_payload(self):
+        """Run detail API must hide no-store file bytes until async purge catches up."""
+        self.client.force_authenticate(user=self.user)
+        run = self._create_file_backed_run(
+            retention_policy=SubmissionRetention.DO_NOT_STORE,
+            filename="api-private.json",
+            payload=b'{"api_private": true}',
+        )
+
+        response = self.client.get(runs_detail_url(self.org, run))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("content", response.data)
+        self.assertNotIn("input_file", response.data)
+        self.assertNotIn("submission_content", response.data)
+        self.assertNotIn("api_private", response.content.decode("utf-8"))
+
+    def test_detail_does_not_expose_expired_submission_payload(self):
+        """Run detail API must hide expired files before the reaper deletes them."""
+        self.client.force_authenticate(user=self.user)
+        run = self._create_file_backed_run(
+            retention_policy=SubmissionRetention.STORE_1_DAY,
+            filename="api-expired.json",
+            payload=b'{"api_expired": true}',
+            expires_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        response = self.client.get(runs_detail_url(self.org, run))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("content", response.data)
+        self.assertNotIn("input_file", response.data)
+        self.assertNotIn("submission_content", response.data)
+        self.assertNotIn("api_expired", response.content.decode("utf-8"))
 
     def test_detail_includes_credential_metadata(self):
         """Detail responses should expose credential download metadata when present.

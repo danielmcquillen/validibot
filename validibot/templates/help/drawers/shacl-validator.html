@@ -1,0 +1,105 @@
+{% load i18n %}
+
+<h6 class="fw-semibold">
+  {% trans "What the SHACL validator does" %}
+</h6>
+<p class="small">
+  {% blocktrans trimmed %}
+    The SHACL validator checks an RDF submission against one or more SHACL
+    shape files. It is the right validator for Turtle, JSON-LD, RDF/XML,
+    N-Triples, and N-Quads when the acceptance rules are expressed as RDF
+    graph constraints.
+  {% endblocktrans %}
+</p>
+
+<h6 class="fw-semibold mt-3">
+  {% trans "The graphs involved" %}
+</h6>
+<ul class="small">
+  <li>
+    <strong>{% trans "Submitted RDF data graph" %}</strong> -
+    {% trans "the submitter's parsed model. Most SPARQL ASK assertions should query this graph." %}
+  </li>
+  <li>
+    <strong>{% trans "Shapes graph" %}</strong> -
+    {% trans "the uploaded SHACL shapes that define the validation rules." %}
+  </li>
+  <li>
+    <strong>{% trans "Supplementary ontology graph" %}</strong> -
+    {% trans "optional context for class and property inference." %}
+  </li>
+  <li>
+    <strong>{% trans "SHACL results graph" %}</strong> -
+    {% trans "the validation report produced by SHACL. It contains result nodes with focus nodes, source shapes, result paths, severities, and messages." %}
+  </li>
+</ul>
+
+<h6 class="fw-semibold mt-3">
+  {% trans "SHACL result handling" %}
+</h6>
+<p class="small">
+  {% blocktrans trimmed %}
+    This setting controls how normal SHACL validation results affect the
+    step outcome. It does not soften infrastructure failures: RDF parse
+    errors, invalid shapes, timeouts, and engine errors always fail the
+    step immediately.
+  {% endblocktrans %}
+</p>
+<ul class="small">
+  <li>
+    <strong>{% trans "Fail immediately on violations" %}</strong> -
+    {% trans "stop after SHACL validation if the report contains any violation-level result. Step assertions do not run." %}
+  </li>
+  <li>
+    <strong>{% trans "Fail after assertions" %}</strong> -
+    {% trans "run SHACL first, then run the step assertions, then fail the step if SHACL reported violations or any assertion failed. This is the recommended default." %}
+  </li>
+  <li>
+    <strong>{% trans "Report only" %}</strong> -
+    {% trans "do not convert SHACL validation results into blocking findings. Counts and the native report graph are still available, so SPARQL ASK, Basic, or CEL assertions can decide exactly what should fail." %}
+  </li>
+</ul>
+
+<h6 class="fw-semibold mt-3">
+  {% trans "SPARQL ASK target graphs" %}
+</h6>
+<p class="small">
+  {% blocktrans trimmed %}
+    SHACL assertions use SPARQL ASK because it is the standard way to ask
+    true/false questions about RDF graphs.
+  {% endblocktrans %}
+</p>
+<ul class="small">
+  <li>
+    <strong>{% trans "Submitted RDF data graph" %}</strong> -
+    {% trans "ask whether the submitted model contains or omits required triples." %}
+  </li>
+  <li>
+    <strong>{% trans "SHACL results graph" %}</strong> -
+    {% trans "ask about the validation report itself, such as whether a specific source shape produced a violation." %}
+  </li>
+  <li>
+    <strong>{% trans "Data + results graph" %}</strong> -
+    {% trans "join report findings back to submitted resources when an assertion needs both contexts." %}
+  </li>
+</ul>
+
+<h6 class="fw-semibold mt-3">
+  {% trans "Example results-graph assertion" %}
+</h6>
+<p class="small">
+  {% blocktrans trimmed %}
+    This ASK passes only when no SHACL violation came from a particular
+    shape. It queries the validation report, not the original submission.
+  {% endblocktrans %}
+</p>
+<pre class="small bg-light border rounded p-2 mb-0"><code>PREFIX sh: &lt;http://www.w3.org/ns/shacl#&gt;
+PREFIX ex: &lt;http://example.com/&gt;
+
+ASK {
+  FILTER NOT EXISTS {
+    ?result a sh:ValidationResult ;
+            sh:resultSeverity sh:Violation ;
+            sh:sourceShape ex:DamperShape .
+  }
+}</code></pre>

@@ -1,0 +1,32 @@
+{% load i18n %}
+
+{% if badge.url %}
+  <a href="{{ badge.url }}"
+     class="badge text-decoration-none text-nowrap flex-shrink-0 align-middle workflow-version-badge
+            {% if badge.is_small %}
+              workflow-version-badge--sm
+            {% endif %}
+            {% if badge.is_current %}
+              bg-blue-lt text-primary workflow-version-badge--current
+            {% else %}
+              workflow-version-badge--previous
+            {% endif %}"
+     data-bs-toggle="tooltip"
+     data-bs-placement="top"
+     title="{{ badge.title }}"
+     aria-label="{{ badge.title }}">{{ badge.label }}</a>
+{% else %}
+  <span class="badge text-nowrap flex-shrink-0 align-middle workflow-version-badge
+               {% if badge.is_small %}
+                 workflow-version-badge--sm
+               {% endif %}
+               {% if badge.is_current %}
+                 bg-blue-lt text-primary workflow-version-badge--current
+               {% else %}
+                 workflow-version-badge--previous
+               {% endif %}"
+        data-bs-toggle="tooltip"
+        data-bs-placement="top"
+        title="{{ badge.title }}"
+        aria-label="{{ badge.title }}">{{ badge.label }}</span>
+{% endif %}

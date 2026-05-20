@@ -2,14 +2,34 @@
   <nav id="breadcrumbs" aria-label="breadcrumb">
     <ol class="breadcrumb">
       {% for crumb in breadcrumbs %}
-        <li class="breadcrumb-item"
+        <li class="breadcrumb-item
+                   {% if crumb.version_badge %}
+                     breadcrumb-item--workflow
+                   {% endif %}"
             data-bs-toggle="tooltip"
             data-bs-placement="bottom"
             title="{{ crumb.name }}">
           {% if crumb.url %}
-            <a href="{{ crumb.url }}">{{ crumb.name }}</a>
+            <a href="{{ crumb.url }}"
+               {% if crumb.version_badge %}
+                 class="breadcrumb-workflow-label"
+               {% endif %}>
+              {% if crumb.version_badge %}
+                {% include "workflows/partials/components/workflow_version_badge.html" with badge=crumb.version_badge %}
+              {% endif %}
+              <span {% if crumb.version_badge %}
+                      class="breadcrumb-workflow-name"
+                    {% endif %}>{{ crumb.name }}</span>
+            </a>
           {% else %}
-            {{ crumb.name }}
+            {% if crumb.version_badge %}
+              <span class="breadcrumb-workflow-label">
+                {% include "workflows/partials/components/workflow_version_badge.html" with badge=crumb.version_badge %}
+                <span class="breadcrumb-workflow-name">{{ crumb.name }}</span>
+              </span>
+            {% else %}
+              {{ crumb.name }}
+            {% endif %}
           {% endif %}
         </li>
       {% endfor %}

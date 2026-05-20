@@ -794,8 +794,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         self.helper.layout = Layout(
             Row(
                 Column("assertion_type", css_class="col-12 col-lg-3"),
-                Column("cel_expression", css_class="col-12 col-lg-9"),
             ),
+            "cel_expression",
             Row(
                 Column("shacl_description", css_class="col-12 col-lg-4"),
                 Column("shacl_target_graph", css_class="col-12 col-lg-4"),

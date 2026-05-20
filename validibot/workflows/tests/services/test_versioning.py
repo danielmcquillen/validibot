@@ -62,8 +62,8 @@ from validibot.workflows.services.versioning import CloneReport
 from validibot.workflows.services.versioning import WorkflowVersioningService
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
-from validibot.workflows.version_utils import ParsedVersion
 from validibot.workflows.version_utils import compare_workflow_versions
+from validibot.workflows.version_utils import parse_workflow_version
 
 pytestmark = pytest.mark.django_db
 
@@ -90,33 +90,137 @@ class WorkflowHasRunsTests(TestCase):
 
 
 class WorkflowVersionLabelTests(TestCase):
-    """Workflow versions accept only integers or full major.minor.patch labels.
+    """Workflow versions accept only positive integers.
 
     The architecture depends on deterministic ordering inside a workflow family.
-    Allowing ad-hoc labels like ``draft`` or partial semver like ``1.0`` would
-    make "latest" resolution and clone version arithmetic ambiguous.
+    Semver-like labels imply compatibility semantics the product does not
+    enforce, and ad-hoc labels like ``draft`` make "latest" resolution
+    ambiguous.
     """
 
+    def test_model_rejects_semver_label(self):
+        """``1.0.0`` is no longer a workflow version label shape."""
+        with pytest.raises(ValidationError):
+            validate_workflow_version("1.0.0")
+
     def test_model_rejects_partial_semver_label(self):
-        """``1.0`` used to be accepted, but now must be written as ``1.0.0``."""
+        """``1.0`` is rejected for the same reason as full semver."""
         with pytest.raises(ValidationError):
             validate_workflow_version("1.0")
 
-    def test_model_accepts_integer_and_full_semver_labels(self):
-        """The two supported label shapes are integer and major.minor.patch."""
+    def test_model_accepts_positive_integer_labels(self):
+        """Positive integers are the only supported workflow version shape."""
         validate_workflow_version("2")
-        validate_workflow_version("2.1.3")
+        validate_workflow_version(2)
 
-    def test_compare_utility_orders_integer_and_semver_versions(self):
-        """The comparison helper normalizes integers to x.0.0 semantics."""
-        assert compare_workflow_versions("1", "1.0.0") == 0
-        assert compare_workflow_versions("1.2.0", "1.10.0") == -1
-        assert compare_workflow_versions("2", "1.9.9") == 1
+    def test_model_rejects_zero_version(self):
+        """Version zero must not become a real sortable workflow version."""
+        with pytest.raises(ValidationError):
+            validate_workflow_version(0)
 
-    def test_parsed_version_rejects_invalid_label(self):
+    def test_compare_utility_orders_integer_versions(self):
+        """The comparison helper treats request strings and ints identically."""
+        assert compare_workflow_versions("1", 1) == 0
+        assert compare_workflow_versions("2", "10") == -1
+        assert compare_workflow_versions(12, "3") == 1
+
+    def test_parse_helper_rejects_invalid_label(self):
         """Invalid persisted labels should fail loudly, not sort as 0.0.0."""
-        with pytest.raises(ValueError, match=r"major\.minor\.patch"):
-            ParsedVersion("latest")
+        with pytest.raises(ValueError, match=r"positive integer"):
+            parse_workflow_version("latest")
+
+    def test_model_rejects_empty_version(self):
+        """Workflow version is required; empty strings must not validate.
+
+        Earlier in the project blank versions were tolerated as a backfill
+        placeholder. Once migration ``0023`` lands every existing row has a
+        real label, and the unique constraint plus latest-version resolver
+        both rely on non-empty values. Permitting blank here would silently
+        re-open the gap.
+        """
+        with pytest.raises(ValidationError, match=r"required"):
+            validate_workflow_version("")
+
+    def test_parse_helper_rejects_empty_label(self):
+        """Empty strings must raise, not silently sort as a real version.
+
+        If empty strings sneak through (a renamed field, a deserializer
+        bug, a row that escaped backfill), the version-resolution helper
+        should fail loudly rather than rank that row against real versions.
+        """
+        with pytest.raises(ValueError, match=r"required"):
+            parse_workflow_version("")
+
+
+class WorkflowVersionCollapseMigrationTests(TestCase):
+    """Data-migration coverage for integer-only workflow versions.
+
+    The live model now stores ``Workflow.version`` as an integer, so we test
+    the migration's pure rewrite planner instead of trying to persist legacy
+    string labels into the post-migration schema. That still pins the important
+    guarantee: converting legacy labels cannot collide inside a workflow
+    family.
+    """
+
+    def _migration_module(self):
+        """Return the integer-collapse migration module.
+
+        Django migration filenames begin with a digit, so the module is loaded
+        with ``importlib.import_module`` rather than a normal import statement.
+        """
+        import importlib
+
+        return importlib.import_module(
+            "validibot.workflows.migrations."
+            "0025_collapse_workflow_versions_to_integers",
+        )
+
+    def test_semver_label_avoids_collision_with_existing_integer(self):
+        """A family with ``1`` and ``1.0.0`` must not cast both rows to ``1``."""
+        migration = self._migration_module()
+        rows = [
+            migration.VersionRow(pk=1, org_id=1, slug="alpha", version="1"),
+            migration.VersionRow(pk=2, org_id=1, slug="alpha", version="1.0.0"),
+        ]
+
+        assert migration._build_integer_rewrites(rows) == {2: 2}
+
+    def test_noncanonical_integer_label_is_normalized(self):
+        """Leading-zero labels would collide after integer casting."""
+        migration = self._migration_module()
+        rows = [
+            migration.VersionRow(pk=1, org_id=1, slug="alpha", version="1"),
+            migration.VersionRow(pk=2, org_id=1, slug="alpha", version="01"),
+        ]
+
+        assert migration._build_integer_rewrites(rows) == {2: 2}
+
+    def test_legacy_labels_walk_past_multiple_taken_labels(self):
+        """Walks 1 -> 2 -> 3 until it finds a free integer label.
+
+        Pins the loop's correctness in a multi-step case. If the loop
+        were off-by-one or short-circuited too eagerly, the orphan would
+        either crash on the unique constraint or skip past an available
+        label.
+        """
+        migration = self._migration_module()
+        rows = [
+            migration.VersionRow(pk=1, org_id=1, slug="alpha", version="1"),
+            migration.VersionRow(pk=2, org_id=1, slug="alpha", version="2"),
+            migration.VersionRow(pk=3, org_id=1, slug="alpha", version="1.0.0"),
+        ]
+
+        assert migration._build_integer_rewrites(rows) == {3: 3}
+
+    def test_rewrites_in_different_families_dont_interfere(self):
+        """Each (org, slug) family runs the collision check independently."""
+        migration = self._migration_module()
+        rows = [
+            migration.VersionRow(pk=1, org_id=1, slug="alpha", version="1.0.0"),
+            migration.VersionRow(pk=2, org_id=2, slug="alpha", version="1.0.0"),
+        ]
+
+        assert migration._build_integer_rewrites(rows) == {1: 1, 2: 1}
 
 
 class WorkflowRequiresNewVersionTests(TestCase):
@@ -341,16 +445,17 @@ class WorkflowVersioningServiceCloneTests(TestCase):
 
     def test_clone_produces_new_workflow_with_incremented_version(self):
         """A v1 workflow clones to v2 with the same slug."""
-        workflow = WorkflowFactory(version="1")
+        expected_clone_version = 2
+        workflow = WorkflowFactory(version=1)
         WorkflowStepFactory(workflow=workflow)
         user = UserFactory()
 
         report = WorkflowVersioningService.clone(workflow, user=user)
 
-        assert report.new_version_label == "2"
+        assert report.new_version_label == expected_clone_version
         new_workflow = Workflow.objects.get(pk=report.new_workflow_id)
         assert new_workflow.slug == workflow.slug
-        assert new_workflow.version == "2"
+        assert new_workflow.version == expected_clone_version
         assert new_workflow.org == workflow.org
 
     def test_clone_locks_source_workflow(self):
@@ -626,7 +731,7 @@ class WorkflowVersioningServiceCloneTests(TestCase):
         workflow.refresh_from_db()
         # Both effects (lock + new workflow exists) happened.
         assert workflow.is_locked is True
-        assert Workflow.objects.filter(slug=workflow.slug, version="2").count() == 1
+        assert Workflow.objects.filter(slug=workflow.slug, version=2).count() == 1
 
 
 class WorkflowCloneToNewVersionDelegationTests(TestCase):
@@ -640,6 +745,7 @@ class WorkflowCloneToNewVersionDelegationTests(TestCase):
 
     def test_legacy_method_returns_workflow_instance(self):
         """``clone_to_new_version`` returns the new Workflow row."""
+        expected_clone_version = 2
         workflow = WorkflowFactory()
         WorkflowStepFactory(workflow=workflow)
         user = UserFactory()
@@ -648,7 +754,7 @@ class WorkflowCloneToNewVersionDelegationTests(TestCase):
 
         assert isinstance(new, Workflow)
         assert new.slug == workflow.slug
-        assert new.version == "2"
+        assert new.version == expected_clone_version
 
     def test_legacy_method_locks_source(self):
         """The legacy method's contract: source is locked after clone."""

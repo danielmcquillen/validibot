@@ -17,15 +17,6 @@
             <h1 class="h5 mb-0">
               {% trans "Break-glass tombstone workflow" %}
             </h1>
-            <span class="small">
-              {% if workflow.version %}
-                {% blocktrans with version=workflow.version %}v{{ version }}{% endblocktrans %}
-              {% else %}
-                {% trans "unversioned" %}
-              {% endif %}
-              <span aria-hidden="true">·</span>
-              {{ workflow.get_history_policy_display }}
-            </span>
           </div>
           <div class="card-body">
             <p class="mb-3">
@@ -75,12 +66,6 @@
               </dt>
               <dd class="col-sm-8">
                 {{ workflow.slug }}
-              </dd>
-              <dt class="col-sm-4">
-                {% trans "Version" %}
-              </dt>
-              <dd class="col-sm-8">
-                {{ workflow.version|default:_("not set") }}
               </dd>
             </dl>
             <form method="post" novalidate>

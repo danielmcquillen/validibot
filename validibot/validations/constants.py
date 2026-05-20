@@ -117,7 +117,7 @@ class ValidationRunErrorCategory(TextChoices):
 # Human-friendly error messages by category
 VALIDATION_RUN_ERROR_MESSAGES = {
     ValidationRunErrorCategory.VALIDATION_FAILED: (
-        "The validation found issues with your file."
+        "Validibot found issues with your data. Validation failed."
     ),
     ValidationRunErrorCategory.TIMEOUT: (
         "The validation took too long and was stopped. "

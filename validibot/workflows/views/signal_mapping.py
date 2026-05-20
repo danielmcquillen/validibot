@@ -124,13 +124,13 @@ class WorkflowSignalMappingView(WorkflowObjectMixin, View):
                     "name": _("Workflows"),
                     "url": reverse("workflows:workflow_list"),
                 },
-                {
-                    "name": workflow.name,
-                    "url": reverse(
+                self.workflow_breadcrumb_item(
+                    workflow,
+                    url=reverse(
                         "workflows:workflow_detail",
                         kwargs={"pk": workflow.pk},
                     ),
-                },
+                ),
                 {"name": _("Signals"), "url": ""},
             ],
         }

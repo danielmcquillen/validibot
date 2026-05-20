@@ -25,7 +25,12 @@
               {% trans "Edit step details" %} : {{ step.name|default_if_none:"( no name )" }}
             {% endif %}
           </h1>
-          {% include "workflows/partials/workflow_version_badge.html" %}
+        </div>
+        <div class="d-flex flex-nowrap align-items-center gap-2 min-w-0">
+          <span class="text-muted text-truncate">
+            {% trans "Workflow" %}: {{ workflow.name }}
+          </span>
+          {% include "workflows/partials/workflow_version_pill.html" %}
         </div>
       </div>
     </div>
@@ -56,7 +61,7 @@
         {% endif %}
         <form method="post"
               enctype="multipart/form-data"
-              class="d-flex flex-column gap-4">
+              class="d-flex flex-column gap-2">
           {% csrf_token %}
           {{ form.media }}
           {% crispy form %}

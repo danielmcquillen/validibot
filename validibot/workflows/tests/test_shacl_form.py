@@ -28,6 +28,7 @@ from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.shacl.constants import SHACL_RESULT_REPORT_ONLY
 from validibot.workflows.forms import ShaclStepConfigForm
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -353,7 +354,7 @@ class BuildShaclConfigTests(TestCase):
         assert "<inline>" in ruleset.rules_text
 
     def test_builder_persists_engine_knobs_to_metadata(self):
-        """inference_mode, advanced_shacl, submission_format land on metadata.
+        """Engine knobs and result handling land on ruleset metadata.
 
         The engine reads these from Ruleset.metadata at validation time,
         so they must round-trip through the builder cleanly.
@@ -361,12 +362,15 @@ class BuildShaclConfigTests(TestCase):
         form = self._bound_form(
             inference_mode="owlrl",
             submission_format="jsonld",
+            shacl_result_handling=SHACL_RESULT_REPORT_ONLY,
         )
-        _, ruleset = build_shacl_config(self.workflow, form, step=None)
+        config, ruleset = build_shacl_config(self.workflow, form, step=None)
 
         assert ruleset.metadata["inference_mode"] == "owlrl"
         assert ruleset.metadata["advanced_shacl"] is True
         assert ruleset.metadata["submission_format"] == "jsonld"
+        assert ruleset.metadata["shacl_result_handling"] == SHACL_RESULT_REPORT_ONLY
+        assert config["shacl_result_handling"] == SHACL_RESULT_REPORT_ONLY
 
     def test_builder_writes_empty_bundled_standards_in_phase_1(self):
         """Without the checkbox UI, the builder always writes an empty list.

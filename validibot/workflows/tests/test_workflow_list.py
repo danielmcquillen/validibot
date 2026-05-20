@@ -1,3 +1,12 @@
+"""Tests for the workflow list management surface.
+
+These checks cover the list's workspace scoping, layout preferences,
+archiving affordances, and version-family presentation. The workflow list is a
+high-traffic authoring surface, so tests focus on preventing accidental leakage
+across orgs and preventing versioned rows from being shown as independent
+workflows.
+"""
+
 from __future__ import annotations
 
 import re
@@ -26,6 +35,14 @@ def _switch_workspace(client, org_id: int, *, next_url: str):
         data={"next": next_url},
         follow=True,
     )
+
+
+def _log_in_owner(client, *, user, org) -> None:
+    client.force_login(user)
+    user.set_current_org(org)
+    session = client.session
+    session["active_org_id"] = org.id
+    session.save()
 
 
 def test_workflow_list_refreshes_on_workspace_switch(client):
@@ -74,6 +91,114 @@ def test_workflow_list_layout_persists_in_session(client):
 
     response = client.get(url)
     assert response.context["current_layout"] == WorkflowListLayout.TABLE
+
+
+def test_grid_lists_only_latest_workflow_version_with_version_badges(client):
+    """Grid cards should collapse a version family while linking each version."""
+
+    user = UserFactory()
+    org = OrganizationFactory(name="Grid Version Org")
+    grant_role(user, org, RoleCode.OWNER)
+    older = WorkflowFactory(
+        org=org,
+        user=user,
+        name="Versioned Grid Workflow",
+        slug="versioned-grid-workflow",
+        version="1",
+    )
+    latest = WorkflowFactory(
+        org=org,
+        user=user,
+        name="Versioned Grid Workflow",
+        slug="versioned-grid-workflow",
+        version="2",
+    )
+    _log_in_owner(client, user=user, org=org)
+
+    response = client.get(f"{reverse('workflows:workflow_list')}?layout=grid")
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert f'id="workflow-card-{latest.pk}"' in html
+    assert f'id="workflow-card-{older.pk}"' not in html
+    assert "Versions" in html
+    assert "View version 2" in html
+    assert "View version 1" in html
+    assert "bg-blue-lt" in html
+    assert "workflow-version-badge--current" in html
+    assert "workflow-version-badge--previous" in html
+
+
+def test_table_lists_only_latest_workflow_version_with_version_badges(client):
+    """Table rows should show one family row and a horizontal version list."""
+
+    user = UserFactory()
+    org = OrganizationFactory(name="Table Version Org")
+    grant_role(user, org, RoleCode.OWNER)
+    older = WorkflowFactory(
+        org=org,
+        user=user,
+        name="Versioned Table Workflow",
+        slug="versioned-table-workflow",
+        version="1",
+    )
+    latest = WorkflowFactory(
+        org=org,
+        user=user,
+        name="Versioned Table Workflow",
+        slug="versioned-table-workflow",
+        version="2",
+    )
+    _log_in_owner(client, user=user, org=org)
+
+    response = client.get(f"{reverse('workflows:workflow_list')}?layout=table")
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert f'id="workflow-item-wrapper-{latest.pk}"' in html
+    assert f'id="workflow-item-wrapper-{older.pk}"' not in html
+    assert "Versions" in html
+    assert "View version 2" in html
+    assert "View version 1" in html
+    assert "bg-blue-lt" in html
+    assert "workflow-version-badge--current" in html
+    assert "workflow-version-badge--previous" in html
+
+
+def test_default_list_hides_family_when_latest_version_is_archived(client):
+    """An older active row must not appear as current after v2 is archived."""
+
+    user = UserFactory()
+    org = OrganizationFactory(name="Archived Latest Org")
+    grant_role(user, org, RoleCode.OWNER)
+    older = WorkflowFactory(
+        org=org,
+        user=user,
+        name="Archived Latest Workflow",
+        slug="archived-latest-workflow",
+        version="1",
+    )
+    latest = WorkflowFactory(
+        org=org,
+        user=user,
+        name="Archived Latest Workflow",
+        slug="archived-latest-workflow",
+        version="2",
+        is_active=False,
+        is_archived=True,
+    )
+    _log_in_owner(client, user=user, org=org)
+
+    list_url = reverse("workflows:workflow_list")
+    response = client.get(list_url)
+    html = response.content.decode()
+    assert f'id="workflow-item-wrapper-{older.pk}"' not in html
+    assert f'id="workflow-item-wrapper-{latest.pk}"' not in html
+
+    response = client.get(f"{list_url}?archived=1")
+    html = response.content.decode()
+    assert f'id="workflow-item-wrapper-{latest.pk}"' in html
+    assert f'id="workflow-item-wrapper-{older.pk}"' not in html
 
 
 def test_workflow_delete_button_has_target_id(client):

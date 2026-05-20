@@ -1,0 +1,107 @@
+{% comment %}
+Workflow detail toolbar.
+
+The view supplies already-authorized action groups through
+``workflow_detail_toolbar``. This partial only controls visual order:
+Launch, then grey actions after a 3rem gap, then destructive/lifecycle actions
+after another 3rem gap.
+{% endcomment %}
+{% with toolbar=workflow_detail_toolbar %}
+  <div class="d-flex flex-wrap gap-2 justify-content-end align-items-center">
+    {% if toolbar.launch_action %}
+      {% with action=toolbar.launch_action %}
+        <a class="{{ action.button_class }}"
+           data-bs-toggle="tooltip"
+           data-bs-placement="top"
+           title="{{ action.title }}"
+           href="{{ action.url }}">
+          <i class="bi {{ action.icon_class }}"></i>{{ action.label }}
+        </a>
+      {% endwith %}
+    {% endif %}
+    {% if toolbar.grey_actions %}
+      <div class="d-flex flex-wrap gap-2
+                  {% if toolbar.launch_action %}
+                    ms-5
+                  {% endif %}">
+        {% for action in toolbar.grey_actions %}
+          {% if action.kind == "form" %}
+            <form method="post"
+                  class="d-inline-flex"
+                  action="{{ action.url }}"
+                  onsubmit="return confirm('{{ action.confirm|escapejs }}');">
+              {% csrf_token %}
+              <button type="submit"
+                      class="{{ action.button_class }}"
+                      data-bs-toggle="tooltip"
+                      data-bs-placement="top"
+                      title="{{ action.title }}"
+                      aria-label="{{ action.title }}">
+                <i class="bi {{ action.icon_class }}"></i>
+              </button>
+            </form>
+          {% else %}
+            <a class="{{ action.button_class }}"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="{{ action.title }}"
+               aria-label="{{ action.title }}"
+               href="{{ action.url }}">
+              <i class="bi {{ action.icon_class }}"></i>
+            </a>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if toolbar.destructive_actions %}
+      <div class="d-flex flex-wrap gap-2
+                  {% if toolbar.launch_action or toolbar.grey_actions %}
+                    ms-5
+                  {% endif %}">
+        {% for action in toolbar.destructive_actions %}
+          {% if action.kind == "form" %}
+            <form method="post"
+                  class="d-inline-flex"
+                  action="{{ action.url }}"
+                  onsubmit="return confirm('{{ action.confirm|escapejs }}');">
+              {% csrf_token %}
+              {% for hidden_input in action.hidden_inputs %}
+                <input type="hidden"
+                       name="{{ hidden_input.name }}"
+                       value="{{ hidden_input.value }}" />
+              {% endfor %}
+              <button type="submit"
+                      class="{{ action.button_class }}"
+                      data-bs-toggle="tooltip"
+                      data-bs-placement="top"
+                      title="{{ action.title }}"
+                      aria-label="{{ action.title }}">
+                <i class="bi {{ action.icon_class }}"></i>
+              </button>
+            </form>
+          {% elif action.kind == "hx_delete" %}
+            <a class="{{ action.button_class }}"
+               hx-delete="{{ action.url }}"
+               hx-target="body"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="{{ action.title }}"
+               aria-label="{{ action.title }}"
+               hx-confirm="{{ action.confirm }}">
+              <i class="bi {{ action.icon_class }}"></i>
+            </a>
+          {% else %}
+            <a class="{{ action.button_class }}"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="{{ action.title }}"
+               aria-label="{{ action.title }}"
+               href="{{ action.url }}">
+              <i class="bi {{ action.icon_class }}"></i>
+            </a>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endwith %}

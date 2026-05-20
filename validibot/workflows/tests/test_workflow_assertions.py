@@ -9,6 +9,7 @@ from django.test import Client
 from django.test import TestCase
 from django.test import override_settings
 from django.urls import reverse
+from lxml import html as lxml_html
 
 from validibot.users.constants import RoleCode
 from validibot.users.tests.utils import ensure_all_roles_exist
@@ -44,6 +45,26 @@ class WorkflowStepAssertionsTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         ensure_all_roles_exist()
+
+    def assert_cel_expression_field_uses_full_width_modal_layout(self, body):
+        """Assert CEL authoring has the same horizontal room as other large fields."""
+        document = lxml_html.fromstring(body)
+        cel_textareas = document.xpath('//textarea[@name="cel_expression"]')
+        self.assertEqual(len(cel_textareas), 1)
+        wrapper = cel_textareas[0]
+        while wrapper is not None and wrapper.get("id") != "div_id_cel_expression":
+            wrapper = wrapper.getparent()
+        self.assertIsNotNone(wrapper)
+
+        for ancestor in wrapper.iterancestors():
+            ancestor_classes = set((ancestor.get("class") or "").split())
+            if {"col-lg-3", "col-lg-9"} & ancestor_classes:
+                self.fail(
+                    "CEL expression field is still constrained by a Bootstrap "
+                    f"grid column: {sorted(ancestor_classes)}",
+                )
+            if ancestor.tag == "form":
+                break
 
     def _make_energyplus_step(self, workflow):
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
@@ -222,6 +243,61 @@ class WorkflowStepAssertionsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
         self.assertIn("Assertion Type", body)
+
+    def test_assertion_create_modal_uses_full_width_cel_expression_field(self):
+        """The create dialog should leave room for real CEL expressions.
+
+        Long assertions become hard to read when JavaScript or crispy layout
+        leaves the textarea inside the narrow assertion-type column.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_energyplus_step(workflow)
+        url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.get(url, headers={"hx-request": "true"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assert_cel_expression_field_uses_full_width_modal_layout(
+            response.content.decode(),
+        )
+
+    def test_assertion_edit_modal_uses_full_width_cel_expression_field(self):
+        """The edit dialog should preserve full-width CEL editing too.
+
+        Create and edit share the modal shell, but the edit endpoint hydrates
+        initial values separately, so both responses need to keep the textarea
+        out of narrow grid columns.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_energyplus_step(workflow)
+        assertion = RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            target_data_path="s.floor_area > 0",
+            rhs={"expr": "s.floor_area > 0"},
+            order=10,
+        )
+        url = reverse(
+            "workflows:workflow_step_assertion_update",
+            kwargs={
+                "pk": workflow.pk,
+                "step_id": step.pk,
+                "assertion_id": assertion.pk,
+            },
+        )
+
+        response = self.client.get(url, headers={"hx-request": "true"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assert_cel_expression_field_uses_full_width_modal_layout(
+            response.content.decode(),
+        )
 
     def test_shacl_assertion_modal_shows_shacl_type_first(self):
         """SHACL steps should expose SHACL SPARQL assertions as the first type."""
@@ -477,7 +553,7 @@ class WorkflowStepAssertionsTests(TestCase):
         self.assertNotIn("Inputs and Outputs", body)
 
     def test_shacl_assertion_card_uses_non_redundant_fallback_copy(self):
-        """Unnamed SHACL assertions should avoid repeating SPARQL in both lines."""
+        """Unnamed SHACL assertions should summarize as one compact card line."""
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         step = self._make_shacl_step(workflow)
@@ -501,8 +577,8 @@ class WorkflowStepAssertionsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn("SPARQL ASK", body)
-        self.assertIn("Against submitted RDF data graph", body)
+        self.assertRegex(body, r"SPARQL ASK\s*:\s*\(no description\)")
+        self.assertNotIn("Against submitted RDF data graph", body)
         self.assertNotIn("SHACL SPARQL ASK", body)
         self.assertNotIn("SPARQL ASK against data graph", body)
 

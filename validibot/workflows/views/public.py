@@ -376,14 +376,14 @@ class WorkflowPublicInfoUpdateView(WorkflowObjectMixin, UpdateView):
             },
         )
         breadcrumbs.append(
-            {
-                "name": workflow.name,
-                "url": reverse_with_org(
+            self.workflow_breadcrumb_item(
+                workflow,
+                url=reverse_with_org(
                     "workflows:workflow_detail",
                     request=self.request,
                     kwargs={"pk": workflow.pk},
                 ),
-            },
+            ),
         )
         breadcrumbs.append({"name": _("Public info"), "url": ""})
         return breadcrumbs

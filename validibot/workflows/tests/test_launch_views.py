@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import html
 import json
+from datetime import timedelta
 from http import HTTPStatus
 from pathlib import Path
 from types import ModuleType
@@ -21,6 +22,7 @@ from unittest.mock import patch
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from django.utils import timezone
 from lxml import html as lxml_html
 
 from validibot.actions.constants import ActionCategoryType
@@ -28,6 +30,7 @@ from validibot.actions.constants import CredentialActionType
 from validibot.actions.models import ActionDefinition
 from validibot.actions.registry import get_action_model
 from validibot.submissions.constants import SubmissionFileType
+from validibot.submissions.constants import SubmissionRetention
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
@@ -765,6 +768,153 @@ def test_run_detail_page_shows_completion_actions(client):
     body = response.content.decode()
     assert "Launch again" in body
     assert "View full run" in body
+
+
+def test_run_detail_page_shows_retained_submission_file_view(client):
+    """Launch run results should offer the data modal when retention allows it."""
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    upload = SimpleUploadedFile(
+        "launch-visible.json",
+        b'{"launch_visible": true}',
+        content_type="application/json",
+    )
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        submission__user=user,
+        submission__retention_policy=SubmissionRetention.STORE_30_DAYS,
+        workflow=workflow,
+        org=workflow.org,
+        user=user,
+        status=ValidationRunStatus.SUCCEEDED,
+    )
+    run.submission.set_content(
+        uploaded_file=upload,
+        filename="launch-visible.json",
+        file_type=SubmissionFileType.JSON,
+    )
+    run.submission.save()
+
+    response = client.get(
+        reverse(
+            "workflows:workflow_run_detail",
+            kwargs={"pk": workflow.pk, "run_id": run.pk},
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Data file" in body
+    assert "launch-visible.json" in body
+    assert 'data-bs-target="#submissionContentModal"' in body
+    assert 'id="submissionContentModal"' in body
+    assert response.context["submission_content"] == '{"launch_visible": true}'
+    assert response.context["submission_content_can_be_viewed"] is True
+
+
+def test_run_detail_page_hides_do_not_store_submission_content(client):
+    """Launch run results must not leak no-store content through the view context."""
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    upload = SimpleUploadedFile(
+        "launch-private.json",
+        b'{"launch_private": true}',
+        content_type="application/json",
+    )
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        submission__user=user,
+        submission__retention_policy=SubmissionRetention.DO_NOT_STORE,
+        workflow=workflow,
+        org=workflow.org,
+        user=user,
+        status=ValidationRunStatus.SUCCEEDED,
+    )
+    run.submission.set_content(
+        uploaded_file=upload,
+        filename="launch-private.json",
+        file_type=SubmissionFileType.JSON,
+    )
+    run.submission.save()
+
+    response = client.get(
+        reverse(
+            "workflows:workflow_run_detail",
+            kwargs={"pk": workflow.pk, "run_id": run.pk},
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Data file" in body
+    assert "launch-private.json" in body
+    assert (
+        "Submission content has been purged per retention policy and cannot be viewed."
+        in body
+    )
+    assert 'data-bs-target="#submissionContentModal"' not in body
+    assert 'id="submissionContentModal"' not in body
+    assert response.context["submission_content"] == ""
+    assert response.context["submission_content_can_be_viewed"] is False
+
+
+def test_run_detail_page_hides_expired_submission_content(client):
+    """Launch run results should honor expiry before the purge job removes files."""
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    upload = SimpleUploadedFile(
+        "launch-expired.json",
+        b'{"launch_expired": true}',
+        content_type="application/json",
+    )
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        submission__user=user,
+        submission__retention_policy=SubmissionRetention.STORE_1_DAY,
+        workflow=workflow,
+        org=workflow.org,
+        user=user,
+        status=ValidationRunStatus.SUCCEEDED,
+    )
+    run.submission.set_content(
+        uploaded_file=upload,
+        filename="launch-expired.json",
+        file_type=SubmissionFileType.JSON,
+    )
+    run.submission.save()
+    run.submission.expires_at = timezone.now() - timedelta(minutes=1)
+    run.submission.save(update_fields=["expires_at"])
+    assert run.submission.input_file.storage.exists(run.submission.input_file.name)
+
+    response = client.get(
+        reverse(
+            "workflows:workflow_run_detail",
+            kwargs={"pk": workflow.pk, "run_id": run.pk},
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Data file" in body
+    assert "launch-expired.json" in body
+    assert (
+        "Submission content has been purged per retention policy and cannot be viewed."
+        in body
+    )
+    assert 'data-bs-target="#submissionContentModal"' not in body
+    assert 'id="submissionContentModal"' not in body
+    assert "launch_expired" not in body
+    assert response.context["submission_content"] == ""
+    assert response.context["submission_content_can_be_viewed"] is False
 
 
 def test_run_detail_page_shows_signed_credential_card(client, pro_installed):

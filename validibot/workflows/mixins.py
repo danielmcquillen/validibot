@@ -26,6 +26,7 @@ from validibot.workflows.forms import WorkflowForm
 from validibot.workflows.forms import WorkflowLaunchForm
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
+from validibot.workflows.services.version_context import build_workflow_breadcrumb_item
 from validibot.workflows.services.version_context import build_workflow_version_context
 from validibot.workflows.views_helpers import ensure_advanced_ruleset
 
@@ -152,6 +153,16 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
             return False
         return workflow.user_id == getattr(user, "id", None)
 
+    def workflow_breadcrumb_item(
+        self,
+        workflow: Workflow,
+        *,
+        url: str = "",
+    ) -> dict[str, Any]:
+        """Return the standard workflow-name breadcrumb with version context."""
+
+        return build_workflow_breadcrumb_item(workflow=workflow, url=url)
+
     def user_can_manage_sharing(
         self,
         workflow: Workflow | None = None,
@@ -186,8 +197,8 @@ class WorkflowObjectMixin(WorkflowAccessMixin):
 
     Workflow pages generally operate on one concrete workflow version. The
     mixin keeps that exact-row lookup in one place and also gives templates the
-    small version-family context they need to show a consistent version badge or
-    switcher without each view repeating the same query.
+    version-family context they need to show the detail-page version history
+    without each view repeating the same query.
     """
 
     workflow_url_kwarg = "pk"
@@ -364,14 +375,14 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
         breadcrumbs = super().get_breadcrumbs()
         workflow = self.get_workflow()
         breadcrumbs.append(
-            {
-                "name": workflow.name,
-                "url": reverse_with_org(
+            self.workflow_breadcrumb_item(
+                workflow,
+                url=reverse_with_org(
                     "workflows:workflow_detail",
                     request=self.request,
                     kwargs={"pk": workflow.pk},
                 ),
-            },
+            ),
         )
         breadcrumbs.append({"name": _("Assertions"), "url": ""})
         return breadcrumbs
@@ -638,12 +649,10 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             active_run=run,
         )
         submission_content = ""
-        if (
-            run.submission
-            and run.submission.input_file
-            and run.submission.is_content_available
-        ):
-            submission_content = run.submission.get_content()
+        submission_content_can_be_viewed = False
+        if run.submission:
+            submission_content = run.submission.get_viewable_content()
+            submission_content_can_be_viewed = bool(submission_content)
 
         context = {
             "workflow": workflow,
@@ -655,6 +664,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "recent_runs": self.get_recent_runs(workflow),
             "is_polling": run.status in self.polling_statuses,
             "submission_content": submission_content,
+            "submission_content_can_be_viewed": submission_content_can_be_viewed,
         }
         context.update(status_context)
         return context

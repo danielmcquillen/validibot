@@ -1895,7 +1895,7 @@ class TestInviteDuplicateCheckFamilyScoping:
         guest = UserFactory(orgs=[])
         Membership.objects.filter(user=guest).delete()
         WorkflowAccessGrant.objects.create(
-            workflow=Workflow.objects.get(org=org, slug="shared", version="1"),
+            workflow=Workflow.objects.get(org=org, slug="shared", version=1),
             user=guest,
             is_active=True,
         )

@@ -46,8 +46,12 @@ from validibot.workflows.mixins import WorkflowObjectMixin
 from validibot.workflows.models import Workflow
 from validibot.workflows.schema_builder import workflow_has_input_form
 from validibot.workflows.serializers import WorkflowFullSerializer
+from validibot.workflows.services.version_context import (
+    build_workflow_list_version_badges,
+)
 from validibot.workflows.services.version_context import build_workflow_version_context
 from validibot.workflows.services.versioning import WorkflowVersioningService
+from validibot.workflows.version_utils import get_latest_workflow_ids
 from validibot.workflows.views_helpers import public_info_card_context
 
 logger = logging.getLogger(__name__)
@@ -126,6 +130,192 @@ def _compute_workflow_definition_hash(workflow: Workflow) -> str:
     return compute_workflow_definition_hash(workflow)
 
 
+def _workflow_detail_toolbar_context(
+    *,
+    request,
+    workflow: Workflow,
+    related_validations_url: str,
+    can_launch_workflow: bool,
+    can_view_workflow: bool,
+    can_manage_workflow: bool,
+    workflow_has_runs: bool,
+    workflow_has_issued_credentials: bool,
+    can_break_glass_delete_workflow: bool,
+) -> dict:
+    """Build authorized workflow-detail toolbar action groups.
+
+    The template should only decide how to render the groups. All permission
+    and lifecycle decisions stay here so reordering the toolbar does not change
+    who can see or use an action.
+    """
+
+    launch_action = None
+    if can_launch_workflow:
+        launch_action = {
+            "button_class": "btn btn-launch",
+            "icon_class": "bi-rocket me-1",
+            "label": _("Launch"),
+            "title": _("Start a new validation run with this workflow"),
+            "url": reverse_with_org(
+                "workflows:workflow_launch",
+                request=request,
+                kwargs={"pk": workflow.pk},
+            ),
+        }
+
+    grey_actions = []
+    if not workflow.is_tombstoned:
+        grey_actions.append(
+            {
+                "kind": "link",
+                "button_class": "btn btn-light text-dark",
+                "icon_class": "bi-code-slash",
+                "title": _("View JSON representation"),
+                "url": reverse_with_org(
+                    "workflows:workflow_json",
+                    request=request,
+                    kwargs={"pk": workflow.pk},
+                ),
+            },
+        )
+    if can_view_workflow:
+        grey_actions.append(
+            {
+                "kind": "link",
+                "button_class": "btn btn-light text-dark",
+                "icon_class": "bi-diagram-3",
+                "title": _("View Validations"),
+                "url": related_validations_url,
+            },
+        )
+    if can_manage_workflow:
+        grey_actions.extend(
+            [
+                {
+                    "kind": "link",
+                    "button_class": "btn btn-light text-dark",
+                    "icon_class": "bi-bullseye",
+                    "title": _("Configure workflow-level signals (s.name)"),
+                    "url": reverse_with_org(
+                        "workflows:workflow_signal_mapping",
+                        request=request,
+                        kwargs={"pk": workflow.pk},
+                    ),
+                },
+                {
+                    "kind": "form",
+                    "button_class": "btn btn-light text-dark",
+                    "confirm": _(
+                        "Create a new editable version of this workflow? "
+                        "The current version stays intact and any past runs "
+                        "remain attached to it.",
+                    ),
+                    "icon_class": "bi-files",
+                    "title": _("Create new workflow version"),
+                    "url": reverse_with_org(
+                        "workflows:workflow_clone",
+                        request=request,
+                        kwargs={"pk": workflow.pk},
+                    ),
+                },
+                {
+                    "kind": "link",
+                    "button_class": "btn btn-light text-dark",
+                    "icon_class": "bi-share",
+                    "title": _("Sharing settings"),
+                    "url": reverse_with_org(
+                        "workflows:workflow_sharing",
+                        request=request,
+                        kwargs={"pk": workflow.pk},
+                    ),
+                },
+                {
+                    "kind": "link",
+                    "button_class": "btn btn-secondary",
+                    "icon_class": "bi-pencil-square",
+                    "title": _("Workflow settings"),
+                    "url": reverse_with_org(
+                        "workflows:workflow_update",
+                        request=request,
+                        kwargs={"pk": workflow.pk},
+                    ),
+                },
+            ],
+        )
+
+    destructive_actions = []
+    if can_manage_workflow:
+        if workflow_has_runs:
+            destructive_actions.append(
+                {
+                    "kind": "form",
+                    "button_class": "btn btn-light text-dark",
+                    "confirm": (
+                        _("Unarchive this workflow?")
+                        if workflow.is_archived
+                        else _("Are you sure you want to archive this workflow?")
+                    ),
+                    "hidden_inputs": (
+                        [{"name": "unarchive", "value": "1"}]
+                        if workflow.is_archived
+                        else []
+                    ),
+                    "icon_class": (
+                        "bi-star text-warning"
+                        if workflow.is_archived
+                        else "bi-archive text-warning"
+                    ),
+                    "title": (
+                        _("Unarchive this workflow")
+                        if workflow.is_archived
+                        else _("Archive workflow")
+                    ),
+                    "url": reverse_with_org(
+                        "workflows:workflow_archive",
+                        request=request,
+                        kwargs={"pk": workflow.pk},
+                    ),
+                },
+            )
+            if workflow_has_issued_credentials and can_break_glass_delete_workflow:
+                destructive_actions.append(
+                    {
+                        "kind": "link",
+                        "button_class": "btn btn-light",
+                        "icon_class": "bi-exclamation-triangle text-danger",
+                        "title": _(
+                            "Exceptional delete flow for credential-bearing workflows",
+                        ),
+                        "url": reverse_with_org(
+                            "workflows:workflow_break_glass_delete",
+                            request=request,
+                            kwargs={"pk": workflow.pk},
+                        ),
+                    },
+                )
+        else:
+            destructive_actions.append(
+                {
+                    "kind": "hx_delete",
+                    "button_class": "btn btn-danger",
+                    "confirm": _("Delete this workflow?"),
+                    "icon_class": "bi-trash",
+                    "title": _("Delete this workflow"),
+                    "url": reverse_with_org(
+                        "workflows:workflow_delete",
+                        request=request,
+                        kwargs={"pk": workflow.pk},
+                    ),
+                },
+            )
+
+    return {
+        "launch_action": launch_action,
+        "grey_actions": grey_actions,
+        "destructive_actions": destructive_actions,
+    }
+
+
 def _can_break_glass_delete_workflow(
     workflow: Workflow,
     *,
@@ -161,24 +351,23 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
     layout_session_key = WORKFLOW_LIST_LAYOUT_SESSION_KEY
 
     def get_queryset(self):
-        qs = (
-            super()
-            .get_queryset()
-            .annotate(
-                run_count=Count("validation_runs", distinct=True),
-                # Count active guest access grants for this workflow
-                guest_count=Count(
-                    "access_grants",
-                    filter=models.Q(access_grants__is_active=True),
-                    distinct=True,
-                ),
-            )
-        )
+        qs = super().get_queryset()
+        latest_ids = get_latest_workflow_ids(qs, include_archived=True)
+        qs = qs.filter(pk__in=latest_ids)
         if not self._show_archived():
             qs = qs.filter(is_archived=False)
         search = self.request.GET.get("q", "").strip()
         if search:
             qs = qs.filter(name__icontains=search)
+        qs = qs.annotate(
+            run_count=Count("validation_runs", distinct=True),
+            # Count active guest access grants for this workflow
+            guest_count=Count(
+                "access_grants",
+                filter=models.Q(access_grants__is_active=True),
+                distinct=True,
+            ),
+        )
         return qs
 
     def get_context_data(self, **kwargs):
@@ -186,6 +375,10 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
         workflows: list[Workflow] = list(context["workflows"])
         context["workflows"] = workflows
         context["object_list"] = workflows
+        version_badges = build_workflow_list_version_badges(
+            request=self.request,
+            workflows=workflows,
+        )
         user = self.request.user
         membership = getattr(user, "membership_for_current_org", lambda: None)()
         can_manage = False
@@ -221,6 +414,7 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
                 run_count = 1 if wf.validation_runs.exists() else 0
             wf.has_runs = run_count > 0
             wf.run_count = run_count
+            wf.version_badges = version_badges.get(wf.pk, [])
 
         layout = str(self._get_layout())
         context.update(
@@ -356,7 +550,7 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
                 ),
             },
         )
-        breadcrumbs.append({"name": workflow.name, "url": ""})
+        breadcrumbs.append(self.workflow_breadcrumb_item(workflow))
         return breadcrumbs
 
     def get_context_data(self, **kwargs):
@@ -378,39 +572,55 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
             workflow,
             can_manage=can_manage_public_info,
         )
+        related_validations_url = reverse_with_org(
+            "workflows:workflow_validation_list",
+            request=self.request,
+            kwargs={"pk": workflow.pk},
+        )
+        can_launch_workflow = workflow.can_execute(user=self.request.user)
+        can_view_workflow = self.user_can_view_workflow()
+        workflow_has_runs = workflow.validation_runs.exists()
+        can_break_glass_delete_workflow = (
+            has_issued_credentials
+            and not workflow.is_tombstoned
+            and _can_break_glass_delete_workflow(
+                workflow,
+                user=self.request.user,
+                membership=membership,
+            )
+        )
         version_context = build_workflow_version_context(
             request=self.request,
             workflow=workflow,
         )
         context.update(
             {
-                "related_validations_url": reverse_with_org(
-                    "workflows:workflow_validation_list",
-                    request=self.request,
-                    kwargs={"pk": workflow.pk},
-                ),
+                "related_validations_url": related_validations_url,
                 "recent_runs": recent_runs,
                 "max_step_count": MAX_STEP_COUNT,
                 "can_manage_activation": can_manage_workflow,
                 "show_private_notes": self.user_can_manage_workflow(),
                 "public_info_url": public_info_context["public_info_url"],
                 "can_manage_public_info": can_manage_public_info,
-                "can_launch_workflow": workflow.can_execute(user=self.request.user),
+                "can_launch_workflow": can_launch_workflow,
                 "can_manage_workflow": can_manage_workflow,
-                "can_view_workflow": self.user_can_view_workflow(),
-                "workflow_has_runs": workflow.validation_runs.exists(),
+                "can_view_workflow": can_view_workflow,
+                "workflow_has_runs": workflow_has_runs,
                 "workflow_has_issued_credentials": has_issued_credentials,
                 "issued_credential_count": _workflow_issued_credential_count(
                     workflow,
                 ),
-                "can_break_glass_delete_workflow": (
-                    has_issued_credentials
-                    and not workflow.is_tombstoned
-                    and _can_break_glass_delete_workflow(
-                        workflow,
-                        user=self.request.user,
-                        membership=membership,
-                    )
+                "can_break_glass_delete_workflow": can_break_glass_delete_workflow,
+                "workflow_detail_toolbar": _workflow_detail_toolbar_context(
+                    request=self.request,
+                    workflow=workflow,
+                    related_validations_url=related_validations_url,
+                    can_launch_workflow=can_launch_workflow,
+                    can_view_workflow=can_view_workflow,
+                    can_manage_workflow=can_manage_workflow,
+                    workflow_has_runs=workflow_has_runs,
+                    workflow_has_issued_credentials=has_issued_credentials,
+                    can_break_glass_delete_workflow=(can_break_glass_delete_workflow),
                 ),
             },
         )
@@ -452,14 +662,14 @@ class WorkflowJsonView(WorkflowObjectMixin, TemplateView):
             },
         )
         breadcrumbs.append(
-            {
-                "name": workflow.name,
-                "url": reverse_with_org(
+            self.workflow_breadcrumb_item(
+                workflow,
+                url=reverse_with_org(
                     "workflows:workflow_detail",
                     request=self.request,
                     kwargs={"pk": workflow.pk},
                 ),
-            },
+            ),
         )
         breadcrumbs.append({"name": _("JSON"), "url": ""})
         return breadcrumbs
@@ -474,7 +684,18 @@ class WorkflowJsonView(WorkflowObjectMixin, TemplateView):
 
 
 class WorkflowCloneView(WorkflowObjectMixin, View):
-    """Create an explicit new workflow version from an existing version."""
+    """Create an explicit new workflow version from an existing version.
+
+    This is the proactive "fork this workflow to edit" path. It is distinct
+    from ``WorkflowUpdateView._clone_and_apply``: that path runs when an edit
+    has been rejected by the contract gate, so the submitted changes need
+    saving onto the new version before the author moves on. *This* view runs
+    when the author clicked a standalone clone affordance and has no pending
+    changes yet — so the right destination is the new version's edit screen,
+    per the policy doc (``workflow-versioning-policy.md`` §"User Experience
+    Rules"). Landing on the edit screen makes the author's next click an
+    actual edit, which is why they cloned in the first place.
+    """
 
     http_method_names = ["post"]
 
@@ -487,12 +708,15 @@ class WorkflowCloneView(WorkflowObjectMixin, View):
         new_workflow = Workflow.objects.get(pk=report.new_workflow_id)
         messages.success(
             request,
-            _("Created workflow version %(version)s.")
+            _(
+                "Created workflow version %(version)s. You're now editing the "
+                "new version — the previous version stays intact.",
+            )
             % {"version": new_workflow.version},
         )
         return HttpResponseRedirect(
             reverse_with_org(
-                "workflows:workflow_detail",
+                "workflows:workflow_update",
                 request=request,
                 kwargs={"pk": new_workflow.pk},
             ),
@@ -621,14 +845,14 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
             },
         )
         breadcrumbs.append(
-            {
-                "name": workflow.name,
-                "url": reverse_with_org(
+            self.workflow_breadcrumb_item(
+                workflow,
+                url=reverse_with_org(
                     "workflows:workflow_detail",
                     request=self.request,
                     kwargs={"pk": workflow.pk},
                 ),
-            },
+            ),
         )
         breadcrumbs.append({"name": _("Edit"), "url": ""})
         return breadcrumbs
@@ -739,14 +963,14 @@ class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
             },
         )
         breadcrumbs.append(
-            {
-                "name": workflow.name,
-                "url": reverse_with_org(
+            self.workflow_breadcrumb_item(
+                workflow,
+                url=reverse_with_org(
                     "workflows:workflow_detail",
                     request=self.request,
                     kwargs={"pk": workflow.pk},
                 ),
-            },
+            ),
         )
         breadcrumbs.append({"name": _("Delete"), "url": ""})
         return breadcrumbs
@@ -853,14 +1077,14 @@ class WorkflowBreakGlassDeleteView(WorkflowObjectMixin, FormView):
             },
         )
         breadcrumbs.append(
-            {
-                "name": workflow.name,
-                "url": reverse_with_org(
+            self.workflow_breadcrumb_item(
+                workflow,
+                url=reverse_with_org(
                     "workflows:workflow_detail",
                     request=self.request,
                     kwargs={"pk": workflow.pk},
                 ),
-            },
+            ),
         )
         breadcrumbs.append({"name": _("Break-glass delete"), "url": ""})
         return breadcrumbs

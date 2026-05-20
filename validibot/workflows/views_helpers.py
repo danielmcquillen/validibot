@@ -26,6 +26,9 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.models import Ruleset
 from validibot.validations.models import Validator
+from validibot.validations.validators.shacl.constants import (
+    SHACL_RESULT_HANDLING_DEFAULT,
+)
 from validibot.validations.validators.shacl.engine import FILE_SEPARATOR
 from validibot.validations.validators.shacl.persistence import (
     concatenate_uploaded_files,
@@ -516,6 +519,9 @@ def build_shacl_config(
     inference_mode = cleaned.get("inference_mode") or "rdfs"
     advanced_shacl = bool(cleaned.get("advanced_shacl"))
     submission_format = cleaned.get("submission_format") or "auto"
+    shacl_result_handling = (
+        cleaned.get("shacl_result_handling") or SHACL_RESULT_HANDLING_DEFAULT
+    )
     library_shapes_text = ""
     library_metadata: dict[str, Any] = {}
     library_snapshot: dict[str, Any] | None = None
@@ -621,6 +627,7 @@ def build_shacl_config(
             "inference_mode": inference_mode,
             "advanced_shacl": advanced_shacl,
             "submission_format": submission_format,
+            "shacl_result_handling": shacl_result_handling,
             "library_default_inlined": snapshot_to_persist is not None
             or bool(existing_metadata.get("library_default_inlined")),
             "library_default_snapshot": snapshot_to_persist,
@@ -637,6 +644,7 @@ def build_shacl_config(
         "inference_mode": inference_mode,
         "advanced_shacl": advanced_shacl,
         "submission_format": submission_format,
+        "shacl_result_handling": shacl_result_handling,
         # First 1200 chars of the merged shapes for the step editor's
         # read-only preview, mirroring build_json_schema_config.
         "shapes_text_preview": preview,

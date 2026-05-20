@@ -106,18 +106,12 @@
         {{ workflow.slug }}
       </dd>
     </dl>
-    <dl class="card-data-item">
+    <dl class="card-data-item workflow-version-data-item">
       <dt>
-        {% trans "Version" %}:
+        {% trans "Versions" %}:
       </dt>
       <dd>
-        <span class="badge text-bg-light align-self-start">
-          {% if workflow.version %}
-            {{ workflow.version }}
-          {% else %}
-            {% trans "Unversioned" %}
-          {% endif %}
-        </span>
+        {% include "workflows/partials/components/workflow_version_badges.html" with workflow=workflow %}
       </dd>
     </dl>
     <dl class="card-data-item">
@@ -139,7 +133,7 @@
       </dl>
     {% endif %}
   </div>
-  <div class="card-footer d-flex flex-row justify-content-end align-items-center gap-2">
+  <div class="card-footer d-flex flex-row justify-content-end align-items-end gap-2">
     {% include "workflows/partials/components/workflow_actions.html" with workflow=workflow show_archived=show_archived current_layout=current_layout target_id="workflow-item-wrapper-"|add:workflow.pk hide_delete_buttons=True show_archived_footer_unarchive=True %}
   </div>
 </div>

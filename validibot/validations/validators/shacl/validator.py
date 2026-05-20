@@ -29,6 +29,16 @@ from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
 from validibot.validations.validators.shacl import engine
+from validibot.validations.validators.shacl.constants import (
+    SHACL_RESULT_FAIL_IMMEDIATELY,
+)
+from validibot.validations.validators.shacl.constants import (
+    SHACL_RESULT_HANDLING_DEFAULT,
+)
+from validibot.validations.validators.shacl.constants import (
+    SHACL_RESULT_HANDLING_VALUES,
+)
+from validibot.validations.validators.shacl.constants import SHACL_RESULT_REPORT_ONLY
 
 if TYPE_CHECKING:
     from validibot.actions.protocols import RunContext
@@ -65,11 +75,13 @@ class SHACLValidator(BaseValidator):
 
     Output:
 
-    - ``issues``: structured findings, one per SHACL constraint
-      violation. Severity is mapped from ``sh:resultSeverity``
-      (Violation → ERROR, Warning → WARNING, Info → INFO). SHACL detail
-      (focus node, source shape, constraint component, offending value)
-      lives in ``issue.meta``.
+    - ``issues``: structured findings. By default, each SHACL constraint
+      violation becomes a blocking finding with severity mapped from
+      ``sh:resultSeverity`` (Violation → ERROR, Warning → WARNING,
+      Info → INFO). Authors can choose report-only handling to expose
+      the SHACL report and counts without converting validation results
+      into Validibot findings. Parse, shape, timeout, and engine failures
+      always remain blocking errors.
     - ``signals``: the ``o.*`` signal dict for CEL assertions
       (``o.shacl_violation_count``, ``o.has_s223_namespace``, etc.).
     - ``stats.results_graph_turtle``: the native SHACL
@@ -77,9 +89,9 @@ class SHACLValidator(BaseValidator):
       download and re-ingestion by downstream tools (BuildingMOTIF,
       analytics platforms, AI agents).
 
-    The ``passed`` flag is True iff no ``Severity.ERROR`` issues exist.
-    Warnings and infos do not block — operators decide whether to gate
-    on them via CEL assertions.
+    The ``passed`` flag is True iff no blocking ``Severity.ERROR`` issues
+    exist. Warnings and infos do not block — operators decide whether to
+    gate on them via CEL assertions.
     """
 
     def validate(
@@ -102,9 +114,12 @@ class SHACLValidator(BaseValidator):
         5. Run pyshacl with the resolved inference mode + advanced flag.
         6. Map ``sh:ValidationResult`` nodes to ``ValidationIssue`` rows.
         7. Extract output signals for CEL.
-        8. Run SHACL SPARQL ASK assertion rows individually.
-        9. Evaluate Basic/CEL output assertions against the SHACL signals.
-        10. Return ``ValidationResult(passed, issues, signals, stats)``.
+        8. Apply SHACL result handling: fail immediately, fail after
+           assertions, or report-only.
+        9. Run SHACL SPARQL ASK assertion rows individually when the
+           result-handling mode allows later assertions to run.
+        10. Evaluate Basic/CEL output assertions against the SHACL signals.
+        11. Return ``ValidationResult(passed, issues, signals, stats)``.
 
         The ``run_context`` argument is accepted for protocol consistency
         but the built-in pySHACL path does not need it.
@@ -206,6 +221,27 @@ class SHACLValidator(BaseValidator):
             parse_ok=True,
             parse_serialization=serialization,
         )
+        report_turtle = self._serialize_results_graph(results_graph)
+        stats = self._build_stats(
+            serialization=serialization,
+            signals=signals,
+            merged_shapes=merged_shapes,
+            merged_ontology=merged_ontology,
+            advanced_shacl=settings["advanced_shacl"],
+            shacl_result_handling=settings["shacl_result_handling"],
+            report_turtle=report_turtle,
+        )
+
+        if settings[
+            "shacl_result_handling"
+        ] == SHACL_RESULT_FAIL_IMMEDIATELY and self._has_error_issue(shacl_issues):
+            return ValidationResult(
+                passed=False,
+                issues=[*bundle_warnings, *shacl_issues],
+                assertion_stats=AssertionStats(total=0, failures=0),
+                signals=signals,
+                stats=stats,
+            )
 
         # Execute author-defined SPARQL ASK assertions after SHACL
         # completes. These are stored as RulesetAssertion rows rather
@@ -233,9 +269,13 @@ class SHACLValidator(BaseValidator):
             exclude_assertion_types={AssertionType.SHACL},
         )
 
+        blocking_shacl_issues = self._blocking_shacl_issues(
+            shacl_issues,
+            settings["shacl_result_handling"],
+        )
         all_issues: list[ValidationIssue] = [
             *bundle_warnings,
-            *shacl_issues,
+            *blocking_shacl_issues,
             *sparql_config_issues,
             *sparql_issues,
             *output_assertion_result.issues,
@@ -244,15 +284,6 @@ class SHACLValidator(BaseValidator):
             sparql_config_issues + sparql_issues,
         )
         assertion_failures += output_assertion_result.failures
-
-        # Serialise the native SHACL ValidationReport for download. Stored
-        # under stats so the existing run-detail UI can surface it as an
-        # evidence artifact without schema changes.
-        try:
-            report_turtle = results_graph.serialize(format="turtle")
-        except Exception as exc:
-            logger.warning("Failed to serialise SHACL report as Turtle: %s", exc)
-            report_turtle = ""
 
         passed = not any(i.severity == Severity.ERROR for i in all_issues)
 
@@ -264,21 +295,7 @@ class SHACLValidator(BaseValidator):
                 failures=assertion_failures,
             ),
             signals=signals,
-            stats={
-                "parse_serialization": serialization,
-                "triple_count": signals["triple_count"],
-                "shacl_total_count": signals["shacl_total_count"],
-                "shacl_shapes_sha256": sha256(
-                    merged_shapes.encode("utf-8"),
-                ).hexdigest(),
-                "shacl_ontology_sha256": (
-                    sha256(merged_ontology.encode("utf-8")).hexdigest()
-                    if merged_ontology
-                    else ""
-                ),
-                "advanced_shacl_requested": bool(settings["advanced_shacl"]),
-                "results_graph_turtle": report_turtle,
-            },
+            stats=stats,
         )
 
     # ------------------------------------------------------------------
@@ -346,6 +363,10 @@ class SHACLValidator(BaseValidator):
                 "submission_format",
                 "auto",
             ),
+            "shacl_result_handling": self._pick_result_handling(
+                step_metadata,
+                default_metadata_for_settings,
+            ),
         }
 
     @staticmethod
@@ -404,3 +425,77 @@ class SHACLValidator(BaseValidator):
         if key in default_metadata:
             return default_metadata[key]
         return fallback
+
+    @staticmethod
+    def _pick_result_handling(
+        step_metadata: dict[str, Any],
+        default_metadata: dict[str, Any],
+    ) -> str:
+        """Resolve SHACL result-handling mode with a conservative fallback."""
+
+        value = SHACLValidator._pick_setting(
+            step_metadata,
+            default_metadata,
+            "shacl_result_handling",
+            SHACL_RESULT_HANDLING_DEFAULT,
+        )
+        if value in SHACL_RESULT_HANDLING_VALUES:
+            return value
+        return SHACL_RESULT_HANDLING_DEFAULT
+
+    @staticmethod
+    def _blocking_shacl_issues(
+        shacl_issues: list[ValidationIssue],
+        result_handling: str,
+    ) -> list[ValidationIssue]:
+        """Return SHACL findings that should affect the Validibot outcome."""
+
+        if result_handling == SHACL_RESULT_REPORT_ONLY:
+            return []
+        return shacl_issues
+
+    @staticmethod
+    def _has_error_issue(issues: list[ValidationIssue]) -> bool:
+        """Return True if an issue list contains a blocking error."""
+
+        return any(issue.severity == Severity.ERROR for issue in issues)
+
+    @staticmethod
+    def _serialize_results_graph(results_graph: Any) -> str:
+        """Serialise the native SHACL ValidationReport for evidence download."""
+
+        try:
+            return results_graph.serialize(format="turtle")
+        except Exception as exc:
+            logger.warning("Failed to serialise SHACL report as Turtle: %s", exc)
+            return ""
+
+    @staticmethod
+    def _build_stats(
+        *,
+        serialization: str,
+        signals: dict[str, Any],
+        merged_shapes: str,
+        merged_ontology: str,
+        advanced_shacl: bool,
+        shacl_result_handling: str,
+        report_turtle: str,
+    ) -> dict[str, Any]:
+        """Build stable SHACL run stats shared by every successful SHACL path."""
+
+        return {
+            "parse_serialization": serialization,
+            "triple_count": signals["triple_count"],
+            "shacl_total_count": signals["shacl_total_count"],
+            "shacl_shapes_sha256": sha256(
+                merged_shapes.encode("utf-8"),
+            ).hexdigest(),
+            "shacl_ontology_sha256": (
+                sha256(merged_ontology.encode("utf-8")).hexdigest()
+                if merged_ontology
+                else ""
+            ),
+            "advanced_shacl_requested": bool(advanced_shacl),
+            "shacl_result_handling": shacl_result_handling,
+            "results_graph_turtle": report_turtle,
+        }

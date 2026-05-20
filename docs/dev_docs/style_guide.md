@@ -15,6 +15,11 @@ This guide captures the small-but-important UI conventions we rely on across the
 - Use `help-card` when you present in-context guidance. These cards get a subtle highlight to signal “explanation” rather than “action.”
 - When explaining multi-step or role-related behavior, aim for short paragraphs and, if helpful, a compact table that calls out what’s included and who it’s for.
 
+## Forms
+
+- Group related form elements with `app-form-section`. Form sections should use a rounded box with a very light grey dotted border. This keeps long settings forms scannable without making each group feel like a heavy card.
+- Give each section a short heading and, when useful, one concise sentence explaining what the group controls.
+
 ## Tooltips
 
 - Use Bootstrap tooltips (`data-bs-toggle="tooltip"`) for icon-only buttons or abbreviations.

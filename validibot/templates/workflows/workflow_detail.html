@@ -14,132 +14,17 @@
     <div class="app-content-header-bar row ">
       <div class="app-content-header col-12 col-lg-6">
         <div class="d-flex flex-column gap-2">
-          <div class="d-flex flex-wrap align-items-center gap-2">
+          <div class="d-flex flex-nowrap align-items-center gap-2 min-w-0">
             <h1 class="app-page-title mb-0 text-truncate">
-              <i class="bi bi-box me-2"></i>Workflow: {{ workflow.name }}
+              {% trans "Workflow" %} : {{ workflow.name }}
+              {% include "workflows/partials/workflow_version_pill.html" %}
             </h1>
-            {% include "workflows/partials/workflow_version_badge.html" %}
           </div>
         </div>
       </div>
       <div class="col-12 col-lg-6 ">
 
-        <div class="d-flex flex-wrap gap-2 justify-content-end">
-          {% include "workflows/partials/workflow_version_switcher.html" %}
-          {% if not workflow.is_tombstoned %}
-            <a class="btn btn-light text-dark"
-               data-bs-toggle="tooltip"
-               data-bs-placement="top"
-               title="{% trans "View JSON representation" %}"
-               href="{% url 'workflows:workflow_json' workflow.pk %}">
-              <i class="bi-code-slash"></i>
-            </a>
-          {% endif %}
-          {% if can_view_workflow %}
-            <a class="btn btn-light text-dark me-2"
-               data-bs-toggle="tooltip"
-               data-bs-placement="top"
-               title="{% trans "View Validations" %}"
-               href="{{ related_validations_url }}">
-              <i class="bi-diagram-3"></i>
-            </a>
-          {% endif %}
-          {% if can_manage_workflow and not workflow.is_tombstoned %}
-            <a class="btn btn-light text-dark"
-               data-bs-toggle="tooltip"
-               data-bs-placement="top"
-               title="{% trans "Configure workflow-level signals (s.name)" %}"
-               href="{% url 'workflows:workflow_signal_mapping' workflow.pk %}">
-              <i class="bi-bullseye"></i>
-            </a>
-            <form method="post"
-                  action="{% org_url 'workflows:workflow_clone' pk=workflow.pk %}"
-                  onsubmit="return confirm('{% trans "Create a new editable version of this workflow?" %}');">
-              {% csrf_token %}
-              <button type="submit"
-                      class="btn btn-light text-dark"
-                      data-bs-toggle="tooltip"
-                      data-bs-placement="top"
-                      title="{% trans "Create new workflow version" %}"
-                      aria-label="{% trans "Create new workflow version" %}">
-                <i class="bi-files"></i>
-              </button>
-            </form>
-          {% endif %}
-          {% if can_manage_workflow %}
-            <a class="btn btn-light text-dark"
-               data-bs-toggle="tooltip"
-               data-bs-placement="top"
-               title="{% trans "Sharing settings" %}"
-               href="{% org_url 'workflows:workflow_sharing' pk=workflow.pk %}">
-              <i class="bi-share"></i>
-            </a>
-            {% if workflow_has_runs %}
-              <form method="post"
-                    action="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}"
-                    onsubmit="return confirm('
-                              {% if workflow.is_archived %}
-                                {% trans "Unarchive this workflow?" %}
-                              {% else %}
-                                {% trans "Are you sure you want to archive this workflow?" %}
-                              {% endif %}
-                              ');">
-                {% csrf_token %}
-                {% if workflow.is_archived %}
-                  <input type="hidden" name="unarchive" value="1" />
-                {% endif %}
-                <button type="submit"
-                        class="btn btn-light txt-warning ms-2"
-                        data-bs-toggle="tooltip"
-                        data-bs-placement="top"
-                        title="{% if workflow.is_archived %}
-                                 {% trans "Unarchive this workflow" %}
-                               {% else %}
-                                 {% trans "Archive workflow" %}
-                               {% endif %}"
-                        aria-label="{% if workflow.is_archived %}
-                                      {% trans "Unarchive this workflow" %}
-                                    {% else %}
-                                      {% trans "Archive workflow" %}
-                                    {% endif %}">
-                  {% if workflow.is_archived %}
-                    <i class="bi-star text-warning"></i>
-                  {% else %}
-                    <i class="bi-archive text-warning"></i>
-                  {% endif %}
-                </button>
-              </form>
-              {% if workflow_has_issued_credentials and can_break_glass_delete_workflow %}
-                <a class="btn btn-light"
-                   data-bs-toggle="tooltip"
-                   data-bs-placement="top"
-                   title="{% trans "Exceptional delete flow for credential-bearing workflows" %}"
-                   href="{% org_url 'workflows:workflow_break_glass_delete' pk=workflow.pk %}">
-                  <i class="bi-exclamation-triangle text-danger"></i>
-                </a>
-              {% endif %}
-            {% else %}
-              <a class="btn btn-danger"
-                 hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
-                 hx-target="body"
-                 data-bs-toggle="tooltip"
-                 data-bs-placement="top"
-                 title="{% trans "Delete this workflow" %}"
-                 hx-confirm="{% trans "Delete this workflow?" %}">
-                <i class="bi-trash"></i>
-              </a>
-            {% endif %}
-          {% endif %}
-          {% if can_launch_workflow %}
-            <a class="btn btn-launch ms-5"
-               data-bs-toggle="tooltip"
-               data-bs-placement="top"
-               title="{% trans "Start a new validation run with this workflow" %}"
-               href="{% url 'workflows:workflow_launch' workflow.pk %}">
-              <i class="bi-rocket me-1"></i>{% trans "Launch" %}
-            </a>
-          {% endif %}
-        </div>
+        {% include "workflows/partials/workflow_detail_toolbar.html" %}
       </div>
     </div>
     {% if workflow.is_tombstoned %}
@@ -218,22 +103,10 @@
            class="col-12 col-lg-6 col-xxl-4 d-flex flex-column">
         <div class="card app-card mb-3">
           <div class="card-header">
-            <div class="card-heaer-title">
+            <div class="card-title">
               <span class="fw-semibold">{% trans "Workflow details" %}</span>
               {% if workflow.is_locked %}
                 <span class="badge text-bg-warning">{% trans "Locked" %}</span>
-              {% endif %}
-            </div>
-            <div class="card-header-buttons">
-              {% if can_manage_workflow %}
-                <a class="btn btn-sm btn-secondary ms-2"
-                   href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
-                   aria-label="{% trans "Edit workflow details" %}"
-                   data-bs-toggle="tooltip"
-                   data-bs-placement="top"
-                   title="{% trans "Workflow settings" %}">
-                  <i class="bi bi-pencil-square"></i>
-                </a>
               {% endif %}
             </div>
           </div>
@@ -303,7 +176,7 @@
                     {% if workflow.is_tombstoned %}
                       {% trans "Tombstoned workflows remain available only for historical inspection." %}
                     {% else %}
-                      {% trans "Inactive workflows stay visible in the list but block new validation runs." %}
+                      {% trans "Inactive workflows stay visible to the organization in the workflow list but block new validation runs." %}
                     {% endif %}
                   </small>
                 </div>
@@ -313,18 +186,6 @@
               </dt>
               <dd class="col-sm-8">
                 {{ workflow.slug }}
-              </dd>
-              <dt class="col-sm-4">
-                {% trans "Version" %}
-              </dt>
-              <dd class="col-sm-8">
-                <span class="text-muted">{{ workflow.version|default:_("not set") }}</span>
-              </dd>
-              <dt class="col-sm-4">
-                {% trans "History policy" %}
-              </dt>
-              <dd class="col-sm-8">
-                <span class="text-muted">{{ workflow.get_history_policy_display }}</span>
               </dd>
               <dt class="col-sm-4">
                 {% trans "File types" %}
@@ -372,6 +233,7 @@
             </div>
           {% endif %}
         </div>
+        {% include "workflows/partials/workflow_version_history.html" %}
         {% if not workflow.is_tombstoned %}
           {% include "workflows/partials/workflow_public_info_card.html" with workflow=workflow public_info_url=public_info_url can_manage_public_info=can_manage_public_info %}
           <div class="card app-card mb-3">

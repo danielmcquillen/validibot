@@ -383,6 +383,51 @@ class Submission(TimeStampedModel):
         """Check if content is still available (not purged)."""
         return self.content_purged_at is None
 
+    @property
+    def is_do_not_store_retention(self) -> bool:
+        """Return whether this submission is covered by no-storage retention."""
+        return self.retention_policy == SubmissionRetention.DO_NOT_STORE
+
+    @property
+    def is_content_retention_expired(self) -> bool:
+        """Return whether retained content is past its access window."""
+        return bool(self.expires_at and self.expires_at <= now())
+
+    @property
+    def is_content_viewable(self) -> bool:
+        """Return whether submitted content may be shown in the UI."""
+        if self.is_do_not_store_retention:
+            return False
+        if self.is_content_retention_expired:
+            return False
+        if not self.is_content_available:
+            return False
+        return bool(self.content or self.input_file)
+
+    @property
+    def has_data_filename(self) -> bool:
+        """Return whether the submitted data should be presented with a filename."""
+        if self.input_file:
+            return True
+        if self.content:
+            return False
+        return bool(self.original_filename)
+
+    @property
+    def data_filename(self) -> str:
+        """Return the best display filename retained for submitted data."""
+        if self.original_filename:
+            return self.original_filename
+        if self.input_file:
+            return Path(self.input_file.name).name
+        return ""
+
+    def get_viewable_content(self) -> str:
+        """Return submitted content only when retention allows interactive viewing."""
+        if not self.is_content_viewable:
+            return ""
+        return self.get_content()
+
     def _user_has_submission_access(self) -> bool:
         """Allow org members plus public/guest launchers to own submissions."""
         if not self.user:
@@ -394,7 +439,7 @@ class Submission(TimeStampedModel):
         return False
 
     def _sync_retention_expiry(self) -> set[str]:
-        """Set ``expires_at`` from the snapped submission retention policy."""
+        """Set ``expires_at`` from the saved submission retention policy."""
         touched: set[str] = set()
         if self.content_purged_at:
             if self.expires_at is not None:

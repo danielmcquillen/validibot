@@ -100,7 +100,7 @@ class Command(BaseCommand):
                 project=project,
                 name=workflow_name,
                 slug=workflow_slug,
-                version="1",
+                version=1,
                 is_active=True,
                 is_locked=False,
                 make_info_page_public=True,

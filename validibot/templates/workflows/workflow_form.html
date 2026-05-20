@@ -17,21 +17,19 @@
   <div id="workflow-edit" class="container-fluid pb-2">
     <div class="app-content-header-bar row">
       <div class="app-content-header col-12 d-flex align-items-start mb-2 mb-lg-0">
-        <h1 class="app-page-title">
-          <i class="bi bi-box me-2"></i>
+        <div class="d-flex flex-nowrap align-items-center gap-2 min-w-0">
+          <h1 class="app-page-title mb-0 text-truncate">
+            <i class="bi bi-box me-2"></i>
+            {% if object %}
+              {% trans "Edit Workflow Settings" %} : "{{ object.name }}"
+            {% else %}
+              {% trans "New Workflow" %}
+            {% endif %}
+          </h1>
           {% if object %}
-            {% trans "Edit Workflow Settings" %} : "{{ object.name }}"
-          {% else %}
-            {% trans "New Workflow" %}
+            {% include "workflows/partials/workflow_version_pill.html" %}
           {% endif %}
-        </h1>
-        {% if object %}
-          <div class="ms-2 mt-1">
-            {% with workflow=object %}
-              {% include "workflows/partials/workflow_version_badge.html" %}
-            {% endwith %}
-          </div>
-        {% endif %}
+        </div>
       </div>
     </div>
     <div class="row">

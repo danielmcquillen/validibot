@@ -166,7 +166,7 @@ class Command(BaseCommand):
             user=user,
             name=f"Dashboard Sample Workflow {suffix}",
             slug=f"dashboard-sample-{suffix}",
-            version="1.0.0",
+            version=1,
         )
         self.stdout.write(f"Created workflow '{workflow.slug}' for seeding.")
         return workflow

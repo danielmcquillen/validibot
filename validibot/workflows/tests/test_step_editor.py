@@ -45,6 +45,8 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 
 pytestmark = pytest.mark.django_db
 
+SHACL_STEP_SETTINGS_SECTION_COUNT = 4
+
 
 @pytest.fixture(autouse=True)
 def seed_roles(db):
@@ -748,6 +750,33 @@ def test_shacl_step_settings_shows_current_shapes_and_ontologies(client):
     assert "Current supplementary ontologies" in body
     assert "g36-ontology.ttl" in body
     assert "Leave the fields below blank to keep them." in body
+    assert body.count("app-form-section") >= SHACL_STEP_SETTINGS_SECTION_COUNT
+    assert "Basic settings" in body
+    assert "SHACL shapes" in body
+    assert "Supplementary ontologies" in body
+    assert "Advanced options" in body
+    assert "SHACL result handling" in body
+    assert "data-help-drawer-trigger" in body
+    assert "shacl-validator" in body
+    assert "SHACL validator help" in body
+    assert "Report only" in body
+    assert '<div class="text-start">' in body
+
+
+def test_shacl_help_drawer_content_renders(client):
+    """The SHACL help drawer should load as the standard right-drawer fragment."""
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+
+    response = client.get(
+        reverse("core:help_drawer", kwargs={"slug": "shacl-validator"}),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "What the SHACL validator does" in body
+    assert "SHACL result handling" in body
+    assert "SPARQL ASK target graphs" in body
 
 
 def test_create_basic_step_uses_minimal_fields(client):
@@ -1392,6 +1421,63 @@ def test_processor_step_shows_signal_stages_layout(client):
     assert "validator-process-chip" in html
     assert "Input assertions" in html or "input" in html.lower()
     assert "Output assertions" in html or "output" in html.lower()
+
+
+def test_step_editor_header_marks_previous_workflow_version(client):
+    """The step editor should show the same compact version pill as detail.
+
+    Authors can open a step from an older workflow version through the
+    Version history card. The editor header needs to keep that version context
+    visible so editing/navigating does not make v1 look like the latest row.
+    """
+    workflow, step = _make_processor_step(client)
+    WorkflowFactory(
+        org=workflow.org,
+        user=workflow.user,
+        slug=workflow.slug,
+        version="2",
+    )
+    url = reverse(
+        "workflows:workflow_step_edit",
+        args=[workflow.pk, step.pk],
+    )
+
+    response = client.get(url)
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert "v1" in html
+    assert "workflow-version-badge--previous" in html
+    assert "Previous version" in html
+
+
+def test_step_settings_header_marks_previous_workflow_version(client):
+    """The step settings form should use the shared version badge component.
+
+    Step settings is a separate edit route from the assertion editor. Both
+    routes need the same visible version context so an author knows when they
+    are configuring a historical workflow version.
+    """
+    workflow, step = _make_processor_step(client)
+    WorkflowFactory(
+        org=workflow.org,
+        user=workflow.user,
+        slug=workflow.slug,
+        version="2",
+    )
+    url = reverse(
+        "workflows:workflow_step_settings",
+        args=[workflow.pk, step.pk],
+    )
+
+    response = client.get(url)
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert workflow.name in html
+    assert "v1" in html
+    assert "workflow-version-badge--previous" in html
+    assert "Previous version" in html
 
 
 def test_processor_step_shows_both_io_tabs(client):

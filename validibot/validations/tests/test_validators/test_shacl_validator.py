@@ -27,6 +27,13 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.shacl.constants import (
+    SHACL_RESULT_FAIL_AFTER_ASSERTIONS,
+)
+from validibot.validations.validators.shacl.constants import (
+    SHACL_RESULT_FAIL_IMMEDIATELY,
+)
+from validibot.validations.validators.shacl.constants import SHACL_RESULT_REPORT_ONLY
 from validibot.validations.validators.shacl.validator import SHACLValidator
 
 # When both library default + step extras fire on the same submission,
@@ -574,6 +581,92 @@ class SHACLValidatorSparqlAskFlowTests(TestCase):
             message_template=message,
             cel_cache=query,
         )
+
+    def test_fail_immediately_skips_author_assertions_after_shacl_violation(self):
+        """Immediate mode should stop before later assertions run.
+
+        This mode is for strict workflows where native SHACL conformance is
+        the gate and downstream assertions should not execute against a graph
+        already known to be invalid.
+        """
+        ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text=SHAPES_PERSON_REQUIRES_NAME,
+            metadata={"shacl_result_handling": SHACL_RESULT_FAIL_IMMEDIATELY},
+        )
+        self._sparql_assertion(
+            ruleset,
+            query="PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }",
+            severity=Severity.ERROR,
+            description="Must have at least one Robot",
+            message="No Robot instances found.",
+        )
+        submission = self._submission(DATA_BOB_NO_NAME)
+
+        result = SHACLValidator().validate(self.validator, submission, ruleset)
+
+        assert result.passed is False
+        assert result.assertion_stats.total == 0
+        assert result.stats["shacl_result_handling"] == SHACL_RESULT_FAIL_IMMEDIATELY
+        assert any(issue.message == "Person needs a name." for issue in result.issues)
+        assert not any(
+            issue.code == "shacl.sparql_ask_failed" for issue in result.issues
+        )
+
+    def test_fail_after_assertions_runs_author_assertions_before_failing(self):
+        """Default mode preserves all author feedback before marking failure.
+
+        Authors often want one run to return both native SHACL violations and
+        project-specific SPARQL assertion findings, so this mode keeps running
+        assertions even after SHACL reports violations.
+        """
+        ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text=SHAPES_PERSON_REQUIRES_NAME,
+            metadata={"shacl_result_handling": SHACL_RESULT_FAIL_AFTER_ASSERTIONS},
+        )
+        self._sparql_assertion(
+            ruleset,
+            query="PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }",
+            severity=Severity.ERROR,
+            description="Must have at least one Robot",
+            message="No Robot instances found.",
+        )
+        submission = self._submission(DATA_BOB_NO_NAME)
+
+        result = SHACLValidator().validate(self.validator, submission, ruleset)
+
+        assert result.passed is False
+        assert result.assertion_stats.total == 1
+        assert result.stats["shacl_result_handling"] == (
+            SHACL_RESULT_FAIL_AFTER_ASSERTIONS
+        )
+        assert any(issue.message == "Person needs a name." for issue in result.issues)
+        assert any(issue.code == "shacl.sparql_ask_failed" for issue in result.issues)
+
+    def test_report_only_exposes_shacl_counts_without_blocking(self):
+        """Report-only mode delegates pass/fail to explicit assertions.
+
+        Native SHACL results should still produce signals and the report graph,
+        but they should not become blocking Validibot findings by themselves.
+        """
+        ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.SHACL,
+            rules_text=SHAPES_PERSON_REQUIRES_NAME,
+            metadata={"shacl_result_handling": SHACL_RESULT_REPORT_ONLY},
+        )
+        submission = self._submission(DATA_BOB_NO_NAME)
+
+        result = SHACLValidator().validate(self.validator, submission, ruleset)
+
+        assert result.passed is True
+        assert result.issues == []
+        assert result.signals["shacl_violation_count"] == 1
+        assert result.stats["shacl_result_handling"] == SHACL_RESULT_REPORT_ONLY
+        assert "ValidationResult" in result.stats["results_graph_turtle"]
 
     def test_passing_ask_produces_no_finding(self):
         """A SPARQL ASK that returns true contributes no issue.

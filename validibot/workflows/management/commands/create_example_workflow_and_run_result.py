@@ -88,7 +88,7 @@ class Command(BaseCommand):
         workflow, _ = Workflow.objects.get_or_create(
             org=org,
             slug=self.workflow_slug,
-            version="1.0.0",
+            version=1,
             defaults={
                 "name": "Example Custom Validation Workflow",
                 "user": user,

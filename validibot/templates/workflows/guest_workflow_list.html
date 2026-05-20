@@ -63,16 +63,10 @@
                   {% endif %}
                   <dl class="card-data-item">
                     <dt>
-                      {% trans "Version" %}:
+                      {% trans "Updated" %}:
                     </dt>
-                    <dd>
-                      <span class="badge text-bg-light align-self-start">
-                        {% if workflow.version %}
-                          {{ workflow.version }}
-                        {% else %}
-                          {% trans "Unversioned" %}
-                        {% endif %}
-                      </span>
+                    <dd class="text-muted small">
+                      {{ workflow.modified|date:"M j, Y" }}
                     </dd>
                   </dl>
                 </div>

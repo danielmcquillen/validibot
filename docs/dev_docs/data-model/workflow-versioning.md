@@ -60,12 +60,12 @@ mutable draft data.
 
 Workflow versions are family-local identifiers. The database enforces
 `uq_workflow_org_slug_version`, so one organization cannot have two rows
-with the same workflow `slug` and `version`. Accepted version labels are
-integer strings (`1`, `2`) or full semantic versions (`1.0.0`,
-`2.1.3`). Partial versions such as `1.0` and labels such as `latest` are
-invalid. Use `ParsedVersion` / `compare_workflow_versions()` from
-`validibot.workflows.version_utils` for ordering; do not sort version
-strings lexicographically.
+with the same workflow `slug` and `version`. Workflow versions are positive
+integers (`1`, `2`, `42`). Semver-style labels and ad-hoc labels such as
+`latest` are invalid because the version field is an ordering key, not a
+release-compatibility promise. Use `parse_workflow_version()` /
+`compare_workflow_versions()` from `validibot.workflows.version_utils` for
+ordering; do not sort display strings lexicographically.
 
 ## Where the gates live
 
@@ -120,16 +120,14 @@ Referenced rows include:
 
 Workflow versions are visible in the authoring UI. The shared
 `build_workflow_version_context()` helper in
-`validibot.workflows.services.version_context` builds the version badge
-and switcher context used by workflow detail, launch, step-edit, sharing,
-signal-mapping, JSON, run-detail, and other workflow-scoped pages.
+`validibot.workflows.services.version_context` builds the version-history
+context used by workflow detail and other workflow-scoped views.
 
-The workflow detail page includes a version selector for the visible
-versions in the same `(org, slug)` family. Each option links to that
-exact workflow row; primary-key URLs never silently resolve to "latest".
-The public workflow directory is different: it groups by `(org, slug)`
-and shows only the latest active, non-archived, non-tombstoned version
-of each family.
+The workflow detail page includes a **Version history** card for visible
+versions in the same `(org, slug)` family. Each row links to that exact
+workflow row; primary-key URLs never silently resolve to "latest". The public
+workflow directory is different: it groups by `(org, slug)` and shows only the
+latest active, non-archived, non-tombstoned version of each family.
 
 The edit form uses two paths:
 

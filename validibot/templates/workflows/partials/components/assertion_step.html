@@ -14,11 +14,22 @@
             <span class="badge text-bg-secondary">{{ assertion.get_severity_display }}</span>
           </div>
           <h2 class="h6 mb-1">
-            {{ assertion.target_display }}
+            {% if assertion.assertion_type == "shacl" %}
+              {% trans "SPARQL ASK" %} :
+              {% if assertion.rhs.description %}
+                {{ assertion.rhs.description|truncatechars:80 }}
+              {% else %}
+                {% trans "(no description)" %}
+              {% endif %}
+            {% else %}
+              {{ assertion.target_display }}
+            {% endif %}
           </h2>
-          <p class="text-muted small mb-1">
-            {{ assertion.condition_display }}
-          </p>
+          {% if assertion.assertion_type != "shacl" and assertion.condition_display %}
+            <p class="text-muted small mb-1">
+              {{ assertion.condition_display }}
+            </p>
+          {% endif %}
           {% if assertion.message_template %}
             <p class="text-muted small mb-0">
               {{ assertion.message_template|linebreaksbr }}

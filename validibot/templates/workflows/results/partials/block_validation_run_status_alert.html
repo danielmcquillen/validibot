@@ -11,12 +11,25 @@ Context variables:
   run — the ValidationRun object
 {% endcomment %}
 {% if run.user_friendly_error %}
-  <div class="alert alert-danger small w-100 mb-3" role="alert">
-    <i class="bi-exclamation-octagon me-2"></i>{{ run.user_friendly_error }}
+  <div class="alert validation-run-status-alert alert-danger mb-3 d-flex flex-row align-items-center"
+       role="alert">
+    <div>
+      <img src="{% static 'images/app/red_error.svg' %}"
+           alt="{% trans 'Error' %}"
+           class="red-error" />
+    </div>
+    <div class="w-100 ms-2">
+      {{ run.user_friendly_error }}
+    </div>
+    <div>
+      <img src="{% static 'images/robot_head_forward.png' %}"
+           class="robot-image"
+           alt="{% trans 'robot image' %}" />
+    </div>
   </div>
 {% endif %}
 {% if run.status == "SUCCEEDED" %}
-  <div class="alert validation-success-alert alert-success mb-3 d-flex flex-row align-items-center">
+  <div class="alert validation-run-status-alert alert-success mb-3 d-flex flex-row align-items-center">
     <div>
       <img src="{% static 'images/app/green_check.svg' %}"
            alt="{% trans 'Success' %}"
@@ -26,7 +39,7 @@ Context variables:
       {% if run.workflow.success_message %}
         {{ run.workflow.success_message }}
       {% else %}
-        {% trans "Validation successful. No errors reported." %}
+        {% trans "Validibot reports no errors. Validation successful. " %}
       {% endif %}
     </div>
     <div>

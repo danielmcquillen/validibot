@@ -1,14 +1,12 @@
 """
 Utilities for workflow version resolution and comparison.
 
-This module provides version parsing, comparison, and resolution
-logic for the org-scoped API.
+Workflow versions are positive integers. They are ordering keys for rows in a
+workflow family, not semantic-release labels.
 """
 
 from __future__ import annotations
 
-import re
-from functools import total_ordering
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,90 +14,34 @@ if TYPE_CHECKING:
 
     from validibot.workflows.models import Workflow
 
-# Pattern for validating/parsing strict semantic versions.
-SEMVER_PATTERN = re.compile(
-    r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)$"
-)
 
+def parse_workflow_version(value: int | str) -> int:
+    """Return ``value`` as a positive integer workflow version.
 
-@total_ordering
-class ParsedVersion:
+    The database column is an integer, but this helper intentionally accepts
+    strings because forms, fixtures, and tests often pass request-shaped data.
+    Invalid data raises loudly so bad historical rows cannot be sorted as a
+    real workflow version.
     """
-    Parsed version for comparison.
-
-    Normalizes integer versions (e.g., "1") to semver (1.0.0) for comparison.
-    This allows consistent ordering of mixed version formats.
-
-    Examples:
-        >>> ParsedVersion("1") < ParsedVersion("2")
-        True
-        >>> ParsedVersion("1") == ParsedVersion("1.0.0")
-        True
-        >>> ParsedVersion("1.2.0") < ParsedVersion("1.10.0")
-        True
-    """
-
-    def __init__(self, version_str: str):
-        self.original = version_str
-        self.major = 0
-        self.minor = 0
-        self.patch = 0
-        self._parse(version_str)
-
-    def _parse(self, version_str: str) -> None:
-        if not version_str:
-            return
-
-        # Handle simple integer versions
-        if version_str.isdigit():
-            self.major = int(version_str)
-            return
-
-        # Handle strict semantic versions
-        match = SEMVER_PATTERN.match(version_str)
-        if match:
-            self.major = int(match.group("major"))
-            self.minor = int(match.group("minor"))
-            self.patch = int(match.group("patch"))
-            return
-
-        raise ValueError(
-            "Workflow version must be an integer or major.minor.patch string.",
-        )
-
-    def as_tuple(self) -> tuple[int, int, int]:
-        """Return version as (major, minor, patch) tuple."""
-        return (self.major, self.minor, self.patch)
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ParsedVersion):
-            return NotImplemented
-        return self.as_tuple() == other.as_tuple()
-
-    def __lt__(self, other: object) -> bool:
-        if not isinstance(other, ParsedVersion):
-            return NotImplemented
-        return self.as_tuple() < other.as_tuple()
-
-    def __hash__(self) -> int:
-        return hash(self.as_tuple())
-
-    def __repr__(self) -> str:
-        return f"ParsedVersion({self.original!r})"
-
-    def __str__(self) -> str:
-        return self.original
+    if value is None or value == "":
+        raise ValueError("Workflow version is required.")
+    try:
+        version = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Workflow version must be a positive integer.") from exc
+    if version < 1:
+        raise ValueError("Workflow version must be a positive integer.")
+    return version
 
 
-def compare_workflow_versions(left: str, right: str) -> int:
+def compare_workflow_versions(left: int | str, right: int | str) -> int:
     """Compare two workflow version labels.
 
     Returns ``-1`` when ``left < right``, ``0`` when they are equal, and
-    ``1`` when ``left > right``. Accepted labels are integers or strict
-    ``major.minor.patch`` strings.
+    ``1`` when ``left > right``. Accepted labels are positive integers.
     """
-    left_version = ParsedVersion(left)
-    right_version = ParsedVersion(right)
+    left_version = parse_workflow_version(left)
+    right_version = parse_workflow_version(right)
     if left_version < right_version:
         return -1
     if left_version > right_version:
@@ -117,7 +59,7 @@ def get_latest_workflow(
 
     "Latest" is determined by:
     1. Non-archived (unless include_archived=True)
-    2. Highest version (normalized: "1" treated as 1.0.0)
+    2. Highest integer version
     3. Most recent created timestamp as tiebreaker
 
     Args:
@@ -135,13 +77,8 @@ def get_latest_workflow(
         return None
 
     # Sort by version descending, then created descending (as tiebreaker)
-    def sort_key(wf: Workflow) -> tuple[tuple[int, int, int], float]:
-        pv = ParsedVersion(wf.version)
-        # Negate for descending order
-        return (
-            (-pv.major, -pv.minor, -pv.patch),
-            -wf.created.timestamp(),
-        )
+    def sort_key(wf: Workflow) -> tuple[int, float]:
+        return (-parse_workflow_version(wf.version), -wf.created.timestamp())
 
     workflows.sort(key=sort_key)
     return workflows[0]
@@ -149,6 +86,8 @@ def get_latest_workflow(
 
 def get_latest_workflow_ids(
     queryset: QuerySet[Workflow],
+    *,
+    include_archived: bool = False,
 ) -> list[int]:
     """
     Get the IDs of the latest version of each workflow family in the queryset.
@@ -160,20 +99,27 @@ def get_latest_workflow_ids(
 
     Args:
         queryset: Queryset of workflows
+        include_archived: If True, archived rows can win latest-version
+            selection. This lets callers hide an entire family when its newest
+            row is archived, instead of showing an older active row as though
+            it were current.
 
     Returns:
         List of workflow IDs representing the latest version of each family
     """
     from collections import defaultdict
 
-    # Fetch all non-archived workflows in a single query
+    queryset = queryset.filter(is_tombstoned=False)
+    if not include_archived:
+        queryset = queryset.filter(is_archived=False)
+
+    # This helper only needs scalar fields for version comparison. Callers
+    # may pass a display queryset with select_related() already attached; clear
+    # it before using only() so Django does not see a relation as both traversed
+    # and deferred.
     workflows = list(
-        queryset.filter(is_archived=False, is_tombstoned=False)
-        # This helper only needs scalar fields for version comparison.
-        # Callers may pass a display queryset with select_related()
-        # already attached; clear it before using only() so Django
-        # does not see a relation as both traversed and deferred.
-        .select_related(None)
+        queryset.select_related(None)
+        .prefetch_related(None)
         .only(
             "id",
             "org_id",
@@ -195,9 +141,8 @@ def get_latest_workflow_ids(
     latest_ids = []
     for family_workflows in families.values():
         # Sort by version descending, then created descending (as tiebreaker)
-        def sort_key(wf) -> tuple[tuple[int, int, int], float]:
-            pv = ParsedVersion(wf.version)
-            return ((-pv.major, -pv.minor, -pv.patch), -wf.created.timestamp())
+        def sort_key(wf) -> tuple[int, float]:
+            return (-parse_workflow_version(wf.version), -wf.created.timestamp())
 
         family_workflows.sort(key=sort_key)
         latest_ids.append(family_workflows[0].pk)

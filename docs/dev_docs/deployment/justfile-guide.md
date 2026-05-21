@@ -45,15 +45,16 @@ just/
 │   └── mod.just      # Community + pro + cloud local dev
 ├── gcp/
 │   ├── mod.just      # Google Cloud Platform deployment
-│   ├── django/
-│   │   └── mod.just  # Django-only GCP ops (just gcp django ...)
-│   └── mcp/          # (re-exposure of ../mcp so "just gcp mcp ..." works)
+│   └── django/
+│       └── mod.just  # Django-only GCP ops (just gcp django ...)
 ├── mcp/
 │   └── mod.just      # MCP server build/deploy/secrets/logs/test
+│                     # (also re-exposed under gcp via `mod mcp '../mcp'`
+│                     #  in just/gcp/mod.just, so "just gcp mcp ..." works)
 ├── aws/
 │   └── mod.just      # AWS deployment (stub - not implemented)
-└── docker-compose/
-    └── mod.just      # Docker Compose production deployment
+└── self-hosted/
+    └── mod.just      # Self-hosted Docker Compose on a VM
 ```
 
 ### Root Justfile
@@ -94,7 +95,7 @@ Two mechanisms for organizing recipes:
 
 Currently only `just/common.just` is imported at the root. All user-
 facing command groups (`local`, `local-pro`, `local-cloud`, `gcp`,
-`mcp`, `docker-compose`, `aws`) are modules so the target is explicit
+`mcp`, `self-hosted`, `aws`) are modules so the target is explicit
 in every invocation.
 
 ## Quick Reference

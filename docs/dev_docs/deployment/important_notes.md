@@ -20,5 +20,5 @@ Keep these points in mind during deployment and maintenance.
 ## Common Issues
 
 - **Cold starts**: Cloud Run scales to zero by default. First request after idle may take 2-3 seconds. Set `--min-instances=1` if this is a problem.
-- **Migrations**: Always run `just gcp migrate` after deploying schema changes.
+- **Migrations**: `just gcp deploy-all` runs migrations automatically as part of its dependency chain, so a separate `just gcp migrate` step is normally not needed. If you ran the deploy with `GCP_SKIP_MIGRATE=1` (the hotfix escape hatch), remember to run `just gcp migrate <stage>` manually before the new code starts serving traffic.
 - **Scheduled jobs**: If Cloud Scheduler jobs return 404, verify the worker service is deployed and `APP_ROLE=worker` is set.

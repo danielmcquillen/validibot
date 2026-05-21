@@ -138,7 +138,6 @@ nav:
       - Environment Configuration: deployment/environment-configuration.md
       - Justfile Guide: deployment/justfile-guide.md
       - Docker Compose Responsibility: deployment/docker-compose-responsibility.md
-      - Deploying to DigitalOcean: deployment/digitalocean.md
       - Reverse Proxy Setup: deployment/reverse-proxy.md
       - Post-Deployment Verification: deployment/post-deployment-verification.md
       - Go-Live Checklist: deployment/go-live-checklist.md

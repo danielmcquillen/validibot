@@ -27,7 +27,18 @@ It runs:
 - `postgres`
 - `redis`
 
-You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.md).
+Two optional services live behind Compose profiles and stay off unless
+you opt in:
+
+- `caddy` — a bundled reverse proxy that auto-issues a Let's Encrypt
+  certificate. Enable by setting `COMPOSE_PROFILES=caddy` before
+  `just self-hosted deploy`. Off by default because most operators
+  already run nginx, Traefik, Cloudflare Tunnel, or a hosting-provider
+  load balancer. See [Reverse Proxy Setup](reverse-proxy.md) for the
+  full set of options.
+- `mcp` — the standalone FastMCP server that exposes validation
+  workflows to AI agents. Pro feature, opt-in via
+  `ENABLE_MCP_SERVER=true` (covered below).
 
 ## First-time install
 
@@ -103,8 +114,25 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
    settings module is the supported path.
 
    To also include the MCP server (exposes validation workflows to
-   AI agents over the Model Context Protocol), flip this in
-   `.envs/.production/.self-hosted/.build`:
+   AI agents over the Model Context Protocol), copy the MCP env file
+   and flip the build flag:
+
+   ```bash
+   cp .envs.example/.production/.self-hosted/.mcp \
+      .envs/.production/.self-hosted/.mcp
+   ```
+
+   Then edit `.envs/.production/.self-hosted/.mcp` and set
+   `VALIDIBOT_MCP_SERVICE_KEY` to a long random string. The same
+   value must be set as `VALIDIBOT_MCP_SERVICE_KEY` in your `.django`
+   file — that shared secret is how the MCP server authenticates
+   itself to Django's helper API. Generate one with:
+
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
+
+   Finally, in `.envs/.production/.self-hosted/.build`:
 
    ```bash
    ENABLE_MCP_SERVER=true
@@ -133,11 +161,14 @@ You provide the reverse proxy yourself. See [Reverse Proxy Setup](reverse-proxy.
 
 `bootstrap` is the recommended first-run command. It:
 
+- validates the env files (`check-env`)
 - builds and starts the stack
 - waits for the web container to come up
 - applies migrations
-- runs `setup_validibot`
-- runs `check_validibot`
+- runs `setup_validibot` to seed roles and the superuser
+- runs `ensure_oidc_clients` to register the OIDC clients (needed if you
+  enable MCP)
+- runs `check_validibot` as a final sanity check
 
 ## Enable signed credentials on Docker Compose
 

@@ -15,7 +15,7 @@ Environment configuration uses a template-based approach:
 │   ├── .mcp                # Optional MCP container env (docker-compose MCP profile)
 │   └── .postgres           # Postgres credentials for local development
 └── .production/
-    ├── .docker-compose/    # Docker Compose production deployment
+    ├── .self-hosted/       # Self-hosted (Docker Compose on a VM)
     │   ├── .build          # Docker build args + recipe knobs (Pro/Enterprise, MCP)
     │   ├── .django
     │   ├── .mcp            # MCP container env (when MCP is enabled)
@@ -74,7 +74,7 @@ This pattern follows the [cookiecutter-django](https://github.com/cookiecutter/c
 1. Create the directory structure:
 
     ```bash
-    mkdir -p .envs/.production/.docker-compose
+    mkdir -p .envs/.production/.self-hosted
     ```
 
 2. Copy both template files:

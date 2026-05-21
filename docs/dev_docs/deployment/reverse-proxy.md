@@ -2,7 +2,7 @@
 
 Validibot does not include a reverse proxy in the default Docker Compose configuration. You'll need to set up your own reverse proxy to handle TLS termination and route traffic to the application.
 
-This follows the same approach as other Docker Compose projects like [Sentry](https://develop.sentry.dev/Docker Compose/production-enhancements/reverse-proxy/), [PostHog](https://posthog.com/docs/self-host/configure/running-behind-proxy), [Paperless-ngx](https://docs.paperless-ngx.com/setup/), and [Immich](https://immich.app/docs/administration/reverse-proxy).
+This follows the same approach as other self-hosted Docker Compose projects like [Sentry](https://develop.sentry.dev/self-hosted/), [PostHog](https://posthog.com/docs/self-host/configure/running-behind-proxy), [Paperless-ngx](https://docs.paperless-ngx.com/setup/), and [Immich](https://immich.app/docs/administration/reverse-proxy).
 
 ## Why no built-in proxy?
 
@@ -42,6 +42,26 @@ DJANGO_SECURE_SSL_REDIRECT=False  # Proxy handles TLS
 ## Caddy
 
 [Caddy](https://caddyserver.com/) automatically obtains and renews TLS certificates via Let's Encrypt. It's the simplest option for most deployments.
+
+### Bundled with the production stack (recommended)
+
+The `docker-compose.production.yml` file ships with an optional Caddy
+service behind a Compose profile, so the simplest path is to just turn
+it on. Caddy reads its Caddyfile from `deploy/self-hosted/caddy/Caddyfile`
+and will auto-issue a Let's Encrypt certificate for the hostname
+declared there. The hostname must already resolve to this host's
+public IP — check first with `just self-hosted check-dns`.
+
+```bash
+# One-time, before deploy: edit the Caddyfile and replace the placeholder
+# hostname with your real one.
+
+# Then bring the stack up with the caddy profile activated.
+COMPOSE_PROFILES=caddy just self-hosted deploy
+```
+
+This is off by default because most operators already run a reverse
+proxy. Use one of the alternative recipes below if you do.
 
 ### Standalone (on host)
 
@@ -132,12 +152,8 @@ VALIDIBOT_DOMAIN=validibot.example.com docker compose -f docker-compose.caddy.ym
 
 ### Docker labels approach
 
-The Docker Compose compose file includes a commented Traefik example. To enable it:
-
-1. Uncomment the Traefik service in `docker-compose.production.yml`
-2. Add labels to the `web` service
-
-Or create a separate `docker-compose.traefik.yml`:
+Create a separate `docker-compose.traefik.yml` and run it alongside the
+main stack:
 
 ```yaml
 services:

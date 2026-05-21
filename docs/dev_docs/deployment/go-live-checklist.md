@@ -147,7 +147,7 @@ Choose one of the two approaches below. See the [deployment guide](../google_clo
   ```bash
   gcloud run services update $GCP_APP_NAME-web \
     --ingress internal-and-cloud-load-balancing \
-    --region us-west1
+    --region $GCP_REGION
   ```
 
 ### Application
@@ -167,12 +167,11 @@ Choose one of the two approaches below. See the [deployment guide](../google_clo
 
 - [ ] **Run Validibot's doctor command** to verify all components
 
-  ```bash
-  # Self-hosted (run on the VM):
-  just self-hosted doctor --verbose
+  On GCP, doctor runs inside a temporary Cloud Run Job via
+  `management-cmd`:
 
-  # Or, for the underlying management command:
-  python manage.py check_validibot --verbose
+  ```bash
+  just gcp management-cmd prod "check_validibot --verbose"
   ```
 
   This checks database, migrations, cache, storage, site configuration, roles/permissions, validators, background tasks, Docker, email, and security settings. Each finding includes a stable check ID (e.g. `VB101`) that maps to a documented fix in [doctor-check-ids.md](../../operations/self-hosting/doctor-check-ids.md). See [Post-Deployment Verification](./post-deployment-verification.md) for details.
@@ -206,7 +205,7 @@ Choose one of the two approaches below. See the [deployment guide](../google_clo
 - [ ] **Run post-deployment verification**
 
   ```bash
-  just verify-deployment prod
+  just gcp verify-deployment prod
   ```
 
   This runs smoke tests to verify critical functionality. See [Post-Deployment Verification](./post-deployment-verification.md) for details.
@@ -214,12 +213,11 @@ Choose one of the two approaches below. See the [deployment guide](../google_clo
 - [ ] **Run doctor and address any warnings**
 
   ```bash
-  just self-hosted doctor --verbose --strict
+  just gcp management-cmd prod "check_validibot --verbose --strict"
   ```
 
-  Use `--strict` to fail on warnings (good for CI). Use `--fix` (via
-  the underlying `python manage.py check_validibot --fix`) to
-  automatically resolve fixable issues like missing default roles.
+  `--strict` fails on warnings (good for CI). `--fix` can automatically
+  resolve some fixable issues (e.g. missing default roles).
 
 - [ ] **Monitor error rates** for first 24 hours
 

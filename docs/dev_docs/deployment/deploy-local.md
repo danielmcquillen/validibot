@@ -122,7 +122,27 @@ The container is defined in the `local-pro`
 compose overlay behind an opt-in `mcp` Compose profile, so an
 empty `.build` file leaves it out by default.
 
-To include it, open `.envs/.local/.build` and set:
+First, copy the MCP env file. The MCP container reads its config from
+`.envs/.local/.mcp`, so the file needs to exist before the container can
+start:
+
+```bash
+cp .envs.example/.local/.mcp .envs/.local/.mcp
+```
+
+The defaults work for local development. The one value worth changing is
+`VALIDIBOT_MCP_SERVICE_KEY` in `.envs/.local/.mcp` — set it to a long
+random string, then set the same value as
+`VALIDIBOT_MCP_SERVICE_KEY` in `.envs/.local/.django` (uncomment the
+line if it is commented out). That shared secret is how the MCP
+container authenticates itself to Django's helper API. Generate one
+with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Then open `.envs/.local/.build` and set:
 
 ```bash
 ENABLE_MCP_SERVER=true

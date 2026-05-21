@@ -7,11 +7,11 @@ After deploying to any environment, run the PDV smoke tests to verify that criti
 ```bash
 # After deploying to dev
 just gcp deploy-all dev
-just verify-deployment dev
+just gcp verify-deployment dev
 
 # After deploying to production
 just gcp deploy-all prod
-just verify-deployment prod
+just gcp verify-deployment prod
 ```
 
 ## Application Health Check (doctor)
@@ -124,24 +124,24 @@ Connecting an actual MCP client (Claude Desktop, Cursor) end-to-end is the final
 Runs the complete pytest smoke test suite:
 
 ```bash
-just verify-deployment <stage>
+just gcp verify-deployment <stage>
 ```
 
 Options:
-- `just verify-deployment dev` - Test dev environment
-- `just verify-deployment staging` - Test staging environment
-- `just verify-deployment prod` - Test production
+- `just gcp verify-deployment dev` - Test dev environment
+- `just gcp verify-deployment staging` - Test staging environment
+- `just gcp verify-deployment prod` - Test production
 
 You can pass pytest arguments:
 ```bash
 # Run only callback tests
-just verify-deployment prod -k "callback"
+just gcp verify-deployment prod -k "callback"
 
 # Show more detail
-just verify-deployment prod -vv
+just gcp verify-deployment prod -vv
 
 # Stop on first failure
-just verify-deployment prod -x
+just gcp verify-deployment prod -x
 ```
 
 ### Quick Verification
@@ -149,7 +149,7 @@ just verify-deployment prod -x
 A faster check that just verifies services are up and IAM is working:
 
 ```bash
-just verify-deployment-quick <stage>
+just gcp verify-deployment-quick <stage>
 ```
 
 This uses curl to check:
@@ -172,7 +172,7 @@ All smoke tests **run locally on your machine** and make HTTP requests to the re
 ```
 Your laptop                          GCP Cloud Run
 ─────────────────                    ─────────────────
-just verify-deployment prod
+just gcp verify-deployment prod
     │
     ├─► gcloud: resolve service URLs
     │
@@ -192,15 +192,16 @@ This approach:
 - Requires no additional deployment or management commands on the server
 - Is simple to run - just needs gcloud credentials locally
 
-The tests use the `SMOKE_TEST_STAGE` environment variable to know which stage to test. The `just verify-deployment` command sets this automatically - you don't need to add it to any secrets or environment files.
+The tests use the `SMOKE_TEST_STAGE` environment variable to know which stage to test. The `just gcp verify-deployment` command sets this automatically - you don't need to add it to any secrets or environment files.
 
 ## Test Structure
 
 ```
 tests/smoke/
-├── __init__.py           # Module docstring
-├── conftest.py           # Fixtures (URLs, HTTP sessions)
-├── test_web_service.py   # Web service health tests
+├── __init__.py               # Module docstring
+├── conftest.py               # Fixtures (URLs, HTTP sessions)
+├── test_web_service.py       # Web service health tests
+├── test_authenticated.py     # Tests requiring a signed-in user
 └── test_worker_security.py   # Worker IAM/security tests
 ```
 
@@ -229,10 +230,10 @@ def test_my_new_endpoint(web_url: str, http_session):
 
 ### "SMOKE_TEST_STAGE must be set"
 
-Run via `just verify-deployment <stage>` instead of running pytest directly, or set the environment variable:
+Run via `just gcp verify-deployment <stage>` instead of running pytest directly, or set the environment variable:
 
 ```bash
-SMOKE_TEST_STAGE=dev pytest tests/smoke/ -v
+SMOKE_TEST_STAGE=dev uv run pytest tests/smoke/ -v
 ```
 
 ### "Failed to get service URL"
@@ -240,8 +241,8 @@ SMOKE_TEST_STAGE=dev pytest tests/smoke/ -v
 The service isn't deployed or you don't have permission to describe it:
 
 ```bash
-# Check if service exists
-gcloud run services describe $GCP_APP_NAME-web-dev --region=us-west1
+# Check if service exists (substitute your configured region)
+gcloud run services describe $GCP_APP_NAME-web-dev --region=$GCP_REGION
 ```
 
 ### "Authenticated request was rejected by IAM"
@@ -251,7 +252,7 @@ Your gcloud account doesn't have the Cloud Run Invoker role on the worker servic
 ```bash
 # Grant yourself invoker access (if you're an admin)
 gcloud run services add-iam-policy-binding $GCP_APP_NAME-worker-dev \
-  --region=us-west1 \
+  --region=$GCP_REGION \
   --member="user:you@example.com" \
   --role="roles/run.invoker"
 ```

@@ -60,6 +60,30 @@ At minimum, grant the runtime service account:
 Use a different KMS key per stage so dev, staging, and prod credentials do not
 share the same issuer key material.
 
+## Set up the env files
+
+Before any `just gcp ...` recipe will work, copy the env templates and
+fill in the values:
+
+```bash
+mkdir -p .envs/.production/.google-cloud
+cp .envs.example/.production/.google-cloud/.just    .envs/.production/.google-cloud/.just
+cp .envs.example/.production/.google-cloud/.django  .envs/.production/.google-cloud/.django
+cp .envs.example/.production/.google-cloud/.build   .envs/.production/.google-cloud/.build
+```
+
+If you plan to deploy MCP as well, copy the MCP template:
+
+```bash
+cp .envs.example/.production/.google-cloud/.mcp     .envs/.production/.google-cloud/.mcp
+```
+
+Then edit the new files. The `.just` file holds deployment-time
+configuration (GCP project, region, app name) and is sourced into your
+shell — it never leaves your machine. The `.django` file holds runtime
+configuration and is uploaded to Secret Manager. The `.build` file
+holds build-time knobs (commercial-package selection, `ENABLE_MCP_SERVER`).
+
 ## Typical first-time flow
 
 Most first-time GCP setups follow this order:
@@ -70,11 +94,15 @@ source .envs/.production/.google-cloud/.just
 just gcp init-stage dev
 just gcp secrets dev
 just gcp deploy-all dev
-just gcp migrate dev
 just gcp setup-data dev
 just gcp validators-deploy-all dev
 just gcp scheduler-setup dev
 ```
+
+`just gcp deploy-all` runs migrations as part of its dependency chain,
+so there is no separate `just gcp migrate dev` step here. You can still
+run it explicitly if you need to (or set `GCP_SKIP_MIGRATE=1` to skip
+it).
 
 After that, verify the environment, then repeat the same process for `staging` or `prod` as needed.
 
@@ -142,10 +170,11 @@ For normal updates:
 source .envs/.production/.google-cloud/.just
 
 just gcp deploy-all dev
-just gcp migrate dev
 ```
 
-Promote to production only after the lower stage looks healthy.
+`deploy-all` runs migrations as part of its dependency chain, so a
+separate migrate step is not needed for a routine deploy. Promote to
+production only after the lower stage looks healthy.
 
 ## Include the MCP server
 

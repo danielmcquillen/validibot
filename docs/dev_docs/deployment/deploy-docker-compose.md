@@ -217,7 +217,7 @@ Validibot does not ship with an always-on proxy container by default. That keeps
 Use one of these guides next:
 
 - [Reverse Proxy Setup](reverse-proxy.md)
-- [Self-Hosting on DigitalOcean](../../operations/self-hosting/providers/digitalocean.md)
+- [Self-Hosting on DigitalOcean](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/providers/digitalocean.md)
 
 ## Updates and day-two operations
 
@@ -261,4 +261,4 @@ It is also the easiest target to run on AWS today, because the AWS-specific depl
 - [Environment Configuration](environment-configuration.md)
 - [Justfile Guide](justfile-guide.md)
 - [Reverse Proxy Setup](reverse-proxy.md)
-- [Self-Hosting on DigitalOcean](../../operations/self-hosting/providers/digitalocean.md)
+- [Self-Hosting on DigitalOcean](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/providers/digitalocean.md)

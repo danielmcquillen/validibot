@@ -64,4 +64,4 @@ Do not reuse retired IDs — operators may search for them in old support transc
 
 - [Validator Containers](../validator_jobs_cloud_run.md) — the `VB7xx` series with the image-pinning policy in detail.
 - [Trust Architecture](../overview/trust-architecture.md) — the invariants the doctor verifies.
-- [Self-hosting Overview](../../operations/self-hosting/overview.md) — operator-facing guide that points at doctor checks for go-live.
+- [Self-hosting Overview](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/overview.md) — operator-facing guide that points at doctor checks for go-live.

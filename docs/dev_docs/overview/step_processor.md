@@ -450,7 +450,7 @@ prefix for the output signal.
 This `output.T_room` syntax is **standard CEL member access**, not a custom
 extension. The `output` variable is a real Python dict that cel-python
 converts to a CEL `MapType`, and `.T_room` is standard field selection on
-that map. See [Signals — How output variables are elevated into the CEL context](../data-model/signals.md#how-output-variables-are-elevated-into-the-cel-context) for
+that map. See [Signals — CEL context building in detail](../data-model/signals.md#cel-context-building-in-detail) for
 the full pipeline from container output to evaluable CEL expression.
 
 ### Assertion Evaluation Happens in Validators

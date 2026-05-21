@@ -23,7 +23,7 @@ The same operator capabilities (`bootstrap`, `doctor`, `smoke-test`, `backup`, `
 | Target | Best for | Start here |
 | --- | --- | --- |
 | Local | first-time evaluation, local sandboxing, development | [Run Validibot Locally](deploy-local.md) |
-| Self-hosted | single-host self-hosting on a VPS, VM, or on-prem server | [Self-Hosting Overview](../../operations/self-hosting/overview.md) (operator-facing) or [Deploy with Docker Compose](deploy-docker-compose.md) (developer-facing) |
+| Self-hosted | single-host self-hosting on a VPS, VM, or on-prem server | [Self-Hosting Overview](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/overview.md) (operator-facing) or [Deploy with Docker Compose](deploy-docker-compose.md) (developer-facing) |
 | GCP | managed cloud deployment on Google Cloud | [Deploy to GCP](deploy-gcp.md) |
 | AWS | future target, not yet implemented | [Deploy to AWS](deploy-aws.md) |
 
@@ -55,5 +55,5 @@ Once you have chosen a target, these supporting guides become relevant:
 - [Environment Configuration](environment-configuration.md)
 - [Reverse Proxy Setup](reverse-proxy.md)
 - [Docker Compose Deployment Responsibility](docker-compose-responsibility.md)
-- [Self-Hosting on DigitalOcean](../../operations/self-hosting/providers/digitalocean.md) — canonical operator-facing tutorial
+- [Self-Hosting on DigitalOcean](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/providers/digitalocean.md) — canonical operator-facing tutorial
 - [Go-Live Checklist](go-live-checklist.md)

@@ -174,7 +174,7 @@ Choose one of the two approaches below. See the [deployment guide](../google_clo
   just gcp management-cmd prod "check_validibot --verbose"
   ```
 
-  This checks database, migrations, cache, storage, site configuration, roles/permissions, validators, background tasks, Docker, email, and security settings. Each finding includes a stable check ID (e.g. `VB101`) that maps to a documented fix in [doctor-check-ids.md](../../operations/self-hosting/doctor-check-ids.md). See [Post-Deployment Verification](./post-deployment-verification.md) for details.
+  This checks database, migrations, cache, storage, site configuration, roles/permissions, validators, background tasks, Docker, email, and security settings. Each finding includes a stable check ID (e.g. `VB101`) that maps to a documented fix in [doctor-check-ids.md](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/doctor-check-ids.md). See [Post-Deployment Verification](post-deployment-verification.md) for details.
 
 - [ ] **Verify `DEBUG=False`** in production
 
@@ -208,7 +208,7 @@ Choose one of the two approaches below. See the [deployment guide](../google_clo
   just gcp verify-deployment prod
   ```
 
-  This runs smoke tests to verify critical functionality. See [Post-Deployment Verification](./post-deployment-verification.md) for details.
+  This runs smoke tests to verify critical functionality. See [Post-Deployment Verification](post-deployment-verification.md) for details.
 
 - [ ] **Run doctor and address any warnings**
 

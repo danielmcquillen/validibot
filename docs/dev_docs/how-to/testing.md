@@ -89,4 +89,4 @@ A few conventions to follow when adding new tests:
 - Tests follow the code: commercial feature tests live in this repo (gated by
   feature flags), not in the commercial repos.
 
-See [AGENTS.md](../../AGENTS.md) for the full coding standards.
+See [AGENTS.md](https://github.com/danielmcquillen/validibot/blob/main/AGENTS.md) for the full coding standards.

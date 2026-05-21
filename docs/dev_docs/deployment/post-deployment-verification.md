@@ -46,7 +46,7 @@ Each result includes a stable check ID (`VB101`, `VB401`, etc.). See
 [`docs/operations/self-hosting/doctor-check-ids.md`][check-ids] for
 the ID-to-fix mapping.
 
-[check-ids]: ../../operations/self-hosting/doctor-check-ids.md
+[check-ids]: https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/doctor-check-ids.md
 
 The `check_validibot` command verifies:
 

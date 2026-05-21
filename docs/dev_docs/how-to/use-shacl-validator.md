@@ -107,7 +107,7 @@ These appear in the Basic/CEL assertion picker as `o.*` targets.
 | `o.parse_ok` | bool | Whether RDF parse succeeded. Parse failure already auto-fails the step, but the signal is available for reporting and CEL templates. |
 | `o.parse_serialization` | string | The format used (`turtle`, `json-ld`, …). |
 | `o.triple_count` | number | Total triples after parse. |
-| `o.namespaces_present` | list[string] | Namespace URIs seen in any triple. |
+| `o.namespaces_present` | `list[string]` | Namespace URIs seen in any triple. |
 | `o.has_s223_namespace` | bool | Whether the graph uses the ASHRAE 223P namespace. |
 | `o.has_g36_namespace` | bool | Whether the graph uses the Guideline 36 namespace. |
 | `o.has_brick_namespace` | bool | Whether the graph uses the Brick namespace. |

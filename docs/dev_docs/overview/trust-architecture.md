@@ -313,4 +313,4 @@ Mixin ordering is left-most first. A 403 from the site-wide gate is more honest 
 - [Validator Architecture](validator_architecture.md) — the input/output envelope contract that the isolation invariant rewrites for
 - [Workflow Versioning](../data-model/workflow-versioning.md) — how the trust contract is preserved across versions
 - [Evidence Bundles](evidence-bundles.md) — the manifest schema and retention policy
-- [Self-Hosting Overview](../../operations/self-hosting/overview.md) — how trust shows up to the operator
+- [Self-Hosting Overview](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/overview.md) — how trust shows up to the operator

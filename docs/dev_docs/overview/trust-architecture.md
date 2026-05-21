@@ -33,7 +33,7 @@ The authenticated or paid caller is allowed to see and/or execute the specific w
 
 The old pattern `Workflow.objects.filter(org=self.get_org(), is_archived=False)` is allowed only inside the resolver or admin-only code. List endpoints return latest workflow versions unless the endpoint is explicitly versioned. Object-level access is checked **before** serializer selection so full serializers cannot expose fields through accidental broad querysets.
 
-**Guest grants** are workflow-family grants by default (organization plus slug, all non-archived non-tombstoned versions). Grantors who need stricter control can pin a grant to a specific version. New workflow versions do not copy external guest-grant rows during cloning; the resolver interprets the existing family grant unless the grant is explicitly pinned.
+**Guest grants** are workflow-family grants (organization plus slug). The current implementation — `WorkflowAccessGrant` plus `Workflow.can_view` — treats any active grant on any version of the family as authorising every non-archived, non-tombstoned version. New workflow versions do not copy external guest-grant rows during cloning; the resolver simply expands the existing family grant. Per-version pinned grants are planned but not yet implemented.
 
 ### 2. Contract invariant
 

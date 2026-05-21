@@ -37,17 +37,19 @@ Deploy the currently checked-out version. Pulls or builds images as configured, 
 
 For versioned upgrades, prefer `upgrade --to <version>` — it adds pre-flight checks and a strict upgrade-path check.
 
-### `just self-hosted doctor [--json] [--strict] [--provider <name>]`
+### `just self-hosted doctor [flags]`
 
 Full health diagnostic. Returns structured findings against a stable JSON schema (`validibot.doctor.v1`).
 
-Flags:
+Flags (passed straight through to the underlying `check_validibot` management command):
 
+- `--verbose` — include detail blocks for each finding.
 - `--json` — machine-readable output, suitable for CI gates and support bundles.
 - `--strict` — warn-level findings exit non-zero. Suitable for CI.
-- `--provider digitalocean` — adds DigitalOcean-specific checks (DNS, volume mount, monitoring agent, firewall reminder).
-- `--post-start` — checks that depend on the stack already being up (e.g. HTTPS certificate validity).
-- `--preflight` — pre-deploy checks only.
+- `--fix` — automatically resolve fixable findings (e.g. missing default roles).
+- `--provider digitalocean` — adds DigitalOcean-specific checks (DNS, volume mount, monitoring agent, Cloud Firewall reminder).
+- `--target {self_hosted|gcp|aws}` — override the deployment-target inference. Normally the command picks the right target from settings.
+- `--stage <name>` — for cloud targets that have stages (e.g. `--target gcp --stage prod`).
 
 Check IDs are documented in [doctor-check-ids.md](doctor-check-ids.md).
 

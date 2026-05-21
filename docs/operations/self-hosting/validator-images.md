@@ -183,14 +183,22 @@ A reasonable cron entry:
 
 Weekly cleanup at 3am Sunday. The log shows what was removed; if nothing matched, the recipe prints "Nothing to clean up." and exits 0.
 
-## Image registry: GHCR primary, Docker Hub mirror
+## Image registry (planned, not yet active)
+
+Today, validator images are built locally on each operator's host from
+the [`validibot-validator-backends`](https://github.com/danielmcquillen/validibot-validator-backends)
+checkout (see [What's pre-installed](#whats-pre-installed) above).
+There is no public registry to pull from yet.
+
+When pre-built validator images do ship, the registry plan is:
 
 | Registry | Path | Use |
 |---|---|---|
 | GHCR | `ghcr.io/validibot/<image>` | Canonical source. No pull rate limits. |
 | Docker Hub | `validibot/<image>` | Discoverability mirror. Rate-limited (100 anonymous pulls per 6h per IP). |
 
-Self-hosted defaults to GHCR for production (no rate limits). Docker Hub stays as a mirror because most operators look there first.
+This table is documented here so operators know the eventual shape;
+nothing breaks today by ignoring it.
 
 ## See also
 

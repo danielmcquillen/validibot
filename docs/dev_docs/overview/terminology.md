@@ -72,7 +72,7 @@ Do **not** introduce "engine" as a new architecture term. Older docs and tests s
 | **Semantic digest** | SHA-256 of the canonicalised JSON of a `Validator`'s behavior-defining fields. Stored on `Validator.semantic_digest`. `sync_validators` raises if the digest changes under the same `(slug, version)` (drift detection). |
 | **Content hash** | SHA-256 of a resource file's bytes, stored on `ValidatorResourceFile.content_hash` and `WorkflowStepResource.content_hash`. Drift detection: `save()` raises if the hash differs and the row is referenced by a locked workflow. |
 | **Legacy versioning** | A locked workflow whose `semantic_digest` or `content_hash` columns are unpopulated, either because the row predates the trust ADR Sessions B/C or because it uses a custom validator (no source-of-truth config to digest against). The audit command surfaces these as `*_MISSING` findings. |
-| **Workflow family** | All non-archived, non-tombstoned versions of a workflow with the same `(org, slug)`. Guest grants apply to families by default; pinned grants apply only to a specific version. |
+| **Workflow family** | All non-archived, non-tombstoned versions of a workflow with the same `(org, slug)`. Guest grants apply at family scope: any active grant on any version of a family authorises every version of that family. Per-version pinned grants are a planned enhancement and not currently implemented. |
 
 ## Repo and deployment terms
 

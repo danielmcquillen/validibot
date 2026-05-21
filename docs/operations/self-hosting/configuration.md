@@ -60,7 +60,7 @@ The doctor command's VB001-VB099 range checks these.
 |---|---|
 | `DATA_STORAGE_ROOT` | Container path for private validation data. The self-hosted Compose file sets `/app/storage/private` and backs it with the `validibot_storage` Docker named volume. Do not set this to a host path unless you also change the Compose storage layout deliberately. |
 | `MEDIA_ROOT` | Django's public media storage. Defaults to `/app/storage/public` in the container and is backed by the same storage volume in the default Compose stack. |
-| `STORAGE_BACKEND` | `local` for self-hosted (default). S3-compatible object storage for self-hosted installs is not yet operator-supported. |
+| `DATA_STORAGE_BACKEND` | Storage backend for private validation data. Defaults to local filesystem for self-hosted (leave unset). The `gcs` and `s3` backends exist but are documented for cloud deployments; S3-compatible object storage is not yet operator-supported for self-hosted installs. |
 
 ### 5. Email
 

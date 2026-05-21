@@ -471,7 +471,7 @@ And in the browser at `https://validibot.example.org`: you should see the Validi
 - All containers are `running` and `healthy` in `just self-hosted status`.
 - HTTPS resolves with a valid cert (`curl --fail --proto '=https' ... /health/` succeeds and the browser shows no certificate warnings).
 - The doctor command reports `OK`, `INFO`, `WARN`, or `SKIPPED` only — zero `ERROR` or `FATAL`.
-- The DO-specific overlay (`--provider digitalocean`) confirms DNS, volume mount, monitoring agent, and Cloud Firewall posture.
+- The DO-specific overlay (`--provider digitalocean`) confirms DNS and the volume mount, reports on the monitoring agent, and prints a reminder to verify your Cloud Firewall rules. The Droplet can't introspect its own Cloud Firewall without a DO API token (which the security model deliberately keeps off the production server), so verify firewall posture from your workstation with `doctl compute firewall list` or the DO control panel.
 - You can log in as the superuser and create a test workflow.
 
 ## Step 10: Configure automated backups
@@ -621,22 +621,27 @@ The agent reports CPU, memory, disk, and network metrics back to DigitalOcean fo
 
 Advanced validators run as short-lived sibling containers spawned by the worker via the host Docker socket — already configured in `docker-compose.production.yml`. To use them:
 
-1. **Pre-pull the validator images** so the first run isn't bottlenecked on download:
+1. **Build the validator images on the Droplet.** Self-hosted operators
+   currently build advanced validators from a sibling checkout of
+   `validibot-validator-backends`; there is no public Validibot image
+   registry to pull from. Clone the validator-backends repo next to your
+   `validibot/` checkout and build the images you need:
 
    ```bash
-   docker pull ghcr.io/validibot/validator-energyplus:latest
-   docker pull ghcr.io/validibot/validator-fmu:latest
+   git clone https://github.com/danielmcquillen/validibot-validator-backends.git
+   cd /path/to/validibot
+   just self-hosted validator-build energyplus
+   just self-hosted validator-build fmu
    ```
 
-2. **Private registries:** authenticate Docker on the Droplet:
+   Each recipe produces an image tagged `validibot-validator-backend-<name>:<git_sha>`
+   plus a `:latest` alias on the Droplet's local Docker daemon. The
+   first build is slow (downloading EnergyPlus / FMU runtime
+   dependencies); rebuilds are incremental.
 
-   ```bash
-   echo "$TOKEN" | docker login ghcr.io -u USERNAME --password-stdin
-   ```
+2. **Network isolation:** by default validator containers run with no network access. If a validator legitimately needs to fetch external resources, set `VALIDATOR_NETWORK` in `.django`.
 
-3. **Network isolation:** by default validator containers run with no network access. If a validator legitimately needs to fetch external resources, set `VALIDATOR_NETWORK` in `.django`.
-
-See [Validator Images](../validator-images.md) for image pinning, registry auth, and isolation details.
+See [Validator Images](../validator-images.md) for image-naming conventions, building custom validators, and isolation details.
 
 ## Step 14: (optional) Activate Pro
 

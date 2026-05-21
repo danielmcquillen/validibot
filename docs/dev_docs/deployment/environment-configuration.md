@@ -194,14 +194,27 @@ the private project tracker.
 
 ### DATABASE_URL Construction
 
-You'll notice that `DATABASE_URL` is not in the environment files. This is intentional - the entrypoint script automatically constructs it from the individual postgres variables:
+You'll notice that `DATABASE_URL` is not in the example environment files
+by default. The entrypoint script constructs it from the individual
+`POSTGRES_*` variables when it isn't already set:
 
 ```bash
-# From compose/local/django/entrypoint.sh
-export DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
+# From compose/production/django/entrypoint.sh
+if [ -z "${DATABASE_URL:-}" ] && [ -z "${CLOUD_SQL_CONNECTION_NAME:-}" ]; then
+  export DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
+fi
 ```
 
-This means `.postgres` is the single source of truth for database credentials. You never need to duplicate connection details.
+So for the **bundled Postgres** stack — the one running inside Docker
+Compose — `.postgres` is the single source of truth for credentials and
+you never duplicate connection details.
+
+If you're pointing at an **external managed database** (DigitalOcean
+Managed Postgres, AWS RDS, etc.), set `DATABASE_URL` directly in
+`.envs/.production/.self-hosted/.django` with the connection string from
+your provider. The entrypoint detects that it's already set and skips
+the construction step. Cloud SQL is handled the same way via
+`CLOUD_SQL_CONNECTION_NAME` (Unix-socket connection rather than TCP).
 
 ### Docker Compose Loading
 

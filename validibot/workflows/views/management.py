@@ -231,7 +231,7 @@ def _workflow_detail_toolbar_context(
                 },
                 {
                     "kind": "link",
-                    "button_class": "btn btn-secondary",
+                    "button_class": "btn btn-light text-dark",
                     "icon_class": "bi-pencil-square",
                     "title": _("Workflow settings"),
                     "url": reverse_with_org(

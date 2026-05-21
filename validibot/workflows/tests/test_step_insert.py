@@ -608,3 +608,67 @@ class TestStepListInlineButtons:
         html = response.content.decode()
         assert "workflow-step-add-terminal" in html
         assert "workflow-step-add-inline" in html
+
+
+# ---------------------------------------------------------------------------
+# Step picker empty-state messages
+# ---------------------------------------------------------------------------
+#
+# Each tab in the "Add workflow step" modal renders its own empty-state
+# message when it has no entries. This used to be hard-coded to "No custom
+# validators available yet." across every tab, which was confusing for the
+# Credentials and Integrations tabs on community-only deployments where
+# those tabs are legitimately empty. The picker view now attaches a
+# per-tab ``empty_message`` so each tab speaks for itself.
+
+
+class TestStepPickerEmptyStateMessages:
+    """The step picker must show the right empty-state message per tab.
+
+    These tests guard against regressions where a generic "No custom
+    validators available yet." string is reused for tabs that have nothing
+    to do with custom validators (Integrations, Credentials). Misleading
+    empty-state copy was reaching production before — see the modal
+    screenshot in commit history.
+    """
+
+    def test_credentials_tab_shows_credential_specific_empty_message(
+        self,
+        client,
+    ):
+        """On a community-only deployment the Credentials tab is empty
+        because the Signed Credential action lives in validibot-pro. The
+        tab must show a credential-specific empty message, not the old
+        "No custom validators available yet." copy that leaked across
+        tabs."""
+        workflow = WorkflowFactory()
+        _login_for_workflow(client, workflow)
+
+        url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
+        response = client.get(url, HTTP_HX_REQUEST="true")
+
+        assert response.status_code == HTTPStatus.OK
+        html = response.content.decode()
+        assert "No credentials available yet." in html
+
+    def test_integrations_tab_shows_integration_specific_empty_message(
+        self,
+        client,
+    ):
+        """The Integrations tab gets its own empty-state copy too, so a
+        deployment with no registered integration actions doesn't show the
+        custom-validators string."""
+        workflow = WorkflowFactory()
+        _login_for_workflow(client, workflow)
+        # Wipe any auto-seeded integration definitions so the tab is empty
+        # regardless of the test database state.
+        ActionDefinition.objects.filter(
+            action_category=ActionCategoryType.INTEGRATION,
+        ).delete()
+
+        url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
+        response = client.get(url, HTTP_HX_REQUEST="true")
+
+        assert response.status_code == HTTPStatus.OK
+        html = response.content.decode()
+        assert "No integrations available yet." in html

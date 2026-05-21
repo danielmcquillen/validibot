@@ -1250,17 +1250,21 @@ def test_step_list_places_type_badge_before_step_name(client):
 
     assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
-    validator_card = re.search(
+    validator_match = re.search(
         rf'data-step-id="{validator_step.id}".*?</div>\s*</div>\s*'
         rf'<div class="workflow-step-connector"',
         html,
         re.S,
-    ).group(0)
-    action_card = re.search(
+    )
+    action_match = re.search(
         rf'data-step-id="{action_step.id}".*?</div>\s*</div>',
         html,
         re.S,
-    ).group(0)
+    )
+    assert validator_match
+    assert action_match
+    validator_card = validator_match.group(0)
+    action_card = action_match.group(0)
     assert validator_card.index("JSON Schema") < validator_card.index(
         "Product Schema",
     )

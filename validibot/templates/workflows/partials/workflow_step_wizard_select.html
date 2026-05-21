@@ -143,7 +143,11 @@
                   </div>
                 {% else %}
                   <div class="alert alert-info mb-0" role="alert">
-                    {% trans "No custom validators available yet." %}
+                    {% if tab.empty_message %}
+                      {{ tab.empty_message }}
+                    {% else %}
+                      {% trans "Nothing available here yet." %}
+                    {% endif %}
                   </div>
                 {% endif %}
               </div>

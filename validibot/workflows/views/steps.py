@@ -404,7 +404,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         tabs: list[dict[str, object]] = []
         options: list[dict[str, object]] = []
 
-        validator_groups: list[tuple[str, str, set[str] | None]] = [
+        validator_groups: list[tuple[str, str, set[str] | None, str]] = [
             (
                 "basic",
                 str(_("Validators")),
@@ -414,6 +414,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                     ValidationType.SHACL,
                     ValidationType.XML_SCHEMA,
                 },
+                str(_("No validators available yet.")),
             ),
             (
                 "advanced",
@@ -423,6 +424,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                     ValidationType.ENERGYPLUS,
                     ValidationType.FMU,
                 },
+                str(_("No advanced validators available yet.")),
             ),
             (
                 "custom",
@@ -430,11 +432,12 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                 {
                     ValidationType.CUSTOM_VALIDATOR,
                 },
+                str(_("No custom validators available yet.")),
             ),
         ]
 
         handled: list[Validator] = []
-        for slug, label, types in validator_groups:
+        for slug, label, types, empty_message in validator_groups:
             if types:
                 filtered = [
                     v
@@ -445,7 +448,14 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             else:
                 filtered = []
             members = [self._serialize_validator(workflow, v) for v in filtered]
-            tabs.append({"slug": slug, "label": label, "entries": members})
+            tabs.append(
+                {
+                    "slug": slug,
+                    "label": label,
+                    "entries": members,
+                    "empty_message": empty_message,
+                },
+            )
             options.extend(members)
 
         remaining_validators = [v for v in validators if v not in handled]
@@ -477,6 +487,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                 "slug": "integrations",
                 "label": str(_("Integrations")),
                 "entries": integration_entries,
+                "empty_message": str(_("No integrations available yet.")),
             },
         )
         tabs.append(
@@ -484,6 +495,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                 "slug": "credentials",
                 "label": str(_("Credentials")),
                 "entries": credential_entries,
+                "empty_message": str(_("No credentials available yet.")),
             },
         )
         options.extend(integration_entries)

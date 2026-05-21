@@ -2,8 +2,6 @@
 
 A smoke test is the cheapest, fastest answer to "is this deployment fundamentally functional?" Doctor catches *configuration* problems (settings missing, DB unreachable, storage not writable). Smoke test catches *runtime* problems (queue broken, worker not picking up jobs, validator can't actually process a payload). Together they form the operator's confidence loop after install, upgrade, or restore.
 
-This work landed in Phase 2 of the [boring self-hosting ADR](https://github.com/validibot/validibot-project/blob/main/docs/adr/2026-04-27-boring-self-hosting-and-operator-experience.md).
-
 ## Commands
 
 ```bash

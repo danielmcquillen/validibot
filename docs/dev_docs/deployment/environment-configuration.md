@@ -189,8 +189,8 @@ The quick version of "where does each variable go":
 
 If a variable needs to appear in two files (like `VALIDIBOT_MCP_BASE_URL`
 in `.django` AND `.mcp`, or the shared client secret), keep them in
-sync by hand. A future "validate env consistency" check is tracked in
-the private project tracker.
+sync by hand. A future "validate env consistency" check should automate
+this.
 
 ### DATABASE_URL Construction
 

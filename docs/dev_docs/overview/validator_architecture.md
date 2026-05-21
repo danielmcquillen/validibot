@@ -564,11 +564,11 @@ This document describes the **validator backend** interface — the external Doc
 
 The repository was renamed from `validibot-validators` → `validibot-validator-backends` in March 2026 to make this role unambiguous. The Python package and Docker image prefixes match. See [Terminology](terminology.md) for the full vocabulary.
 
-## Run-scoped isolation (Phase 1 of the trust ADR)
+## Run-scoped isolation
 
 Before April 2026, the local Docker runner mounted the entire `DATA_STORAGE_ROOT` read-write into every validator backend runtime. A buggy or partner-authored backend could read other runs' inputs, mutate other runs' outputs, exhaust shared disk, or leak data between runs.
 
-The trust ADR replaced that with a per-run workspace.
+Validibot replaced that with a per-run workspace.
 
 ### Per-run workspace layout
 
@@ -665,4 +665,3 @@ Tier 1 defaults are sufficient for first-party containers Validibot builds itsel
 - [Trust Architecture](trust-architecture.md) — the four invariants
 - [Execution Backends](execution_backends.md) — Docker vs Cloud Run dispatch
 - [Evidence Bundles](evidence-bundles.md) — what gets recorded about each validator backend run
-

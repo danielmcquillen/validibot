@@ -2,8 +2,6 @@
 
 Validibot ships an application-level backup recipe that captures the database and the data directory and writes a self-describing manifest. This page covers what a backup contains, the manifest schema, and the rules that govern when a backup is "valid."
 
-This work landed in Phase 3 of the [boring self-hosting ADR](https://github.com/validibot/validibot-project/blob/main/docs/adr/2026-04-27-boring-self-hosting-and-operator-experience.md).
-
 ## What gets backed up
 
 A manifested backup contains:
@@ -107,7 +105,7 @@ BACKUP_DIR=/var/backups/validibot just self-hosted backup
 The recipe is intentionally narrow:
 
 - It does *not* take a `--dry-run` flag yet. Use `just self-hosted check-env` and `just self-hosted doctor` to verify the deployment is healthy before running.
-- It does *not* take a `--components` flag yet. The manifest schema reserves space for separate `config` and `data` restore selection (boring-self-hosting ADR AC #17), but the MVP always captures both halves of what it can capture, and restore consumes them as a unit.
+- It does *not* take a `--components` flag yet. The manifest schema reserves space for separate `config` and `data` restore selection, but the MVP always captures both halves of what it can capture, and restore consumes them as a unit.
 
 These are documented follow-ups, not gaps in design.
 

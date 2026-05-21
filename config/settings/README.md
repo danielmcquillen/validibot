@@ -43,9 +43,6 @@ configuration is controlled via the `DEPLOYMENT_TARGET` environment variable:
 | `gcp` | Validibot's hosted offering | Google Cloud Platform (Cloud Run, Cloud Tasks, GCS) |
 | `aws` | Future | Amazon Web Services (future: ECS/Batch, SQS, S3) |
 
-See ADR-2026-04-27 (Boring Self-Hosting and Operator Experience) for
-the audience-named taxonomy.
-
 The settings file reads `DEPLOYMENT_TARGET` and branches accordingly to configure:
 
 - Storage backends (local filesystem, GCS, or S3)

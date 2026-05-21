@@ -9,10 +9,6 @@ This is the developer-facing reference: it summarises how the trust
 contract is enforced, how to extend it, and how to run the auditor in
 production.
 
-For the full architecture rationale, clone boundary, and future-feature
-checklist, see
-`validibot-project/docs/architecture/workflow-versioning-policy.md`.
-
 ## Why trust matters here
 
 A validation run is a fact: "submission X passed workflow Y at time T".
@@ -171,8 +167,8 @@ The follow-up safety net is the auditor described below.
 
 Two situations leave a workflow legacy-versioned:
 
-- **Pre-ADR rows.** Workflows that were locked or had runs before
-  Sessions B and C deployed don't have populated `semantic_digest` or
+- **Older rows.** Workflows that were locked or had runs before
+  digest/hash enforcement deployed don't have populated `semantic_digest` or
   `content_hash` columns. Their rules might be perfectly stable, but
   we can't *prove* it from the trust columns alone.
 - **Custom validators.** Org-owned validators (`Validator.is_system =
@@ -202,7 +198,7 @@ finding has a code, a severity, and a human-readable message:
   with actual runs.
 - `VALIDATOR_DIGEST_DRIFT` — the validator's stored digest disagrees
   with what the current config would compute. Severity `error`.
-  Indicates someone bypassed Session B's gate (e.g. used
+  Indicates someone bypassed validator immutability checks (e.g. used
   `--allow-drift` then forgot to follow up, or hand-edited a row).
 - `CATALOG_RESOURCE_HASH_MISSING` — a `ValidatorResourceFile` referenced
   by a step has no `content_hash`. Severity `info` / `warn` per the
@@ -217,8 +213,8 @@ finding has a code, a severity, and a human-readable message:
   time. Severity `warn`. Suggests storage misconfiguration; the drift
   check couldn't run.
 - `MANIFEST_MISSING` — a completed run (terminal status) has no
-  `RunEvidenceArtifact` row. Either the run finished before Phase 4
-  Session A's manifest stamper deployed, or stamping silently failed
+  `RunEvidenceArtifact` row. Either the run finished before the
+  manifest stamper deployed, or stamping silently failed
   before the FAILED row could be recorded. Severity `warn`.
 - `MANIFEST_GENERATION_FAILED` — a run has a `RunEvidenceArtifact`
   in `availability=FAILED` state. The `generation_error` column
@@ -255,9 +251,9 @@ that pipes into your observability pipeline. `error` findings page;
 
 | Finding | Remediation |
 |---|---|
-| `VALIDATOR_DIGEST_MISSING` (system validator) | Run `sync_validators` against the deployment. The first sync after Session B populates the digest. |
+| `VALIDATOR_DIGEST_MISSING` (system validator) | Run `sync_validators` against the deployment. The first sync after digest enforcement populates the digest. |
 | `VALIDATOR_DIGEST_MISSING` (custom validator) | No automated remediation. Document that this workflow uses a custom validator and accept legacy versioning, or migrate the rules into a system validator. |
-| `VALIDATOR_DIGEST_DRIFT` | Investigate: someone bypassed Session B's gate. Either bump the validator's `version` (creating a new row that locks the new behavior) or fix the underlying mutation and re-sync. |
+| `VALIDATOR_DIGEST_DRIFT` | Investigate: someone bypassed validator immutability checks. Either bump the validator's `version` (creating a new row that locks the new behavior) or fix the underlying mutation and re-sync. |
 | `CATALOG_RESOURCE_HASH_MISSING` | Re-save the `ValidatorResourceFile` row (e.g. via the admin). The save triggers `content_hash` population. |
 | `STEP_RESOURCE_HASH_MISSING` | Re-save the `WorkflowStepResource` (often by editing the parent step). |
 | `STEP_RESOURCE_HASH_DRIFT` | Same as `VALIDATOR_DIGEST_DRIFT`: investigate the source of the bytes change. The workflow's launch contract is provably broken; the workflow should be cloned to a new version with the corrected file before any new runs land on it. |
@@ -266,7 +262,7 @@ that pipes into your observability pipeline. `error` findings page;
 
 ## Adding a new contract field
 
-When a future ADR introduces a new field that should be part of the
+When a future feature introduces a new field that should be part of the
 launch contract:
 
 1. Add it to `Workflow` model.
@@ -280,7 +276,7 @@ new field because it iterates `CONTRACT_FIELDS`. No form change needed.
 
 ## Adding a new immutable validator field
 
-Future ADR adds a behavior-defining field to `ValidatorConfig`:
+Future feature adds a behavior-defining field to `ValidatorConfig`:
 
 1. Add the field to the Pydantic model and the `Validator` row.
 2. Add the field name to
@@ -288,7 +284,7 @@ Future ADR adds a behavior-defining field to `ValidatorConfig`:
 3. Run `sync_validators --allow-drift` once on each deployment to
    re-populate digests; CI will then enforce on the new field.
 
-## Evidence manifests (Phase 4 Session A)
+## Evidence manifests
 
 A completed run also gets a *manifest* — a canonical-JSON document
 that snapshots "what rules and inputs run X was operating under."
@@ -308,7 +304,7 @@ the Django stack. The manifest contains:
   pulled directly from each step's validator row.
 - Input schema: the workflow's structured input contract if any.
 - Retention info: `retention_class` plus `redactions_applied` — a
-  list of field names the Session B retention policy stripped from
+  list of field names the retention policy stripped from
   this manifest.
 - Payload digests: `input_sha256` (always; preimage-resistant and
   safe even under `DO_NOT_STORE`) and `output_envelope_sha256`
@@ -324,7 +320,7 @@ exception is caught, logged, recorded as
 `availability=FAILED` on the row, and swallowed so the run's outcome
 is unaffected. The auditor then surfaces the gap.
 
-### Retention policy (Phase 4 Session B)
+### Retention policy
 
 The decision of *what* to include is centralised in
 `validibot/validations/services/evidence_retention.py`. The
@@ -346,14 +342,13 @@ Withholding it would break that property. The submission row's
 preserved through `Submission.purge_content()`.
 
 Curated runtime logs in the manifest (e.g. step start/end events,
-finding emit events) are deferred to a Session B follow-up. Adding
-them requires new optional fields in the
+finding emit events) are deferred follow-up work. Adding them requires new optional fields in the
 `validibot.evidence.v1` schema, which is a separate
 `validibot-shared` release. The current shape already meets the
 DO_NOT_STORE acceptance criteria — no payload bytes leak through
 any field that exists today.
 
-### Operator export (Phase 4 Session C/1)
+### Operator export
 
 The run-detail page exposes a "Download manifest.json" action
 backed by `EvidenceManifestDownloadView` at
@@ -374,7 +369,7 @@ the run, they can download its manifest. Cross-org and FAILED-
 artifact accesses both return `404` (consistent with the existing
 "don't leak run existence" convention on the run-detail surface).
 
-### Operator export — bundle (Phase 4 Session C/3)
+### Operator export — bundle
 
 A second endpoint at `validations:evidence_bundle_download`
 (`<uuid:pk>/evidence/bundle/`) returns the run's evidence as a
@@ -410,10 +405,10 @@ What's *not* in the bundle today: raw input or output bytes. The
 manifest's `payload_digests` carry SHA-256 hashes of input and
 (where retention permits) output, so the bundle has the
 *identity* of the payload data without exposing the bytes
-themselves. A future Session C/3 extension may include raw bytes
-for runs whose retention policy permits.
+themselves. A future extension may include raw bytes for runs whose
+retention policy permits.
 
-Verify (Session C/4) consumes the bundle: parses the JWS in
+Verification consumes the bundle: parses the JWS in
 `manifest.sig`, validates the signature against the issuer's
 public key, recomputes SHA-256 of `manifest.json` bytes, and
 compares to the credential's `manifestHash` claim.

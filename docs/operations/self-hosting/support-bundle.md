@@ -2,8 +2,6 @@
 
 The support bundle is a redacted archive that lets Validibot support help with an issue without you sending raw model files, secrets, or signing keys. This page covers what's in the bundle, what's redacted (and how), and how the support workflow uses it.
 
-This work landed in Phase 6 of the [boring self-hosting ADR](https://github.com/validibot/validibot-project/blob/main/docs/adr/2026-04-27-boring-self-hosting-and-operator-experience.md).
-
 ## Why this exists
 
 For a 6k–24k/year self-hosted product, the buyer is risk-averse. They cannot send raw project data to a vendor as a debugging step. Without a redacted, structured way to share state, support becomes guesswork: "What does your config look like? Can you paste a log?" — followed by three rounds of follow-up.

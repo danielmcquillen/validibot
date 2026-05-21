@@ -1,6 +1,6 @@
 # Signals Tutorial Example
 
-This tutorial explains the unified signal architecture with one concrete end-to-end example. It complements the higher-level ADR by showing how the models work together in the library, on a workflow step, and at runtime.
+This tutorial explains the unified signal architecture with one concrete end-to-end example. It shows how the models work together in the library, on a workflow step, and at runtime.
 
 Use this guide when you need to answer questions like:
 

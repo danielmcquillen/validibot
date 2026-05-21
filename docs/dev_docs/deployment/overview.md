@@ -18,8 +18,6 @@ Validibot has three deployment targets that share the same Django codebase but h
 
 The same operator capabilities (`bootstrap`, `doctor`, `smoke-test`, `backup`, `restore`, `upgrade`, `collect-support-bundle`) exist for **both self-hosted and GCP**. Cross-target parity is a quality gate: if a recipe exists for self-hosted but not GCP (or vice versa), assume the design is wrong until proven otherwise.
 
-For the architectural rationale, see the boring-self-hosting ADR.
-
 ## Choose a target
 
 | Target | Best for | Start here |

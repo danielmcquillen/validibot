@@ -2,8 +2,6 @@
 
 Every Validibot release intended for self-hosted pilots ships with release notes that follow this template. Operators rely on this content **before** upgrading; if breaking changes are buried, they become production incidents.
 
-This work lands in Phase 6 of the boring-self-hosting ADR. Pattern adopted from Plausible's CHANGELOG and GitLab's "Manual operator action required" callouts.
-
 ## Why this is a contract
 
 Release notes are not marketing copy. They are an operator-facing contract that says:
@@ -12,7 +10,7 @@ Release notes are not marketing copy. They are an operator-facing contract that 
 - here is what requires preparation;
 - here is what will break if you skip versions.
 
-A release without proper notes is not pilot-ready. The first published release after Phase 4 of the boring-self-hosting ADR (upgrade workflow) ships uses this template, verified before tagging.
+A release without proper notes is not pilot-ready. Releases use this template, verified before tagging.
 
 ## The required sections
 
@@ -119,7 +117,7 @@ Before tagging a release intended for self-hosted pilots:
 - [ ] If a strict upgrade path applies, it's clearly stated.
 - [ ] The notes have been reviewed by Daniel before tagging.
 
-This is part of the release checklist in the boring-self-hosting ADR § Manual release checklist.
+This is part of the release checklist.
 
 ## Example release notes shape
 
@@ -155,7 +153,7 @@ This is part of the release checklist in the boring-self-hosting ADR § Manual r
 
 ## Highlights
 
-- Evidence bundle MVP shipped (Phase 4 of the trust ADR).
+- Evidence bundle MVP shipped.
 - Trust-boundary hardening complete (Phase 3).
 - New `audit_workflow_versions` management command.
 

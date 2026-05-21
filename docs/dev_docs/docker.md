@@ -154,7 +154,7 @@ For private registries, configure Docker credentials on the host before running 
 ## Notes and deviations from full Cookiecutter setup
 
 - **Celery + Redis** handles background tasks and scheduled jobs for Docker Compose deployments. For GCP, Cloud Tasks/Scheduler are used instead.
-- Static/media: Whitenoise still works in-container, but long-term we'll move static/media to GCS + CDN as per the GCP ADR.
+- Static/media: Whitenoise still works in-container. Production GCP deployments can move static/media to GCS + CDN.
 - Settings: the project already uses `django-environ`; `DATABASE_URL` is honored from the env files.
 - Secrets: keep real secrets out of the repo; the examples are for local/dev only.
 - Frontend assets: the Docker images do not run `npm install`/`npm run build`. If you change CSS/JS that relies on npm, build it locally (`npm install`, then `npm run build`) and ensure the generated assets are available to Django/Whitenoise (or your chosen static pipeline).

@@ -37,7 +37,7 @@ thin stubs until the bootstrap implementation lands; use the provider
 guide or substrate-generic install guide for current host-prep steps.
 After Docker and `just` exist, every subsequent operation (`check-dns`,
 `build-pro-image`, `bootstrap`, `deploy`, `doctor`, `backup`, etc.) is
-a `just self-hosted <recipe>`. See ADR-2026-04-27 section 4.
+a `just self-hosted <recipe>`.
 
 ## Relationship to the rest of the repo
 
@@ -78,9 +78,3 @@ Confirm `SITE_URL` resolves to your VM's public IP first:
 ```bash
 just self-hosted check-dns
 ```
-
-## ADR reference
-
-See [ADR-2026-04-27: Boring Self-Hosting and Operator
-Experience](../../docs/dev_docs/adr/) (also in the
-`validibot-project` repo) for the full design rationale.

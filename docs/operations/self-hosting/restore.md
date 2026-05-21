@@ -2,8 +2,6 @@
 
 A backup that has never been restored is not considered valid. This page covers the restore command, the four pre-flight gates that protect against accidents, the doctor marker that records restore-test recency, and the common recovery scenarios.
 
-This work landed in Phase 3 of the [boring self-hosting ADR](https://github.com/validibot/validibot-project/blob/main/docs/adr/2026-04-27-boring-self-hosting-and-operator-experience.md).
-
 ## The principle
 
 > Restore is more important than backup.
@@ -91,17 +89,17 @@ just self-hosted errors-since 5m
 2. **Restore writes the `.last-restore-test` marker on success.** Doctor's `VB411` reads it. Re-running restore advances the mtime even if the backup contained an older marker (the tar archive may carry one from a previous restore).
 3. **Restore applies migrations on top of the imported state.** This is what makes "restore older backup onto current code" work cleanly — the dump captures schema-as-of-backup, migrations bring it forward, no special handling required.
 
-## ADR scope: what's deferred from the original acceptance criteria
+## Deferred restore surfaces
 
-The boring self-hosting ADR's Phase 3 acceptance criteria list three restore surfaces — `--dry-run`, `--components`, `--force` — that are NOT in the MVP. They're documented here so the ADR's status is honest:
+Three restore surfaces are intentionally not in the MVP: `--dry-run`, `--components`, and `--force`.
 
-| Surface | ADR AC | MVP status | Why deferred |
-|---|---|---|---|
-| `--dry-run` (preview without applying) | Phase 3 task 8 | **Not implemented** | The four pre-flight gates already make most "would this work?" questions answerable without touching the deployment. Operators can run `verify_backup_compatibility` standalone (see [Backups → Verifying a backup](backups.md#verifying-a-backup-without-restoring)) for the closest equivalent. A real `--dry-run` would simulate the SQL import + tar-extract steps; that adds complexity disproportionate to its value at MVP. |
-| `--components config-only` / `data-only` / `full` | Phase 3 task 9 + AC #17 | **Not implemented** | The manifest schema (`validibot.backup.v1`) reserves the slot — `data` and `config` are separate components. The MVP always applies both. The recipe-side branching is a focused additive change when an operator pilot needs it. |
-| `--force` (skip pre-flight gates) | Phase 3 task 5 | **Not implemented** | The gates are deliberately unconditional. A `--force` escape hatch would invite operators to bypass the protections under pressure — exactly when they shouldn't. The "right" override path is to fix the doctor finding, not skip it. |
+| Surface | MVP status | Why deferred |
+|---|---|---|
+| `--dry-run` (preview without applying) | **Not implemented** | The four pre-flight gates already make most "would this work?" questions answerable without touching the deployment. Operators can run `verify_backup_compatibility` standalone (see [Backups → Verifying a backup](backups.md#verifying-a-backup-without-restoring)) for the closest equivalent. A real `--dry-run` would simulate the SQL import + tar-extract steps; that adds complexity disproportionate to its value at MVP. |
+| `--components config-only` / `data-only` / `full` | **Not implemented** | The manifest schema (`validibot.backup.v1`) reserves the slot — `data` and `config` are separate components. The MVP always applies both. The recipe-side branching is a focused additive change when an operator pilot needs it. |
+| `--force` (skip pre-flight gates) | **Not implemented** | The gates are deliberately unconditional. A `--force` escape hatch would invite operators to bypass the protections under pressure — exactly when they shouldn't. The "right" override path is to fix the doctor finding, not skip it. |
 
-These deferrals are tracked in the ADR follow-up list; if a paid pilot needs any of them, that's a focused implementation rather than a redesign.
+If a paid pilot needs any of these surfaces, they are focused additions rather than a redesign.
 
 ## The quarterly drill
 

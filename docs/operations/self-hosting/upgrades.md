@@ -2,8 +2,6 @@
 
 Validibot's upgrade flow is boring and repeatable. This page covers the full lifecycle, the four pre-flight gates, the strict upgrade-path enforcement, and what happens to in-flight validation runs during an upgrade.
 
-This work landed in Phase 4 of the [boring self-hosting ADR](https://github.com/validibot/validibot-project/blob/main/docs/adr/2026-04-27-boring-self-hosting-and-operator-experience.md).
-
 ## The standard flow
 
 ```bash

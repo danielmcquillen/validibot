@@ -254,7 +254,7 @@ Once that works, exit the root session.
 
 There's a Validibot helper that will eventually install Docker, validate the DigitalOcean mount, move Docker's data root onto `/srv/validibot/docker`, install `just`, and set up the repo directory.
 
-> **Status note:** the bootstrap scripts (`bootstrap-host`, `bootstrap-digitalocean`) currently print "not yet implemented" — they're Phase-0 stubs of [ADR-2026-04-27](https://github.com/danielmcquillen/validibot-project). The fallback steps below are what they will eventually automate. Once the scripts ship, the fallback section will be removed from this guide.
+> **Status note:** the bootstrap scripts (`bootstrap-host`, `bootstrap-digitalocean`) currently print "not yet implemented." The fallback steps below are what they will eventually automate. Once the scripts ship, the fallback section will be removed from this guide.
 
 ### When the scripts are implemented (target state)
 

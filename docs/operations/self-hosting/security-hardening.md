@@ -1,6 +1,6 @@
 # Security Hardening
 
-This page is the practical checklist for hardening a self-hosted Validibot install. It captures the security model the trust-boundary ADR established and the recommended hardening from the boring-self-hosting ADR.
+This page is the practical checklist for hardening a self-hosted Validibot install. It captures the recommended security model for customer-operated deployments.
 
 If you're a risk-averse customer (energy modeling consultancy, research lab, utility reviewer), running through this list is part of going from "deployed" to "production-ready."
 
@@ -68,7 +68,7 @@ VALIDATOR_IMAGE_POLICY=digest       # or 'signed-digest' once Phase 5 ships
 
 The doctor command warns if `latest` is used in a `self-hosted` or `self-hosted-hardened` profile.
 
-### 5. Run-scoped validator mounts (default after trust ADR Phase 1)
+### 5. Run-scoped validator mounts
 
 Validator backends get only their own per-run input/output directories, not the global storage root. See [Validator Images](validator-images.md) for the full layout.
 
@@ -176,7 +176,7 @@ Validibot writes audit events for trust-relevant actions:
 - evidence bundle exported;
 - evidence bundle export omitted raw content due to retention policy.
 
-The full audit log architecture is documented in the (founder-facing) [audit-log doc](https://github.com/danielmcquillen/validibot-project/blob/main/docs/observability/audit-log.md). Self-hosted operators can query the audit log via the admin UI or the database directly.
+Self-hosted operators can query the audit log via the admin UI or the database directly.
 
 ## Incident response
 

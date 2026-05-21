@@ -1,6 +1,6 @@
 # Paid pilot onboarding checklist
 
-This is the operator-facing checklist for taking a paid pilot from "we just bought" to "we have a working, supportable Validibot install we trust." It maps to ADR-2026-04-27 § Phase 6 Task 7 and is what we walk through together during the install-review session that comes with every paid tier.
+This is the operator-facing checklist for taking a paid pilot from "we just bought" to "we have a working, supportable Validibot install we trust." It is what we walk through together during the install-review session that comes with every paid tier.
 
 **Audience:** customer's operator, on the phone with us during the first install review.
 **Time budget:** 60–90 minutes.

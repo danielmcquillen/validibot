@@ -1,6 +1,6 @@
 # Terminology
 
-This page is the canonical glossary for Validibot's architecture. Use these terms consistently in code, comments, tests, and docs. Many were sharpened during the Trust Boundary Hardening ADR (April 2026) when the validator/validator-backend distinction became load-bearing for security and versioning.
+This page is the canonical glossary for Validibot's architecture. Use these terms consistently in code, comments, tests, and docs. Many terms became load-bearing once the validator/validator-backend distinction started carrying security and versioning guarantees.
 
 ## Validators and the validation pipeline
 
@@ -71,7 +71,7 @@ Do **not** introduce "engine" as a new architecture term. Older docs and tests s
 | **Contract field** | A field whose value affects what a future validation means. Listed in `CONTRACT_FIELDS`. Cannot be edited in place once the workflow is locked. |
 | **Semantic digest** | SHA-256 of the canonicalised JSON of a `Validator`'s behavior-defining fields. Stored on `Validator.semantic_digest`. `sync_validators` raises if the digest changes under the same `(slug, version)` (drift detection). |
 | **Content hash** | SHA-256 of a resource file's bytes, stored on `ValidatorResourceFile.content_hash` and `WorkflowStepResource.content_hash`. Drift detection: `save()` raises if the hash differs and the row is referenced by a locked workflow. |
-| **Legacy versioning** | A locked workflow whose `semantic_digest` or `content_hash` columns are unpopulated, either because the row predates the trust ADR Sessions B/C or because it uses a custom validator (no source-of-truth config to digest against). The audit command surfaces these as `*_MISSING` findings. |
+| **Legacy versioning** | A locked workflow whose `semantic_digest` or `content_hash` columns are unpopulated, either because the row predates digest/hash enforcement or because it uses a custom validator (no source-of-truth config to digest against). The audit command surfaces these as `*_MISSING` findings. |
 | **Workflow family** | All non-archived, non-tombstoned versions of a workflow with the same `(org, slug)`. Guest grants apply at family scope: any active grant on any version of a family authorises every version of that family. Per-version pinned grants are a planned enhancement and not currently implemented. |
 
 ## Repo and deployment terms

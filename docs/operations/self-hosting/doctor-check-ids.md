@@ -246,8 +246,7 @@ restore recipe after a successful restore drill.
 **Fix:** Run a restore drill on a clean test environment:
 `just self-hosted backup` followed by `just self-hosted restore <backup-path>`
 and then `just self-hosted doctor` plus `just self-hosted smoke-test`.
-ADR section 5: "A backup that has never been restored is not considered
-valid."
+Principle: a backup that has never been restored is not considered valid.
 
 ---
 

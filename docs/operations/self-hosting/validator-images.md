@@ -2,8 +2,6 @@
 
 This page covers the validator image story for self-hosted operators: what's pre-installed, how to inventory them, how to pin versions, how to add custom validators, and how the run-scoped isolation guarantees work.
 
-This work lands in Phase 5 of the boring-self-hosting ADR.
-
 ## What's an "advanced validator"?
 
 Validibot has two classes of validator:
@@ -100,7 +98,7 @@ Policy values:
 | `digest` | Production-recommended. Image references include `@sha256:...` digests pinned at deploy time. |
 | `signed-digest` | Future enterprise/high-trust. Requires cosign-verified digests. |
 
-Phase 5 of the trust ADR adds `signed-digest` support and optional cosign verification.
+`signed-digest` support and optional cosign verification are planned future hardening work.
 
 ## Run-scoped isolation
 

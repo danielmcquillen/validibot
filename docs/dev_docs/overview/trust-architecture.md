@@ -55,7 +55,7 @@ The contract checks:
 10. retention policy is snapped from the workflow/channel;
 11. run source is derived from channel, not trusted from user headers.
 
-The web view, REST API, MCP helper API, and x402 run-creation path all consume this contract via the helper `views_helpers.describe_workflow_file_type_violation()`. Channel-specific behavior is expressed as policy, not as a forked implementation. Phase 2 of the trust ADR delivered this convergence with a parity test matrix that pins the wiring at the helper level.
+The web view, REST API, MCP helper API, and x402 run-creation path all consume this contract via the helper `views_helpers.describe_workflow_file_type_violation()`. Channel-specific behavior is expressed as policy, not as a forked implementation. A parity test matrix pins the wiring at the helper level.
 
 ### 3. Isolation invariant
 
@@ -247,7 +247,7 @@ The x402 payment verification is the canonical example — see `validibot-cloud/
 
 ## Configuration patterns that close trust gaps
 
-Three architectural patterns recurred across every trust gate added under the trust ADR. Worth knowing as design vocabulary when working on new trust-relevant code:
+Three architectural patterns recur across trust-relevant code. Worth knowing as design vocabulary when working on new trust-relevant code:
 
 - **Fail-closed defaults** — empty allow-list rejects, unknown policy value raises, missing config refuses. The opposite (silently fall back to the loosest mode) is exactly the inversion of operator intent that turns hardening into a regression.
 - **Conservative suppression** — when a row is in a contradictory state (e.g. `agent_public_discovery=True` + `is_archived=True`), withdraw the *claim* (clear `agent_public_discovery`), not the *state* the operator chose (don't flip `is_archived`, don't flip `input_retention`). Reversible via re-publish; the alternative would silently change the privacy contract.

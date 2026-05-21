@@ -18,7 +18,7 @@ You copy these from `.envs.example/.production/.self-hosted/` once during instal
 
 ## `.django` — the eight grouped sections
 
-The `.django` file is structured into eight comment-headered sections matching the boring-self-hosting ADR's grouping:
+The `.django` file is structured into eight comment-headered sections:
 
 ### 1. Required
 
@@ -162,7 +162,7 @@ Validibot uses Django settings modules to control which apps and features are lo
 | `config.settings.production` | Self-hosted community production. |
 | `config.settings.production_pro` | Self-hosted Pro production — adds `validibot_pro` to `INSTALLED_APPS`. |
 
-Switching from community to Pro is a settings module change in `.django` plus a package install in `.build`. See [Install](install.md) and the [customer-onboarding doc](https://github.com/danielmcquillen/validibot-project/blob/main/docs/operations/customer-onboarding.md) for the full activation flow.
+Switching from community to Pro is a settings module change in `.django` plus a package install in `.build`. See [Install](install.md) for the activation flow.
 
 ## Reverse proxy: bring your own, or use bundled Caddy
 

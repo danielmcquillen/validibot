@@ -189,7 +189,7 @@ infrastructure:
   comparable self-hosted product writes per-provider reference docs;
   Validibot follows the same pattern.)
 
-## Support and ADR reference
+## Support
 
 For paid Pro support, generate a redacted support bundle and email it
 to support@validibot.com:

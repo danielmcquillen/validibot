@@ -8,11 +8,6 @@ or JVM required. It ships with the community edition.
 Common configurations include ASHRAE 223P, Guideline 36, Brick Schema,
 Project Haystack 4, and project-specific shapes the author uploads.
 
-For the architectural rationale, design tradeoffs, and rejected
-alternatives, see
-[ADR-2026-05-18](../../../validibot-project/docs/adr/2026-05-18-shacl-validator-for-rdf-graph-validation.md)
-in the project repo.
-
 ## When to use it
 
 Pick the SHACL validator when the submission is an RDF graph and the
@@ -252,10 +247,9 @@ Dependencies (all pure Python):
   RL reasoner.
 
 The validator does NOT run in an advanced (Docker) validator container.
-See the ADR for the cost-benefit analysis — short version: pyshacl is
-fast enough for the published 223P examples (largest is 2.6 MB / ~50K
-triples), and Docker boot overhead would dwarf the actual validation
-work. The pySHACL call still runs out-of-process so the engine can
+pyshacl is fast enough for the published 223P examples (largest is
+2.6 MB / ~50K triples), and Docker boot overhead would dwarf the actual
+validation work. The pySHACL call still runs out-of-process so the engine can
 terminate pathological shape/data combinations on timeout. This uses a
 plain subprocess rather than ``multiprocessing.Process`` so it works
 inside Celery prefork workers, whose task processes are daemonic.
@@ -373,8 +367,7 @@ yourself or wait for Phase 2 to ship the bundled content.
 The SHACL validator's threat surface is unusually large because it
 executes two distinct classes of attacker-controllable input — shapes
 and ontologies from the author, plus the RDF submission. Several
-hardenings run on every validation; see ADR-2026-05-18 "Security" for
-the full threat model and acceptance-test list.
+hardenings run on every validation.
 
 The headline mitigations:
 
@@ -438,5 +431,5 @@ maximums the operator cannot exceed):
   shape file hashes + result counts (Pro only).
 - **Phase 5+** — Haystack 4 / IFC-OWL preset shape collections;
   named SPARQL SELECT signals for arithmetic composition (deferred
-  to a separate ADR triggered by real customer demand); LLM-assisted
-  shape authoring.
+  until real customer demand proves the shape); LLM-assisted shape
+  authoring.

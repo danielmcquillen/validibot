@@ -2,8 +2,6 @@
 
 This is the full reference for `just self-hosted` recipes. Every recipe has an equivalent `just gcp` recipe by design — see the cross-target parity table below.
 
-For the architectural rationale, see the [Operator Capability Matrix](https://github.com/danielmcquillen/validibot-project/blob/main/docs/architecture/operator-capability-matrix.md) (founder-facing).
-
 ## Cross-target parity table
 
 Every operator capability exists for both targets:
@@ -206,4 +204,3 @@ The shared interface is what makes the operator experience legible: the same ver
 - [Backups](backups.md), [Restore](restore.md), [Upgrades](upgrades.md) — major workflows
 - [Support Bundle](support-bundle.md) — what's redacted
 - [Troubleshooting](troubleshooting.md) — common issues
-- [Operator Capability Matrix (founder-facing)](https://github.com/danielmcquillen/validibot-project/blob/main/docs/architecture/operator-capability-matrix.md)

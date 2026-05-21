@@ -137,6 +137,28 @@ h6 {
   border-radius: 0.5rem;
 }
 
+.workflow-file-type-option {
+  margin-bottom: 0.4rem;
+}
+
+.workflow-file-type-option__label {
+  display: inline-grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  column-gap: 0.35rem;
+  align-items: baseline;
+  max-width: 100%;
+  line-height: 1.3;
+}
+
+.workflow-file-type-option__name {
+  color: var(--bs-body-color);
+}
+
+.workflow-file-type-option__examples {
+  color: var(--bs-secondary-color);
+  font-size: 0.88em;
+}
+
 .catalog-entry-list {
   dl {
     dt {

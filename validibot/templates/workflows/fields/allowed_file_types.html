@@ -1,0 +1,68 @@
+{% load crispy_forms_filters %}
+{% load l10n %}
+
+{% if field.is_hidden %}
+  {{ field }}
+{% else %}
+  <div id="div_{{ field.auto_id }}"
+       class="mb-3
+              {% if wrapper_class %}
+                {{ wrapper_class }}
+              {% endif %}
+              {% if field.css_classes %}
+                {{ field.css_classes }}
+              {% endif %}">
+    {% if field.label and form_show_labels %}
+      <fieldset {% if field.aria_describedby %}
+                  aria-describedby="{{ field.aria_describedby }}"
+                {% endif %}>
+        <legend class="form-label fs-6
+                       {% if label_class %}
+                         {{ label_class }}
+                       {% endif %}
+                       {% if field.field.required %}
+                         requiredField
+                       {% endif %}">
+          {{ field.label }}
+          {% if field.field.required %}
+            <span class="asteriskField">*</span>
+          {% endif %}
+        </legend>
+      {% endif %}
+
+      <div {% if field_class %} class="{{ field_class }}"{% endif %}>
+        {% for group, options, index in field|optgroups %}
+          {% if group %}
+            <strong>{{ group }}</strong>
+          {% endif %}
+          {% for option in options %}
+            <div class="form-check workflow-file-type-option">
+              <input type="{{ option.type }}"
+                     class="form-check-input
+                            {% if field.errors %}
+                              is-invalid
+                            {% endif %}"
+                     name="{{ field.html_name }}"
+                     value="{{ option.value|unlocalize }}"
+                     {% include "bootstrap5/layout/attrs.html" with widget=option %} />
+              <label class="form-check-label workflow-file-type-option__label"
+                     {% if option.attrs.id %}
+                       for="{{ option.attrs.id }}"
+                     {% endif %}>
+                <span class="workflow-file-type-option__name">{{ option.label.name }}</span>
+                {% if option.label.examples %}
+                  <span class="workflow-file-type-option__examples">{{ option.label.examples }}</span>
+                {% endif %}
+              </label>
+            </div>
+          {% endfor %}
+        {% endfor %}
+      </div>
+
+      {% include "bootstrap5/layout/help_text_and_errors.html" %}
+
+      {% if field.label and form_show_labels %}
+      </fieldset>
+    {% endif %}
+  </div>
+{% endif %}

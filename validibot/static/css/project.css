@@ -12265,6 +12265,7 @@ h4 {
   text-decoration: underline;
 }
 .breadcrumb .breadcrumb-item.breadcrumb-item--workflow {
+  overflow: visible;
   text-overflow: clip;
 }
 .breadcrumb .breadcrumb-item.breadcrumb-item--workflow .breadcrumb-workflow-label {
@@ -12273,12 +12274,15 @@ h4 {
   gap: 0.25rem;
   max-width: 100%;
   min-width: 0;
+  overflow: hidden;
   vertical-align: middle;
 }
 .breadcrumb .breadcrumb-item.breadcrumb-item--workflow .workflow-version-badge {
   flex: 0 0 auto;
 }
 .breadcrumb .breadcrumb-item.breadcrumb-item--workflow .breadcrumb-workflow-name {
+  display: block;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -15288,6 +15292,28 @@ h6 {
   background-color: rgba(248, 249, 250, 0.45);
   border: 1px dotted #d7dde3;
   border-radius: 0.5rem;
+}
+
+.workflow-file-type-option {
+  margin-bottom: 0.4rem;
+}
+
+.workflow-file-type-option__label {
+  display: inline-grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  column-gap: 0.35rem;
+  align-items: baseline;
+  max-width: 100%;
+  line-height: 1.3;
+}
+
+.workflow-file-type-option__name {
+  color: var(--bs-body-color);
+}
+
+.workflow-file-type-option__examples {
+  color: var(--bs-secondary-color);
+  font-size: 0.88em;
 }
 
 .catalog-entry-list dl dt {

@@ -53,6 +53,27 @@ def test_workflow_form_limits_projects_to_current_org():
     assert project_field.initial == default_project.pk
 
 
+def test_workflow_form_renders_allowed_file_type_examples_without_changing_values():
+    """Allowed file-type hints must be display-only.
+
+    The settings form shows extension examples next to broad file-type
+    labels. Those examples are a UX affordance, but the submitted
+    checkbox values still need to be the canonical ``SubmissionFileType``
+    values consumed by workflow launch validation.
+    """
+    form = WorkflowForm()
+
+    html = str(form["allowed_file_types"])
+
+    assert 'value="json"' in html
+    assert 'value="xml"' in html
+    assert 'value="text"' in html
+    assert 'value="name"' not in html
+    assert (
+        'class="workflow-file-type-option__examples">.txt, .csv, .ttl, .nt, .nq</span>'
+    ) in html
+
+
 def test_workflow_form_saves_selected_project():
     from validibot.submissions.constants import DataRetention
 

@@ -405,6 +405,34 @@ def test_create_view_creates_json_schema_step(client):
     )
 
 
+def test_create_view_breadcrumb_includes_workflow_without_header_subtitle(client):
+    """Add-step pages should put workflow context in breadcrumbs, not the header."""
+
+    workflow = WorkflowFactory(name="A very long workflow name for breadcrumb testing")
+    _login_for_workflow(client, workflow)
+    validator = ValidatorFactory(
+        validation_type=ValidationType.JSON_SCHEMA,
+        slug="json-breadcrumb-validator",
+    )
+
+    create_url = _select_validator(client, workflow, validator)
+    response = client.get(create_url)
+
+    assert response.status_code == HTTPStatus.OK
+    breadcrumbs = response.context["breadcrumbs"]
+    assert [str(crumb["name"]) for crumb in breadcrumbs] == [
+        "Workflows",
+        workflow.name,
+        "Add step",
+    ]
+    assert breadcrumbs[1]["url"]
+    assert breadcrumbs[1]["version_badge"]["label"] == "v1"
+
+    html = response.content.decode()
+    assert "Add workflow step" in html
+    assert "Workflow:" not in html
+
+
 def test_create_view_with_custom_validator(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
@@ -1177,6 +1205,68 @@ def test_step_list_renders_action_step(client):
     assert "Notify Slack" in html
     assert definition.get_action_category_display() in html
     assert "#alerts" in html
+
+
+def test_step_list_places_type_badge_before_step_name(client):
+    """Top-level step cards should identify the operation before the author name.
+
+    The step number is positional metadata, the validator/action badge says what
+    kind of operation runs, and the author-provided name follows. Keeping that
+    order makes validator and action cards scan consistently in the workflow
+    builder.
+    """
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ensure_validator(
+        ValidationType.JSON_SCHEMA,
+        "json-schema-card-order",
+        "JSON Schema",
+    )
+    validator_step = WorkflowStep.objects.create(
+        workflow=workflow,
+        validator=validator,
+        order=10,
+        name="Product Schema",
+        config={},
+    )
+    definition = make_action_definition(name="Slack integration")
+    action = SlackMessageAction.objects.create(
+        definition=definition,
+        name="Notify Slack",
+        message="Ping #alerts.",
+    )
+    action_step = WorkflowStep.objects.create(
+        workflow=workflow,
+        action=action,
+        order=20,
+        name="Notify Slack",
+        config={"message": "Ping #alerts."},
+    )
+
+    response = client.get(
+        reverse("workflows:workflow_step_list", args=[workflow.pk]),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    validator_card = re.search(
+        rf'data-step-id="{validator_step.id}".*?</div>\s*</div>\s*'
+        rf'<div class="workflow-step-connector"',
+        html,
+        re.S,
+    ).group(0)
+    action_card = re.search(
+        rf'data-step-id="{action_step.id}".*?</div>\s*</div>',
+        html,
+        re.S,
+    ).group(0)
+    assert validator_card.index("JSON Schema") < validator_card.index(
+        "Product Schema",
+    )
+    assert action_card.index(
+        definition.get_action_category_display(),
+    ) < action_card.index("Notify Slack")
 
 
 def test_step_list_renders_signed_credential_summary(client):

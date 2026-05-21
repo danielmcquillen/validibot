@@ -1,0 +1,18 @@
+{% load l10n %}
+
+<input type="{{ widget.type }}"
+       name="{{ widget.name }}"
+       value="{{ widget.value|unlocalize }}"
+       class="form-check-input"
+       {% include "django/forms/widgets/attrs.html" %} />
+{% if widget.wrap_label %}
+  <label class="form-check-label workflow-file-type-option__label"
+         {% if widget.attrs.id %}
+           for="{{ widget.attrs.id }}"
+         {% endif %}>
+    <span class="workflow-file-type-option__name">{{ widget.label.name }}</span>
+    {% if widget.label.examples %}
+      <span class="workflow-file-type-option__examples">{{ widget.label.examples }}</span>
+    {% endif %}
+  </label>
+{% endif %}

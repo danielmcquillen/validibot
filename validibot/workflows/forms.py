@@ -59,6 +59,24 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+class AllowedFileTypesCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
+    """Render workflow file-type choices with aligned extension hints."""
+
+    option_template_name = "workflows/widgets/allowed_file_type_option.html"
+
+
+@dataclass(frozen=True)
+class FileTypeChoiceLabel:
+    """Display label plus extension hint for the workflow file-type picker."""
+
+    name: Any
+    examples: Any
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+
 AI_TEMPLATES = (
     ("ai_critic", _("AI Critic")),
     ("policy_check", _("Policy Check")),
@@ -476,31 +494,35 @@ class WorkflowForm(forms.ModelForm):
         # Override the enum's bare labels with extension hints so authors
         # don't have to guess which broad category covers (say) ``.ttl``.
         # The enum labels stay clean in admin / API / audit surfaces;
-        # only this form sees the longer hint strings.
+        # only this form sees structured labels with muted extension hints.
+        allowed_field.widget = AllowedFileTypesCheckboxSelectMultiple()
         allowed_field.choices = [
             (
                 SubmissionFileType.JSON.value,
-                _("JSON · .json, .jsonld"),
+                FileTypeChoiceLabel(_("JSON"), _(".json, .jsonld")),
             ),
             (
                 SubmissionFileType.XML.value,
-                _("XML · .xml, .rdf, .xsd"),
+                FileTypeChoiceLabel(_("XML"), _(".xml, .rdf, .xsd")),
             ),
             (
                 SubmissionFileType.TEXT.value,
-                _("Plain Text · .txt, .csv, .ttl, .nt, .nq"),
+                FileTypeChoiceLabel(
+                    _("Plain Text"),
+                    _(".txt, .csv, .ttl, .nt, .nq"),
+                ),
             ),
             (
                 SubmissionFileType.YAML.value,
-                _("YAML · .yml, .yaml"),
+                FileTypeChoiceLabel(_("YAML"), _(".yml, .yaml")),
             ),
             (
                 SubmissionFileType.BINARY.value,
-                _("Binary · .fmu, .zip"),
+                FileTypeChoiceLabel(_("Binary"), _(".fmu, .zip")),
             ),
             (
                 SubmissionFileType.UNKNOWN.value,
-                _("Unknown (any extension)"),
+                FileTypeChoiceLabel(_("Unknown"), _("any extension")),
             ),
         ]
         # Surface the layering relationship in the help text so authors
@@ -683,7 +705,10 @@ class WorkflowForm(forms.ModelForm):
                         "submission metadata should behave."
                     ),
                 ),
-                Field("allowed_file_types"),
+                Field(
+                    "allowed_file_types",
+                    template="workflows/fields/allowed_file_types.html",
+                ),
                 Field("input_retention"),
                 Field("output_retention"),
                 Field("success_message"),

@@ -947,6 +947,16 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
             },
         )
         if self.mode == "create":
+            breadcrumbs.append(
+                self.workflow_breadcrumb_item(
+                    workflow,
+                    url=reverse_with_org(
+                        "workflows:workflow_detail",
+                        request=self.request,
+                        kwargs={"pk": workflow.pk},
+                    ),
+                ),
+            )
             breadcrumbs.append({"name": _("Add step"), "url": ""})
         else:
             step = self.get_step()

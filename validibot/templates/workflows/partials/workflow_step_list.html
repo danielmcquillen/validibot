@@ -26,9 +26,6 @@
                   {% with validator=step.validator action=step.action meta=step.action_meta %}
                     <div class="d-flex align-items-center gap-2 mb-1">
                       <span class="badge text-bg-primary">{% trans 'Step' %} {{ step.step_number }}</span>
-                      <h3 class="h6 mb-0">
-                        {{ step.name|default:_("Untitled step") }}
-                      </h3>
                       {% if validator %}
                         <span class="badge text-bg-light text-uppercase small">{{ validator.get_validation_type_display }}</span>
                       {% elif action %}
@@ -39,6 +36,9 @@
                           {{ meta.category_label|default:action.definition.get_action_category_display }}
                         </span>
                       {% endif %}
+                      <h3 class="h6 mb-0">
+                        {{ step.name|default:_("Untitled step") }}
+                      </h3>
                     </div>
                     {% if step.description %}
                       <p class="text-muted small mb-2">

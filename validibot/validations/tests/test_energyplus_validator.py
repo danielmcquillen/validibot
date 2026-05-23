@@ -7,10 +7,13 @@ import pytest
 
 from validibot.actions.protocols import RunContext
 from validibot.submissions.tests.factories import SubmissionFactory
+from validibot.validations.constants import AssertionOperator
+from validibot.validations.constants import AssertionType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.execution.registry import clear_backend_cache
+from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.energyplus.validator import EnergyPlusValidator
@@ -103,3 +106,405 @@ def test_energyplus_validator_backend_not_available():
     )
     assert result.stats is not None
     assert result.stats["implementation_status"] == "Backend not available"
+
+
+# ── End-to-end: input-stage assertion gates dispatch (ADR-2026-05-22) ─
+
+
+class TestInputStageAssertionGating:
+    """Verifies the headline promise of ADR-2026-05-22.
+
+    Input-stage assertions on EnergyPlus steps must be evaluated against
+    parser-extracted facts (``i.*`` namespace) BEFORE the container is
+    dispatched. If an ERROR-severity input-stage assertion fails, the
+    container must not run — saving the compute cost of a simulation
+    that would discover the same problem via post-processing.
+
+    These tests anchor the whole feature: a passing parser + passing
+    assertion = dispatch happens; a failing assertion = dispatch is
+    skipped, with the assertion failure surfacing as the run's findings.
+
+    Without these tests, the parser unit tests and the CEL context
+    namespace tests would pass while the feature was actually broken at
+    the runtime integration layer (which is exactly the gap the
+    May 2026 code review surfaced).
+    """
+
+    def _build_fixture(self, cel_expr: str):
+        """Set up the full Django object graph for one gating test.
+
+        Returns (engine, validator, submission, ruleset, run_context).
+
+        We use real factories rather than MagicMocks because
+        ``_build_cel_context`` issues Django ORM queries against the
+        step's primary key (StepInputBinding, StepIODefinition,
+        promoted signals). MagicMocks don't have working pks and the
+        ORM rejects them at query-build time — exactly the kind of
+        failure that surfaced when I first wrote these tests with
+        MagicMocks.
+        """
+        from validibot.validations.constants import SignalDirection
+        from validibot.validations.models import StepIODefinition
+        from validibot.validations.tests.factories import ValidationRunFactory
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        validator = ValidatorFactory(
+            validation_type=ValidationType.ENERGYPLUS,
+        )
+        StepIODefinition.objects.create(
+            validator=validator,
+            contract_key="zone_count",
+            native_name="zone_count",
+            direction=SignalDirection.INPUT,
+            data_type="number",
+            label="Zone Count",
+        )
+        ruleset = _energyplus_ruleset()
+        # CEL assertion with the expression in rhs["expr"] (this is the
+        # storage convention CEL assertions follow per the evaluator at
+        # cel.py:71). Empty target_data_path is fine — the CEL evaluator
+        # doesn't use target_data_path.
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.EQ,
+            target_data_path="",
+            severity=Severity.ERROR,
+            rhs={"expr": cel_expr},
+            message_template="Input-stage assertion failed: " + cel_expr,
+        )
+        # IDF with Version + Building + zero Zone objects. The parser
+        # extracts idf_version="25.1", north_axis_deg=0.0, zone_count=0.
+        idf_text = "Version, 25.1;\nBuilding, EmptyBuilding, 0;"
+        submission = SubmissionFactory(content=idf_text)
+
+        step = WorkflowStepFactory(validator=validator)
+        run = ValidationRunFactory(workflow=step.workflow, submission=submission)
+        run_context = RunContext(
+            validation_run=run,
+            step=step,
+            downstream_signals={},
+        )
+        engine = EnergyPlusValidator(config={})
+        return engine, validator, submission, ruleset, run_context
+
+    def _mock_backend(self):
+        """Mock backend that's available and returns a successful response.
+
+        If the input-stage gate works, this won't be called for the
+        failing-assertion test. If the gate is broken, this completes
+        successfully so the test failure clearly indicates "gate didn't
+        fire" rather than "gate fired but dispatch errored downstream."
+        """
+        from validibot.validations.services.execution.base import ExecutionResponse
+
+        mock_backend = MagicMock()
+        mock_backend.is_available.return_value = True
+        mock_backend.is_async = False
+        mock_backend.backend_name = "MockBackend"
+        mock_backend.execute.return_value = ExecutionResponse(
+            execution_id="test-exec-1",
+            is_complete=True,
+            output_envelope=None,
+            error_message=None,
+        )
+        return mock_backend
+
+    def test_passing_input_assertion_allows_dispatch(self):
+        """Why this matters: confirms the gate isn't over-eager.
+
+        When all input-stage assertions pass, validate() must proceed
+        to dispatch the container. Otherwise we'd block legitimate
+        runs and break the existing EnergyPlus user flow.
+        """
+        engine, validator, submission, ruleset, run_context = self._build_fixture(
+            cel_expr="i.zone_count >= 0",
+        )
+        clear_backend_cache()
+        with patch(
+            "validibot.validations.services.execution.get_execution_backend"
+        ) as mock_get_backend:
+            mock_backend = self._mock_backend()
+            mock_get_backend.return_value = mock_backend
+
+            result = engine.validate(
+                validator=validator,
+                submission=submission,
+                ruleset=ruleset,
+                run_context=run_context,
+            )
+
+            issue_summary = [
+                (i.severity, (i.message or "")[:140]) for i in (result.issues or [])
+            ]
+            assert mock_backend.execute.called, (
+                "Container dispatch was skipped despite all input-stage "
+                "assertions passing. The gate is over-eager — it must "
+                "only block dispatch when an ERROR-severity input-stage "
+                "assertion fails. Issues seen: " + repr(issue_summary)
+            )
+
+    def test_failing_input_assertion_blocks_dispatch(self):
+        """Why this matters: this is the headline feature.
+
+        When an ERROR-severity input-stage assertion fails on a parser
+        fact, the validator must NOT dispatch the container. The whole
+        point is to catch the problem before paying for simulation.
+
+        Without this gate, the feature is purely cosmetic: the i.*
+        namespace exists, the autocomplete shows i.zone_count, the
+        author writes an assertion against it — but the assertion
+        never fires before the (expensive, slow) simulation runs.
+        """
+        engine, validator, submission, ruleset, run_context = self._build_fixture(
+            cel_expr="i.zone_count >= 1",
+        )
+        clear_backend_cache()
+        with patch(
+            "validibot.validations.services.execution.get_execution_backend"
+        ) as mock_get_backend:
+            mock_backend = self._mock_backend()
+            mock_get_backend.return_value = mock_backend
+
+            result = engine.validate(
+                validator=validator,
+                submission=submission,
+                ruleset=ruleset,
+                run_context=run_context,
+            )
+
+            assert not mock_backend.execute.called, (
+                "Container dispatch happened despite a failing "
+                "ERROR-severity input-stage assertion. The whole point "
+                "of i.* assertions is to gate dispatch on parser facts; "
+                "if the container runs anyway, the feature is broken."
+            )
+
+        # The result should carry the failure findings so the run
+        # report tells the author what went wrong.
+        assert result.passed is False
+        assert any(issue.severity == Severity.ERROR for issue in (result.issues or []))
+        # The stats should mark dispatch as deliberately skipped (vs.
+        # an error that prevented dispatch) so debugging is unambiguous.
+        assert result.stats is not None
+        assert result.stats.get("dispatch_skipped") == "input_stage_assertion_failed"
+
+    def test_file_backed_submission_parser_reads_input_file(self):
+        """Why this matters: file-backed submissions store payload in
+        ``Submission.input_file``, not ``Submission.content``. The
+        input-stage parser must use ``submission.get_content()`` (which
+        reads from either field), NOT ``submission.content`` directly
+        (which would return empty for file uploads).
+
+        Without this fix, the most common production case (uploading an
+        IDF file via the launch form) would parse an empty payload and
+        produce wrong facts — e.g., zone_count=0 for an IDF that
+        actually has zones — silently failing or passing the input-
+        stage gate based on whichever assertion the author wrote.
+
+        This is a regression test for the May 2026 code review's P1
+        finding.
+        """
+        from django.core.files.base import ContentFile
+
+        engine, validator, submission, ruleset, run_context = self._build_fixture(
+            cel_expr="i.zone_count >= 1",  # would fail if payload parsed empty
+        )
+
+        # Re-shape the submission to be file-backed:
+        #   content="" (the default for file-uploaded submissions)
+        #   input_file=<IDF with three zones> (where the real payload lives)
+        # The fixture's default IDF has zero zones; this overrides with
+        # an IDF that has three zones so the assertion i.zone_count >= 1
+        # PASSES — proving the parser actually read the file.
+        idf_with_three_zones = (
+            "Version, 25.1;\n"
+            "Building, FileUpload, 0;\n"
+            "Zone, ZoneOne;\n"
+            "Zone, ZoneTwo;\n"
+            "Zone, ZoneThree;\n"
+        )
+        submission.content = ""
+        submission.input_file.save(
+            "test.idf",
+            ContentFile(idf_with_three_zones.encode("utf-8")),
+            save=True,
+        )
+
+        clear_backend_cache()
+        with patch(
+            "validibot.validations.services.execution.get_execution_backend"
+        ) as mock_get_backend:
+            mock_backend = self._mock_backend()
+            mock_get_backend.return_value = mock_backend
+
+            engine.validate(
+                validator=validator,
+                submission=submission,
+                ruleset=ruleset,
+                run_context=run_context,
+            )
+
+            # If the parser correctly read input_file via get_content(),
+            # zone_count is 3 and the assertion passes — dispatch
+            # proceeds. If the parser read submission.content directly
+            # (the bug), zone_count is 0, the assertion fails, and
+            # dispatch is blocked.
+            assert mock_backend.execute.called, (
+                "File-backed submission parser failed to read input_file. "
+                "Check that _resolve_input_stage_payload() uses "
+                "submission.get_content() rather than submission.content."
+            )
+
+    def test_output_filter_scopes_to_step_validator_version(self):
+        """Why this matters: prevents catalog-version drift from silently
+        dropping or admitting outputs.
+
+        ``_filter_to_catalog_outputs`` decides which keys from the
+        EnergyPlus envelope land in ``o.*``. In production, multiple
+        catalog versions co-exist briefly during a rollout — v1.0 still
+        bound to some steps, v1.1 the current default. The May 2026
+        review found that the original implementation used
+        ``Validator.objects.filter(...).first()`` and was therefore
+        non-deterministic: it could pick the wrong version and either
+        admit retired outputs or silence current ones.
+
+        This test pins the corrected behaviour: when a step's validator
+        FK points at v1.0 (which only declares ``floor_area_m2`` as an
+        OUTPUT), the filter must use that catalog — even if a newer
+        validator row (v1.1, declaring ``site_eui_kwh_m2``) also exists
+        in the database. Without the run-context scoping fix, the
+        filter would pick v1.1 (or some other arbitrary row) and drop
+        the legitimate ``floor_area_m2`` value.
+        """
+        from validibot.validations.constants import SignalDirection
+        from validibot.validations.models import StepIODefinition
+        from validibot.validations.tests.factories import ValidationRunFactory
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        # Two co-existing catalog versions. The step is bound to v1.0;
+        # the filter must honour that binding even though v1.1 is the
+        # newer row in the DB.
+        validator_v1_0 = ValidatorFactory(
+            validation_type=ValidationType.ENERGYPLUS,
+            version="1.0",
+        )
+        StepIODefinition.objects.create(
+            validator=validator_v1_0,
+            contract_key="floor_area_m2",
+            native_name="floor_area_m2",
+            direction=SignalDirection.OUTPUT,
+            data_type="number",
+            label="Floor Area",
+        )
+        validator_v1_1 = ValidatorFactory(
+            validation_type=ValidationType.ENERGYPLUS,
+            version="1.1",
+        )
+        StepIODefinition.objects.create(
+            validator=validator_v1_1,
+            contract_key="site_eui_kwh_m2",
+            native_name="site_eui_kwh_m2",
+            direction=SignalDirection.OUTPUT,
+            data_type="number",
+            label="Site EUI",
+        )
+
+        step = WorkflowStepFactory(validator=validator_v1_0)
+        run = ValidationRunFactory(workflow=step.workflow)
+        run_context = RunContext(
+            validation_run=run,
+            step=step,
+            downstream_signals={},
+        )
+
+        engine = EnergyPlusValidator(config={})
+        engine.run_context = run_context
+
+        # Raw envelope contains BOTH keys. The filter should keep only
+        # the one declared by v1.0 (this step's validator).
+        raw_metrics = {
+            "floor_area_m2": 250.0,
+            "site_eui_kwh_m2": 87.5,
+        }
+        filtered = engine._filter_to_catalog_outputs(raw_metrics)
+        assert filtered == {"floor_area_m2": 250.0}, (
+            "Output filter ignored the step's bound validator version. "
+            "v1.0 of the catalog only declares floor_area_m2, but the "
+            "filter included site_eui_kwh_m2 (declared by v1.1). "
+            "Check _resolve_catalog_validator() — it must read "
+            "self.run_context.step.validator, not pick an arbitrary row."
+        )
+
+    def test_promoted_input_not_visible_in_producing_step(self):
+        """Why this matters: enforces ADR-2026-05-22b's downstream-only rule.
+
+        Inside the producing step, the author references step inputs
+        via ``i.<name>``, never the promoted ``s.<promoted_name>``
+        form. The promoted form is for downstream steps only.
+
+        Without this guard, the producing step's own assertion
+        evaluation could see its own promoted input via ``s.*`` —
+        because input persistence to ``run.summary["steps"][key]["input"]``
+        runs DURING the producing step's input stage, and a naive
+        promoted-signals query would match the producing step's own
+        rows. That would violate the temporal rule and confuse the
+        author about when ``s.*`` actually becomes available.
+
+        Regression test for the May 2026 code review's P1 finding.
+        """
+        from validibot.validations.constants import SignalDirection
+        from validibot.validations.models import StepIODefinition
+
+        engine, validator, submission, ruleset, run_context = self._build_fixture(
+            cel_expr="i.zone_count >= 0",
+        )
+
+        # Promote the step input on the SAME step we're about to
+        # validate. The promoted name is "zone_count" — if the
+        # downstream-only rule is broken, the assertion's CEL context
+        # would contain s.zone_count for this step too. We don't
+        # assert against s.* directly in this test (would require a
+        # second assertion); the regression we're guarding is the
+        # SQL query that drives _inject_promoted_outputs.
+        sig = StepIODefinition.objects.get(
+            validator=validator,
+            contract_key="zone_count",
+            direction=SignalDirection.INPUT,
+        )
+        sig.promoted_signal_name = "zone_count"
+        sig.save(update_fields=["promoted_signal_name"])
+
+        clear_backend_cache()
+        with patch(
+            "validibot.validations.services.execution.get_execution_backend"
+        ) as mock_get_backend:
+            mock_backend = self._mock_backend()
+            mock_get_backend.return_value = mock_backend
+
+            engine.validate(
+                validator=validator,
+                submission=submission,
+                ruleset=ruleset,
+                run_context=run_context,
+            )
+
+            # Inspect what _build_cel_context produced for this step:
+            # the signals_dict (s.*) should NOT contain "zone_count"
+            # because the only promotion is on this same step. The
+            # downstream-only filter (workflow_step__order__lt) must
+            # exclude self-promotions during the producing step.
+            cel_context = engine._build_cel_context(
+                payload=engine._resolve_input_stage_payload(submission),
+                validator=validator,
+                stage="input",
+            )
+            signals_dict = cel_context.get("s") or {}
+            assert "zone_count" not in signals_dict, (
+                "Self-promotion leaked into s.* during the producing "
+                "step. The downstream-only rule requires that promoted "
+                "values are visible only in steps with order > the "
+                "producing step's order. Check that "
+                "_inject_promoted_outputs filters by "
+                "workflow_step__order__lt=current_step.order."
+            )

@@ -433,7 +433,7 @@ def build_input_envelope(
 
         # Resolve FMU input values and output variable names.
         #
-        # New path: when the step has StepSignalBinding rows (from Phase 3
+        # New path: when the step has StepInputBinding rows (from Phase 3
         # FMU signal sync), resolve inputs via the binding's source_data_path
         # against the submission payload. This enables nested path resolution
         # (e.g., "building.envelope.panel_area") and audit tracing.
@@ -537,13 +537,13 @@ def build_input_envelope(
                     run.id,
                 )
 
-        # Extract output variable names: prefer SignalDefinition rows,
+        # Extract output variable names: prefer StepIODefinition rows,
         # fall back to step config JSON.
         from validibot.validations.constants import SignalDirection
         from validibot.validations.constants import SignalOriginKind
-        from validibot.validations.models import SignalDefinition
+        from validibot.validations.models import StepIODefinition
 
-        output_sigs = SignalDefinition.objects.filter(
+        output_sigs = StepIODefinition.objects.filter(
             workflow_step=step,
             direction=SignalDirection.OUTPUT,
             origin_kind=SignalOriginKind.FMU,

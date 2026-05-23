@@ -33,6 +33,24 @@ from validibot.workflows.views_helpers import ensure_advanced_ruleset
 logger = logging.getLogger(__name__)
 
 
+def _is_parser_managed(sig) -> bool:
+    """Return True when a StepIODefinition is parser-managed.
+
+    Parser-managed rows have their value populated by the validator
+    itself (via ``extract_input_signals()`` or another internal source)
+    rather than by an author-configured ``StepInputBinding``. Such rows
+    are unreachable from BASIC assertions because BASIC walks a dotted
+    payload path; they're only valid CEL targets via ``i.<contract_key>``.
+
+    The flag is consistent with ``views_helpers.build_step_signals_view``
+    which uses the same heuristic to decide whether the UI should
+    surface binding / "needs path" affordances.
+    """
+    return getattr(sig, "source_kind", "") == "internal" or not getattr(
+        sig, "is_path_editable", True
+    )
+
+
 class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
     """
     Reusable helpers for workflow UI views.
@@ -274,49 +292,87 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
             )
         return ruleset
 
-    def get_catalog_choices(self):
-        if hasattr(self, "_catalog_choice_cache"):
-            return self._catalog_choice_cache
+    def get_catalog_choices(self, stage: str | None = None):
+        """Build the assertion-target autocomplete list, optionally filtered by stage.
+
+        Per ADR-2026-05-22, the autocomplete is stage-aware:
+
+        - ``stage="input"`` — input-stage assertion: shows ``p.*``,
+          ``s.*``, ``i.*``, and upstream steps via ``steps.<key>.*``,
+          but NOT this step's ``o.*`` (the validator hasn't run yet).
+        - ``stage="output"`` (or ``None`` for backward compatibility) —
+          output-stage assertion: shows everything including this step's
+          ``o.*`` and ``i.*``.
+
+        Cache key includes stage so input- and output-stage callers
+        don't collide.
+        """
+        cache_key = f"_catalog_choice_cache_{stage or 'all'}"
+        if hasattr(self, cache_key):
+            return getattr(self, cache_key)
         from validibot.validations.constants import SignalDirection
-        from validibot.validations.models import SignalDefinition
+        from validibot.validations.models import StepIODefinition
         from validibot.workflows.models import WorkflowSignalMapping
 
         validator = self.step.validator
         choices: list[tuple[str, str]] = []
         signal_defs: list = []
+        include_outputs = stage != "input"  # input-stage excludes this step's o.*
+        include_inputs = True  # i.* available at both stages
 
-        # Collect all signal definitions (needed by the form for
-        # outputs_by_slug resolution), but only show OUTPUTS in the
-        # datalist.  Input signals are not directly targetable —
-        # assertions should target the source data (s.name or p.path).
+        # ── This validator's catalog-declared step inputs and outputs ──
+        # Step inputs (direction=INPUT) populate i.* via the validator's
+        # extract_input_signals() parser hook or via resolved bindings.
+        # Step outputs (direction=OUTPUT) populate o.* after the
+        # validator's process runs.
+        #
+        # Parser-managed inputs (source_kind=internal or
+        # is_path_editable=False) get a "(CEL only)" suffix in their
+        # autocomplete label — BASIC evaluators can't reach them, so
+        # surfacing that here heads off the UX trap where an author
+        # picks ``i.zone_count`` for a BASIC assertion and only
+        # discovers it's unreachable at form submission time
+        # (rejected by RulesetAssertionForm.clean). See the May 2026
+        # review's P2 finding.
         if validator:
             signal_defs = list(
                 validator.signal_definitions.order_by("order", "contract_key")
             )
             for sig in signal_defs:
-                if sig.direction == SignalDirection.OUTPUT:
+                if sig.direction == SignalDirection.OUTPUT and include_outputs:
                     choices.append(
                         (
                             f"o.{sig.contract_key}",
-                            f"{sig.label or sig.contract_key} · {_('Output')}",
+                            f"{sig.label or sig.contract_key} · {_('Step output')}",
                         ),
                     )
+                elif sig.direction == SignalDirection.INPUT and include_inputs:
+                    base_label = f"{sig.label or sig.contract_key} · {_('Step input')}"
+                    if _is_parser_managed(sig):
+                        base_label = f"{base_label} ({_('CEL only')})"
+                    choices.append((f"i.{sig.contract_key}", base_label))
 
+        # ── Step-owned catalog entries (e.g. FMU probe results, template scans) ──
         step_sigs = list(self.step.signal_definitions.order_by("order", "contract_key"))
         seen = {(sig.contract_key, sig.direction) for sig in signal_defs}
         for sig in step_sigs:
             if (sig.contract_key, sig.direction) in seen:
                 continue
             seen.add((sig.contract_key, sig.direction))
-            if sig.direction == SignalDirection.OUTPUT:
-                display_name = sig.label or sig.native_name or sig.contract_key
+            display_name = sig.label or sig.native_name or sig.contract_key
+            if sig.direction == SignalDirection.OUTPUT and include_outputs:
                 choices.append(
-                    (f"o.{sig.contract_key}", f"{display_name} · {_('Output')}"),
+                    (f"o.{sig.contract_key}", f"{display_name} · {_('Step output')}"),
                 )
+            elif sig.direction == SignalDirection.INPUT and include_inputs:
+                base_label = f"{display_name} · {_('Step input')}"
+                if _is_parser_managed(sig):
+                    base_label = f"{base_label} ({_('CEL only')})"
+                choices.append((f"i.{sig.contract_key}", base_label))
             signal_defs.append(sig)
 
-        # Workflow-level signal mappings appear as s.<name> so authors
-        # can target resolved signal values in input-stage assertions.
+        # ── Workflow-level signal mappings appear as s.<name> ──
+        # Available at both stages.
         workflow = self.step.workflow
         seen_signal_names: set[str] = set()
         for mapping in (
@@ -328,29 +384,51 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
             seen_signal_names.add(name)
             choices.append((f"s.{name}", f"{name} · {_('Signal')}"))
 
-        # Promoted outputs from upstream steps also live in the s.*
-        # namespace and are valid assertion targets.
-        promoted = (
-            SignalDefinition.objects.filter(
+        # ── Promoted step inputs/outputs from upstream steps ──
+        # Per ADR-2026-05-22b's temporal rule, promoted values from
+        # upstream steps (any direction) live in s.* and are visible to
+        # this step at both input and output stages.
+        #
+        # Two sources, matching the runtime injection in
+        # _inject_promoted_outputs:
+        #
+        # 1. In-row promotions on step-owned StepIODefinitions.
+        # 2. WorkflowStepIOPromotion overlays on validator-owned
+        #    StepIODefinitions (May 2026 P1 fix).
+        from validibot.validations.models import WorkflowStepIOPromotion
+
+        promoted_step_owned = (
+            StepIODefinition.objects.filter(
                 workflow_step__workflow=workflow,
                 workflow_step__order__lt=self.step.order,
-                direction=SignalDirection.OUTPUT,
             )
-            .exclude(signal_name="")
-            .values_list("signal_name", flat=True)
+            .exclude(promoted_signal_name="")
+            .values_list("promoted_signal_name", "direction")
         )
-        for signal_name in promoted:
+        promoted_overlay = WorkflowStepIOPromotion.objects.filter(
+            workflow_step__workflow=workflow,
+            workflow_step__order__lt=self.step.order,
+        ).values_list(
+            "promoted_signal_name",
+            "signal_definition__direction",
+        )
+
+        for signal_name, direction in list(promoted_step_owned) + list(
+            promoted_overlay,
+        ):
             if signal_name not in seen_signal_names:
                 seen_signal_names.add(signal_name)
+                source_label = (
+                    _("Promoted step input")
+                    if direction == SignalDirection.INPUT
+                    else _("Promoted step output")
+                )
                 choices.append(
-                    (
-                        f"s.{signal_name}",
-                        f"{signal_name} · {_('Promoted output')}",
-                    ),
+                    (f"s.{signal_name}", f"{signal_name} · {source_label}"),
                 )
 
         self._catalog_entries_cache = signal_defs
-        self._catalog_choice_cache = choices
+        setattr(self, cache_key, choices)
         self._workflow_signal_names_cache = seen_signal_names
         return choices
 

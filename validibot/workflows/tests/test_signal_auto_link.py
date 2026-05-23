@@ -7,7 +7,7 @@ on an unmapped validator input, the view:
 
 1. Looks for a ``WorkflowSignalMapping`` whose ``name`` matches the
    signal definition's ``contract_key``.
-2. If found, creates or updates the ``StepSignalBinding`` to set
+2. If found, creates or updates the ``StepInputBinding`` to set
    ``source_scope`` to SIGNAL and ``source_data_path`` to the signal name.
 3. If not found, returns a warning message.
 
@@ -32,8 +32,8 @@ from validibot.users.tests.utils import ensure_all_roles_exist
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import ValidationType
-from validibot.validations.models import SignalDefinition
-from validibot.validations.models import StepSignalBinding
+from validibot.validations.models import StepInputBinding
+from validibot.validations.models import StepIODefinition
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.models import WorkflowSignalMapping
 from validibot.workflows.tests.factories import WorkflowFactory
@@ -53,7 +53,7 @@ def _login_as_author(client: Client, workflow):
 
 
 def _create_step_with_input(workflow):
-    """Create a workflow step with an input SignalDefinition.
+    """Create a workflow step with an input StepIODefinition.
 
     Returns (step, signal_def) where signal_def has
     ``contract_key="panel_area"`` and direction INPUT.
@@ -68,7 +68,7 @@ def _create_step_with_input(workflow):
         validator=validator,
         order=10,
     )
-    signal_def = SignalDefinition.objects.create(
+    signal_def = StepIODefinition.objects.create(
         workflow_step=step,
         contract_key="panel_area",
         direction=SignalDirection.INPUT,
@@ -122,7 +122,7 @@ class TestAutoLinkSuccess(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["HX-Refresh"], "true")
 
-        binding = StepSignalBinding.objects.get(
+        binding = StepInputBinding.objects.get(
             workflow_step=step,
             signal_definition=signal_def,
         )
@@ -143,7 +143,7 @@ class TestAutoLinkSuccess(TestCase):
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         step, signal_def = _create_step_with_input(workflow)
-        StepSignalBinding.objects.create(
+        StepInputBinding.objects.create(
             workflow_step=step,
             signal_definition=signal_def,
             source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
@@ -160,7 +160,7 @@ class TestAutoLinkSuccess(TestCase):
         response = self.client.post(url)
 
         self.assertEqual(response.status_code, 200)
-        binding = StepSignalBinding.objects.get(
+        binding = StepInputBinding.objects.get(
             workflow_step=step,
             signal_definition=signal_def,
         )
@@ -168,7 +168,7 @@ class TestAutoLinkSuccess(TestCase):
         self.assertEqual(binding.source_scope, BindingSourceScope.SIGNAL)
         # Only one binding should exist (no duplicate).
         self.assertEqual(
-            StepSignalBinding.objects.filter(
+            StepInputBinding.objects.filter(
                 workflow_step=step,
                 signal_definition=signal_def,
             ).count(),
@@ -212,7 +212,7 @@ class TestAutoLinkNoMatch(TestCase):
 
         # No binding should have been created.
         self.assertFalse(
-            StepSignalBinding.objects.filter(
+            StepInputBinding.objects.filter(
                 workflow_step=step,
                 signal_definition=signal_def,
             ).exists(),
@@ -276,7 +276,7 @@ class TestAutoLinkAccessControl(TestCase):
             validator=validator2,
             order=20,
         )
-        other_signal = SignalDefinition.objects.create(
+        other_signal = StepIODefinition.objects.create(
             workflow_step=other_step,
             contract_key="other_signal",
             direction=SignalDirection.INPUT,

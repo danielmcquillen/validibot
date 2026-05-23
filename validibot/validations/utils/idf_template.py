@@ -36,7 +36,7 @@ class TemplateVariableLike(Protocol):
     """Protocol for objects that can be used as template variable metadata.
 
     Satisfied by both the Pydantic ``TemplateVariable`` model (legacy)
-    and simple objects/dataclasses built from ``SignalDefinition`` metadata.
+    and simple objects/dataclasses built from ``StepIODefinition`` metadata.
     """
 
     name: str

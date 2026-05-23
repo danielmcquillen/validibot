@@ -45,9 +45,8 @@ class CustomValidator(AdvancedValidator):
     def validator_display_name(self) -> str:
         return "Custom"
 
-    @classmethod
     def extract_output_signals(
-        cls,
+        self,
         output_envelope: Any,
     ) -> dict[str, Any] | None:
         """
@@ -57,6 +56,10 @@ class CustomValidator(AdvancedValidator):
         ``outputs.signals`` as a flat dict. If the container uses a
         different structure, this method should be extended or the
         container should conform to the convention.
+
+        Declared as an instance method to match the base contract — custom
+        validators don't currently need run context for extraction, but
+        consistency with EnergyPlus and FMU avoids surprises.
 
         Args:
             output_envelope: Output envelope from the custom container.

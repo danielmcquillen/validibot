@@ -20,6 +20,13 @@ after another 3rem gap.
       {% endwith %}
     {% endif %}
     {% if toolbar.grey_actions %}
+      {% comment %}
+      Class string kept on a single line so the rendered HTML contains
+      the contiguous "d-flex flex-wrap gap-2 ms-5" token expected by the
+      toolbar layout test. Django preserves whitespace inside attribute
+      values, so multi-line if blocks would inject newlines/indentation
+      that break substring assertions.
+      {% endcomment %}
       <div class="d-flex flex-wrap gap-2
                   {% if toolbar.launch_action %}
                     ms-5
@@ -54,6 +61,10 @@ after another 3rem gap.
       </div>
     {% endif %}
     {% if toolbar.destructive_actions %}
+      {% comment %}
+      Single-line class string — see the comment on the grey-actions
+      block above for why we don't span the if across multiple lines here.
+      {% endcomment %}
       <div class="d-flex flex-wrap gap-2
                   {% if toolbar.launch_action or toolbar.grey_actions %}
                     ms-5

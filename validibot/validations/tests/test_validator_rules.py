@@ -13,21 +13,21 @@ from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorRuleType
 from validibot.validations.models import RulesetAssertion
-from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.utils import create_custom_validator
 
 
 @pytest.mark.django_db
 def test_default_assertion_nulls_signal_on_delete():
-    """Deleting a SignalDefinition nulls the FK on referencing assertions (SET_NULL).
+    """Deleting a StepIODefinition nulls the FK on referencing assertions (SET_NULL).
 
     The target_signal_definition FK uses SET_NULL so that deleting a signal
     does not cascade-delete or block deletion of assertions. After deletion
     the assertion still exists but its target_signal_definition is None.
     """
     validator = ValidatorFactory()
-    signal = SignalDefinitionFactory(validator=validator, contract_key="foo")
+    signal = StepIODefinitionFactory(validator=validator, contract_key="foo")
     default_ruleset = validator.ensure_default_ruleset()
     RulesetAssertion.objects.create(
         ruleset=default_ruleset,
@@ -107,7 +107,7 @@ def test_default_assertion_allows_boolean_literal(client):
     session.save()
 
     validator = ValidatorFactory(org=org, is_system=False)
-    SignalDefinitionFactory(validator=validator, contract_key="bool_in")
+    StepIODefinitionFactory(validator=validator, contract_key="bool_in")
 
     response = client.post(
         reverse(

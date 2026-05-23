@@ -29,7 +29,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.models import ValidationFinding
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
@@ -57,7 +57,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,
         )
-        self.output_sig = SignalDefinitionFactory(
+        self.output_sig = StepIODefinitionFactory(
             validator=self.validator,
             contract_key="site_eui_kwh_m2",
             label="Site EUI (kWh/m²)",

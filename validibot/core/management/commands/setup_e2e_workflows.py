@@ -46,7 +46,7 @@ from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
-from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorResourceFile
 from validibot.workflows.models import Workflow
@@ -364,7 +364,7 @@ class Command(BaseCommand):
             (target_signal_definition is None, target_data_path is set)
         """
         # Assertion 1: window heat loss threshold
-        heat_loss_signal = SignalDefinition.objects.filter(
+        heat_loss_signal = StepIODefinition.objects.filter(
             validator=validator,
             contract_key="window_heat_loss_kwh",
         ).first()

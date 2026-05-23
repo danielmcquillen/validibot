@@ -192,6 +192,11 @@ urlpatterns = [
         name="workflow_step_outputs_partial",
     ),
     path(
+        "<int:pk>/steps/<int:step_id>/inputs-partial/",
+        views.WorkflowStepInputsPartialView.as_view(),
+        name="workflow_step_inputs_partial",
+    ),
+    path(
         "<int:pk>/steps/<int:step_id>/delete/",
         views.WorkflowStepDeleteView.as_view(),
         name="workflow_step_delete",
@@ -262,7 +267,7 @@ urlpatterns = [
         signal_mapping.WorkflowSignalMappingSampleDataView.as_view(),
         name="workflow_signal_mapping_sample_data",
     ),
-    # Output promotion — toggle signal_name on a SignalDefinition
+    # Output promotion — toggle signal_name on a StepIODefinition
     path(
         "<int:pk>/steps/<int:step_id>/signals/<int:signal_id>/promote/",
         signal_mapping.WorkflowStepPromoteOutputView.as_view(),

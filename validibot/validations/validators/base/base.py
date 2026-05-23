@@ -230,10 +230,38 @@ class BaseValidator(ABC):
         """
         return dict(self.cel_helpers)
 
-    # -------------------------------------------------------- Output signal extraction
+    # ------------------------------------- Step input/output signal extraction
 
     @classmethod
-    def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
+    def extract_input_signals(cls, payload: Any) -> dict[str, Any] | None:
+        """
+        Extract input-stage step inputs from the submission payload.
+
+        Validators that parse an arcane payload format (EnergyPlus IDF,
+        future codecs for IFC / gbXML / etc.) override this to expose
+        parsed facts. The returned dict is keyed by catalog
+        ``contract_key`` and populates the ``i.*`` namespace in CEL
+        assertions evaluated at input stage.
+
+        Most validators don't parse — schema validators check structure
+        directly, parser-evaluation validators do their work in one pass
+        and emit outputs only. The base default returns None, which
+        leaves ``i.*`` empty for those validators (honest reflection of
+        the validator complexity spectrum from ADR-2026-05-22b).
+
+        Called after ``preprocess_submission()`` so template-mode
+        submissions are parsed against the resolved payload.
+
+        Args:
+            payload: The submission payload.
+
+        Returns:
+            Dict mapping catalog ``contract_key`` to extracted values,
+            or None.
+        """
+        return None
+
+    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
         """
         Extract assertion signals from an output envelope for assertion evaluation.
 
@@ -241,8 +269,14 @@ class BaseValidator(ABC):
         domain-specific structures containing simulation results. This method
         extracts the signals that can be referenced in output-stage assertions.
 
-        Override this in subclasses to handle validator-specific envelope structures.
-        The base implementation returns None (no signals available).
+        Override this in subclasses to handle validator-specific envelope
+        structures. The base implementation returns None (no signals
+        available).
+
+        This is an instance method (not a classmethod) so subclasses can
+        reach ``self.run_context`` to scope catalog lookups against the
+        exact validator row bound to the current step — important when
+        multiple catalog versions co-exist in the database.
 
         Args:
             output_envelope: The typed Pydantic envelope from
@@ -291,23 +325,40 @@ class BaseValidator(ABC):
         """
         Build the namespaced CEL context for assertion evaluation.
 
-        The context has four namespaces, three with short/long aliases.
-        Singular long names are used throughout (``payload``, ``signal``,
-        ``output``) — each namespace is a singular "thing" from the
-        author's perspective, even when the underlying dict holds
-        many values. ``steps`` is the one exception because it really
-        is a collection of per-step records.
+        Per ADR-2026-05-22b, the context has FIVE namespaces, four
+        with short/long aliases. Singular long names are used
+        throughout (``payload``, ``signal``, ``input``, ``output``) —
+        each namespace is a singular "thing" from the author's
+        perspective, even when the underlying dict holds many
+        values. ``steps`` is the one exception because it really is
+        a collection of per-step records.
 
-        - ``p`` / ``payload`` — raw submission data (or validator output
-          payload for output-stage assertions). Always present.
-        - ``s`` / ``signal`` — author-defined signals from workflow-level
-          signal mapping and promoted validator outputs. Populated from
-          ``RunContext.workflow_signals`` and step-bound input signal
-          bindings.
-        - ``o`` / ``output`` — this step's declared output signals (from
-          ``SignalDefinition`` with ``direction="output"``).
-        - ``steps`` — validator outputs from completed upstream steps,
-          accessible as ``steps.<step_key>.output.<name>``.
+        - ``p`` / ``payload`` — raw submission data (or validator
+          output payload for output-stage assertions). Always
+          present.
+        - ``s`` / ``signal`` — workflow vocabulary. Populated from
+          ``RunContext.workflow_signals`` (the
+          ``WorkflowSignalMapping`` rows resolved at run start) AND
+          from upstream promotions injected by
+          ``_inject_promoted_outputs`` (both in-row
+          ``promoted_signal_name`` on step-owned ``StepIODefinition``
+          rows and the ``WorkflowStepIOPromotion`` overlay rows on
+          validator-owned ones). Per ADR-2026-05-22b's symmetric
+          promotion, both INPUT- and OUTPUT-direction definitions
+          can promote.
+        - ``i`` / ``input`` — step-local input values for the
+          current step. Populated from parser-extracted facts
+          (``extract_input_signals``) and resolved
+          ``StepInputBinding`` rows. **Step inputs live here, not
+          in s.*** — the form's CEL identifier validator rejects
+          ``s.<step_input>`` references because they would silently
+          read null.
+        - ``o`` / ``output`` — this step's declared output values
+          (from ``StepIODefinition`` rows with ``direction="output"``,
+          populated by ``extract_output_signals``).
+        - ``steps`` — both inputs and outputs from completed upstream
+          steps, accessible as ``steps.<step_key>.input.<name>`` and
+          ``steps.<step_key>.output.<name>``.
 
         Raw payload keys are **never promoted** to top-level CEL
         variables. Authors access raw data via ``p.key`` (or
@@ -327,17 +378,23 @@ class BaseValidator(ABC):
         if isinstance(wf_signals, dict):
             signals_dict.update(wf_signals)
 
-        # NOTE: Step-bound input signals (StepSignalBinding rows) are NOT
-        # injected into the s.* namespace.  Validator inputs feed the
-        # validator (FMU/EnergyPlus parameters), not CEL expressions.
-        # The s.* namespace only contains:
-        # - Workflow-level signals (from WorkflowSignalMapping)
-        # - Promoted validator outputs (from SignalDefinition.signal_name)
+        # NOTE: Step inputs (whether parser-extracted or
+        # StepInputBinding-resolved) are NOT injected into the s.*
+        # namespace — they live in the dedicated i.* namespace
+        # (populated further down in this method). The s.* namespace
+        # ONLY contains:
         #
-        # Authors reference payload data via p.key and signals via s.name.
-        # Step-bound input resolution (_resolve_bound_input_context) is
-        # still used by the validator's internal parameter binding, but
-        # those values are NOT exposed in CEL.
+        # - Workflow-level signals (from WorkflowSignalMapping)
+        # - Promoted step inputs and outputs, both step-owned (via the
+        #   in-row ``promoted_signal_name`` field) and validator-owned
+        #   (via the WorkflowStepIOPromotion overlay table) — see
+        #   ``_inject_promoted_outputs`` below.
+        #
+        # Authors reference payload data via p.key, workflow vocabulary
+        # via s.name, and step-local input/output values via i.name /
+        # o.name. The form-side CEL identifier validator rejects
+        # s.<step_input> references that would resolve to null at
+        # runtime (see ``_validate_cel_identifiers``).
 
         # ── Output namespace (o / output) ────────────────────────────
         # For output-stage assertions, the payload IS the validator
@@ -360,10 +417,59 @@ class BaseValidator(ABC):
                 output_dict[sig.contract_key] = value if found else None
 
         # NOTE: Declared input signal definitions are NOT injected into
-        # the s.* namespace. They are validator inputs, not author-
-        # defined signals.
+        # the s.* namespace. They are step inputs (validator-defined
+        # contracts), not author-defined signals. Step inputs live in
+        # the dedicated i.* namespace built below.
 
-        # ── Steps namespace (downstream step outputs) ────────────────
+        # ── Input namespace (i / input) ──────────────────────────────
+        # Step-local input values available at the start of the step.
+        # Populated from two sources:
+        #   1. Parser-extracted facts via extract_input_signals() —
+        #      validators that parse an arcane format (EnergyPlus IDF,
+        #      future codecs) override the classmethod to return a dict
+        #      keyed by catalog contract_key.
+        #   2. Pre-resolved StepInputBinding values (contract-keyed)
+        #      cached on the run context by the input-resolution
+        #      pipeline (see resolve_step_input_signals).
+        #
+        # For built-in validators that don't parse and don't take
+        # bindings (JSON Schema, XML Schema, Basic), i.* stays empty
+        # — that's the honest reflection per the validator complexity
+        # spectrum from ADR-2026-05-22b.
+        inputs_dict: dict[str, Any] = {}
+
+        # Pre-resolved contract-keyed binding values (set by the input
+        # resolution pipeline before the container runs). See ADR-2026-05-22.
+        bound_contract_values = getattr(
+            getattr(self, "run_context", None),
+            "step_input_contract_values",
+            None,
+        )
+        if isinstance(bound_contract_values, dict):
+            inputs_dict.update(bound_contract_values)
+
+        # Parser-extracted facts via the validator's extract_input_signals
+        # classmethod. Default returns None (most validators don't parse).
+        # Called only at input stage where the payload is the raw submission.
+        # At output stage the payload is the validator output envelope, not
+        # the original submission, so we don't re-parse.
+        if stage == "input":
+            try:
+                parsed = self.extract_input_signals(payload)
+            except Exception:
+                # Parser failures must not break assertion evaluation —
+                # they surface as findings via the validator's normal
+                # error path. The i.* namespace stays empty for the
+                # signals the parser couldn't produce.
+                parsed = None
+            if isinstance(parsed, dict):
+                # Parser facts win over bindings only when not already set —
+                # explicit bindings take precedence over implicit parser
+                # extraction (the author opted into the binding).
+                for key, value in parsed.items():
+                    inputs_dict.setdefault(key, value)
+
+        # ── Steps namespace (upstream step inputs and outputs) ───────
         steps_context: dict[str, Any] = {}
         run_summary = getattr(
             getattr(self, "run_context", None),
@@ -380,22 +486,33 @@ class BaseValidator(ABC):
         if isinstance(downstream_override, dict) and downstream_override:
             steps_context = downstream_override
 
-        # ── Promoted output signals ──────────────────────────────────
-        # Validator outputs with a non-empty signal_name are promoted
-        # to the s namespace.  Reconstructed from completed step outputs
-        # in the run summary + promotion definitions on SignalDefinition.
+        # ── Promoted step inputs and outputs ─────────────────────────
+        # Step inputs/outputs with a non-empty promoted_signal_name
+        # (in-row for step-owned definitions OR overlay row for
+        # validator-owned ones) are surfaced in the s namespace.
+        # Reconstructed from completed upstream step inputs/outputs
+        # in the run summary; the method name retains its legacy
+        # ``_outputs`` suffix for low-churn reasons even though it
+        # handles both directions per ADR-2026-05-22b.
         if steps_context:
             self._inject_promoted_outputs(signals_dict, steps_context)
 
         # ── Assemble the context ─────────────────────────────────────
         # All namespace roots are always present (even if empty) so CEL
         # expressions can reference them without undefined-variable
-        # errors.
+        # errors. Five namespaces with their long-form aliases:
+        #   p / payload   — raw submission data
+        #   s / signal    — workflow vocabulary
+        #   i / input     — step-local input-stage values
+        #   o / output    — step-local output-stage values
+        #   steps         — cross-step inputs and outputs
         context: dict[str, Any] = {
             "p": payload,
             "payload": payload,
             "s": signals_dict,
             "signal": signals_dict,
+            "i": inputs_dict,
+            "input": inputs_dict,
             "o": output_dict,
             "output": output_dict,
             "steps": steps_context if steps_context else {},
@@ -407,17 +524,42 @@ class BaseValidator(ABC):
         signals_dict: dict[str, Any],
         steps_context: dict[str, Any],
     ) -> None:
-        """Inject promoted validator outputs into the signals namespace.
+        """Inject promoted step inputs and outputs into the ``s.*`` namespace.
 
-        Scans ``SignalDefinition`` rows with non-empty ``signal_name``
-        across all steps in the current workflow, then looks up each
-        output's value from the completed step outputs in the run
-        summary.  If a value is found, it is injected into
-        ``signals_dict`` under the promoted signal name.
+        Scans two sources of workflow-scoped promotions across all
+        upstream steps in the current workflow and injects their
+        resolved values into ``signals_dict``:
 
-        This runs on every step (not just once at run start) because
-        promoted outputs are only available after the producing step
-        completes.
+        1. **In-row** promotions on step-owned ``StepIODefinition``
+           rows (the ``promoted_signal_name`` field).
+        2. **Overlay** promotions on validator-owned rows
+           (``WorkflowStepIOPromotion`` rows keyed on
+           ``(workflow_step, signal_definition)``).
+
+        Both sources read from completed upstream steps in
+        ``run.summary["steps"]``, but the **direction** of the
+        promotion picks which subkey to read from:
+
+        - INPUT-direction promotions read from
+          ``run.summary["steps"][step_key]["input"][contract_key]``
+          — populated by the producing step's input stage from
+          parser facts and resolved bindings.
+        - OUTPUT-direction promotions read from
+          ``run.summary["steps"][step_key]["output"][contract_key]``
+          — populated after the producing step's container or
+          inline work completes.
+
+        The method name still reads ``_inject_promoted_outputs`` for
+        historical reasons (it originally only handled outputs); per
+        ADR-2026-05-22b's symmetric promotion it now handles INPUT
+        and OUTPUT directions uniformly.
+
+        Runs on every step (not just once at run start) because
+        promoted values only become available after each producing
+        step completes its relevant stage. The downstream-only
+        filter (``workflow_step__order__lt=current_step.order``)
+        enforces the ADR's temporal rule — a step never sees its
+        own promotion.
         """
         step = getattr(getattr(self, "run_context", None), "step", None)
         if not step:
@@ -426,30 +568,121 @@ class BaseValidator(ABC):
         if not workflow:
             return
 
-        from validibot.validations.models import SignalDefinition
+        from validibot.validations.models import StepIODefinition
+        from validibot.validations.models import WorkflowStepIOPromotion
 
-        promoted = (
-            SignalDefinition.objects.filter(
-                workflow_step__workflow=workflow,
-                direction=SignalDirection.OUTPUT,
+        # Per ADR-2026-05-22b's symmetric promotion: ANY direction
+        # StepIODefinition with a non-empty promoted_signal_name
+        # promotes its value into the s.* workflow vocabulary.
+        # Previously this query filtered to direction=OUTPUT, which
+        # silently broke input promotion. Reading both directions
+        # makes input promotion actually work.
+        #
+        # ── Downstream-only rule (ADR-2026-05-22b temporal rule) ──
+        # Promoted values are visible ONLY in steps that begin
+        # execution after the producing step completes its relevant
+        # stage. Without this filter, a step could see its own
+        # promoted input via s.<name> during its own assertion
+        # evaluation — because i.* is persisted to run.summary during
+        # the producing step's input stage, and this query would
+        # match the producing step's promoted definitions. That would
+        # violate the ADR's "inside the producing step use i./o.;
+        # downstream use s." rule. The order__lt filter restricts
+        # injection to definitions on upstream steps only.
+        #
+        # ── Two promotion sources (May 2026 P1 fix) ──
+        # Promotions live in two tables to handle two ownership
+        # patterns of StepIODefinition rows:
+        #
+        # 1. Step-owned rows store the promoted_signal_name in-row.
+        #    Query: StepIODefinition with workflow_step matching an
+        #    upstream step in this workflow.
+        # 2. Validator-owned rows (catalog entries shared across
+        #    workflows) can't carry a workflow-scoped name in-row,
+        #    so a WorkflowStepIOPromotion overlay holds the name
+        #    per (workflow_step, signal_definition). Query the
+        #    overlay table for upstream steps in this workflow.
+        #
+        # The two queries are run separately and their results merged
+        # into the same loop, ordered by upstream step.
+        current_step_order = getattr(step, "order", None)
+
+        # Source 1: in-row promotions on step-owned rows.
+        step_owned_qs = StepIODefinition.objects.filter(
+            workflow_step__workflow=workflow,
+        ).exclude(promoted_signal_name="")
+        if current_step_order is not None:
+            step_owned_qs = step_owned_qs.filter(
+                workflow_step__order__lt=current_step_order,
             )
-            .exclude(signal_name="")
-            .only("signal_name", "contract_key", "workflow_step__step_key")
-            .select_related("workflow_step")
-        )
+        step_owned = step_owned_qs.only(
+            "promoted_signal_name",
+            "contract_key",
+            "direction",
+            "workflow_step__step_key",
+        ).select_related("workflow_step")
 
-        for sig in promoted:
-            step_key = getattr(sig.workflow_step, "step_key", None)
+        # Source 2: overlay promotions on validator-owned rows.
+        overlay_qs = WorkflowStepIOPromotion.objects.filter(
+            workflow_step__workflow=workflow,
+        )
+        if current_step_order is not None:
+            overlay_qs = overlay_qs.filter(
+                workflow_step__order__lt=current_step_order,
+            )
+        overlays = overlay_qs.only(
+            "promoted_signal_name",
+            "signal_definition__contract_key",
+            "signal_definition__direction",
+            "workflow_step__step_key",
+        ).select_related("workflow_step", "signal_definition")
+
+        # Build a unified iterable of (promoted_name, contract_key,
+        # direction, step_key) tuples so the injection loop below
+        # doesn't care which source the promotion came from.
+        promotions: list[tuple[str, str, str, str | None]] = []
+        for sig in step_owned:
+            promotions.append(
+                (
+                    sig.promoted_signal_name,
+                    sig.contract_key,
+                    sig.direction,
+                    getattr(sig.workflow_step, "step_key", None),
+                ),
+            )
+        for overlay in overlays:
+            promotions.append(
+                (
+                    overlay.promoted_signal_name,
+                    overlay.signal_definition.contract_key,
+                    overlay.signal_definition.direction,
+                    getattr(overlay.workflow_step, "step_key", None),
+                ),
+            )
+
+        for promoted_name, contract_key, direction, step_key in promotions:
             if not step_key or step_key not in steps_context:
                 continue
-            step_outputs = steps_context.get(step_key, {})
-            # Handle both {"output": {...}} and flat dict formats
-            if isinstance(step_outputs, dict) and "output" in step_outputs:
-                outputs = step_outputs["output"]
+            step_data = steps_context.get(step_key, {})
+            # Per ADR-2026-05-22, run.summary["steps"][key] holds both
+            # "input" (step inputs from extract_input_signals + bindings)
+            # and "output" (step outputs from extract_output_signals).
+            # Read from the subkey that matches the promoted signal's
+            # direction. The legacy flat-dict format is treated as
+            # output for backward compatibility with pre-ADR runs.
+            if isinstance(step_data, dict):
+                if direction == SignalDirection.INPUT:
+                    values = step_data.get("input", {})
+                elif "output" in step_data:
+                    values = step_data["output"]
+                else:
+                    # Legacy flat-dict format from before ADR-2026-05-22
+                    # — treat it as output.
+                    values = step_data
             else:
-                outputs = step_outputs
-            if isinstance(outputs, dict) and sig.contract_key in outputs:
-                signals_dict[sig.signal_name] = outputs[sig.contract_key]
+                values = {}
+            if isinstance(values, dict) and contract_key in values:
+                signals_dict[promoted_name] = values[contract_key]
 
     def _resolve_bound_input_context(self, payload: Any) -> dict[str, Any]:
         """Resolve input signals wired to the current workflow step.
@@ -457,7 +690,7 @@ class BaseValidator(ABC):
         CEL expressions on simple validators can reference signal contract keys
         like ``emissivity`` even when the submission stores the value at a
         nested path such as ``ownedMember[0].ownedAttribute[1].defaultValue``.
-        When a workflow step defines ``StepSignalBinding`` rows, resolve those
+        When a workflow step defines ``StepInputBinding`` rows, resolve those
         bindings first and inject the resulting values into the CEL context.
 
         Missing bound inputs are surfaced as ``None`` so assertions can still
@@ -468,7 +701,7 @@ class BaseValidator(ABC):
             return {}
 
         from validibot.validations.constants import SignalDirection
-        from validibot.validations.models import StepSignalBinding
+        from validibot.validations.models import StepInputBinding
         from validibot.validations.services.path_resolution import resolve_input_signal
 
         submission = getattr(
@@ -486,9 +719,25 @@ class BaseValidator(ABC):
             )
             or {}
         )
+        # Workflow-level signals (the s.* namespace) must be passed to
+        # the resolver too — a StepInputBinding with
+        # source_scope=SIGNAL reads from this dict via
+        # resolve_input_signal. Without this argument, every
+        # signal-sourced binding silently resolves to its default (or
+        # marks "unresolved"), and i.<contract_key> ends up null even
+        # when the workflow signal is present. Per the May 2026 P2
+        # review finding.
+        workflow_signals = (
+            getattr(
+                getattr(self, "run_context", None),
+                "workflow_signals",
+                None,
+            )
+            or {}
+        )
 
         bindings = (
-            StepSignalBinding.objects.filter(
+            StepInputBinding.objects.filter(
                 workflow_step=step,
                 signal_definition__direction=SignalDirection.INPUT,
             )
@@ -508,6 +757,7 @@ class BaseValidator(ABC):
                 submission_data=submission_data,
                 submission_metadata=submission_metadata,
                 upstream_signals=upstream_signals,
+                workflow_signals=workflow_signals,
             )
             context[binding.signal_definition.contract_key] = (
                 resolved.value if resolved.resolved else None

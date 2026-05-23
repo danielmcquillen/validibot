@@ -129,8 +129,8 @@ class ValidatorFactory(DjangoModelFactory):
                 self.save(update_fields=["allow_custom_assertion_targets"])
 
 
-class SignalDefinitionFactory(DjangoModelFactory):
-    """Factory for the unified SignalDefinition model.
+class StepIODefinitionFactory(DjangoModelFactory):
+    """Factory for the unified StepIODefinition model.
 
     Creates signal definitions with sensible defaults. Typically owned
     by a validator (library signals) — set workflow_step instead for
@@ -138,7 +138,7 @@ class SignalDefinitionFactory(DjangoModelFactory):
     """
 
     class Meta:
-        model = "validations.SignalDefinition"
+        model = "validations.StepIODefinition"
 
     contract_key = factory.Sequence(lambda n: f"signal_{n}")
     native_name = factory.LazyAttribute(lambda o: o.contract_key)
@@ -151,20 +151,20 @@ class SignalDefinitionFactory(DjangoModelFactory):
     order = factory.Sequence(lambda n: n)
 
 
-class StepSignalBindingFactory(DjangoModelFactory):
+class StepInputBindingFactory(DjangoModelFactory):
     """Factory for per-step signal bindings.
 
-    Links a SignalDefinition to a WorkflowStep with binding configuration
+    Links a StepIODefinition to a WorkflowStep with binding configuration
     (source_data_path, default_value, is_required).
     """
 
     class Meta:
-        model = "validations.StepSignalBinding"
+        model = "validations.StepInputBinding"
 
     workflow_step = factory.SubFactory(
         "validibot.workflows.tests.factories.WorkflowStepFactory",
     )
-    signal_definition = factory.SubFactory(SignalDefinitionFactory)
+    signal_definition = factory.SubFactory(StepIODefinitionFactory)
     source_scope = "submission_payload"
     source_data_path = ""
     is_required = True

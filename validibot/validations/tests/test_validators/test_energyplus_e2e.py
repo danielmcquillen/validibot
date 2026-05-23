@@ -100,7 +100,7 @@ def _make_template_workflow(
     - A MODEL_TEMPLATE resource with the template IDF content
     - A WEATHER_FILE resource with dummy weather data (the mock backend
       never runs EnergyPlus, so content doesn't matter)
-    - SignalDefinition + StepSignalBinding rows for template variables
+    - StepIODefinition + StepInputBinding rows for template variables
     """
     from validibot.validations.services.template_signals import (
         sync_step_template_signals,

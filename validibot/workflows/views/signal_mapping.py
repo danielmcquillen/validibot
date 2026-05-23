@@ -36,6 +36,7 @@ from typing import Any
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.http import Http404
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
@@ -1059,44 +1060,109 @@ class WorkflowSignalMappingSampleDataView(WorkflowObjectMixin, View):
         return str(prop_type)
 
 
-# ── Output promotion ─────────────────────────────────────────────────
-# Toggle signal_name on a SignalDefinition to promote a validator
-# output into the s.* namespace for downstream steps.
+# ── Step-IO promotion ─────────────────────────────────────────────────
+# Toggle signal_name on a StepIODefinition to promote a step input or
+# step output into the s.* namespace for downstream steps.
+#
+# Per ADR-2026-05-22b, promotion is symmetric: works the same way for
+# step inputs (direction=INPUT, in the i.* namespace) and step outputs
+# (direction=OUTPUT, in the o.* namespace). The view doesn't filter by
+# direction; it just toggles signal_name on the targeted StepIODefinition
+# row regardless of which direction it represents.
+#
+# Per ADR-2026-05-22b's temporal rule, the promoted value is visible
+# only in downstream steps — the producing step still references the
+# value via i.<contract_key> or o.<contract_key> directly. The temporal
+# rule is enforced by _inject_promoted_outputs() in base.py, not by
+# this view (this view just sets the database flag or overlay row).
+#
+# NOTE: the class name and URL name (WorkflowStepPromoteOutputView /
+# workflow_step_promote_output) reflect the original output-only
+# implementation. They are intentionally kept stable because renaming
+# them would churn every workflow link in the codebase for no
+# behavioural gain — a URL rename is left as a separate follow-up.
 
 
 class WorkflowStepPromoteOutputView(WorkflowObjectMixin, View):
-    """POST: Set or clear signal_name on a SignalDefinition.
+    """POST: Set or clear the promoted signal name on a StepIODefinition.
 
-    Promotes a validator output into the ``s.*`` namespace so
-    downstream steps can reference it by name.  Sending an empty
+    Promotes a step input or step output into the ``s.*`` namespace so
+    downstream steps can reference it by name. Sending an empty
     ``signal_name`` clears the promotion.
+
+    Despite the legacy class name, this works for both INPUT and OUTPUT
+    direction StepIODefinitions per ADR-2026-05-22b (symmetric
+    promotion). The success message adapts to the direction.
+
+    Two storage paths depending on ownership of the
+    ``StepIODefinition`` (per the May 2026 code review's P1 finding):
+
+    - **Step-owned** rows (workflow_step FK set) — write to the
+      in-row ``promoted_signal_name`` field. One owner, no scope
+      ambiguity.
+    - **Validator-owned** rows (catalog entries shared across
+      workflows, workflow_step is null) — write to a
+      ``WorkflowStepIOPromotion`` overlay keyed on
+      ``(workflow_step, signal_definition)``. The overlay carries
+      the workflow-scoped name without mutating the shared catalog
+      row.
+
+    The URL captures both ``step_id`` and ``signal_id``; we use
+    ``step_id`` to locate the right WorkflowStep for both paths
+    (the overlay needs the step FK, and step-owned rows must belong
+    to the step in the URL).
 
     Requires **manage** permission on the workflow.
     """
 
     def post(self, request, *args, **kwargs):
-        from validibot.validations.models import SignalDefinition
+        from validibot.validations.constants import SignalDirection
+        from validibot.validations.models import StepIODefinition
+        from validibot.validations.models import WorkflowStepIOPromotion
         from validibot.validations.services.signal_resolution import (
             validate_signal_name,
         )
         from validibot.validations.services.signal_resolution import (
             validate_signal_name_unique,
         )
+        from validibot.workflows.models import WorkflowStep
 
         if not self.user_can_manage_workflow():
             raise PermissionDenied
         workflow = self.get_workflow()
-        signal_def = get_object_or_404(
-            SignalDefinition,
-            pk=self.kwargs.get("signal_id"),
-            workflow_step__workflow=workflow,
-            workflow_step_id=self.kwargs.get("step_id"),
+
+        # Locate the WorkflowStep up front — both storage paths need
+        # it, and it lets us verify the step belongs to the workflow.
+        workflow_step = get_object_or_404(
+            WorkflowStep,
+            pk=self.kwargs.get("step_id"),
+            workflow=workflow,
         )
+
+        # Locate the StepIODefinition. Two valid ownership shapes:
+        #
+        # 1. Step-owned: the FK on the row matches workflow_step.
+        # 2. Validator-owned: row's validator FK matches the step's
+        #    validator (the catalog the step is using).
+        #
+        # Either way the result is a valid promotion target.
+        signal_def_id = self.kwargs.get("signal_id")
+        signal_def = StepIODefinition.objects.filter(pk=signal_def_id).first()
+        if signal_def is None:
+            raise Http404("Signal definition not found.")
+        owned_by_step = signal_def.workflow_step_id == workflow_step.pk
+        owned_by_step_validator = (
+            signal_def.validator_id is not None
+            and signal_def.validator_id == workflow_step.validator_id
+        )
+        if not (owned_by_step or owned_by_step_validator):
+            raise Http404(
+                "Signal definition is not owned by this step or its validator.",
+            )
 
         new_name = request.POST.get("signal_name", "").strip()
 
         if new_name:
-            # Validate the proposed signal name
             errors = validate_signal_name(new_name)
             if errors:
                 return HttpResponse(
@@ -1104,10 +1170,23 @@ class WorkflowStepPromoteOutputView(WorkflowObjectMixin, View):
                     content_type="application/json",
                     status=400,
                 )
+            # For uniqueness we need to exclude the right "self" key:
+            # step-owned uses the StepIODefinition pk (legacy path);
+            # validator-owned uses the overlay row pk (new path).
+            exclude_signal_def_id = signal_def.pk if owned_by_step else None
+            exclude_overlay_id: int | None = None
+            if not owned_by_step:
+                existing_overlay = WorkflowStepIOPromotion.objects.filter(
+                    workflow_step=workflow_step,
+                    signal_definition=signal_def,
+                ).first()
+                if existing_overlay is not None:
+                    exclude_overlay_id = existing_overlay.pk
             unique_errors = validate_signal_name_unique(
                 workflow_id=workflow.pk,
                 name=new_name,
-                exclude_signal_def_id=signal_def.pk,
+                exclude_signal_def_id=exclude_signal_def_id,
+                exclude_overlay_id=exclude_overlay_id,
             )
             if unique_errors:
                 return HttpResponse(
@@ -1116,13 +1195,37 @@ class WorkflowStepPromoteOutputView(WorkflowObjectMixin, View):
                     status=400,
                 )
 
-        signal_def.signal_name = new_name
-        signal_def.save(update_fields=["signal_name"])
-
-        if new_name:
-            msg = _("Output promoted to s.%(name)s.") % {"name": new_name}
+        if owned_by_step:
+            signal_def.promoted_signal_name = new_name
+            signal_def.save(update_fields=["promoted_signal_name"])
+        elif new_name:
+            # Validator-owned: store the workflow-scoped promotion in
+            # the overlay so the catalog row remains shared across
+            # workflows.
+            WorkflowStepIOPromotion.objects.update_or_create(
+                workflow_step=workflow_step,
+                signal_definition=signal_def,
+                defaults={"promoted_signal_name": new_name},
+            )
         else:
-            msg = _("Output promotion removed.")
+            # Validator-owned + empty name: clear the overlay row.
+            WorkflowStepIOPromotion.objects.filter(
+                workflow_step=workflow_step,
+                signal_definition=signal_def,
+            ).delete()
+
+        # Direction-aware success message. "Step input"/"step output"
+        # vocabulary per ADR-2026-05-22b.
+        is_input = signal_def.direction == SignalDirection.INPUT
+        if new_name:
+            if is_input:
+                msg = _("Step input promoted to s.%(name)s.") % {"name": new_name}
+            else:
+                msg = _("Step output promoted to s.%(name)s.") % {"name": new_name}
+        elif is_input:
+            msg = _("Step input promotion removed.")
+        else:
+            msg = _("Step output promotion removed.")
         messages.success(request, msg)
         return hx_trigger_response(
             message=msg,

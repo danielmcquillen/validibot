@@ -12,7 +12,7 @@ design principle from the Parameterized Templates ADR (Section 7):
 simple — it receives a fully resolved IDF."*
 
 **Signal-binding resolution (Phase 4b):** When the step has
-``StepSignalBinding`` rows for template signals, the resolution engine
+``StepInputBinding`` rows for template signals, the resolution engine
 resolves values via ``resolve_input_signal()`` which supports nested
 JSON payloads and ``source_data_path`` expressions. The legacy flat-JSON
 path is used as a fallback for steps without signal bindings.
@@ -130,7 +130,7 @@ def preprocess_energyplus_submission(
 
     # ── 3. Parse submission and resolve parameters ────────────────
     #
-    # Resolve template parameters via StepSignalBinding rows. Every
+    # Resolve template parameters via StepInputBinding rows. Every
     # EnergyPlus template step should have signal bindings created by
     # sync_step_template_signals(). The bindings support nested JSON
     # payloads and source_data_path expressions.
@@ -276,7 +276,7 @@ def _parse_submission_data(submission) -> dict[str, Any]:
 
 
 def _step_has_template_bindings(step) -> bool:
-    """Check whether the step has StepSignalBinding rows for template signals."""
+    """Check whether the step has StepInputBinding rows for template signals."""
     from validibot.validations.constants import SignalOriginKind
 
     return step.signal_bindings.filter(
@@ -290,16 +290,16 @@ def _resolve_via_signal_bindings(
     submission,
     case_sensitive: bool = True,
 ) -> MergeResult:
-    """Resolve template parameters via StepSignalBinding + validate.
+    """Resolve template parameters via StepInputBinding + validate.
 
     This is the Phase 4b replacement for the legacy
     ``merge_and_validate_template_parameters()`` path. It:
 
     1. Parses the submission as a JSON dict (nesting allowed).
-    2. Queries ``StepSignalBinding`` rows for template signals.
+    2. Queries ``StepInputBinding`` rows for template signals.
     3. Resolves each binding via ``resolve_input_signal()``.
     4. Validates resolved values against constraints stored in
-       ``SignalDefinition.metadata`` (TemplateSignalMetadata).
+       ``StepIODefinition.metadata`` (TemplateSignalMetadata).
     5. Returns a ``MergeResult`` with the merged parameter dict.
 
     Raises:
@@ -308,13 +308,13 @@ def _resolve_via_signal_bindings(
     """
     from validibot.validations.constants import SignalDirection
     from validibot.validations.constants import SignalOriginKind
-    from validibot.validations.models import StepSignalBinding
+    from validibot.validations.models import StepInputBinding
     from validibot.validations.services.path_resolution import resolve_input_signal
 
     submission_data = _parse_submission_data(submission)
 
     bindings = list(
-        StepSignalBinding.objects.filter(
+        StepInputBinding.objects.filter(
             workflow_step=step,
             signal_definition__direction=SignalDirection.INPUT,
             signal_definition__origin_kind=SignalOriginKind.TEMPLATE,
@@ -383,7 +383,7 @@ def _resolve_via_signal_bindings(
             continue
 
         # Validate the resolved value against template constraints
-        # stored in SignalDefinition.metadata (TemplateSignalMetadata).
+        # stored in StepIODefinition.metadata (TemplateSignalMetadata).
         meta = sig.metadata or {}
         variable_type = meta.get("variable_type", "text")
 
@@ -432,7 +432,7 @@ def _validate_number_from_metadata(
     """Validate a number-type value against TemplateSignalMetadata constraints.
 
     Mirrors the validation logic in ``idf_template._validate_number()`` but
-    reads constraints from the SignalDefinition metadata dict instead of
+    reads constraints from the StepIODefinition metadata dict instead of
     a TemplateVariable Pydantic object.
     """
     if value.strip().lower() in ("autosize", "autocalculate"):

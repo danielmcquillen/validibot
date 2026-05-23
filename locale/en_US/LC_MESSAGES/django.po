@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Validibot\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-21 22:55+0000\n"
+"POT-Creation-Date: 2026-05-23 01:40+0000\n"
 "PO-Revision-Date: 2026-05-21 22:55+0000\n"
 "Last-Translator: Validibot Team <daniel@mcquilleninteractive.com>\n"
 "Language-Team: English <en@li.org>\n"
@@ -2418,7 +2418,7 @@ msgstr ""
 msgid "No signals registered yet."
 msgstr ""
 
-msgid "Edit which validator outputs are shown to users"
+msgid "Edit which step outputs are shown to users"
 msgstr ""
 
 msgid "Filter:"
@@ -3096,25 +3096,25 @@ msgstr ""
 msgid "Workflow versions"
 msgstr ""
 
-msgid "Validator Outputs to Display"
+msgid "Step Outputs to Display"
 msgstr ""
 
 msgid ""
-"Select which validator outputs appear in submission results shown to the "
-"user. If none are selected, all outputs are shown."
+"Select which step outputs appear in submission results shown to the user. If "
+"none are selected, all outputs are shown."
 msgstr ""
 
-msgid "No validator outputs available for this step."
+msgid "No step outputs available for this step."
 msgstr ""
 
 msgid ""
-"Some required inputs have no source path. Map each required input to a "
+"Some required step inputs have no source path. Map each required input to a "
 "payload path or signal before running the workflow."
 msgstr ""
 
 msgid ""
-"The contract key that identifies this validator input in CEL assertions and "
-"the validation engine."
+"The contract key for this step input. Reference it in CEL assertions as i."
+"<name>."
 msgstr ""
 
 msgid "Source Path"
@@ -3122,35 +3122,25 @@ msgstr ""
 
 msgid ""
 "A payload path (e.g., building.floor_area) or signal reference (e.g., "
-"s.floor_area) that provides the value for this input."
-msgstr ""
-
-msgid "Internal — data source managed by the validator"
-msgstr ""
-
-msgid "Not mapped"
-msgstr ""
-
-msgid "Auto-link to workflow signal"
-msgstr ""
-
-msgid "Edit validator input"
-msgstr ""
-
-msgid "Edit variable"
-msgstr ""
-
-msgid "No validator inputs."
-msgstr ""
-
-msgid "Adds output values to the final output response shown to users."
+"s.floor_area) that provides the value for this step input. May be empty for "
+"parser-extracted inputs (validator populates the value automatically)."
 msgstr ""
 
 msgid "Copy to Signal"
 msgstr ""
 
 msgid ""
-"Copy the output value to a signal so it is easily referenced in later steps."
+"Promote this step input to a workflow-wide signal so later steps can "
+"reference it as s.<name>."
+msgstr ""
+
+msgid "Internal — data source managed by the validator"
+msgstr ""
+
+msgid "Provided by validator"
+msgstr ""
+
+msgid "Not mapped"
 msgstr ""
 
 msgid "Remove signal"
@@ -3159,7 +3149,32 @@ msgstr ""
 msgid "Copy to signal"
 msgstr ""
 
-msgid "No validator outputs."
+msgid "Auto-link to workflow signal"
+msgstr ""
+
+msgid "Edit step input"
+msgstr ""
+
+msgid "Edit variable"
+msgstr ""
+
+msgid ""
+"No step inputs. This validator either doesn't have a process that parses the "
+"payload (schema-only validators like JSON Schema), or its process emits "
+"outputs only (SHACL, THERM). Write your assertions against p.* (payload) and "
+"s.* (workflow signals)."
+msgstr ""
+
+msgid "Adds output values to the final output response shown to users."
+msgstr ""
+
+msgid ""
+"Copy the output value to a signal so it is easily referenced in later steps."
+msgstr ""
+
+msgid ""
+"No step outputs. This validator doesn't emit named output values — its "
+"results emerge as findings rather than values you can assert against."
 msgstr ""
 
 msgid "Paste Sample Data"
@@ -3277,7 +3292,7 @@ msgstr ""
 msgid "Hidden from results"
 msgstr ""
 
-msgid "No validator outputs registered yet."
+msgid "No step outputs registered yet."
 msgstr ""
 
 msgid "Human-readable label shown to submitters."
@@ -3325,10 +3340,10 @@ msgstr ""
 msgid "Configure each variable's type, constraints, and default values."
 msgstr ""
 
-msgid "Validator Inputs"
+msgid "Step Inputs"
 msgstr ""
 
-msgid "Validator Outputs"
+msgid "Step Outputs"
 msgstr ""
 
 msgid "Available Data"
@@ -4956,7 +4971,7 @@ msgid "Allow custom data paths in assertions"
 msgstr ""
 
 msgid ""
-"Allow assertions against data paths not declared as validator inputs or "
+"Allow assertions against data paths not declared as step inputs or step "
 "outputs."
 msgstr ""
 
@@ -5089,7 +5104,7 @@ msgid ""
 "rejected."
 msgstr ""
 
-msgid "Select a validator input or output"
+msgid "Select a step input or step output"
 msgstr ""
 
 msgid ""
@@ -5098,12 +5113,12 @@ msgid ""
 msgstr ""
 
 msgid ""
-"Only declared validator inputs and outputs are available for this validator."
+"Only declared step inputs and step outputs are available for this validator."
 msgstr ""
 
 msgid ""
 "Use s.<name> for workflow signals, p.<path> for payload data, o.<name> for "
-"validator outputs."
+"step outputs."
 msgstr ""
 
 msgid ""
@@ -5156,30 +5171,43 @@ msgstr ""
 
 #, python-format
 msgid ""
+"Step inputs live in the i.* namespace, not s.* — at runtime s.* contains "
+"only workflow signal mappings and promoted upstream outputs, never step "
+"inputs. Use i.%(first)s instead of s.%(first)s (the assertion would silently "
+"read null otherwise). Affected: %(names)s"
+msgstr ""
+
+#, python-format
+msgid ""
 "Bare identifiers are not allowed. Use p.%(first)s for payload data or s."
 "%(first)s for workflow signals. Unknown: %(names)s"
 msgstr ""
 
 msgid ""
 "Use s.<name> for workflow signals, p.<path> for payload data, or o.<name> "
-"for validator outputs."
+"for step outputs."
 msgstr ""
 
 msgid ""
 "Enter a target path. Use s.<name> for workflow signals, p.<path> for payload "
-"data, or o.<name> for validator outputs."
+"data, or o.<name> for step outputs."
 msgstr ""
 
 #, python-format
 msgid ""
-"Unknown output '%(name)s'. Check the Validator Outputs tab for available "
+"Unknown output '%(name)s'. Check the Step Outputs tab for available names."
+msgstr ""
+
+#, python-format
+msgid ""
+"Unknown signal '%(name)s'. Check the Step Inputs tab or Signal Mappings for "
+"available names."
+msgstr ""
+
+#, python-format
+msgid ""
+"Unknown step input '%(name)s'. Check the Step Inputs panel for available "
 "names."
-msgstr ""
-
-#, python-format
-msgid ""
-"Unknown signal '%(name)s'. Check the Validator Inputs tab or Signal Mappings "
-"for available names."
 msgstr ""
 
 msgid ""
@@ -5191,6 +5219,33 @@ msgid ""
 "Custom targets must use dot notation with optional numeric indexes (e.g. "
 "`data.results[0].value`) or JSONPath filter expressions (e.g. `items[?"
 "@.name=='x'].value`)."
+msgstr ""
+
+#, python-format
+msgid ""
+"i.%(name)s is populated by the validator from the submission payload, not by "
+"a path the BASIC evaluator can walk"
+msgstr ""
+
+#, python-format
+msgid ""
+"i.%(name)s resolves through its StepInputBinding (which may map to a nested "
+"or computed path), but the BASIC evaluator ignores bindings and walks the "
+"raw payload directly"
+msgstr ""
+
+#, python-format
+msgid ""
+"BASIC assertions can't target step inputs (%(reason)s). Use a CEL assertion "
+"instead — for example: i.%(name)s >= 1"
+msgstr ""
+
+#, python-format
+msgid ""
+"BASIC assertions can't target workflow signals (s.%(name)s lives in the CEL "
+"signal namespace, populated from WorkflowSignalMapping and promoted upstream "
+"outputs — not in the raw payload the BASIC evaluator walks). Use a CEL "
+"assertion instead — for example: s.%(name)s >= 1"
 msgstr ""
 
 msgid "Provide a regular expression."
@@ -5227,7 +5282,7 @@ msgstr ""
 msgid "Assertion type"
 msgstr ""
 
-msgid "Enter a CEL expression that references validator inputs and outputs."
+msgid "Enter a CEL expression that references step inputs and step outputs."
 msgstr ""
 
 msgid "Lower numbers run first."
@@ -7436,7 +7491,19 @@ msgstr ""
 msgid "Assertions are only available for advanced validators."
 msgstr ""
 
-msgid "Promoted output"
+msgid "Step output"
+msgstr ""
+
+msgid "Step input"
+msgstr ""
+
+msgid "CEL only"
+msgstr ""
+
+msgid "Promoted step input"
+msgstr ""
+
+msgid "Promoted step output"
 msgstr ""
 
 msgid "Assertions"
@@ -8197,10 +8264,17 @@ msgid "Could not parse as JSON or XML."
 msgstr ""
 
 #, python-format
-msgid "Output promoted to s.%(name)s."
+msgid "Step input promoted to s.%(name)s."
 msgstr ""
 
-msgid "Output promotion removed."
+#, python-format
+msgid "Step output promoted to s.%(name)s."
+msgstr ""
+
+msgid "Step input promotion removed."
+msgstr ""
+
+msgid "Step output promotion removed."
 msgstr ""
 
 msgid ""

@@ -1,14 +1,28 @@
-# Signals Tutorial Example
+# Step Input/Output Tutorial Example
 
-This tutorial explains the unified signal architecture with one concrete end-to-end example. It shows how the models work together in the library, on a workflow step, and at runtime.
+This tutorial walks through a concrete end-to-end example, showing how
+the data-layer models work together in the library, on a workflow step,
+and at runtime.
 
 Use this guide when you need to answer questions like:
 
-- Where is a signal contract defined?
-- When is a signal validator-owned versus step-owned?
+- Where is a step input/output contract defined?
+- When is a contract validator-owned versus step-owned?
 - Where does the source path live?
 - How do defaults and required flags work?
 - What records explain what happened during a run?
+- How do values flow into CEL via `i.*` and `o.*`?
+- How does promotion lift a step-local value to a workflow signal?
+
+> **A note on vocabulary.** This tutorial uses the vocabulary
+> established by
+> [ADR-2026-05-22b](../../../../../validibot-project/docs/adr/2026-05-22-signals-vs-step-io-terminology.md):
+> *signal* refers only to workflow-vocabulary values (`s.*`); *step input*
+> and *step output* refer to step-local values (`i.*` and `o.*`).
+> The Django models match: `StepIODefinition` and `StepInputBinding`
+> (the underlying database tables retain legacy names —
+> `validations_signaldefinition` and `validations_stepsignalbinding` —
+> to avoid a destructive table rename on mature data).
 
 ## The Example Workflow
 
@@ -50,15 +64,15 @@ The old catalog model was replaced by a normalized set of models with distinct j
 
 | Model | Responsibility | Short version |
 | --- | --- | --- |
-| `SignalDefinition` | Declares a signal contract | What the signal is |
-| `StepSignalBinding` | Wires an input signal to a source | Where the step gets it |
-| `Derivation` | Computes a value from signals | What the system calculates |
+| `StepIODefinition` | Declares a step input or step output contract | What the input/output is |
+| `StepInputBinding` | Wires a step input to a source | Where the step gets it |
+| `Derivation` | Computes a value from inputs/outputs | What the system calculates |
 | `ResolvedInputTrace` | Records runtime resolution | What actually happened |
 
 If you remember only one mental model, remember this:
 
-- `SignalDefinition` = contract
-- `StepSignalBinding` = wiring
+- `StepIODefinition` = contract for a step input or step output
+- `StepInputBinding` = wiring (inputs only — outputs are produced, not bound)
 - `Derivation` = computation
 - `ResolvedInputTrace` = audit
 
@@ -95,7 +109,7 @@ They may match, but they do not serve the same purpose.
 
 Now add a workflow step named `envelope_check` that uses the shared validator.
 
-The step does not need to create new input signal definitions. Instead, it reuses the validator-owned `SignalDefinition` rows and adds `StepSignalBinding` rows for the workflow-specific wiring.
+The step does not need to create new input definitions. Instead, it reuses the validator-owned `StepIODefinition` rows and adds `StepInputBinding` rows for the workflow-specific wiring.
 
 ### Bindings for `envelope_check`
 
@@ -104,7 +118,7 @@ The step does not need to create new input signal definitions. Instead, it reuse
 | `envelope_check` | `wall_r_value` | `submission_payload` | `building.envelope.wall_r_value` | none | yes |
 | `envelope_check` | `window_u_factor` | `submission_payload` | `building.envelope.window_u_factor` | `0.4` | no |
 
-The contract still lives on `SignalDefinition`, but the wiring now lives on `StepSignalBinding`.
+The contract still lives on `StepIODefinition`, but the wiring now lives on `StepInputBinding`.
 
 That means the same validator can be reused in a different workflow with a different payload shape by changing only the bindings.
 
@@ -135,8 +149,8 @@ These signals are step-owned because they came from probing one specific FMU fil
 
 The step UI displays one unified signals table, but it is assembled from two sources:
 
-- signal metadata from `SignalDefinition`
-- binding metadata from `StepSignalBinding`
+- contract metadata from `StepIODefinition`
+- binding metadata from `StepInputBinding`
 
 That is why a single row in the UI can show:
 
@@ -151,7 +165,7 @@ The view is unified, but the storage is intentionally split into contract and wi
 
 ## Part 5: What Happens at Launch Time
 
-When a validation run starts, Validibot resolves input values from the step's `StepSignalBinding` rows.
+When a validation run starts, Validibot resolves input values from the step's `StepInputBinding` rows.
 
 For `envelope_check`, the resolver conceptually does this:
 
@@ -220,18 +234,109 @@ resolution still succeeds and the runner receives:
 
 If `inlet_temp_c` is missing, resolution fails before validator execution because that signal is required and has no default.
 
-This is why `StepSignalBinding` is not just metadata. It is executable launch-time wiring.
+This is why `StepInputBinding` is not just metadata. It is executable launch-time wiring.
 
-## Part 7: Assertions Target Signals
+## Part 7: Assertions Reference Step Inputs and Outputs in CEL
 
-Assertions now conceptually target signal definitions, not legacy catalog rows.
+Once a step input or step output is declared, it becomes accessible in
+CEL expressions through one of two step-local namespaces:
 
-Examples:
+- **Step inputs** appear as `i.<contract_key>` (the `i.*` / `input.*`
+  namespace), populated at input stage before the validator container
+  runs
+- **Step outputs** appear as `o.<contract_key>` (the `o.*` / `output.*`
+  namespace), populated at output stage after the container runs
 
-- On `envelope_check`, an assertion can target `annual_site_energy_kwh`
-- On `coil_fmu`, an assertion can target `cooling_power_kw`
+### Input-stage assertion on `envelope_check`
 
-This matters because assertions, CEL context, signal display, and runtime resolution now all use the same contract layer.
+This fires *before* the validator runs. Available namespaces: `p.*`
+(raw payload), `s.*` (workflow signals), `i.*` (this step's inputs from
+resolved bindings), and `steps.*` (earlier steps).
+
+```cel
+i.wall_r_value >= 13 && i.window_u_factor <= 0.5
+```
+
+The values come from the `StepInputBinding` resolution: `i.wall_r_value`
+was sourced from `p.building.envelope.wall_r_value = 18.0`, so the
+assertion sees `18.0 >= 13` and passes.
+
+### Output-stage assertion on `envelope_check`
+
+This fires *after* the validator runs. Adds `o.*` to the available
+namespaces.
+
+```cel
+o.annual_site_energy_kwh < 50000
+```
+
+The value comes from `extract_output_signals()` on the validator,
+keyed by the OUTPUT-direction `StepIODefinition`'s `contract_key`.
+
+### Cross-stage assertion on `coil_fmu`
+
+In an output-stage assertion, both `i.*` (resolved before the run) and
+`o.*` (produced by the run) are available — useful for comparisons
+between configured inputs and computed outputs.
+
+```cel
+o.cooling_power_kw > 0 && o.cooling_power_kw < i.mass_flow_kg_s * 10000
+```
+
+### Stage-aware authoring
+
+The assertion form rejects `o.*` references in input-stage assertions
+at edit time — those outputs don't exist yet. The variable autocomplete
+is filtered by stage so authors aren't tempted by references that would
+silently resolve to null.
+
+## Part 7b: Promoting Step Inputs and Outputs to Signals
+
+A step-local input or output is only visible within its own step. To
+make it accessible workflow-wide — to other steps' assertions, for
+example — you **promote** it to a signal by setting its
+`promoted_signal_name`.
+
+Promotion is symmetric: it works the same way for both step inputs and
+step outputs.
+
+### Output promotion (the existing UI today)
+
+Suppose `envelope_check` produces `o.annual_site_energy_kwh = 42000`,
+and the workflow author wants to reference that value in a later step's
+assertion. They click "Copy to Signal" on the output's row in the step
+UI, give it a workflow-wide name like `envelope_energy`. After
+promotion:
+
+- The original `o.annual_site_energy_kwh` still exists, step-locally
+- A new `s.envelope_energy = 42000` exists, workflow-wide
+- Any downstream step can write `s.envelope_energy < 50000` in CEL
+
+### Input promotion (new under ADR-2026-05-22)
+
+Same mechanism, but on a step input. Suppose `envelope_check` parses
+the IDF and exposes `i.zone_count = 12`. A later step wants to gate on
+this value too. The author clicks "Copy to Signal" on the input row,
+names it `zone_count`. After promotion:
+
+- The original `i.zone_count` still exists, step-locally in
+  `envelope_check`
+- A new `s.zone_count = 12` exists, workflow-wide
+- Any downstream step can write `s.zone_count >= 4` in CEL
+
+Before symmetric promotion, the author would have had to either
+re-parse the IDF in the downstream step or reach into
+`steps.envelope_check.input.zone_count` (verbose, brittle). Promotion
+gives a cleaner workflow-vocabulary name.
+
+### Promotion and the contract layer
+
+Promotion is just a non-empty value in the `promoted_signal_name`
+field on the `StepIODefinition` row. The CEL context builder reads
+these rows across the workflow (filtered to upstream steps only — the
+producing step never sees its own promotion) when assembling the
+`s.*` namespace, injecting each promoted value alongside the
+workflow-level signals from `WorkflowSignalMapping`.
 
 ## Part 8: Derivations Are Separate on Purpose
 
@@ -286,13 +391,13 @@ The new model splits those concerns cleanly:
 
 | Old concern | New home |
 | --- | --- |
-| Stable signal identity | `SignalDefinition.contract_key` |
-| Input/output direction | `SignalDefinition.direction` |
-| Display metadata | `SignalDefinition.label`, `description`, `unit`, `metadata` |
-| Provider-specific technical metadata | `SignalDefinition.provider_binding` |
-| Runner-facing name | `SignalDefinition.native_name` |
-| Submission lookup path | `StepSignalBinding.source_data_path` |
-| Required/default behavior | `StepSignalBinding.is_required`, `default_value` |
+| Stable identity | `StepIODefinition.contract_key` |
+| Input/output direction | `StepIODefinition.direction` |
+| Display metadata | `StepIODefinition.label`, `description`, `unit`, `metadata` |
+| Provider-specific technical metadata | `StepIODefinition.provider_binding` |
+| Runner-facing name | `StepIODefinition.native_name` |
+| Submission lookup path | `StepInputBinding.source_data_path` |
+| Required/default behavior | `StepInputBinding.is_required`, `default_value` |
 | Runtime audit | `ResolvedInputTrace` |
 
 The key design point is that the old catalog model was not replaced by one new model. It was replaced by a set of focused models with clearer responsibilities.
@@ -301,15 +406,15 @@ The key design point is that the old catalog model was not replaced by one new m
 
 When something looks wrong, check the system in this order:
 
-1. Does the signal contract exist?
-   Look for a `SignalDefinition`.
+1. Does the step input/output contract exist?
+   Look for a `StepIODefinition`.
 
 2. Who owns it?
    Validator-owned means shared contract.
    Step-owned means local contract.
 
 3. If it is an input, how is it wired?
-   Look for a `StepSignalBinding`.
+   Look for a `StepInputBinding`.
 
 4. If it is computed, is it actually a derivation?
    Look for a `Derivation`.
@@ -321,10 +426,10 @@ That sequence maps directly onto the architecture and usually gets you to the ri
 
 ## Summary
 
-The unified signal model is easiest to understand in layers:
+The unified step-IO model is easiest to understand in layers:
 
-- `SignalDefinition` declares the contract
-- `StepSignalBinding` wires step inputs to real data
+- `StepIODefinition` declares the contract
+- `StepInputBinding` wires step inputs to real data
 - `Derivation` computes secondary values
 - `ResolvedInputTrace` records runtime behavior
 

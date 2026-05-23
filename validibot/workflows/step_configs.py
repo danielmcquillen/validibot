@@ -121,7 +121,7 @@ class EnergyPlusStepConfig(BaseStepConfig):
 
     Stores simulation settings (checks, timestep) and template configuration
     (case sensitivity, output signal selection).  Template variable metadata
-    is stored relationally in ``SignalDefinition`` rows rather than here.
+    is stored relationally in ``StepIODefinition`` rows rather than here.
 
     Resource files (weather EPWs, model templates) are stored relationally
     via ``WorkflowStepResource`` rather than in this config. See the
@@ -212,10 +212,10 @@ class FmuStepConfig(BaseStepConfig):
 
     When the step uses a step-level FMU upload (primary path), the
     ``fmu_simulation`` field stores the discovered simulation defaults.
-    FMU variable metadata is stored relationally in ``SignalDefinition``
+    FMU variable metadata is stored relationally in ``StepIODefinition``
     rows rather than in the step config. When the step uses a library
     FMU validator (secondary path), this field is empty and the
-    metadata comes from the validator's ``SignalDefinition`` rows and
+    metadata comes from the validator's ``StepIODefinition`` rows and
     ``FMUModel``.
     """
 

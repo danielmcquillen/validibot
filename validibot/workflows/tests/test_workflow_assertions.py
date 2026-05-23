@@ -22,7 +22,7 @@ from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.tests.factories import CustomValidatorFactory
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.tests.factories import WorkflowFactory
@@ -68,12 +68,12 @@ class WorkflowStepAssertionsTests(TestCase):
 
     def _make_energyplus_step(self, workflow):
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="floor_area",
             direction="input",
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="facility_electric_demand_w",
             direction="output",
@@ -104,13 +104,13 @@ class WorkflowStepAssertionsTests(TestCase):
             validation_type=ValidationType.SHACL,
             supports_assertions=True,
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="shacl_violation_count",
             label="SHACL Violation Count",
             direction="output",
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="triple_count",
             label="Triple Count",
@@ -226,7 +226,7 @@ class WorkflowStepAssertionsTests(TestCase):
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         custom_validator = CustomValidatorFactory(org=workflow.org)
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=custom_validator.validator,
             contract_key="custom-signal",
             label="Custom signal",
@@ -642,12 +642,12 @@ class WorkflowStepAssertionsTests(TestCase):
         _login_as_author(self.client, workflow)
         step = self._make_energyplus_step(workflow)
         assert step.ruleset
-        input_sig = SignalDefinitionFactory(
+        input_sig = StepIODefinitionFactory(
             validator=step.validator,
             contract_key="input-signal",
             direction="input",
         )
-        output_sig = SignalDefinitionFactory(
+        output_sig = StepIODefinitionFactory(
             validator=step.validator,
             contract_key="output-signal",
             direction="output",
@@ -807,7 +807,7 @@ class WorkflowStepAssertionsTests(TestCase):
             validation_type=ValidationType.ENERGYPLUS,
             allow_custom_assertion_targets=True,
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="facility_electric_demand_w",
         )
@@ -942,7 +942,7 @@ class AssertionModalLeakDiagnosticTests(TestCase):
             validation_type=ValidationType.SHACL,
             supports_assertions=True,
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="shacl_violation_count",
             label="SHACL Violation Count",
@@ -1115,7 +1115,7 @@ class ShaclAssertionSaveFlowDiagnosticTests(TestCase):
             validation_type=ValidationType.SHACL,
             supports_assertions=True,
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="shacl_violation_count",
             label="SHACL Violation Count",
@@ -1282,7 +1282,7 @@ class ShaclAssertionSaveFlowDiagnosticTests(TestCase):
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="facility_electric_demand_w",
             direction="output",

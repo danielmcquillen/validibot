@@ -15,8 +15,8 @@ from django.views.generic.edit import FormView
 from validibot.core.utils import reverse_with_org
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
-from validibot.validations.forms import SignalDefinitionForm
-from validibot.validations.models import SignalDefinition
+from validibot.validations.forms import StepIODefinitionForm
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.views.validators import CustomValidatorManageMixin
 
@@ -59,7 +59,7 @@ class ValidatorSignalMixin(CustomValidatorManageMixin):
 
 
 class ValidatorSignalCreateView(ValidatorSignalMixin, FormView):
-    form_class = SignalDefinitionForm
+    form_class = StepIODefinitionForm
 
     def get(self, request, *args, **kwargs):
         """Handle GET requests to return fresh form content for HTMx modal."""
@@ -119,11 +119,11 @@ class ValidatorSignalCreateView(ValidatorSignalMixin, FormView):
 
 
 class ValidatorSignalUpdateView(ValidatorSignalMixin, FormView):
-    form_class = SignalDefinitionForm
+    form_class = StepIODefinitionForm
 
     def post(self, request, *args, **kwargs):
         signal = get_object_or_404(
-            SignalDefinition,
+            StepIODefinition,
             pk=self.kwargs.get("entry_pk"),
             validator=self.validator,
         )
@@ -152,7 +152,7 @@ class ValidatorSignalUpdateView(ValidatorSignalMixin, FormView):
 class ValidatorSignalDeleteView(ValidatorSignalMixin, TemplateView):
     def post(self, request, *args, **kwargs):
         signal = get_object_or_404(
-            SignalDefinition,
+            StepIODefinition,
             pk=self.kwargs.get("entry_pk"),
             validator=self.validator,
         )

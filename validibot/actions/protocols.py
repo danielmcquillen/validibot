@@ -36,12 +36,21 @@ class RunContext:
             at run start from ``WorkflowSignalMapping`` rows resolved
             against the submission data. Available in CEL expressions
             via ``s.<name>`` (or ``signal.<name>``).
+        step_input_contract_values: The merged contract-keyed step input
+            dict for the current step, populated at the start of the
+            input stage from (a) parser-extracted facts via
+            ``extract_input_signals()`` and (b) resolved
+            ``StepInputBinding`` rows. Consumed by ``_build_cel_context``
+            to populate the ``i.*`` namespace. Per ADR-2026-05-22, both
+            sources feed the same namespace; bindings take precedence
+            because they represent explicit author intent.
     """
 
     validation_run: ValidationRun | None = None
     step: WorkflowStep | None = None
     downstream_signals: dict[str, Any] = field(default_factory=dict)
     workflow_signals: dict[str, Any] = field(default_factory=dict)
+    step_input_contract_values: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

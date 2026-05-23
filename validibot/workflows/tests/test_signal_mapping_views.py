@@ -2,8 +2,10 @@
 
 The signal mapping views provide a full CRUD editor for workflow-level
 signal mappings (``WorkflowSignalMapping``), a sample data parser for
-auto-discovering candidate signals, and an output promotion toggle for
-``SignalDefinition.signal_name``.
+auto-discovering candidate signals, and a step input/output promotion
+toggle that writes either to ``StepIODefinition.promoted_signal_name``
+(step-owned rows) or to a ``WorkflowStepIOPromotion`` overlay row
+(validator-owned rows).
 
 All views require **manage** permission (``WORKFLOW_EDIT``) because
 signal mapping is an authoring/configuration surface.
@@ -23,7 +25,7 @@ These tests verify:
 * **Access control** — unauthenticated users are redirected, outsiders
   get 404, executors get 403.
 * **Output promotion** — setting and clearing ``signal_name`` on a
-  ``SignalDefinition``.
+  ``StepIODefinition``.
 """
 
 from __future__ import annotations
@@ -42,7 +44,7 @@ from validibot.validations.constants import AssertionType
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import RulesetAssertion
-from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepIODefinition
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.models import WorkflowSignalMapping
@@ -2221,7 +2223,7 @@ class TestSignalMappingCreateModalClose(TestCase):
 
 
 # ── Output promotion ──────────────────────────────────────────────────
-# The promote output view toggles signal_name on a SignalDefinition
+# The promote output view toggles signal_name on a StepIODefinition
 # to make a validator output available in the s.* namespace for
 # downstream steps.
 
@@ -2234,7 +2236,7 @@ class TestPromoteOutputView(TestCase):
         ensure_all_roles_exist()
 
     def _create_output_signal(self, workflow, step=None):
-        """Create a step with an output SignalDefinition for testing."""
+        """Create a step with an output StepIODefinition for testing."""
         if step is None:
             validator = ValidatorFactory(
                 org=workflow.org,
@@ -2246,16 +2248,16 @@ class TestPromoteOutputView(TestCase):
                 validator=validator,
                 order=10,
             )
-        return SignalDefinition.objects.create(
+        return StepIODefinition.objects.create(
             workflow_step=step,
             contract_key="site_eui",
             direction=SignalDirection.OUTPUT,
-            signal_name="",
+            promoted_signal_name="",
         )
 
     def test_promote_sets_signal_name(self):
         """POST with a valid signal_name must set it on the
-        SignalDefinition and return 204 with signals-changed event.
+        StepIODefinition and return 204 with signals-changed event.
 
         This is the core promotion flow: an author names a validator
         output as a signal so downstream steps can reference it via
@@ -2279,7 +2281,7 @@ class TestPromoteOutputView(TestCase):
         self.assertEqual(response.status_code, 204)
         self.assertIn("signals-changed", response["HX-Trigger"])
         signal_def.refresh_from_db()
-        self.assertEqual(signal_def.signal_name, "eui")
+        self.assertEqual(signal_def.promoted_signal_name, "eui")
 
     def test_unpromote_clears_signal_name(self):
         """POST with an empty signal_name must clear the promotion.
@@ -2290,8 +2292,8 @@ class TestPromoteOutputView(TestCase):
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         signal_def = self._create_output_signal(workflow)
-        signal_def.signal_name = "eui"
-        signal_def.save(update_fields=["signal_name"])
+        signal_def.promoted_signal_name = "eui"
+        signal_def.save(update_fields=["promoted_signal_name"])
 
         url = reverse(
             "workflows:workflow_step_promote_output",
@@ -2306,7 +2308,7 @@ class TestPromoteOutputView(TestCase):
 
         self.assertEqual(response.status_code, 204)
         signal_def.refresh_from_db()
-        self.assertEqual(signal_def.signal_name, "")
+        self.assertEqual(signal_def.promoted_signal_name, "")
 
     def test_promote_duplicate_name_returns_error(self):
         """POST with a signal_name that already exists in the workflow
@@ -2338,7 +2340,7 @@ class TestPromoteOutputView(TestCase):
 
         self.assertEqual(response.status_code, 400)
         signal_def.refresh_from_db()
-        self.assertEqual(signal_def.signal_name, "")
+        self.assertEqual(signal_def.promoted_signal_name, "")
 
     def test_promote_invalid_name_returns_error(self):
         """POST with an invalid CEL identifier must return 400.
@@ -2364,4 +2366,203 @@ class TestPromoteOutputView(TestCase):
 
         self.assertEqual(response.status_code, 400)
         signal_def.refresh_from_db()
-        self.assertEqual(signal_def.signal_name, "")
+        self.assertEqual(signal_def.promoted_signal_name, "")
+
+    def test_promote_validator_owned_row_writes_overlay(self):
+        """Validator-owned StepIODefinitions promote via the overlay table.
+
+        Why it matters: catalog rows (EnergyPlus parsed inputs, FMU
+        outputs) are shared across every workflow that uses the
+        validator. The in-row promoted_signal_name field can't hold
+        workflow-scoped names — a single value would apply to every
+        workflow using the validator.
+
+        Before the May 2026 P1 fix, this case 404'd because the
+        promote view required the row's workflow_step FK to match the
+        URL's step_id. Now the view detects validator-owned rows
+        (validator FK matches the step's validator) and writes a
+        WorkflowStepIOPromotion overlay row keyed on
+        (workflow_step, signal_definition).
+
+        The catalog row itself stays unchanged so other workflows
+        using the same validator are unaffected.
+        """
+        from validibot.validations.models import WorkflowStepIOPromotion
+
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+
+        # System validator with a validator-owned catalog row (no
+        # workflow_step FK — shared across all workflows).
+        validator = ValidatorFactory(
+            org=workflow.org,
+            validation_type=ValidationType.ENERGYPLUS,
+            is_system=True,
+        )
+        catalog_row = StepIODefinition.objects.create(
+            validator=validator,
+            contract_key="zone_count",
+            direction=SignalDirection.INPUT,
+            promoted_signal_name="",
+        )
+        step = WorkflowStepFactory(
+            workflow=workflow,
+            validator=validator,
+            order=10,
+        )
+
+        url = reverse(
+            "workflows:workflow_step_promote_output",
+            kwargs={
+                "pk": workflow.pk,
+                "step_id": step.pk,
+                "signal_id": catalog_row.pk,
+            },
+        )
+
+        response = self.client.post(url, {"signal_name": "zones"})
+
+        self.assertEqual(response.status_code, 204)
+        self.assertIn("signals-changed", response["HX-Trigger"])
+        # The catalog row stays untouched — it's shared across workflows.
+        catalog_row.refresh_from_db()
+        self.assertEqual(catalog_row.promoted_signal_name, "")
+        # The overlay carries the workflow-scoped promotion.
+        overlay = WorkflowStepIOPromotion.objects.get(
+            workflow_step=step,
+            signal_definition=catalog_row,
+        )
+        self.assertEqual(overlay.promoted_signal_name, "zones")
+
+    def test_unpromote_validator_owned_row_deletes_overlay(self):
+        """Clearing the promotion on a validator-owned row removes the overlay.
+
+        Submitting an empty signal_name on a previously-promoted
+        validator-owned row should delete the overlay, returning the
+        ``s.*`` namespace to its pre-promotion shape. Without this
+        cleanup, stale overlays would cause uniqueness errors when an
+        author tried to reuse the same name later.
+        """
+        from validibot.validations.models import WorkflowStepIOPromotion
+
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        validator = ValidatorFactory(
+            org=workflow.org,
+            validation_type=ValidationType.ENERGYPLUS,
+            is_system=True,
+        )
+        catalog_row = StepIODefinition.objects.create(
+            validator=validator,
+            contract_key="zone_count",
+            direction=SignalDirection.INPUT,
+            promoted_signal_name="",
+        )
+        step = WorkflowStepFactory(
+            workflow=workflow,
+            validator=validator,
+            order=10,
+        )
+        WorkflowStepIOPromotion.objects.create(
+            workflow_step=step,
+            signal_definition=catalog_row,
+            promoted_signal_name="zones",
+        )
+
+        url = reverse(
+            "workflows:workflow_step_promote_output",
+            kwargs={
+                "pk": workflow.pk,
+                "step_id": step.pk,
+                "signal_id": catalog_row.pk,
+            },
+        )
+
+        response = self.client.post(url, {"signal_name": ""})
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(
+            WorkflowStepIOPromotion.objects.filter(
+                workflow_step=step,
+                signal_definition=catalog_row,
+            ).exists(),
+        )
+
+    def test_promote_validator_owned_in_two_workflows_independently(self):
+        """Two workflows sharing a validator can promote to different names.
+
+        This is the whole point of the overlay model: each workflow
+        gets its own workflow-scoped promotion of the shared catalog
+        row. Without the overlay, a single ``promoted_signal_name``
+        on the row would have to serve both workflows.
+        """
+        from validibot.validations.models import WorkflowStepIOPromotion
+
+        workflow_a = WorkflowFactory()
+        workflow_b = WorkflowFactory(org=workflow_a.org)
+        _login_as_author(self.client, workflow_a)
+        # Same logged-in user can manage both workflows because they
+        # share an org. (_login_as_author logs in the author for the
+        # workflow's org; we use the same org for B.)
+
+        validator = ValidatorFactory(
+            org=workflow_a.org,
+            validation_type=ValidationType.ENERGYPLUS,
+            is_system=True,
+        )
+        catalog_row = StepIODefinition.objects.create(
+            validator=validator,
+            contract_key="zone_count",
+            direction=SignalDirection.INPUT,
+            promoted_signal_name="",
+        )
+        step_a = WorkflowStepFactory(
+            workflow=workflow_a,
+            validator=validator,
+            order=10,
+        )
+        step_b = WorkflowStepFactory(
+            workflow=workflow_b,
+            validator=validator,
+            order=10,
+        )
+
+        # Workflow A promotes to "zones"
+        self.client.post(
+            reverse(
+                "workflows:workflow_step_promote_output",
+                kwargs={
+                    "pk": workflow_a.pk,
+                    "step_id": step_a.pk,
+                    "signal_id": catalog_row.pk,
+                },
+            ),
+            {"signal_name": "zones"},
+        )
+        # Workflow B promotes to "zone_total"
+        self.client.post(
+            reverse(
+                "workflows:workflow_step_promote_output",
+                kwargs={
+                    "pk": workflow_b.pk,
+                    "step_id": step_b.pk,
+                    "signal_id": catalog_row.pk,
+                },
+            ),
+            {"signal_name": "zone_total"},
+        )
+
+        self.assertEqual(
+            WorkflowStepIOPromotion.objects.get(
+                workflow_step=step_a
+            ).promoted_signal_name,
+            "zones",
+        )
+        self.assertEqual(
+            WorkflowStepIOPromotion.objects.get(
+                workflow_step=step_b
+            ).promoted_signal_name,
+            "zone_total",
+        )
+        catalog_row.refresh_from_db()
+        self.assertEqual(catalog_row.promoted_signal_name, "")

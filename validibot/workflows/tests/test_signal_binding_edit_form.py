@@ -12,8 +12,8 @@ submitted data includes a value for the field, Django ignores it.
 from django.test import TestCase
 
 from validibot.validations.constants import SignalSourceKind
-from validibot.validations.tests.factories import SignalDefinitionFactory
-from validibot.validations.tests.factories import StepSignalBindingFactory
+from validibot.validations.tests.factories import StepInputBindingFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.workflows.forms import SignalBindingEditForm
 
 
@@ -25,11 +25,11 @@ class TestSourceDataPathEditability(TestCase):
         field should be disabled so the author cannot change the validator's
         internal extraction path.
         """
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
         )
-        binding = StepSignalBindingFactory(
+        binding = StepInputBindingFactory(
             signal_definition=sig,
             source_data_path="metrics.site_eui",
         )
@@ -44,11 +44,11 @@ class TestSourceDataPathEditability(TestCase):
         source_data_path field should be enabled so the author can wire
         the signal to the appropriate payload path.
         """
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             source_kind=SignalSourceKind.PAYLOAD_PATH,
             is_path_editable=True,
         )
-        binding = StepSignalBindingFactory(
+        binding = StepInputBindingFactory(
             signal_definition=sig,
             source_data_path="building.floor_area",
         )
@@ -63,11 +63,11 @@ class TestSourceDataPathEditability(TestCase):
         not overwrite the existing binding path — Django's disabled field
         behaviour ensures the form ignores the submitted value.
         """
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
         )
-        binding = StepSignalBindingFactory(
+        binding = StepInputBindingFactory(
             signal_definition=sig,
             source_data_path="metrics.original_path",
         )

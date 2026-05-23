@@ -3,7 +3,7 @@
 Validibot uses Common Expression Language (CEL) for advanced assertions. CEL is a simple, safe expression syntax for writing small, fast, readable conditions and rules over your data.
 
 You can use CEL to perform simple assertion logic on your incoming data,
-or data produced by your validator (e.g. after FMU Validator runs a submission through a simulation and produces output).
+or data produced by your validator (e.g. after the FMU Validator runs a submission through a simulation and produces output).
 Whenever you add an assertion to your workflow step, you can base it on a CEL expression.
 
 When the user submits data, each assertion runs. If the assertion has a CEL, and the CEL evaluates to false, the error message you provided in the
@@ -15,40 +15,89 @@ Every CEL expression runs in a context where your data is organized into clear n
 
 | Short form | Long form | What it accesses |
 |------------|-----------|------------------|
-| `p.key` | `payload.key` | Raw submission data -- the JSON or XML the submitter sent |
-| `s.name` | `signal.name` | Author-defined signals -- values you've named via signal mapping or promoted outputs |
-| `output.name` | `o.name` | This step's validator outputs -- values produced by the current validator |
-| `steps.step_key.output.name` | | Upstream step outputs -- outputs from a previously completed workflow step |
+| `p.key` | `payload.key` | Raw submission data — the JSON, XML, or other payload the submitter sent |
+| `s.name` | `signal.name` | The workflow's vocabulary — values you've named via signal mapping or promoted from a step |
+| `i.name` | `input.name` | This step's inputs — values the validator has at the start of the step (parser facts, resolved bindings, template variables) |
+| `o.name` | `output.name` | This step's outputs — values produced by the validator after it runs |
+| `steps.step_key.input.name` / `steps.step_key.output.name` | | An earlier step's inputs or outputs |
 
-The `p.` namespace gives you direct access to whatever the submitter sent. If the submission payload contains `{"price": 20.00}`, you reference it as `p.price`.
+### The teaching analogy
 
-The `s.` namespace gives you access to signals -- named values that you define at the workflow level. Signals abstract away the raw data structure, so your assertions stay readable even when the underlying data paths are complex. You create signals through signal mapping (on the workflow page) or by promoting a validator's outputs.
+Think of each step as a function in a program.
 
-The `output.` namespace gives you the results produced by the current step's validator. For example, after an EnergyPlus simulation runs, `output.site_eui_kwh_m2` contains the simulated energy use intensity.
+- **Inputs (`i.*`)** are the function's parameters — values handed to it at the start.
+- **Outputs (`o.*`)** are what the function returns.
+- **The workflow vocabulary (`s.*`)** is module-level state shared across functions.
+- **The submission (`p.*`)** is the raw data the program started with, always available.
 
-The `steps.` namespace lets you reference outputs from earlier workflow steps. If step "schema_check" produced an output called "record_count", you'd access it as `steps.schema_check.output.record_count`.
+Just like in a program, you can lift a function-local value (an input or an output) into module-level state when you want other functions to see it. In Validibot, that ceremony is called **promotion** — "Copy to Signal" lifts a step-local `i.*` or `o.*` into the workflow's `s.*` vocabulary.
 
-**What data can you reference?**
+### Each namespace in detail
 
-The names available in a CEL expression depend on what's been defined for the current workflow step:
+**`p.*` — the raw submission.** Always present. Whatever the submitter sent, exactly as they sent it. If the submission contains `{"price": 20.00}`, you reference it as `p.price`. For XML and other formats, see the format-specific sections later in this doc.
 
-- **Signals** (`s.name`): named values defined by the workflow author through signal mapping or output promotion.
-- **Payload paths** (`p.key`): direct paths into the raw submission data, if the current validator supports direct data paths.
-- **Outputs** (`output.name`): values produced by the current step's validator.
-- **Upstream outputs** (`steps.key.output.name`): outputs from earlier workflow steps.
+**`s.*` — the workflow's vocabulary.** Named values that any step in the workflow can reference. You create them two ways:
+1. **Workflow signal mapping** (on the workflow's settings page) — pick a name like `target_eui`, point it at a path in the submission, and it's available everywhere as `s.target_eui`.
+2. **Promotion from a step** — take an input or output of a particular step, click "Copy to Signal", give it a workflow-wide name. From that point on, every step can reference it as `s.<your_name>`.
 
-**Why not just use JSON or XML Schemas?**
+Use `s.*` for values you want to use in multiple steps, or values whose source might change and you don't want every assertion to know the details.
 
-Yes, it's true, you can use the Validibot JSON Schema validator or XML Schema validator for your workflow steps. In this case you don't
-define individual rules, you just create one big schema and attach it to your validator. Schemas are great for structure: making sure fields exist, have the right type, follow enums, match patterns, etc. They’re the first line of defense for data integrity.
+**`i.*` — this step's inputs.** Values the validator can see at the start of this step, before its main work runs. For an EnergyPlus step this includes parser-extracted facts about the submitted IDF (`i.zone_count`, `i.idf_version`). For an FMU step it includes the resolved model input variables. For a step with author-supplied template variables, the resolved variable values appear here too.
 
-CEL expressions, on the other hand, handle the behavioural and cross-field rules for data that schemas either can’t express cleanly or make horribly verbose — things like numeric relationships between fields, tolerances, conditional requirements, or checks on simulation outputs from an FMU Validator. In Validibot, schemas define "what the data looks like"; CEL assertions define "what must be true about this data for it to be acceptable." They’re complementary, not competing.
+`i.*` is **step-local** — `i.zone_count` in one step is unrelated to `i.zone_count` in another step (different submissions, different parses). If you want a value visible across steps, promote it to a signal.
 
-You could create a workflow that has both a JSON schema validation and then some assertions that use detailed CEL expressions.
+**`o.*` — this step's outputs.** Values the validator produced after running. For an EnergyPlus step this is the simulation results (`o.site_eui_kwh_m2`, `o.unmet_heating_hours`). For a JSON Schema step there are usually no outputs — the validator just says pass/fail.
 
-**Examples**
+`o.*` is **step-local** too, and **temporally bound** — only available in *output-stage* assertions on the step that produced it. An input-stage assertion can't reference `o.*` because the validator hasn't run yet. Validibot's assertion editor enforces this: when you're editing an input-stage assertion, the autocomplete won't offer `o.*` references.
 
-Here are some examples of CEL expressions below. The example names are highlighted in blue, while the rest of the CEL expression is in red.
+**`steps.<step_key>.input.*` / `steps.<step_key>.output.*`** — values from an earlier step in the workflow, by step key. Use this for ad-hoc cross-step access. For values you reference often across steps, promotion to `s.*` is cleaner.
+
+### Where do I find each kind of value?
+
+| Question | Look in | Example |
+|---|---|---|
+| What did the user submit? | `p.*` | `p.metadata.client_id` |
+| What named value does the workflow define? | `s.*` | `s.target_eui` |
+| What can this step's validator see at the start? | `i.*` | `i.zone_count`, `i.idf_version` |
+| What did this step's validator produce? | `o.*` | `o.site_eui_kwh_m2` |
+| What did an earlier step produce? | `steps.<key>.output.*` | `steps.preflight.output.warning_count` |
+
+### When do step inputs and step outputs exist?
+
+A natural question: *"Why are `i.*` and `o.*` sometimes empty?"*
+
+A step populates `i.*` or `o.*` only when its validator runs a **process**
+that transforms data. If you're using a validator that just checks
+structural rules (JSON Schema, XML Schema, Basic), both namespaces are
+empty — you write your assertions entirely against `p.*` and `s.*`.
+
+Three positions on the spectrum:
+
+- **No process** (JSON Schema, XML Schema, Basic) — assertions use
+  `p.*` (the payload) and optionally `s.*` (workflow signals). `i.*`
+  and `o.*` are empty.
+- **Process produces outputs only** (SHACL, THERM) — the validator
+  parses or evaluates the payload and emits results. Assertions
+  primarily use `o.*`. `i.*` is empty.
+- **Process has discrete input and output stages** (EnergyPlus, FMU) —
+  the validator extracts facts from the payload first (`i.*`), runs its
+  main work, then emits results (`o.*`). Both stages are meaningful.
+
+If you open a workflow step and the Inputs or Outputs panel is empty,
+that's intentional — it accurately reflects what the chosen validator
+does with your data.
+
+### Why not just use JSON or XML Schemas?
+
+Yes, it's true — you can use the Validibot JSON Schema validator or XML Schema validator for your workflow steps. In that case you don't define individual rules, you just attach one big schema to your validator. Schemas are great for structure: making sure fields exist, have the right type, follow enums, match patterns, etc. They're the first line of defense for data integrity.
+
+CEL expressions, on the other hand, handle behavioural and cross-field rules that schemas either can't express cleanly or make horribly verbose — things like numeric relationships between fields, tolerances, conditional requirements, or checks on simulation outputs from an FMU Validator. In Validibot, schemas define "what the data looks like"; CEL assertions define "what must be true about this data for it to be acceptable." They're complementary, not competing.
+
+You could create a workflow that has both a JSON schema validation and detailed CEL assertions.
+
+## Examples
+
+Here are some examples of CEL expressions. The example names are highlighted in blue, while the rest of the CEL expression is in red.
 
 ### Core operators
 
@@ -74,13 +123,14 @@ Here are some examples of CEL expressions below. The example names are highlight
 - **Comparing timestamps**: <code><span class="target-signal-name">p.my_time_value</span></code> `< timestamp('2024-12-31T23:59:59Z')`
 - **Between**: <code><span class="target-signal-name">p.my_value</span></code> `> 10 && ` <code><span class="target-signal-name">p.my_value</span></code> `< 20`
 
-### Examples
+### Examples by namespace
 
-- Require a positive payload value: <code><span class="target-signal-name">p.price</span></code> ` > 0`
-- Require a boolean payload value to be true: <code><span class="target-signal-name">p.my_bool_in</span></code> ` == true`
-- Ensure an output list contains a value: <code><span class="target-signal-name">output.my_value_objects_list</span></code> `.exists(o, o.`<code><span class="target-signal-name">some_value</span></code>` != null)`
-- Guard tolerance on an output: `abs(` <code><span class="target-signal-name">output.my_sensor_reading</span></code> ` - 120.0) < 0.05`
-- Limit a payload description length: `size(` <code><span class="target-signal-name">p.my_description</span></code>`) <= 500`
+- **Payload check**: <code><span class="target-signal-name">p.price</span></code> ` > 0`
+- **Signal check**: <code><span class="target-signal-name">s.target_eui</span></code> ` <= 60`
+- **Input-stage check (before validator runs)**: <code><span class="target-signal-name">i.zone_count</span></code> ` >= 4 && ` <code><span class="target-signal-name">i.idf_version</span></code> `.startsWith("25.")`
+- **Output-stage check (after validator runs)**: <code><span class="target-signal-name">o.site_eui_kwh_m2</span></code> ` <= ` <code><span class="target-signal-name">s.target_eui</span></code>
+- **Compare input to output**: `abs(` <code><span class="target-signal-name">i.expected_floor_area</span></code> ` - ` <code><span class="target-signal-name">o.floor_area_m2</span></code>`) < 5.0`
+- **Cross-step reference**: <code><span class="target-signal-name">steps.preflight.output.warning_count</span></code> ` < 10`
 
 ### Working with XML data
 
@@ -119,45 +169,47 @@ You can't reference `emissivity` directly in a CEL expression because it's a **v
 2. Set its data path to `ownedAttribute[?@.name=='emissivity'].defaultValue`
 3. Write your CEL assertion as `s.emissivity > 0.0 && s.emissivity <= 1.0`
 
-Validibot resolves the filter expression to find the right array element, then makes the value available under the signal name. Your CEL assertions stay clean and readable -- the complexity of navigating the data structure is handled by the data path, not the expression.
+Validibot resolves the filter expression to find the right array element, then makes the value available under the signal name. Your CEL assertions stay clean and readable — the complexity of navigating the data structure is handled by the data path, not the expression.
 
 See the [Signals](/app/help/validators/signals/) guide for a worked example, and the [Data Paths](/app/help/validators/data-paths/) guide for filter expression syntax.
 
-### Tips
+## Tips
 
-- Expressions run against the submission payload, signals, and validator outputs.
-- Keep them deterministic -- no network or external state.
+- Expressions run against the submission payload, workflow signals, step inputs, and step outputs.
+- Keep them deterministic — no network or external state.
 - Use step assertions to tighten a workflow. On JSON Schema, XML Schema, and SHACL steps, the built-in validation runs first and your assertions run afterward.
 - Default assertions always run for the validator before step-level assertions.
-- Use the namespace prefix (`p.`, `s.`, `output.`) to make it clear where your data comes from. In the UI we color the target portion to help you distinguish it from the rest of the expression.
+- **Input vs. output assertions are different stages.** Input-stage assertions can reference `p.*`, `s.*`, `i.*`, and earlier steps via `steps.<key>.*`. They **cannot** reference this step's `o.*` because the validator hasn't run yet. Output-stage assertions can reference everything, including this step's `o.*` and `i.*`. The assertion editor's variable picker is filtered by stage to prevent confusion.
+- **Use the namespace prefix** (`p.`, `s.`, `i.`, `o.`) to make it clear where your data comes from. In the UI we color the target portion to help you distinguish it from the rest of the expression.
+- **Promote any step-local value to a signal** if you want to reference it from multiple steps. "Copy to Signal" works on both inputs (`i.*`) and outputs (`o.*`) — pick a workflow-wide name and the value becomes available as `s.<your_name>` everywhere downstream.
 
 For more syntax details, visit the CEL specification at <https://github.com/google/cel-spec>.
 
-### Full CEL Expression List
+## Full CEL Expression List
 
-The following CEL statements are supported in Validibot
+The following CEL statements are supported in Validibot.
 
-#### Base CEL Syntax
+### Base CEL Syntax
 
 | Syntax name                     | Description                                                  | Example                                                                               |
-| ------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- | --- | ---------------- |
-| Equality / inequality           | Compare two values for equality or difference.               | `p.my_status == "ready"`, `p.my_status != "ok"`                                           |
-| Comparisons                     | Numerical comparisons with greater/less operators.           | `p.price > 0`, `p.score >= 90`, `p.cost < 1000`                                             |
-| Arithmetic                      | Basic math operators over numbers.                           | `(output.kwh_total - s.kwh_baseline) / s.kwh_baseline < 0.1`                                     |
-| Logical                         | Combine boolean expressions.                                 | `cond1 && cond2`, `cond1                                                              |     | cond2`, `!cond1` |
-| Membership                      | Test whether a value is inside a list.                       | `p.my_status in ["draft", "approved"]`, `!(p.my_status in ["archived"])`                  |
-| Null / empty checks             | Detect missing or empty values.                              | `p.my_field == null`, `size(p.my_items) == 0`                                             |
-| JSON-style path access          | Traverse objects and arrays with dot and `[index]` notation. | `p.device[0].id == "abc123"`                                                    |
-| Length / size                   | Count characters or list elements.                           | `size(p.my_text) <= 140`, `size(p.my_items) > 0`                                          |
+| ------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Equality / inequality           | Compare two values for equality or difference.               | `p.my_status == "ready"`, `p.my_status != "ok"`                                       |
+| Comparisons                     | Numerical comparisons with greater/less operators.           | `p.price > 0`, `p.score >= 90`, `p.cost < 1000`                                       |
+| Arithmetic                      | Basic math operators over numbers.                           | `(o.kwh_total - s.kwh_baseline) / s.kwh_baseline < 0.1`                               |
+| Logical                         | Combine boolean expressions.                                 | `cond1 && cond2`, `cond1 \|\| cond2`, `!cond1`                                        |
+| Membership                      | Test whether a value is inside a list.                       | `p.my_status in ["draft", "approved"]`, `!(p.my_status in ["archived"])`              |
+| Null / empty checks             | Detect missing or empty values.                              | `p.my_field == null`, `size(p.my_items) == 0`                                         |
+| JSON-style path access          | Traverse objects and arrays with dot and `[index]` notation. | `p.device[0].id == "abc123"`                                                          |
+| Length / size                   | Count characters or list elements.                           | `size(p.my_text) <= 140`, `size(p.my_items) > 0`                                      |
 | String contains / starts / ends | String search helpers from CEL stdlib.                       | `p.my_text.contains("error")`, `p.my_text.startsWith("ID-")`, `p.my_text.endsWith(".json")` |
-| Regex match                     | Match strings with a regular expression.                     | `p.my_text.matches("^ID-[0-9]+$")`                                                      |
-| Collections (exists / all)      | Quantify over list elements.                                 | `p.my_items.exists(i, i.status == "ok")`, `p.my_items.all(i, i.score >= 80)`              |
-| Subset / superset check         | Verify one list is contained in another.                     | `s.expected.all(e, e in s.provided)`                                                      |
-| Ternary conditional             | Choose a value based on a condition.                         | `p.is_valid ? "pass" : "fail"`                                                          |
-| Timestamp comparison            | Compare datetimes via CEL `timestamp()`.                     | `p.event_time < timestamp("2024-12-31T23:59:59Z")`                                      |
-| Range / between                 | Combine comparisons to enforce bounds.                       | `p.my_value > 10 && p.my_value < 20`                                                      |
+| Regex match                     | Match strings with a regular expression.                     | `p.my_text.matches("^ID-[0-9]+$")`                                                    |
+| Collections (exists / all)      | Quantify over list elements.                                 | `p.my_items.exists(i, i.status == "ok")`, `p.my_items.all(i, i.score >= 80)`          |
+| Subset / superset check         | Verify one list is contained in another.                     | `s.expected.all(e, e in s.provided)`                                                  |
+| Ternary conditional             | Choose a value based on a condition.                         | `p.is_valid ? "pass" : "fail"`                                                        |
+| Timestamp comparison            | Compare datetimes via CEL `timestamp()`.                     | `p.event_time < timestamp("2024-12-31T23:59:59Z")`                                    |
+| Range / between                 | Combine comparisons to enforce bounds.                       | `p.my_value > 10 && p.my_value < 20`                                                  |
 
-#### Validibot Helpers
+### Validibot Helpers
 
 | Syntax name                   | Description                                              | Example                                 |
 | ----------------------------- | -------------------------------------------------------- | --------------------------------------- |

@@ -25,10 +25,10 @@ For each ``slug`` that has more than one system Validator row, this command:
   2. Reassigns every FK from the stale rows to the canonical row:
        - ``WorkflowStep.validator`` (PROTECT'd; must be moved before delete)
        - ``ValidatorResourceFile.validator`` (CASCADE; moved to preserve data)
-       - assertion / binding / trace references to stale ``SignalDefinition``
+       - assertion / binding / trace references to stale ``StepIODefinition``
          rows, remapped to matching canonical signal definitions before the
          stale validator is deleted
-  3. Drops the stale row. Remaining stale ``SignalDefinition`` and
+  3. Drops the stale row. Remaining stale ``StepIODefinition`` and
      ``Derivation`` rows attached to the stale validator are CASCADE-deleted;
      ``sync_validators`` has already populated the canonical row with the
      up-to-date signal/derivation set.
@@ -181,18 +181,18 @@ class Command(BaseCommand):
             ValidatorResourceFile.objects.filter(validator=r).update(
                 validator=canonical,
             )
-            # SignalDefinition / Derivation CASCADE; the canonical already
+            # StepIODefinition / Derivation CASCADE; the canonical already
             # has its own (refreshed) set via sync_validators, so dropping
             # the stale validator's set is the right behavior.
             r.delete()
 
     def _canonical_signal_map(self, canonical: Validator) -> dict[tuple[str, str], int]:
         """Map canonical validator signals by the identity authors reference."""
-        from validibot.validations.models import SignalDefinition
+        from validibot.validations.models import StepIODefinition
 
         return {
             (sig.contract_key, sig.direction): sig.pk
-            for sig in SignalDefinition.objects.filter(validator=canonical)
+            for sig in StepIODefinition.objects.filter(validator=canonical)
         }
 
     def _signal_replacements(
@@ -201,12 +201,12 @@ class Command(BaseCommand):
         stale: Validator,
     ) -> tuple[dict[int, int], list[tuple[str, str]]]:
         """Return ``{stale_signal_id: canonical_signal_id}`` plus misses."""
-        from validibot.validations.models import SignalDefinition
+        from validibot.validations.models import StepIODefinition
 
         canonical_signals = self._canonical_signal_map(canonical)
         replacements: dict[int, int] = {}
         unmapped: list[tuple[str, str]] = []
-        for sig in SignalDefinition.objects.filter(validator=stale):
+        for sig in StepIODefinition.objects.filter(validator=stale):
             key = (sig.contract_key, sig.direction)
             canonical_id = canonical_signals.get(key)
             if canonical_id:
@@ -223,7 +223,7 @@ class Command(BaseCommand):
         """Count FK rows that would be remapped for dry-run output."""
         from validibot.validations.models import ResolvedInputTrace
         from validibot.validations.models import RulesetAssertion
-        from validibot.validations.models import StepSignalBinding
+        from validibot.validations.models import StepInputBinding
 
         replacements, unmapped = self._signal_replacements(canonical, stale)
         stale_ids = list(replacements)
@@ -233,7 +233,7 @@ class Command(BaseCommand):
             RulesetAssertion.objects.filter(
                 target_signal_definition_id__in=stale_ids,
             ).count()
-            + StepSignalBinding.objects.filter(
+            + StepInputBinding.objects.filter(
                 signal_definition_id__in=stale_ids,
             ).count()
             + ResolvedInputTrace.objects.filter(
@@ -246,7 +246,7 @@ class Command(BaseCommand):
         """Move references off stale validator-owned signal definitions."""
         from validibot.validations.models import ResolvedInputTrace
         from validibot.validations.models import RulesetAssertion
-        from validibot.validations.models import StepSignalBinding
+        from validibot.validations.models import StepInputBinding
 
         replacements, _unmapped = self._signal_replacements(canonical, stale)
         for stale_signal_id, canonical_signal_id in replacements.items():
@@ -257,14 +257,14 @@ class Command(BaseCommand):
                 signal_definition_id=stale_signal_id,
             ).update(signal_definition_id=canonical_signal_id)
 
-            # ``StepSignalBinding`` has a uniqueness constraint on
+            # ``StepInputBinding`` has a uniqueness constraint on
             # (workflow_step, signal_definition). Resolve rare collisions
             # explicitly instead of letting the cleanup abort halfway through.
             for binding in list(
-                StepSignalBinding.objects.filter(signal_definition_id=stale_signal_id),
+                StepInputBinding.objects.filter(signal_definition_id=stale_signal_id),
             ):
                 duplicate_exists = (
-                    StepSignalBinding.objects.filter(
+                    StepInputBinding.objects.filter(
                         workflow_step_id=binding.workflow_step_id,
                         signal_definition_id=canonical_signal_id,
                     )

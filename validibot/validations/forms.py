@@ -32,7 +32,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorRuleType
 from validibot.validations.constants import get_resource_type_config
 from validibot.validations.constants import get_resource_types_for_validator
-from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.validators.shacl.form_fields import ShaclConfigMixin
 from validibot.validations.validators.shacl.form_fields import _max_asks_per_step
@@ -80,6 +80,187 @@ def _strip_cel_string_literals(expression: str) -> str:
             quote = None
 
     return "".join(output)
+
+
+def _scan_signal_bracket_access_keys(expression: str) -> list[str]:
+    """Return ``s["<key>"]`` / ``signal["<key>"]`` keys outside string literals.
+
+    Used by ``RulesetAssertionForm._validate_cel_identifiers`` to catch
+    the CEL bracket-access spelling of the ``s.<step_input>`` mental-
+    model trap. The CEL spec says ``m.x`` and ``m["x"]`` are equivalent
+    for maps with valid keys, so an author can express the same wrong
+    reference through either spelling. The dot-access form is caught
+    by the identifier-regex pass; this scan handles the bracket form.
+
+    Why a hand-written scanner instead of a regex:
+
+    1. **String-literal awareness.** A naive regex over the raw
+       expression matches ``s["foo"]`` text inside an ordinary CEL
+       string literal — e.g. ``p.note == 's["foo"]'`` is a perfectly
+       valid expression comparing a string, no bracket access happens
+       at runtime. The scanner skips past quoted spans so the bracket
+       match only fires on real syntax.
+    2. **Slug-friendly keys.** ``StepIODefinition.contract_key`` is a
+       Django ``SlugField`` and allows hyphens (e.g. ``panel-area``).
+       A regex constrained to identifier-shaped keys would let
+       ``s["panel-area"]`` slip through; this scanner extracts the
+       quoted contents verbatim and leaves slug membership checks to
+       the caller.
+
+    The scanner returns a list (preserving order, allowing duplicates)
+    so the caller can report all occurrences. Caller is responsible
+    for membership lookup against ``inputs_by_slug`` and for the
+    workflow-signal collision exception.
+    """
+    keys: list[str] = []
+    i = 0
+    n = len(expression)
+    # Longest namespace root first so we don't partial-match ``s`` when
+    # the source is actually ``signal``.
+    roots = ("signal", "s")
+
+    while i < n:
+        ch = expression[i]
+
+        # ── CEL string literal — skip its contents ────────────────────
+        if ch in ("'", '"'):
+            quote = ch
+            i += 1
+            while i < n:
+                if expression[i] == "\\" and i + 1 < n:
+                    i += 2  # skip backslash + the escaped character
+                    continue
+                if expression[i] == quote:
+                    i += 1
+                    break
+                i += 1
+            continue
+
+        # ── Look for ``s | signal`` as a top-level expression token ──
+        # Two distinct boundary checks have to both pass:
+        #
+        # 1. **Identifier boundary** — the previous character must
+        #    not be a word character, or this candidate is just the
+        #    tail of a longer identifier (``some_s``, ``my_signal``).
+        # 2. **Expression-position boundary** — the previous
+        #    non-whitespace character must not be ``.``, or this
+        #    candidate is a field access on some other expression
+        #    (``p.s["panel_area"]``, ``payload.signal["x"]``).
+        #    Those are payload member references, not the CEL signal
+        #    namespace, so they must not trigger the misnamespaced-
+        #    input guard.
+        #
+        # The identifier-boundary check uses the immediate previous
+        # char (whitespace-sensitive: ``some_s`` is one token, but
+        # ``some_s `` and the trailing ``s`` are separate tokens —
+        # the latter case is still caught by the expression-position
+        # check, because the prior non-whitespace would be ``some_s``
+        # ending in a word char). The expression-position check uses
+        # the previous non-whitespace char to handle CEL's tolerance
+        # for whitespace around ``.`` (``p . s`` is equivalent to
+        # ``p.s``).
+        prev_is_word = i > 0 and (
+            expression[i - 1].isalnum() or expression[i - 1] == "_"
+        )
+        if prev_is_word:
+            i += 1
+            continue
+
+        # Walk back over whitespace to find the previous non-
+        # whitespace char; if it's ``.``, this is member access and
+        # the candidate isn't a top-level namespace reference.
+        prev_nonspace = ""
+        j = i - 1
+        while j >= 0 and expression[j].isspace():
+            j -= 1
+        if j >= 0:
+            prev_nonspace = expression[j]
+        if prev_nonspace == ".":
+            i += 1
+            continue
+
+        matched_root: str | None = None
+        for root in roots:
+            end = i + len(root)
+            if expression[i:end] != root:
+                continue
+            # Reject when the candidate is just the prefix of a longer
+            # identifier (``signal_foo``, ``some_s_bar``).
+            if end < n and (expression[end].isalnum() or expression[end] == "_"):
+                continue
+            matched_root = root
+            break
+
+        if matched_root is None:
+            i += 1
+            continue
+
+        # Try to parse ``[ "<key>" ]`` from the position after the root.
+        after_root = i + len(matched_root)
+        key, consumed_to = _parse_bracket_key(expression, after_root)
+        if key is not None:
+            keys.append(key)
+            i = consumed_to
+        else:
+            # No bracket access followed — skip past the root only.
+            i = after_root
+
+    return keys
+
+
+def _parse_bracket_key(
+    expression: str,
+    start: int,
+) -> tuple[str | None, int]:
+    r"""Parse ``[ "<key>" ]`` starting at ``start``.
+
+    Returns ``(unescaped_key, end_index)`` if a well-formed bracket
+    access follows, where ``end_index`` is the position just after the
+    closing ``]``. Returns ``(None, start)`` when the syntax doesn't
+    match. Whitespace is allowed between every pair of tokens.
+
+    Honours common CEL backslash escapes by treating ``\X`` as a
+    literal ``X`` (good enough for matching contract_keys, which are
+    slug-shaped and never contain control sequences).
+    """
+    i = start
+    n = len(expression)
+
+    while i < n and expression[i].isspace():
+        i += 1
+    if i >= n or expression[i] != "[":
+        return None, start
+    i += 1
+
+    while i < n and expression[i].isspace():
+        i += 1
+    if i >= n or expression[i] not in ("'", '"'):
+        return None, start
+    quote = expression[i]
+    i += 1
+
+    chars: list[str] = []
+    closed = False
+    while i < n:
+        if expression[i] == "\\" and i + 1 < n:
+            chars.append(expression[i + 1])
+            i += 2
+            continue
+        if expression[i] == quote:
+            i += 1
+            closed = True
+            break
+        chars.append(expression[i])
+        i += 1
+    if not closed:
+        return None, start
+
+    while i < n and expression[i].isspace():
+        i += 1
+    if i >= n or expression[i] != "]":
+        return None, start
+
+    return "".join(chars), i + 1
 
 
 class CelHelpLabelMixin:
@@ -291,7 +472,7 @@ class CustomValidatorCreateForm(forms.Form):
         required=False,
         help_text=_(
             "Allow assertions against data paths not declared as "
-            "validator inputs or outputs."
+            "step inputs or step outputs."
         ),
     )
     supported_data_formats = forms.ChoiceField(
@@ -416,7 +597,7 @@ class CustomValidatorUpdateForm(forms.Form):
         required=False,
         help_text=_(
             "Allow assertions against data paths not declared as "
-            "validator inputs or outputs."
+            "step inputs or step outputs."
         ),
     )
     supported_data_formats = forms.ChoiceField(
@@ -680,16 +861,16 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         super().__init__(*args, **kwargs)
         self.shacl_query_max_length = self._resolve_shacl_query_max_length()
         self.catalog_choices = list(catalog_choices or [])
-        # catalog_entries parameter contains SignalDefinition objects
+        # catalog_entries parameter contains StepIODefinition objects
         # (passed from the mixin's signal_definitions query).
-        self.signal_definitions: list[SignalDefinition] = list(catalog_entries or [])
+        self.signal_definitions: list[StepIODefinition] = list(catalog_entries or [])
         # Workflow-level signal names (signal mappings + promoted outputs
         # from upstream steps).  These are valid s.* assertion targets
         # even when they don't correspond to a validator input.
         self.workflow_signal_names: set[str] = set(workflow_signal_names or [])
-        self.inputs_by_slug: dict[str, SignalDefinition] = {}
-        self.outputs_by_slug: dict[str, SignalDefinition] = {}
-        self.choice_map: dict[str, SignalDefinition] = {}
+        self.inputs_by_slug: dict[str, StepIODefinition] = {}
+        self.outputs_by_slug: dict[str, StepIODefinition] = {}
+        self.choice_map: dict[str, StepIODefinition] = {}
         for sig in self.signal_definitions:
             if sig.direction == SignalDirection.OUTPUT:
                 self.outputs_by_slug.setdefault(sig.contract_key, sig)
@@ -728,7 +909,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             signal_choices.append((value, f"{label} · {role}"))
         self.no_signal_choices = len(signal_choices) == 0
         self.fields["target_catalog_entry"].choices = [
-            ("", _("Select a validator input or output")),
+            ("", _("Select a step input or step output")),
             *signal_choices,
         ]
         # Hide catalog selector in favor of the target field; we
@@ -746,7 +927,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 )
             else:
                 cel_help_text = _(
-                    "Only declared validator inputs and outputs "
+                    "Only declared step inputs and step outputs "
                     "are available for this validator."
                 )
             self.fields["cel_expression"].help_text = cel_help_text
@@ -756,7 +937,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         base_help = _(
             "Use s.<name> for workflow signals, "
             "p.<path> for payload data, "
-            "o.<name> for validator outputs."
+            "o.<name> for step outputs."
         )
         if self._validator_allows_custom_targets():
             target_path_field.help_text = (
@@ -855,6 +1036,36 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             operator_value = cleaned.get("operator")
             if not operator_value:
                 raise ValidationError({"operator": _("Select a condition.")})
+            # Per ADR-2026-05-22b and the May 2026 review findings:
+            # BASIC evaluators resolve targets by walking a dotted path
+            # against the raw payload — they have no concept of the
+            # i.* / s.* / o.* namespaces. So BASIC can't reach values
+            # that live in the namespaced CEL context:
+            #
+            # - **i.\\* targets** (any INPUT-direction
+            #   StepIODefinition): the value comes from
+            #   extract_input_signals() (parser-managed) or a resolved
+            #   StepInputBinding (author-bound). Either way, BASIC
+            #   walks ``contract_key`` against the raw payload and
+            #   misses both sources.
+            # - **s.\\* targets** (workflow signals or promoted
+            #   outputs): the value lives in
+            #   RunContext.workflow_signals / the s.* namespace,
+            #   never in the raw payload. BASIC strips the ``s.``
+            #   prefix and walks the bare name against the payload
+            #   — only works by coincidence when the signal name
+            #   equals a top-level payload key.
+            #
+            # The correct rule is: reject all i.* AND s.* targets
+            # from BASIC and tell the author to use CEL (which
+            # resolves via the namespaced context where both work
+            # correctly). The o.* case still works because
+            # ``_build_assertion_payload`` merges the output dict
+            # into the BASIC payload at output stage.
+            self._reject_namespaced_basic_target(
+                cleaned.get("resolved_signal"),
+                cleaned.get("target_data_path") or "",
+            )
             rhs, options = self._build_basic_payload(AssertionOperator(operator_value))
             cleaned["rhs_payload"] = rhs
             cleaned["options_payload"] = options
@@ -1012,7 +1223,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         All data references must use a namespace prefix:
         - ``p.key`` / ``payload.key`` — raw submission data
         - ``s.name`` / ``signal.name`` — author-defined signals
-        - ``o.name`` / ``output.name`` — this step's validator outputs
+        - ``o.name`` / ``output.name`` — this step's step outputs
         - ``steps.key.output.name`` — upstream step outputs
 
         Bare identifiers are only allowed for CEL literals (``true``,
@@ -1020,8 +1231,20 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         variables used as loop vars in quantifier expressions.
         """
         reserved_literals = {"true", "false", "null"}
-        # The namespace root names that are valid bare identifiers
-        namespace_roots = {"p", "payload", "s", "signal", "o", "output", "steps"}
+        # The namespace root names that are valid bare identifiers.
+        # Five CEL namespaces per ADR-2026-05-22b: payload (p), signal (s),
+        # input (i), output (o), steps.
+        namespace_roots = {
+            "p",
+            "payload",
+            "s",
+            "signal",
+            "i",
+            "input",
+            "o",
+            "output",
+            "steps",
+        }
         cel_builtins = {
             "has",
             "exists",
@@ -1081,6 +1304,49 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             )
 
         unknown = set()
+        # ``s.<step_input>`` is a mental-model trap: the form happily
+        # resolves the name (the s.* dispatcher checks ``inputs_by_slug``
+        # before ``workflow_signal_names``), so the CEL identifier check
+        # would also accept it as a "namespaced reference". But at
+        # runtime step inputs live in ``i.*`` — they are NOT injected
+        # into ``s.*``. The author's CEL expression saves, then silently
+        # reads null at evaluation time. We collect these and surface
+        # them as a separate, more specific error.
+        misnamespaced_inputs: set[str] = set()
+
+        # ── Pre-strip pass: bracket-access trap (``s["name"]``) ──────
+        # Per the CEL spec, ``m.x`` and ``m["x"]`` are equivalent for
+        # maps with valid keys. If we only scanned the stripped
+        # expression, ``s["panel_area"]`` would have the string
+        # literal removed first, leaving just ``s`` for the
+        # identifier regex — that's a valid namespace root, so the
+        # guard below wouldn't fire and the same mental-model trap
+        # would slip through a different valid CEL spelling.
+        #
+        # We hand off to a small lexical scanner (rather than a
+        # regex) because:
+        #
+        # 1. The scanner skips over CEL string literals, so the
+        #    text ``s["foo"]`` inside an ordinary string (e.g.
+        #    ``p.note == 's["foo"]'``) doesn't false-positive as
+        #    actual bracket access.
+        # 2. The scanner extracts the bracket key verbatim and
+        #    leaves slug membership to us. ``contract_key`` is a
+        #    Django SlugField (hyphens allowed), so an
+        #    identifier-shaped regex would let ``s["panel-area"]``
+        #    slip through.
+        #
+        # The collision exception is the same as the dot-access
+        # branch: a key that's also a real workflow signal name is
+        # legitimate (runtime resolves it to the workflow signal's
+        # value, not to a step input).
+        for bracket_key in _scan_signal_bracket_access_keys(expression):
+            if (
+                bracket_key in self.inputs_by_slug
+                and bracket_key not in self.workflow_signal_names
+            ):
+                misnamespaced_inputs.add(bracket_key)
+
         # Strip string literals (including escaped quotes) so identifiers
         # inside quotes are not treated as bare identifiers.
         stripped = _strip_cel_string_literals(expression)
@@ -1092,11 +1358,45 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             # quantifier expressions like exists(x, items, x > 0))
             if len(name) == 1:
                 continue
-            # Namespace-prefixed references are always valid
-            root = name.split(".")[0]
+            # Namespace-prefixed references are usually valid — but
+            # ``s.<name>`` references need an extra check: if <name>
+            # is a known step input but NOT also a real workflow
+            # signal, the author has chosen the wrong namespace
+            # (s.* never holds step inputs at runtime).
+            parts = name.split(".")
+            root = parts[0]
             if root in namespace_roots:
+                if (
+                    root in {"s", "signal"}
+                    and len(parts) >= 2  # noqa: PLR2004
+                    and parts[1] in self.inputs_by_slug
+                    and parts[1] not in self.workflow_signal_names
+                ):
+                    misnamespaced_inputs.add(parts[1])
                 continue
             unknown.add(name)
+
+        if misnamespaced_inputs:
+            example = sorted(misnamespaced_inputs)[0]
+            raise ValidationError(
+                {
+                    "cel_expression": _(
+                        "Step inputs live in the i.* namespace, not s.* "
+                        "— at runtime s.* contains only workflow signal "
+                        "mappings and promoted upstream outputs, never "
+                        "step inputs. Use i.%(first)s instead of "
+                        "s.%(first)s (the assertion would silently read "
+                        "null otherwise). Affected: %(names)s"
+                    )
+                    % {
+                        "first": example,
+                        "names": ", ".join(
+                            f"s.{n}" for n in sorted(misnamespaced_inputs)
+                        ),
+                    },
+                },
+            )
+
         if unknown:
             raise ValidationError(
                 {
@@ -1124,7 +1424,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                     {
                         "target_data_path": _(
                             "Use s.<name> for workflow signals, p.<path> for "
-                            "payload data, or o.<name> for validator outputs."
+                            "payload data, or o.<name> for step outputs."
                         ),
                     },
                 )
@@ -1139,7 +1439,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 {
                     "target_data_path": _(
                         "Enter a target path. Use s.<name> for workflow signals, "
-                        "p.<path> for payload data, or o.<name> for validator outputs."
+                        "p.<path> for payload data, or o.<name> for step outputs."
                     ),
                 },
             )
@@ -1160,7 +1460,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                     {
                         "target_data_path": _(
                             "Unknown output '%(name)s'. Check the "
-                            "Validator Outputs tab for available names."
+                            "Step Outputs tab for available names."
                         )
                         % {"name": name},
                     },
@@ -1173,7 +1473,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
 
         # ── Signal prefix: s. / signal. ─────────────────────────────
         # These reference either:
-        #   1. Validator input signals (resolve to a SignalDefinition)
+        #   1. Validator input signals (resolve to a StepIODefinition)
         #   2. Workflow-level signals — signal mappings or promoted
         #      outputs from upstream steps (stored as bare name)
         if value.startswith(("s.", "signal.")):
@@ -1199,7 +1499,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                     {
                         "target_data_path": _(
                             "Unknown signal '%(name)s'. Check the "
-                            "Validator Inputs tab or Signal Mappings "
+                            "Step Inputs tab or Signal Mappings "
                             "for available names."
                         )
                         % {"name": name},
@@ -1207,6 +1507,45 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 )
             self._set_resolved(
                 path=name,
+                stage=CatalogRunStage.INPUT,
+            )
+            return
+
+        # ── Input prefix: i. / input. ───────────────────────────────
+        # Per ADR-2026-05-22, step-local input values (parser-extracted
+        # facts and resolved bindings) live in the i.* namespace. An
+        # author who writes i.zone_count into the target field expects
+        # it to resolve to the INPUT-direction StepIODefinition, not
+        # error out as an unknown prefix. Without this branch, i.*
+        # autocomplete entries from get_catalog_choices would fail
+        # form validation — per the May 2026 review's P2 finding.
+        if value.startswith(("i.", "input.")):
+            name = value.split(".", 1)[1]
+            if name in self.inputs_by_slug:
+                # Known input definition — resolve to the SignalDefinition
+                # row. The display layer renders this as i.<contract_key>
+                # because target_signal_definition.direction is INPUT
+                # (Assertion.target_display handles the prefix).
+                self._set_resolved(
+                    signal=self.inputs_by_slug[name],
+                    stage=CatalogRunStage.INPUT,
+                )
+                return
+            # Unknown input name — fall back to custom-path semantics
+            # if the validator allows it; otherwise reject with a
+            # clear error pointing to the Step Inputs panel.
+            if not self._validator_allows_custom_targets():
+                raise ValidationError(
+                    {
+                        "target_data_path": _(
+                            "Unknown step input '%(name)s'. Check the "
+                            "Step Inputs panel for available names."
+                        )
+                        % {"name": name},
+                    },
+                )
+            self._set_resolved(
+                path=value,  # preserve full i.<name> path for custom case
                 stage=CatalogRunStage.INPUT,
             )
             return
@@ -1238,7 +1577,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 {
                     "target_data_path": _(
                         "Use s.<name> for workflow signals, p.<path> for "
-                        "payload data, or o.<name> for validator outputs."
+                        "payload data, or o.<name> for step outputs."
                     ),
                 },
             )
@@ -1285,6 +1624,125 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
 
     def _validator_allows_custom_targets(self) -> bool:
         return bool(getattr(self.validator, "allow_custom_assertion_targets", False))
+
+    def _reject_namespaced_basic_target(
+        self,
+        resolved_signal: StepIODefinition | None,
+        raw_target: str,
+    ) -> None:
+        """Reject BASIC assertions that target the i.* or s.* namespaces.
+
+        BASIC evaluators walk a dotted payload path — they never look
+        at the i.* / s.* CEL namespaces OR the resolved binding values
+        OR the workflow_signals dict. So any BASIC assertion targeting
+        these namespaces is a runtime trap:
+
+        **i.\\* — INPUT-direction StepIODefinition:**
+
+        - Parser-managed inputs (``source_kind=internal``,
+          ``is_path_editable=False``): the value comes from
+          ``extract_input_signals()`` on the validator. There IS no
+          payload path; BASIC has nothing to walk. Always resolves
+          to "Value not found".
+        - Author-bound inputs (``source_kind=payload_path``):
+          the value comes from a ``StepInputBinding`` whose
+          ``source_data_path`` is wherever the author wired it
+          (e.g. ``building.zones[0].temp``). BASIC ignores the
+          binding and walks ``contract_key`` (``temp``) directly
+          against the raw payload. Only works by coincidence when
+          ``contract_key`` happens to equal a top-level payload
+          path; broken otherwise.
+
+        **s.\\* — workflow signals or promoted upstream outputs:**
+
+        The value lives in ``RunContext.workflow_signals`` or is
+        injected into the s.* namespace by
+        ``_inject_promoted_outputs``. BASIC strips the ``s.`` prefix
+        and walks the bare name against the raw payload — same
+        coincidence-only resolution as the i.* binding case.
+
+        Either way the author hits "Value not found" at runtime with
+        no clue why. Rejecting at form save time with a clear "use
+        CEL instead" message turns the runtime mystery into an
+        authoring-time nudge. CEL evaluators DO use the namespaced
+        context (where i.* contains resolved bindings AND parser
+        facts, and s.* contains workflow signals + promotions), so
+        the same logical check works there.
+
+        Per the May 2026 P2 reviews: the parser-managed case landed
+        first, then was extended to cover author-bound i.*, and
+        finally to cover s.* (this method). The o.* case is **not**
+        rejected because ``_build_assertion_payload`` merges the
+        output dict into the BASIC payload at output stage — BASIC
+        + o.* genuinely works.
+
+        Args:
+            resolved_signal: The StepIODefinition the form resolved
+                from the target string (set when the target maps to
+                a declared input/output row).
+            raw_target: The original user-entered target string
+                (with its ``s.`` / ``i.`` / ``signal.`` / ``input.``
+                prefix intact, before
+                ``_resolve_target_data_path`` stripped it). Used to
+                catch s.* targets that resolve to a bare workflow
+                signal name rather than a StepIODefinition.
+        """
+        # Case 1: target resolved to an INPUT-direction
+        # StepIODefinition (validator input — i.* or s.<input>).
+        if resolved_signal is not None and resolved_signal.direction == (
+            SignalDirection.INPUT
+        ):
+            contract_key = resolved_signal.contract_key
+            is_parser_managed = getattr(
+                resolved_signal, "source_kind", ""
+            ) == "internal" or not getattr(resolved_signal, "is_path_editable", True)
+            if is_parser_managed:
+                reason = _(
+                    "i.%(name)s is populated by the validator from "
+                    "the submission payload, not by a path the BASIC "
+                    "evaluator can walk"
+                ) % {"name": contract_key}
+            else:
+                reason = _(
+                    "i.%(name)s resolves through its StepInputBinding "
+                    "(which may map to a nested or computed path), but "
+                    "the BASIC evaluator ignores bindings and walks the "
+                    "raw payload directly"
+                ) % {"name": contract_key}
+            raise ValidationError(
+                {
+                    "target_data_path": _(
+                        "BASIC assertions can't target step inputs "
+                        "(%(reason)s). Use a CEL assertion instead — "
+                        "for example: i.%(name)s >= 1"
+                    )
+                    % {"reason": reason, "name": contract_key},
+                },
+            )
+
+        # Case 2: target was an s.<workflow_signal> path that
+        # resolved to a bare name (workflow signal mapping or
+        # promoted upstream output — no StepIODefinition row).
+        # _resolve_target_data_path stored the bare name in
+        # target_data_path_value, but the original prefixed string
+        # is still in target_data_path.
+        normalized = raw_target.strip()
+        if normalized.startswith(("s.", "signal.")):
+            bare = normalized.split(".", 1)[1] if "." in normalized else normalized
+            raise ValidationError(
+                {
+                    "target_data_path": _(
+                        "BASIC assertions can't target workflow signals "
+                        "(s.%(name)s lives in the CEL signal namespace, "
+                        "populated from WorkflowSignalMapping and "
+                        "promoted upstream outputs — not in the raw "
+                        "payload the BASIC evaluator walks). Use a CEL "
+                        "assertion instead — for example: "
+                        "s.%(name)s >= 1"
+                    )
+                    % {"name": bare},
+                },
+            )
 
     def _build_basic_payload(
         self,
@@ -1545,6 +2003,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             "payload",
             "s",
             "signal",
+            "i",
+            "input",
             "o",
             "output",
             "steps",
@@ -1594,7 +2054,17 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             if len(ident) == 1:
                 continue
             root = ident.split(".")[0]
-            if root in {"p", "payload", "s", "signal", "o", "output", "steps"}:
+            if root in {
+                "p",
+                "payload",
+                "s",
+                "signal",
+                "i",
+                "input",
+                "o",
+                "output",
+                "steps",
+            }:
                 continue
             unknown.add(ident)
         return unknown
@@ -1649,9 +2119,13 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
     def _target_identifier(self) -> str:
         signal = self.cleaned_data.get("resolved_signal")
         if signal:
+            # Per ADR-2026-05-22, INPUT-direction targets live in i.*,
+            # OUTPUT in o.*. The previous "s." for INPUT was always
+            # wrong — step inputs were never in s.* (which is reserved
+            # for workflow vocabulary).
             if signal.direction == SignalDirection.OUTPUT:
                 return f"o.{signal.contract_key}"
-            return f"s.{signal.contract_key}"
+            return f"i.{signal.contract_key}"
         return self.cleaned_data.get("target_data_path_value") or ""
 
     def _format_literal(self, value: Any) -> str:
@@ -1676,10 +2150,13 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         if assertion.target_signal_definition_id:
             sig = assertion.target_signal_definition
             initial["target_catalog_entry"] = f"{sig.direction}:{sig.contract_key}"
+            # Per ADR-2026-05-22: INPUT-direction targets render as
+            # i.<slug>, OUTPUT as o.<slug>. The legacy "s." rendering
+            # for INPUT was always wrong (step inputs are not signals).
             if sig.direction == SignalDirection.OUTPUT:
                 initial["target_data_path"] = f"o.{sig.contract_key}"
             else:
-                initial["target_data_path"] = f"s.{sig.contract_key}"
+                initial["target_data_path"] = f"i.{sig.contract_key}"
         else:
             initial["target_data_path"] = assertion.target_data_path
         if assertion.assertion_type == AssertionType.SHACL:
@@ -1767,7 +2244,7 @@ class ValidatorRuleForm(CelHelpLabelMixin, forms.Form):
         label=_("CEL expression"),
         widget=forms.Textarea(attrs={"rows": 4}),
         help_text=_(
-            "Enter a CEL expression that references validator inputs and outputs."
+            "Enter a CEL expression that references step inputs and step outputs."
         ),
     )
     order = forms.IntegerField(
@@ -1824,11 +2301,11 @@ class ValidatorRuleForm(CelHelpLabelMixin, forms.Form):
         return expr
 
 
-class SignalDefinitionForm(forms.ModelForm):
+class StepIODefinitionForm(forms.ModelForm):
     """Form for creating/updating validator input and output definitions."""
 
     class Meta:
-        model = SignalDefinition
+        model = StepIODefinition
         fields = [
             "direction",
             "contract_key",
@@ -1907,7 +2384,7 @@ class SignalDefinitionForm(forms.ModelForm):
             )
         if not self.validator:
             return value
-        existing = SignalDefinition.objects.filter(
+        existing = StepIODefinition.objects.filter(
             validator=self.validator,
             contract_key=value,
         ).exclude(pk=self.instance.pk)

@@ -42,7 +42,7 @@ from validibot.validations.api.viewsets import ValidationRunViewSet
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import ValidationRun
-from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidationFindingFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
@@ -987,7 +987,7 @@ class ValidationRunViewSetTestCase(TestCase):
 
         The test constructs a realistic shape — each step produces
         ``signals.eui`` and ``signals.total_cost`` as output signals
-        and has matching ``SignalDefinition`` rows declared on the
+        and has matching ``StepIODefinition`` rows declared on the
         validator — and compares 1-run vs 5-run query counts. If the
         N+1 ever regresses, the 5-run count grows by ~4 × the per-run
         overhead and this test fails loudly.
@@ -1000,12 +1000,12 @@ class ValidationRunViewSetTestCase(TestCase):
         # ``contract_key`` to enrich the dashboard payload — the
         # exact code path that used to fan out per step_run.
         target_validator = ValidatorFactory(org=self.org)
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=target_validator,
             contract_key="eui",
             direction=SignalDirection.OUTPUT,
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=target_validator,
             contract_key="total_cost",
             direction=SignalDirection.OUTPUT,

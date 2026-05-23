@@ -37,7 +37,7 @@ from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import Validator
 from validibot.validations.tests.factories import CustomValidatorFactory
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.tests.factories import WorkflowFactory
@@ -305,7 +305,7 @@ def test_toggle_display_signal_view_round_trips_step_owned_outputs(client):
         workflow=workflow,
         config={},
     )
-    SignalDefinitionFactory(
+    StepIODefinitionFactory(
         workflow_step=step,
         validator=None,
         contract_key="t_room",
@@ -313,7 +313,7 @@ def test_toggle_display_signal_view_round_trips_step_owned_outputs(client):
         direction="output",
         origin_kind="fmu",
     )
-    SignalDefinitionFactory(
+    StepIODefinitionFactory(
         workflow_step=step,
         validator=None,
         contract_key="q_cool",
@@ -324,7 +324,7 @@ def test_toggle_display_signal_view_round_trips_step_owned_outputs(client):
     other_step = WorkflowStepFactory(
         workflow=workflow,
     )
-    SignalDefinitionFactory(
+    StepIODefinitionFactory(
         workflow_step=other_step,
         validator=None,
         contract_key="foreign_output",
@@ -1575,12 +1575,16 @@ def test_step_settings_header_marks_previous_workflow_version(client):
 
 
 def test_processor_step_shows_both_io_tabs(client):
-    """A step with a processor validator must render both Validator Inputs
-    and Validator Outputs tabs in the Inputs and Outputs card, even when
-    one or both sides have zero signal definitions.
+    """A step with a processor validator must render both Step Inputs and
+    Step Outputs tabs in the Inputs and Outputs card, even when one or
+    both sides have zero step-input/output definitions.
 
     Without this, users of FMU/EnergyPlus validators see a confusing
     flat card instead of the expected tabbed layout.
+
+    Per ADR-2026-05-22b, the tab labels are "Step Inputs" and
+    "Step Outputs" (previously "Validator Inputs"/"Validator Outputs"
+    under the legacy terminology).
     """
     workflow, step = _make_processor_step(client)
     url = reverse(
@@ -1594,8 +1598,8 @@ def test_processor_step_shows_both_io_tabs(client):
     html = response.content.decode()
     assert "signals-input-tab" in html
     assert "signals-output-tab" in html
-    assert "Validator Inputs" in html
-    assert "Validator Outputs" in html
+    assert "Step Inputs" in html
+    assert "Step Outputs" in html
     assert "Inputs and Outputs" in html
 
 

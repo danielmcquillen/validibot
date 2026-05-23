@@ -93,15 +93,21 @@ class AdvancedValidator(BaseValidator):
         """Human-readable name for error messages (e.g., 'EnergyPlus', 'FMU')."""
         ...
 
-    @classmethod
     @abstractmethod
-    def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
+    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
         """
         Extract assertion signals from the validator-specific output envelope.
 
         Each advanced validator type produces outputs in its own Pydantic envelope
         structure (defined in validibot_shared). This method extracts the signals
         that can be referenced in output-stage assertions.
+
+        Declared as an instance method (not ``@classmethod``) so subclasses
+        like EnergyPlus can reach ``self.run_context.step.validator`` to
+        scope catalog lookups to the exact validator row bound to this
+        step's WorkflowStep. Without that scoping, multi-version catalogs
+        (e.g. v1.0 and v1.1 co-existing during a rollout) can silently
+        drop or admit the wrong outputs.
 
         Args:
             output_envelope: The typed Pydantic envelope from validibot_shared
@@ -112,6 +118,14 @@ class AdvancedValidator(BaseValidator):
             no signals can be extracted.
         """
         ...
+
+    # NOTE: ``extract_input_signals(payload)`` lives on ``BaseValidator``
+    # with a default of None. Advanced validators that parse an arcane
+    # format (EnergyPlus IDF, future IFC, gbXML, etc.) override it to
+    # expose parsed facts in the ``i.*`` namespace. Called after
+    # ``preprocess_submission()`` so that template-resolved submissions
+    # are parsed against the resolved IDF. See ADR-2026-05-22 for
+    # design rationale and acceptance criteria.
 
     # PUBLIC METHODS
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -251,6 +265,34 @@ class AdvancedValidator(BaseValidator):
             ]
             return ValidationResult(passed=False, issues=issues, stats={})
 
+        # ── INPUT-STAGE GATE (per ADR-2026-05-22) ───────────────────
+        # Per the ADR's headline promise, advanced validators evaluate
+        # input-stage assertions *before* dispatching the container. The
+        # parser hook (extract_input_signals) runs against the resolved
+        # submission, populates the i.* namespace, and input-stage
+        # assertions get a chance to gate dispatch.
+        #
+        # If any input-stage assertion fails with severity=ERROR, we
+        # short-circuit: no container dispatch, run finishes with the
+        # failure findings, no compute cost paid. This is the whole
+        # point of input-stage assertions for arcane-format validators.
+        input_stage_result = self._evaluate_input_stage_and_persist(
+            validator=validator,
+            ruleset=ruleset,
+            submission=submission,
+            run=run,
+            step=step,
+        )
+        if input_stage_result is not None and self._has_blocking_failure(
+            input_stage_result,
+        ):
+            input_stage_result.stats = {
+                **(input_stage_result.stats or {}),
+                **preprocessing_metadata,
+                "dispatch_skipped": "input_stage_assertion_failed",
+            }
+            return input_stage_result
+
         request = ExecutionRequest(
             run=run,
             validator=validator,
@@ -266,7 +308,249 @@ class AdvancedValidator(BaseValidator):
         if preprocessing_metadata:
             result.stats = {**(result.stats or {}), **preprocessing_metadata}
 
+        # Prepend any non-blocking input-stage findings so they appear in
+        # the result alongside output-stage findings. (Blocking failures
+        # already returned above; this branch handles warnings/info.)
+        if input_stage_result is not None and input_stage_result.issues:
+            result.issues = list(input_stage_result.issues) + list(result.issues or [])
+
         return result
+
+    def _evaluate_input_stage_and_persist(
+        self,
+        *,
+        validator: Validator,
+        ruleset: Ruleset | None,
+        submission: Submission,
+        run: Any,
+        step: Any,
+    ) -> ValidationResult | None:
+        """Evaluate input-stage assertions and persist i.* to the run summary.
+
+        Per ADR-2026-05-22:
+          1. Call ``extract_input_signals()`` against the (resolved)
+             submission to produce the contract-keyed step input dict.
+          2. Persist that dict to ``run.summary["steps"][step_key]["input"]``
+             so downstream steps can read via ``steps.<key>.input.*`` and
+             promoted-input injection can find values for ``s.<name>``.
+          3. Evaluate input-stage assertions against the resolved
+             submission via ``evaluate_assertions_for_stage(stage="input")``.
+             The CEL context builder reads ``i.*`` from the parser result
+             plus any pre-resolved bindings.
+
+        Returns ``None`` if neither parsing nor input-stage assertion
+        evaluation produced anything actionable. Returns a
+        ``ValidationResult`` containing the input-stage findings and
+        stats when there is at least one input-stage issue or extracted
+        signal. The caller decides whether to short-circuit on blocking
+        failures.
+        """
+        from validibot.validations.validators.base.base import ValidationResult
+
+        # Resolve the submission payload for parser extraction. For
+        # text-based arcane formats (EnergyPlus IDF) this is the raw
+        # string/bytes content; epJSON is also accepted (the parser
+        # handles both formats). For binary formats, subclasses can
+        # override this method to provide a different payload view.
+        payload = self._resolve_input_stage_payload(submission)
+
+        # Run the parser hook. Default returns None; advanced validators
+        # that parse arcane formats override extract_input_signals.
+        try:
+            parsed_inputs = self.extract_input_signals(payload)
+        except Exception:
+            # Parser failures are reported as findings via the normal
+            # error path elsewhere; here we treat them as "no parsed
+            # facts available" so assertion evaluation can still run
+            # against whatever bindings produced values.
+            parsed_inputs = None
+
+        # Compose the i.* dict from BOTH sources per ADR-2026-05-22:
+        #
+        # 1. ``StepInputBinding`` rows resolved against the submission
+        #    payload — explicit author wiring (FMU model inputs, template
+        #    variables). Always wins on key collision because the
+        #    binding is the author's explicit declaration of where the
+        #    value comes from.
+        # 2. Parser-extracted facts from ``extract_input_signals()`` —
+        #    implicit facts the validator can derive from the payload
+        #    (EnergyPlus IDF parser facts). Fills in keys not already
+        #    set by bindings.
+        #
+        # The May 2026 review caught that this method was previously
+        # parser-only despite docs claiming both sources populate i.*.
+        # FMU/template input-stage assertions saw an empty i.* and any
+        # reference like ``i.wall_r_value`` silently resolved to null.
+        contract_inputs: dict[str, Any] = {}
+        try:
+            bound_inputs = self._resolve_bound_input_context(payload)
+        except Exception:
+            # Binding resolution failures are surfaced as findings via
+            # the launcher's normal error path; here we treat them as
+            # "no bound values available" so assertion evaluation can
+            # still proceed against whatever parser facts exist.
+            bound_inputs = {}
+        if isinstance(bound_inputs, dict):
+            contract_inputs.update(bound_inputs)
+        if isinstance(parsed_inputs, dict):
+            for key, value in parsed_inputs.items():
+                contract_inputs.setdefault(key, value)
+
+        # Expose the resolved contract-keyed inputs on the run context
+        # so _build_cel_context() finds them when populating i.*.
+        if self.run_context is not None:
+            self.run_context.step_input_contract_values = contract_inputs
+
+        # Persist to run.summary so downstream steps see them via
+        # steps.<key>.input.* and so promoted-input injection works.
+        if contract_inputs:
+            self._persist_step_inputs_to_run_summary(
+                run=run,
+                step=step,
+                inputs=contract_inputs,
+            )
+
+        # Evaluate input-stage assertions. We ALWAYS return a
+        # ValidationResult when assertions were evaluated (even if
+        # they all passed and produced no issues) because:
+        #
+        # 1. The caller needs the AssertionStats to roll up into the
+        #    final step result — without this, passing input-stage
+        #    assertions disappear from totals and the run report
+        #    undercounts what actually ran.
+        # 2. The stats keys are canonical: ``assertion_total`` and
+        #    ``assertion_failures``, matching what
+        #    AdvancedValidationProcessor reads when persisting step
+        #    summaries (see services/step_processor/advanced.py:111).
+        #
+        # Returning None when there are no issues was the original
+        # (incorrect) approach — it silently dropped input-stage
+        # totals. Per the May 2026 code review's P2 finding.
+        assertion_result = self.evaluate_assertions_for_stage(
+            validator=validator,
+            ruleset=ruleset,
+            payload=payload,
+            stage="input",
+        )
+
+        if assertion_result.total == 0:
+            # No input-stage assertions were evaluated at all (the step
+            # has no input-stage assertions defined). Nothing to roll
+            # up; the parser facts are still persisted above for
+            # cross-step access.
+            return None
+
+        # Persist input-stage assertion counts to step_run.output so the
+        # async callback path (post_execute_validate) can read them via
+        # _get_stored_assertion_stats() and sum with output-stage
+        # counts. Without this, async dispatch loses the input-stage
+        # totals between validate() and the callback.
+        self._persist_input_stage_assertion_counts(
+            run=run,
+            step=step,
+            total=assertion_result.total,
+            failures=assertion_result.failures,
+        )
+
+        return ValidationResult(
+            passed=assertion_result.failures == 0,
+            issues=assertion_result.issues,
+            assertion_stats=AssertionStats(
+                total=assertion_result.total,
+                failures=assertion_result.failures,
+            ),
+            stats={
+                "assertion_total": assertion_result.total,
+                "assertion_failures": assertion_result.failures,
+            },
+        )
+
+    def _persist_input_stage_assertion_counts(
+        self,
+        *,
+        run: Any,
+        step: Any,
+        total: int,
+        failures: int,
+    ) -> None:
+        """Store input-stage assertion counts on the current StepRun.
+
+        The async callback path reads these from ``step_run.output`` via
+        ``_get_stored_assertion_stats()`` so it can sum input-stage and
+        output-stage counts into the final assertion totals. Without
+        this, input-stage failures/totals would disappear once the
+        container dispatch happens.
+
+        Best-effort: if the StepRun for this run+step doesn't exist
+        yet (rare — should be created by the orchestrator before
+        validate() runs), this silently no-ops rather than blocking
+        the validation pipeline.
+        """
+        try:
+            step_run = run.step_runs.filter(workflow_step=step).first()
+        except Exception:
+            step_run = None
+        if step_run is None:
+            return
+        output = step_run.output or {}
+        output["assertion_total"] = total
+        output["assertion_failures"] = failures
+        step_run.output = output
+        step_run.save(update_fields=["output"])
+
+    def _resolve_input_stage_payload(self, submission: Submission) -> Any:
+        """Return the payload to pass to extract_input_signals().
+
+        Uses ``submission.get_content()`` to read the payload from
+        either the inline ``content`` field OR the ``input_file``
+        FileField — this is critical because file-uploaded submissions
+        store the IDF/payload in ``input_file``, not ``content``.
+        Reading ``submission.content`` directly would return empty
+        string for file-backed submissions and the parser would
+        produce wrong facts (e.g. zone_count=0 for an IDF that
+        actually has zones), causing the input-stage gate to fail or
+        pass incorrectly.
+
+        The rest of the execution path uses ``get_content()`` for the
+        same reason — this method matches that contract.
+        """
+        try:
+            return submission.get_content()
+        except Exception:
+            # Defensive: if content retrieval fails (e.g. purged
+            # content, missing file), return None and let the parser's
+            # type-handling treat it as "no payload available".
+            return None
+
+    def _has_blocking_failure(self, result: ValidationResult) -> bool:
+        """Whether a ValidationResult contains at least one ERROR finding.
+
+        Used to decide whether to skip container dispatch based on
+        input-stage assertion results.
+        """
+        return any(issue.severity == Severity.ERROR for issue in (result.issues or []))
+
+    def _persist_step_inputs_to_run_summary(
+        self,
+        *,
+        run: Any,
+        step: Any,
+        inputs: dict[str, Any],
+    ) -> None:
+        """Store the contract-keyed i.* dict under run.summary["steps"][key]["input"].
+
+        Mirrors the existing output persistence (``step_data["output"]``)
+        so cross-step access via ``steps.<key>.input.*`` works
+        symmetrically with ``steps.<key>.output.*``. Required by
+        ADR-2026-05-22b's symmetric promotion.
+        """
+        summary = run.summary or {}
+        steps = summary.setdefault("steps", {})
+        step_key = step.step_key or str(step.id)
+        step_data = steps.setdefault(step_key, {})
+        step_data["input"] = inputs
+        run.summary = summary
+        run.save(update_fields=["summary"])
 
     def post_execute_validate(
         self,
@@ -395,7 +679,7 @@ class AdvancedValidator(BaseValidator):
         current run/step pair and returns those values.
 
         Returns ``None`` when no step_run exists or no resolved_inputs
-        were stored (e.g., legacy steps without StepSignalBinding rows),
+        were stored (e.g., legacy steps without StepInputBinding rows),
         allowing the caller to fall back to raw submission JSON.
         """
         if not run_context or not run_context.validation_run or not run_context.step:
@@ -473,7 +757,7 @@ class AdvancedValidator(BaseValidator):
         """
         # When resolved_inputs are available, use them directly instead
         # of parsing the raw submission JSON.  This is the preferred path
-        # for FMU/generic validators with StepSignalBinding rows.
+        # for FMU/generic validators with StepInputBinding rows.
         if resolved_inputs:
             merged = dict(resolved_inputs)
             output_ns: dict[str, object] = {}
@@ -486,7 +770,7 @@ class AdvancedValidator(BaseValidator):
             return merged
 
         # Fallback: parse raw submission JSON (for legacy steps without
-        # StepSignalBinding rows or when resolved_inputs aren't available).
+        # StepInputBinding rows or when resolved_inputs aren't available).
         if not run_context or not run_context.validation_run:
             return dict(signals)
 

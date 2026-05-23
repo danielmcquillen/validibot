@@ -50,7 +50,7 @@ from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.base.base import _is_valid_cel_identifier
 from validibot.validations.validators.basic import BasicValidator
@@ -188,7 +188,7 @@ class BasicValidatorXmlAssertionTests(TestCase):
             is_system=False,
             allow_custom_assertion_targets=True,
         )
-        cls.price_entry = SignalDefinitionFactory(
+        cls.price_entry = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="price",
             direction="input",
@@ -268,7 +268,7 @@ class BasicValidatorXmlAssertionTests(TestCase):
             is_system=False,
             allow_custom_assertion_targets=True,
         )
-        entry = SignalDefinitionFactory(
+        entry = StepIODefinitionFactory(
             validator=validator,
             contract_key="building.thermostat.setpoint",
             direction="input",
@@ -454,8 +454,15 @@ class CelContextNamespaceTests(TestCase):
         self.assertEqual(context["p"]["root"]["child"]["@id"], "42")
 
     def test_context_root_keys_are_fixed(self):
-        """The context root should only contain the fixed namespace keys
-        (p, payload, s, signals), plus conditionally output and steps.
+        """The context root should only contain the fixed namespace keys.
+
+        Per ADR-2026-05-22 the five namespaces are:
+            - p / payload (raw submission)
+            - s / signal (workflow vocabulary)
+            - i / input (step-local input-stage values)
+            - o / output (step-local output-stage values)
+            - steps (cross-step inputs and outputs)
+
         Payload keys are never at the root regardless of their names.
         """
         engine = BasicValidator()
@@ -465,8 +472,18 @@ class CelContextNamespaceTests(TestCase):
         }
         context = engine._build_cel_context(payload, self.validator)
 
-        # Root keys are only the fixed namespaces (always present)
-        expected_root_keys = {"p", "payload", "s", "signal", "o", "output", "steps"}
+        # Root keys are only the fixed namespaces (always present).
+        expected_root_keys = {
+            "p",
+            "payload",
+            "s",
+            "signal",
+            "i",
+            "input",
+            "o",
+            "output",
+            "steps",
+        }
         self.assertEqual(set(context.keys()), expected_root_keys)
         # Both payload keys are accessible under p
         self.assertIn("THERM-XML", context["p"])
@@ -480,7 +497,7 @@ class CelContextNamespaceTests(TestCase):
         signal mappings or promoted outputs).
         """
         validator = ValidatorFactory(validation_type=ValidationType.BASIC)
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="temperature",
             direction="input",
@@ -541,7 +558,7 @@ class CelContextOutputNamespaceTests(TestCase):
         (as raw payload data) but the output namespace provides a
         dedicated access path for assertions about outputs.
         """
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=self.validator,
             contract_key="temperature",
             direction="output",
@@ -564,12 +581,12 @@ class CelContextOutputNamespaceTests(TestCase):
 
         ``p.price`` → payload access, ``output.price`` → output value.
         """
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=self.validator,
             contract_key="price",
             direction="input",
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=self.validator,
             contract_key="price",
             direction="output",
@@ -590,7 +607,7 @@ class CelContextOutputNamespaceTests(TestCase):
         """When there are no output signal definitions, the ``output``
         namespace is an empty dict (always present for consistency).
         """
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=self.validator,
             contract_key="weight",
             direction="input",

@@ -46,35 +46,56 @@ Each `RulesetAssertion` row stores:
 
 ### Assertion targeting
 
-Every assertion target uses a namespace prefix to identify what data it checks.
-The form's "Target Path" field accepts these prefixes:
+Every assertion target uses a namespace prefix to identify what data it
+checks. The form's "Target Path" field accepts these prefixes:
 
-| Prefix | Alias | Stage | Meaning | Example |
-|--------|-------|-------|---------|---------|
-| `s.` | `signal.` | Input | Workflow signal value | `s.panel_area` |
-| `p.` | `payload.` | Input | Raw submission data | `p.building.floor_area` |
-| `o.` | `output.` | Output | Validator output | `o.site_eui_kwh_m2` |
+| Prefix | Alias | Available at stage | Meaning | Example |
+|--------|-------|--------------------|---------|---------|
+| `p.` | `payload.` | Input + Output | Raw submission data | `p.building.floor_area` |
+| `s.` | `signal.` | Input + Output | Workflow signal (from `WorkflowSignalMapping` or promotion) | `s.target_eui` |
+| `i.` | `input.` | Input + Output | Step input (parser facts, resolved bindings) | `i.zone_count` |
+| `o.` | `output.` | **Output only** | Step output | `o.site_eui_kwh_m2` |
+| `steps.<key>.input.` / `steps.<key>.output.` | — | Input + Output | Earlier step's inputs/outputs | `steps.preflight.output.warning_count` |
 
-The `s.` and `p.` prefixes are always accepted. The `o.` prefix resolves
-against the validator's declared output `SignalDefinition` rows. Bare names
-(without a prefix) are only accepted when the validator's
+**Stage-aware availability.** Step outputs (`o.*`) only exist after the
+step's validator runs, so they should not be referenced in input-stage
+assertions — at runtime such references silently resolve to null.
+
+**Partial enforcement today.** Per ADR-2026-05-22's reconciliation
+notes, ``get_catalog_choices()`` accepts a ``stage`` parameter and
+can filter the autocomplete to exclude this step's ``o.*`` entries,
+and ``resolved_run_stage`` classifies CEL assertions explicitly
+referencing ``i.*`` as input-stage. **Strict edit-time rejection of
+``o.*`` references in input-stage assertions is planned but not yet
+threaded through every view call site.** The deferred work and its
+acceptance criteria are tracked in ADR-2026-05-22.
+
+Bare names (without a prefix) are only accepted when the validator's
 `allow_custom_assertion_targets` flag is enabled.
 
-Under the hood, targets are stored in one of two ways — never both, enforced
-by the `ck_ruleset_assertion_target_oneof` database constraint:
+Under the hood, targets are stored in one of two ways — never both,
+enforced by the `ck_ruleset_assertion_target_oneof` database constraint:
 
-1. **Declared signal** (`target_signal_definition` FK) — used when the target
-   resolves to a known `SignalDefinition` (currently only `o.<name>` targets).
-   Provides type-appropriate operators and compile-time validation.
+1. **Declared step input/output definition** (`target_signal_definition`
+   FK on the `StepIODefinition` model, renamed from `SignalDefinition`
+   per
+   [ADR-2026-05-22b](../../../../../validibot-project/docs/adr/2026-05-22-signals-vs-step-io-terminology.md))
+   — used when the target resolves to a known step input
+   (`i.<contract_key>`) or step output (`o.<contract_key>`). Provides
+   type-appropriate operators and compile-time validation. The FK name
+   is intentionally left at its legacy `target_signal_definition` value
+   to keep the database column and migrations stable; only the model
+   class was renamed.
 
-2. **Data path** (`target_data_path` string) — used for `s.<name>`, `p.<path>`,
-   and custom bare-name targets. The full prefixed value is stored (e.g.,
-   `s.panel_area` or `p.building.thermostat.setpoint`).
+2. **Data path** (`target_data_path` string) — used for `s.<name>`,
+   `p.<path>`, and custom bare-name targets. The full prefixed value is
+   stored (e.g., `s.target_eui` or `p.building.thermostat.setpoint`).
 
-The `resolved_run_stage` property on `RulesetAssertion` determines whether an
-assertion fires at the input stage (before the validator runs) or the output
-stage (after). Targets with `s.` or `p.` prefixes are input-stage; `o.` targets
-and bare names are output-stage.
+The `resolved_run_stage` property on `RulesetAssertion` determines
+whether an assertion fires at the input stage (before the validator
+runs) or the output stage (after). Targets with `s.`, `p.`, or `i.`
+prefixes can be used at either stage; `o.` targets and output-direction
+signal definitions are output-stage only.
 
 BASIC validators always use custom data paths because they have no provider
 catalog. CEL assertions store the raw expression in `rhs["expr"]` and reuse
@@ -115,20 +136,24 @@ implementation (`cel-go`).
 
 ### CEL namespace convention
 
-All CEL expressions use explicit namespaces to avoid ambiguity. The four top-level
-namespaces (each with a short alias) are:
+All CEL expressions use explicit namespaces to avoid ambiguity. The five
+top-level namespaces (each with a short alias where applicable) are:
 
 | Namespace | Alias | Contents | Example |
 |-----------|-------|----------|---------|
-| `payload` | `p` | Raw submission or output data | `p.building.floor_area` |
-| `signal` | `s` | Workflow signals + promoted outputs | `s.target_eui` |
-| `output` | `o` | This step's validator outputs | `o.site_eui_kwh_m2` |
-| `steps` | — | Cross-step outputs | `steps.step_a.output.value` |
+| `payload` | `p` | Raw submission data | `p.building.floor_area` |
+| `signal` | `s` | Workflow signals + promoted step inputs/outputs | `s.target_eui` |
+| `input` | `i` | This step's step inputs (parser facts, resolved bindings) | `i.zone_count` |
+| `output` | `o` | This step's step outputs (after the validator runs) | `o.site_eui_kwh_m2` |
+| `steps` | — | Earlier steps' inputs and outputs | `steps.step_a.output.value`, `steps.step_a.input.zone_count` |
 
-Raw payload keys are never promoted to bare top-level CEL variables. Authors
-access raw data via `p.key`, signals via `s.name`, and outputs via `o.name`.
-See [Signals — The CEL context structure](signals.md#the-cel-context-structure) for
-full details.
+Raw payload keys are never promoted to bare top-level CEL variables.
+Authors access raw data via `p.key`, workflow signals via `s.name`, step
+inputs via `i.name`, and step outputs via `o.name`. See
+[Signals — The CEL context structure](signals.md#the-cel-context-structure)
+for full details, including which namespaces are populated for which
+validator types (the
+[process-centric spectrum](signals.md#when-do-step-inputs-and-step-outputs-exist)).
 
 For XML data, element attributes are stored with an `@` prefix (e.g., `@Conductivity`). Because
 `@` is not valid in CEL identifiers, bracket notation is required: `p.m["@Conductivity"]` rather

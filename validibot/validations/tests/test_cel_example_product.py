@@ -11,7 +11,7 @@ from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.basic import BasicValidator
 
@@ -27,17 +27,17 @@ class TestExampleProductWithCEL(TestCase):
             is_system=False,
         )
         # Signal definitions needed for CEL context resolution.
-        cls.price_entry = SignalDefinitionFactory(
+        cls.price_entry = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="price",
             direction="input",
         )
-        cls.rating_entry = SignalDefinitionFactory(
+        cls.rating_entry = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="rating",
             direction="input",
         )
-        cls.tags_entry = SignalDefinitionFactory(
+        cls.tags_entry = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="tags",
             direction="input",

@@ -9,7 +9,7 @@ All system validators — both built-in single-file validators (Basic, JSON
 Schema, XML Schema, AI Assist) and package-based validators (EnergyPlus,
 FMU, THERM) — declare their metadata via ``ValidatorConfig``. This command
 discovers all configs and ensures the corresponding ``Validator``,
-``SignalDefinition``, and ``Derivation`` rows exist in the database.
+``StepIODefinition``, and ``Derivation`` rows exist in the database.
 
 The signal definitions are required for the step editor UI to show separate
 "Input Assertions" and "Output Assertions" sections.
@@ -30,7 +30,7 @@ from django.db import transaction
 
 from validibot.validations.constants import SignalOriginKind
 from validibot.validations.models import Derivation
-from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.services.catalog_entry_normalization import (
     build_provider_binding_from_mapping,
@@ -196,7 +196,7 @@ class Command(BaseCommand):
                         provider_binding = build_provider_binding_from_mapping(
                             entry.binding_config,
                         )
-                        SignalDefinition.objects.update_or_create(
+                        StepIODefinition.objects.update_or_create(
                             validator=validator,
                             contract_key=entry_slug,
                             direction=entry.run_stage,
@@ -212,6 +212,14 @@ class Command(BaseCommand):
                                 "is_path_editable": entry.is_path_editable,
                                 "provider_binding": provider_binding,
                                 "metadata": entry.metadata,
+                                # Persist the on_missing policy from the
+                                # catalog spec per ADR-2026-05-22 and the
+                                # May 2026 review's P3 finding. Runtime
+                                # enforcement is deferred but the value
+                                # round-trips through sync so future
+                                # implementation work has a stable place
+                                # to read intent from.
+                                "on_missing": entry.on_missing,
                             },
                         )
                         seen_signal_keys.add((entry_slug, entry.run_stage))
@@ -222,7 +230,7 @@ class Command(BaseCommand):
                 # prune CATALOG-origin signals — step-owned signals
                 # (FMU, template) are managed separately.
                 if cfg.catalog_entries:
-                    pruned_sigs = SignalDefinition.objects.filter(
+                    pruned_sigs = StepIODefinition.objects.filter(
                         validator=validator,
                         origin_kind=SignalOriginKind.CATALOG,
                     )

@@ -20,7 +20,7 @@ from django.core.management import CommandError
 from django.core.management import call_command
 
 from validibot.validations.constants import ValidationType
-from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.services.validator_digest import SHA256_HEX_LENGTH
 from validibot.validations.services.validator_digest import compute_semantic_digest
@@ -56,12 +56,12 @@ def test_sync_validators_is_idempotent():
     Validator.objects.filter(slug="energyplus-idf-validator").delete()
 
     call_command("sync_validators")
-    initial_count = SignalDefinition.objects.filter(
+    initial_count = StepIODefinition.objects.filter(
         validator__slug="energyplus-idf-validator",
     ).count()
 
     call_command("sync_validators")
-    final_count = SignalDefinition.objects.filter(
+    final_count = StepIODefinition.objects.filter(
         validator__slug="energyplus-idf-validator",
     ).count()
 

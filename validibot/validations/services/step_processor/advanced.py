@@ -129,6 +129,24 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
             self.step_run.save(update_fields=["output"])
 
         if result.output_envelope is None:
+            # Per ADR-2026-05-22 + May 2026 review's P2 finding: a
+            # validator result with stats["dispatch_skipped"] ==
+            # "input_stage_assertion_failed" means the input-stage
+            # gate deliberately skipped container dispatch because an
+            # ERROR-severity input-stage assertion failed. This is NOT
+            # an execution failure — the validator worked correctly
+            # and the assertion correctly fired. Without this branch,
+            # _handle_execution_failure() would surface "Validation
+            # execution failed" and report assertion_failures=0 /
+            # assertion_total=0, contradicting the validator result's
+            # real assertion_stats and confusing the author.
+            if (result.stats or {}).get("dispatch_skipped") == (
+                "input_stage_assertion_failed"
+            ):
+                return self._handle_input_stage_gated(
+                    severity_counts=severity_counts,
+                    result=result,
+                )
             # If the validator already reported a definitive failure (e.g.,
             # container image not found, execution error), finalize with those
             # findings instead of adding a generic "missing envelope" message.
@@ -417,4 +435,62 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
             total_findings=1,
             assertion_failures=0,
             assertion_total=0,
+        )
+
+    def _handle_input_stage_gated(
+        self,
+        *,
+        severity_counts: Counter,
+        result: Any,
+    ) -> StepProcessingResult:
+        """Handle a result where input-stage assertions blocked dispatch.
+
+        Per ADR-2026-05-22, an ERROR-severity input-stage assertion
+        skips container dispatch. The validator returns a result with:
+          - ``output_envelope is None`` (no container ran)
+          - ``passed is False`` (assertions failed)
+          - ``issues`` containing the assertion findings (already
+            persisted by ``persist_findings()`` earlier in execute())
+          - ``stats["dispatch_skipped"] == "input_stage_assertion_failed"``
+          - ``assertion_stats`` populated with the real input-stage
+            totals
+
+        This is a legitimate authoring outcome — the assertions did
+        what they were configured to do. Treat it as an assertion
+        failure (StepStatus.FAILED with the real assertion counts),
+        not as a generic execution failure.
+
+        Per the May 2026 review's P2 finding.
+        """
+        # Use the canonical stats from the validator result, not
+        # zeros. AdvancedValidator._evaluate_input_stage_and_persist()
+        # populates result.assertion_stats with the real totals.
+        assertion_failures = result.assertion_stats.failures
+        assertion_total = result.assertion_stats.total
+
+        # Persist the canonical counts on step_run.output so the run
+        # summary picks them up. (The validator also wrote these via
+        # _persist_input_stage_assertion_counts for async-survival,
+        # but this call ensures the sync path's final state matches.)
+        self.store_assertion_counts(
+            assertion_failures=assertion_failures,
+            assertion_total=assertion_total,
+        )
+
+        # Finalize as FAILED with a clear, accurate error message —
+        # not "Validation execution failed" (which would imply a
+        # platform problem).
+        self.finalize_step(
+            StepStatus.FAILED,
+            {},
+            error="Input-stage assertions failed; container dispatch skipped",
+        )
+
+        return StepProcessingResult(
+            passed=False,
+            step_run=self.step_run,
+            severity_counts=severity_counts,
+            total_findings=sum(severity_counts.values()),
+            assertion_failures=assertion_failures,
+            assertion_total=assertion_total,
         )

@@ -1,12 +1,15 @@
 {% load i18n core_tags %}
 
 {% comment %}
-Unified Signals Card — "Inputs and Outputs"
+Step IO Card — "Inputs and Outputs"
 
-Standard card for the step detail page's right column.  Shows:
-1. Validator Inputs — parameters the validator needs to run
-2. Validator Outputs — results the validator produces
-3. Available Signals — workflow-level signals (s.name) and promoted outputs
+Standard card for the step detail page's right column. Shows:
+1. Step Inputs — values available to the validator at start of step (i.*)
+2. Step Outputs — values the validator produces (o.*)
+3. Available Signals — workflow-level signals (s.name) and promoted values
+
+Per ADR-2026-05-22b, "step input" and "step output" are the precise
+terms for step-local values; "signal" is reserved for workflow vocabulary.
 
 Context:
   unified_signals    - dict with keys: input_signals, output_signals,
@@ -17,7 +20,7 @@ Context:
   workflow           - the parent Workflow
 {% endcomment %}
 
-{# -- Validator Inputs / Outputs card -- #}
+{# -- Step Inputs / Outputs card -- #}
 {# Always show the tabbed card when the validator has a processor    #}
 {# (input -> process -> output), even if one side is currently empty #}
 {# so the user sees the structural slots. For non-processor          #}
@@ -50,7 +53,7 @@ Context:
                     role="tab"
                     aria-controls="signals-input-panel"
                     aria-selected="true">
-              <span class="fw-semibold">{% trans "Validator Inputs" %}</span>
+              <span class="fw-semibold">{% trans "Step Inputs" %}</span>
               <span class="badge text-bg-light ms-1">{{ unified_signals.input_signals|length }}</span>
             </button>
             <button class="nav-link"
@@ -61,7 +64,7 @@ Context:
                     role="tab"
                     aria-controls="signals-output-panel"
                     aria-selected="false">
-              <span class="fw-semibold">{% trans "Validator Outputs" %}</span>
+              <span class="fw-semibold">{% trans "Step Outputs" %}</span>
               <span class="badge text-bg-light ms-1">{{ unified_signals.output_signals|length }}</span>
             </button>
           </div>

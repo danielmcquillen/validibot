@@ -16,7 +16,7 @@ from django.test import override_settings
 from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Derivation
-from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.validators.base.config import discover_configs
 from validibot.validations.validators.base.config import get_all_configs
@@ -73,11 +73,11 @@ class SyncValidatorsCommandTests(TestCase):
         validator = Validator.objects.get(slug="energyplus-idf-validator")
 
         # Should have both input and output signal definitions
-        input_sigs = SignalDefinition.objects.filter(
+        input_sigs = StepIODefinition.objects.filter(
             validator=validator,
             direction="input",
         )
-        output_sigs = SignalDefinition.objects.filter(
+        output_sigs = StepIODefinition.objects.filter(
             validator=validator,
             direction="output",
         )
@@ -86,7 +86,16 @@ class SyncValidatorsCommandTests(TestCase):
         self.assertTrue(output_sigs.exists(), "Should have output signal definitions")
 
     def test_command_creates_specific_output_signals(self):
-        """Test that specific output signal definitions are created."""
+        """Test that specific output signal definitions are created.
+
+        Per ADR-2026-05-22 (catalog version 1.1):
+            - zone_count was removed from outputs (parsed-from-IDF facts
+              are step inputs only, never step outputs)
+            - floor_area_m2 stays as the simulation-derived value
+              (rename to simulated_conditioned_area_m2 proposed by the
+              ADR but deferred until a coordinated validibot-shared
+              package release ships the renamed Pydantic field)
+        """
         self.call_command()
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
@@ -101,7 +110,7 @@ class SyncValidatorsCommandTests(TestCase):
 
         for key in expected_signals:
             self.assertTrue(
-                SignalDefinition.objects.filter(
+                StepIODefinition.objects.filter(
                     validator=validator,
                     contract_key=key,
                 ).exists(),
@@ -109,19 +118,28 @@ class SyncValidatorsCommandTests(TestCase):
             )
 
     def test_command_normalizes_energyplus_input_provider_binding(self):
-        """EnergyPlus input signals should not persist submission-source
-        selectors in SignalDefinition.provider_binding.
+        """EnergyPlus parser-extracted step inputs should not persist
+        submission-source selectors in StepIODefinition.provider_binding.
 
         The unified signal model stores submission sourcing on
-        StepSignalBinding, so sync_validators must strip legacy
-        ``source``/``path`` keys from provider_binding.
+        StepInputBinding, so sync_validators must strip legacy
+        ``source``/``path`` keys from provider_binding. For
+        parser-extracted facts (per ADR-2026-05-22, catalog v1.1), the
+        value is populated by EnergyPlusValidator.extract_input_signals()
+        and no payload-path binding is involved at all.
+
+        We test against ``idf_version`` here — one of the three POC
+        parser-extracted step inputs introduced in catalog v1.1. The
+        legacy ``expected_floor_area_m2`` and friends were removed
+        because they were author-expectation values miscategorized as
+        validator inputs.
         """
         self.call_command()
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
-        signal = SignalDefinition.objects.get(
+        signal = StepIODefinition.objects.get(
             validator=validator,
-            contract_key="expected_floor_area_m2",
+            contract_key="idf_version",
             direction="input",
         )
 
@@ -134,7 +152,7 @@ class SyncValidatorsCommandTests(TestCase):
         self.call_command()
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
-        signal = SignalDefinition.objects.get(
+        signal = StepIODefinition.objects.get(
             validator=validator,
             contract_key="site_eui_kwh_m2",
             direction="output",
@@ -188,13 +206,18 @@ class SyncValidatorsCommandTests(TestCase):
         Phase 3 Session B (ADR-2026-04-27 task 7): sync_validators
         keys by ``(slug, version)`` rather than slug alone, so the
         seed row must declare the same ``version`` the config
-        advertises (``"1.0"``) — otherwise sync would CREATE a new
-        row alongside instead of updating the seed.
+        advertises — otherwise sync would CREATE a new row alongside
+        instead of updating the seed.
+
+        EnergyPlus catalog was bumped from v1.0 to v1.1 by ADR-2026-05-22
+        (catalog cleanup + parser-extracted step inputs). The seed row
+        here must match the current advertised version to exercise the
+        update path.
         """
         # Create a validator with different name but matching (slug, version).
         Validator.objects.create(
             slug="energyplus-idf-validator",
-            version="1.0",
+            version="1.1",
             name="Old Name",
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,
@@ -235,7 +258,7 @@ class SyncValidatorsCommandTests(TestCase):
 
         The SHACL validator is inline, but it still emits output signals
         such as ``shacl_violation_count``. The step editor and assertion
-        form need those SignalDefinition rows to show default targets.
+        form need those StepIODefinition rows to show default targets.
         """
         self.call_command()
 
@@ -249,7 +272,7 @@ class SyncValidatorsCommandTests(TestCase):
             "shacl_total_count",
         ):
             self.assertTrue(
-                SignalDefinition.objects.filter(
+                StepIODefinition.objects.filter(
                     validator=validator,
                     contract_key=key,
                     direction="output",
@@ -269,7 +292,7 @@ class SyncValidatorsCommandTests(TestCase):
 
     # ── source_kind and is_path_editable ────────────────────────────
     # These tests verify that the sync command correctly persists the
-    # new source metadata fields from CatalogEntrySpec to SignalDefinition.
+    # new source metadata fields from CatalogEntrySpec to StepIODefinition.
 
     def test_energyplus_input_signals_are_internal_and_not_editable(self):
         """EnergyPlus input signals should be INTERNAL + non-editable.
@@ -280,7 +303,7 @@ class SyncValidatorsCommandTests(TestCase):
         self.call_command()
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
-        input_sigs = SignalDefinition.objects.filter(
+        input_sigs = StepIODefinition.objects.filter(
             validator=validator,
             direction="input",
         )
@@ -307,7 +330,7 @@ class SyncValidatorsCommandTests(TestCase):
         self.call_command()
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
-        output_sigs = SignalDefinition.objects.filter(
+        output_sigs = StepIODefinition.objects.filter(
             validator=validator,
             direction="output",
         )
@@ -334,7 +357,7 @@ class SyncValidatorsCommandTests(TestCase):
         self.call_command()
 
         validator = Validator.objects.get(slug="therm-validator")
-        output_sigs = SignalDefinition.objects.filter(
+        output_sigs = StepIODefinition.objects.filter(
             validator=validator,
             direction="output",
         )

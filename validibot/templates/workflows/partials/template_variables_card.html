@@ -14,7 +14,7 @@ Context:
   tplvar_form        - TemplateVariableAnnotationForm instance
   workflow           - the parent Workflow
   step               - the WorkflowStep
-  outputs            - list of output SignalDefinition objects (for signals tab)
+  outputs            - list of output StepIODefinition objects (for signals tab)
   catalog_tab_prefix - unique prefix for tab IDs
 {% endcomment %}
 {% with tab_prefix=catalog_tab_prefix|default:"step-editor" %}

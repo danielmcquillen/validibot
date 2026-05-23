@@ -21,7 +21,7 @@ from django.utils.translation import gettext_lazy as _
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
-from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepIODefinition
 
 
 @dataclass(frozen=True)
@@ -30,7 +30,7 @@ class AssertionMutationPayload:
 
     assertion_type: str
     operator: str
-    target_signal_definition: SignalDefinition | None
+    target_signal_definition: StepIODefinition | None
     target_data_path: str
     severity: str
     when_expression: str

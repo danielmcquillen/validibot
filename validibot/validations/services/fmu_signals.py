@@ -1,9 +1,9 @@
 """
-Sync step-level FMU variables to ``SignalDefinition`` and ``StepSignalBinding``.
+Sync step-level FMU variables to ``StepIODefinition`` and ``StepInputBinding``.
 
 When a user uploads an FMU to a workflow step, ``introspect_fmu()`` extracts
 the model's input/output variables. This module creates the corresponding
-``SignalDefinition`` and ``StepSignalBinding`` rows that downstream features
+``StepIODefinition`` and ``StepInputBinding`` rows that downstream features
 (CEL context, signal display, assertion targeting) use as the single source
 of truth for FMU signals.
 
@@ -14,7 +14,7 @@ existing steps.
 **Reconciliation on re-upload:** When a user uploads a different FMU to the
 same step, variable names may change. The function upserts by
 ``(workflow_step, contract_key, direction)`` and deletes orphaned signals.
-Cascade-delete on ``StepSignalBinding`` ensures bindings are cleaned up too.
+Cascade-delete on ``StepInputBinding`` ensures bindings are cleaned up too.
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
 from validibot.validations.constants import SignalSourceKind
-from validibot.validations.models import SignalDefinition
-from validibot.validations.models import StepSignalBinding
+from validibot.validations.models import StepInputBinding
+from validibot.validations.models import StepIODefinition
 from validibot.validations.signal_metadata.metadata import FMUProviderBinding
 from validibot.validations.signal_metadata.metadata import FMUSignalMetadata
 
@@ -45,7 +45,7 @@ def sync_step_fmu_signals(
     step: WorkflowStep,
     fmu_variables: list[dict[str, Any]],
 ) -> None:
-    """Create or update ``SignalDefinition`` and ``StepSignalBinding`` rows
+    """Create or update ``StepIODefinition`` and ``StepInputBinding`` rows
     for every input/output variable in a step-level FMU upload.
 
     This is the step-owned counterpart to the library-validator dual-write
@@ -106,8 +106,8 @@ def sync_step_fmu_signals(
         batch_keys.add(contract_key)
         seen.add((contract_key, direction))
 
-        # Upsert SignalDefinition
-        sig, _created = SignalDefinition.objects.update_or_create(
+        # Upsert StepIODefinition
+        sig, _created = StepIODefinition.objects.update_or_create(
             workflow_step=step,
             contract_key=contract_key,
             direction=direction,
@@ -135,11 +135,11 @@ def sync_step_fmu_signals(
             },
         )
 
-        # Upsert StepSignalBinding for input signals.
+        # Upsert StepInputBinding for input signals.
         # Leave source_data_path empty — the user must map each input
         # to the correct payload path or signal for their data format.
         if direction == SignalDirection.INPUT:
-            StepSignalBinding.objects.update_or_create(
+            StepInputBinding.objects.update_or_create(
                 workflow_step=step,
                 signal_definition=sig,
                 defaults={
@@ -151,7 +151,7 @@ def sync_step_fmu_signals(
 
     # Delete orphaned signals from a previous FMU upload whose variables
     # no longer appear in the new FMU. CASCADE deletes associated bindings.
-    orphaned = SignalDefinition.objects.filter(
+    orphaned = StepIODefinition.objects.filter(
         workflow_step=step,
         origin_kind=SignalOriginKind.FMU,
     ).exclude(
@@ -192,9 +192,9 @@ def clear_step_fmu_signals(step: WorkflowStep) -> None:
     """Remove all FMU-origin signal definitions from a step.
 
     Called when the user removes the FMU from a step. CASCADE deletes
-    associated ``StepSignalBinding`` rows.
+    associated ``StepInputBinding`` rows.
     """
-    SignalDefinition.objects.filter(
+    StepIODefinition.objects.filter(
         workflow_step=step,
         origin_kind=SignalOriginKind.FMU,
     ).delete()

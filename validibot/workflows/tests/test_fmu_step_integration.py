@@ -13,7 +13,7 @@ Key areas covered:
 
 2. **Step config building** — ``build_fmu_config()`` converts introspection
    results into step config dicts with ``fmu_simulation`` settings (variable
-   metadata is stored relationally in ``SignalDefinition`` rows).
+   metadata is stored relationally in ``StepIODefinition`` rows).
 
 3. **Unified signals integration** —
    ``build_unified_signals_from_definitions()`` correctly treats FMU
@@ -38,8 +38,8 @@ from validibot.validations.services.fmu import FMUIntrospectionResult
 from validibot.validations.services.fmu import FMUSimulationDefaults
 from validibot.validations.services.fmu import FMUVariableInfo
 from validibot.validations.services.fmu import introspect_fmu
-from validibot.validations.tests.factories import SignalDefinitionFactory
-from validibot.validations.tests.factories import StepSignalBindingFactory
+from validibot.validations.tests.factories import StepInputBindingFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.workflows.step_configs import FMUSimulationConfig
 from validibot.workflows.step_configs import FmuStepConfig
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -87,12 +87,12 @@ def _make_minimal_fmu(
 
 
 def _create_fmu_input_signal(step, *, contract_key, native_name, label="", **kwargs):
-    """Create a step-owned FMU input SignalDefinition with a binding.
+    """Create a step-owned FMU input StepIODefinition with a binding.
 
     Helper to reduce boilerplate in tests that set up FMU input signals.
-    Returns the created SignalDefinition.
+    Returns the created StepIODefinition.
     """
-    sig = SignalDefinitionFactory(
+    sig = StepIODefinitionFactory(
         workflow_step=step,
         validator=None,
         contract_key=contract_key,
@@ -102,7 +102,7 @@ def _create_fmu_input_signal(step, *, contract_key, native_name, label="", **kwa
         origin_kind="fmu",
         **kwargs,
     )
-    StepSignalBindingFactory(
+    StepInputBindingFactory(
         workflow_step=step,
         signal_definition=sig,
         source_data_path=native_name,
@@ -112,12 +112,12 @@ def _create_fmu_input_signal(step, *, contract_key, native_name, label="", **kwa
 
 
 def _create_fmu_output_signal(step, *, contract_key, native_name, label="", **kwargs):
-    """Create a step-owned FMU output SignalDefinition (no binding needed).
+    """Create a step-owned FMU output StepIODefinition (no binding needed).
 
     Helper to reduce boilerplate in tests that set up FMU output signals.
-    Returns the created SignalDefinition.
+    Returns the created StepIODefinition.
     """
-    return SignalDefinitionFactory(
+    return StepIODefinitionFactory(
         workflow_step=step,
         validator=None,
         contract_key=contract_key,
@@ -274,7 +274,7 @@ class FmuStepConfigModelTests(TestCase):
 
     Verifies that step config JSON with ``fmu_simulation`` is correctly
     parsed and validated.  FMU variable metadata is now stored
-    relationally in ``SignalDefinition`` rows, not in the step config.
+    relationally in ``StepIODefinition`` rows, not in the step config.
     """
 
     def test_empty_config_valid(self):
@@ -318,8 +318,8 @@ class FmuStepConfigModelTests(TestCase):
 # ---------------------------------------------------------------------------
 # build_unified_signals_from_definitions() — FMU source type
 #
-# These tests use real database objects (WorkflowStep, SignalDefinition,
-# StepSignalBinding) instead of the old _FakeStep mock. The function
+# These tests use real database objects (WorkflowStep, StepIODefinition,
+# StepInputBinding) instead of the old _FakeStep mock. The function
 # queries the DB for step-owned signals and their bindings.
 # ---------------------------------------------------------------------------
 
@@ -328,7 +328,7 @@ class UnifiedSignalsFmuTests(TestCase):
     """Tests for FMU variable integration in
     ``build_unified_signals_from_definitions()``.
 
-    Verifies that step-owned FMU ``SignalDefinition`` rows appear as
+    Verifies that step-owned FMU ``StepIODefinition`` rows appear as
     input/output signals with source ``"fmu"``, alongside the existing
     ``"catalog"`` and ``"template"`` sources.
     """
@@ -389,13 +389,13 @@ class UnifiedSignalsFmuTests(TestCase):
         appear as either input or output signals — they are internal constants.
 
         In the new model, parameter variables simply aren't created as
-        SignalDefinition rows with direction="input" or "output", so they
+        StepIODefinition rows with direction="input" or "output", so they
         naturally don't appear. This test confirms no leakage when only
         an input signal exists alongside other step data."""
         step = WorkflowStepFactory()
         # Only create the input signal — no parameter signal definition
         # would be created in the real flow (parameters are filtered out
-        # during FMU introspection → SignalDefinition creation).
+        # during FMU introspection → StepIODefinition creation).
         _create_fmu_input_signal(
             step,
             contract_key="t_outdoor",
@@ -432,7 +432,7 @@ class UnifiedSignalsFmuTests(TestCase):
         self.assertFalse(signals_by_slug["q_cool"]["show_to_user"])
 
     def test_empty_fmu_variables_no_signals(self):
-        """When no SignalDefinition rows exist for the step (library
+        """When no StepIODefinition rows exist for the step (library
         validator path with no signal definitions), no signals should appear."""
         step = WorkflowStepFactory()
         result = build_unified_signals_from_definitions(step=step)
@@ -543,7 +543,7 @@ class ServerRoomCoolingEndToEndTests(TestCase):
     def test_introspection_to_step_config_roundtrip(self):
         """Introspection results should convert cleanly to step config
         dicts that ``FmuStepConfig`` can validate. Variable metadata is
-        now stored in ``SignalDefinition`` rows, so only simulation
+        now stored in ``StepIODefinition`` rows, so only simulation
         settings go in the step config."""
         result = introspect_fmu(_server_room_fmu_bytes(), "ServerRoomCooling.fmu")
 
@@ -560,7 +560,7 @@ class ServerRoomCoolingEndToEndTests(TestCase):
         self.assertEqual(config.fmu_simulation.stop_time, 3600.0)
 
     def test_full_pipeline_introspection_to_signals(self):
-        """Verify the complete pipeline: introspect → SignalDefinition rows →
+        """Verify the complete pipeline: introspect → StepIODefinition rows →
         unified signals. The ServerRoomCooling FMU's 4 inputs should
         become 4 input signals and 2 outputs should become 2 output
         signals. Parameters and internal variables must be excluded."""
@@ -568,7 +568,7 @@ class ServerRoomCoolingEndToEndTests(TestCase):
 
         step = WorkflowStepFactory()
 
-        # Create SignalDefinition + StepSignalBinding rows for each
+        # Create StepIODefinition + StepInputBinding rows for each
         # input/output variable, mirroring the real FMU upload flow.
         for var in result.variables:
             if var.causality == "input":
@@ -586,7 +586,7 @@ class ServerRoomCoolingEndToEndTests(TestCase):
                     label=var.description,
                 )
             # Parameters and unknown causalities are intentionally skipped —
-            # they are not created as SignalDefinition rows.
+            # they are not created as StepIODefinition rows.
 
         signals = build_unified_signals_from_definitions(step=step)
 

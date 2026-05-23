@@ -21,7 +21,7 @@ from validibot.validations.constants import AssertionType
 from validibot.validations.constants import Severity
 from validibot.validations.forms import ValidatorRuleForm
 from validibot.validations.models import RulesetAssertion
-from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.views.validators import CustomValidatorManageMixin
 
@@ -77,7 +77,7 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
             ),
         )
 
-    def _resolve_selected_entries(self, signals: list[str]) -> list[SignalDefinition]:
+    def _resolve_selected_entries(self, signals: list[str]) -> list[StepIODefinition]:
         ids = [int(pk) for pk in signals or [] if str(pk).isdigit()]
         return list(
             self.validator.signal_definitions.filter(pk__in=ids).order_by(
@@ -86,8 +86,8 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
         )
 
     def _validate_cel_expression(
-        self, expr: str, available_entries: list[SignalDefinition]
-    ) -> list[SignalDefinition]:
+        self, expr: str, available_entries: list[StepIODefinition]
+    ) -> list[StepIODefinition]:
         """Validate CEL and return the signal definitions that are referenced.
 
         The parser enforces the namespaced convention: all data references
@@ -138,7 +138,7 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
         }
 
         key_map = {sig.contract_key: sig for sig in available_entries}
-        referenced: set[SignalDefinition] = set()
+        referenced: set[StepIODefinition] = set()
         unknown: set[str] = set()
 
         # Strip string literals (including escaped quotes) so identifiers

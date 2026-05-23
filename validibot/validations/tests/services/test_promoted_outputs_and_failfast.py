@@ -4,7 +4,7 @@ These tests cover two runtime paths that are critical to the signal mapping
 ADR but were not previously exercised at the integration level:
 
 1. **Promoted output injection** (``_inject_promoted_outputs`` in base.py):
-   When a ``SignalDefinition`` with ``direction=OUTPUT`` has a non-empty
+   When a ``StepIODefinition`` with ``direction=OUTPUT`` has a non-empty
    ``signal_name``, that output's value should appear in the ``s.*`` CEL
    namespace for downstream steps.
 
@@ -37,7 +37,7 @@ from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
-from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import ValidationRun
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.validations.tests.factories import ValidatorFactory
@@ -58,7 +58,7 @@ class TestPromotedOutputInjection(TestCase):
 
     This test creates a two-step workflow:
     - Step 1: a fake validator that produces output ``site_eui = 87.5``
-      with its ``SignalDefinition`` setting ``signal_name = "eui"``
+      with its ``StepIODefinition`` setting ``signal_name = "eui"``
     - Step 2: a Basic validator with a CEL assertion ``s.eui < 100``
 
     If promotion works, step 2's CEL context should contain ``s.eui = 87.5``
@@ -109,14 +109,14 @@ class TestPromotedOutputInjection(TestCase):
         )
 
         # Create a promoted output signal definition.
-        # SignalDefinition has a XOR constraint: set either validator OR
+        # StepIODefinition has a XOR constraint: set either validator OR
         # workflow_step, not both.  For step-level promotion, use
         # workflow_step only.
-        SignalDefinition.objects.create(
+        StepIODefinition.objects.create(
             workflow_step=step1,
             contract_key="site_eui",
             direction=SignalDirection.OUTPUT,
-            signal_name="eui",
+            promoted_signal_name="eui",
         )
 
         # Step 2: references the promoted output via s.eui

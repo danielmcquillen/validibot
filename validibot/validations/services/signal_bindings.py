@@ -1,5 +1,5 @@
 """
-Ensure StepSignalBinding rows exist for all validator-owned input
+Ensure StepInputBinding rows exist for all validator-owned input
 signals on a workflow step.
 
 Called after step creation/update so that the signal resolution
@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING
 
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
-from validibot.validations.models import SignalDefinition
-from validibot.validations.models import StepSignalBinding
+from validibot.validations.models import StepInputBinding
+from validibot.validations.models import StepIODefinition
 from validibot.validations.services.catalog_entry_normalization import (
     build_step_binding_defaults_from_mapping,
 )
@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_step_signal_bindings(step: WorkflowStep) -> int:
-    """Create default StepSignalBinding rows for validator-owned input signals.
+    """Create default StepInputBinding rows for validator-owned input signals.
 
-    For each input SignalDefinition owned by the step's validator that
+    For each input StepIODefinition owned by the step's validator that
     doesn't already have a binding on this step, creates a binding with:
 
     - source_scope/source_data_path: derived from the owning validator's
@@ -48,7 +48,7 @@ def ensure_step_signal_bindings(step: WorkflowStep) -> int:
     # Find all CATALOG-origin input signals owned by this validator.
     # We only handle CATALOG signals here — FMU and TEMPLATE signals
     # are managed by their own dedicated sync functions.
-    validator_input_signals = SignalDefinition.objects.filter(
+    validator_input_signals = StepIODefinition.objects.filter(
         validator_id=step.validator_id,
         direction=SignalDirection.INPUT,
         origin_kind=SignalOriginKind.CATALOG,
@@ -60,7 +60,7 @@ def ensure_step_signal_bindings(step: WorkflowStep) -> int:
     # Find which signals already have a binding on this step so we
     # don't overwrite any author-customised bindings.
     existing_signal_ids = set(
-        StepSignalBinding.objects.filter(
+        StepInputBinding.objects.filter(
             workflow_step=step,
             signal_definition__in=validator_input_signals,
         ).values_list("signal_definition_id", flat=True)
@@ -72,8 +72,21 @@ def ensure_step_signal_bindings(step: WorkflowStep) -> int:
         if sig.pk in existing_signal_ids:
             continue
 
-        fallback_path = ""
         entry = catalog_entries.get((sig.contract_key, sig.direction))
+
+        # ── P1-1 fix: skip parser-sourced step inputs ──────────────
+        # Per ADR-2026-05-22, parser-extracted step inputs (catalog
+        # entries with binding_config={"source": "parser", ...}) are
+        # populated by the validator's extract_input_signals() at
+        # runtime — no author-supplied payload path is involved. Creating
+        # a StepInputBinding row for these would either dispatch-fail
+        # (binding can't resolve a path that doesn't exist) or surface
+        # them in the UI as user-mappable required inputs (wrong — the
+        # validator owns these values). Skip them entirely.
+        if entry and (entry.binding_config or {}).get("source") == "parser":
+            continue
+
+        fallback_path = ""
         if entry:
             defaults = build_step_binding_defaults_from_mapping(
                 entry.binding_config,
@@ -87,7 +100,7 @@ def ensure_step_signal_bindings(step: WorkflowStep) -> int:
                 default_required=True,
             )
 
-        StepSignalBinding.objects.create(
+        StepInputBinding.objects.create(
             workflow_step=step,
             signal_definition=sig,
             source_scope=defaults["source_scope"],
@@ -115,7 +128,7 @@ def _build_validator_catalog_entry_map(
 
     Validator-owned signals should derive their default step binding
     values from the current validator config, not from
-    ``SignalDefinition.provider_binding``. The config remains the source
+    ``StepIODefinition.provider_binding``. The config remains the source
     of truth for library-signal defaults such as submission metadata
     paths and required/optional semantics.
     """

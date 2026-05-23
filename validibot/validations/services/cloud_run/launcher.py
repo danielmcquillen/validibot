@@ -407,8 +407,8 @@ def launch_fmu_validation(
         callback_id = f"step-run-{current_step_run.id}"
 
         # Build envelope via the shared builder. This gets signal-aware
-        # input resolution (StepSignalBinding + resolve_path), proper
-        # output_variables extraction from SignalDefinition, and audit
+        # input resolution (StepInputBinding + resolve_path), proper
+        # output_variables extraction from StepIODefinition, and audit
         # tracing via ResolvedInputTrace.
         from validibot.validations.services.cloud_run.envelope_builder import (
             build_input_envelope,

@@ -40,8 +40,8 @@ from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
-from validibot.validations.models import SignalDefinition
-from validibot.validations.models import StepSignalBinding
+from validibot.validations.models import StepInputBinding
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
@@ -405,7 +405,7 @@ class Command(BaseCommand):
         ]
 
         for sig_data in input_signals:
-            sig, _ = SignalDefinition.objects.get_or_create(
+            sig, _ = StepIODefinition.objects.get_or_create(
                 validator=fmu_validator,
                 contract_key=sig_data["contract_key"],
                 defaults={
@@ -414,7 +414,7 @@ class Command(BaseCommand):
                     "order": input_signals.index(sig_data) * 10,
                 },
             )
-            StepSignalBinding.objects.get_or_create(
+            StepInputBinding.objects.get_or_create(
                 workflow_step=fmu_step,
                 signal_definition=sig,
                 defaults={

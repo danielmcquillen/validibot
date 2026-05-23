@@ -2,12 +2,12 @@
 Typed Pydantic accessor models for validator-specific signal metadata.
 
 Each validator type stores domain-specific properties in the ``metadata``
-and ``provider_binding`` JSONFields on ``SignalDefinition``. These Pydantic
+and ``provider_binding`` JSONFields on ``StepIODefinition``. These Pydantic
 models provide type-safe access to that JSON, validating on both read
 (via model properties) and write (via ``.model_dump()``).
 
 **Design principle:** Universal signal properties live as database columns
-on ``SignalDefinition`` (contract_key, direction, data_type, unit, etc.).
+on ``StepIODefinition`` (contract_key, direction, data_type, unit, etc.).
 Validator-specific properties that only matter for a particular validator
 type live in JSON, accessed through these models.
 
@@ -15,13 +15,13 @@ Two JSON fields serve different purposes:
 
 - ``provider_binding``: Execution-facing config. Used by the runtime to
   locate values in provider-specific formats (e.g., EnergyPlus metric keys).
-  Never contains submission-source info — that lives on ``StepSignalBinding``.
+  Never contains submission-source info — that lives on ``StepInputBinding``.
 
 - ``metadata``: UI and presentation data. Used by the signals table, edit
   modal, and submission form (e.g., template variable constraints).
 
 See Also:
-    - ``validations/models.py`` — ``SignalDefinition`` model
+    - ``validations/models.py`` — ``StepIODefinition`` model
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from pydantic import Field
 class FMUSignalMetadata(BaseModel):
     """UI/presentation metadata for FMU signals.
 
-    Stored in ``SignalDefinition.metadata`` for signals created from FMU
+    Stored in ``StepIODefinition.metadata`` for signals created from FMU
     introspection (both library and step-level paths). Contains FMI
     specification properties used for display and debugging.
     """
@@ -57,10 +57,10 @@ class FMUSignalMetadata(BaseModel):
 class FMUProviderBinding(BaseModel):
     """Provider-native extraction config for FMU signals.
 
-    Stored in ``SignalDefinition.provider_binding``. Describes how the
+    Stored in ``StepIODefinition.provider_binding``. Describes how the
     FMU runtime should treat this variable.
 
-    Note: FMU signals primarily use ``native_name`` on ``SignalDefinition``
+    Note: FMU signals primarily use ``native_name`` on ``StepIODefinition``
     for ``fmpy.simulate_fmu(start_values=...)`` mapping. This binding is
     for additional FMI-specific runtime hints.
     """
@@ -71,7 +71,7 @@ class FMUProviderBinding(BaseModel):
     Lowercase to match the FMI XML spec (modelDescription.xml uses
     ``causality="input"``) and fmpy's expected format. This is FMU-specific
     metadata, not a Validibot concept — Validibot's own input/output
-    distinction is the ``direction`` column on SignalDefinition.
+    distinction is the ``direction`` column on StepIODefinition.
     """
 
 
@@ -83,11 +83,11 @@ class FMUProviderBinding(BaseModel):
 class EnergyPlusProviderBinding(BaseModel):
     """Provider-native extraction config for EnergyPlus output signals.
 
-    Stored in ``SignalDefinition.provider_binding`` for library EnergyPlus
+    Stored in ``StepIODefinition.provider_binding`` for library EnergyPlus
     validator signals (defined in ``energyplus/config.py``). Describes
     how to find this signal in EnergyPlus simulation output — not where
     submission data comes from (that is ``source_scope`` on
-    ``StepSignalBinding``).
+    ``StepInputBinding``).
     """
 
     metric_key: str = ""
@@ -107,7 +107,7 @@ class EnergyPlusProviderBinding(BaseModel):
 class TemplateSignalMetadata(BaseModel):
     """UI/presentation metadata for EnergyPlus template signals.
 
-    Stored in ``SignalDefinition.metadata`` for signals created from
+    Stored in ``StepIODefinition.metadata`` for signals created from
     template variable scanning (``$VARIABLE_NAME`` placeholders in IDF
     files). Controls the submission form rendering for each variable.
     """

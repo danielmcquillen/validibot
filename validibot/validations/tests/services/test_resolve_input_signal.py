@@ -1,7 +1,7 @@
 """
 Tests for the input signal resolution engine.
 
-The resolution engine is the bridge between ``StepSignalBinding`` (which
+The resolution engine is the bridge between ``StepInputBinding`` (which
 declares *where* to find a signal value) and the actual data extraction.
 It replaces the legacy approach of passing the entire submission JSON as
 flat FMU input values, enabling:
@@ -26,8 +26,8 @@ from validibot.validations.models import ResolvedInputTrace
 from validibot.validations.services.path_resolution import InputSignalResolutionError
 from validibot.validations.services.path_resolution import resolve_input_signal
 from validibot.validations.services.path_resolution import resolve_step_input_signals
-from validibot.validations.tests.factories import SignalDefinitionFactory
-from validibot.validations.tests.factories import StepSignalBindingFactory
+from validibot.validations.tests.factories import StepInputBindingFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -39,12 +39,12 @@ class ResolveInputSignalTests(TestCase):
     def _make_binding(self, *, step=None, scope=None, path="", **kwargs):
         """Create a signal definition and binding for testing."""
         step = step or WorkflowStepFactory()
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
         )
-        return StepSignalBindingFactory(
+        return StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig,
             source_scope=scope or BindingSourceScope.SUBMISSION_PAYLOAD,
@@ -119,14 +119,14 @@ class ResolveInputSignalTests(TestCase):
 
         # Two required input signals, both missing from submission
         for name in ("signal_a", "signal_b"):
-            sig = SignalDefinitionFactory(
+            sig = StepIODefinitionFactory(
                 workflow_step=step,
                 validator=None,
                 direction=SignalDirection.INPUT,
                 contract_key=name,
                 native_name=name,
             )
-            StepSignalBindingFactory(
+            StepInputBindingFactory(
                 workflow_step=step,
                 signal_definition=sig,
                 source_data_path=name,
@@ -206,13 +206,13 @@ class ResolveInputSignalTests(TestCase):
         the scoped data.'
         """
         step = WorkflowStepFactory()
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
             contract_key="T_outdoor",
         )
-        binding = StepSignalBindingFactory(
+        binding = StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig,
             source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
@@ -232,13 +232,13 @@ class ResolveInputSignalTests(TestCase):
         scoped data, the fallback to default_value should still work.
         """
         step = WorkflowStepFactory()
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
             contract_key="missing_signal",
         )
-        binding = StepSignalBindingFactory(
+        binding = StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig,
             source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
@@ -371,14 +371,14 @@ class ResolveStepInputSignalsTests(TestCase):
             workflow_step=step,
         )
 
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
             contract_key="t_outdoor",
             native_name="T_outdoor",
         )
-        StepSignalBindingFactory(
+        StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig,
             source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
@@ -405,14 +405,14 @@ class ResolveStepInputSignalsTests(TestCase):
             workflow_step=step,
         )
 
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
             contract_key="pressure",
             native_name="P_atm",
         )
-        StepSignalBindingFactory(
+        StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig,
             source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
@@ -447,14 +447,14 @@ class ResolveStepInputSignalsTests(TestCase):
             workflow_step=step,
         )
 
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
             contract_key="floor_area_m2",
             native_name="expected_floor_area_m2",
         )
-        StepSignalBindingFactory(
+        StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig,
             source_scope=BindingSourceScope.SUBMISSION_METADATA,
@@ -484,14 +484,14 @@ class ResolveStepInputSignalsTests(TestCase):
             workflow_step=step,
         )
 
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
             contract_key="upstream_eui",
             native_name="target_eui",
         )
-        StepSignalBindingFactory(
+        StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig,
             source_scope=BindingSourceScope.UPSTREAM_STEP,
@@ -527,14 +527,14 @@ class ResolveStepInputSignalsTests(TestCase):
             workflow_step=step,
         )
 
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
             contract_key="T_outdoor",
             native_name="T_outdoor",
         )
-        StepSignalBindingFactory(
+        StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig,
             source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
@@ -574,12 +574,12 @@ class ResolveSignalScopeTests(TestCase):
     def _make_binding(self, *, step=None, path="", **kwargs):
         """Create a SIGNAL-scoped binding for testing."""
         step = step or WorkflowStepFactory()
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
         )
-        return StepSignalBindingFactory(
+        return StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig,
             source_scope=BindingSourceScope.SIGNAL,
@@ -674,13 +674,13 @@ class ResolveSignalScopeTests(TestCase):
         fallback behavior of other scopes.
         """
         step = WorkflowStepFactory()
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
             contract_key="solar_irradiance",
         )
-        binding = StepSignalBindingFactory(
+        binding = StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig,
             source_scope=BindingSourceScope.SIGNAL,
@@ -713,14 +713,14 @@ class ResolveStepSignalScopeBatchTests(TestCase):
             workflow_step=step,
         )
 
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
             contract_key="solar_irradiance",
             native_name="GHI_W_m2",
         )
-        StepSignalBindingFactory(
+        StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig,
             source_scope=BindingSourceScope.SIGNAL,
@@ -751,14 +751,14 @@ class ResolveStepSignalScopeBatchTests(TestCase):
         )
 
         # Payload-scoped binding
-        sig_payload = SignalDefinitionFactory(
+        sig_payload = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
             contract_key="temperature",
             native_name="T_outdoor",
         )
-        StepSignalBindingFactory(
+        StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig_payload,
             source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
@@ -766,14 +766,14 @@ class ResolveStepSignalScopeBatchTests(TestCase):
         )
 
         # Signal-scoped binding
-        sig_signal = SignalDefinitionFactory(
+        sig_signal = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.INPUT,
             contract_key="irradiance",
             native_name="GHI_W_m2",
         )
-        StepSignalBindingFactory(
+        StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig_signal,
             source_scope=BindingSourceScope.SIGNAL,

@@ -68,7 +68,7 @@ class _TemplateVar:
 
     Replaces the former ``TemplateVariable`` Pydantic model (removed from
     ``step_configs.py``) for test purposes.  Template variable metadata is
-    now stored relationally in ``SignalDefinition`` rows; this dataclass
+    now stored relationally in ``StepIODefinition`` rows; this dataclass
     provides the same shape for the merge/validate/substitute functions
     that accept ``TemplateVariableLike``.
     """

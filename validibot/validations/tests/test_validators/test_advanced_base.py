@@ -47,9 +47,13 @@ class _StubAdvancedValidator(AdvancedValidator):
     def validator_display_name(self) -> str:
         return "Stub"
 
-    @classmethod
-    def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
-        """Extract signals from the stub envelope's _signals attribute."""
+    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
+        """Extract signals from the stub envelope's _signals attribute.
+
+        Instance method to match the post-May 2026 base contract — see
+        ``AdvancedValidator.extract_output_signals`` for the rationale
+        (catalog scoping via ``self.run_context``).
+        """
         return getattr(output_envelope, "_test_signals", None)
 
 
@@ -696,7 +700,7 @@ class BuildAssertionPayloadTests(TestCase):
         """When resolved_inputs is provided, it is used for input values
         rather than parsing the raw submission JSON.
 
-        This is the core fix: a StepSignalBinding may define a default
+        This is the core fix: a StepInputBinding may define a default
         value for an input signal.  If the submission omits that key,
         resolve_step_input_signals() fills it in.  The assertion payload
         must see the resolved value, not the raw (missing) one.
@@ -736,7 +740,7 @@ class BuildAssertionPayloadTests(TestCase):
         """An empty resolved_inputs dict is treated as falsy, so the
         method falls back to the raw submission JSON.  This preserves
         backward compatibility for legacy steps without
-        StepSignalBinding rows.
+        StepInputBinding rows.
         """
         result = self._build(
             {"T_room": 296.63},

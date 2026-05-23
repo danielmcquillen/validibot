@@ -1,10 +1,17 @@
 {% load i18n core_tags %}
 
 {% comment %}
-Modal content for editing which validator outputs are shown to users.
+Modal content for editing which step outputs are shown to users.
 
 Loaded via HTMx into the displaySignalsModal on the step detail page.
 POST submits the form via HTMx and triggers a page reload on success.
+
+Per ADR-2026-05-22b, the user-visible vocabulary for the contents of
+the o.* namespace is "step outputs" (not "validator outputs"). The
+URL/view names retain the older `display_signals` slug to avoid an
+identifier churn that would touch every workflow link in the codebase
+— that URL rename is left as a separate follow-up because it costs
+more than it gains right now.
 
 Context:
   form      - DisplaySignalsForm instance
@@ -17,7 +24,7 @@ Context:
   {% csrf_token %}
   <div class="modal-header">
     <h5 class="modal-title">
-      {% trans "Validator Outputs to Display" %}
+      {% trans "Step Outputs to Display" %}
     </h5>
     <button type="button"
             class="btn-close"
@@ -27,7 +34,7 @@ Context:
   </div>
   <div class="modal-body">
     <p class="text-muted small mb-3">
-      {% trans "Select which validator outputs appear in submission results shown to the user. If none are selected, all outputs are shown." %}
+      {% trans "Select which step outputs appear in submission results shown to the user. If none are selected, all outputs are shown." %}
     </p>
     {% if form.display_signals.field.choices %}
       <div class="list-group list-group-flush">
@@ -40,7 +47,7 @@ Context:
       </div>
     {% else %}
       <p class="text-muted">
-        {% trans "No validator outputs available for this step." %}
+        {% trans "No step outputs available for this step." %}
       </p>
     {% endif %}
   </div>

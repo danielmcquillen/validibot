@@ -33,8 +33,8 @@ from typing import Any
 
 if TYPE_CHECKING:
     from validibot.validations.models import ResolvedInputTrace
-    from validibot.validations.models import SignalDefinition
-    from validibot.validations.models import StepSignalBinding
+    from validibot.validations.models import StepInputBinding
+    from validibot.validations.models import StepIODefinition
     from validibot.validations.models import ValidationStepRun
     from validibot.workflows.models import WorkflowStep
 
@@ -134,7 +134,7 @@ def resolve_path(data: Any, path: str | None) -> tuple[Any, bool]:
 # ── Signal resolution engine ─────────────────────────────────────────
 #
 # Higher-level functions that resolve input signals for a workflow step
-# by reading StepSignalBinding rows and applying resolve_path() against
+# by reading StepInputBinding rows and applying resolve_path() against
 # the appropriate data scope (submission payload, metadata, or upstream
 # step output).
 
@@ -170,8 +170,8 @@ class ResolvedSignal:
     to create a ``ResolvedInputTrace`` audit row.
     """
 
-    signal_definition: SignalDefinition
-    binding: StepSignalBinding
+    signal_definition: StepIODefinition
+    binding: StepInputBinding
     value: Any = None
     resolved: bool = False
     used_default: bool = False
@@ -182,7 +182,7 @@ class ResolvedSignal:
 
 
 def resolve_input_signal(
-    binding: StepSignalBinding,
+    binding: StepInputBinding,
     *,
     submission_data: dict[str, Any] | None = None,
     submission_metadata: dict[str, Any] | None = None,
@@ -197,7 +197,7 @@ def resolve_input_signal(
     path doesn't resolve.
 
     Args:
-        binding: The ``StepSignalBinding`` to resolve.
+        binding: The ``StepInputBinding`` to resolve.
         submission_data: The submission payload dict (for SUBMISSION_PAYLOAD scope).
         submission_metadata: Submission metadata dict (for SUBMISSION_METADATA scope).
         upstream_signals: Dict of ``{step_key: {"signals": {...}}}`` from prior
@@ -316,7 +316,7 @@ def resolve_step_input_signals(
 ) -> tuple[dict[str, Any], list[ResolvedInputTrace]]:
     """Batch-resolve all input signal bindings for a workflow step.
 
-    Queries all ``StepSignalBinding`` rows for the step's input signals,
+    Queries all ``StepInputBinding`` rows for the step's input signals,
     resolves each one, and returns:
 
     1. A dict mapping ``native_name`` → resolved value, suitable for
@@ -336,10 +336,10 @@ def resolve_step_input_signals(
     """
     from validibot.validations.constants import SignalDirection
     from validibot.validations.models import ResolvedInputTrace
-    from validibot.validations.models import StepSignalBinding
+    from validibot.validations.models import StepInputBinding
 
     bindings = (
-        StepSignalBinding.objects.filter(
+        StepInputBinding.objects.filter(
             workflow_step=step,
             signal_definition__direction=SignalDirection.INPUT,
         )

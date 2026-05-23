@@ -1578,11 +1578,11 @@ class FMUValidatorStepConfigForm(BaseStepConfigForm):
 
     - **Library validator**: The FMU is already attached to the validator
       via ``validator.fmu_model``.  No upload fields are shown — signals
-      come from the validator's SignalDefinition rows.
+      come from the validator's StepIODefinition rows.
 
     - **System FMU validator (step-level upload)**: The author uploads
       an FMU directly in the step form. The system introspects the
-      FMU and stores discovered variables as ``SignalDefinition`` rows
+      FMU and stores discovered variables as ``StepIODefinition`` rows
       and simulation defaults in ``step.config["fmu_simulation"]``.
     """
 
@@ -2643,9 +2643,9 @@ class DisplaySignalsForm(forms.Form):
 
         # Step-owned output signals (FMU outputs, etc.)
         if step:
-            from validibot.validations.models import SignalDefinition
+            from validibot.validations.models import StepIODefinition
 
-            step_outputs = SignalDefinition.objects.filter(
+            step_outputs = StepIODefinition.objects.filter(
                 workflow_step=step,
                 direction="output",
             ).order_by("order", "pk")
@@ -2658,9 +2658,9 @@ class DisplaySignalsForm(forms.Form):
 
         # Validator-owned output signals (library catalog)
         if validator:
-            from validibot.validations.models import SignalDefinition
+            from validibot.validations.models import StepIODefinition
 
-            validator_outputs = SignalDefinition.objects.filter(
+            validator_outputs = StepIODefinition.objects.filter(
                 validator=validator,
                 direction="output",
             ).order_by("order", "pk")
@@ -2689,20 +2689,20 @@ class DisplaySignalsForm(forms.Form):
 
 
 def _build_template_vars_from_signals(step: Any) -> list[dict[str, Any]]:
-    """Build template variable dicts from step-owned SignalDefinition rows.
+    """Build template variable dicts from step-owned StepIODefinition rows.
 
-    Reads ``SignalDefinition`` rows with ``origin_kind=TEMPLATE`` and their
-    ``StepSignalBinding`` to produce dicts that the template variable
+    Reads ``StepIODefinition`` rows with ``origin_kind=TEMPLATE`` and their
+    ``StepInputBinding`` to produce dicts that the template variable
     annotation form fields consume.
     """
     if not step or not step.pk:
         return []
 
     from validibot.validations.constants import SignalOriginKind
-    from validibot.validations.models import StepSignalBinding
+    from validibot.validations.models import StepInputBinding
 
     bindings = (
-        StepSignalBinding.objects.filter(
+        StepInputBinding.objects.filter(
             workflow_step=step,
             signal_definition__origin_kind=SignalOriginKind.TEMPLATE,
         )
@@ -2740,8 +2740,8 @@ class TemplateVariableAnnotationForm(forms.Form):
 
     Rendered in a dedicated card on the step detail page (not inline in
     the step config form).  Accepts a ``step`` kwarg, reads existing
-    variable metadata from step-owned ``SignalDefinition`` rows
-    (``origin_kind=TEMPLATE``) and their ``StepSignalBinding`` rows.
+    variable metadata from step-owned ``StepIODefinition`` rows
+    (``origin_kind=TEMPLATE``) and their ``StepInputBinding`` rows.
 
     The ``template_variable_fields`` property groups bound fields for
     template rendering — the partial iterates over this list to render
@@ -3252,8 +3252,8 @@ class BasicStepConfigForm(BaseStepConfigForm):
 class SignalBindingEditForm(forms.Form):
     """Edit form for signal definition and binding fields.
 
-    Supports editing both ``SignalDefinition`` metadata (label,
-    description, unit) and ``StepSignalBinding`` configuration
+    Supports editing both ``StepIODefinition`` metadata (label,
+    description, unit) and ``StepInputBinding`` configuration
     (source_data_path, default_value, is_required). For library-owned
     signals, definition fields are rendered as read-only; for
     step-owned signals, all fields are editable.

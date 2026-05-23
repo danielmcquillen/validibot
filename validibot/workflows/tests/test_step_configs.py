@@ -3,7 +3,7 @@ Tests for the Pydantic step config models in ``step_configs.py``.
 
 These tests verify the ``EnergyPlusStepConfig`` schema definition used by
 parameterized EnergyPlus templates. Template variable metadata is now stored
-relationally in ``SignalDefinition`` rows (not in the step config), but the
+relationally in ``StepIODefinition`` rows (not in the step config), but the
 config still carries template settings like ``case_sensitive`` and the
 pre-existing simulation fields (``idf_checks``, ``run_simulation``, etc.).
 
@@ -23,7 +23,7 @@ class TestEnergyPlusStepConfigTemplateFields:
     """Tests for the template-related fields on ``EnergyPlusStepConfig``.
 
     Template variable metadata is now stored relationally in
-    ``SignalDefinition`` rows, but the config still carries
+    ``StepIODefinition`` rows, but the config still carries
     ``case_sensitive``, ``display_signals``, and the pre-existing
     simulation fields.  These tests verify that:
 

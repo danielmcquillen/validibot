@@ -2,7 +2,7 @@
 Tests for step-level FMU signal synchronization.
 
 When a user uploads an FMU to a workflow step, the system creates
-``SignalDefinition`` and ``StepSignalBinding`` rows from the
+``StepIODefinition`` and ``StepInputBinding`` rows from the
 introspected FMU variables. This test suite verifies the sync function
 handles all lifecycle scenarios: initial upload, re-upload with changed
 variables, removal, and edge cases like slug collisions.
@@ -20,8 +20,8 @@ from django.test import TestCase
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
-from validibot.validations.models import SignalDefinition
-from validibot.validations.models import StepSignalBinding
+from validibot.validations.models import StepInputBinding
+from validibot.validations.models import StepIODefinition
 from validibot.validations.services.fmu_signals import clear_step_fmu_signals
 from validibot.validations.services.fmu_signals import sync_step_fmu_signals
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -38,7 +38,7 @@ def _make_fmu_var(
 
     These dicts mirror the structure returned by FMU introspection and
     are passed to ``sync_step_fmu_signals()`` to create
-    ``SignalDefinition`` rows.
+    ``StepIODefinition`` rows.
     """
     return {
         "name": name,
@@ -56,7 +56,7 @@ class SyncStepFMUSignalsTests(TestCase):
     """Tests for the sync_step_fmu_signals() service function."""
 
     def test_creates_signal_definitions_for_inputs_and_outputs(self):
-        """Input and output FMU variables should each get a SignalDefinition
+        """Input and output FMU variables should each get a StepIODefinition
         with the correct direction and step FK ownership.
         """
         step = WorkflowStepFactory()
@@ -67,7 +67,7 @@ class SyncStepFMUSignalsTests(TestCase):
 
         sync_step_fmu_signals(step, variables)
 
-        sigs = SignalDefinition.objects.filter(workflow_step=step)
+        sigs = StepIODefinition.objects.filter(workflow_step=step)
         self.assertEqual(sigs.count(), 2)
 
         input_sig = sigs.get(direction=SignalDirection.INPUT)
@@ -80,7 +80,7 @@ class SyncStepFMUSignalsTests(TestCase):
         self.assertEqual(output_sig.native_name, "Q_heating")
 
     def test_creates_bindings_for_input_signals_only(self):
-        """Input variables should get a StepSignalBinding with the variable
+        """Input variables should get a StepInputBinding with the variable
         name as source_data_path. Output variables should not get bindings
         (they're produced, not consumed).
         """
@@ -92,7 +92,7 @@ class SyncStepFMUSignalsTests(TestCase):
 
         sync_step_fmu_signals(step, variables)
 
-        bindings = StepSignalBinding.objects.filter(workflow_step=step)
+        bindings = StepInputBinding.objects.filter(workflow_step=step)
         self.assertEqual(bindings.count(), 1)
 
         binding = bindings.first()
@@ -102,7 +102,7 @@ class SyncStepFMUSignalsTests(TestCase):
 
     def test_skips_parameter_variables(self):
         """FMU variables with causality 'parameter' or 'local' should not
-        create SignalDefinition rows — they're internal to the FMU model.
+        create StepIODefinition rows — they're internal to the FMU model.
         """
         step = WorkflowStepFactory()
         variables = [
@@ -113,13 +113,13 @@ class SyncStepFMUSignalsTests(TestCase):
 
         sync_step_fmu_signals(step, variables)
 
-        sigs = SignalDefinition.objects.filter(workflow_step=step)
+        sigs = StepIODefinition.objects.filter(workflow_step=step)
         self.assertEqual(sigs.count(), 1)
         self.assertEqual(sigs.first().native_name, "T_outdoor")
 
     def test_reupload_preserves_matching_variables(self):
         """Re-uploading an FMU with overlapping variable names should update
-        existing SignalDefinition rows, not create duplicates.
+        existing StepIODefinition rows, not create duplicates.
         """
         step = WorkflowStepFactory()
 
@@ -131,10 +131,10 @@ class SyncStepFMUSignalsTests(TestCase):
             ],
         )
         self.assertEqual(
-            SignalDefinition.objects.filter(workflow_step=step).count(),
+            StepIODefinition.objects.filter(workflow_step=step).count(),
             1,
         )
-        first_sig = SignalDefinition.objects.get(workflow_step=step)
+        first_sig = StepIODefinition.objects.get(workflow_step=step)
         first_pk = first_sig.pk
 
         # Re-upload with same variable but different unit
@@ -145,7 +145,7 @@ class SyncStepFMUSignalsTests(TestCase):
             ],
         )
 
-        sigs = SignalDefinition.objects.filter(workflow_step=step)
+        sigs = StepIODefinition.objects.filter(workflow_step=step)
         self.assertEqual(sigs.count(), 1)
         updated_sig = sigs.first()
         # Same row, updated in place
@@ -168,7 +168,7 @@ class SyncStepFMUSignalsTests(TestCase):
             ],
         )
         self.assertEqual(
-            SignalDefinition.objects.filter(workflow_step=step).count(),
+            StepIODefinition.objects.filter(workflow_step=step).count(),
             2,
         )
 
@@ -180,7 +180,7 @@ class SyncStepFMUSignalsTests(TestCase):
             ],
         )
 
-        sigs = SignalDefinition.objects.filter(workflow_step=step)
+        sigs = StepIODefinition.objects.filter(workflow_step=step)
         self.assertEqual(sigs.count(), 1)
         self.assertEqual(sigs.first().native_name, "T_outdoor")
 
@@ -197,18 +197,18 @@ class SyncStepFMUSignalsTests(TestCase):
             ],
         )
         self.assertEqual(
-            SignalDefinition.objects.filter(workflow_step=step).count(),
+            StepIODefinition.objects.filter(workflow_step=step).count(),
             2,
         )
 
         clear_step_fmu_signals(step)
 
         self.assertEqual(
-            SignalDefinition.objects.filter(workflow_step=step).count(),
+            StepIODefinition.objects.filter(workflow_step=step).count(),
             0,
         )
         self.assertEqual(
-            StepSignalBinding.objects.filter(workflow_step=step).count(),
+            StepInputBinding.objects.filter(workflow_step=step).count(),
             0,
         )
 
@@ -234,7 +234,7 @@ class SyncStepFMUSignalsTests(TestCase):
             ],
         )
 
-        sig = SignalDefinition.objects.get(workflow_step=step)
+        sig = StepIODefinition.objects.get(workflow_step=step)
         self.assertEqual(sig.provider_binding["causality"], "output")
         self.assertEqual(sig.metadata["value_reference"], 42)
         self.assertEqual(sig.metadata["variability"], "continuous")
@@ -257,7 +257,7 @@ class SyncStepFMUSignalsTests(TestCase):
 
         sigs = {
             s.native_name: s
-            for s in SignalDefinition.objects.filter(workflow_step=step)
+            for s in StepIODefinition.objects.filter(workflow_step=step)
         }
         self.assertEqual(sigs["real_var"].data_type, "number")
         self.assertEqual(sigs["bool_var"].data_type, "boolean")
@@ -269,7 +269,7 @@ class SyncStepFMUSignalsTests(TestCase):
         any assertions targeting the old contract_key will break.
 
         This is a known limitation deferred to Phase 6, when assertion
-        targets migrate from ValidatorCatalogEntry FK to SignalDefinition
+        targets migrate from ValidatorCatalogEntry FK to StepIODefinition
         FK. At that point, value_reference-based matching can be used to
         preserve stable contract_keys across renames.
         """
@@ -282,7 +282,7 @@ class SyncStepFMUSignalsTests(TestCase):
                 _make_fmu_var("T_outdoor", causality="input"),
             ],
         )
-        old_sig = SignalDefinition.objects.get(workflow_step=step)
+        old_sig = StepIODefinition.objects.get(workflow_step=step)
         self.assertEqual(old_sig.contract_key, "t_outdoor")
 
         # Re-upload: same variable renamed to T_ambient
@@ -294,7 +294,7 @@ class SyncStepFMUSignalsTests(TestCase):
         )
 
         # Old signal is gone, new one exists
-        sigs = list(SignalDefinition.objects.filter(workflow_step=step))
+        sigs = list(StepIODefinition.objects.filter(workflow_step=step))
         self.assertEqual(len(sigs), 1)
         self.assertEqual(sigs[0].contract_key, "t_ambient")
         self.assertNotEqual(sigs[0].pk, old_sig.pk)
@@ -318,7 +318,7 @@ class SyncStepFMUSignalsTests(TestCase):
                 _make_fmu_var("Q_old", causality="output"),
             ],
         )
-        sig = SignalDefinition.objects.get(
+        sig = StepIODefinition.objects.get(
             workflow_step=step,
             contract_key="q_old",
         )

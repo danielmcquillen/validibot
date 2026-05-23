@@ -1,14 +1,21 @@
 {% load i18n core_tags %}
 
 {% comment %}
-Signals tab content — shared partial for the "Signals" tab.
+Step Outputs tab content — shared partial for the "Outputs" tab.
 
-Shows validator outputs with a "Export" column.
-An Edit button opens a modal to toggle which validator outputs appear
-in submission results.
+Shows step outputs with an "Export" column. An Edit button opens a
+modal to toggle which step outputs appear in submission results.
+
+Per ADR-2026-05-22b: user-visible vocabulary is "step outputs" (the
+contents of the o.* namespace), not "validator outputs" — the
+underlying URL slug and form field name (`display_signals`) are
+intentionally left at their legacy values to avoid churning every
+workflow link in the codebase. A separate URL/field rename is left
+as a follow-up because the cost outweighs the cleanup benefit at
+this point.
 
 Context:
-  outputs            - list of output SignalDefinition objects
+  outputs            - list of output StepIODefinition objects
   step               - the WorkflowStep
   workflow           - the parent Workflow
   display_signals    - list of selected output contract_keys (from step.config)
@@ -22,7 +29,7 @@ Context:
             hx-get="{% org_url 'workflows:workflow_step_display_signals' workflow.pk step.pk %}"
             hx-target="#display-signals-modal-content"
             hx-trigger="click"
-            title="{% trans 'Edit which validator outputs are shown to users' %}">
+            title="{% trans 'Edit which step outputs are shown to users' %}">
       <i class="bi bi-pencil me-1"></i>{% trans "Edit" %}
     </button>
   </div>
@@ -70,6 +77,6 @@ Context:
   </div>
 {% else %}
   <p class="text-muted mb-0">
-    {% trans "No validator outputs registered yet." %}
+    {% trans "No step outputs registered yet." %}
   </p>
 {% endif %}

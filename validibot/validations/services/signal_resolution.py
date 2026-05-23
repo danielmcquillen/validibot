@@ -130,12 +130,16 @@ def resolve_workflow_signals(
 # ── Signal name validation ──────────────────────────────────────────────
 
 # Reserved top-level CEL context keys. Signal names must not use these.
+# Five namespaces per ADR-2026-05-22b: payload (p), signal (s),
+# input (i), output (o), steps.
 RESERVED_CEL_NAMES = frozenset(
     {
         "p",
         "payload",
         "s",
         "signal",
+        "i",
+        "input",
         "o",
         "output",
         "steps",
@@ -204,17 +208,37 @@ def validate_signal_name_unique(
     *,
     exclude_mapping_id: int | None = None,
     exclude_signal_def_id: int | None = None,
+    exclude_overlay_id: int | None = None,
 ) -> list[str]:
     """Check that a signal name is unique within a workflow.
 
-    Queries both ``WorkflowSignalMapping`` (mapped signals) and
-    ``SignalDefinition`` (promoted outputs with non-empty signal_name)
-    to enforce cross-table uniqueness at the application level.
+    Queries THREE sources of ``s.<name>`` to enforce cross-table
+    uniqueness at the application level:
+
+    1. ``WorkflowSignalMapping`` rows — workflow-level signal mappings
+       resolved at run start.
+    2. ``StepIODefinition`` rows with non-empty in-row
+       ``promoted_signal_name`` — step-owned promotions.
+    3. ``WorkflowStepIOPromotion`` overlay rows — workflow-scoped
+       promotions of validator-owned ``StepIODefinition`` rows
+       (introduced for the May 2026 P1 fix; before this, validator-
+       owned catalog entries couldn't be promoted at all).
 
     Returns an empty list if the name is unique, or a list of error
     messages if it conflicts.
+
+    Args:
+        workflow_id: The Workflow to scope the uniqueness check to.
+        name: The proposed promoted signal name (without ``s.`` prefix).
+        exclude_mapping_id: WorkflowSignalMapping pk to ignore (when
+            editing an existing mapping).
+        exclude_signal_def_id: StepIODefinition pk to ignore (when
+            editing a step-owned promotion).
+        exclude_overlay_id: WorkflowStepIOPromotion pk to ignore (when
+            editing a validator-owned promotion via the overlay).
     """
-    from validibot.validations.models import SignalDefinition
+    from validibot.validations.models import StepIODefinition
+    from validibot.validations.models import WorkflowStepIOPromotion
     from validibot.workflows.models import WorkflowSignalMapping
 
     errors: list[str] = []
@@ -231,17 +255,33 @@ def validate_signal_name_unique(
             f"Signal '{name}' is already defined in the workflow's signal mapping."
         )
 
-    # Check against promoted validator outputs
-    promoted_qs = SignalDefinition.objects.filter(
+    # Check against in-row promotions on step-owned StepIODefinitions.
+    promoted_qs = StepIODefinition.objects.filter(
         workflow_step__workflow_id=workflow_id,
-        signal_name=name,
-    ).exclude(signal_name="")
+        promoted_signal_name=name,
+    ).exclude(promoted_signal_name="")
     if exclude_signal_def_id:
         promoted_qs = promoted_qs.exclude(pk=exclude_signal_def_id)
     if promoted_qs.exists():
         errors.append(
             f"Signal '{name}' is already used as a promoted output name "
             f"on a validator step in this workflow."
+        )
+
+    # Check against overlay promotions on validator-owned
+    # StepIODefinitions. These have the same workflow scope as
+    # in-row promotions — they just live in a separate table because
+    # the underlying row is shared across workflows.
+    overlay_qs = WorkflowStepIOPromotion.objects.filter(
+        workflow_step__workflow_id=workflow_id,
+        promoted_signal_name=name,
+    )
+    if exclude_overlay_id:
+        overlay_qs = overlay_qs.exclude(pk=exclude_overlay_id)
+    if overlay_qs.exists():
+        errors.append(
+            f"Signal '{name}' is already used as a promoted name "
+            f"on a validator catalog row in this workflow."
         )
 
     return errors

@@ -30,7 +30,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import DerivationFactory
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.basic import BasicValidator
 
@@ -46,17 +46,17 @@ class CelBasicValidatorTests(TestCase):
             org=cls.org,
         )
         # Signal definitions spanning input/output/derived
-        cls.input_signal = SignalDefinitionFactory(
+        cls.input_signal = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="price",
             direction="input",
         )
-        cls.output_signal = SignalDefinitionFactory(
+        cls.output_signal = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="result.total",
             direction="output",
         )
-        cls.output_status = SignalDefinitionFactory(
+        cls.output_status = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="result.status",
             direction="output",
@@ -65,12 +65,12 @@ class CelBasicValidatorTests(TestCase):
             validator=cls.validator,
             contract_key="metrics.avg",
         )
-        cls.required_entry = SignalDefinitionFactory(
+        cls.required_entry = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="required_value",
             direction="input",
         )
-        cls.list_signal = SignalDefinitionFactory(
+        cls.list_signal = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="items",
             direction="input",
@@ -209,7 +209,7 @@ class CelBasicValidatorTests(TestCase):
 
     def test_matches_helper_on_input(self):
         slug = "serial"
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=self.validator,
             contract_key=slug,
             direction="input",
@@ -269,7 +269,7 @@ class CelBasicValidatorTests(TestCase):
         self.assertEqual(len(result.issues), 0)
 
     def test_simple_string_prefix(self):
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=self.validator,
             contract_key="serial",
             direction="input",

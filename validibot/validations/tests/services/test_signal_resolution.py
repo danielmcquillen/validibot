@@ -19,7 +19,7 @@ a clear validation message.
 
 ``validate_signal_name_unique`` enforces cross-table uniqueness for signal
 names within a workflow, spanning both ``WorkflowSignalMapping`` rows and
-``SignalDefinition`` promoted outputs.  Without this, two signals could
+``StepIODefinition`` promoted outputs.  Without this, two signals could
 silently shadow each other in the CEL namespace.
 """
 
@@ -34,7 +34,7 @@ from validibot.validations.services.signal_resolution import SignalResolutionErr
 from validibot.validations.services.signal_resolution import resolve_workflow_signals
 from validibot.validations.services.signal_resolution import validate_signal_name
 from validibot.validations.services.signal_resolution import validate_signal_name_unique
-from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.workflows.models import WorkflowSignalMapping
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -305,19 +305,19 @@ class TestValidateSignalNameUnique:
         assert "already defined" in errors[0]
 
     def test_unique_across_promoted_outputs(self):
-        """A name already used as a ``SignalDefinition.signal_name``
-        (promoted output) on a step in the same workflow should be
-        reported as a duplicate.  Promoted outputs share the same ``s``
-        namespace as mapped signals.
+        """A name already used as a ``StepIODefinition.promoted_signal_name``
+        (promoted step output) on a step in the same workflow should be
+        reported as a duplicate.  Promoted step inputs and outputs share
+        the same ``s`` namespace as mapped workflow signals.
         """
         workflow = WorkflowFactory()
         step = WorkflowStepFactory(workflow=workflow)
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             direction=SignalDirection.OUTPUT,
             origin_kind=SignalOriginKind.CATALOG,
-            signal_name="emissivity",
+            promoted_signal_name="emissivity",
         )
 
         errors = validate_signal_name_unique(workflow.id, "emissivity")

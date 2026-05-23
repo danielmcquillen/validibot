@@ -31,7 +31,25 @@ config = ValidatorConfig(
         "validibot_shared.energyplus.envelopes.EnergyPlusOutputEnvelope"
     ),
     image_name="validibot-validator-backend-energyplus",
-    version="1.0",
+    # Version bump to 1.1 per ADR-2026-05-22: catalog cleanup removes
+    # three misconceived "expectation" inputs (expected_floor_area_m2,
+    # target_eui_kwh_m2, max_unmet_hours), adds three parser-extracted
+    # step inputs (idf_version, zone_count, north_axis_deg), and
+    # removes the redundant output zone_count (parsed-from-IDF facts
+    # are step inputs, never step outputs).
+    #
+    # NOTE on floor_area_m2: ADR-2026-05-22 also proposed renaming the
+    # simulation-derived output floor_area_m2 → simulated_conditioned_area_m2
+    # for provenance clarity. That rename was DEFERRED — it requires a
+    # coordinated validibot-shared package release (the Pydantic model
+    # field is in the published package). The catalog still declares
+    # floor_area_m2 so the slug matches the value the container emits.
+    # Re-apply the rename in a follow-up PR once validibot-shared ships
+    # the renamed field.
+    #
+    # sync_validators refuses to apply semantic drift under the same
+    # (slug, version) so the bump is required.
+    version="1.1",
     order=10,
     has_processor=True,
     processor_name="EnergyPlus\u2122 Simulation",
@@ -47,29 +65,40 @@ config = ValidatorConfig(
     resource_types=[ResourceFileType.ENERGYPLUS_WEATHER],
     icon="bi-lightning-charge-fill",
     card_image="ENERGYPLUS_card_img_small.png",
-    # Note: These signals are all prototypes and subject to change. I need
-    # to do more work to determine exactly which input and output signals
-    # would make sense for a generic EnergyPlus simulation.
     catalog_entries=[
         # ==================================================================
-        # INPUT SIGNALS (from submission metadata)
+        # STEP INPUTS \u2014 parser-extracted facts from the (resolved) IDF.
+        #
+        # Per ADR-2026-05-22, EnergyPlus is a Position 3 validator (process
+        # has discrete input and output stages). These three step inputs are
+        # the proof-of-concept set scaling to ~12 in Phase 2:
+        #   - idf_version    (string,  always present, on_missing=error)
+        #   - zone_count     (int,     always \u22651,     on_missing=error)
+        #   - north_axis_deg (number,  defaults 0.0,  on_missing=null)
+        #
+        # Populated by EnergyPlusValidator.extract_input_signals() running
+        # after preprocess_submission() \u2014 works for both direct-IDF and
+        # template-mode submissions because preprocessing has resolved any
+        # template variables into a concrete IDF by then.
+        #
+        # Authors reference these as i.idf_version, i.zone_count,
+        # i.north_axis_deg in input-stage CEL assertions.
         # ==================================================================
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.INPUT,
-            slug="expected_floor_area_m2",
-            label="Expected Floor Area (m\u00b2)",
-            data_type=CatalogValueType.NUMBER,
+            slug="idf_version",
+            label="IDF Version",
+            data_type=CatalogValueType.STRING,
             description=(
-                "User-provided expected floor area from submission metadata. "
-                "Can be compared against simulated floor_area_m2."
+                "EnergyPlus version declared by the IDF Version object "
+                "(e.g. '25.1'). Every valid IDF has a Version object; "
+                "absence indicates the file is malformed."
             ),
-            binding_config={
-                "source": "submission.metadata",
-                "path": "floor_area_m2",
-            },
-            metadata={"units": "m\u00b2"},
-            is_required=False,
+            binding_config={"source": "parser", "key": "idf_version"},
+            metadata={},
+            is_required=True,
+            on_missing="error",  # every valid IDF has a Version object
             order=10,
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
@@ -77,19 +106,18 @@ config = ValidatorConfig(
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.INPUT,
-            slug="target_eui_kwh_m2",
-            label="Target EUI (kWh/m\u00b2)",
+            slug="zone_count",
+            label="Zone Count",
             data_type=CatalogValueType.NUMBER,
             description=(
-                "Target Energy Use Intensity from submission metadata. "
-                "Used for compliance checking against simulated EUI."
+                "Count of Zone objects in the IDF. Must be at least 1 "
+                "for a meaningful model. Useful for 'must have \u2265N zones' "
+                "assertions before paying for simulation."
             ),
-            binding_config={
-                "source": "submission.metadata",
-                "path": "target_eui_kwh_m2",
-            },
-            metadata={"units": "kWh/m\u00b2"},
-            is_required=False,
+            binding_config={"source": "parser", "key": "zone_count"},
+            metadata={"units": "count"},
+            is_required=True,
+            on_missing="error",  # absence means parsing failed
             order=11,
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
@@ -97,19 +125,18 @@ config = ValidatorConfig(
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.INPUT,
-            slug="max_unmet_hours",
-            label="Max Unmet Hours",
+            slug="north_axis_deg",
+            label="North Axis (deg)",
             data_type=CatalogValueType.NUMBER,
             description=(
-                "Maximum allowable unmet heating/cooling hours. "
-                "Used for comfort compliance checking."
+                "Building rotation in degrees, from the Building object "
+                "North Axis field. Defaults to 0.0 per EnergyPlus IDD. "
+                "Useful for orientation-sensitivity assertions."
             ),
-            binding_config={
-                "source": "submission.metadata",
-                "path": "max_unmet_hours",
-            },
-            metadata={"units": "hours"},
+            binding_config={"source": "parser", "key": "north_axis_deg"},
+            metadata={"units": "deg"},
             is_required=False,
+            on_missing="null",  # fall back to EnergyPlus default 0.0
             order=12,
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
@@ -323,7 +350,23 @@ config = ValidatorConfig(
             is_path_editable=False,
         ),
         # ==================================================================
-        # OUTPUT SIGNALS - Building Characteristics
+        # OUTPUT SIGNALS - Building Characteristics (simulation-derived)
+        #
+        # Per ADR-2026-05-22's provenance rule: anything derived from the
+        # IDF text is a step input (i.*); anything derived from EnergyPlus
+        # simulation output is a step output (o.*). The output zone_count
+        # has been removed \u2014 i.zone_count is the single source going
+        # forward.
+        #
+        # NOTE on floor_area_m2: ADR-2026-05-22 also proposed renaming
+        # this to simulated_conditioned_area_m2 for provenance clarity.
+        # That rename requires a coordinated validibot-shared package
+        # release (the Pydantic model field is in the published package
+        # per the project's PyPI dependency policy). Until the shared
+        # package ships the renamed field, the catalog continues to
+        # declare floor_area_m2 so the slug matches the runtime value
+        # the container actually produces. The rename is tracked as
+        # follow-up work in the ADR's "deferred" section.
         # ==================================================================
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
@@ -336,20 +379,6 @@ config = ValidatorConfig(
             metadata={"units": "m\u00b2"},
             is_required=False,
             order=140,
-            source_kind=SignalSourceKind.INTERNAL,
-            is_path_editable=False,
-        ),
-        CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
-            run_stage=CatalogRunStage.OUTPUT,
-            slug="zone_count",
-            label="Zone Count",
-            data_type=CatalogValueType.NUMBER,
-            description="Number of thermal zones in the model.",
-            binding_config={"source": "metric", "key": "zone_count"},
-            metadata={"units": "count"},
-            is_required=False,
-            order=141,
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
         ),

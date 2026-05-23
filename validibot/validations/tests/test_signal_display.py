@@ -28,7 +28,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.services.signal_display import _format_signal_value
 from validibot.validations.services.signal_display import build_display_signals
 from validibot.validations.services.signal_display import build_template_params_display
-from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -59,7 +59,7 @@ def _make_energyplus_step_run(
         template_variables: Optional list of template variable dicts
             stored in step config as test setup data. In production,
             these are passed to ``sync_step_template_signals()`` to
-            create ``SignalDefinition`` rows.
+            create ``StepIODefinition`` rows.
 
     Returns:
         A saved ``ValidationStepRun`` instance.
@@ -156,7 +156,7 @@ class TestBuildDisplaySignals:
 
     def test_enriches_with_catalog_metadata(self):
         """Each signal should get its label, units, and description from
-        the matching ``SignalDefinition``.  This test creates a
+        the matching ``StepIODefinition``.  This test creates a
         signal definition with specific metadata and verifies enrichment.
 
         ``display_signals`` is set explicitly because the opt-in default
@@ -164,7 +164,7 @@ class TestBuildDisplaySignals:
         enrichment assertions below.
         """
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="electricity_kwh",
             label="Site Electricity",
@@ -246,13 +246,13 @@ class TestBuildDisplaySignals:
         ordering logic runs.
         """
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="beta",
             order=20,
             direction="output",
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="alpha",
             order=10,
@@ -324,7 +324,7 @@ class TestBuildDisplaySignals:
 # only).  Template parameters are submitted by the user and stored in
 # step_run.output["template_parameters_used"] by the launcher.  The
 # display function enriches them with labels/units from the step's
-# SignalDefinition rows.
+# StepIODefinition rows.
 
 
 @pytest.mark.django_db
@@ -340,7 +340,7 @@ class TestBuildTemplateParamsDisplay:
 
     def test_returns_params_with_metadata(self):
         """Parameters should be enriched with labels and units from the
-        step's ``SignalDefinition`` rows.  The ``label`` field on a
+        step's ``StepIODefinition`` rows.  The ``label`` field on a
         signal definition serves as the human-readable label.
 
         The launcher stores parameters WITHOUT the ``$`` prefix — keys
@@ -373,7 +373,7 @@ class TestBuildTemplateParamsDisplay:
                 },
             },
         )
-        # Create SignalDefinition rows so the display helper can
+        # Create StepIODefinition rows so the display helper can
         # look up labels and units.
         sync_step_template_signals(sr.workflow_step, template_variables)
 
@@ -391,7 +391,7 @@ class TestBuildTemplateParamsDisplay:
         assert setpoint["units"] == "°C"
 
     def test_falls_back_to_variable_name_as_label(self):
-        """When no SignalDefinition has a description for a variable,
+        """When no StepIODefinition has a description for a variable,
         the raw variable name is used as the label.  This handles runs
         that occurred before the author annotated variables."""
         sr = _make_energyplus_step_run(
@@ -406,7 +406,7 @@ class TestBuildTemplateParamsDisplay:
         assert result[0]["value"] == "42"
 
     def test_reads_metadata_from_signal_definitions(self):
-        """When SignalDefinition rows exist for template signals (Phase 4b),
+        """When StepIODefinition rows exist for template signals (Phase 4b),
         build_template_params_display should read labels and units from them
         instead of step config JSON. This is the new primary metadata path.
         """
@@ -437,7 +437,7 @@ class TestBuildTemplateParamsDisplay:
             ],
         )
 
-        # Create SignalDefinition rows via the template sync — these
+        # Create StepIODefinition rows via the template sync — these
         # take priority over step config JSON for metadata lookup.
         step = sr.workflow_step
         sync_step_template_signals(step, step.config["template_variables"])
@@ -447,7 +447,7 @@ class TestBuildTemplateParamsDisplay:
         assert len(result) == expected_count
 
         u_factor = next(p for p in result if p["name"] == "U_FACTOR")
-        # Label comes from SignalDefinition.label which is set from
+        # Label comes from StepIODefinition.label which is set from
         # the template variable's description by sync_step_template_signals
         assert u_factor["label"] == "Window U-Factor"
         assert u_factor["units"] == "W/m2-K"

@@ -51,13 +51,17 @@ class FMUValidator(AdvancedValidator):
     def validator_display_name(self) -> str:
         return "FMU"
 
-    @classmethod
-    def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
+    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
         """
         Extract output values from an FMU output envelope.
 
         FMU envelopes (FMUOutputEnvelope from validibot_shared) store simulation
         outputs in outputs.output_values as a dict keyed by catalog slug.
+
+        Declared as an instance method to match the base contract — FMU
+        doesn't currently need the run context for extraction, but
+        keeping the signature consistent across advanced validators
+        avoids surprises for future maintainers.
 
         Args:
             output_envelope: FMUOutputEnvelope from the validator container.

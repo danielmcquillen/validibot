@@ -46,11 +46,13 @@ from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import DerivationFactory
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import SignalDefinitionFactory
-from validibot.validations.tests.factories import StepSignalBindingFactory
+from validibot.validations.tests.factories import StepInputBindingFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
+from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.constants import AgentBillingMode
 from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.models import Workflow
@@ -611,13 +613,13 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             ruleset_type=RulesetType.BASIC,
         )
         step = WorkflowStepFactory(workflow=workflow, ruleset=ruleset)
-        signal = SignalDefinitionFactory(
+        signal = StepIODefinitionFactory(
             validator=None,
             workflow_step=step,
             contract_key="shacl_total_count",
             direction=SignalDirection.OUTPUT,
         )
-        StepSignalBindingFactory(
+        StepInputBindingFactory(
             workflow_step=step,
             signal_definition=signal,
             default_value=0,
@@ -655,6 +657,234 @@ class WorkflowVersioningServiceCloneTests(TestCase):
         assert report.components_copied["signal_definitions"] == 1
         assert report.components_copied["signal_bindings"] == 1
         assert report.components_copied["derivations"] == 1
+
+    def test_clone_copies_validator_owned_io_promotion_overlays(self):
+        """Cloning a workflow copies WorkflowStepIOPromotion overlays.
+
+        Why it matters: validator-owned StepIODefinition rows (catalog
+        entries shared across workflows) hold their promoted_signal_name
+        in the WorkflowStepIOPromotion overlay table — the in-row field
+        can't represent workflow-scoped names. The overlay IS workflow
+        contract state: downstream s.<name> assertions on a new version
+        of the workflow will silently break if the overlay doesn't
+        clone with the workflow.
+
+        Regression test for the May 2026 P1 review finding.
+
+        We use an EnergyPlus catalog row owned by the validator (not
+        the step) — the original ownership pattern that motivated
+        the overlay model.
+        """
+        from validibot.validations.models import WorkflowStepIOPromotion
+
+        workflow = WorkflowFactory()
+        validator = ValidatorFactory(
+            org=workflow.org,
+            validation_type=ValidationType.ENERGYPLUS,
+            is_system=True,
+        )
+        # Validator-owned: no workflow_step FK, FK is on validator.
+        catalog_row = StepIODefinitionFactory(
+            validator=validator,
+            workflow_step=None,
+            contract_key="zone_count",
+            direction=SignalDirection.INPUT,
+        )
+        step = WorkflowStepFactory(workflow=workflow, validator=validator)
+        WorkflowStepIOPromotion.objects.create(
+            workflow_step=step,
+            signal_definition=catalog_row,
+            promoted_signal_name="zones",
+        )
+        user = UserFactory()
+
+        report = WorkflowVersioningService.clone(workflow, user=user)
+        new_workflow = Workflow.objects.get(pk=report.new_workflow_id)
+        new_step = new_workflow.steps.get()
+
+        # The catalog row is shared — the new overlay points at the
+        # SAME validator-owned StepIODefinition that the source did.
+        new_overlay = WorkflowStepIOPromotion.objects.get(
+            workflow_step=new_step,
+        )
+        assert new_overlay.signal_definition_id == catalog_row.pk
+        assert new_overlay.promoted_signal_name == "zones"
+        # Both versions have their own overlay row — the source's
+        # overlay still exists too (separate workflow_step FK).
+        assert WorkflowStepIOPromotion.objects.filter(
+            workflow_step=step,
+            signal_definition=catalog_row,
+        ).exists()
+        # Components report tracks the overlay count.
+        assert report.components_copied["io_promotions"] == 1
+
+    def test_step_owned_overlay_raises_validation_error(self):
+        """Overlays on step-owned StepIODefinitions are forbidden.
+
+        After the May 2026 follow-up review, the overlay model is
+        restricted to validator-owned rows. Step-owned rows must use
+        their in-row ``promoted_signal_name`` field instead — otherwise
+        runtime would inject the same value under two ``s.*`` aliases
+        (one from the in-row scan, one from the overlay scan).
+
+        ``clean()`` enforces this at the application layer (the rest
+        of the contract layer uses application-level XOR enforcement
+        too). ``save()`` runs ``full_clean()`` so ORM-direct writes
+        from services and migrations honour the invariant.
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from validibot.validations.models import WorkflowStepIOPromotion
+
+        workflow = WorkflowFactory()
+        ruleset = RulesetFactory(
+            org=workflow.org,
+            ruleset_type=RulesetType.BASIC,
+        )
+        step = WorkflowStepFactory(workflow=workflow, ruleset=ruleset)
+        step_owned_row = StepIODefinitionFactory(
+            validator=None,
+            workflow_step=step,
+            contract_key="custom_metric",
+            direction=SignalDirection.OUTPUT,
+        )
+
+        with pytest.raises(DjangoValidationError) as excinfo:
+            WorkflowStepIOPromotion.objects.create(
+                workflow_step=step,
+                signal_definition=step_owned_row,
+                promoted_signal_name="metric",
+            )
+        # Error must explain why and point to the right alternative.
+        assert "validator-owned" in str(excinfo.value)
+        assert "in-row" in str(excinfo.value)
+
+    def test_cross_validator_overlay_raises_validation_error(self):
+        """Overlays must match the step's validator.
+
+        The promote view at ``WorkflowStepPromoteOutputView`` rejects
+        cross-validator overlay attempts at the HTTP layer. The model
+        ``clean()`` mirrors that rule so service/migration writes
+        can't slip a catalog row from one validator into a step
+        bound to a different validator — at runtime, that step would
+        try to extract a contract_key its validator never emits.
+
+        Regression test for the May 2026 follow-up review finding.
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from validibot.validations.models import WorkflowStepIOPromotion
+
+        workflow = WorkflowFactory()
+        # The step uses validator A.
+        validator_a = ValidatorFactory(
+            org=workflow.org,
+            validation_type=ValidationType.ENERGYPLUS,
+            is_system=True,
+        )
+        step = WorkflowStepFactory(workflow=workflow, validator=validator_a)
+        # The catalog row belongs to a different validator (B).
+        validator_b = ValidatorFactory(
+            org=workflow.org,
+            validation_type=ValidationType.BASIC,
+            is_system=True,
+        )
+        cross_validator_row = StepIODefinitionFactory(
+            validator=validator_b,
+            workflow_step=None,
+            contract_key="something",
+            direction=SignalDirection.INPUT,
+        )
+
+        with pytest.raises(DjangoValidationError) as excinfo:
+            WorkflowStepIOPromotion.objects.create(
+                workflow_step=step,
+                signal_definition=cross_validator_row,
+                promoted_signal_name="something",
+            )
+        assert "same validator" in str(excinfo.value)
+
+    def test_overlay_on_step_without_validator_raises_validation_error(self):
+        """Overlays require the step to bind to a validator.
+
+        A WorkflowStep can dispatch either a validator OR an
+        action (the database's ``workflowstep_validator_xor_action``
+        check constraint enforces XOR). For an action-type step,
+        ``validator_id`` is None — and the step's runtime never
+        invokes any validator, so an overlay pointing at a
+        validator-owned catalog row could never resolve at runtime.
+        The overlay would be silently dead weight.
+
+        The earlier version of ``clean()`` short-circuited when
+        ``step_validator_id is None``, allowing this shape through.
+        The strengthened invariant requires both that the step has
+        a validator AND that it matches the signal_definition's
+        validator. Regression test for the May 2026 follow-up
+        review finding.
+
+        We exercise this with an action-type step (the only way to
+        construct a validator-less step that satisfies the XOR
+        check constraint).
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from validibot.actions.constants import ActionCategoryType
+        from validibot.actions.constants import IntegrationActionType
+        from validibot.actions.models import Action
+        from validibot.actions.models import ActionDefinition
+        from validibot.validations.models import WorkflowStepIOPromotion
+
+        workflow = WorkflowFactory()
+        # Build an action-type step (validator=None, action set).
+        # The DB XOR check requires exactly one of validator /
+        # action to be present. Action attaches to WorkflowStep
+        # via the ``Action`` instance, not the ``ActionDefinition``
+        # catalog row (definition → Action → WorkflowStep is the
+        # canonical chain).
+        action_def = ActionDefinition.objects.create(
+            slug="integration-slack-message-overlay-test",
+            name="Slack",
+            description="",
+            icon="bi-slack",
+            action_category=ActionCategoryType.INTEGRATION,
+            type=IntegrationActionType.SLACK_MESSAGE,
+        )
+        action = Action.objects.create(
+            definition=action_def,
+            slug="slack-overlay-test",
+            name="Slack",
+        )
+        step = WorkflowStepFactory(
+            workflow=workflow,
+            validator=None,
+            action=action,
+        )
+        # Validator-owned catalog row from some validator the step
+        # doesn't use.
+        validator = ValidatorFactory(
+            org=workflow.org,
+            validation_type=ValidationType.ENERGYPLUS,
+            is_system=True,
+        )
+        catalog_row = StepIODefinitionFactory(
+            validator=validator,
+            workflow_step=None,
+            contract_key="something",
+            direction=SignalDirection.INPUT,
+        )
+
+        with pytest.raises(DjangoValidationError) as excinfo:
+            WorkflowStepIOPromotion.objects.create(
+                workflow_step=step,
+                signal_definition=catalog_row,
+                promoted_signal_name="something",
+            )
+        # Error must call out both the same-validator requirement
+        # AND the "step must have a validator" requirement so the
+        # author can act on either fix.
+        msg = str(excinfo.value)
+        assert "same validator" in msg
+        assert "step must have a validator" in msg
 
     def test_clone_copies_workflow_public_info_when_present(self):
         """``WorkflowPublicInfo`` (one-to-one) copies if the source has it."""

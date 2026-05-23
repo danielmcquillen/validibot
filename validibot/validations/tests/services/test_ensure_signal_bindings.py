@@ -1,7 +1,7 @@
 """
 Tests for ensure_step_signal_bindings().
 
-This function creates default StepSignalBinding rows for validator-owned
+This function creates default StepInputBinding rows for validator-owned
 input signals that don't already have bindings on a given step. This
 ensures the signal resolution engine activates instead of falling back
 to legacy mode.
@@ -19,12 +19,12 @@ from django.test import TestCase
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
-from validibot.validations.models import SignalDefinition
-from validibot.validations.models import StepSignalBinding
+from validibot.validations.models import StepInputBinding
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.services.signal_bindings import ensure_step_signal_bindings
-from validibot.validations.tests.factories import SignalDefinitionFactory
-from validibot.validations.tests.factories import StepSignalBindingFactory
+from validibot.validations.tests.factories import StepInputBindingFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
 
@@ -33,23 +33,23 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 # CATALOG-origin input signals owned by the step's validator.
 
 
-class TestEnsureStepSignalBindings(TestCase):
+class TestEnsureStepInputBindings(TestCase):
     """Tests for the ensure_step_signal_bindings() service function."""
 
     def test_creates_bindings_for_input_signals(self):
         """CATALOG input signals owned by the validator should each get a
-        StepSignalBinding so the resolution engine can map submission
+        StepInputBinding so the resolution engine can map submission
         data to validator inputs instead of using the legacy fallback.
         """
         validator = ValidatorFactory()
-        sig_a = SignalDefinitionFactory(
+        sig_a = StepIODefinitionFactory(
             validator=validator,
             contract_key="panel_area",
             native_name="panel_area",
             direction=SignalDirection.INPUT,
             origin_kind=SignalOriginKind.CATALOG,
         )
-        sig_b = SignalDefinitionFactory(
+        sig_b = StepIODefinitionFactory(
             validator=validator,
             contract_key="heating_setpoint",
             native_name="heating_setpoint",
@@ -62,11 +62,11 @@ class TestEnsureStepSignalBindings(TestCase):
 
         self.assertEqual(count, 2)
         self.assertEqual(
-            StepSignalBinding.objects.filter(workflow_step=step).count(),
+            StepInputBinding.objects.filter(workflow_step=step).count(),
             2,
         )
 
-        binding_a = StepSignalBinding.objects.get(
+        binding_a = StepInputBinding.objects.get(
             workflow_step=step,
             signal_definition=sig_a,
         )
@@ -78,43 +78,44 @@ class TestEnsureStepSignalBindings(TestCase):
         self.assertTrue(binding_a.is_required)
         self.assertIsNone(binding_a.default_value)
 
-        binding_b = StepSignalBinding.objects.get(
+        binding_b = StepInputBinding.objects.get(
             workflow_step=step,
             signal_definition=sig_b,
         )
         self.assertEqual(binding_b.source_data_path, "")
 
-    def test_uses_system_validator_config_for_binding_defaults(self):
-        """System-validator library signals should derive binding defaults
-        from the validator config, not from provider_binding JSON.
+    def test_parser_extracted_inputs_use_internal_source_kind(self):
+        """EnergyPlus parser-extracted step inputs use INTERNAL source_kind.
 
-        EnergyPlus input signals are declared as submission-metadata
-        bindings in the config. New workflow steps must therefore get
-        ``submission_metadata`` scope, the configured metadata key, and
-        the optional/required semantics declared by the config.
+        Per ADR-2026-05-22 (catalog v1.1), the legacy
+        ``submission.metadata``-bound expectation inputs
+        (``expected_floor_area_m2``, ``target_eui_kwh_m2``,
+        ``max_unmet_hours``) were removed because they were author
+        expectations miscategorized as validator inputs. They were
+        replaced by three parser-extracted step inputs (``idf_version``,
+        ``zone_count``, ``north_axis_deg``) that the validator parses
+        from the IDF itself.
+
+        These parser-extracted step inputs declare
+        ``source_kind=INTERNAL`` (the validator parses them; no
+        author-supplied payload path is involved). This test verifies
+        that semantics is preserved when sync_validators creates the
+        StepIODefinition rows.
         """
         call_command("sync_validators")
         validator = Validator.objects.get(slug="energyplus-idf-validator")
-        step = WorkflowStepFactory(validator=validator)
 
-        ensure_step_signal_bindings(step)
-
-        signal = SignalDefinition.objects.get(
+        signal = StepIODefinition.objects.get(
             validator=validator,
-            contract_key="expected_floor_area_m2",
+            contract_key="idf_version",
             direction=SignalDirection.INPUT,
         )
-        binding = StepSignalBinding.objects.get(
-            workflow_step=step,
-            signal_definition=signal,
-        )
-        self.assertEqual(
-            binding.source_scope,
-            BindingSourceScope.SUBMISSION_METADATA,
-        )
-        self.assertEqual(binding.source_data_path, "floor_area_m2")
-        self.assertFalse(binding.is_required)
-        self.assertIsNone(binding.default_value)
+        # Per ADR-2026-05-22b, parser-extracted facts are INTERNAL:
+        # the validator's extract_input_signals() classmethod produces
+        # their values directly, so author-supplied source paths don't
+        # apply.
+        self.assertEqual(signal.source_kind, "internal")
+        self.assertFalse(signal.is_path_editable)
 
 
 # ── Filtering: only the right signals get bindings ───────────────────
@@ -122,7 +123,7 @@ class TestEnsureStepSignalBindings(TestCase):
 # correctly excluded so we don't create spurious bindings.
 
 
-class TestEnsureStepSignalBindingsFiltering(TestCase):
+class TestEnsureStepInputBindingsFiltering(TestCase):
     """Tests that the function only creates bindings for the correct subset
     of signals (CATALOG-origin inputs)."""
 
@@ -131,7 +132,7 @@ class TestEnsureStepSignalBindingsFiltering(TestCase):
         by the validator, not consumed from submission data.
         """
         validator = ValidatorFactory()
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="energy_demand",
             direction=SignalDirection.OUTPUT,
@@ -143,7 +144,7 @@ class TestEnsureStepSignalBindingsFiltering(TestCase):
 
         self.assertEqual(count, 0)
         self.assertFalse(
-            StepSignalBinding.objects.filter(workflow_step=step).exists(),
+            StepInputBinding.objects.filter(workflow_step=step).exists(),
         )
 
     def test_skips_step_owned_signals(self):
@@ -154,13 +155,13 @@ class TestEnsureStepSignalBindingsFiltering(TestCase):
         validator = ValidatorFactory()
         # FMU-origin signal owned by the validator (unusual but possible
         # in test scenarios — the key filter is origin_kind, not owner FK).
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="fmu_temp",
             direction=SignalDirection.INPUT,
             origin_kind=SignalOriginKind.FMU,
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="template_var",
             direction=SignalDirection.INPUT,
@@ -172,7 +173,7 @@ class TestEnsureStepSignalBindingsFiltering(TestCase):
 
         self.assertEqual(count, 0)
         self.assertFalse(
-            StepSignalBinding.objects.filter(workflow_step=step).exists(),
+            StepInputBinding.objects.filter(workflow_step=step).exists(),
         )
 
 
@@ -181,7 +182,7 @@ class TestEnsureStepSignalBindingsFiltering(TestCase):
 # does not overwrite existing bindings that may have been customised.
 
 
-class TestEnsureStepSignalBindingsIdempotency(TestCase):
+class TestEnsureStepInputBindingsIdempotency(TestCase):
     """Tests for idempotency and preservation of existing bindings."""
 
     def test_idempotent(self):
@@ -190,7 +191,7 @@ class TestEnsureStepSignalBindingsIdempotency(TestCase):
         returning 0 new bindings created.
         """
         validator = ValidatorFactory()
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="panel_area",
             direction=SignalDirection.INPUT,
@@ -204,7 +205,7 @@ class TestEnsureStepSignalBindingsIdempotency(TestCase):
         self.assertEqual(first_count, 1)
         self.assertEqual(second_count, 0)
         self.assertEqual(
-            StepSignalBinding.objects.filter(workflow_step=step).count(),
+            StepInputBinding.objects.filter(workflow_step=step).count(),
             1,
         )
 
@@ -214,7 +215,7 @@ class TestEnsureStepSignalBindingsIdempotency(TestCase):
         must not overwrite it. This protects author customisations.
         """
         validator = ValidatorFactory()
-        sig = SignalDefinitionFactory(
+        sig = StepIODefinitionFactory(
             validator=validator,
             contract_key="panel_area",
             native_name="panel_area",
@@ -224,7 +225,7 @@ class TestEnsureStepSignalBindingsIdempotency(TestCase):
         step = WorkflowStepFactory(validator=validator)
 
         # Simulate an author-customised binding with a nested path.
-        StepSignalBindingFactory(
+        StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig,
             source_data_path="building.envelope.panel_area",
@@ -234,7 +235,7 @@ class TestEnsureStepSignalBindingsIdempotency(TestCase):
         count = ensure_step_signal_bindings(step)
 
         self.assertEqual(count, 0)
-        binding = StepSignalBinding.objects.get(
+        binding = StepInputBinding.objects.get(
             workflow_step=step,
             signal_definition=sig,
         )
@@ -250,13 +251,13 @@ class TestEnsureStepSignalBindingsIdempotency(TestCase):
         bindings, which callers can use for logging or diagnostics.
         """
         validator = ValidatorFactory()
-        sig1 = SignalDefinitionFactory(
+        sig1 = StepIODefinitionFactory(
             validator=validator,
             contract_key="sig_a",
             direction=SignalDirection.INPUT,
             origin_kind=SignalOriginKind.CATALOG,
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="sig_b",
             direction=SignalDirection.INPUT,
@@ -265,7 +266,7 @@ class TestEnsureStepSignalBindingsIdempotency(TestCase):
         step = WorkflowStepFactory(validator=validator)
 
         # Pre-create one binding so only one should be new.
-        StepSignalBindingFactory(
+        StepInputBindingFactory(
             workflow_step=step,
             signal_definition=sig1,
         )
@@ -293,24 +294,24 @@ class TestEnsureStepSignalBindingsIdempotency(TestCase):
 
 
 # ── source_kind and is_path_editable ────────────────────────────────
-# These fields live on SignalDefinition and describe how the signal's
+# These fields live on StepIODefinition and describe how the signal's
 # value is obtained. They should NOT affect binding creation — bindings
 # are always created regardless of source_kind or path editability.
 
 
-class TestEnsureStepSignalBindingsSourceKind(TestCase):
+class TestEnsureStepInputBindingsSourceKind(TestCase):
     """Verify that source_kind/is_path_editable don't affect binding creation."""
 
     def test_internal_non_editable_signals_still_get_bindings(self):
         """INTERNAL signals with is_path_editable=False should still get
-        StepSignalBinding rows. The binding exists so the resolution engine
+        StepInputBinding rows. The binding exists so the resolution engine
         activates — the is_path_editable flag only controls UI editability,
         not whether a binding is created.
         """
         from validibot.validations.constants import SignalSourceKind
 
         validator = ValidatorFactory()
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="site_eui",
             direction=SignalDirection.INPUT,
@@ -324,5 +325,5 @@ class TestEnsureStepSignalBindingsSourceKind(TestCase):
 
         self.assertEqual(count, 1)
         self.assertTrue(
-            StepSignalBinding.objects.filter(workflow_step=step).exists(),
+            StepInputBinding.objects.filter(workflow_step=step).exists(),
         )

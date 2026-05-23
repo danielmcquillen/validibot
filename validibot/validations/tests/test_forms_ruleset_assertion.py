@@ -28,7 +28,7 @@ from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.forms import RulesetAssertionForm
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.utils import update_custom_validator
 
@@ -36,13 +36,22 @@ from validibot.validations.utils import update_custom_validator
 class RulesetAssertionFormTests(TestCase):
     """Tests for catalog-entry-backed assertions and CEL identifier validation."""
 
-    def _form(self, *, validator, catalog_entries, data: dict, fmu_variables=None):
+    def _form(
+        self,
+        *,
+        validator,
+        catalog_entries,
+        data: dict,
+        fmu_variables=None,
+        workflow_signal_names=None,
+    ):
         """Build an assertion form with signal definitions."""
         return RulesetAssertionForm(
             data=data,
             catalog_entries=catalog_entries or [],
             validator=validator,
             fmu_variables=fmu_variables,
+            workflow_signal_names=workflow_signal_names,
         )
 
     def test_cel_disallows_bare_identifiers_when_custom_targets_disabled(self):
@@ -63,7 +72,7 @@ class RulesetAssertionFormTests(TestCase):
         )
         validator.refresh_from_db()
         self.assertFalse(validator.allow_custom_assertion_targets)
-        entry = SignalDefinitionFactory(validator=validator, contract_key="price")
+        entry = StepIODefinitionFactory(validator=validator, contract_key="price")
         RulesetFactory()
         form = self._form(
             validator=validator,
@@ -96,7 +105,7 @@ class RulesetAssertionFormTests(TestCase):
         )
         validator.refresh_from_db()
         self.assertTrue(validator.allow_custom_assertion_targets)
-        entry = SignalDefinitionFactory(validator=validator, contract_key="price")
+        entry = StepIODefinitionFactory(validator=validator, contract_key="price")
         form = self._form(
             validator=validator,
             catalog_entries=[entry],
@@ -109,6 +118,191 @@ class RulesetAssertionFormTests(TestCase):
             },
         )
         self.assertTrue(form.is_valid())
+
+    def test_basic_assertion_rejects_parser_managed_input_target(self):
+        """BASIC assertions can't target parser-managed step inputs.
+
+        Why it matters: parser-managed inputs (source_kind=internal or
+        is_path_editable=False) have no payload path the BASIC
+        evaluator can walk — their value comes from
+        ``extract_input_signals()`` not from a dotted path resolution.
+        Without this guard, an author would pick ``i.zone_count`` from
+        the autocomplete, save a BASIC assertion against it, and
+        discover at runtime that every check reports "Value not found"
+        regardless of what the parser extracted.
+
+        The form rejects this with a clear message pointing the
+        author to CEL — which IS able to resolve i.* values through
+        the namespaced context.
+
+        Regression test for the May 2026 review's P2 finding.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.ENERGYPLUS,
+            is_system=True,
+        )
+        # Parser-managed input: source_kind=internal mimics how the
+        # EnergyPlus catalog declares zone_count (the IDF parser fills
+        # it, not a payload binding).
+        parser_input = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="zone_count",
+            direction="input",
+            source_kind="internal",
+            is_path_editable=False,
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[parser_input],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": f"i.{parser_input.contract_key}",
+                "operator": "ge",
+                "comparison_value": "1",
+                "severity": Severity.ERROR,
+                "cel_expression": "",
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        # form.errors renders HTML-escaped (apostrophes become &#x27;).
+        # Use the underlying error list to get the raw message text so
+        # the assertion doesn't depend on HTML-encoding quirks.
+        target_errors = [str(err) for err in form.errors.get("target_data_path", [])]
+        joined = " ".join(target_errors)
+        # May 2026: error message broadened to cover BOTH parser-
+        # managed AND author-bound i.* targets. The parser case
+        # specifically calls out "populated by the validator" as
+        # the reason.
+        self.assertIn("BASIC assertions can't target step inputs", joined)
+        self.assertIn("populated by the validator", joined)
+        # The error must surface the contract_key so the author can
+        # find the right row to retarget OR rewrite as CEL.
+        self.assertIn("zone_count", joined)
+
+    def test_basic_assertion_rejects_author_bound_input_target(self):
+        """BASIC assertions can't target author-bound i.* inputs either.
+
+        The May 2026 fix only rejected parser-managed i.* targets,
+        but the May 2026 review showed that author-bound i.*
+        targets have the same runtime trap: BASIC walks the raw
+        payload by ``contract_key`` and ignores the StepInputBinding.
+
+        Concrete failure: a StepInputBinding maps
+        ``contract_key=temperature`` to
+        ``source_data_path=building.zones[0].temp``. At runtime
+        BASIC resolves ``payload["temperature"]`` — not the bound
+        nested path — and reports "Value not found" while CEL
+        would have correctly returned the value from i.*.
+
+        The form-side guard now blocks ALL INPUT-direction targets
+        from BASIC, redirecting authors to CEL where the i.*
+        namespace works.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        bound_input = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="temperature",
+            direction="input",
+            source_kind="payload_path",
+            is_path_editable=True,
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[bound_input],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": f"i.{bound_input.contract_key}",
+                "operator": "ge",
+                "comparison_value": "0",
+                "severity": Severity.ERROR,
+                "cel_expression": "",
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        target_errors = [str(err) for err in form.errors.get("target_data_path", [])]
+        joined = " ".join(target_errors)
+        # The error must explain WHY (binding indirection) and
+        # surface the contract_key so the author can act on it.
+        self.assertIn("StepInputBinding", joined)
+        self.assertIn("temperature", joined)
+
+    def test_basic_assertion_rejects_workflow_signal_target(self):
+        """BASIC can't target s.<workflow_signal> either — same trap as i.*.
+
+        Workflow signals (and promoted upstream outputs) live in
+        ``RunContext.workflow_signals`` / the s.* CEL namespace.
+        The BASIC evaluator never reads that dict; it strips the
+        ``s.`` prefix and walks the bare name against the raw
+        payload. Only works by coincidence when the signal name
+        equals a top-level payload key — broken otherwise.
+
+        The form-side guard now blocks s.* targets too and tells
+        the author to use CEL. Regression test for the May 2026
+        BASIC + s.* review finding (extends the BASIC + i.* fix
+        from the previous review round).
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            workflow_signal_names={"site_area"},
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": "s.site_area",
+                "operator": "gt",
+                "comparison_value": "0",
+                "severity": Severity.ERROR,
+                "cel_expression": "",
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        target_errors = [str(err) for err in form.errors.get("target_data_path", [])]
+        joined = " ".join(target_errors)
+        self.assertIn("BASIC assertions can't target workflow signals", joined)
+        self.assertIn("site_area", joined)
+        # The error must point to CEL with a usable example.
+        self.assertIn("s.site_area", joined)
+
+    def test_basic_assertion_allows_output_target(self):
+        """BASIC + o.* still works — the guard is INPUT-only.
+
+        Output targets resolve from extract_output_signals() and the
+        validator output envelope, which BASIC's payload walk DOES
+        handle correctly (the output dict is the payload at output
+        stage). Only INPUT targets need to be redirected to CEL.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        output_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="site_eui",
+            direction="output",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[output_sig],
+            data={
+                "assertion_type": AssertionType.BASIC.value,
+                "target_data_path": f"o.{output_sig.contract_key}",
+                "operator": "lt",
+                "comparison_value": "100",
+                "severity": Severity.ERROR,
+                "cel_expression": "",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
 
     def test_update_custom_validator_persists_validator_fields(self):
         from validibot.validations.tests.factories import CustomValidatorFactory
@@ -134,10 +328,19 @@ class RulesetAssertionFormTests(TestCase):
         self.assertEqual(updated.notes, "New Notes")
 
     def test_target_resolution_prefers_input_without_prefix(self):
+        """Bare-name target resolution prefers the input direction.
+
+        The target_data_path bare-name resolution prefers the input
+        signal over the output (richer metadata). The CEL expression
+        uses i.* to reach the same value — which is the namespace
+        that actually carries it at runtime. (Pre-May 2026 follow-up
+        review this used s.temperature, which was the mental-model
+        trap — runtime puts step inputs in i.*, never s.*.)
+        """
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC, is_system=False
         )
-        input_entry = SignalDefinitionFactory(
+        input_entry = StepIODefinitionFactory(
             validator=validator,
             contract_key="temperature",
             direction="input",
@@ -149,7 +352,7 @@ class RulesetAssertionFormTests(TestCase):
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
                 "target_data_path": "temperature",
                 "severity": Severity.ERROR,
-                "cel_expression": "s.temperature > 0",
+                "cel_expression": "i.temperature > 0",
                 "when_expression": "",
             },
         )
@@ -159,15 +362,24 @@ class RulesetAssertionFormTests(TestCase):
         self.assertIsNone(form.cleaned_data["target_catalog_entry"])
 
     def test_output_requires_prefix_on_collision(self):
+        """When the same contract_key exists as both input and output,
+        the bare-name target resolves to the input (richer metadata).
+
+        The CEL expression in each case explicitly chooses the
+        intended namespace — i.* for the input form, o.* for the
+        prefixed-output form. (Pre-May 2026 follow-up review the
+        first form used s.price; that was the mental-model trap
+        we're now guarding against.)
+        """
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC, is_system=False
         )
-        input_entry = SignalDefinitionFactory(
+        input_entry = StepIODefinitionFactory(
             validator=validator,
             contract_key="price",
             direction="input",
         )
-        output_entry = SignalDefinitionFactory.build(
+        output_entry = StepIODefinitionFactory.build(
             validator=validator,
             contract_key="price",
             direction="output",
@@ -180,7 +392,7 @@ class RulesetAssertionFormTests(TestCase):
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
                 "target_data_path": "price",
                 "severity": Severity.ERROR,
-                "cel_expression": "s.price > 0",
+                "cel_expression": "i.price > 0",
                 "when_expression": "",
             },
         )
@@ -206,7 +418,7 @@ class RulesetAssertionFormTests(TestCase):
 # FMU variable form validation
 #
 # Step-level FMU uploads store variable metadata (name, causality) as
-# SignalDefinition rows.  The assertion form must accept these variables
+# StepIODefinition rows.  The assertion form must accept these variables
 # as valid targets and enforce the ``output.`` prefix convention for
 # disambiguation when a name appears as both input and output.
 # ==============================================================================
@@ -215,7 +427,7 @@ class RulesetAssertionFormTests(TestCase):
 class FMUVariableTargetResolutionTests(TestCase):
     """Tests for basic-assertion target resolution with FMU variables.
 
-    FMU variables are provided as step-owned SignalDefinition rows with
+    FMU variables are provided as step-owned StepIODefinition rows with
     origin_kind=FMU.  The form reads them from the ``catalog_entries``
     parameter (which now contains all available signal definitions).
     """
@@ -232,9 +444,9 @@ class FMUVariableTargetResolutionTests(TestCase):
         cls.validator.refresh_from_db()
 
     def _make_fmu_signals(self, fmu_variables):
-        """Create SignalDefinition objects from fmu_variables dicts."""
+        """Create StepIODefinition objects from fmu_variables dicts."""
         from validibot.validations.constants import SignalOriginKind
-        from validibot.validations.models import SignalDefinition
+        from validibot.validations.models import StepIODefinition
         from validibot.workflows.tests.factories import WorkflowStepFactory
 
         step = WorkflowStepFactory()
@@ -243,7 +455,7 @@ class FMUVariableTargetResolutionTests(TestCase):
             name = var["name"]
             causality = var.get("causality", "input")
             direction = "input" if causality == "input" else "output"
-            sig = SignalDefinition.objects.create(
+            sig = StepIODefinition.objects.create(
                 workflow_step=step,
                 contract_key=name,
                 native_name=name,
@@ -286,14 +498,23 @@ class FMUVariableTargetResolutionTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("for workflow signals", str(form.errors))
 
-    def test_s_prefixed_fmu_input_accepted(self):
-        """``s.Q_cooling_max`` resolves to its SignalDefinition.
+    def test_s_prefixed_fmu_input_rejected_for_basic(self):
+        """``s.Q_cooling_max`` on a BASIC FMU input assertion is rejected.
 
-        The ``s.`` prefix indicates an input signal.  When the name
-        matches a known input signal, the form resolves it to the
-        corresponding SignalDefinition so the evaluator can use the
-        ``contract_key`` at runtime (instead of the raw prefixed path,
-        which the evaluator cannot resolve).
+        Pre-May 2026, the form accepted this and resolved it to the
+        INPUT-direction StepIODefinition. But the BASIC runtime walks
+        ``contract_key`` against the raw payload, ignoring the
+        StepInputBinding that maps ``Q_cooling_max`` to its actual
+        submission path. So the assertion saved successfully and then
+        silently failed at runtime (or worked only by coincidence if
+        the FMU input happened to be a top-level submission key).
+
+        The new guard rejects this at save time and tells the author
+        to use CEL. CEL DOES resolve i.* through the namespaced
+        context (which includes the resolved binding value), so the
+        same logical check works correctly there.
+
+        Regression test for the May 2026 P2 review finding.
         """
         form = self._fmu_form(
             fmu_variables=[
@@ -308,10 +529,12 @@ class FMUVariableTargetResolutionTests(TestCase):
                 "severity": Severity.ERROR,
             },
         )
-        self.assertTrue(form.is_valid(), form.errors)
-        resolved = form.cleaned_data["resolved_signal"]
-        self.assertIsNotNone(resolved)
-        self.assertEqual(resolved.contract_key, "Q_cooling_max")
+        self.assertFalse(form.is_valid())
+        # The error must direct the author to CEL with the same target.
+        target_errors = [str(e) for e in form.errors.get("target_data_path", [])]
+        joined = " ".join(target_errors)
+        self.assertIn("BASIC assertions can't target step inputs", joined)
+        self.assertIn("Q_cooling_max", joined)
 
     def test_bare_fmu_output_rejected(self):
         """A bare name (no prefix) is rejected even for FMU outputs.
@@ -336,7 +559,7 @@ class FMUVariableTargetResolutionTests(TestCase):
         self.assertIn("for workflow signals", str(form.errors))
 
     def test_o_prefixed_fmu_output_accepted(self):
-        """``o.T_room`` resolves to the FMU output SignalDefinition.
+        """``o.T_room`` resolves to the FMU output StepIODefinition.
 
         The ``o.`` prefix targets the validator output namespace.
         """
@@ -361,10 +584,10 @@ class FMUVariableTargetResolutionTests(TestCase):
         )
 
     def test_output_prefix_resolves_fmu_output(self):
-        """``output.T_room`` resolves to the FMU output SignalDefinition.
+        """``output.T_room`` resolves to the FMU output StepIODefinition.
 
         The ``output.`` prefix is used for explicit disambiguation.
-        With the unified signal model, this resolves to a SignalDefinition.
+        With the unified signal model, this resolves to a StepIODefinition.
         """
         form = self._fmu_form(
             fmu_variables=[
@@ -409,7 +632,7 @@ class FMUVariableTargetResolutionTests(TestCase):
         self.assertIn("for workflow signals", str(form.errors))
 
     def test_collision_resolved_with_output_prefix(self):
-        """``output.T_room`` resolves to the output SignalDefinition
+        """``output.T_room`` resolves to the output StepIODefinition
         even when the name collides with an input variable.
         """
         form = self._fmu_form(
@@ -454,13 +677,13 @@ class FMUVariableCelIdentifierTests(TestCase):
         cls.validator.refresh_from_db()
 
     def _make_fmu_signals(self, fmu_variables):
-        """Create SignalDefinition objects from fmu_variables dicts.
+        """Create StepIODefinition objects from fmu_variables dicts.
 
         Converts the legacy dict format (name, causality) into
-        step-owned SignalDefinition rows with origin_kind=FMU.
+        step-owned StepIODefinition rows with origin_kind=FMU.
         """
         from validibot.validations.constants import SignalOriginKind
-        from validibot.validations.models import SignalDefinition
+        from validibot.validations.models import StepIODefinition
         from validibot.workflows.tests.factories import WorkflowStepFactory
 
         step = WorkflowStepFactory()
@@ -469,7 +692,7 @@ class FMUVariableCelIdentifierTests(TestCase):
             name = var["name"]
             causality = var.get("causality", "input")
             direction = "input" if causality == "input" else "output"
-            sig = SignalDefinition.objects.create(
+            sig = StepIODefinition.objects.create(
                 workflow_step=step,
                 contract_key=name,
                 native_name=name,
@@ -496,16 +719,22 @@ class FMUVariableCelIdentifierTests(TestCase):
     def test_namespaced_fmu_names_accepted(self):
         """Namespace-prefixed FMU variable names are valid CEL identifiers.
 
-        FMU variable names must use the ``s.`` prefix for signals.
-        Both input and output variable names should be accepted when
-        properly namespaced.
+        FMU inputs live in i.* (resolved from StepInputBindings before
+        the container runs) and FMU outputs live in o.* (extracted from
+        the output envelope). Both should be accepted when properly
+        namespaced.
+
+        Pre-May 2026 follow-up review: this test used ``s.Q_cooling_max``
+        for an FMU input — the mental-model trap that runtime does
+        NOT inject step inputs into s.*. Updated to use the correct
+        namespace per ADR-2026-05-22b.
         """
         form = self._cel_form(
             fmu_variables=[
                 {"name": "Q_cooling_max", "causality": "input"},
                 {"name": "T_room", "causality": "output"},
             ],
-            expression="s.T_room < s.Q_cooling_max",
+            expression="o.T_room < i.Q_cooling_max",
         )
         self.assertTrue(form.is_valid(), form.errors)
 
@@ -539,19 +768,23 @@ class FMUVariableCelIdentifierTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("Bare identifiers are not allowed", str(form.errors))
 
-    def test_mixed_signal_and_output_prefixed_identifiers(self):
-        """CEL expressions can use ``s.`` for signals and ``output.`` for outputs.
+    def test_mixed_input_and_output_prefixed_identifiers(self):
+        """CEL expressions can use ``i.`` for step inputs and ``o.`` for step outputs.
 
-        This is the typical pattern for assertions that compare an output
-        signal against a user-provided input value, e.g.,
-        ``s.Q_cooling_actual < s.Q_cooling_max * 0.85``.
+        This is the typical pattern for assertions that compare an
+        output value against a user-provided input value, e.g.,
+        ``o.Q_cooling_actual < i.Q_cooling_max * 0.85``.
+
+        Pre-May 2026 follow-up review: this test used s.* for both
+        sides — the trap is that runtime puts step inputs in i.*,
+        not s.*, so the assertion would have read null at runtime.
         """
         form = self._cel_form(
             fmu_variables=[
                 {"name": "Q_cooling_max", "causality": "input"},
                 {"name": "Q_cooling_actual", "causality": "output"},
             ],
-            expression="s.Q_cooling_actual < s.Q_cooling_max",
+            expression="o.Q_cooling_actual < i.Q_cooling_max",
         )
         self.assertTrue(form.is_valid(), form.errors)
 
@@ -590,7 +823,7 @@ class PrefixBasedTargetResolutionTests(TestCase):
 
     - ``s.<name>`` for workflow signals (always accepted)
     - ``p.<path>`` for payload data (always accepted)
-    - ``o.<name>`` for validator outputs (resolved to SignalDefinition)
+    - ``o.<name>`` for validator outputs (resolved to StepIODefinition)
     - Bare names are rejected unless ``allow_custom_assertion_targets``
     """
 
@@ -602,20 +835,453 @@ class PrefixBasedTargetResolutionTests(TestCase):
             workflow_signal_names=workflow_signal_names,
         )
 
-    def test_s_prefix_resolves_known_input(self):
-        """``s.<name>`` resolves to its SignalDefinition when the name
-        matches a declared input signal.
+    def test_i_prefix_resolves_known_input_via_cel(self):
+        """``i.<name>`` works in CEL for any declared step input.
 
-        This ensures the evaluator uses the ``contract_key`` at runtime
-        rather than the raw prefixed path (which it cannot resolve).
+        Step inputs live in the i.* CEL namespace at runtime. The
+        catalog declares them; the CEL identifier validator accepts
+        i.<contract_key> for any known input.
+
+        This replaces an older test that blessed s.<panel_area> via
+        CEL. The May 2026 follow-up review surfaced that as a
+        mental-model trap (same shape as the BASIC s.<input> trap):
+        the form would resolve the target, but at runtime the value
+        lives in i.*, not s.*, so the assertion silently reads null.
         """
-        from validibot.validations.constants import CatalogRunStage
-
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,
             is_system=False,
         )
-        input_sig = SignalDefinitionFactory(
+        input_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="panel_area",
+            direction="input",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "i.panel_area",
+                "severity": Severity.ERROR,
+                "cel_expression": "i.panel_area > 0",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_cel_rejects_s_prefix_on_known_step_input(self):
+        """CEL rejects ``s.<known_input>`` and points the author at i.*.
+
+        Why it matters: ``inputs_by_slug`` is checked before
+        ``workflow_signal_names`` in ``_resolve_target_data_path``,
+        and the CEL identifier validator was previously accepting
+        ANY ``s.<name>`` reference as long as it looked
+        namespace-prefixed. But step inputs live in i.* at runtime —
+        they are never injected into s.*. Without this rejection,
+        ``s.panel_area`` saves cleanly and then reads null in every
+        evaluation.
+
+        Regression test for the May 2026 P2 review finding that
+        identified this as the CEL-side equivalent of the BASIC
+        s.<input> trap fixed earlier.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="panel_area",
+            direction="input",
+        )
+        # No workflow_signal_names with this name — the name only
+        # exists as a step input.
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "s.panel_area",
+                "severity": Severity.ERROR,
+                "cel_expression": "s.panel_area > 0",
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        joined = " ".join(str(e) for e in form.errors.get("cel_expression", []))
+        # The error must point the author at i.<name> as the fix.
+        self.assertIn("i.panel_area", joined)
+        self.assertIn("step inputs live in the i.* namespace", joined.lower())
+
+    def test_cel_allows_s_prefix_when_name_is_both_input_and_workflow_signal(self):
+        """A name that exists as BOTH a step input AND a workflow signal
+        is a legitimate s.* target — the workflow signal half of the
+        collision is real.
+
+        The guard exists specifically to catch names that are ONLY
+        known as step inputs (where s.<name> would silently read
+        null). If the name is also a workflow signal, then s.<name>
+        will resolve correctly at runtime (to the workflow signal's
+        value), so the assertion is fine.
+
+        Critically, the test must actually create the collision —
+        passing the StepIODefinition into ``catalog_entries`` so
+        ``inputs_by_slug`` contains ``panel_area`` AND seeding
+        ``workflow_signal_names`` with the same name. Without
+        ``catalog_entries=[input_sig]`` the test passed by accident:
+        ``inputs_by_slug`` was empty, the guard's collision check
+        never fired, and the test only proved "s.<workflow_signal>
+        is allowed" — not the harder "s.<both_input_and_signal> is
+        still allowed" case the guard's collision-aware branch is
+        meant to handle.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="panel_area",
+            direction="input",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            workflow_signal_names={"panel_area"},
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "s.panel_area",
+                "severity": Severity.ERROR,
+                "cel_expression": "s.panel_area > 0",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        # Belt-and-braces: confirm the test fixture actually
+        # exercises the collision path. If inputs_by_slug doesn't
+        # contain panel_area, the form would have passed for the
+        # wrong reason.
+        self.assertIn("panel_area", form.inputs_by_slug)
+        self.assertIn("panel_area", form.workflow_signal_names)
+
+    def test_cel_rejects_s_bracket_access_on_known_step_input(self):
+        """CEL rejects ``s["<known_input>"]`` the same way as ``s.<known_input>``.
+
+        Per the CEL spec, ``m.x`` and ``m["x"]`` are equivalent for
+        maps with valid-identifier keys, so an author can express
+        the same wrong reference via bracket access:
+        ``s["panel_area"] > 0``. The previous guard only scanned
+        the stripped expression (string literals removed first),
+        which meant the bracket form bypassed the check — leaving
+        the same mental-model trap through a different valid CEL
+        spelling.
+
+        A pre-strip scan over the bracket-access pattern catches
+        both quote styles (``"`` and ``'``).
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="panel_area",
+            direction="input",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": 's["panel_area"]',
+                "severity": Severity.ERROR,
+                "cel_expression": 's["panel_area"] > 0',
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        joined = " ".join(str(e) for e in form.errors.get("cel_expression", []))
+        # Error points at i.<name> as the fix (same as dot-access path).
+        self.assertIn("i.panel_area", joined)
+        self.assertIn("step inputs live in the i.* namespace", joined.lower())
+
+    def test_cel_rejects_signal_bracket_access_with_single_quotes(self):
+        """The bracket-access guard catches single-quoted keys too.
+
+        CEL accepts both quote styles, and we ship the long-form
+        ``signal["name"]`` alias as well — covering both ensures
+        an author can't slip the trap through by mixing quote style
+        or namespace alias.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="panel_area",
+            direction="input",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "signal['panel_area']",
+                "severity": Severity.ERROR,
+                "cel_expression": "signal['panel_area'] > 0",
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        joined = " ".join(str(e) for e in form.errors.get("cel_expression", []))
+        self.assertIn("i.panel_area", joined)
+
+    def test_cel_bracket_guard_skips_text_inside_string_literal(self):
+        """The bracket guard must not false-positive on string contents.
+
+        ``p.note == 's["panel_area"]'`` is a perfectly valid CEL
+        expression that compares the value at ``p.note`` against the
+        literal string ``s["panel_area"]``. No bracket access happens
+        at runtime — the text just looks like one.
+
+        The previous regex-based guard scanned the raw expression and
+        false-positively rejected this with the step-input namespace
+        error. The lexical scanner skips CEL string literals so the
+        bracket match only fires on real syntax.
+
+        Reproduction of the May 2026 P2 review finding (string-
+        literal false positive).
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="panel_area",
+            direction="input",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "p.note",
+                "severity": Severity.ERROR,
+                # The bracket-looking text is inside a single-quoted
+                # CEL string — it's not bracket access, it's a string
+                # comparison.
+                "cel_expression": "p.note == 's[\"panel_area\"]'",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_cel_bracket_guard_catches_hyphenated_contract_key(self):
+        """The bracket guard catches slug-shaped contract_keys with hyphens.
+
+        ``StepIODefinition.contract_key`` is a Django ``SlugField``
+        which allows ``-`` characters, so a catalog can legitimately
+        contain a row keyed ``panel-area``. The previous regex used
+        an identifier-shaped pattern (``[A-Za-z_][A-Za-z0-9_]*``) so
+        ``s["panel-area"]`` slipped past — the same mental-model trap
+        through a key the regex didn't recognize.
+
+        The lexical scanner extracts the bracket contents verbatim
+        and the form looks up the key in ``inputs_by_slug``
+        directly, so any slug shape the catalog can produce is
+        caught.
+
+        Reproduction of the May 2026 P2 review finding (hyphenated
+        key bypass).
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="panel-area",
+            direction="input",
+        )
+        # Sanity: the SlugField really stored the hyphen.
+        self.assertEqual(input_sig.contract_key, "panel-area")
+
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                # The dot-access form is rejected by CEL syntax
+                # itself (``-`` isn't a valid identifier char), so
+                # bracket access is the only spelling that reaches
+                # this catalog row. We're testing the guard
+                # specifically for the case where the runtime
+                # spelling is forced into bracket syntax.
+                "target_data_path": 's["panel-area"]',
+                "severity": Severity.ERROR,
+                "cel_expression": 's["panel-area"] > 0',
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        joined = " ".join(str(e) for e in form.errors.get("cel_expression", []))
+        # Error points the author at i.<name> (using the same
+        # hyphenated key — the i.* namespace handles the same
+        # contract_keys the catalog declares).
+        self.assertIn("panel-area", joined)
+        self.assertIn("step inputs live in the i.* namespace", joined.lower())
+
+    def test_cel_bracket_guard_skips_member_access_p_s(self):
+        """``p.s["panel_area"]`` is payload member access, not the s.* namespace.
+
+        CEL allows arbitrary nesting: ``p`` is the payload root, and
+        ``p.s`` selects a field named ``s`` on the payload. The
+        subsequent ``["panel_area"]`` is then bracket access on that
+        field's value (probably a map). None of that touches the s.*
+        CEL namespace — the s.* guard must not false-positive on it.
+
+        The scanner enforces this by inspecting the previous non-
+        whitespace character: if it's ``.``, the candidate is a
+        field access on something else, not a top-level namespace
+        reference.
+
+        Reproduction of the May 2026 P2 review finding (member-
+        access false positive).
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="panel_area",
+            direction="input",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "p.s",
+                "severity": Severity.ERROR,
+                "cel_expression": 'p.s["panel_area"] == 1',
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_cel_bracket_guard_skips_member_access_payload_signal(self):
+        """``payload.signal["panel-area"]`` is payload member access.
+
+        Same trap as ``p.s["…"]`` but with the long-form aliases
+        (``payload`` instead of ``p``, ``signal`` instead of ``s``)
+        and a hyphenated key to confirm the slug-aware lookup also
+        respects the member-access exclusion.
+
+        Reproduction of the May 2026 P2 review finding (long-form
+        member-access false positive).
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="panel-area",
+            direction="input",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "payload.signal",
+                "severity": Severity.ERROR,
+                "cel_expression": 'payload.signal["panel-area"] == 1',
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_cel_bracket_guard_skips_member_access_with_whitespace_dot(self):
+        """``p . s["panel_area"]`` (whitespace around the dot) still member access.
+
+        CEL is tolerant of whitespace between the receiver, the
+        member-access operator, and the field name. The scanner's
+        member-access check walks back over whitespace to find the
+        previous non-whitespace character before deciding whether
+        it's a ``.``.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="panel_area",
+            direction="input",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "p.s",
+                "severity": Severity.ERROR,
+                "cel_expression": 'p . s["panel_area"] == 1',
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_cel_allows_s_bracket_access_when_name_is_workflow_signal(self):
+        """Bracket-access guard honours the same collision allowance.
+
+        ``s["panel_area"]`` is legitimate when ``panel_area`` is
+        a real workflow signal — runtime resolves it via the
+        workflow_signals dict. The guard must mirror the dot-access
+        branch's collision exception so workflow-signal references
+        through bracket syntax aren't false-positives.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="panel_area",
+            direction="input",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            workflow_signal_names={"panel_area"},
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": 's["panel_area"]',
+                "severity": Severity.ERROR,
+                "cel_expression": 's["panel_area"] > 0',
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_basic_s_prefix_known_input_rejected(self):
+        """BASIC + ``s.<known_input>`` is rejected per the May 2026 P2 fix.
+
+        The form previously resolved this to a StepIODefinition and
+        accepted the assertion, which then silently failed at runtime
+        (BASIC walks contract_key against the raw payload, missing
+        any binding indirection).
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = StepIODefinitionFactory(
             validator=validator,
             contract_key="panel_area",
             direction="input",
@@ -631,14 +1297,9 @@ class PrefixBasedTargetResolutionTests(TestCase):
                 "severity": Severity.ERROR,
             },
         )
-        self.assertTrue(form.is_valid(), form.errors)
-        resolved = form.cleaned_data["resolved_signal"]
-        self.assertIsNotNone(resolved)
-        self.assertEqual(resolved.contract_key, "panel_area")
-        self.assertEqual(
-            form.cleaned_data["resolved_stage"],
-            CatalogRunStage.INPUT,
-        )
+        self.assertFalse(form.is_valid())
+        joined = " ".join(str(e) for e in form.errors.get("target_data_path", []))
+        self.assertIn("BASIC assertions can't target step inputs", joined)
 
     def test_s_prefix_unknown_input_rejected(self):
         """``s.<name>`` is rejected when the name doesn't match any
@@ -670,19 +1331,24 @@ class PrefixBasedTargetResolutionTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("target_data_path", form.errors)
 
-    def test_s_prefix_resolves_workflow_signal(self):
-        """``s.<name>`` is accepted when the name matches a workflow-level
-        signal (signal mapping or promoted output from an upstream step),
-        even when it's not a declared validator input.
+    def test_s_prefix_resolves_workflow_signal_via_cel(self):
+        """``s.<name>`` resolves to a workflow-level signal (signal
+        mapping or promoted upstream output) when used in a CEL
+        assertion.
 
-        Workflow signals are passed to the form via ``workflow_signal_names``
-        and should always be valid targets regardless of the
-        ``allow_custom_assertion_targets`` setting.  This ensures the
-        dropdown choices (which include workflow signals) are never
-        rejected by the form's own validation.
+        Workflow signals are passed to the form via
+        ``workflow_signal_names`` and should always be valid CEL
+        targets regardless of the ``allow_custom_assertion_targets``
+        setting. This ensures autocomplete choices that include
+        workflow signals are never rejected by the form's own
+        validation.
+
+        BASIC targeting of s.* is blocked separately
+        (``_reject_namespaced_basic_target``) because the BASIC
+        evaluator walks the raw payload, not the s.* namespace —
+        so this test uses CEL, which DOES resolve s.* through
+        the namespaced context.
         """
-        from validibot.validations.constants import CatalogRunStage
-
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,
             is_system=False,
@@ -696,41 +1362,36 @@ class PrefixBasedTargetResolutionTests(TestCase):
             catalog_entries=[],
             workflow_signal_names={"site_area", "building_height"},
             data={
-                "assertion_type": AssertionType.BASIC.value,
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
                 "target_data_path": "s.site_area",
-                "operator": "gt",
-                "comparison_value": "0",
                 "severity": Severity.ERROR,
+                "cel_expression": "s.site_area > 0",
+                "when_expression": "",
             },
         )
         self.assertTrue(form.is_valid(), form.errors)
-        # Stored as a bare name (no prefix) with no signal definition.
-        self.assertIsNone(form.cleaned_data["resolved_signal"])
-        self.assertEqual(
-            form.cleaned_data["target_data_path_value"],
-            "site_area",
-        )
-        self.assertEqual(
-            form.cleaned_data["resolved_stage"],
-            CatalogRunStage.INPUT,
-        )
 
     def test_s_prefix_prefers_validator_input_over_workflow_signal(self):
         """When a name exists as both a validator input and a workflow signal,
-        the validator input takes precedence.
+        the validator input takes precedence in target resolution.
 
-        Validator inputs resolve to a SignalDefinition so the evaluator
-        uses the ``contract_key`` at runtime.  Workflow signals are stored
-        as bare paths.  Preferring the signal definition gives the
-        evaluator richer metadata.
+        This precedence rule lives in ``_resolve_target_data_path``
+        — the input signal definition wins because it's a richer
+        target (provides StepIODefinition metadata for evaluators
+        that can use it).
+
+        The CEL identifier validator separately allows ``s.panel_area``
+        here because ``panel_area`` IS also a real workflow signal
+        (in ``workflow_signal_names``) — at runtime, s.panel_area
+        will resolve to the workflow signal's value. The "s.<input>
+        but not workflow signal" case is rejected by a different
+        guard (see ``test_cel_rejects_s_prefix_on_known_step_input``).
         """
-        from validibot.validations.constants import CatalogRunStage
-
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,
             is_system=False,
         )
-        input_sig = SignalDefinitionFactory(
+        input_sig = StepIODefinitionFactory(
             validator=validator,
             contract_key="panel_area",
             direction="input",
@@ -740,23 +1401,19 @@ class PrefixBasedTargetResolutionTests(TestCase):
             catalog_entries=[input_sig],
             workflow_signal_names={"panel_area"},
             data={
-                "assertion_type": AssertionType.BASIC.value,
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
                 "target_data_path": "s.panel_area",
-                "operator": "gt",
-                "comparison_value": "0",
                 "severity": Severity.ERROR,
+                "cel_expression": "s.panel_area > 0",
+                "when_expression": "",
             },
         )
         self.assertTrue(form.is_valid(), form.errors)
-        resolved = form.cleaned_data["resolved_signal"]
-        # Should resolve to the SignalDefinition, not fall through to
-        # the workflow signal path.
-        self.assertIsNotNone(resolved)
-        self.assertEqual(resolved.contract_key, "panel_area")
-        self.assertEqual(
-            form.cleaned_data["resolved_stage"],
-            CatalogRunStage.INPUT,
-        )
+        # CEL assertions don't use resolved_signal at evaluation
+        # time — the form clears it (see clean()). But the
+        # autocomplete and CEL-identifier validation paths still
+        # exercise the same resolution lookup, so the precedence
+        # rule is still meaningful to test.
 
     def test_p_prefix_always_accepted(self):
         """``p.<path>`` targets are always accepted without requiring
@@ -832,7 +1489,7 @@ class PrefixBasedTargetResolutionTests(TestCase):
         )
 
     def test_o_prefix_resolves_output_signal(self):
-        """``o.<name>`` resolves to the output SignalDefinition.
+        """``o.<name>`` resolves to the output StepIODefinition.
 
         Output-prefixed targets are resolved against the validator's
         declared output signals and set the stage to OUTPUT.
@@ -841,7 +1498,7 @@ class PrefixBasedTargetResolutionTests(TestCase):
             validation_type=ValidationType.BASIC,
             is_system=False,
         )
-        output_sig = SignalDefinitionFactory(
+        output_sig = StepIODefinitionFactory(
             validator=validator,
             contract_key="site_eui",
             direction="output",
@@ -931,11 +1588,14 @@ class PrefixBasedTargetResolutionTests(TestCase):
             "metrics.custom.value",
         )
 
-    def test_signal_prefix_long_form_accepted(self):
-        """The long-form ``signal.<name>`` prefix is also accepted.
+    def test_signal_prefix_long_form_also_rejected_for_basic(self):
+        """The long-form ``signal.<name>`` prefix is the same trap as ``s.``.
 
-        This is an alias for ``s.`` — the prefix is stripped so the
-        evaluator can resolve the bare name against the payload.
+        Both prefixes route through the same s.* resolution path
+        and produce the same runtime failure mode (BASIC walks the
+        bare name against the raw payload, missing the workflow
+        signal value entirely). The form-side guard must catch
+        both prefixes.
         """
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,
@@ -944,6 +1604,7 @@ class PrefixBasedTargetResolutionTests(TestCase):
         form = self._form(
             validator=validator,
             catalog_entries=[],
+            workflow_signal_names={"panel_area"},
             data={
                 "assertion_type": AssertionType.BASIC.value,
                 "target_data_path": "signal.panel_area",
@@ -952,8 +1613,6 @@ class PrefixBasedTargetResolutionTests(TestCase):
                 "severity": Severity.ERROR,
             },
         )
-        self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(
-            form.cleaned_data["target_data_path_value"],
-            "panel_area",
-        )
+        self.assertFalse(form.is_valid())
+        joined = " ".join(str(e) for e in form.errors.get("target_data_path", []))
+        self.assertIn("BASIC assertions can't target workflow signals", joined)

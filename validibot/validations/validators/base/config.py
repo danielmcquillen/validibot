@@ -47,7 +47,7 @@ OFFICIAL_VALIDATOR_PLUGIN_PREFIXES = (
 class CatalogEntrySpec(BaseModel):
     """Specification for a single catalog entry (signal or derivation).
 
-    Maps 1:1 to a ``SignalDefinition`` or ``Derivation`` row. The sync
+    Maps 1:1 to a ``StepIODefinition`` or ``Derivation`` row. The sync
     command uses these specs to create or update signals for a validator.
     """
 
@@ -65,6 +65,27 @@ class CatalogEntrySpec(BaseModel):
     is_required: bool = False
     source_kind: str = "payload_path"
     is_path_editable: bool = True
+
+    # Per ADR-2026-05-22: behaviour when this catalog entry's value
+    # cannot be resolved at runtime.
+    #
+    #   - "error"  — fail the run with a clear message (use for entries
+    #                that downstream assertions reliably depend on; e.g.
+    #                idf_version on EnergyPlus is required because every
+    #                IDF has a Version object).
+    #   - "null"   — inject null; assertions must guard with has(...) or
+    #                != null. Surfaced in the library page as "may be
+    #                null". This is the safe default.
+    #   - "ignore" — omit silently from the CEL context; references
+    #                resolve to null without any warning. Use for
+    #                genuinely optional facts the author shouldn't need
+    #                to know about.
+    #
+    # Runtime enforcement is tracked as follow-up work. The field is
+    # captured on the catalog spec now so authors and validator authors
+    # can express intent; full enforcement (failing runs when on_missing
+    # == "error" and the value is absent) ships in a follow-up PR.
+    on_missing: str = "null"
 
 
 class StepEditorCardSpec(BaseModel):

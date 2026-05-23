@@ -10,8 +10,8 @@ concerns:
 
 The unified signal model stores those concerns separately:
 
-- ``SignalDefinition.provider_binding`` holds provider-facing runtime hints
-- ``StepSignalBinding`` holds per-step submission sourcing defaults
+- ``StepIODefinition.provider_binding`` holds provider-facing runtime hints
+- ``StepInputBinding`` holds per-step submission sourcing defaults
 
 These helpers translate the legacy mixed mapping into those two
 representations so the database stays aligned with the unified
@@ -54,7 +54,7 @@ def build_step_binding_defaults_from_mapping(
     fallback_path: str,
     default_required: bool,
 ) -> dict[str, Any]:
-    """Return canonical ``StepSignalBinding`` defaults from a mixed mapping.
+    """Return canonical ``StepInputBinding`` defaults from a mixed mapping.
 
     Args:
         mapping: Legacy catalog-entry binding metadata.
@@ -63,7 +63,7 @@ def build_step_binding_defaults_from_mapping(
             does not declare ``is_required`` explicitly.
 
     Returns:
-        Dict suitable for ``StepSignalBinding(..., **defaults)``.
+        Dict suitable for ``StepInputBinding(..., **defaults)``.
     """
     binding = dict(mapping or {})
     source = binding.get("source")
@@ -97,7 +97,7 @@ def build_provider_binding_from_mapping(
     """Strip submission-source selectors from provider-facing metadata.
 
     The returned dict is safe to persist in
-    ``SignalDefinition.provider_binding`` because it contains only
+    ``StepIODefinition.provider_binding`` because it contains only
     provider/runtime hints, not submission lookup details.
     """
     binding = dict(mapping or {})
@@ -113,6 +113,15 @@ def build_provider_binding_from_mapping(
         if metric_key:
             provider_binding["metric_key"] = metric_key
         return provider_binding
+
+    if source == "parser":
+        # Per ADR-2026-05-22, parser-extracted step inputs declare
+        # {"source": "parser", "key": "<contract_key>"} in their
+        # binding_config. These values are populated at runtime by the
+        # validator's extract_input_signals() classmethod — no payload
+        # path or runtime metadata is involved at all, so the
+        # provider_binding stored on StepIODefinition is empty.
+        return {}
 
     if (
         source in LEGACY_SOURCE_SCOPE_MAP

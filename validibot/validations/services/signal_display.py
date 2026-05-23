@@ -12,7 +12,7 @@ these helpers:
    toggle ("show all output signals") will give one-click access for
    cases where every signal is wanted.
 2. Enrich each signal with human-readable metadata (label, units,
-   precision) from the validator's ``SignalDefinition`` records.
+   precision) from the validator's ``StepIODefinition`` records.
 3. Format numeric values with thousands separators and configurable
    decimal precision.
 
@@ -25,7 +25,7 @@ with the opt-in default).
 
 See Also:
     - ``EnergyPlusStepConfig.display_signals`` (``workflows/step_configs.py``)
-    - ``SignalDefinition`` (``validations/models.py``)
+    - ``StepIODefinition`` (``validations/models.py``)
     - ``AdvancedValidationProcessor.store_signals()`` (persists signals)
 """
 
@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 if TYPE_CHECKING:
-    from validibot.validations.models import SignalDefinition
+    from validibot.validations.models import StepIODefinition
     from validibot.validations.models import ValidationStepRun
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ def build_display_signals(step_run: ValidationStepRun) -> list[DisplaySignal]:
         1. Read raw signals from ``step_run.output["signals"]``.
         2. Determine which signals to show using the step config's
            ``display_signals`` list (empty = show all).
-        3. Batch-fetch ``SignalDefinition`` records for enrichment
+        3. Batch-fetch ``StepIODefinition`` records for enrichment
            (labels, units, precision).
         4. Format each value and return an ordered list.
 
@@ -165,7 +165,7 @@ def build_template_params_display(
     metadata to produce a list of ``{"name", "label", "value", "units"}``
     dicts suitable for the "Parameters Used" section in results.
 
-    Metadata is sourced from ``SignalDefinition`` rows for the step.
+    Metadata is sourced from ``StepIODefinition`` rows for the step.
 
     Returns an empty list for non-template runs (no
     ``template_parameters_used`` key in output).
@@ -199,7 +199,7 @@ def _build_template_param_meta(
 ) -> dict[str, dict[str, str]]:
     """Build a metadata lookup for template parameters.
 
-    Iterates ``SignalDefinition`` rows for the step and filters to
+    Iterates ``StepIODefinition`` rows for the step and filters to
     template-origin ones in Python. ``.all()`` (rather than
     ``.filter(origin_kind=...)``) is deliberate — Django's prefetch
     cache only populates the ``.all()`` result, so callers that
@@ -260,8 +260,8 @@ def _get_display_signals_filter(step_run: ValidationStepRun) -> list[str]:
 def _build_signal_map(
     step_run: ValidationStepRun,
     slugs: list[str],
-) -> dict[str, SignalDefinition]:
-    """Batch-fetch ``SignalDefinition`` records for the given slugs.
+) -> dict[str, StepIODefinition]:
+    """Batch-fetch ``StepIODefinition`` records for the given slugs.
 
     Checks both validator-owned signals (library validators) and
     step-owned signals (step-level FMU uploads) to cover all origin
@@ -287,7 +287,7 @@ def _build_signal_map(
     slug_set = set(slugs)
 
     # Step-owned signals (e.g., step-level FMU uploads) take priority.
-    result: dict[str, SignalDefinition] = {}
+    result: dict[str, StepIODefinition] = {}
     for sig in workflow_step.signal_definitions.all():
         if sig.contract_key in slug_set:
             result[sig.contract_key] = sig

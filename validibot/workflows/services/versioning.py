@@ -261,7 +261,8 @@ class WorkflowVersioningService:
         # level helpers via signals).
         from validibot.validations.models import Ruleset
         from validibot.validations.models import RulesetAssertion
-        from validibot.validations.models import SignalDefinition
+        from validibot.validations.models import StepIODefinition
+        from validibot.validations.models import WorkflowStepIOPromotion
         from validibot.workflows.models import Workflow
         from validibot.workflows.models import WorkflowPublicInfo
         from validibot.workflows.models import WorkflowRoleAccess
@@ -336,6 +337,14 @@ class WorkflowVersioningService:
                 "signal_definitions",
                 "signal_bindings",
                 "derivations",
+                # io_promotions is the related_name for
+                # WorkflowStepIOPromotion. We prefetch it here so the
+                # overlay clone below doesn't issue N queries when
+                # iterating steps. Per the May 2026 P1 review: the
+                # overlay carries workflow-scoped promotion names for
+                # validator-owned StepIODefinitions and is workflow
+                # contract state — it must clone with the workflow.
+                "io_promotions",
             )
             .order_by("order"),
         )
@@ -351,6 +360,9 @@ class WorkflowVersioningService:
         }
         step_derivation_map = {
             step.pk: list(step.derivations.all()) for step in original_steps
+        }
+        step_promotion_map = {
+            step.pk: list(step.io_promotions.all()) for step in original_steps
         }
 
         source_rulesets = {
@@ -382,7 +394,7 @@ class WorkflowVersioningService:
             for old_pk, new_step in zip(old_pks, original_steps, strict=True)
         }
 
-        signal_clone_map: dict[int, SignalDefinition] = {}
+        signal_clone_map: dict[int, StepIODefinition] = {}
         signal_count = 0
         binding_count = 0
         derivation_count = 0
@@ -417,6 +429,36 @@ class WorkflowVersioningService:
                 old_derivation.metadata = deepcopy(old_derivation.metadata)
                 old_derivation.save()
                 derivation_count += 1
+
+        # Clone WorkflowStepIOPromotion overlays (per May 2026 P1 review).
+        # The overlay carries workflow-scoped promoted names for validator-
+        # owned StepIODefinition rows (catalog entries shared across
+        # workflows). Two cases for resolving the cloned signal_definition:
+        #
+        # 1. The overlay points at a STEP-OWNED row that we just cloned —
+        #    use signal_clone_map to redirect to the new row.
+        # 2. The overlay points at a VALIDATOR-OWNED row (catalog entry) —
+        #    the original row is shared across workflows, so the clone
+        #    keeps the same signal_definition FK. signal_clone_map.get()
+        #    falls back to the original row in this case.
+        #
+        # Without this clone, the new workflow version would silently
+        # drop all validator-owned promotions, and downstream s.<name>
+        # assertions that referenced them would break.
+        promotion_count = 0
+        for old_pk, new_step in step_clone_map.items():
+            for old_promotion in step_promotion_map.get(old_pk, []):
+                cloned_signal_def = signal_clone_map.get(
+                    old_promotion.signal_definition_id,
+                    old_promotion.signal_definition,
+                )
+                WorkflowStepIOPromotion.objects.create(
+                    workflow_step=new_step,
+                    signal_definition=cloned_signal_def,
+                    promoted_signal_name=old_promotion.promoted_signal_name,
+                )
+                promotion_count += 1
+        components_copied["io_promotions"] = promotion_count
 
         assertion_count = 0
         for source_ruleset_id, cloned_ruleset in ruleset_clone_map.items():

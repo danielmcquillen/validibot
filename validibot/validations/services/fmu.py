@@ -28,7 +28,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.models import FMUModel
 from validibot.validations.models import FMUProbeResult
 from validibot.validations.models import FMUVariable
-from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.signal_metadata.metadata import FMUProviderBinding
 from validibot.validations.signal_metadata.metadata import FMUSignalMetadata
@@ -55,7 +55,7 @@ DISALLOWED_EXTENSIONS = {
 # ---------------------------------------------------------------------------
 # These are plain dataclasses (not Django models) so that introspection
 # results can be consumed by both:
-#   - the library-validator flow (converts to FMUVariable + SignalDefinition rows)
+#   - the library-validator flow (converts to FMUVariable + StepIODefinition rows)
 #   - the step-level flow (converts to step config JSON dicts)
 
 
@@ -191,7 +191,7 @@ def introspect_fmu(payload: bytes, filename: str) -> FMUIntrospectionResult:
 
     Used by both:
     - ``create_fmu_validator()`` (library flow) — results feed into
-      FMUModel + FMUVariable + SignalDefinition creation.
+      FMUModel + FMUVariable + StepIODefinition creation.
     - ``build_fmu_config()`` (step-level flow) — results feed into
       ``sync_step_fmu_signals()`` and ``step.config["fmu_simulation"]``.
 
@@ -333,7 +333,7 @@ def create_fmu_validator(
 
     Uses the shared ``introspect_fmu()`` layer for validation and metadata
     extraction, then converts the results into Django model instances
-    (FMUModel, FMUVariable, SignalDefinition).
+    (FMUModel, FMUVariable, StepIODefinition).
 
     When ``approve_immediately`` is False the FMU will remain unapproved until a
     probe run is completed. ``storage_backend`` can be supplied to stream the
@@ -427,7 +427,7 @@ def _persist_variables(
             key = f"{base_key}-{counter}"
             counter += 1
         existing_keys.add(key)
-        SignalDefinition.objects.get_or_create(
+        StepIODefinition.objects.get_or_create(
             validator=validator,
             contract_key=key,
             direction=direction,
@@ -606,7 +606,7 @@ def _refresh_variables_from_probe(
     if validator is None:
         return
     FMUVariable.objects.filter(fmu_model=fmu_model).delete()
-    SignalDefinition.objects.filter(validator=validator).delete()
+    StepIODefinition.objects.filter(validator=validator).delete()
     shaped_vars = [
         FMUVariable(
             fmu_model=fmu_model,

@@ -77,7 +77,7 @@ def _make_step_with_template(
     Returns (step, submission_factory_kwargs) — the caller creates
     the submission separately so it can control the content.
 
-    Also creates SignalDefinition + StepSignalBinding rows for the
+    Also creates StepIODefinition + StepInputBinding rows for the
     template variables via sync_step_template_signals().
     """
     from validibot.validations.services.template_signals import (
@@ -501,7 +501,7 @@ class TestReadTemplateContentErrorType:
 # ===========================================================================
 # Signal-binding resolution path (Phase 4b)
 #
-# When a step has StepSignalBinding rows for template signals (created by
+# When a step has StepInputBinding rows for template signals (created by
 # sync_step_template_signals during template upload), the preprocessing
 # function resolves values via resolve_input_signal() instead of the
 # legacy flat-dict merge. This enables nested JSON payloads and
@@ -515,8 +515,8 @@ def _make_step_with_template_bindings(
 ) -> tuple:
     """Create a step with both template resource AND signal bindings.
 
-    Since ``_make_step_with_template()`` now creates SignalDefinition +
-    StepSignalBinding rows automatically, this is just a convenience alias.
+    Since ``_make_step_with_template()`` now creates StepIODefinition +
+    StepInputBinding rows automatically, this is just a convenience alias.
     """
     return _make_step_with_template(template_content=template_content)
 
@@ -524,7 +524,7 @@ def _make_step_with_template_bindings(
 class TestSignalBindingResolution:
     """Tests for the Phase 4b signal-binding resolution path.
 
-    When StepSignalBinding rows exist for template signals, preprocessing
+    When StepInputBinding rows exist for template signals, preprocessing
     resolves values via resolve_input_signal() instead of the legacy
     flat-dict merge. This test class verifies that the new path produces
     identical results for flat JSON submissions and additionally supports
@@ -559,17 +559,17 @@ class TestSignalBindingResolution:
         JSON submissions should be accepted and values resolved via
         path resolution — this is the core Phase 4b capability.
         """
-        from validibot.validations.models import StepSignalBinding
+        from validibot.validations.models import StepInputBinding
 
         step, sub_kwargs = _make_step_with_template_bindings()
 
         # Update bindings to use nested source_data_path
-        StepSignalBinding.objects.filter(
+        StepInputBinding.objects.filter(
             workflow_step=step,
             signal_definition__native_name="U_FACTOR",
         ).update(source_data_path="glazing.u_factor")
 
-        StepSignalBinding.objects.filter(
+        StepInputBinding.objects.filter(
             workflow_step=step,
             signal_definition__native_name="SHGC",
         ).update(source_data_path="glazing.shgc")
@@ -597,12 +597,12 @@ class TestSignalBindingResolution:
         doesn't include that parameter, the default should be used —
         matching the legacy behavior where author defaults fill gaps.
         """
-        from validibot.validations.models import StepSignalBinding
+        from validibot.validations.models import StepInputBinding
 
         step, sub_kwargs = _make_step_with_template_bindings()
 
         # Set a default value on the SHGC binding
-        StepSignalBinding.objects.filter(
+        StepInputBinding.objects.filter(
             workflow_step=step,
             signal_definition__native_name="SHGC",
         ).update(default_value="0.25", is_required=False)
@@ -644,16 +644,16 @@ class TestSignalBindingResolution:
         warnings. Those keys are structural containers, not parameter
         names — warning about them is a false alarm.
         """
-        from validibot.validations.models import StepSignalBinding
+        from validibot.validations.models import StepInputBinding
 
         step, sub_kwargs = _make_step_with_template_bindings()
 
-        StepSignalBinding.objects.filter(
+        StepInputBinding.objects.filter(
             workflow_step=step,
             signal_definition__native_name="U_FACTOR",
         ).update(source_data_path="glazing.u_factor")
 
-        StepSignalBinding.objects.filter(
+        StepInputBinding.objects.filter(
             workflow_step=step,
             signal_definition__native_name="SHGC",
         ).update(source_data_path="glazing.shgc")

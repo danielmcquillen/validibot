@@ -3,7 +3,18 @@
 # This file is distributed under the same license as the PACKAGE package.
 #
 msgid ""
-msgstr "Project-Id-Version: Validibot\nReport-Msgid-Bugs-To: \nPOT-Creation-Date: 2026-05-21 22:55+0000\nPO-Revision-Date: 2026-05-21 22:55+0000\nLast-Translator: Validibot Team <daniel@mcquilleninteractive.com>\nLanguage-Team: Spanish <es@li.org>\nLanguage: es\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
+msgstr ""
+"Project-Id-Version: Validibot\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-05-23 01:40+0000\n"
+"PO-Revision-Date: 2026-05-21 22:55+0000\n"
+"Last-Translator: Validibot Team <daniel@mcquilleninteractive.com>\n"
+"Language-Team: Spanish <es@li.org>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 msgid "English"
 msgstr "Inglés"
@@ -1080,7 +1091,8 @@ msgid "Add Email"
 msgstr "Añadir correo electrónico"
 
 msgid "Do you really want to remove the selected email address?"
-msgstr "¿Realmente desea eliminar la dirección de correo electrónico seleccionada?"
+msgstr ""
+"¿Realmente desea eliminar la dirección de correo electrónico seleccionada?"
 
 msgid "Sign In"
 msgstr "Iniciar sesión"
@@ -1091,7 +1103,10 @@ msgid ""
 "                      of your existing third party accounts. Or, <a "
 "href=\"%(signup_url)s\">sign up</a>\n"
 "                      for a %(site_name)s account and sign in below:"
-msgstr "Inicie sesión con una de sus cuentas de terceros existentes. O <a href=\"%(signup_url)s\">regístrese</a> para obtener una cuenta de %(site_name)s e inicie sesión a continuación:"
+msgstr ""
+"Inicie sesión con una de sus cuentas de terceros existentes. O <a "
+"href=\"%(signup_url)s\">regístrese</a> para obtener una cuenta de "
+"%(site_name)s e inicie sesión a continuación:"
 
 msgid "or"
 msgstr "o"
@@ -1100,7 +1115,8 @@ msgstr "o"
 msgid ""
 "Don't have an account?\n"
 "                        <a href=\"%(signup_url)s\">Sign up</a> first."
-msgstr "¿No tiene una cuenta? <a href=\"%(signup_url)s\">Regístrese</a> primero."
+msgstr ""
+"¿No tiene una cuenta? <a href=\"%(signup_url)s\">Regístrese</a> primero."
 
 msgid "Validibot"
 msgstr "Validibot"
@@ -1132,7 +1148,10 @@ msgstr "Restablecer contraseña"
 msgid ""
 "Forgotten your password? Enter your e-mail address below,<br />and we'll "
 "send you an e-mail allowing you to reset it."
-msgstr "¿Ha olvidado su contraseña? Introduzca su dirección de correo electrónico abajo,<br /> y le enviaremos un correo electrónico que le permitirá restablecerla."
+msgstr ""
+"¿Ha olvidado su contraseña? Introduzca su dirección de correo electrónico "
+"abajo,<br /> y le enviaremos un correo electrónico que le permitirá "
+"restablecerla."
 
 #, python-format
 msgid ""
@@ -1141,7 +1160,12 @@ msgid ""
 "if you have any\n"
 "                trouble resetting your password.\n"
 "            "
-msgstr "\n                <a href=\"mailto:%(contact_email)s\">Comuníquese con nosotros</a> si tiene algún\n                problema para restablecer su contraseña.\n            "
+msgstr ""
+"\n"
+"                <a href=\"mailto:%(contact_email)s\">Comuníquese con "
+"nosotros</a> si tiene algún\n"
+"                problema para restablecer su contraseña.\n"
+"            "
 
 msgid "Start Your Free Trial"
 msgstr "Inicie su prueba gratuita"
@@ -1657,7 +1681,11 @@ msgid ""
 "                Are you sure you want to remove user “%(username)s” from "
 "organization “%(org)s”?\n"
 "              "
-msgstr "\n                ¿Está seguro de que desea eliminar al usuario “%(username)s” de la organización “%(org)s”?\n              "
+msgstr ""
+"\n"
+"                ¿Está seguro de que desea eliminar al usuario “%(username)s” "
+"de la organización “%(org)s”?\n"
+"              "
 
 msgid "They will lose access to this organization until invited again."
 msgstr "Perderán acceso a esta organización hasta que sean invitados de nuevo."
@@ -2552,7 +2580,7 @@ msgstr ""
 msgid "No signals registered yet."
 msgstr ""
 
-msgid "Edit which validator outputs are shown to users"
+msgid "Edit which step outputs are shown to users"
 msgstr ""
 
 msgid "Filter:"
@@ -3259,25 +3287,25 @@ msgstr ""
 msgid "Workflow versions"
 msgstr ""
 
-msgid "Validator Outputs to Display"
+msgid "Step Outputs to Display"
 msgstr ""
 
 msgid ""
-"Select which validator outputs appear in submission results shown to the "
-"user. If none are selected, all outputs are shown."
+"Select which step outputs appear in submission results shown to the user. If "
+"none are selected, all outputs are shown."
 msgstr ""
 
-msgid "No validator outputs available for this step."
+msgid "No step outputs available for this step."
 msgstr ""
 
 msgid ""
-"Some required inputs have no source path. Map each required input to a "
+"Some required step inputs have no source path. Map each required input to a "
 "payload path or signal before running the workflow."
 msgstr ""
 
 msgid ""
-"The contract key that identifies this validator input in CEL assertions and "
-"the validation engine."
+"The contract key for this step input. Reference it in CEL assertions as i."
+"<name>."
 msgstr ""
 
 msgid "Source Path"
@@ -3285,35 +3313,27 @@ msgstr ""
 
 msgid ""
 "A payload path (e.g., building.floor_area) or signal reference (e.g., "
-"s.floor_area) that provides the value for this input."
-msgstr ""
-
-msgid "Internal — data source managed by the validator"
-msgstr ""
-
-msgid "Not mapped"
-msgstr ""
-
-msgid "Auto-link to workflow signal"
-msgstr ""
-
-msgid "Edit validator input"
-msgstr ""
-
-msgid "Edit variable"
-msgstr "Editar variable"
-
-msgid "No validator inputs."
-msgstr ""
-
-msgid "Adds output values to the final output response shown to users."
+"s.floor_area) that provides the value for this step input. May be empty for "
+"parser-extracted inputs (validator populates the value automatically)."
 msgstr ""
 
 msgid "Copy to Signal"
 msgstr ""
 
 msgid ""
-"Copy the output value to a signal so it is easily referenced in later steps."
+"Promote this step input to a workflow-wide signal so later steps can "
+"reference it as s.<name>."
+msgstr ""
+
+msgid "Internal — data source managed by the validator"
+msgstr ""
+
+#, fuzzy
+#| msgid "Save validator"
+msgid "Provided by validator"
+msgstr "Guardar validador"
+
+msgid "Not mapped"
 msgstr ""
 
 msgid "Remove signal"
@@ -3322,7 +3342,34 @@ msgstr ""
 msgid "Copy to signal"
 msgstr ""
 
-msgid "No validator outputs."
+msgid "Auto-link to workflow signal"
+msgstr ""
+
+#, fuzzy
+#| msgid "Edit step details"
+msgid "Edit step input"
+msgstr "Editar detalles del paso"
+
+msgid "Edit variable"
+msgstr "Editar variable"
+
+msgid ""
+"No step inputs. This validator either doesn't have a process that parses the "
+"payload (schema-only validators like JSON Schema), or its process emits "
+"outputs only (SHACL, THERM). Write your assertions against p.* (payload) and "
+"s.* (workflow signals)."
+msgstr ""
+
+msgid "Adds output values to the final output response shown to users."
+msgstr ""
+
+msgid ""
+"Copy the output value to a signal so it is easily referenced in later steps."
+msgstr ""
+
+msgid ""
+"No step outputs. This validator doesn't emit named output values — its "
+"results emerge as findings rather than values you can assert against."
 msgstr ""
 
 msgid "Paste Sample Data"
@@ -3440,8 +3487,10 @@ msgstr ""
 msgid "Hidden from results"
 msgstr ""
 
-msgid "No validator outputs registered yet."
-msgstr ""
+#, fuzzy
+#| msgid "No output assertions yet."
+msgid "No step outputs registered yet."
+msgstr "Aún no hay aserciones de salida."
 
 msgid "Human-readable label shown to submitters."
 msgstr "Etiqueta legible para personas que se muestra a quienes envían datos."
@@ -3488,11 +3537,15 @@ msgstr ""
 msgid "Configure each variable's type, constraints, and default values."
 msgstr ""
 
-msgid "Validator Inputs"
-msgstr ""
+#, fuzzy
+#| msgid "User Inputs"
+msgid "Step Inputs"
+msgstr "Entradas de usuario"
 
-msgid "Validator Outputs"
-msgstr ""
+#, fuzzy
+#| msgid "Outputs"
+msgid "Step Outputs"
+msgstr "Salidas"
 
 msgid "Available Data"
 msgstr ""
@@ -5239,10 +5292,12 @@ msgstr "Etiqueta de versión (p. ej. '1.0', '2025-01')."
 msgid "Allow custom data paths in assertions"
 msgstr "Permitir rutas de datos personalizadas en aserciones"
 
+#, fuzzy
+#| msgid "Allow assertions against data paths not declared as signals."
 msgid ""
-"Allow assertions against data paths not declared as validator inputs or "
+"Allow assertions against data paths not declared as step inputs or step "
 "outputs."
-msgstr ""
+msgstr "Permite aserciones contra rutas de datos no declaradas como señales."
 
 msgid "Supported data format"
 msgstr "Formato de datos admitido"
@@ -5377,8 +5432,10 @@ msgid ""
 "rejected."
 msgstr ""
 
-msgid "Select a validator input or output"
-msgstr ""
+#, fuzzy
+#| msgid "Select a supported file type."
+msgid "Select a step input or step output"
+msgstr "Seleccione un tipo de archivo compatible."
 
 msgid ""
 "You may enter new targets using dot notation (e.g., data.error.message) and "
@@ -5388,12 +5445,12 @@ msgstr ""
 "data.error.message) y [índice] para listas."
 
 msgid ""
-"Only declared validator inputs and outputs are available for this validator."
+"Only declared step inputs and step outputs are available for this validator."
 msgstr ""
 
 msgid ""
 "Use s.<name> for workflow signals, p.<path> for payload data, o.<name> for "
-"validator outputs."
+"step outputs."
 msgstr ""
 
 msgid ""
@@ -5446,30 +5503,43 @@ msgstr ""
 
 #, python-format
 msgid ""
+"Step inputs live in the i.* namespace, not s.* — at runtime s.* contains "
+"only workflow signal mappings and promoted upstream outputs, never step "
+"inputs. Use i.%(first)s instead of s.%(first)s (the assertion would silently "
+"read null otherwise). Affected: %(names)s"
+msgstr ""
+
+#, python-format
+msgid ""
 "Bare identifiers are not allowed. Use p.%(first)s for payload data or s."
 "%(first)s for workflow signals. Unknown: %(names)s"
 msgstr ""
 
 msgid ""
 "Use s.<name> for workflow signals, p.<path> for payload data, or o.<name> "
-"for validator outputs."
+"for step outputs."
 msgstr ""
 
 msgid ""
 "Enter a target path. Use s.<name> for workflow signals, p.<path> for payload "
-"data, or o.<name> for validator outputs."
+"data, or o.<name> for step outputs."
 msgstr ""
 
 #, python-format
 msgid ""
-"Unknown output '%(name)s'. Check the Validator Outputs tab for available "
+"Unknown output '%(name)s'. Check the Step Outputs tab for available names."
+msgstr ""
+
+#, python-format
+msgid ""
+"Unknown signal '%(name)s'. Check the Step Inputs tab or Signal Mappings for "
+"available names."
+msgstr ""
+
+#, python-format
+msgid ""
+"Unknown step input '%(name)s'. Check the Step Inputs panel for available "
 "names."
-msgstr ""
-
-#, python-format
-msgid ""
-"Unknown signal '%(name)s'. Check the Validator Inputs tab or Signal Mappings "
-"for available names."
 msgstr ""
 
 msgid ""
@@ -5481,6 +5551,33 @@ msgid ""
 "Custom targets must use dot notation with optional numeric indexes (e.g. "
 "`data.results[0].value`) or JSONPath filter expressions (e.g. `items[?"
 "@.name=='x'].value`)."
+msgstr ""
+
+#, python-format
+msgid ""
+"i.%(name)s is populated by the validator from the submission payload, not by "
+"a path the BASIC evaluator can walk"
+msgstr ""
+
+#, python-format
+msgid ""
+"i.%(name)s resolves through its StepInputBinding (which may map to a nested "
+"or computed path), but the BASIC evaluator ignores bindings and walks the "
+"raw payload directly"
+msgstr ""
+
+#, python-format
+msgid ""
+"BASIC assertions can't target step inputs (%(reason)s). Use a CEL assertion "
+"instead — for example: i.%(name)s >= 1"
+msgstr ""
+
+#, python-format
+msgid ""
+"BASIC assertions can't target workflow signals (s.%(name)s lives in the CEL "
+"signal namespace, populated from WorkflowSignalMapping and promoted upstream "
+"outputs — not in the raw payload the BASIC evaluator walks). Use a CEL "
+"assertion instead — for example: s.%(name)s >= 1"
 msgstr ""
 
 msgid "Provide a regular expression."
@@ -5517,7 +5614,7 @@ msgstr "Los paréntesis y corchetes deben estar balanceados."
 msgid "Assertion type"
 msgstr "Tipo de aserción"
 
-msgid "Enter a CEL expression that references validator inputs and outputs."
+msgid "Enter a CEL expression that references step inputs and step outputs."
 msgstr ""
 
 msgid "Lower numbers run first."
@@ -8061,7 +8158,23 @@ msgstr "Número de flujos de trabajo a crear (predeterminado: 10)."
 msgid "Assertions are only available for advanced validators."
 msgstr "Las aserciones solo están disponibles para validadores avanzados."
 
-msgid "Promoted output"
+#, fuzzy
+#| msgid "Step option"
+msgid "Step output"
+msgstr "Opción del paso"
+
+#, fuzzy
+#| msgid "Step option"
+msgid "Step input"
+msgstr "Opción del paso"
+
+msgid "CEL only"
+msgstr ""
+
+msgid "Promoted step input"
+msgstr ""
+
+msgid "Promoted step output"
 msgstr ""
 
 msgid "Assertions"
@@ -8875,11 +8988,22 @@ msgid "Could not parse as JSON or XML."
 msgstr ""
 
 #, python-format
-msgid "Output promoted to s.%(name)s."
+msgid "Step input promoted to s.%(name)s."
 msgstr ""
 
-msgid "Output promotion removed."
+#, python-format
+msgid "Step output promoted to s.%(name)s."
 msgstr ""
+
+#, fuzzy
+#| msgid "Assertion removed."
+msgid "Step input promotion removed."
+msgstr "Aserción eliminada."
+
+#, fuzzy
+#| msgid "Assertion removed."
+msgid "Step output promotion removed."
+msgstr "Aserción eliminada."
 
 msgid ""
 "Signed credential steps must come after all validation steps and blocking "

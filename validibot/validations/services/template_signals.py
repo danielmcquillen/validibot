@@ -1,15 +1,15 @@
 """
-Sync EnergyPlus template variables to ``SignalDefinition`` and ``StepSignalBinding``.
+Sync EnergyPlus template variables to ``StepIODefinition`` and ``StepInputBinding``.
 
 When an author uploads an IDF template to a workflow step, the template
 scanner extracts ``$VARIABLE_NAME`` placeholders. This module creates
-the corresponding ``SignalDefinition`` and ``StepSignalBinding`` rows
+the corresponding ``StepIODefinition`` and ``StepInputBinding`` rows
 that downstream features (CEL context, signal display, assertion
 targeting) use as the single source of truth for template signals.
 
 This is the EnergyPlus counterpart to :mod:`fmu_signals`. Both follow the
 same pattern: scan provider-specific source → create step-owned
-``SignalDefinition`` (``origin_kind=TEMPLATE``) + ``StepSignalBinding``
+``StepIODefinition`` (``origin_kind=TEMPLATE``) + ``StepInputBinding``
 rows. Template variables are always inputs (``direction=INPUT``).
 
 **Reconciliation on template re-upload:** When the author uploads a new
@@ -30,8 +30,8 @@ from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
 from validibot.validations.constants import SignalSourceKind
-from validibot.validations.models import SignalDefinition
-from validibot.validations.models import StepSignalBinding
+from validibot.validations.models import StepInputBinding
+from validibot.validations.models import StepIODefinition
 from validibot.validations.signal_metadata.metadata import TemplateSignalMetadata
 
 if TYPE_CHECKING:
@@ -44,7 +44,7 @@ def sync_step_template_signals(
     step: WorkflowStep,
     template_variables: list[dict[str, Any]],
 ) -> None:
-    """Create or update ``SignalDefinition`` and ``StepSignalBinding`` rows
+    """Create or update ``StepIODefinition`` and ``StepInputBinding`` rows
     for every template variable in an EnergyPlus step.
 
     All template variables are input signals — they represent values the
@@ -91,7 +91,7 @@ def sync_step_template_signals(
             choices=var.get("choices", []),
         ).model_dump()
 
-        sig, _created = SignalDefinition.objects.update_or_create(
+        sig, _created = StepIODefinition.objects.update_or_create(
             workflow_step=step,
             contract_key=contract_key,
             direction=SignalDirection.INPUT,
@@ -116,7 +116,7 @@ def sync_step_template_signals(
         # binding's default_value — used when the submitter omits the
         # variable from their JSON payload.
         default = var.get("default")
-        StepSignalBinding.objects.update_or_create(
+        StepInputBinding.objects.update_or_create(
             workflow_step=step,
             signal_definition=sig,
             defaults={
@@ -128,7 +128,7 @@ def sync_step_template_signals(
         )
 
     # Delete orphaned template signals from a previous template upload.
-    orphaned = SignalDefinition.objects.filter(
+    orphaned = StepIODefinition.objects.filter(
         workflow_step=step,
         origin_kind=SignalOriginKind.TEMPLATE,
     ).exclude(
@@ -169,7 +169,7 @@ def clear_step_template_signals(step: WorkflowStep) -> None:
 
     Called when the author removes the template or switches to direct mode.
     """
-    SignalDefinition.objects.filter(
+    StepIODefinition.objects.filter(
         workflow_step=step,
         origin_kind=SignalOriginKind.TEMPLATE,
     ).delete()

@@ -19,7 +19,7 @@ from validibot.users.tests.factories import MembershipFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.validations.constants import ValidationType
-from validibot.validations.tests.factories import SignalDefinitionFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 
 
@@ -51,7 +51,7 @@ class TestValidatorSignalsListView:
             has_processor=True,
         )
         # Create some signals
-        input_signal = SignalDefinitionFactory(
+        input_signal = StepIODefinitionFactory(
             validator=validator,
             contract_key="floor_area_m2",
             label="Floor Area (m2)",
@@ -60,7 +60,7 @@ class TestValidatorSignalsListView:
             description="Total floor area in square meters",
             native_name="floor_area",
         )
-        output_signal = SignalDefinitionFactory(
+        output_signal = StepIODefinitionFactory(
             validator=validator,
             contract_key="energy_output",
             label="Energy Output",
@@ -209,12 +209,12 @@ class TestValidatorDetailSignalModals:
             is_system=True,
             has_processor=True,
         )
-        signal1 = SignalDefinitionFactory(
+        signal1 = StepIODefinitionFactory(
             validator=validator,
             contract_key="signal_one",
             direction="input",
         )
-        signal2 = SignalDefinitionFactory(
+        signal2 = StepIODefinitionFactory(
             validator=validator,
             contract_key="signal_two",
             direction="output",
@@ -247,7 +247,7 @@ class TestValidatorDetailSignalModals:
             is_system=True,
             has_processor=True,
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="test_signal",
             direction="input",
@@ -268,7 +268,7 @@ class TestValidatorDetailSignalModals:
         assert "#}" not in content
         # Check that docstring-like content isn't rendered
         assert "Context required:" not in content
-        assert "SignalDefinition instance" not in content
+        assert "StepIODefinition instance" not in content
 
     def test_signal_info_buttons_visible_for_author_role(self, client):
         """Test that signal info buttons are visible for AUTHOR role users."""
@@ -279,7 +279,7 @@ class TestValidatorDetailSignalModals:
             slug="info-button-test",
             is_system=True,
         )
-        signal = SignalDefinitionFactory(
+        signal = StepIODefinitionFactory(
             validator=validator,
             contract_key="visible_signal",
             direction="input",
@@ -307,7 +307,7 @@ class TestValidatorDetailSignalModals:
             slug="view-all-test",
             is_system=True,
         )
-        SignalDefinitionFactory(
+        StepIODefinitionFactory(
             validator=validator,
             contract_key="some_signal",
             direction="input",
@@ -334,7 +334,7 @@ class TestSignalDetailContentTemplate:
     def test_signal_detail_content_renders_all_fields(self):
         """Test that signal detail content shows all signal fields."""
         validator = ValidatorFactory(is_system=True)
-        signal = SignalDefinitionFactory(
+        signal = StepIODefinitionFactory(
             validator=validator,
             contract_key="test_signal_slug",
             label="Test Signal Label",
@@ -363,7 +363,7 @@ class TestSignalDetailContentTemplate:
     def test_signal_detail_content_handles_empty_optional_fields(self):
         """Test that signal detail gracefully handles empty optional fields."""
         validator = ValidatorFactory(is_system=True)
-        signal = SignalDefinitionFactory(
+        signal = StepIODefinitionFactory(
             validator=validator,
             contract_key="minimal_signal",
             label="",  # Empty label
@@ -392,7 +392,7 @@ class TestSignalDetailModalTemplate:
     def test_modal_has_correct_structure(self):
         """Test that the modal has the correct Bootstrap modal structure."""
         validator = ValidatorFactory(is_system=True)
-        signal = SignalDefinitionFactory(
+        signal = StepIODefinitionFactory(
             validator=validator,
             contract_key="modal_test_signal",
         )
@@ -424,7 +424,7 @@ class TestSignalDetailModalTemplate:
     def test_modal_no_comment_leakage(self):
         """Test that template comments don't leak into rendered output."""
         validator = ValidatorFactory(is_system=True)
-        signal = SignalDefinitionFactory(
+        signal = StepIODefinitionFactory(
             validator=validator,
             contract_key="no_comment_signal",
         )

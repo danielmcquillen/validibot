@@ -18,7 +18,7 @@ The leftover row is more than a cosmetic issue:
   - ``Validator.workflowstep_set`` uses ``on_delete=PROTECT``, so a workflow
     that originally locked onto the stale row keeps it pinned even after
     ``sync_validators`` runs — naive deletes raise ``ProtectedError``.
-  - Stale rows accumulate orphan ``SignalDefinition`` / ``Derivation`` rows
+  - Stale rows accumulate orphan ``StepIODefinition`` / ``Derivation`` rows
     on ``CASCADE``, so dropping them indirectly through the canonical row
     would lose data the operator might not realise was attached.
 
@@ -41,12 +41,12 @@ from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import ValidationType
-from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import SignalDefinitionFactory
-from validibot.validations.tests.factories import StepSignalBindingFactory
+from validibot.validations.tests.factories import StepInputBindingFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.tests.factories import ValidatorResourceFileFactory
 from validibot.workflows.tests.factories import WorkflowFactory
@@ -217,7 +217,7 @@ class PruneDuplicateSystemValidatorsTests(TestCase):
     def test_signal_references_are_remapped_before_stale_delete(self):
         """Assertions and bindings must not be orphaned by stale signal delete.
 
-        Stale system validators own stale ``SignalDefinition`` rows. Deleting
+        Stale system validators own stale ``StepIODefinition`` rows. Deleting
         the stale validator cascades those signals, so references must move to
         the matching canonical signal first or workflow assertions/bindings
         silently lose their target.
@@ -235,12 +235,12 @@ class PruneDuplicateSystemValidatorsTests(TestCase):
             validation_type=ValidationType.SHACL,
             is_system=True,
         )
-        stale_signal = SignalDefinitionFactory(
+        stale_signal = StepIODefinitionFactory(
             validator=stale,
             contract_key="shacl_total_count",
             direction=SignalDirection.OUTPUT,
         )
-        canonical_signal = SignalDefinitionFactory(
+        canonical_signal = StepIODefinitionFactory(
             validator=canonical,
             contract_key="shacl_total_count",
             direction=SignalDirection.OUTPUT,
@@ -255,7 +255,7 @@ class PruneDuplicateSystemValidatorsTests(TestCase):
             target_signal_definition=stale_signal,
             target_data_path="",
         )
-        binding = StepSignalBindingFactory(
+        binding = StepInputBindingFactory(
             workflow_step=step,
             signal_definition=stale_signal,
         )
@@ -266,7 +266,7 @@ class PruneDuplicateSystemValidatorsTests(TestCase):
         binding.refresh_from_db()
         self.assertEqual(assertion.target_signal_definition_id, canonical_signal.pk)
         self.assertEqual(binding.signal_definition_id, canonical_signal.pk)
-        self.assertFalse(SignalDefinition.objects.filter(pk=stale_signal.pk).exists())
+        self.assertFalse(StepIODefinition.objects.filter(pk=stale_signal.pk).exists())
 
     # ── Safety: org validators are off-limits ───────────────────────────
     # Two org-owned SHACL library validators with the same slug are a

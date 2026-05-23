@@ -4,7 +4,7 @@ Tests for EnergyPlus template variable signal synchronization.
 When an author uploads an IDF template to a workflow step, the scanner
 extracts ``$VARIABLE_NAME`` placeholders. These are passed to
 ``sync_step_template_signals()`` which persists them as
-``SignalDefinition`` and ``StepSignalBinding`` rows.
+``StepIODefinition`` and ``StepInputBinding`` rows.
 
 Template variables are always input signals (``direction=INPUT``,
 ``origin_kind=TEMPLATE``) — they represent values the submitter provides
@@ -18,8 +18,8 @@ from django.test import TestCase
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
-from validibot.validations.models import SignalDefinition
-from validibot.validations.models import StepSignalBinding
+from validibot.validations.models import StepInputBinding
+from validibot.validations.models import StepIODefinition
 from validibot.validations.services.template_signals import clear_step_template_signals
 from validibot.validations.services.template_signals import sync_step_template_signals
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -37,7 +37,7 @@ def _make_template_var(
 
     These dicts mirror the structure returned by the IDF scanner and
     are passed to ``sync_step_template_signals()`` to create
-    ``SignalDefinition`` rows.
+    ``StepIODefinition`` rows.
     """
     return {
         "name": name,
@@ -57,7 +57,7 @@ class SyncStepTemplateSignalsTests(TestCase):
     """Tests for the sync_step_template_signals() service function."""
 
     def test_creates_input_signal_definitions(self):
-        """Each template variable should create a SignalDefinition with
+        """Each template variable should create a StepIODefinition with
         direction=INPUT and origin_kind=TEMPLATE, owned by the step.
         """
         step = WorkflowStepFactory()
@@ -68,7 +68,7 @@ class SyncStepTemplateSignalsTests(TestCase):
 
         sync_step_template_signals(step, variables)
 
-        sigs = SignalDefinition.objects.filter(workflow_step=step)
+        sigs = StepIODefinition.objects.filter(workflow_step=step)
         self.assertEqual(sigs.count(), 2)
 
         for sig in sigs:
@@ -77,7 +77,7 @@ class SyncStepTemplateSignalsTests(TestCase):
             self.assertIsNone(sig.validator)
 
     def test_creates_bindings_with_default_values(self):
-        """Template variables with defaults should create StepSignalBinding
+        """Template variables with defaults should create StepInputBinding
         rows with default_value set. Variables without defaults should be
         marked as required (is_required=True).
         """
@@ -89,7 +89,7 @@ class SyncStepTemplateSignalsTests(TestCase):
 
         sync_step_template_signals(step, variables)
 
-        bindings = StepSignalBinding.objects.filter(
+        bindings = StepInputBinding.objects.filter(
             workflow_step=step,
         ).select_related("signal_definition")
 
@@ -130,7 +130,7 @@ class SyncStepTemplateSignalsTests(TestCase):
             ],
         )
 
-        sig = SignalDefinition.objects.get(workflow_step=step)
+        sig = StepIODefinition.objects.get(workflow_step=step)
         self.assertEqual(sig.unit, "W/m2-K")
         self.assertEqual(sig.metadata["variable_type"], "number")
         self.assertEqual(sig.metadata["min_value"], 0.1)
@@ -152,7 +152,7 @@ class SyncStepTemplateSignalsTests(TestCase):
             ],
         )
 
-        sig = SignalDefinition.objects.get(workflow_step=step)
+        sig = StepIODefinition.objects.get(workflow_step=step)
         self.assertEqual(sig.data_type, "string")
         self.assertEqual(sig.metadata["choices"], ["VAV", "DOAS", "Fan Coil"])
 
@@ -168,7 +168,7 @@ class SyncStepTemplateSignalsTests(TestCase):
                 _make_template_var("U_FACTOR", units="W/m2-K"),
             ],
         )
-        first_pk = SignalDefinition.objects.get(workflow_step=step).pk
+        first_pk = StepIODefinition.objects.get(workflow_step=step).pk
 
         sync_step_template_signals(
             step,
@@ -177,7 +177,7 @@ class SyncStepTemplateSignalsTests(TestCase):
             ],
         )
 
-        sigs = SignalDefinition.objects.filter(workflow_step=step)
+        sigs = StepIODefinition.objects.filter(workflow_step=step)
         self.assertEqual(sigs.count(), 1)
         self.assertEqual(sigs.first().pk, first_pk)
         self.assertEqual(sigs.first().unit, "Btu/h-ft2-F")
@@ -196,7 +196,7 @@ class SyncStepTemplateSignalsTests(TestCase):
             ],
         )
         self.assertEqual(
-            SignalDefinition.objects.filter(workflow_step=step).count(),
+            StepIODefinition.objects.filter(workflow_step=step).count(),
             2,
         )
 
@@ -207,7 +207,7 @@ class SyncStepTemplateSignalsTests(TestCase):
             ],
         )
 
-        sigs = SignalDefinition.objects.filter(workflow_step=step)
+        sigs = StepIODefinition.objects.filter(workflow_step=step)
         self.assertEqual(sigs.count(), 1)
         self.assertEqual(sigs.first().contract_key, "kept_var")
 
@@ -224,18 +224,18 @@ class SyncStepTemplateSignalsTests(TestCase):
             ],
         )
         self.assertEqual(
-            SignalDefinition.objects.filter(workflow_step=step).count(),
+            StepIODefinition.objects.filter(workflow_step=step).count(),
             2,
         )
 
         clear_step_template_signals(step)
 
         self.assertEqual(
-            SignalDefinition.objects.filter(workflow_step=step).count(),
+            StepIODefinition.objects.filter(workflow_step=step).count(),
             0,
         )
         self.assertEqual(
-            StepSignalBinding.objects.filter(workflow_step=step).count(),
+            StepInputBinding.objects.filter(workflow_step=step).count(),
             0,
         )
 
@@ -275,12 +275,12 @@ class SyncStepTemplateSignalsTests(TestCase):
 
         # Both should exist
         self.assertEqual(
-            SignalDefinition.objects.filter(workflow_step=step).count(),
+            StepIODefinition.objects.filter(workflow_step=step).count(),
             2,
         )
 
         # Clearing template signals should not affect FMU signals
         clear_step_template_signals(step)
-        remaining = SignalDefinition.objects.filter(workflow_step=step)
+        remaining = StepIODefinition.objects.filter(workflow_step=step)
         self.assertEqual(remaining.count(), 1)
         self.assertEqual(remaining.first().origin_kind, SignalOriginKind.FMU)

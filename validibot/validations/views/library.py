@@ -24,11 +24,11 @@ from validibot.validations.constants import VALIDATION_LIBRARY_TAB_SESSION_KEY
 from validibot.validations.constants import LibraryLayout
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import ValidatorReleaseState
-from validibot.validations.forms import SignalDefinitionForm
+from validibot.validations.forms import StepIODefinitionForm
 from validibot.validations.forms import ValidatorResourceFileForm
 from validibot.validations.forms import ValidatorRuleForm
 from validibot.validations.models import RulesetAssertion
-from validibot.validations.models import SignalDefinition
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorResourceFile
 
@@ -470,7 +470,7 @@ class ValidatorSignalsTabView(ValidatorLibraryMixin, DetailView):
         inputs = [s for s in all_signals if s.direction == SignalDirection.INPUT]
         outputs = [s for s in all_signals if s.direction == SignalDirection.OUTPUT]
 
-        signal_create_form = SignalDefinitionForm(
+        signal_create_form = StepIODefinitionForm(
             initial={"direction": SignalDirection.INPUT},
             validator=validator,
         )
@@ -504,7 +504,7 @@ class ValidatorSignalsTabView(ValidatorLibraryMixin, DetailView):
                 "signal_create_form": signal_create_form,
                 "signal_edit_forms": {
                     signal.pk: {
-                        "form": SignalDefinitionForm(
+                        "form": StepIODefinitionForm(
                             instance=signal,
                             validator=validator,
                         ),
@@ -896,7 +896,7 @@ class CatalogEntryDetailView(LoginRequiredMixin, View):
     """Return modal content for a signal definition detail view."""
 
     def get(self, request, entry_pk):
-        signal = get_object_or_404(SignalDefinition, pk=entry_pk)
+        signal = get_object_or_404(StepIODefinition, pk=entry_pk)
         return render(
             request,
             "validations/library/partials/signal_detail_modal_content.html",

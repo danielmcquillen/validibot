@@ -296,7 +296,7 @@ def test_toggle_display_signal_view_round_trips_step_owned_outputs(client):
 
     Step-owned outputs have ``validator=None``, so the view must not
     accidentally include output signals from other steps when it expands
-    the implicit "show all" state into an explicit ``display_signals``
+    the implicit "show all" state into an explicit ``display_step_outputs``
     list.
     """
     workflow = WorkflowFactory()
@@ -333,7 +333,7 @@ def test_toggle_display_signal_view_round_trips_step_owned_outputs(client):
         origin_kind="fmu",
     )
     url = reverse(
-        "workflows:workflow_step_toggle_display_signal",
+        "workflows:workflow_step_toggle_step_output_display",
         args=[workflow.pk, step.pk, "t_room"],
     )
 
@@ -341,15 +341,15 @@ def test_toggle_display_signal_view_round_trips_step_owned_outputs(client):
 
     assert hide_response.status_code == HTTPStatus.OK
     step.refresh_from_db()
-    assert set(step.config["display_signals"]) == {"q_cool"}
-    assert "foreign_output" not in step.config["display_signals"]
+    assert set(step.config["display_step_outputs"]) == {"q_cool"}
+    assert "foreign_output" not in step.config["display_step_outputs"]
     assert "Hidden from results" in hide_response.content.decode()
 
     show_response = client.post(url, HTTP_HX_REQUEST="true")
 
     assert show_response.status_code == HTTPStatus.OK
     step.refresh_from_db()
-    assert step.config["display_signals"] == []
+    assert step.config["display_step_outputs"] == []
     assert "Shown in results" in show_response.content.decode()
 
 

@@ -73,25 +73,25 @@ Context:
                  id="signals-input-panel"
                  role="tabpanel"
                  aria-labelledby="signals-input-tab">
-              {% include "workflows/partials/input_signals_table.html" %}
+              {% include "workflows/partials/step_inputs_table.html" %}
             </div>
             <div class="tab-pane fade p-3 flex-grow-1"
                  id="signals-output-panel"
                  role="tabpanel"
                  aria-labelledby="signals-output-tab">
-              {% include "workflows/partials/output_signals_table.html" %}
+              {% include "workflows/partials/step_outputs_table.html" %}
             </div>
           </div>
         </div>
       {% elif has_inputs %}
         {# -- Single input tab (non-processor validators) -- #}
         <div class="card-body flex-grow-1">
-          {% include "workflows/partials/input_signals_table.html" %}
+          {% include "workflows/partials/step_inputs_table.html" %}
         </div>
       {% elif has_outputs %}
         {# -- Single output tab (non-processor validators) -- #}
         <div class="card-body flex-grow-1">
-          {% include "workflows/partials/output_signals_table.html" %}
+          {% include "workflows/partials/step_outputs_table.html" %}
         </div>
       {% endif %}
     </div>

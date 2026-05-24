@@ -45,6 +45,15 @@ class BasicValidator(BaseValidator):
     paths (for example, ``payload.items[0].price``). For XML, the document is
     first converted to a nested dict so paths and CEL expressions work
     identically to JSON.
+
+    **No ``extract_input_signals`` override (per ADR-2026-05-22b
+    Phase 6).** Basic validators don't parse a packed/arcane format —
+    the submission JSON/XML IS the data, addressed directly through
+    BASIC paths. Authors point ``target_data_path`` at
+    ``payload.<field>`` instead of using ``i.*``. Phase 5 added
+    namespace enrichment so BASIC assertions targeting workflow
+    signals or step bindings still resolve, but the parser-fact
+    pattern itself doesn't apply here.
     """
 
     _SUPPORTED_FILE_TYPES = frozenset({SubmissionFileType.JSON, SubmissionFileType.XML})
@@ -129,17 +138,26 @@ class BasicValidator(BaseValidator):
                 )
 
         # Evaluate all assertions using the unified system.
-        # Basic validators have no external processor, so we evaluate both
-        # input-stage and output-stage assertions together.
+        # Basic validators have no external processor, so we evaluate
+        # both input-stage and output-stage assertions together.
+        #
+        # The payload passed to evaluators is enriched with namespaced
+        # values (resolved StepInputBindings, workflow_signals) so
+        # BASIC assertions targeting i.<name> / s.<name> resolve via
+        # the bare contract_key at the top level — see
+        # ``BaseValidator._enrich_basic_payload``. CEL ignores
+        # ``payload`` entirely (it reads from a separately-built
+        # context), so the enrichment is a no-op for CEL targets.
         issues: list[ValidationIssue] = []
         total_assertions = 0
         total_failures = 0
 
         for stage in ("input", "output"):
+            enriched_payload = self._enrich_basic_payload(payload, stage=stage)
             result = self.evaluate_assertions_for_stage(
                 validator=validator,
                 ruleset=ruleset,
-                payload=payload,
+                payload=enriched_payload,
                 stage=stage,
             )
             issues.extend(result.issues)

@@ -126,15 +126,12 @@ Context:
                 {% endif %}
               </td>
               {# ── Copy to Signal column ─────────────────────────────── #}
-              {# Symmetric input promotion per ADR-2026-05-22.            #}
-              {# workflow_step_promote_output is direction-agnostic       #}
-              {# despite the legacy URL slug — it handles both INPUT and  #}
-              {# OUTPUT StepIODefinitions, and it dispatches to either    #}
-              {# the in-row promoted_signal_name (step-owned) or the      #}
-              {# WorkflowStepIOPromotion overlay (validator-owned). A     #}
-              {# URL rename to workflow_step_promote_step_io is a         #}
-              {# separate follow-up because it would churn every workflow #}
-              {# link in the codebase for no behavioural gain.            #}
+              {# Symmetric input/output promotion per ADR-2026-05-22b.    #}
+              {# workflow_step_promote_step_io handles both INPUT and     #}
+              {# OUTPUT StepIODefinitions; the view dispatches the       #}
+              {# write to either the in-row promoted_signal_name         #}
+              {# (step-owned rows) or to a WorkflowStepIOPromotion       #}
+              {# overlay row (validator-owned catalog rows).             #}
               <td>
                 {% if signal.signal_definition and can_manage_workflow %}
                   {% if signal.signal_name %}
@@ -143,7 +140,7 @@ Context:
                         s.{{ signal.signal_name }}
                       </span>
                       <form class="d-inline"
-                            hx-post="{% url 'workflows:workflow_step_promote_output' workflow.pk step.pk signal.signal_definition.pk %}"
+                            hx-post="{% url 'workflows:workflow_step_promote_step_io' workflow.pk step.pk signal.signal_definition.pk %}"
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-swap="none"
                             hx-disabled-elt="find button">
@@ -157,7 +154,7 @@ Context:
                     </div>
                   {% else %}
                     <form class="d-inline"
-                          hx-post="{% url 'workflows:workflow_step_promote_output' workflow.pk step.pk signal.signal_definition.pk %}"
+                          hx-post="{% url 'workflows:workflow_step_promote_step_io' workflow.pk step.pk signal.signal_definition.pk %}"
                           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                           hx-swap="none"
                           hx-disabled-elt="find button">

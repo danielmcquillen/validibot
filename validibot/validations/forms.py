@@ -1036,36 +1036,21 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             operator_value = cleaned.get("operator")
             if not operator_value:
                 raise ValidationError({"operator": _("Select a condition.")})
-            # Per ADR-2026-05-22b and the May 2026 review findings:
-            # BASIC evaluators resolve targets by walking a dotted path
-            # against the raw payload — they have no concept of the
-            # i.* / s.* / o.* namespaces. So BASIC can't reach values
-            # that live in the namespaced CEL context:
-            #
-            # - **i.\\* targets** (any INPUT-direction
-            #   StepIODefinition): the value comes from
-            #   extract_input_signals() (parser-managed) or a resolved
-            #   StepInputBinding (author-bound). Either way, BASIC
-            #   walks ``contract_key`` against the raw payload and
-            #   misses both sources.
-            # - **s.\\* targets** (workflow signals or promoted
-            #   outputs): the value lives in
-            #   RunContext.workflow_signals / the s.* namespace,
-            #   never in the raw payload. BASIC strips the ``s.``
-            #   prefix and walks the bare name against the payload
-            #   — only works by coincidence when the signal name
-            #   equals a top-level payload key.
-            #
-            # The correct rule is: reject all i.* AND s.* targets
-            # from BASIC and tell the author to use CEL (which
-            # resolves via the namespaced context where both work
-            # correctly). The o.* case still works because
-            # ``_build_assertion_payload`` merges the output dict
-            # into the BASIC payload at output stage.
-            self._reject_namespaced_basic_target(
-                cleaned.get("resolved_signal"),
-                cleaned.get("target_data_path") or "",
-            )
+            # BASIC assertions targeting i.* / s.* / o.* used to be
+            # rejected here because the BASIC evaluator walked the raw
+            # payload root and had no way to reach values resolved
+            # through StepInputBinding or workflow_signals. Phase 5 of
+            # the May 2026 cleanup wired payload enrichment into the
+            # validator base layer (see
+            # ``BaseValidator._enrich_basic_payload``): the validator
+            # now merges resolved bindings, workflow signals, and
+            # output signals into the BASIC payload by their bare
+            # contract_key before evaluation. With that wiring in
+            # place, ``target_signal_definition.contract_key`` lookups
+            # find the right value regardless of which namespace the
+            # author chose. The form-side rejection is therefore
+            # obsolete — kept as a brief comment for the next reader
+            # who wonders why we trust BASIC + i.* now.
             rhs, options = self._build_basic_payload(AssertionOperator(operator_value))
             cleaned["rhs_payload"] = rhs
             cleaned["options_payload"] = options
@@ -1625,124 +1610,14 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
     def _validator_allows_custom_targets(self) -> bool:
         return bool(getattr(self.validator, "allow_custom_assertion_targets", False))
 
-    def _reject_namespaced_basic_target(
-        self,
-        resolved_signal: StepIODefinition | None,
-        raw_target: str,
-    ) -> None:
-        """Reject BASIC assertions that target the i.* or s.* namespaces.
-
-        BASIC evaluators walk a dotted payload path — they never look
-        at the i.* / s.* CEL namespaces OR the resolved binding values
-        OR the workflow_signals dict. So any BASIC assertion targeting
-        these namespaces is a runtime trap:
-
-        **i.\\* — INPUT-direction StepIODefinition:**
-
-        - Parser-managed inputs (``source_kind=internal``,
-          ``is_path_editable=False``): the value comes from
-          ``extract_input_signals()`` on the validator. There IS no
-          payload path; BASIC has nothing to walk. Always resolves
-          to "Value not found".
-        - Author-bound inputs (``source_kind=payload_path``):
-          the value comes from a ``StepInputBinding`` whose
-          ``source_data_path`` is wherever the author wired it
-          (e.g. ``building.zones[0].temp``). BASIC ignores the
-          binding and walks ``contract_key`` (``temp``) directly
-          against the raw payload. Only works by coincidence when
-          ``contract_key`` happens to equal a top-level payload
-          path; broken otherwise.
-
-        **s.\\* — workflow signals or promoted upstream outputs:**
-
-        The value lives in ``RunContext.workflow_signals`` or is
-        injected into the s.* namespace by
-        ``_inject_promoted_outputs``. BASIC strips the ``s.`` prefix
-        and walks the bare name against the raw payload — same
-        coincidence-only resolution as the i.* binding case.
-
-        Either way the author hits "Value not found" at runtime with
-        no clue why. Rejecting at form save time with a clear "use
-        CEL instead" message turns the runtime mystery into an
-        authoring-time nudge. CEL evaluators DO use the namespaced
-        context (where i.* contains resolved bindings AND parser
-        facts, and s.* contains workflow signals + promotions), so
-        the same logical check works there.
-
-        Per the May 2026 P2 reviews: the parser-managed case landed
-        first, then was extended to cover author-bound i.*, and
-        finally to cover s.* (this method). The o.* case is **not**
-        rejected because ``_build_assertion_payload`` merges the
-        output dict into the BASIC payload at output stage — BASIC
-        + o.* genuinely works.
-
-        Args:
-            resolved_signal: The StepIODefinition the form resolved
-                from the target string (set when the target maps to
-                a declared input/output row).
-            raw_target: The original user-entered target string
-                (with its ``s.`` / ``i.`` / ``signal.`` / ``input.``
-                prefix intact, before
-                ``_resolve_target_data_path`` stripped it). Used to
-                catch s.* targets that resolve to a bare workflow
-                signal name rather than a StepIODefinition.
-        """
-        # Case 1: target resolved to an INPUT-direction
-        # StepIODefinition (validator input — i.* or s.<input>).
-        if resolved_signal is not None and resolved_signal.direction == (
-            SignalDirection.INPUT
-        ):
-            contract_key = resolved_signal.contract_key
-            is_parser_managed = getattr(
-                resolved_signal, "source_kind", ""
-            ) == "internal" or not getattr(resolved_signal, "is_path_editable", True)
-            if is_parser_managed:
-                reason = _(
-                    "i.%(name)s is populated by the validator from "
-                    "the submission payload, not by a path the BASIC "
-                    "evaluator can walk"
-                ) % {"name": contract_key}
-            else:
-                reason = _(
-                    "i.%(name)s resolves through its StepInputBinding "
-                    "(which may map to a nested or computed path), but "
-                    "the BASIC evaluator ignores bindings and walks the "
-                    "raw payload directly"
-                ) % {"name": contract_key}
-            raise ValidationError(
-                {
-                    "target_data_path": _(
-                        "BASIC assertions can't target step inputs "
-                        "(%(reason)s). Use a CEL assertion instead — "
-                        "for example: i.%(name)s >= 1"
-                    )
-                    % {"reason": reason, "name": contract_key},
-                },
-            )
-
-        # Case 2: target was an s.<workflow_signal> path that
-        # resolved to a bare name (workflow signal mapping or
-        # promoted upstream output — no StepIODefinition row).
-        # _resolve_target_data_path stored the bare name in
-        # target_data_path_value, but the original prefixed string
-        # is still in target_data_path.
-        normalized = raw_target.strip()
-        if normalized.startswith(("s.", "signal.")):
-            bare = normalized.split(".", 1)[1] if "." in normalized else normalized
-            raise ValidationError(
-                {
-                    "target_data_path": _(
-                        "BASIC assertions can't target workflow signals "
-                        "(s.%(name)s lives in the CEL signal namespace, "
-                        "populated from WorkflowSignalMapping and "
-                        "promoted upstream outputs — not in the raw "
-                        "payload the BASIC evaluator walks). Use a CEL "
-                        "assertion instead — for example: "
-                        "s.%(name)s >= 1"
-                    )
-                    % {"name": bare},
-                },
-            )
+    # NOTE: ``_reject_namespaced_basic_target`` was removed in Phase 5
+    # of the May 2026 cleanup. The BASIC + i.*/s.* runtime trap it
+    # guarded against is now fixed at the validator base layer via
+    # ``BaseValidator._enrich_basic_payload`` — the validator merges
+    # resolved bindings, workflow signals, and output signals into
+    # the BASIC payload by their bare contract_key before evaluation.
+    # The form-side rejection is no longer needed because the
+    # runtime trap no longer exists.
 
     def _build_basic_payload(
         self,

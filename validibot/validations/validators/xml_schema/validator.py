@@ -39,6 +39,13 @@ class XmlSchemaValidator(BaseValidator):
     For legacy rulesets that did not embed the schema, we fall back to
     ``validator.config['schema']``. New rulesets should keep the schema in
     metadata so it travels with the reusable asset.
+
+    **No ``extract_input_signals`` override (per ADR-2026-05-22b
+    Phase 6).** XML Schema validators don't parse an "arcane format" —
+    the XML submission IS the data, converted to a nested dict via
+    ``xml_to_dict`` so assertions can reference its paths directly via
+    ``payload.<element>``. Nothing to derive in ``i.*`` that isn't
+    already addressable via ``payload.*``.
     """
 
     # PUBLIC METHODS

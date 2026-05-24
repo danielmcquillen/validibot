@@ -119,31 +119,28 @@ class RulesetAssertionFormTests(TestCase):
         )
         self.assertTrue(form.is_valid())
 
-    def test_basic_assertion_rejects_parser_managed_input_target(self):
-        """BASIC assertions can't target parser-managed step inputs.
+    def test_basic_assertion_accepts_parser_managed_input_target(self):
+        """BASIC + i.<parser_input> is accepted post Phase 5.
 
-        Why it matters: parser-managed inputs (source_kind=internal or
-        is_path_editable=False) have no payload path the BASIC
-        evaluator can walk — their value comes from
-        ``extract_input_signals()`` not from a dotted path resolution.
-        Without this guard, an author would pick ``i.zone_count`` from
-        the autocomplete, save a BASIC assertion against it, and
-        discover at runtime that every check reports "Value not found"
-        regardless of what the parser extracted.
+        Previously the form rejected this because the BASIC evaluator
+        walked the raw payload by contract_key, ignoring parser-
+        extracted facts. Phase 5 fixed the runtime trap at the
+        validator base layer (``BaseValidator._enrich_basic_payload``
+        merges resolved bindings + workflow signals + parser facts
+        into the BASIC payload by their bare contract_key), so the
+        form-side rejection is no longer needed.
 
-        The form rejects this with a clear message pointing the
-        author to CEL — which IS able to resolve i.* values through
-        the namespaced context.
-
-        Regression test for the May 2026 review's P2 finding.
+        Regression test: BASIC + i.<parser_input> now saves cleanly
+        and resolves to a StepIODefinition target the evaluator can
+        walk against the enriched payload.
         """
         validator = ValidatorFactory(
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,
         )
         # Parser-managed input: source_kind=internal mimics how the
-        # EnergyPlus catalog declares zone_count (the IDF parser fills
-        # it, not a payload binding).
+        # EnergyPlus catalog declares zone_count (the IDF parser
+        # fills it, not a payload binding).
         parser_input = StepIODefinitionFactory(
             validator=validator,
             contract_key="zone_count",
@@ -164,40 +161,24 @@ class RulesetAssertionFormTests(TestCase):
                 "when_expression": "",
             },
         )
-        self.assertFalse(form.is_valid())
-        # form.errors renders HTML-escaped (apostrophes become &#x27;).
-        # Use the underlying error list to get the raw message text so
-        # the assertion doesn't depend on HTML-encoding quirks.
-        target_errors = [str(err) for err in form.errors.get("target_data_path", [])]
-        joined = " ".join(target_errors)
-        # May 2026: error message broadened to cover BOTH parser-
-        # managed AND author-bound i.* targets. The parser case
-        # specifically calls out "populated by the validator" as
-        # the reason.
-        self.assertIn("BASIC assertions can't target step inputs", joined)
-        self.assertIn("populated by the validator", joined)
-        # The error must surface the contract_key so the author can
-        # find the right row to retarget OR rewrite as CEL.
-        self.assertIn("zone_count", joined)
+        self.assertTrue(form.is_valid(), form.errors)
+        # The form resolves the target to the catalog row.
+        resolved = form.cleaned_data["resolved_signal"]
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.contract_key, "zone_count")
 
-    def test_basic_assertion_rejects_author_bound_input_target(self):
-        """BASIC assertions can't target author-bound i.* inputs either.
+    def test_basic_assertion_accepts_author_bound_input_target(self):
+        """BASIC + i.<author_bound_input> is accepted post Phase 5.
 
-        The May 2026 fix only rejected parser-managed i.* targets,
-        but the May 2026 review showed that author-bound i.*
-        targets have the same runtime trap: BASIC walks the raw
-        payload by ``contract_key`` and ignores the StepInputBinding.
-
-        Concrete failure: a StepInputBinding maps
-        ``contract_key=temperature`` to
-        ``source_data_path=building.zones[0].temp``. At runtime
-        BASIC resolves ``payload["temperature"]`` — not the bound
-        nested path — and reports "Value not found" while CEL
-        would have correctly returned the value from i.*.
-
-        The form-side guard now blocks ALL INPUT-direction targets
-        from BASIC, redirecting authors to CEL where the i.*
-        namespace works.
+        Previously this was rejected because the BASIC evaluator
+        walked the raw payload by ``contract_key`` and ignored the
+        ``StepInputBinding``'s ``source_data_path``. Phase 5 fixed
+        the runtime trap at the validator base layer: the validator
+        calls ``_enrich_basic_payload`` which runs
+        ``_resolve_bound_input_context`` and merges the binding's
+        resolved value into the payload under the bare
+        ``contract_key``. BASIC's ``contract_key`` lookup now hits
+        the merged value directly — no payload-walk indirection.
         """
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,
@@ -223,28 +204,22 @@ class RulesetAssertionFormTests(TestCase):
                 "when_expression": "",
             },
         )
-        self.assertFalse(form.is_valid())
-        target_errors = [str(err) for err in form.errors.get("target_data_path", [])]
-        joined = " ".join(target_errors)
-        # The error must explain WHY (binding indirection) and
-        # surface the contract_key so the author can act on it.
-        self.assertIn("StepInputBinding", joined)
-        self.assertIn("temperature", joined)
+        self.assertTrue(form.is_valid(), form.errors)
+        resolved = form.cleaned_data["resolved_signal"]
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.contract_key, "temperature")
 
-    def test_basic_assertion_rejects_workflow_signal_target(self):
-        """BASIC can't target s.<workflow_signal> either — same trap as i.*.
+    def test_basic_assertion_accepts_workflow_signal_target(self):
+        """BASIC + s.<workflow_signal> is accepted post Phase 5.
 
-        Workflow signals (and promoted upstream outputs) live in
-        ``RunContext.workflow_signals`` / the s.* CEL namespace.
-        The BASIC evaluator never reads that dict; it strips the
-        ``s.`` prefix and walks the bare name against the raw
-        payload. Only works by coincidence when the signal name
-        equals a top-level payload key — broken otherwise.
-
-        The form-side guard now blocks s.* targets too and tells
-        the author to use CEL. Regression test for the May 2026
-        BASIC + s.* review finding (extends the BASIC + i.* fix
-        from the previous review round).
+        Previously this was rejected because the BASIC evaluator
+        walked the raw payload, ignoring ``workflow_signals``.
+        Phase 5 fixed the runtime trap: the validator's
+        ``_enrich_basic_payload`` helper merges
+        ``run_context.workflow_signals`` into the payload by their
+        bare name before evaluation. The BASIC evaluator's lookup
+        for ``site_area`` now finds the workflow signal's resolved
+        value at the payload root.
         """
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,
@@ -264,13 +239,13 @@ class RulesetAssertionFormTests(TestCase):
                 "when_expression": "",
             },
         )
-        self.assertFalse(form.is_valid())
-        target_errors = [str(err) for err in form.errors.get("target_data_path", [])]
-        joined = " ".join(target_errors)
-        self.assertIn("BASIC assertions can't target workflow signals", joined)
-        self.assertIn("site_area", joined)
-        # The error must point to CEL with a usable example.
-        self.assertIn("s.site_area", joined)
+        self.assertTrue(form.is_valid(), form.errors)
+        # No StepIODefinition for workflow signals — the form
+        # stores the bare name in target_data_path_value.
+        self.assertEqual(
+            form.cleaned_data["target_data_path_value"],
+            "site_area",
+        )
 
     def test_basic_assertion_allows_output_target(self):
         """BASIC + o.* still works — the guard is INPUT-only.
@@ -498,23 +473,22 @@ class FMUVariableTargetResolutionTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("for workflow signals", str(form.errors))
 
-    def test_s_prefixed_fmu_input_rejected_for_basic(self):
-        """``s.Q_cooling_max`` on a BASIC FMU input assertion is rejected.
+    def test_s_prefixed_fmu_input_accepted_for_basic(self):
+        """``s.<fmu_input>`` BASIC assertions are accepted post Phase 5.
 
-        Pre-May 2026, the form accepted this and resolved it to the
-        INPUT-direction StepIODefinition. But the BASIC runtime walks
-        ``contract_key`` against the raw payload, ignoring the
-        StepInputBinding that maps ``Q_cooling_max`` to its actual
-        submission path. So the assertion saved successfully and then
-        silently failed at runtime (or worked only by coincidence if
-        the FMU input happened to be a top-level submission key).
+        Previously the form rejected this because the BASIC runtime
+        walked ``contract_key`` against the raw payload, ignoring
+        the binding that mapped ``Q_cooling_max`` to its actual
+        submission path. Phase 5 fixed the runtime trap: the
+        validator's ``_enrich_basic_payload`` runs
+        ``_resolve_bound_input_context`` and merges the resolved
+        binding value into the payload by its contract_key.
 
-        The new guard rejects this at save time and tells the author
-        to use CEL. CEL DOES resolve i.* through the namespaced
-        context (which includes the resolved binding value), so the
-        same logical check works correctly there.
-
-        Regression test for the May 2026 P2 review finding.
+        The ``s.`` prefix here is the legacy alias for the
+        FMU-input namespace (it predates the ``i.`` namespace).
+        The form resolves it to the INPUT-direction
+        StepIODefinition; runtime then walks ``contract_key``
+        against the enriched payload and finds the merged value.
         """
         form = self._fmu_form(
             fmu_variables=[
@@ -529,12 +503,10 @@ class FMUVariableTargetResolutionTests(TestCase):
                 "severity": Severity.ERROR,
             },
         )
-        self.assertFalse(form.is_valid())
-        # The error must direct the author to CEL with the same target.
-        target_errors = [str(e) for e in form.errors.get("target_data_path", [])]
-        joined = " ".join(target_errors)
-        self.assertIn("BASIC assertions can't target step inputs", joined)
-        self.assertIn("Q_cooling_max", joined)
+        self.assertTrue(form.is_valid(), form.errors)
+        resolved = form.cleaned_data["resolved_signal"]
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.contract_key, "Q_cooling_max")
 
     def test_bare_fmu_output_rejected(self):
         """A bare name (no prefix) is rejected even for FMU outputs.
@@ -1269,13 +1241,20 @@ class PrefixBasedTargetResolutionTests(TestCase):
         )
         self.assertTrue(form.is_valid(), form.errors)
 
-    def test_basic_s_prefix_known_input_rejected(self):
-        """BASIC + ``s.<known_input>`` is rejected per the May 2026 P2 fix.
+    def test_basic_s_prefix_known_input_accepted(self):
+        """BASIC + ``s.<known_input>`` is accepted post Phase 5.
 
-        The form previously resolved this to a StepIODefinition and
-        accepted the assertion, which then silently failed at runtime
-        (BASIC walks contract_key against the raw payload, missing
-        any binding indirection).
+        Previously the form rejected this because the BASIC
+        runtime would walk ``contract_key`` against the raw payload
+        and miss any binding indirection. Phase 5 wired
+        ``_enrich_basic_payload`` into the validator base layer, so
+        the resolved binding value is now merged into the payload
+        under the bare ``contract_key`` before evaluation.
+
+        The ``s.`` prefix is a legacy alias for INPUT-direction
+        targets (predates the ``i.`` namespace). The form resolves
+        it to the StepIODefinition; runtime walks the merged
+        payload and finds the value.
         """
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,
@@ -1297,9 +1276,10 @@ class PrefixBasedTargetResolutionTests(TestCase):
                 "severity": Severity.ERROR,
             },
         )
-        self.assertFalse(form.is_valid())
-        joined = " ".join(str(e) for e in form.errors.get("target_data_path", []))
-        self.assertIn("BASIC assertions can't target step inputs", joined)
+        self.assertTrue(form.is_valid(), form.errors)
+        resolved = form.cleaned_data["resolved_signal"]
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.contract_key, "panel_area")
 
     def test_s_prefix_unknown_input_rejected(self):
         """``s.<name>`` is rejected when the name doesn't match any
@@ -1588,14 +1568,15 @@ class PrefixBasedTargetResolutionTests(TestCase):
             "metrics.custom.value",
         )
 
-    def test_signal_prefix_long_form_also_rejected_for_basic(self):
-        """The long-form ``signal.<name>`` prefix is the same trap as ``s.``.
+    def test_signal_prefix_long_form_accepted_for_basic(self):
+        """The long-form ``signal.<name>`` prefix is accepted post Phase 5.
 
-        Both prefixes route through the same s.* resolution path
-        and produce the same runtime failure mode (BASIC walks the
-        bare name against the raw payload, missing the workflow
-        signal value entirely). The form-side guard must catch
-        both prefixes.
+        Both ``s.`` and ``signal.`` route through the same
+        workflow-signal resolution path. Previously both were
+        rejected for BASIC because the evaluator walked the raw
+        payload. Phase 5's ``_enrich_basic_payload`` merges
+        workflow signals into the payload by their bare name, so
+        the ``contract_key`` lookup finds the value.
         """
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,
@@ -1613,6 +1594,9 @@ class PrefixBasedTargetResolutionTests(TestCase):
                 "severity": Severity.ERROR,
             },
         )
-        self.assertFalse(form.is_valid())
-        joined = " ".join(str(e) for e in form.errors.get("target_data_path", []))
-        self.assertIn("BASIC assertions can't target workflow signals", joined)
+        self.assertTrue(form.is_valid(), form.errors)
+        # No StepIODefinition — workflow signal stored as bare path.
+        self.assertEqual(
+            form.cleaned_data["target_data_path_value"],
+            "panel_area",
+        )

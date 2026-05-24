@@ -38,6 +38,17 @@ class ThermValidator(SimpleValidator):
 
     This is a parser and checker only — it does not run THERM
     simulations or compute U-factors.
+
+    **No ``extract_input_signals`` override yet (per ADR-2026-05-22b
+    Phase 6).** Because THERM is a SimpleValidator that finishes
+    inline, dispatch-gating from ``i.*`` saves no compute, so the
+    pattern's primary motivation (avoid paying for simulation when
+    we already know a precondition fails) doesn't apply. Once
+    ``signals.extract_signals`` is implemented (currently a stub),
+    file-metadata facts could be split into ``i.*`` (e.g.,
+    ``therm_version``, ``has_glazing_system``) and parsed values
+    into ``o.*``. Deferred until ``extract_signals`` ships its
+    initial pass.
     """
 
     def validate_file_type(

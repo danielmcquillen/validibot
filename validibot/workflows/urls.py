@@ -162,14 +162,14 @@ urlpatterns = [
         name="workflow_step_template_variables",
     ),
     path(
-        "<int:pk>/steps/<int:step_id>/display-signals/",
-        views.WorkflowStepDisplaySignalsView.as_view(),
-        name="workflow_step_display_signals",
+        "<int:pk>/steps/<int:step_id>/display-step-outputs/",
+        views.WorkflowStepDisplayStepOutputsView.as_view(),
+        name="workflow_step_display_step_outputs",
     ),
     path(
-        "<int:pk>/steps/<int:step_id>/toggle-display-signal/<str:signal_slug>/",
-        views.WorkflowStepToggleDisplaySignalView.as_view(),
-        name="workflow_step_toggle_display_signal",
+        "<int:pk>/steps/<int:step_id>/toggle-step-output-display/<str:signal_slug>/",
+        views.WorkflowStepToggleStepOutputDisplayView.as_view(),
+        name="workflow_step_toggle_step_output_display",
     ),
     path(
         "<int:pk>/steps/<int:step_id>/template-variable/<int:var_index>/",
@@ -267,11 +267,13 @@ urlpatterns = [
         signal_mapping.WorkflowSignalMappingSampleDataView.as_view(),
         name="workflow_signal_mapping_sample_data",
     ),
-    # Output promotion — toggle signal_name on a StepIODefinition
+    # Step-IO promotion — toggle promoted_signal_name on a
+    # StepIODefinition (any direction) or write to the
+    # WorkflowStepIOPromotion overlay for validator-owned catalog rows.
     path(
-        "<int:pk>/steps/<int:step_id>/signals/<int:signal_id>/promote/",
-        signal_mapping.WorkflowStepPromoteOutputView.as_view(),
-        name="workflow_step_promote_output",
+        "<int:pk>/steps/<int:step_id>/io/<int:signal_id>/promote/",
+        signal_mapping.WorkflowStepPromoteStepIOView.as_view(),
+        name="workflow_step_promote_step_io",
     ),
     path(
         "<int:pk>/validations/",

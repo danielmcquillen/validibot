@@ -33,6 +33,14 @@ class JsonSchemaValidator(BaseValidator):
 
     Expects a JSON Schema stored on the associated ruleset via ``rules_text`` or
     ``rules_file`` (retrieved through ``ruleset.rules``).
+
+    **No ``extract_input_signals`` override (per ADR-2026-05-22b
+    Phase 6).** JSON Schema validators don't parse an "arcane format" —
+    the submission IS the JSON data, and assertions reference its
+    paths directly via ``payload.<field>``. There are no hidden facts
+    to derive from a different representation, so the ``i.*``
+    namespace stays empty (the base default's None return). Authors
+    write assertions against ``payload.*`` instead.
     """
 
     # PUBLIC METHODS

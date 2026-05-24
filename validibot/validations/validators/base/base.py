@@ -36,9 +36,11 @@ structure (defined in validibot_shared). For example:
 
 To evaluate assertions after a container job completes, the callback service
 needs to extract these signals from the envelope. Validators implement the
-class method ``extract_output_signals()`` to handle their specific envelope
+instance method ``extract_output_signals()`` to handle their specific envelope
 structure. This keeps envelope knowledge localized to the validator rather
-than scattered across the callback service.
+than scattered across the callback service. Instance method (not classmethod)
+so subclasses can reach ``self.run_context`` for catalog-version-scoped
+output filtering — see ``EnergyPlusValidator._filter_to_catalog_outputs``.
 
 You won't find any concrete implementations here; those are in other modules.
 """
@@ -232,8 +234,7 @@ class BaseValidator(ABC):
 
     # ------------------------------------- Step input/output signal extraction
 
-    @classmethod
-    def extract_input_signals(cls, payload: Any) -> dict[str, Any] | None:
+    def extract_input_signals(self, payload: Any) -> dict[str, Any] | None:
         """
         Extract input-stage step inputs from the submission payload.
 
@@ -251,6 +252,16 @@ class BaseValidator(ABC):
 
         Called after ``preprocess_submission()`` so template-mode
         submissions are parsed against the resolved payload.
+
+        This is an instance method (not a classmethod, despite the
+        original POC contract) so subclasses can reach
+        ``self.run_context`` to look up validator-side artifacts that
+        carry parser-fact provenance — e.g., ``FMUValidator`` reads
+        from ``self.run_context.step.validator.fmu_model.introspection_metadata``
+        because the FMU itself is bound to the validator, not the
+        submission. All existing call sites already invoke this via
+        ``self.extract_input_signals(payload)`` so the conversion is
+        backwards-compatible.
 
         Args:
             payload: The submission payload.
@@ -340,7 +351,7 @@ class BaseValidator(ABC):
           ``RunContext.workflow_signals`` (the
           ``WorkflowSignalMapping`` rows resolved at run start) AND
           from upstream promotions injected by
-          ``_inject_promoted_outputs`` (both in-row
+          ``_inject_promotions`` (both in-row
           ``promoted_signal_name`` on step-owned ``StepIODefinition``
           rows and the ``WorkflowStepIOPromotion`` overlay rows on
           validator-owned ones). Per ADR-2026-05-22b's symmetric
@@ -388,7 +399,7 @@ class BaseValidator(ABC):
         # - Promoted step inputs and outputs, both step-owned (via the
         #   in-row ``promoted_signal_name`` field) and validator-owned
         #   (via the WorkflowStepIOPromotion overlay table) — see
-        #   ``_inject_promoted_outputs`` below.
+        #   ``_inject_promotions`` below.
         #
         # Authors reference payload data via p.key, workflow vocabulary
         # via s.name, and step-local input/output values via i.name /
@@ -425,9 +436,10 @@ class BaseValidator(ABC):
         # Step-local input values available at the start of the step.
         # Populated from two sources:
         #   1. Parser-extracted facts via extract_input_signals() —
-        #      validators that parse an arcane format (EnergyPlus IDF,
-        #      future codecs) override the classmethod to return a dict
-        #      keyed by catalog contract_key.
+        #      validators that parse an arcane format (EnergyPlus IDF)
+        #      OR read stamped metadata (FMU's introspection dict)
+        #      override the hook to return a dict keyed by catalog
+        #      contract_key.
         #   2. Pre-resolved StepInputBinding values (contract-keyed)
         #      cached on the run context by the input-resolution
         #      pipeline (see resolve_step_input_signals).
@@ -495,7 +507,7 @@ class BaseValidator(ABC):
         # ``_outputs`` suffix for low-churn reasons even though it
         # handles both directions per ADR-2026-05-22b.
         if steps_context:
-            self._inject_promoted_outputs(signals_dict, steps_context)
+            self._inject_promotions(signals_dict, steps_context)
 
         # ── Assemble the context ─────────────────────────────────────
         # All namespace roots are always present (even if empty) so CEL
@@ -519,7 +531,7 @@ class BaseValidator(ABC):
         }
         return context
 
-    def _inject_promoted_outputs(
+    def _inject_promotions(
         self,
         signals_dict: dict[str, Any],
         steps_context: dict[str, Any],
@@ -549,7 +561,7 @@ class BaseValidator(ABC):
           — populated after the producing step's container or
           inline work completes.
 
-        The method name still reads ``_inject_promoted_outputs`` for
+        The method name still reads ``_inject_promotions`` for
         historical reasons (it originally only handled outputs); per
         ADR-2026-05-22b's symmetric promotion it now handles INPUT
         and OUTPUT directions uniformly.
@@ -764,6 +776,105 @@ class BaseValidator(ABC):
             )
 
         return context
+
+    def _enrich_basic_payload(
+        self,
+        base_payload: Any,
+        *,
+        stage: str,
+        output_signals: dict[str, Any] | None = None,
+    ) -> Any:
+        """Merge namespaced values into a BASIC-evaluator payload.
+
+        BASIC evaluators walk a dotted path against the payload
+        root — they don't understand the ``i.*`` / ``s.*`` / ``o.*``
+        CEL namespaces directly. To make BASIC assertions work
+        against namespaced targets without changing the evaluator,
+        we merge the resolved values into the payload at the top
+        level by their bare contract_key (for i.*/o.*) or workflow
+        signal name (for s.*).
+
+        That way a BASIC assertion whose
+        ``target_signal_definition.contract_key`` is ``temperature``
+        finds the value at ``payload["temperature"]`` regardless of
+        whether it came from a parser fact, a resolved
+        ``StepInputBinding``, a workflow signal mapping, or an
+        extracted output envelope.
+
+        Merge order (base wins on collision):
+
+        1. The base payload (raw submission or extracted signals dict).
+           Its keys win on collision because the submission shape
+           should not be silently shadowed by a same-named binding.
+        2. Workflow signals (``run_context.workflow_signals``).
+        3. Resolved input bindings — only at input stage. Output
+           stage already has ``resolved_inputs`` merged by
+           ``_build_assertion_payload`` on the advanced side; calling
+           ``_resolve_bound_input_context`` again at output stage
+           would be redundant.
+        4. Output signals — only when supplied (output stage on
+           advanced validators).
+
+        Non-dict payloads (e.g. lxml ElementTree from XML Schema,
+        RDF graphs from SHACL) are returned unchanged — those
+        validators don't use BASIC's payload-walking evaluator on
+        their parsed object directly.
+
+        Args:
+            base_payload: The validator-specific base payload
+                (typically the signals dict from a simple validator's
+                ``extract_signals`` or the assertion payload from an
+                advanced validator).
+            stage: ``"input"`` or ``"output"`` — controls whether
+                StepInputBinding resolution runs.
+            output_signals: At output stage, the extracted output
+                dict to merge into the payload. None at input stage.
+
+        Returns:
+            The enriched dict (or the unchanged base for non-dict
+            inputs).
+        """
+        if not isinstance(base_payload, dict):
+            # XML Schema / SHACL / THERM parsers may produce
+            # non-dict objects; we can't merge into those.
+            return base_payload
+
+        enriched = dict(base_payload)
+
+        # Workflow signals — the s.* namespace's runtime values.
+        workflow_signals = (
+            getattr(
+                getattr(self, "run_context", None),
+                "workflow_signals",
+                None,
+            )
+            or {}
+        )
+        for key, value in workflow_signals.items():
+            enriched.setdefault(key, value)
+
+        # Resolved input bindings — i.* values via StepInputBinding
+        # source-path resolution. Only at input stage.
+        if stage == "input":
+            try:
+                bound = self._resolve_bound_input_context(base_payload)
+            except Exception:
+                logger.debug(
+                    "Could not resolve bound input context for BASIC "
+                    "payload enrichment; falling back to base payload.",
+                    exc_info=True,
+                )
+                bound = {}
+            for key, value in bound.items():
+                enriched.setdefault(key, value)
+
+        # Output signals — o.* values from extract_output_signals.
+        # Only at output stage.
+        if stage == "output" and output_signals:
+            for key, value in output_signals.items():
+                enriched.setdefault(key, value)
+
+        return enriched
 
     def _issue_from_assertion(
         self,

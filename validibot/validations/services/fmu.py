@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import Any
 
 from defusedxml import ElementTree as ET  # noqa: N817
 from django.conf import settings
@@ -34,6 +35,7 @@ from validibot.validations.signal_metadata.metadata import FMUProviderBinding
 from validibot.validations.signal_metadata.metadata import FMUSignalMetadata
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Iterable
 
     from django.core.files.uploadedfile import UploadedFile
@@ -249,6 +251,204 @@ def introspect_fmu(payload: bytes, filename: str) -> FMUIntrospectionResult:
     )
 
 
+# ── FMU parser-fact specs (single source of truth) ───────────────────
+#
+# Phase 6 (ADR-2026-05-22b) parser facts. This list is the canonical
+# definition consumed by THREE call sites:
+#
+#   1. ``build_introspection_metadata`` (this module) — extracts and
+#      stamps these values on ``FMUModel.introspection_metadata`` at
+#      upload/probe time, AND on ``WorkflowStep.config['fmu_introspection']``
+#      for step-level uploads (via ``build_step_fmu_introspection``).
+#   2. ``validators/fmu/config.py`` — derives the system FMU validator's
+#      static ``CatalogEntrySpec`` list from this collection so a new
+#      fact added here surfaces in the catalog without a parallel edit.
+#   3. ``_seed_parser_fact_signals`` (this module) and
+#      ``services/fmu_signals.seed_step_parser_fact_signals`` — seed
+#      identical INPUT-direction ``StepIODefinition`` rows on per-FMU
+#      validators (library path) and per-step (step-level path), so
+#      ``i.fmi_version`` etc. resolve regardless of which path was used.
+#
+# A single dataclass instead of two parallel lists (the original Phase 6
+# sketch) means richness can't drift between catalog and seeded rows —
+# the May 2026 review caught that the system catalog had descriptions
+# and units while the seeded rows didn't, making the same ``i.*`` fact
+# look different depending on the validator binding.
+#
+# ``extractor`` is a callable that pulls the value out of an
+# ``FMUIntrospectionResult``. Keeping extraction co-located with the
+# rest of the spec is the simplest way to keep the dict-builder honest:
+# the keys in build_introspection_metadata's return value cannot drift
+# from PARSER_FACT_SPECS because they ARE PARSER_FACT_SPECS.
+
+
+@dataclass(frozen=True)
+class FMUParserFactSpec:
+    """Single-source-of-truth spec for one FMU parser fact.
+
+    Holds everything the three call sites need: extraction logic
+    (``extractor``), runtime contract (``contract_key``, ``data_type``),
+    UI/catalog richness (``label``, ``description``, ``units``,
+    ``order``), and authoring policy (``on_missing``).
+
+    The CatalogEntrySpec equivalents are derived in
+    ``validators/fmu/config.py``; the StepIODefinition equivalents are
+    seeded in ``_seed_parser_fact_signals`` and
+    ``seed_step_parser_fact_signals``. All three paths read from the
+    SAME spec, so a change here propagates without parallel edits.
+    """
+
+    contract_key: str
+    label: str
+    data_type: str  # one of CatalogValueType.*
+    description: str
+    extractor: Callable[[FMUIntrospectionResult], Any]
+    units: str = ""
+    order: int = 0
+    on_missing: str = "null"
+
+
+def _count_causality(result: FMUIntrospectionResult, causality: str) -> int:
+    """Count variables matching the given causality (case-insensitive)."""
+    return sum(1 for v in result.variables if (v.causality or "").lower() == causality)
+
+
+def _has_simulation_defaults(result: FMUIntrospectionResult) -> bool:
+    """True when DefaultExperiment supplied at least one timing field.
+
+    Per the May 2026 review (P3 finding): the original
+    ``has_default_experiment`` name implied XML-element presence, but
+    the underlying dataclass discards element presence — only the
+    populated attribute values survive parsing. Renamed to
+    ``has_simulation_defaults`` so the name matches what's actually
+    detected (any of start_time / stop_time / step_size / tolerance
+    being set). An empty ``<DefaultExperiment/>`` element therefore
+    returns False, matching the renamed semantics.
+    """
+    sim = result.simulation_defaults
+    return any(
+        getattr(sim, field) is not None
+        for field in ("start_time", "stop_time", "step_size", "tolerance")
+    )
+
+
+PARSER_FACT_SPECS: tuple[FMUParserFactSpec, ...] = (
+    FMUParserFactSpec(
+        contract_key="model_name",
+        label="Model Name",
+        data_type=CatalogValueType.STRING,
+        description=(
+            "Name declared in the FMU's modelDescription.xml "
+            "``modelName`` attribute. Useful for sanity-checking that "
+            "the expected FMU is bound, e.g. "
+            "``i.model_name == 'BuildingControl'``."
+        ),
+        extractor=lambda result: result.model_name,
+        order=10,
+    ),
+    FMUParserFactSpec(
+        contract_key="fmi_version",
+        label="FMI Version",
+        data_type=CatalogValueType.STRING,
+        description=(
+            "FMI specification version declared in modelDescription.xml "
+            "(e.g. ``2.0`` or ``3.0``). Gate dispatch on FMI "
+            "compatibility with ``i.fmi_version == '2.0'``."
+        ),
+        extractor=lambda result: result.fmi_version,
+        order=11,
+    ),
+    FMUParserFactSpec(
+        contract_key="variable_count",
+        label="Variable Count",
+        data_type=CatalogValueType.NUMBER,
+        description=(
+            "Total count of ScalarVariable entries in modelDescription.xml "
+            "(all causalities combined). Quick sanity check that the FMU "
+            "is non-empty."
+        ),
+        extractor=lambda result: len(result.variables),
+        units="count",
+        order=12,
+    ),
+    FMUParserFactSpec(
+        contract_key="input_variable_count",
+        label="Input Variable Count",
+        data_type=CatalogValueType.NUMBER,
+        description=(
+            "Count of ScalarVariable entries with ``causality='input'``. "
+            "Use ``i.input_variable_count >= N`` to guard that the FMU "
+            "exposes the inputs the workflow expects."
+        ),
+        extractor=lambda result: _count_causality(result, "input"),
+        units="count",
+        order=13,
+    ),
+    FMUParserFactSpec(
+        contract_key="output_variable_count",
+        label="Output Variable Count",
+        data_type=CatalogValueType.NUMBER,
+        description=(
+            "Count of ScalarVariable entries with ``causality='output'``. "
+            "An FMU with zero outputs can be simulated but yields no "
+            "observables — ``i.output_variable_count >= 1`` catches it."
+        ),
+        extractor=lambda result: _count_causality(result, "output"),
+        units="count",
+        order=14,
+    ),
+    FMUParserFactSpec(
+        contract_key="parameter_count",
+        label="Parameter Count",
+        data_type=CatalogValueType.NUMBER,
+        description=(
+            "Count of ScalarVariable entries with ``causality='parameter'``. "
+            "Useful for assertions on FMUs that expect tunable parameters."
+        ),
+        extractor=lambda result: _count_causality(result, "parameter"),
+        units="count",
+        order=15,
+    ),
+    FMUParserFactSpec(
+        contract_key="has_simulation_defaults",
+        label="Has Simulation Defaults",
+        data_type=CatalogValueType.BOOLEAN,
+        description=(
+            "True when modelDescription.xml's DefaultExperiment supplies "
+            "at least one timing field (startTime, stopTime, stepSize, "
+            "or tolerance). An empty ``<DefaultExperiment/>`` returns "
+            "False because no usable defaults are available. Some "
+            "workflow templates require an FMU to ship its own "
+            "simulation defaults."
+        ),
+        extractor=_has_simulation_defaults,
+        order=16,
+    ),
+)
+
+
+# Set of contract keys for fast catalog-filtering in ``extract_input_signals``.
+PARSER_FACT_KEYS: frozenset[str] = frozenset(s.contract_key for s in PARSER_FACT_SPECS)
+
+
+def build_introspection_metadata(
+    result: FMUIntrospectionResult,
+) -> dict[str, Any]:
+    """Build the FMU parser-fact dict persisted on ``FMUModel.introspection_metadata``.
+
+    The dict is keyed by ``contract_key`` for direct consumption by
+    ``FMUValidator.extract_input_signals``. Each value is produced by
+    its spec's ``extractor`` callable, so adding a new fact to
+    ``PARSER_FACT_SPECS`` automatically extends what this writes —
+    no parallel edit here.
+
+    Kept as a top-level helper so both the upload
+    (``create_fmu_validator``) and probe (``run_fmu_probe``) paths
+    stamp the same shape.
+    """
+    return {spec.contract_key: spec.extractor(result) for spec in PARSER_FACT_SPECS}
+
+
 def _data_type_for_variable(value_type: str) -> str:
     vt = (value_type or "").lower()
     if vt in {"real", "integer", "enumeration"}:
@@ -258,6 +458,69 @@ def _data_type_for_variable(value_type: str) -> str:
     if vt == "string":
         return CatalogValueType.STRING
     return CatalogValueType.OBJECT
+
+
+def _parser_fact_step_io_defaults(spec: FMUParserFactSpec) -> dict[str, Any]:
+    """Shared StepIODefinition ``defaults`` payload for one parser fact.
+
+    Used by ``_seed_parser_fact_signals`` (library FMU validators) and
+    ``services.fmu_signals.seed_step_parser_fact_signals`` (step-level
+    FMU uploads). Sharing the dict-builder means the two seeding paths
+    can't drift in subtle ways (e.g., one ends up with a label and the
+    other doesn't), which was the May 2026 review's P2 concern.
+
+    ``on_missing`` is copied through so the seeded rows match the
+    richness of the system catalog entries derived from the same spec
+    in ``validators/fmu/config.py``. Today every spec defaults to
+    ``"null"``; carrying it explicitly removes the latent drift risk
+    the next reviewer flagged in the P3 follow-up.
+    """
+    return {
+        "native_name": spec.contract_key,
+        "label": spec.label,
+        "description": spec.description,
+        "origin_kind": SignalOriginKind.FMU,
+        "source_kind": SignalSourceKind.INTERNAL,
+        "is_path_editable": False,
+        "data_type": spec.data_type,
+        "on_missing": spec.on_missing,
+        "provider_binding": {},
+        "metadata": {"units": spec.units} if spec.units else {},
+    }
+
+
+def _seed_parser_fact_signals(validator: Validator) -> None:
+    """Seed parser-fact StepIODefinition rows on a user-created FMU validator.
+
+    These rows declare INPUT-direction catalog entries (one per spec
+    in ``PARSER_FACT_SPECS``) so the user's FMU validator advertises
+    the same ``i.*`` step inputs as the system FMU validator does via
+    its config.py catalog. Without this seeding, input-stage CEL
+    assertions targeting ``i.fmi_version`` etc. would resolve cleanly
+    on a workflow step bound to the system validator and silently
+    resolve to null when re-bound to a user-created FMU validator
+    that wraps the same FMU — a footgun for workflow authors who
+    organise reusable assertion logic.
+
+    Identity-stable: keyed by ``(validator, contract_key, direction)``
+    via ``update_or_create``. Probe refreshes
+    (``_refresh_variables_from_probe``) reuse the same rows rather
+    than recreating them, preserving downstream FK relationships
+    (StepInputBinding, WorkflowStepIOPromotion) that cascade rules
+    would otherwise nuke on every re-probe.
+
+    Collision tracking lives in the caller's ``survivors`` set, not
+    here — this helper is concerned only with the parser-fact rows
+    themselves, and the caller separately records the
+    (contract_key, INPUT) tuples it claimed.
+    """
+    for spec in PARSER_FACT_SPECS:
+        StepIODefinition.objects.update_or_create(
+            validator=validator,
+            contract_key=spec.contract_key,
+            direction=SignalDirection.INPUT,
+            defaults=_parser_fact_step_io_defaults(spec),
+        )
 
 
 def _direction_for_causality(causality: str) -> str | None:
@@ -368,10 +631,7 @@ def create_fmu_validator(
         except Exception as exc:  # pragma: no cover - storage failures are surfaced
             raise FMUStorageError(str(exc)) from exc
         fmu.fmu_version = result.fmi_version
-        fmu.introspection_metadata = {
-            "model_name": result.model_name,
-            "variable_count": len(result.variables),
-        }
+        fmu.introspection_metadata = build_introspection_metadata(result)
         fmu.is_approved = approve_immediately
         fmu.save()
 
@@ -407,15 +667,61 @@ def _persist_variables(
     validator: Validator,
     variables: Iterable[FMUVariable],
 ) -> None:
-    """Persist FMUVariable model instances and create matching signal definitions."""
+    """Persist FMUVariable rows and reconcile signal definitions.
+
+    Identity-stable: ``StepIODefinition`` rows are reconciled by
+    ``(validator, contract_key, direction)`` via ``update_or_create``.
+    Existing rows for variables that survive re-upload keep their
+    primary key, so downstream FKs — ``StepInputBinding``,
+    ``WorkflowStepIOPromotion``, ``RulesetAssertion`` — keep
+    pointing at the same row instead of getting nuked by a
+    delete-then-recreate cycle.
+
+    Orphans (rows whose contract_key didn't appear in this call) are
+    deleted at the end — that's the only path that cascades.
+    """
     prepared: list[FMUVariable] = []
     for var in variables:
         var.fmu_model = fmu_model
         prepared.append(var)
     FMUVariable.objects.bulk_create(prepared)
-    existing_keys = set(
-        validator.signal_definitions.values_list("contract_key", flat=True),
+
+    # ``survivors`` tracks every (contract_key, direction) tuple we
+    # touched in THIS call — both parser facts and FMU variables.
+    # Two distinct uses:
+    #   1. In-batch collision detection. When two variables slugify to
+    #      the same key with the same direction (e.g., ``T_outdoor`` and
+    #      ``t_outdoor`` both → ``t_outdoor`` INPUT), the second gets a
+    #      ``-2`` suffix. Cross-direction (``T`` INPUT + ``T`` OUTPUT) is
+    #      allowed by the model's (workflow_step|validator, contract_key,
+    #      direction) uniqueness, so we don't suffix across directions.
+    #   2. Orphan-detection at the end. Rows already in the DB whose
+    #      tuple isn't in survivors correspond to variables that have
+    #      disappeared and get deleted.
+    #
+    # CRITICAL: we do NOT check pre-existing DB keys for collisions
+    # here. ``update_or_create`` reuses the existing row when
+    # (validator, contract_key, direction) match — that's how we get
+    # identity stability across re-probes. The May 2026 review's P1
+    # finding caught that the prior check against DB keys defeated this:
+    # a re-probe of T_outdoor would suffix to T_outdoor-2, leaving the
+    # original as an orphan to be deleted, cascading any StepInputBinding,
+    # WorkflowStepIOPromotion, or RulesetAssertion FKs on every probe.
+    survivors: set[tuple[str, str]] = set()
+
+    # Seed parser-fact StepIODefinition rows on this user-created FMU
+    # validator so ``i.fmi_version`` / ``i.input_variable_count`` /
+    # etc. resolve consistently whether the workflow author picked the
+    # system FMU validator (whose catalog entries come from config.py
+    # via sync_validators) or a user-created FMU validator (which is
+    # seeded here, per FMU upload). Without this branch, the same
+    # input-stage CEL assertion would pass on one validator and silently
+    # resolve to null on another.
+    _seed_parser_fact_signals(validator)
+    survivors.update(
+        (spec.contract_key, SignalDirection.INPUT) for spec in PARSER_FACT_SPECS
     )
+
     for var in prepared:
         direction = _direction_for_causality(var.causality)
         if not direction:
@@ -423,11 +729,21 @@ def _persist_variables(
         base_key = slugify(var.name, separator="_") or "signal"
         key = base_key
         counter = 2
-        while key in existing_keys:
-            key = f"{base_key}-{counter}"
+        # Only suffix when THIS (key, direction) has already been
+        # claimed in this batch — never against pre-existing DB rows.
+        # Letting update_or_create reuse existing rows naturally is
+        # what keeps StepIODefinition.pk stable across re-probes.
+        #
+        # Underscore separator matches ``services.fmu_signals``'s
+        # step-level path so CEL identifier-safe contract_keys stay
+        # the convention across both seeding paths. Hyphenated keys
+        # would force authors into bracket-access (``i["t_outdoor-2"]``)
+        # instead of dot-access (``i.t_outdoor_2``).
+        while (key, direction) in survivors:
+            key = f"{base_key}_{counter}"
             counter += 1
-        existing_keys.add(key)
-        StepIODefinition.objects.get_or_create(
+        survivors.add((key, direction))
+        StepIODefinition.objects.update_or_create(
             validator=validator,
             contract_key=key,
             direction=direction,
@@ -451,6 +767,30 @@ def _persist_variables(
                 ).model_dump(),
             },
         )
+
+    # ── Orphan cleanup ───────────────────────────────────────────
+    # Delete StepIODefinition rows whose (contract_key, direction)
+    # tuple didn't appear in this call — they correspond to variables
+    # (or legacy parser facts) that no longer exist in this FMU.
+    # Identity for surviving rows is preserved (they were updated in
+    # place via ``update_or_create``), so downstream FKs to
+    # StepInputBinding / WorkflowStepIOPromotion / RulesetAssertion
+    # stay intact.
+    #
+    # Composite (contract_key, direction) membership matters: the same
+    # contract_key can legitimately appear in both INPUT and OUTPUT
+    # directions, so filtering by contract_key alone would either
+    # over-delete (drop a valid surviving direction) or under-delete
+    # (miss a row whose key matches but direction doesn't). The
+    # explicit Python walk handles the tuple check; the queryset is
+    # tiny (one validator) so the O(n) scan is fine.
+    orphan_ids = [
+        sig.pk
+        for sig in validator.signal_definitions.all()
+        if (sig.contract_key, sig.direction) not in survivors
+    ]
+    if orphan_ids:
+        validator.signal_definitions.filter(pk__in=orphan_ids).delete()
 
 
 def _read_fmu_bytes(fmu_model: FMUModel) -> bytes:
@@ -556,12 +896,12 @@ def run_fmu_probe(
         for var in result.variables
     ]
 
-    # Update FMU metadata
+    # Update FMU metadata. Keep both write sites (upload and probe)
+    # using the same helper so the parser-fact contract surfaced via
+    # ``FMUValidator.extract_input_signals`` is identical regardless of
+    # which path stamped the metadata.
     fmu_model.fmu_version = result.fmi_version
-    fmu_model.introspection_metadata = {
-        "model_name": result.model_name,
-        "variable_count": len(result.variables),
-    }
+    fmu_model.introspection_metadata = build_introspection_metadata(result)
 
     # Refresh variables and catalog entries from probe results
     _refresh_variables_from_probe(fmu_model, variable_metas)
@@ -595,18 +935,30 @@ def _refresh_variables_from_probe(
     fmu_model: FMUModel,
     variables: list,
 ) -> None:
-    """
-    Update FMU variable rows and refresh signal definitions based on probe output.
+    """Reconcile FMU variables and signal definitions from probe output.
 
-    We rebuild variables from the probe response to make sure the signals stay
-    aligned with the latest FMU metadata.
-    """
+    Drops the legacy delete-then-recreate cycle (May 2026 review's
+    P1/P2 finding). Instead:
 
+    1. ``FMUVariable`` rows are deleted (they're identity-less —
+       authors don't FK into them) and rebuilt — cheap and harmless.
+    2. ``StepIODefinition`` rows are reconciled in-place by
+       ``_persist_variables``' identity-stable upsert. Surviving
+       (validator, contract_key, direction) tuples keep their PK so
+       StepInputBinding, WorkflowStepIOPromotion, and
+       RulesetAssertion FKs aren't cascaded away on every re-probe.
+
+    The May 2026 review caught that ``StepIODefinition.objects.filter
+    (validator=validator).delete()`` cascaded all of the author's
+    assertion wiring on every probe refresh. This is now an
+    orphan-only delete inside ``_persist_variables``.
+    """
     validator = fmu_model.validators.first()
     if validator is None:
         return
+    # FMUVariable rows have no FK from author-facing models, so the
+    # delete-and-rebuild is safe here (unlike StepIODefinition).
     FMUVariable.objects.filter(fmu_model=fmu_model).delete()
-    StepIODefinition.objects.filter(validator=validator).delete()
     shaped_vars = [
         FMUVariable(
             fmu_model=fmu_model,

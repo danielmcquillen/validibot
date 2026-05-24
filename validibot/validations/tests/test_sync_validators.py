@@ -91,10 +91,8 @@ class SyncValidatorsCommandTests(TestCase):
         Per ADR-2026-05-22 (catalog version 1.1):
             - zone_count was removed from outputs (parsed-from-IDF facts
               are step inputs only, never step outputs)
-            - floor_area_m2 stays as the simulation-derived value
-              (rename to simulated_conditioned_area_m2 proposed by the
-              ADR but deferred until a coordinated validibot-shared
-              package release ships the renamed Pydantic field)
+            - floor_area_m2 was renamed to simulated_conditioned_area_m2
+              for provenance clarity (lands with validibot-shared 0.8.0)
         """
         self.call_command()
 
@@ -105,7 +103,7 @@ class SyncValidatorsCommandTests(TestCase):
             "site_electricity_kwh",
             "site_eui_kwh_m2",
             "unmet_heating_hours",
-            "floor_area_m2",
+            "simulated_conditioned_area_m2",
         ]
 
         for key in expected_signals:
@@ -209,15 +207,22 @@ class SyncValidatorsCommandTests(TestCase):
         advertises — otherwise sync would CREATE a new row alongside
         instead of updating the seed.
 
-        EnergyPlus catalog was bumped from v1.0 to v1.1 by ADR-2026-05-22
-        (catalog cleanup + parser-extracted step inputs). The seed row
-        here must match the current advertised version to exercise the
-        update path.
+        EnergyPlus catalog version history:
+        - v1.0: original
+        - v1.1: ADR-2026-05-22 cleanup + parser-extracted step inputs
+        - v1.2: ADR-2026-05-22 Phase 2 added nine more parser facts
+          (building_name, terrain, solar_distribution, timestep_per_hour,
+          surface_count, window_count, construction_count,
+          run_period_count, has_hvac)
+
+        The seed row must match the current advertised version
+        (currently 1.2) to exercise the update path rather than the
+        create-new-row path.
         """
         # Create a validator with different name but matching (slug, version).
         Validator.objects.create(
             slug="energyplus-idf-validator",
-            version="1.1",
+            version="1.2",
             name="Old Name",
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,
@@ -499,12 +504,27 @@ class DiscoverConfigsTests(TestCase):
         self.assertIn("signal", entry_types)
         self.assertIn("derivation", entry_types)
 
-    def test_fmu_has_no_catalog_entries(self):
-        """FMU config has no static catalog entries (entries are dynamic)."""
+    def test_fmu_static_catalog_carries_only_parser_facts(self):
+        """FMU config holds the seven Phase 6 parser-fact INPUT entries.
+
+        Per-variable signals (the actual FMU inputs/outputs) are still
+        created dynamically per FMU upload via
+        ``services/fmu._persist_variables``. The only static catalog
+        entries on the system FMU validator are the Phase 6 parser
+        facts (model_name, fmi_version, variable counts, etc.) — all
+        INPUT-direction, all derived from modelDescription.xml at
+        upload time. If a future change adds dynamically-shaped
+        entries to this config it would break the upload-time
+        seeding, so the static catalog stays focused.
+        """
         configs = discover_configs()
         fmu_config = next(c for c in configs if c.slug == "fmu-validator")
 
-        self.assertEqual(len(fmu_config.catalog_entries), 0)
+        # All seven static entries are INPUT-direction parser facts.
+        self.assertEqual(len(fmu_config.catalog_entries), 7)
+        for entry in fmu_config.catalog_entries:
+            self.assertEqual(entry.run_stage, "input")
+            self.assertEqual(entry.binding_config.get("source"), "parser")
 
     def test_energyplus_has_file_handling_fields(self):
         """EnergyPlus config has file type and extension fields populated."""

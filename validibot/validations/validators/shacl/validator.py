@@ -92,6 +92,14 @@ class SHACLValidator(BaseValidator):
     The ``passed`` flag is True iff no blocking ``Severity.ERROR`` issues
     exist. Warnings and infos do not block — operators decide whether to
     gate on them via CEL assertions.
+
+    **No ``extract_input_signals`` override (per ADR-2026-05-22b
+    Phase 6).** SHACL evaluates a parsed RDF graph against shape
+    constraints; the engine's natural output is per-shape findings
+    plus the ``o.*`` signal dict (extracted by the engine, not by a
+    parser hook). There is no separate "input-stage facts" surface —
+    workflow authors gate on the SHACL report itself or on the
+    pre-validation file (``payload.*``).
     """
 
     def validate(

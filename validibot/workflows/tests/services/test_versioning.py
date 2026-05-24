@@ -762,7 +762,7 @@ class WorkflowVersioningServiceCloneTests(TestCase):
     def test_cross_validator_overlay_raises_validation_error(self):
         """Overlays must match the step's validator.
 
-        The promote view at ``WorkflowStepPromoteOutputView`` rejects
+        The promote view at ``WorkflowStepPromoteStepIOView`` rejects
         cross-validator overlay attempts at the HTTP layer. The model
         ``clean()`` mirrors that rule so service/migration writes
         can't slip a catalog row from one validator into a step

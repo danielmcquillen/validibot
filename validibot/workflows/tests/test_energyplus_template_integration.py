@@ -247,7 +247,7 @@ class TestBuildConfigWithTemplateUpload:
 
         assert config["case_sensitive"] is False
 
-    def test_upload_initializes_display_signals_empty(self):
+    def test_upload_initializes_display_step_outputs_empty(self):
         """Display signals start empty — the author configures them later.
 
         The empty list means "show all signals" (backward-compatible default).
@@ -261,7 +261,7 @@ class TestBuildConfigWithTemplateUpload:
         assert form.is_valid(), form.errors
         config, _template_vars = build_energyplus_config(form)
 
-        assert config["display_signals"] == []
+        assert config["display_step_outputs"] == []
 
     def test_upload_invalid_file_raises_validation_error(self):
         """An invalid template file causes ``ValidationError``.
@@ -385,7 +385,7 @@ class TestBuildConfigValidationMode:
         config, template_vars = build_energyplus_config(form)
 
         assert template_vars == []
-        assert config["display_signals"] == []
+        assert config["display_step_outputs"] == []
         assert config["case_sensitive"] is True
         assert "template_variables" not in config
 
@@ -394,7 +394,7 @@ class TestBuildConfigValidationMode:
 
         When a template file is uploaded, the returned ``template_vars``
         list contains the scanned variables, and the config includes the
-        author's ``case_sensitive`` and ``display_signals`` preferences.
+        author's ``case_sensitive`` and ``display_step_outputs`` preferences.
         """
         validator = _make_energyplus_validator()
         upload = _make_template_upload()
@@ -494,7 +494,7 @@ class TestBuildConfigWithTemplateRemoval:
 
         assert template_vars == []
         assert config["case_sensitive"] is True
-        assert config["display_signals"] == []
+        assert config["display_step_outputs"] == []
         assert "template_variables" not in config
 
     def test_remove_preserves_non_template_config(self):
@@ -542,7 +542,7 @@ class TestBuildConfigPreservesExisting:
 
         When no template upload or removal occurs in template mode,
         ``build_energyplus_config()`` preserves existing config as-is
-        (case_sensitive, display_signals).  Template variable data lives
+        (case_sensitive, display_step_outputs).  Template variable data lives
         in ``StepIODefinition`` rows and is not affected by a
         settings-only re-save.
         """
@@ -554,7 +554,7 @@ class TestBuildConfigPreservesExisting:
                 "idf_checks": [],
                 "run_simulation": True,
                 "case_sensitive": True,
-                "display_signals": ["some_signal"],
+                "display_step_outputs": ["some_signal"],
             },
         )
         form = _make_form(
@@ -572,7 +572,7 @@ class TestBuildConfigPreservesExisting:
         assert template_vars == []
         assert "template_variables" not in config
         assert config["case_sensitive"] is True
-        assert config["display_signals"] == ["some_signal"]
+        assert config["display_step_outputs"] == ["some_signal"]
 
     def test_no_step_no_template_keys(self):
         """A new step (no existing step) in direct mode has no template data.
@@ -588,7 +588,7 @@ class TestBuildConfigPreservesExisting:
 
         assert template_vars == []
         assert "template_variables" not in config
-        assert config["display_signals"] == []
+        assert config["display_step_outputs"] == []
 
     def test_step_without_template_has_no_template_keys(self):
         """An existing step in direct mode has no template signals.
@@ -608,7 +608,7 @@ class TestBuildConfigPreservesExisting:
 
         assert template_vars == []
         assert "template_variables" not in config
-        assert config["display_signals"] == []
+        assert config["display_step_outputs"] == []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1358,7 +1358,7 @@ class TestAnnotationMerge:
 
 
 class TestDisplaySignals:
-    """Tests for the ``DisplaySignalsForm`` (modal-based signal selection).
+    """Tests for the ``DisplayStepOutputsForm`` (modal-based signal selection).
 
     Output signal selection lets the author choose which output signals
     to display in submission results.  This is now a cross-validator
@@ -1366,28 +1366,28 @@ class TestDisplaySignals:
     config form.
     """
 
-    def test_display_signals_not_on_step_config_form(self):
-        """The ``display_signals`` field was moved off the step config form.
+    def test_display_step_outputs_not_on_step_config_form(self):
+        """The ``display_step_outputs`` field was moved off the step config form.
 
-        It's now edited via a standalone modal (``DisplaySignalsForm``),
+        It's now edited via a standalone modal (``DisplayStepOutputsForm``),
         not inline in the EnergyPlus step config form.
         """
         validator = _make_energyplus_validator()
         form = _make_form(validator=validator)
 
-        assert "display_signals" not in form.fields
+        assert "display_step_outputs" not in form.fields
 
-    def test_display_signals_form_choices_empty_without_signal_definitions(self):
+    def test_display_step_outputs_form_choices_empty_without_signal_definitions(self):
         """When the validator has no output signal definitions, choices are empty.
 
         This is the typical case for a freshly created test validator.
         """
-        from validibot.workflows.forms import DisplaySignalsForm
+        from validibot.workflows.forms import DisplayStepOutputsForm
 
         validator = _make_energyplus_validator()
-        form = DisplaySignalsForm(validator=validator)
+        form = DisplayStepOutputsForm(validator=validator)
 
-        assert form.fields["display_signals"].choices == []
+        assert form.fields["display_step_outputs"].choices == []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1412,7 +1412,7 @@ class TestBuildUnifiedSignals(TestCase):
     When step-owned inputs exist, validator-owned inputs are excluded.
     Output signals come from both levels and are always merged.
     Each output is annotated with ``show_to_user`` based on the step's
-    ``display_signals`` config.
+    ``display_step_outputs`` config.
     """
 
     def test_template_variables_only(self):
@@ -1672,10 +1672,10 @@ class TestBuildUnifiedSignals(TestCase):
         assert result["input_signals"] == []
         assert result["output_signals"] == []
 
-    def test_output_display_signals_filtering(self):
-        """Output signals respect the step's ``display_signals`` config.
+    def test_output_display_step_outputs_filtering(self):
+        """Output signals respect the step's ``display_step_outputs`` config.
 
-        When ``display_signals`` lists specific contract_keys, only those
+        When ``display_step_outputs`` lists specific contract_keys, only those
         outputs have ``show_to_user=True``.  Others are still returned
         but marked hidden.
         """
@@ -1686,7 +1686,7 @@ class TestBuildUnifiedSignals(TestCase):
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(
-            config={"display_signals": ["total-energy"]},
+            config={"display_step_outputs": ["total-energy"]},
             validator=validator,
         )
 
@@ -1718,8 +1718,8 @@ class TestBuildUnifiedSignals(TestCase):
         assert len(hidden) == 1
         assert hidden[0]["slug"] == "peak-load"
 
-    def test_output_all_shown_when_display_signals_empty(self):
-        """When ``display_signals`` is absent, all outputs are shown.
+    def test_output_all_shown_when_display_step_outputs_empty(self):
+        """When ``display_step_outputs`` is absent, all outputs are shown.
 
         This is the backward-compatible default — before the author
         configures signal visibility, everything is visible.

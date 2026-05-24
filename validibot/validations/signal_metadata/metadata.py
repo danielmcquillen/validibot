@@ -95,7 +95,7 @@ class EnergyPlusProviderBinding(BaseModel):
 
     Maps to a field on ``EnergyPlusSimulationMetrics`` in
     ``validibot-shared``. Examples: 'site_eui_kwh_m2',
-    'floor_area_m2', 'site_electricity_kwh'.
+    'simulated_conditioned_area_m2', 'site_electricity_kwh'.
     """
 
 

@@ -3,7 +3,7 @@
 These tests cover two runtime paths that are critical to the signal mapping
 ADR but were not previously exercised at the integration level:
 
-1. **Promoted output injection** (``_inject_promoted_outputs`` in base.py):
+1. **Promoted output injection** (``_inject_promotions`` in base.py):
    When a ``StepIODefinition`` with ``direction=OUTPUT`` has a non-empty
    ``signal_name``, that output's value should appear in the ``s.*`` CEL
    namespace for downstream steps.
@@ -49,7 +49,7 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 
 # ── Promoted output injection ────────────────────────────────────────────
 # A validator output with signal_name set should appear in the s.*
-# namespace for downstream steps.  This exercises _inject_promoted_outputs
+# namespace for downstream steps.  This exercises _inject_promotions
 # through the full pipeline (not just unit-level).
 
 

@@ -47,6 +47,13 @@ class AIValidator(BaseValidator):
     - Structured output parsing for validation results
 
     Currently raises NotImplementedError when called.
+
+    **No ``extract_input_signals`` override planned (per ADR-2026-05-22b
+    Phase 6).** The AI validator's value-add is semantic interpretation
+    of the submission, not structural parsing — there is no natural
+    "extract these N facts before dispatch" surface. Any pre-flight
+    gating belongs in earlier workflow steps (a JSON Schema check,
+    say) rather than in AI parser facts.
     """
 
     # PUBLIC METHODS

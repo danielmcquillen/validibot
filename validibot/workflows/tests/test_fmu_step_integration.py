@@ -224,6 +224,63 @@ class IntrospectFmuTests(TestCase):
         self.assertIsNone(result.simulation_defaults.step_size)
         self.assertIsNone(result.simulation_defaults.tolerance)
 
+    def test_has_simulation_defaults_false_for_empty_default_experiment(self):
+        """``has_simulation_defaults`` returns False for ``<DefaultExperiment/>``.
+
+        Per the May 2026 P3 finding: the parser fact was originally
+        named ``has_default_experiment``, which implied XML-element
+        presence, but the underlying ``FMUSimulationDefaults`` dataclass
+        only retains populated field values — element presence with no
+        attributes is indistinguishable from absent. We renamed the
+        fact to ``has_simulation_defaults`` so the name matches the
+        observable: True iff at least one of startTime / stopTime /
+        stepSize / tolerance was set.
+
+        This test pins the contract: an empty ``<DefaultExperiment/>``
+        with no timing attributes returns False, matching the renamed
+        semantic. A regression that flipped this would silently let
+        ``i.has_simulation_defaults`` resolve True for an FMU that
+        shipped no usable defaults.
+        """
+        from validibot.validations.services.fmu import build_introspection_metadata
+
+        payload = _make_minimal_fmu(
+            variables_xml="""
+                <ScalarVariable name="x" valueReference="0" causality="input">
+                  <Real start="0"/>
+                </ScalarVariable>
+            """,
+            default_experiment_xml="<DefaultExperiment />",
+        )
+        result = introspect_fmu(payload, "empty_default.fmu")
+        metadata = build_introspection_metadata(result)
+
+        self.assertFalse(metadata["has_simulation_defaults"])
+
+    def test_has_simulation_defaults_true_with_any_timing_field(self):
+        """Any populated timing field flips ``has_simulation_defaults`` True.
+
+        Companion to the empty-DefaultExperiment test: just one
+        populated attribute (here, stopTime) is enough. The "any one
+        is enough" semantic is what the rename
+        (``has_default_experiment`` → ``has_simulation_defaults``)
+        was meant to clarify.
+        """
+        from validibot.validations.services.fmu import build_introspection_metadata
+
+        payload = _make_minimal_fmu(
+            variables_xml="""
+                <ScalarVariable name="x" valueReference="0" causality="input">
+                  <Real start="0"/>
+                </ScalarVariable>
+            """,
+            default_experiment_xml='<DefaultExperiment stopTime="86400.0"/>',
+        )
+        result = introspect_fmu(payload, "partial_default.fmu")
+        metadata = build_introspection_metadata(result)
+
+        self.assertTrue(metadata["has_simulation_defaults"])
+
     def test_variable_description_parsed(self):
         """The ``description`` attribute on ScalarVariable should be captured.
         This provides human-readable labels for the unified signals card."""
@@ -265,8 +322,177 @@ class IntrospectFmuTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Step config Pydantic models
+# Tri-state build_fmu_config + _sync_fmu_signals (May 2026 P1 fix)
 # ---------------------------------------------------------------------------
+
+
+class BuildFmuConfigTriStateTests(TestCase):
+    """``build_fmu_config`` returns the right tri-state for signal sync.
+
+    The tri-state (``None`` / ``[]`` / ``[...]``) was introduced after
+    the May 2026 review caught that editing a step's simulation
+    timing without re-uploading the FMU was clearing every step-owned
+    FMU signal — including parser facts and any author-built
+    StepInputBindings — even though the FMU resource was untouched.
+
+    These tests pin the contract:
+      - No new upload, no removal → ``None`` (no-op, preserve rows)
+      - User clicked remove          → ``[]``  (clear all FMU signals)
+      - New upload                   → ``[var dicts]`` (sync variables)
+    """
+
+    def _make_form(self, **overrides):
+        """Build a lightweight form stub with the fields build_fmu_config reads.
+
+        Avoids instantiating the full crispy form, which would require
+        validator + step setup we don't need for a unit test of the
+        config-building logic.
+        """
+        from types import SimpleNamespace
+
+        cleaned_data = {
+            "fmu_file": None,
+            "remove_fmu": False,
+            "sim_start_time": None,
+            "sim_stop_time": None,
+            "sim_step_size": None,
+            "sim_tolerance": None,
+        }
+        cleaned_data.update(overrides)
+        return SimpleNamespace(
+            cleaned_data=cleaned_data,
+            is_system_validator=True,
+        )
+
+    def _make_step_with_existing_fmu(self):
+        """Create a workflow step that has an existing FMU upload baked in.
+
+        We seed StepIODefinitions and step.config the way build_fmu_config
+        + _sync_fmu_signals would have on a prior upload. This lets
+        subsequent calls observe whether they preserve or destroy that
+        existing state.
+        """
+        from validibot.validations.services.fmu_signals import sync_step_fmu_signals
+
+        step = WorkflowStepFactory()
+        sync_step_fmu_signals(
+            step,
+            [
+                {
+                    "name": "T_outdoor",
+                    "causality": "input",
+                    "variability": "continuous",
+                    "value_reference": 1,
+                    "value_type": "Real",
+                    "unit": "K",
+                    "description": "",
+                    "label": "",
+                },
+            ],
+        )
+        step.config = {
+            "fmu_simulation": {
+                "start_time": 0.0,
+                "stop_time": 86400.0,
+                "step_size": 60.0,
+                "tolerance": None,
+            },
+            "fmu_introspection": {
+                "model_name": "Original",
+                "fmi_version": "2.0",
+                "variable_count": 1,
+                "input_variable_count": 1,
+                "output_variable_count": 0,
+                "parameter_count": 0,
+                "has_simulation_defaults": True,
+            },
+        }
+        step.save()
+        return step
+
+    def test_no_upload_no_removal_returns_none_for_signal_sync(self):
+        """Editing simulation timing without re-uploading returns fmu_vars=None.
+
+        This is the May 2026 P1 fix in action: when the author tweaks
+        ``sim_stop_time`` and saves, the resulting tri-state must NOT
+        be ``[]`` (which would clear all signals); it must be ``None``
+        so ``_sync_fmu_signals`` takes the no-op branch.
+        """
+        from validibot.workflows.views_helpers import build_fmu_config
+
+        step = self._make_step_with_existing_fmu()
+        form = self._make_form(sim_stop_time=172800.0)  # changed timing
+
+        config, fmu_vars = build_fmu_config(form, step)
+
+        self.assertIsNone(
+            fmu_vars,
+            "No new upload AND no removal MUST return None — "
+            "returning [] would cascade clear_step_fmu_signals.",
+        )
+        # The config still gets rebuilt from form overrides, so the
+        # timing change must land in fmu_simulation. fmu_introspection
+        # must survive too (it came from the prior upload and is still
+        # valid).
+        self.assertEqual(config["fmu_simulation"]["stop_time"], 172800.0)
+        self.assertIn("fmu_introspection", config)
+        self.assertEqual(config["fmu_introspection"]["model_name"], "Original")
+
+    def test_remove_fmu_returns_empty_list_for_signal_sync(self):
+        """Clicking "remove FMU" returns fmu_vars=[] so signals are cleared.
+
+        The empty list is the deliberate signal to _sync_fmu_signals
+        that the FMU is gone — distinct from None (no change). The
+        config is also cleared in this branch.
+        """
+        from validibot.workflows.views_helpers import build_fmu_config
+
+        step = self._make_step_with_existing_fmu()
+        form = self._make_form(remove_fmu=True)
+
+        config, fmu_vars = build_fmu_config(form, step)
+
+        self.assertEqual(fmu_vars, [])
+        self.assertEqual(config, {})
+
+    def test_sync_fmu_signals_none_preserves_step_io_definition_pks(self):
+        """End-to-end: tri-state None preserves existing StepIODefinition PKs.
+
+        Combines the build_fmu_config tri-state with _sync_fmu_signals'
+        no-op branch to prove the full flow. Snapshots PKs before and
+        after; any regression to the old ``fmu_vars=[]`` contract
+        would destroy them all.
+        """
+        from validibot.validations.models import StepIODefinition
+        from validibot.workflows.views_helpers import _sync_fmu_signals
+        from validibot.workflows.views_helpers import build_fmu_config
+
+        step = self._make_step_with_existing_fmu()
+        pre_pks = set(
+            StepIODefinition.objects.filter(workflow_step=step).values_list(
+                "pk",
+                flat=True,
+            ),
+        )
+        self.assertGreater(len(pre_pks), 0)  # sanity
+
+        # Edit simulation timing without uploading anything new.
+        form = self._make_form(sim_step_size=120.0)
+        _config, fmu_vars = build_fmu_config(form, step)
+        _sync_fmu_signals(step, fmu_vars)
+
+        post_pks = set(
+            StepIODefinition.objects.filter(workflow_step=step).values_list(
+                "pk",
+                flat=True,
+            ),
+        )
+        self.assertEqual(
+            pre_pks,
+            post_pks,
+            "StepIODefinition rows must survive a config-only edit "
+            "with no FMU re-upload — regression to the May 2026 P1 bug.",
+        )
 
 
 class FmuStepConfigModelTests(TestCase):
@@ -407,8 +633,8 @@ class UnifiedSignalsFmuTests(TestCase):
         self.assertEqual(result["input_signals"][0]["slug"], "t_outdoor")
         self.assertEqual(len(result["output_signals"]), 0)
 
-    def test_display_signals_filter_fmu_outputs(self):
-        """The ``display_signals`` config should control the ``show_to_user``
+    def test_display_step_outputs_filter_fmu_outputs(self):
+        """The ``display_step_outputs`` config should control the ``show_to_user``
         flag on FMU output variables, just like it does for catalog outputs."""
         step = WorkflowStepFactory()
         _create_fmu_output_signal(
@@ -421,8 +647,8 @@ class UnifiedSignalsFmuTests(TestCase):
             contract_key="q_cool",
             native_name="Q_cool",
         )
-        # display_signals uses contract_key for matching.
-        step.config = {"display_signals": ["t_room"]}
+        # display_step_outputs uses contract_key for matching.
+        step.config = {"display_step_outputs": ["t_room"]}
         step.save()
 
         result = build_unified_signals_from_definitions(step=step)

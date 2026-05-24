@@ -243,10 +243,17 @@ class SyncStepTemplateSignalsTests(TestCase):
         """Template signals (origin_kind=TEMPLATE) and FMU signals
         (origin_kind=FMU) on the same step should coexist without
         interference. Clearing one type should not affect the other.
+
+        After Phase 6, each step-level FMU upload seeds seven
+        parser-fact StepIODefinitions in addition to per-variable
+        rows (still origin_kind=FMU, source_kind=INTERNAL). The
+        coexistence-and-clear invariant must hold for ALL FMU rows,
+        parser facts included.
         """
         step = WorkflowStepFactory()
 
         # Create an FMU signal on this step
+        from validibot.validations.services.fmu import PARSER_FACT_KEYS
         from validibot.validations.services.fmu_signals import sync_step_fmu_signals
 
         sync_step_fmu_signals(
@@ -264,6 +271,12 @@ class SyncStepTemplateSignalsTests(TestCase):
                 },
             ],
         )
+        # FMU side: 1 variable + N parser facts (Phase 6).
+        fmu_count_before_template = StepIODefinition.objects.filter(
+            workflow_step=step,
+            origin_kind=SignalOriginKind.FMU,
+        ).count()
+        self.assertEqual(fmu_count_before_template, 1 + len(PARSER_FACT_KEYS))
 
         # Create a template signal
         sync_step_template_signals(
@@ -273,14 +286,16 @@ class SyncStepTemplateSignalsTests(TestCase):
             ],
         )
 
-        # Both should exist
+        # FMU rows still all present, plus one template row
         self.assertEqual(
             StepIODefinition.objects.filter(workflow_step=step).count(),
-            2,
+            1 + len(PARSER_FACT_KEYS) + 1,
         )
 
         # Clearing template signals should not affect FMU signals
         clear_step_template_signals(step)
         remaining = StepIODefinition.objects.filter(workflow_step=step)
-        self.assertEqual(remaining.count(), 1)
-        self.assertEqual(remaining.first().origin_kind, SignalOriginKind.FMU)
+        self.assertEqual(remaining.count(), 1 + len(PARSER_FACT_KEYS))
+        self.assertTrue(
+            all(sig.origin_kind == SignalOriginKind.FMU for sig in remaining),
+        )

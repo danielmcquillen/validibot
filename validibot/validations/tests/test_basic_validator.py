@@ -39,6 +39,8 @@ rather than hand-wired MagicMock chains.
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 from django.test import SimpleTestCase
 from django.test import TestCase
 
@@ -289,6 +291,74 @@ class BasicValidatorXmlAssertionTests(TestCase):
 
         # The setpoint value "72" (string from XML) should equal "72"
         self.assertTrue(result.passed)
+        self.assertEqual(result.assertion_stats.total, 1)
+        self.assertEqual(result.assertion_stats.failures, 0)
+
+
+class BasicValidatorNamespaceAwarenessTests(TestCase):
+    """End-to-end: BASIC assertions resolve through the enriched payload.
+
+    Phase 5 wired ``_enrich_basic_payload`` into the validator base
+    layer so BASIC assertions whose targets reference i.* or s.*
+    namespaces find the resolved values at the payload root by
+    contract_key. These tests prove the wiring works end-to-end —
+    not just that the form accepts the targets (covered in
+    ``test_forms_ruleset_assertion.py``), but that the BASIC
+    evaluator's payload-walk actually finds the merged value.
+
+    The trap these guard against: an author saves a BASIC
+    assertion with ``target_signal_definition.contract_key =
+    "temperature"`` where ``temperature`` is a workflow signal
+    (``s.temperature``). Pre-Phase-5 the BASIC evaluator walked
+    ``payload["temperature"]`` against the raw submission and
+    reported "Value not found" because the workflow signal lived
+    in a different dict. Post-Phase-5 the enriched payload merges
+    workflow signals at top level, so the lookup succeeds.
+    """
+
+    def test_workflow_signal_resolves_via_enriched_payload(self):
+        """BASIC + s.<workflow_signal> resolves at runtime via enrichment.
+
+        The fixture sets ``workflow_signals = {"temp_threshold": 72}``
+        on the run context and writes a BASIC assertion targeting
+        the workflow signal by contract_key ``temp_threshold``.
+        The enriched payload merges the workflow signal at top
+        level so BASIC's ``contract_key`` walk finds the value.
+        """
+        from validibot.actions.protocols import RunContext
+
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.BASIC,
+            operator=AssertionOperator.EQ,
+            target_data_path="temp_threshold",  # bare name post-resolve
+            target_signal_definition=None,
+            rhs={"value": 72},
+        )
+        # Minimal submission — the workflow signal value comes from
+        # run_context, not the payload.
+        submission = SubmissionFactory(
+            content='{"unrelated": "field"}',
+            file_type=SubmissionFileType.JSON,
+        )
+        run_context = RunContext(
+            validation_run=MagicMock(id=1),
+            step=MagicMock(id=1),
+            downstream_signals={},
+            workflow_signals={"temp_threshold": 72},
+        )
+
+        engine = BasicValidator()
+        result = engine.validate(validator, submission, ruleset, run_context)
+
+        # Workflow signal merged into the enriched payload; BASIC
+        # walks ``temp_threshold`` → finds 72 → equality passes.
+        self.assertTrue(result.passed, msg=[i.message for i in result.issues])
         self.assertEqual(result.assertion_stats.total, 1)
         self.assertEqual(result.assertion_stats.failures, 0)
 

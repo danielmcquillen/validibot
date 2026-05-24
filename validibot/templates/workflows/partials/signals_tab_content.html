@@ -7,27 +7,24 @@ Shows step outputs with an "Export" column. An Edit button opens a
 modal to toggle which step outputs appear in submission results.
 
 Per ADR-2026-05-22b: user-visible vocabulary is "step outputs" (the
-contents of the o.* namespace), not "validator outputs" — the
-underlying URL slug and form field name (`display_signals`) are
-intentionally left at their legacy values to avoid churning every
-workflow link in the codebase. A separate URL/field rename is left
-as a follow-up because the cost outweighs the cleanup benefit at
-this point.
+contents of the o.* namespace), and the URL slug + form field name
+were renamed to match (``workflow_step_display_step_outputs``,
+``display_step_outputs``).
 
 Context:
-  outputs            - list of output StepIODefinition objects
-  step               - the WorkflowStep
-  workflow           - the parent Workflow
-  display_signals    - list of selected output contract_keys (from step.config)
+  outputs               - list of output StepIODefinition objects
+  step                  - the WorkflowStep
+  workflow              - the parent Workflow
+  display_step_outputs  - list of selected output contract_keys (from step.config)
 {% endcomment %}
 {% if outputs %}
   <div class="d-flex justify-content-end mb-2">
     <button type="button"
             class="btn btn-sm btn-secondary"
             data-bs-toggle="modal"
-            data-bs-target="#displaySignalsModal"
-            hx-get="{% org_url 'workflows:workflow_step_display_signals' workflow.pk step.pk %}"
-            hx-target="#display-signals-modal-content"
+            data-bs-target="#displayStepOutputsModal"
+            hx-get="{% org_url 'workflows:workflow_step_display_step_outputs' workflow.pk step.pk %}"
+            hx-target="#display-step-outputs-modal-content"
             hx-trigger="click"
             title="{% trans 'Edit which step outputs are shown to users' %}">
       <i class="bi bi-pencil me-1"></i>{% trans "Edit" %}
@@ -59,14 +56,14 @@ Context:
               {{ entry.get_direction_display }}
             </td>
             <td class="text-center">
-              {% if display_signals %}
-                {% if entry.contract_key in display_signals %}
+              {% if display_step_outputs %}
+                {% if entry.contract_key in display_step_outputs %}
                   <i class="bi bi-check-lg text-success"></i>
                 {% else %}
                   <i class="bi bi-x-lg" style="color: #ccc;"></i>
                 {% endif %}
               {% else %}
-                {# Empty display_signals = show all #}
+                {# Empty display_step_outputs = show all #}
                 <i class="bi bi-check-lg text-success"></i>
               {% endif %}
             </td>

@@ -54,7 +54,7 @@ class BaseStepConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    display_signals: list[str] = Field(default_factory=list)
+    display_step_outputs: list[str] = Field(default_factory=list)
     """Catalog entry slugs for output signals to display to the submitter.
 
     Controls which output signals are shown in the results view and

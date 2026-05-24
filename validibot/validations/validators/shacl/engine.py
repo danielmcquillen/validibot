@@ -762,7 +762,9 @@ def _run_pyshacl_with_timeout(
 
     try:
         # The executable and module name are fixed by the application; user
-        # data is passed only as JSON on stdin and shell execution is disabled.
+        # data is passed only as JSON on stdin and shell execution is disabled
+        # (no shell=True). S603 flags any subprocess.run as a category;
+        # the comment above documents the actual safety analysis.
         completed = subprocess.run(  # noqa: S603
             [
                 sys.executable,
@@ -1030,7 +1032,9 @@ def _execute_ask_with_timeout(
     }
     try:
         # The executable and module name are fixed by the application; user
-        # data is passed only as JSON on stdin and shell execution is disabled.
+        # data is passed only as JSON on stdin and shell execution is disabled
+        # (no shell=True). S603 flags any subprocess.run as a category;
+        # the comment above documents the actual safety analysis.
         completed = subprocess.run(  # noqa: S603
             [
                 sys.executable,

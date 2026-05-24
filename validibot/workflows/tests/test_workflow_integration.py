@@ -304,8 +304,23 @@ def test_workflow_detail_toolbar_orders_launch_actions_and_delete(client):
     delete_index = body.find(f'hx-delete="{delete_url}"')
     assert -1 not in {launch_index, json_index, settings_index, delete_index}
     assert launch_index < json_index < settings_index < delete_index
+    # The grey-actions and destructive-actions divs both carry the
+    # ``d-flex flex-wrap gap-2 ms-5`` class set when a launch action
+    # is present (the ms-5 conditionally adds a leftward gap so the
+    # destructive cluster doesn't touch the launch button).
+    #
+    # We normalize whitespace before counting because djlint may
+    # reformat the class attribute across multiple lines for
+    # readability — the rendered HTML then has newlines + indentation
+    # between the class tokens, so a literal substring match misses
+    # the contiguous class string the layout actually produces. The
+    # normalization collapses runs of whitespace to single spaces,
+    # which is what the browser would do at render time anyway.
+    import re
+
+    body_normalized = re.sub(r"\s+", " ", body)
     expected_toolbar_gaps = 2
-    assert body.count("d-flex flex-wrap gap-2 ms-5") >= expected_toolbar_gaps
+    assert body_normalized.count("d-flex flex-wrap gap-2 ms-5") >= expected_toolbar_gaps
     assert 'title="Workflow settings"' in body
     settings_anchor_start = body.rfind(
         '<a class="btn btn-light text-dark"',

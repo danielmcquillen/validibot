@@ -1723,10 +1723,10 @@ class StepIODefinition(TimeStampedModel):
 
     class Meta:
         # Preserve the legacy table name from when the model was called
-        # StepIODefinition. Renaming the Python class without renaming
-        # the table means no schema migration is required for the class
-        # rename itself (the RenameField migration for signal_name →
-        # promoted_signal_name is separate and unavoidable).
+        # SignalDefinition (Phase 2 rename → StepIODefinition).
+        # Keeping the table name unchanged means the Python class rename
+        # was a zero-migration change; only the RenameField migration
+        # for signal_name → promoted_signal_name was unavoidable.
         db_table = "validations_signaldefinition"
         constraints = [
             # Exactly one of validator or workflow_step must be set.
@@ -1928,7 +1928,7 @@ class WorkflowStepIOPromotion(TimeStampedModel):
 
     Added in response to the May 2026 code review's P1 finding —
     before this model existed, Copy-to-Signal on EnergyPlus catalog
-    rows 404'd because ``WorkflowStepPromoteOutputView`` required the
+    rows 404'd because ``WorkflowStepPromoteStepIOView`` required the
     ``StepIODefinition`` to have a non-null ``workflow_step`` FK. The
     "validator-owned only" invariant was added in a follow-up review
     after the runtime "two truths" risk was identified.
@@ -2007,7 +2007,7 @@ class WorkflowStepIOPromotion(TimeStampedModel):
            EnergyPlus catalog row to an unrelated FMU step, with
            runtime then trying to read a non-existent contract_key
            from that step's output. The promote view at
-           ``WorkflowStepPromoteOutputView`` already enforces this
+           ``WorkflowStepPromoteStepIOView`` already enforces this
            for HTTP writes; mirroring it here protects service-
            layer and migration writes too.
 

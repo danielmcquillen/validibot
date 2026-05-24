@@ -328,8 +328,7 @@ class EnergyPlusValidator(AdvancedValidator):
             return None
         return getattr(step, "validator", None)
 
-    @classmethod
-    def extract_input_signals(cls, payload: Any) -> dict[str, Any] | None:
+    def extract_input_signals(self, payload: Any) -> dict[str, Any] | None:
         """
         Parse the (resolved) IDF or epJSON and extract declared step inputs.
 

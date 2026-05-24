@@ -978,7 +978,7 @@ class ValidationRunViewSetTestCase(TestCase):
 
         This is the sneaky N+1 case the original ``[review-#5]`` fix
         missed: ``ValidationRunSerializer.get_steps`` calls
-        ``build_display_signals(step_run)``, which iterates
+        ``build_display_step_outputs(step_run)``, which iterates
         ``workflow_step.signal_definitions.filter(contract_key__in=...)``
         per step_run. Without a prefetch on signal_definitions (and a
         corresponding in-Python filter inside ``_build_signal_map``),
@@ -996,7 +996,7 @@ class ValidationRunViewSetTestCase(TestCase):
 
         # Build a workflow step with two OUTPUT signal definitions
         # on its validator. The serializer's
-        # ``build_display_signals`` helper looks these up by
+        # ``build_display_step_outputs`` helper looks these up by
         # ``contract_key`` to enrich the dashboard payload — the
         # exact code path that used to fan out per step_run.
         target_validator = ValidatorFactory(org=self.org)
@@ -1013,7 +1013,7 @@ class ValidationRunViewSetTestCase(TestCase):
         target_workflow_step = WorkflowStepFactory(
             workflow=self.workflow,
             validator=target_validator,
-            config={"display_signals": ["eui", "total_cost"]},
+            config={"display_step_outputs": ["eui", "total_cost"]},
         )
 
         def _make_run_with_signal_bearing_step():

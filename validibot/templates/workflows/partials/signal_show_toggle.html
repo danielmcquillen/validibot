@@ -23,7 +23,7 @@ Context:
     </button>
     <button type="button"
             class="btn btn-outline-secondary"
-            hx-post="{% org_url 'workflows:workflow_step_toggle_display_signal' workflow.pk step.pk signal_slug %}"
+            hx-post="{% org_url 'workflows:workflow_step_toggle_step_output_display' workflow.pk step.pk signal_slug %}"
             hx-target="closest .btn-group"
             hx-swap="outerHTML"
             title="{% trans 'Hide from results' %}">
@@ -32,7 +32,7 @@ Context:
   {% else %}
     <button type="button"
             class="btn btn-outline-secondary"
-            hx-post="{% org_url 'workflows:workflow_step_toggle_display_signal' workflow.pk step.pk signal_slug %}"
+            hx-post="{% org_url 'workflows:workflow_step_toggle_step_output_display' workflow.pk step.pk signal_slug %}"
             hx-target="closest .btn-group"
             hx-swap="outerHTML"
             title="{% trans 'Show in results' %}">

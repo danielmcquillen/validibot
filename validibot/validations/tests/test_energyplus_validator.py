@@ -369,13 +369,14 @@ class TestInputStageAssertionGating:
         non-deterministic: it could pick the wrong version and either
         admit retired outputs or silence current ones.
 
-        This test pins the corrected behaviour: when a step's validator
-        FK points at v1.0 (which only declares ``floor_area_m2`` as an
-        OUTPUT), the filter must use that catalog — even if a newer
-        validator row (v1.1, declaring ``site_eui_kwh_m2``) also exists
-        in the database. Without the run-context scoping fix, the
-        filter would pick v1.1 (or some other arbitrary row) and drop
-        the legitimate ``floor_area_m2`` value.
+        This test pins the corrected behaviour: when a step's
+        validator FK points at v1.0 (which only declares
+        ``simulated_conditioned_area_m2`` as an OUTPUT), the filter
+        must use that catalog — even if a newer validator row (v1.1,
+        declaring ``site_eui_kwh_m2``) also exists in the database.
+        Without the run-context scoping fix, the filter would pick
+        v1.1 (or some other arbitrary row) and drop the legitimate
+        ``simulated_conditioned_area_m2`` value.
         """
         from validibot.validations.constants import SignalDirection
         from validibot.validations.models import StepIODefinition
@@ -384,18 +385,22 @@ class TestInputStageAssertionGating:
 
         # Two co-existing catalog versions. The step is bound to v1.0;
         # the filter must honour that binding even though v1.1 is the
-        # newer row in the DB.
+        # newer row in the DB. (The v1.0/v1.1 labels are fictional
+        # for test purposes — both versions would actually declare
+        # both fields in the real catalog; here we contrive a
+        # difference so the filtering machinery has something to
+        # disagree about.)
         validator_v1_0 = ValidatorFactory(
             validation_type=ValidationType.ENERGYPLUS,
             version="1.0",
         )
         StepIODefinition.objects.create(
             validator=validator_v1_0,
-            contract_key="floor_area_m2",
-            native_name="floor_area_m2",
+            contract_key="simulated_conditioned_area_m2",
+            native_name="simulated_conditioned_area_m2",
             direction=SignalDirection.OUTPUT,
             data_type="number",
-            label="Floor Area",
+            label="Simulated Conditioned Area",
         )
         validator_v1_1 = ValidatorFactory(
             validation_type=ValidationType.ENERGYPLUS,
@@ -424,16 +429,18 @@ class TestInputStageAssertionGating:
         # Raw envelope contains BOTH keys. The filter should keep only
         # the one declared by v1.0 (this step's validator).
         raw_metrics = {
-            "floor_area_m2": 250.0,
+            "simulated_conditioned_area_m2": 250.0,
             "site_eui_kwh_m2": 87.5,
         }
         filtered = engine._filter_to_catalog_outputs(raw_metrics)
-        assert filtered == {"floor_area_m2": 250.0}, (
+        assert filtered == {"simulated_conditioned_area_m2": 250.0}, (
             "Output filter ignored the step's bound validator version. "
-            "v1.0 of the catalog only declares floor_area_m2, but the "
-            "filter included site_eui_kwh_m2 (declared by v1.1). "
-            "Check _resolve_catalog_validator() — it must read "
-            "self.run_context.step.validator, not pick an arbitrary row."
+            "v1.0 of the catalog only declares "
+            "simulated_conditioned_area_m2, but the filter included "
+            "site_eui_kwh_m2 (declared by v1.1). Check "
+            "_resolve_catalog_validator() — it must read "
+            "self.run_context.step.validator, not pick an arbitrary "
+            "row."
         )
 
     def test_promoted_input_not_visible_in_producing_step(self):
@@ -466,7 +473,7 @@ class TestInputStageAssertionGating:
         # would contain s.zone_count for this step too. We don't
         # assert against s.* directly in this test (would require a
         # second assertion); the regression we're guarding is the
-        # SQL query that drives _inject_promoted_outputs.
+        # SQL query that drives _inject_promotions.
         sig = StepIODefinition.objects.get(
             validator=validator,
             contract_key="zone_count",
@@ -505,6 +512,6 @@ class TestInputStageAssertionGating:
                 "step. The downstream-only rule requires that promoted "
                 "values are visible only in steps with order > the "
                 "producing step's order. Check that "
-                "_inject_promoted_outputs filters by "
+                "_inject_promotions filters by "
                 "workflow_step__order__lt=current_step.order."
             )

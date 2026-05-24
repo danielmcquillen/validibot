@@ -390,7 +390,7 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
         # this step at both input and output stages.
         #
         # Two sources, matching the runtime injection in
-        # _inject_promoted_outputs:
+        # _inject_promotions:
         #
         # 1. In-row promotions on step-owned StepIODefinitions.
         # 2. WorkflowStepIOPromotion overlays on validator-owned
@@ -592,7 +592,9 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             kwargs={"pk": workflow.pk},
         )
         # Build signal/param display data for completed runs.
-        from validibot.validations.services.signal_display import build_display_signals
+        from validibot.validations.services.signal_display import (
+            build_display_step_outputs,
+        )
         from validibot.validations.services.signal_display import (
             build_template_params_display,
         )
@@ -602,7 +604,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
         step_template_warnings: dict[int, list] = {}
         if not run_in_progress:
             for sr in step_runs:
-                signals = build_display_signals(sr)
+                signals = build_display_step_outputs(sr)
                 if signals:
                     step_signals[sr.pk] = signals
                 params = build_template_params_display(sr)

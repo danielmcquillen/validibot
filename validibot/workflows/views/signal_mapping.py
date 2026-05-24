@@ -1061,38 +1061,34 @@ class WorkflowSignalMappingSampleDataView(WorkflowObjectMixin, View):
 
 
 # ── Step-IO promotion ─────────────────────────────────────────────────
-# Toggle signal_name on a StepIODefinition to promote a step input or
-# step output into the s.* namespace for downstream steps.
+# Toggle the promoted signal name on a StepIODefinition to promote a
+# step input or step output into the s.* namespace for downstream
+# steps.
 #
 # Per ADR-2026-05-22b, promotion is symmetric: works the same way for
 # step inputs (direction=INPUT, in the i.* namespace) and step outputs
 # (direction=OUTPUT, in the o.* namespace). The view doesn't filter by
-# direction; it just toggles signal_name on the targeted StepIODefinition
-# row regardless of which direction it represents.
+# direction; it just writes the promoted_signal_name on the targeted
+# StepIODefinition row (step-owned) or on a WorkflowStepIOPromotion
+# overlay row (validator-owned).
 #
 # Per ADR-2026-05-22b's temporal rule, the promoted value is visible
 # only in downstream steps — the producing step still references the
 # value via i.<contract_key> or o.<contract_key> directly. The temporal
-# rule is enforced by _inject_promoted_outputs() in base.py, not by
-# this view (this view just sets the database flag or overlay row).
-#
-# NOTE: the class name and URL name (WorkflowStepPromoteOutputView /
-# workflow_step_promote_output) reflect the original output-only
-# implementation. They are intentionally kept stable because renaming
-# them would churn every workflow link in the codebase for no
-# behavioural gain — a URL rename is left as a separate follow-up.
+# rule is enforced by _inject_promotions() in base.py, not by
+# this view (this view just persists the promotion intent).
 
 
-class WorkflowStepPromoteOutputView(WorkflowObjectMixin, View):
+class WorkflowStepPromoteStepIOView(WorkflowObjectMixin, View):
     """POST: Set or clear the promoted signal name on a StepIODefinition.
 
     Promotes a step input or step output into the ``s.*`` namespace so
     downstream steps can reference it by name. Sending an empty
     ``signal_name`` clears the promotion.
 
-    Despite the legacy class name, this works for both INPUT and OUTPUT
-    direction StepIODefinitions per ADR-2026-05-22b (symmetric
-    promotion). The success message adapts to the direction.
+    Handles both INPUT and OUTPUT direction StepIODefinitions per
+    ADR-2026-05-22b (symmetric promotion). The success message adapts
+    to the direction.
 
     Two storage paths depending on ownership of the
     ``StepIODefinition`` (per the May 2026 code review's P1 finding):

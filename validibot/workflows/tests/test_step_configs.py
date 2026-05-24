@@ -24,7 +24,7 @@ class TestEnergyPlusStepConfigTemplateFields:
 
     Template variable metadata is now stored relationally in
     ``StepIODefinition`` rows, but the config still carries
-    ``case_sensitive``, ``display_signals``, and the pre-existing
+    ``case_sensitive``, ``display_step_outputs``, and the pre-existing
     simulation fields.  These tests verify that:
 
     - Defaults are correct so existing steps parse without errors.
@@ -41,7 +41,7 @@ class TestEnergyPlusStepConfigTemplateFields:
         config = EnergyPlusStepConfig()
 
         assert config.case_sensitive is True
-        assert config.display_signals == []
+        assert config.display_step_outputs == []
 
     def test_existing_fields_still_work(self):
         """Simulation fields (idf_checks, run_simulation, timestep_per_hour)
@@ -74,7 +74,7 @@ class TestEnergyPlusStepConfigTemplateFields:
 
         assert config.idf_checks == ["duplicate-names"]
         assert config.case_sensitive is True
-        assert config.display_signals == []
+        assert config.display_step_outputs == []
 
     def test_extra_keys_allowed(self):
         """``extra="allow"`` must be preserved so runtime-injected keys

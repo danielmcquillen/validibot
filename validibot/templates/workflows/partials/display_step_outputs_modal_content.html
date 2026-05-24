@@ -3,23 +3,21 @@
 {% comment %}
 Modal content for editing which step outputs are shown to users.
 
-Loaded via HTMx into the displaySignalsModal on the step detail page.
+Loaded via HTMx into the displayStepOutputsModal on the step detail page.
 POST submits the form via HTMx and triggers a page reload on success.
 
 Per ADR-2026-05-22b, the user-visible vocabulary for the contents of
-the o.* namespace is "step outputs" (not "validator outputs"). The
-URL/view names retain the older `display_signals` slug to avoid an
-identifier churn that would touch every workflow link in the codebase
-— that URL rename is left as a separate follow-up because it costs
-more than it gains right now.
+the o.* namespace is "step outputs" (not "validator outputs"), and
+the underlying URL slug + form field name now match
+(``workflow_step_display_step_outputs``, ``display_step_outputs``).
 
 Context:
-  form      - DisplaySignalsForm instance
+  form      - DisplayStepOutputsForm instance
   step      - the WorkflowStep
   workflow  - the parent Workflow
 {% endcomment %}
-<form hx-post="{% org_url 'workflows:workflow_step_display_signals' workflow.pk step.pk %}"
-      hx-target="#display-signals-modal-content"
+<form hx-post="{% org_url 'workflows:workflow_step_display_step_outputs' workflow.pk step.pk %}"
+      hx-target="#display-step-outputs-modal-content"
       hx-swap="innerHTML">
   {% csrf_token %}
   <div class="modal-header">
@@ -36,9 +34,9 @@ Context:
     <p class="text-muted small mb-3">
       {% trans "Select which step outputs appear in submission results shown to the user. If none are selected, all outputs are shown." %}
     </p>
-    {% if form.display_signals.field.choices %}
+    {% if form.display_step_outputs.field.choices %}
       <div class="list-group list-group-flush">
-        {% for checkbox in form.display_signals %}
+        {% for checkbox in form.display_step_outputs %}
           <label class="list-group-item d-flex align-items-center gap-2">
             {{ checkbox.tag }}
             <span>{{ checkbox.choice_label }}</span>

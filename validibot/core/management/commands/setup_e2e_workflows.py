@@ -299,7 +299,7 @@ class Command(BaseCommand):
                         "max_value": 0.99,
                     },
                 ],
-                "display_signals": [
+                "display_step_outputs": [
                     "window_heat_loss_kwh",
                     "window_heat_gain_kwh",
                     "window_transmitted_solar_kwh",

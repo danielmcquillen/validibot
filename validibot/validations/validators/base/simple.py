@@ -169,14 +169,26 @@ class SimpleValidator(BaseValidator):
         # 4. Extract signals
         signals = self.extract_signals(parsed)
 
-        # 5. Evaluate assertions (input and output stages)
+        # 5. Evaluate assertions (input and output stages).
+        # The payload passed to evaluators is enriched with
+        # namespaced values (i.* / s.* / o.*) so BASIC assertions
+        # whose targets reference those namespaces resolve correctly
+        # — see ``BaseValidator._enrich_basic_payload``. CEL ignores
+        # ``payload`` entirely (it reads from a separately-built
+        # context), so the enrichment is a no-op for CEL targets.
         total_assertions = 0
         total_failures = 0
         for stage in ("input", "output"):
+            output_signals = signals if stage == "output" else None
+            enriched_payload = self._enrich_basic_payload(
+                signals,
+                stage=stage,
+                output_signals=output_signals,
+            )
             result = self.evaluate_assertions_for_stage(
                 validator=validator,
                 ruleset=ruleset,
-                payload=signals,
+                payload=enriched_payload,
                 stage=stage,
             )
             issues.extend(result.issues)

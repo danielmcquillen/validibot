@@ -758,7 +758,7 @@ def build_energyplus_config(
         config["idf_checks"] = form.cleaned_data.get("idf_checks", [])
         config["run_simulation"] = form.cleaned_data.get("run_simulation", False)
         config["case_sensitive"] = True
-        config["display_signals"] = []
+        config["display_step_outputs"] = []
         # Signal _sync_energyplus_resources to remove the template file
         # if one exists from a previous template-mode configuration.
         form.cleaned_data["remove_template"] = True
@@ -776,7 +776,7 @@ def build_energyplus_config(
     if remove_template:
         # Author clicked "Remove template" — clear all template metadata.
         config["case_sensitive"] = True
-        config["display_signals"] = []
+        config["display_step_outputs"] = []
     elif template_file:
         # New template uploaded — validate, scan, and return vars for
         # _sync_template_signals() to persist as StepIODefinition rows.
@@ -786,7 +786,7 @@ def build_energyplus_config(
         )
 
         config["case_sensitive"] = form.cleaned_data.get("case_sensitive", True)
-        config["display_signals"] = []
+        config["display_step_outputs"] = []
 
         # Attach warnings to the form so the view can display them.
         form.template_warnings = template_warnings
@@ -796,7 +796,7 @@ def build_energyplus_config(
         # dedicated template variables card on the step detail page.
         existing_config = step.config or {}
         config["case_sensitive"] = form.cleaned_data.get("case_sensitive", True)
-        config["display_signals"] = existing_config.get("display_signals", [])
+        config["display_step_outputs"] = existing_config.get("display_step_outputs", [])
 
     return config, template_vars
 
@@ -972,14 +972,14 @@ def step_has_template_variables(step: WorkflowStep) -> bool:
     ).exists()
 
 
-def _is_signal_shown(slug: str, display_signals: list[str]) -> bool:
+def _is_signal_shown(slug: str, display_step_outputs: list[str]) -> bool:
     """Determine whether an output signal should show a green check.
 
-    Empty display_signals means "show all" (backward-compatible default).
+    Empty display_step_outputs means "show all" (backward-compatible default).
     """
-    if not display_signals:
+    if not display_step_outputs:
         return True
-    return slug in display_signals
+    return slug in display_step_outputs
 
 
 def build_unified_signals_from_definitions(
@@ -1003,7 +1003,7 @@ def build_unified_signals_from_definitions(
     from validibot.validations.models import WorkflowStepIOPromotion
 
     step_config = step.config or {}
-    display_signals = step_config.get("display_signals", [])
+    display_step_outputs = step_config.get("display_step_outputs", [])
 
     # Query step-owned + validator-owned signal definitions.
     step_sigs = list(
@@ -1049,8 +1049,12 @@ def build_unified_signals_from_definitions(
     #    would never see the parser facts in the UI and couldn't
     #    promote them — even though autocomplete/runtime knew about
     #    them.
-    # 2. FMU step — step-owned rows are FMU model inputs and the
-    #    validator catalog is empty. Only step-owned rows render.
+    # 2. FMU step — step-owned rows are FMU model inputs PLUS the
+    #    seven Phase 6 parser-fact rows (model_name, fmi_version, …).
+    #    The validator catalog is non-empty (parser facts come from
+    #    the system FMU validator catalog), but for the system FMU
+    #    case the step-owned rows cover both sets, so we still render
+    #    primarily from step-owned with the catalog providing labels.
     #
     # The previous "if not input_signals" guard incorrectly conflated
     # FMU's "no validator catalog" case with template mode's "both
@@ -1125,7 +1129,7 @@ def build_unified_signals_from_definitions(
     for sig in step_sigs:
         if sig.direction != SignalDirection.OUTPUT:
             continue
-        show = _is_signal_shown(sig.contract_key, display_signals)
+        show = _is_signal_shown(sig.contract_key, display_step_outputs)
         output_signals.append(
             {
                 "slug": sig.contract_key,
@@ -1139,7 +1143,7 @@ def build_unified_signals_from_definitions(
     for sig in validator_sigs:
         if sig.direction != SignalDirection.OUTPUT:
             continue
-        show = _is_signal_shown(sig.contract_key, display_signals)
+        show = _is_signal_shown(sig.contract_key, display_step_outputs)
         output_signals.append(
             {
                 "slug": sig.contract_key,
@@ -1243,36 +1247,60 @@ def _sync_energyplus_resources(
 def build_fmu_config(
     form: FMUValidatorStepConfigForm,
     step: WorkflowStep,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+) -> tuple[dict[str, Any], list[dict[str, Any]] | None]:
     """Build step config for an FMU step with a step-level FMU upload.
 
-    Returns a ``(config, fmu_variables)`` tuple.  The ``fmu_variables``
-    list is passed to ``sync_step_fmu_signals()`` to create/update
-    ``StepIODefinition`` rows — it is **not** written to the config JSON.
+    Returns a ``(config, fmu_variables)`` tuple. ``fmu_variables`` is a
+    TRI-STATE that ``_sync_fmu_signals()`` interprets to decide
+    StepIODefinition lifecycle:
 
-    For library FMU validators (non-system), returns an empty config
-    and an empty variable list — signals come from the validator's
-    ``StepIODefinition`` rows.
+      - ``None``  → no change to FMU signals (no new upload, no
+                    removal; e.g., author edited simulation timing).
+                    Preserves existing rows AND their parser-fact
+                    StepIODefinitions.
+      - ``[]``    → user explicitly removed the FMU. Clears every
+                    FMU-origin StepIODefinition (variables + parser
+                    facts).
+      - ``[...]`` → new FMU uploaded. Reconciles per-variable rows
+                    via ``sync_step_fmu_signals``.
+
+    The list-only contract (``[]`` for "no new upload") was the May
+    2026 review's P1 finding: editing simulation timing without
+    re-uploading the FMU cleared the step's signals and any author-
+    built assertions, even though the FMU resource was untouched.
+
+    For library FMU validators (non-system), returns ``({}, None)`` —
+    signals come from the validator's ``StepIODefinition`` rows and
+    are never managed at the step level.
 
     Mirrors ``build_energyplus_config()`` for consistency.
     """
     if not getattr(form, "is_system_validator", False):
-        # Library validator — no step-level config needed
-        return {}, []
+        # Library validator — no step-level config, no signal sync.
+        return {}, None
 
     from validibot.validations.services.fmu import FMUIntrospectionError
+    from validibot.validations.services.fmu import build_introspection_metadata
     from validibot.validations.services.fmu import introspect_fmu
 
-    # Preserve existing config (simulation) if no new upload
+    # Preserve existing config (simulation + introspection) if no new upload
     existing_config = step.config or {}
     fmu_file = form.cleaned_data.get("fmu_file")
     remove_fmu = form.cleaned_data.get("remove_fmu", False)
 
     if remove_fmu:
-        # Author is removing the FMU — clear everything
+        # Author is removing the FMU — clear everything (including the
+        # stamped introspection facts so i.* doesn't keep resolving
+        # against a ghost FMU). Empty list signals removal to
+        # _sync_fmu_signals.
         return {}, []
 
-    fmu_variables: list[dict[str, Any]] = []
+    # Default for the "no new upload, no removal" path: preserve.
+    # The tri-state means a None here tells the sync function to
+    # leave StepIODefinitions alone, even though we still rebuild
+    # the config dict from form fields below.
+    fmu_variables: list[dict[str, Any]] | None = None
+    introspection_metadata: dict[str, Any] = {}
 
     if fmu_file:
         # New FMU uploaded — introspect it
@@ -1309,6 +1337,14 @@ def build_fmu_config(
             for v in result.variables
         ]
 
+        # Stamp the parser-fact dict so FMUValidator.extract_input_signals
+        # can resolve i.fmi_version / i.input_variable_count / etc. at
+        # runtime for step-level uploads against the system FMU
+        # validator. Without this, the static catalog entries on the
+        # system FMU validator would declare parser facts that always
+        # resolved to null — exactly the May 2026 P1 finding.
+        introspection_metadata = build_introspection_metadata(result)
+
         # Build simulation config from DefaultExperiment defaults
         sim = result.simulation_defaults
         sim_config = {
@@ -1318,8 +1354,12 @@ def build_fmu_config(
             "tolerance": sim.tolerance,
         }
     else:
-        # No new upload — keep existing simulation config, apply form overrides
+        # No new upload — keep existing simulation config + introspection
+        # facts (the file hasn't changed, so the facts are still valid).
         sim_config = existing_config.get("fmu_simulation") or {}
+        existing_introspection = existing_config.get("fmu_introspection")
+        if isinstance(existing_introspection, dict):
+            introspection_metadata = existing_introspection
 
     # Apply simulation setting overrides from the form
     for field_name, config_key in [
@@ -1335,6 +1375,8 @@ def build_fmu_config(
     config: dict[str, Any] = {}
     if any(v is not None for v in sim_config.values()):
         config["fmu_simulation"] = sim_config
+    if introspection_metadata:
+        config["fmu_introspection"] = introspection_metadata
 
     return config, fmu_variables
 
@@ -1392,17 +1434,30 @@ def build_ai_config(form: AiAssistStepConfigForm) -> dict[str, Any]:
 
 def _sync_fmu_signals(
     step: WorkflowStep,
-    fmu_vars: list[dict[str, Any]],
+    fmu_vars: list[dict[str, Any]] | None,
 ) -> None:
     """Sync step-level FMU variables to ``StepIODefinition`` rows.
 
-    Receives the ``fmu_vars`` list produced by ``build_fmu_config()``
-    and syncs it to the relational signal model.  If the list is empty
-    (FMU was removed), clears any existing step-owned FMU signals.
+    Interprets the tri-state produced by ``build_fmu_config``:
+
+      - ``None``    → no-op (no new upload, no removal — author
+                      edited unrelated config like simulation timing).
+                      Existing rows survive untouched.
+      - ``[]``      → user removed the FMU. Clear all FMU-origin
+                      step-owned signals.
+      - ``[...]``   → new FMU uploaded. Reconcile via
+                      ``sync_step_fmu_signals``.
+
+    The ``None`` no-op branch was the May 2026 review's P1 fix:
+    previously, editing simulation timing without re-uploading the
+    FMU cleared every step-owned FMU signal (including parser
+    facts) and cascaded any author-built assertions.
     """
     from validibot.validations.services.fmu_signals import clear_step_fmu_signals
     from validibot.validations.services.fmu_signals import sync_step_fmu_signals
 
+    if fmu_vars is None:
+        return
     if fmu_vars:
         sync_step_fmu_signals(step, fmu_vars)
     else:

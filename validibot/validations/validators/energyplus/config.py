@@ -31,25 +31,27 @@ config = ValidatorConfig(
         "validibot_shared.energyplus.envelopes.EnergyPlusOutputEnvelope"
     ),
     image_name="validibot-validator-backend-energyplus",
-    # Version bump to 1.1 per ADR-2026-05-22: catalog cleanup removes
-    # three misconceived "expectation" inputs (expected_floor_area_m2,
-    # target_eui_kwh_m2, max_unmet_hours), adds three parser-extracted
-    # step inputs (idf_version, zone_count, north_axis_deg), and
-    # removes the redundant output zone_count (parsed-from-IDF facts
-    # are step inputs, never step outputs).
+    # Version bump to 1.2 per ADR-2026-05-22 Phase 2 parser facts
+    # expansion: nine additional step inputs (building_name,
+    # terrain, solar_distribution, timestep_per_hour, surface_count,
+    # window_count, construction_count, run_period_count, has_hvac)
+    # extracted from the (resolved) IDF by extract_input_signals().
+    # The earlier 1.1 cleanup is rolled into this changelog entry:
     #
-    # NOTE on floor_area_m2: ADR-2026-05-22 also proposed renaming the
-    # simulation-derived output floor_area_m2 → simulated_conditioned_area_m2
-    # for provenance clarity. That rename was DEFERRED — it requires a
-    # coordinated validibot-shared package release (the Pydantic model
-    # field is in the published package). The catalog still declares
-    # floor_area_m2 so the slug matches the value the container emits.
-    # Re-apply the rename in a follow-up PR once validibot-shared ships
-    # the renamed field.
+    # - Removed three misconceived "expectation" inputs
+    #   (expected_floor_area_m2, target_eui_kwh_m2, max_unmet_hours).
+    # - Added three parser-extracted step inputs (idf_version,
+    #   zone_count, north_axis_deg).
+    # - Removed the redundant output zone_count — parsed-from-IDF
+    #   facts are step inputs, never step outputs.
+    # - Renamed the simulation-derived floor-area output from
+    #   ``floor_area_m2`` to ``simulated_conditioned_area_m2`` for
+    #   provenance clarity (lands with the validibot-shared 0.8.0
+    #   release that ships the renamed Pydantic field).
     #
     # sync_validators refuses to apply semantic drift under the same
     # (slug, version) so the bump is required.
-    version="1.1",
+    version="1.2",
     order=10,
     has_processor=True,
     processor_name="EnergyPlus\u2122 Simulation",
@@ -138,6 +140,197 @@ config = ValidatorConfig(
             is_required=False,
             on_missing="null",  # fall back to EnergyPlus default 0.0
             order=12,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
+        ),
+        # ── Phase 2 (catalog v1.2) facts — Building characteristics ──
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            slug="building_name",
+            label="Building Name",
+            data_type=CatalogValueType.STRING,
+            description=(
+                "Name field on the IDF Building object. Useful for "
+                "assertions like 'must include the project code in the "
+                "model name' or for sanity-checking that the right model "
+                "is being run."
+            ),
+            binding_config={"source": "parser", "key": "building_name"},
+            metadata={},
+            is_required=False,
+            on_missing="null",
+            order=13,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
+        ),
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            slug="terrain",
+            label="Terrain",
+            data_type=CatalogValueType.STRING,
+            description=(
+                "Building object Terrain field. One of Country, "
+                "Suburbs (default), City, Ocean, Urban. Drives the "
+                "wind-speed profile EnergyPlus applies, so a sanity "
+                "check that ``i.terrain == 'Urban'`` for an urban "
+                "site is a useful preflight assertion."
+            ),
+            binding_config={"source": "parser", "key": "terrain"},
+            metadata={},
+            is_required=False,
+            on_missing="null",  # IDD default "Suburbs" injected by parser
+            order=14,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
+        ),
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            slug="solar_distribution",
+            label="Solar Distribution",
+            data_type=CatalogValueType.STRING,
+            description=(
+                "Building object Solar Distribution field. Common "
+                "values: MinimalShadowing, FullExterior (default), "
+                "FullInteriorAndExterior, FullExteriorWithReflections, "
+                "FullInteriorAndExteriorWithReflections. Important "
+                "for energy-balance accuracy in shoebox vs. detailed "
+                "models."
+            ),
+            binding_config={"source": "parser", "key": "solar_distribution"},
+            metadata={},
+            is_required=False,
+            on_missing="null",  # IDD default "FullExterior" injected by parser
+            order=15,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
+        ),
+        # ── Phase 2 (catalog v1.2) facts — Simulation configuration ──
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            slug="timestep_per_hour",
+            label="Timesteps per Hour",
+            data_type=CatalogValueType.NUMBER,
+            description=(
+                "Number of simulation timesteps per hour, from the "
+                "IDF Timestep object. Higher values produce more "
+                "accurate HVAC dynamics at simulation-time cost. "
+                "Defaults to 4 per the IDD when the Timestep object "
+                "is absent."
+            ),
+            binding_config={"source": "parser", "key": "timestep_per_hour"},
+            metadata={"units": "count/hour"},
+            is_required=False,
+            on_missing="null",
+            order=16,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
+        ),
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            slug="run_period_count",
+            label="Run Period Count",
+            data_type=CatalogValueType.NUMBER,
+            description=(
+                "Number of RunPeriod objects in the IDF. A model "
+                "without any RunPeriod won't actually simulate a "
+                "time range — assertions like "
+                "``i.run_period_count >= 1`` catch this before "
+                "dispatch."
+            ),
+            binding_config={"source": "parser", "key": "run_period_count"},
+            metadata={"units": "count"},
+            is_required=False,
+            on_missing="null",
+            order=17,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
+        ),
+        # ── Phase 2 (catalog v1.2) facts — Geometry counts ──
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            slug="surface_count",
+            label="Surface Count",
+            data_type=CatalogValueType.NUMBER,
+            description=(
+                "Count of BuildingSurface:Detailed objects in the "
+                "IDF. Useful for catching empty/minimal geometry "
+                "before paying for simulation."
+            ),
+            binding_config={"source": "parser", "key": "surface_count"},
+            metadata={"units": "count"},
+            is_required=False,
+            on_missing="null",
+            order=18,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
+        ),
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            slug="window_count",
+            label="Window Count",
+            data_type=CatalogValueType.NUMBER,
+            description=(
+                "Count of Window + FenestrationSurface:Detailed "
+                "objects in the IDF. Both legacy ``Window,`` and "
+                "modern fenestration declarations contribute. "
+                "Useful for catching daylight/solar-gain models "
+                "with no glazing."
+            ),
+            binding_config={"source": "parser", "key": "window_count"},
+            metadata={"units": "count"},
+            is_required=False,
+            on_missing="null",
+            order=19,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
+        ),
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            slug="construction_count",
+            label="Construction Count",
+            data_type=CatalogValueType.NUMBER,
+            description=(
+                "Count of Construction objects in the IDF. The "
+                "bare object only — sub-types like "
+                "Construction:CfactorUndergroundWall and "
+                "Construction:FfactorGroundFloor are tracked "
+                "separately and don't contribute here."
+            ),
+            binding_config={"source": "parser", "key": "construction_count"},
+            metadata={"units": "count"},
+            is_required=False,
+            on_missing="null",
+            order=20,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
+        ),
+        # ── Phase 2 (catalog v1.2) facts — Capability flag ──
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            slug="has_hvac",
+            label="Has HVAC",
+            data_type=CatalogValueType.BOOLEAN,
+            description=(
+                "True when the IDF declares any HVAC system "
+                "(HVACTemplate:*, AirLoopHVAC, or ZoneHVAC:*). "
+                "A pure-envelope model returns False — useful for "
+                "branching assertions like 'EUI must be < N when "
+                "an HVAC system is present'."
+            ),
+            binding_config={"source": "parser", "key": "has_hvac"},
+            metadata={},
+            is_required=False,
+            on_missing="null",
+            order=21,
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
         ),
@@ -358,24 +551,27 @@ config = ValidatorConfig(
         # has been removed \u2014 i.zone_count is the single source going
         # forward.
         #
-        # NOTE on floor_area_m2: ADR-2026-05-22 also proposed renaming
-        # this to simulated_conditioned_area_m2 for provenance clarity.
-        # That rename requires a coordinated validibot-shared package
-        # release (the Pydantic model field is in the published package
-        # per the project's PyPI dependency policy). Until the shared
-        # package ships the renamed field, the catalog continues to
-        # declare floor_area_m2 so the slug matches the runtime value
-        # the container actually produces. The rename is tracked as
-        # follow-up work in the ADR's "deferred" section.
+        # The simulation-derived conditioned area is named
+        # ``simulated_conditioned_area_m2`` (not ``floor_area_m2``) to
+        # disambiguate the value from any design floor area an author
+        # might supply as input. Matches the validibot-shared 0.8.0
+        # field rename.
         # ==================================================================
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.OUTPUT,
-            slug="floor_area_m2",
-            label="Floor Area (m\u00b2)",
+            slug="simulated_conditioned_area_m2",
+            label="Simulated Conditioned Area (m\u00b2)",
             data_type=CatalogValueType.NUMBER,
-            description="Total conditioned floor area from simulation.",
-            binding_config={"source": "metric", "key": "floor_area_m2"},
+            description=(
+                "Total conditioned floor area as computed by EnergyPlus "
+                "from the simulated geometry. Distinct from any design "
+                "floor area declared in the IDF (which is a step input)."
+            ),
+            binding_config={
+                "source": "metric",
+                "key": "simulated_conditioned_area_m2",
+            },
             metadata={"units": "m\u00b2"},
             is_required=False,
             order=140,

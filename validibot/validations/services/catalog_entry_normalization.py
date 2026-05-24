@@ -118,9 +118,9 @@ def build_provider_binding_from_mapping(
         # Per ADR-2026-05-22, parser-extracted step inputs declare
         # {"source": "parser", "key": "<contract_key>"} in their
         # binding_config. These values are populated at runtime by the
-        # validator's extract_input_signals() classmethod — no payload
-        # path or runtime metadata is involved at all, so the
-        # provider_binding stored on StepIODefinition is empty.
+        # validator's extract_input_signals() hook — no payload path or
+        # runtime metadata is involved at all, so the provider_binding
+        # stored on StepIODefinition is empty.
         return {}
 
     if (

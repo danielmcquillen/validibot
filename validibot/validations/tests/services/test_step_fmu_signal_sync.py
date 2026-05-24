@@ -3,14 +3,18 @@ Tests for step-level FMU signal synchronization.
 
 When a user uploads an FMU to a workflow step, the system creates
 ``StepIODefinition`` and ``StepInputBinding`` rows from the
-introspected FMU variables. This test suite verifies the sync function
-handles all lifecycle scenarios: initial upload, re-upload with changed
-variables, removal, and edge cases like slug collisions.
+introspected FMU variables, PLUS seven parser-fact INPUT rows
+(model_name, fmi_version, variable counts, has_simulation_defaults)
+per the Phase 6 / May-2026 P1 fix. The parser-fact rows give
+step-level FMU uploads identical ``i.*`` resolution to library FMU
+validators.
 
-The sync function is the step-level counterpart to the library-validator
-flow in ``fmu._persist_variables()``. Library validators own signals via
-the ``validator`` FK; step-level uploads own them via the
-``workflow_step`` FK.
+This test suite verifies the sync function handles all lifecycle
+scenarios: initial upload, re-upload with changed variables, removal,
+and edge cases like slug collisions. Most assertions filter parser
+facts out via ``_variable_sigs`` so the tests stay focused on the
+variable-level sync logic without restating the parser-fact contract
+in every test.
 """
 
 from __future__ import annotations
@@ -22,9 +26,24 @@ from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
 from validibot.validations.models import StepInputBinding
 from validibot.validations.models import StepIODefinition
+from validibot.validations.services.fmu import PARSER_FACT_KEYS
 from validibot.validations.services.fmu_signals import clear_step_fmu_signals
 from validibot.validations.services.fmu_signals import sync_step_fmu_signals
 from validibot.workflows.tests.factories import WorkflowStepFactory
+
+
+def _variable_sigs(step):
+    """Return only variable-level FMU signals, filtering out parser facts.
+
+    Parser facts (``model_name``, ``fmi_version``, etc.) are seeded on
+    every step-level FMU sync to match the system FMU validator
+    catalog. Tests that assert about variable-level sync logic should
+    filter them out so per-test setup describes only the variables it
+    cares about.
+    """
+    return StepIODefinition.objects.filter(workflow_step=step).exclude(
+        contract_key__in=PARSER_FACT_KEYS,
+    )
 
 
 def _make_fmu_var(
@@ -67,7 +86,7 @@ class SyncStepFMUSignalsTests(TestCase):
 
         sync_step_fmu_signals(step, variables)
 
-        sigs = StepIODefinition.objects.filter(workflow_step=step)
+        sigs = _variable_sigs(step)
         self.assertEqual(sigs.count(), 2)
 
         input_sig = sigs.get(direction=SignalDirection.INPUT)
@@ -100,6 +119,64 @@ class SyncStepFMUSignalsTests(TestCase):
         self.assertEqual(binding.source_data_path, "")
         self.assertTrue(binding.is_required)
 
+    def test_reupload_preserves_author_binding_path(self):
+        """Re-uploading an unchanged FMU does NOT overwrite author-mapped paths.
+
+        ``StepInputBinding.source_data_path`` is AUTHOR STATE: the
+        workflow author chooses how each FMU input gets resolved at
+        runtime (e.g., mapping ``T_outdoor`` to ``weather.outdoor_temp``
+        on the submission payload). The May 2026 review's P1 finding
+        caught that the prior ``update_or_create(defaults={...})``
+        contract silently reset that mapping back to "" on every
+        re-sync of an unchanged variable.
+
+        The fix switched to ``get_or_create``, which only applies
+        defaults on creation. This test pins that behaviour by:
+          1. Syncing the FMU and grabbing the auto-created binding
+          2. Customising its source_data_path the way an author would
+          3. Re-syncing the SAME variable
+          4. Asserting both the binding PK AND the custom path survive
+        """
+        step = WorkflowStepFactory()
+        sync_step_fmu_signals(
+            step,
+            [_make_fmu_var("T_outdoor", causality="input")],
+        )
+
+        # Author maps the input to a real payload path.
+        binding = StepInputBinding.objects.get(workflow_step=step)
+        original_pk = binding.pk
+        binding.source_data_path = "weather.outdoor_temp"
+        binding.is_required = False  # also flip required to catch overwrites
+        binding.save(update_fields=["source_data_path", "is_required"])
+
+        # Re-sync the same FMU (no variable change).
+        sync_step_fmu_signals(
+            step,
+            [_make_fmu_var("T_outdoor", causality="input")],
+        )
+
+        # Binding must be the SAME row (identity-stable) AND retain
+        # the author's mapping. A regression to update_or_create
+        # would reset source_data_path to "" and is_required to True.
+        binding.refresh_from_db()
+        self.assertEqual(
+            binding.pk,
+            original_pk,
+            "Binding row PK changed across re-sync (identity-stability regression).",
+        )
+        self.assertEqual(
+            binding.source_data_path,
+            "weather.outdoor_temp",
+            "Re-sync clobbered the author's source_data_path — the "
+            "exact May 2026 P1 binding-preservation regression.",
+        )
+        self.assertFalse(
+            binding.is_required,
+            "Re-sync flipped is_required back to the default — same "
+            "class of regression as source_data_path.",
+        )
+
     def test_skips_parameter_variables(self):
         """FMU variables with causality 'parameter' or 'local' should not
         create StepIODefinition rows — they're internal to the FMU model.
@@ -113,7 +190,7 @@ class SyncStepFMUSignalsTests(TestCase):
 
         sync_step_fmu_signals(step, variables)
 
-        sigs = StepIODefinition.objects.filter(workflow_step=step)
+        sigs = _variable_sigs(step)
         self.assertEqual(sigs.count(), 1)
         self.assertEqual(sigs.first().native_name, "T_outdoor")
 
@@ -130,11 +207,8 @@ class SyncStepFMUSignalsTests(TestCase):
                 _make_fmu_var("T_outdoor", causality="input", unit="K"),
             ],
         )
-        self.assertEqual(
-            StepIODefinition.objects.filter(workflow_step=step).count(),
-            1,
-        )
-        first_sig = StepIODefinition.objects.get(workflow_step=step)
+        self.assertEqual(_variable_sigs(step).count(), 1)
+        first_sig = _variable_sigs(step).get()
         first_pk = first_sig.pk
 
         # Re-upload with same variable but different unit
@@ -145,7 +219,7 @@ class SyncStepFMUSignalsTests(TestCase):
             ],
         )
 
-        sigs = StepIODefinition.objects.filter(workflow_step=step)
+        sigs = _variable_sigs(step)
         self.assertEqual(sigs.count(), 1)
         updated_sig = sigs.first()
         # Same row, updated in place
@@ -167,10 +241,7 @@ class SyncStepFMUSignalsTests(TestCase):
                 _make_fmu_var("Q_old_output", causality="output"),
             ],
         )
-        self.assertEqual(
-            StepIODefinition.objects.filter(workflow_step=step).count(),
-            2,
-        )
+        self.assertEqual(_variable_sigs(step).count(), 2)
 
         # Re-upload: only one variable, the other is gone
         sync_step_fmu_signals(
@@ -180,7 +251,7 @@ class SyncStepFMUSignalsTests(TestCase):
             ],
         )
 
-        sigs = StepIODefinition.objects.filter(workflow_step=step)
+        sigs = _variable_sigs(step)
         self.assertEqual(sigs.count(), 1)
         self.assertEqual(sigs.first().native_name, "T_outdoor")
 
@@ -196,13 +267,17 @@ class SyncStepFMUSignalsTests(TestCase):
                 _make_fmu_var("Q_heating", causality="output"),
             ],
         )
-        self.assertEqual(
+        self.assertEqual(_variable_sigs(step).count(), 2)
+        # All FMU-origin rows (parser facts + variables) live before clear.
+        self.assertGreater(
             StepIODefinition.objects.filter(workflow_step=step).count(),
             2,
         )
 
         clear_step_fmu_signals(step)
 
+        # clear_step_fmu_signals filters by origin_kind=FMU, which
+        # covers both variable rows and parser-fact rows.
         self.assertEqual(
             StepIODefinition.objects.filter(workflow_step=step).count(),
             0,
@@ -234,7 +309,9 @@ class SyncStepFMUSignalsTests(TestCase):
             ],
         )
 
-        sig = StepIODefinition.objects.get(workflow_step=step)
+        # Filter out parser-fact rows so .get() resolves to the single
+        # variable-level signal under test.
+        sig = _variable_sigs(step).get()
         self.assertEqual(sig.provider_binding["causality"], "output")
         self.assertEqual(sig.metadata["value_reference"], 42)
         self.assertEqual(sig.metadata["variability"], "continuous")
@@ -282,7 +359,7 @@ class SyncStepFMUSignalsTests(TestCase):
                 _make_fmu_var("T_outdoor", causality="input"),
             ],
         )
-        old_sig = StepIODefinition.objects.get(workflow_step=step)
+        old_sig = _variable_sigs(step).get()
         self.assertEqual(old_sig.contract_key, "t_outdoor")
 
         # Re-upload: same variable renamed to T_ambient
@@ -294,7 +371,7 @@ class SyncStepFMUSignalsTests(TestCase):
         )
 
         # Old signal is gone, new one exists
-        sigs = list(StepIODefinition.objects.filter(workflow_step=step))
+        sigs = list(_variable_sigs(step))
         self.assertEqual(len(sigs), 1)
         self.assertEqual(sigs[0].contract_key, "t_ambient")
         self.assertNotEqual(sigs[0].pk, old_sig.pk)

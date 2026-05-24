@@ -61,18 +61,47 @@ class TestIdfTextExtraction:
     object definitions, indentation conventions.
     """
 
-    def test_extracts_three_facts_from_real_idf(self, real_idf):
+    def test_extracts_all_phase_2_facts_from_real_idf(self, real_idf):
         """End-to-end smoke test against a real EnergyPlus sample IDF.
 
         Why it matters: this is the moment the parser becomes useful.
         If it doesn't work on a real IDF, the whole input-stage
         assertion story is broken for EnergyPlus users.
+
+        The catalog v1.2 fact set extracts twelve values from the
+        IDF; we assert each one against the known shape of
+        1ZoneUncontrolled.idf. The fixture is a minimal one-zone
+        model without HVAC.
         """
-        facts = idf_facts.extract_poc_facts(real_idf)
+        facts = idf_facts.extract_facts(real_idf)
+        # Pin every fact rather than just the original three so the
+        # test catches regressions in any extractor — pinning a
+        # subset would hide "we silently lost building_name"
+        # failures.
+        #
+        # The expected values reflect what 1ZoneUncontrolled.idf
+        # actually contains:
+        # - The Building name is "Simple One Zone (Wireframe DXF)"
+        #   verbatim (the parenthetical suffix is part of the IDF).
+        # - MinimalShadowing is the deliberate choice for this
+        #   uncontrolled-zone fixture (a one-zone box doesn't
+        #   benefit from full-exterior solar tracking).
+        # - The fixture declares three Construction objects (one
+        #   each for opaque envelope, fenestration test material,
+        #   and ground/floor) even though the zone is windowless.
         assert facts == {
             "idf_version": "25.1",
-            "zone_count": 1,
+            "building_name": "Simple One Zone (Wireframe DXF)",
             "north_axis_deg": 0.0,
+            "terrain": "Suburbs",
+            "solar_distribution": "MinimalShadowing",
+            "timestep_per_hour": 4,
+            "zone_count": 1,
+            "surface_count": 6,  # six walls/roof/floor in a single zone
+            "window_count": 0,  # uncontrolled-zone fixture has no glazing
+            "construction_count": 3,
+            "run_period_count": 1,
+            "has_hvac": False,
         }
 
     def test_extracts_version_from_minimal_idf(self):
@@ -221,6 +250,181 @@ class TestNorthAxis:
         assert facts["north_axis_deg"] == 0.0
 
 
+class TestBuildingFields:
+    """Building-object field extraction beyond just North Axis.
+
+    Phase 2 (catalog v1.2) added three more Building-object facts:
+    ``building_name`` (field 1), ``terrain`` (field 3), and
+    ``solar_distribution`` (field 6). All three share the same
+    fields-list parser as ``north_axis_deg`` and apply IDD defaults
+    when the field is absent or blank.
+    """
+
+    def test_extracts_building_name(self):
+        """Building Name is field 1 of the Building object."""
+        idf = "Building, My Custom Name, 0;"
+        facts = idf_facts.extract_facts(idf)
+        assert facts["building_name"] == "My Custom Name"
+
+    def test_extracts_terrain_when_present(self):
+        """Terrain is field 3 of the Building object."""
+        idf = "Building, Name, 0, City, 0.04, 0.4, FullExterior;"
+        facts = idf_facts.extract_facts(idf)
+        assert facts["terrain"] == "City"
+
+    def test_terrain_defaults_to_suburbs_when_absent(self):
+        """Per the IDD, Terrain defaults to ``Suburbs`` when blank.
+
+        The minimal Building object (name-only) is legitimate IDF —
+        the parser must return the documented default rather than
+        None or empty string, matching what EnergyPlus would use at
+        simulation time.
+        """
+        idf = "Building, NameOnly;"
+        facts = idf_facts.extract_facts(idf)
+        assert facts["terrain"] == "Suburbs"
+
+    def test_terrain_defaults_to_suburbs_when_blank(self):
+        """Blank Terrain field also triggers the IDD default."""
+        # Field 3 (Terrain) is empty between the second and third commas.
+        idf = "Building, Name, 0, , 0.04;"
+        facts = idf_facts.extract_facts(idf)
+        assert facts["terrain"] == "Suburbs"
+
+    def test_extracts_solar_distribution_when_present(self):
+        """Solar Distribution is field 6 of the Building object."""
+        idf = "Building, Name, 0, Suburbs, 0.04, 0.4, FullInteriorAndExterior, 25, 6;"
+        facts = idf_facts.extract_facts(idf)
+        assert facts["solar_distribution"] == "FullInteriorAndExterior"
+
+    def test_solar_distribution_defaults_to_full_exterior_when_absent(self):
+        """IDD default for Solar Distribution is ``FullExterior``."""
+        idf = "Building, NameOnly;"
+        facts = idf_facts.extract_facts(idf)
+        assert facts["solar_distribution"] == "FullExterior"
+
+
+class TestTimestepPerHour:
+    """Timestep object extraction.
+
+    The Timestep object declares the per-hour simulation timestep
+    count. When absent, the IDD default (4) applies — but the parser
+    returns None for absence so authors can distinguish "explicitly
+    declared as 4" from "fell back to default 4" via the catalog's
+    ``on_missing`` policy.
+    """
+
+    def test_extracts_timestep_when_present(self):
+        """Timestep, 6; → timestep_per_hour == 6."""
+        idf = "Timestep, 6;"
+        facts = idf_facts.extract_facts(idf)
+        assert facts["timestep_per_hour"] == 6  # noqa: PLR2004
+
+    def test_timestep_absent_omits_key(self):
+        """No Timestep object → key omitted (catalog's on_missing decides)."""
+        idf = "Version, 25.1;"
+        facts = idf_facts.extract_facts(idf)
+        assert "timestep_per_hour" not in facts
+
+    def test_timestep_blank_value_omits_key(self):
+        """A blank Timestep value is unparseable — omit rather than guess."""
+        # The bare-comma-then-semicolon form is malformed but tolerated
+        # by EnergyPlus (uses IDD default); we treat it as "not declared"
+        # since the parser can't recover a meaningful int.
+        idf = "Timestep, ;"
+        facts = idf_facts.extract_facts(idf)
+        assert "timestep_per_hour" not in facts
+
+
+class TestObjectCounts:
+    """Phase 2 count-based facts: surfaces, windows, constructions, runs.
+
+    All four counts use the same word-boundary pattern as Zone — the
+    bare object name followed by a comma at the start of an object.
+    The boundary stops ``Construction:CfactorUndergroundWall,`` etc.
+    from inflating the ``Construction`` count.
+    """
+
+    def test_surface_count(self):
+        """BuildingSurface:Detailed objects are counted."""
+        idf = (
+            "BuildingSurface:Detailed, Wall A;\n"
+            "BuildingSurface:Detailed, Wall B;\n"
+            "BuildingSurface:Detailed, Roof;\n"
+        )
+        facts = idf_facts.extract_facts(idf)
+        assert facts["surface_count"] == 3  # noqa: PLR2004
+
+    def test_window_count_includes_both_object_types(self):
+        """Window + FenestrationSurface:Detailed both contribute.
+
+        Legacy ``Window,`` and modern ``FenestrationSurface:Detailed,``
+        both declare windows in EnergyPlus IDFs. Counting only one
+        would underreport in mixed-vintage models. The sum is the
+        useful "are there any glazings?" answer.
+        """
+        idf = (
+            "Window, Window1;\n"
+            "FenestrationSurface:Detailed, FenA;\n"
+            "FenestrationSurface:Detailed, FenB;\n"
+        )
+        facts = idf_facts.extract_facts(idf)
+        assert facts["window_count"] == 3  # noqa: PLR2004
+
+    def test_construction_count_excludes_subtypes(self):
+        """Bare ``Construction,`` only — subtypes don't inflate the count.
+
+        The bare-word boundary stops ``Construction:CfactorUndergroundWall,``
+        and ``Construction:FfactorGroundFloor,`` from being counted.
+        These are different object types with their own catalog
+        entries (if we ever choose to expose them).
+        """
+        idf = (
+            "Construction, Wall Construction;\n"
+            "Construction, Roof Construction;\n"
+            "Construction:CfactorUndergroundWall, BasementWall;\n"
+            "Construction:FfactorGroundFloor, BasementFloor;\n"
+        )
+        facts = idf_facts.extract_facts(idf)
+        assert facts["construction_count"] == 2  # noqa: PLR2004
+
+    def test_run_period_count(self):
+        """RunPeriod objects are counted."""
+        idf = (
+            "RunPeriod, Annual, 1, 1, , 12, 31;\nRunPeriod, JulyOnly, 7, 1, , 7, 31;\n"
+        )
+        facts = idf_facts.extract_facts(idf)
+        assert facts["run_period_count"] == 2  # noqa: PLR2004
+
+
+class TestHasHvac:
+    """The has_hvac capability flag detects any HVAC system presence."""
+
+    def test_no_hvac(self):
+        """A pure-envelope model returns False."""
+        idf = "Version, 25.1;\nZone, Z1;"
+        facts = idf_facts.extract_facts(idf)
+        assert facts["has_hvac"] is False
+
+    def test_hvac_template_triggers_true(self):
+        """Any HVACTemplate:* object family flips the flag."""
+        idf = "HVACTemplate:Zone:IdealLoadsAirSystem, Z1;"
+        facts = idf_facts.extract_facts(idf)
+        assert facts["has_hvac"] is True
+
+    def test_zone_hvac_triggers_true(self):
+        """ZoneHVAC:* family also counts."""
+        idf = "ZoneHVAC:IdealLoadsAirSystem, Z1IAS;"
+        facts = idf_facts.extract_facts(idf)
+        assert facts["has_hvac"] is True
+
+    def test_air_loop_hvac_triggers_true(self):
+        """AirLoopHVAC (bare object name) also counts."""
+        idf = "AirLoopHVAC, Main Loop;"
+        facts = idf_facts.extract_facts(idf)
+        assert facts["has_hvac"] is True
+
+
 class TestMissingFields:
     """Missing-field behaviour aligns with the catalog's on_missing policy.
 
@@ -268,8 +472,19 @@ class TestEpjsonExtraction:
     inputs — that's the test of cross-format parity.
     """
 
-    def test_extracts_all_three_facts_from_epjson(self):
-        """A complete epJSON dict produces the same three facts as IDF."""
+    def test_extracts_all_phase_2_facts_from_epjson(self):
+        """A complete epJSON dict produces the same shape of facts as IDF text.
+
+        Catalog v1.2 added nine facts on top of the original three.
+        The epJSON variant mirrors the IDF text extractor and
+        produces the same field set for equivalent inputs — that's
+        the cross-format parity guarantee.
+
+        We exercise a realistic shape with: an HVACTemplate object
+        for ``has_hvac=True``, a Timestep dict for
+        ``timestep_per_hour``, and dicts for every counted object
+        type so the counts aren't all zero.
+        """
         epjson = {
             "Version": {
                 "Version 1": {"version_identifier": "25.1"},
@@ -277,19 +492,39 @@ class TestEpjsonExtraction:
             "Building": {
                 "My Building": {
                     "north_axis": 45.0,
-                    "terrain": "Suburbs",
+                    "terrain": "Urban",
+                    "solar_distribution": "FullExterior",
                 },
             },
-            "Zone": {
-                "Zone One": {},
-                "Zone Two": {},
+            "Timestep": {
+                "Timestep 1": {"number_of_timesteps_per_hour": 6},
             },
+            "Zone": {"Zone One": {}, "Zone Two": {}},
+            "BuildingSurface:Detailed": {
+                "Surface A": {},
+                "Surface B": {},
+                "Surface C": {},
+            },
+            "FenestrationSurface:Detailed": {"Window 1": {}},
+            "Construction": {"Wall Construction": {}, "Roof Construction": {}},
+            "RunPeriod": {"Annual": {}},
+            # HVACTemplate prefix → has_hvac=True per the prefix scan.
+            "HVACTemplate:Zone:IdealLoadsAirSystem": {"Z1": {}},
         }
-        facts = idf_facts.extract_poc_facts(epjson)
+        facts = idf_facts.extract_facts(epjson)
         assert facts == {
             "idf_version": "25.1",
+            "building_name": "My Building",
             "north_axis_deg": 45.0,
+            "terrain": "Urban",
+            "solar_distribution": "FullExterior",
+            "timestep_per_hour": 6,
             "zone_count": 2,
+            "surface_count": 3,
+            "window_count": 1,  # one FenestrationSurface:Detailed entry
+            "construction_count": 2,
+            "run_period_count": 1,
+            "has_hvac": True,
         }
 
     def test_epjson_missing_building_falls_back(self):

@@ -6,7 +6,7 @@ Provides shared enrichment logic used by both the web UI
 Given a ``ValidationStepRun`` whose ``output`` contains raw signal data,
 these helpers:
 
-1. Filter signals by the author's ``display_signals`` selection.
+1. Filter signals by the author's ``display_step_outputs`` selection.
    **Empty list means show NONE** — the author must opt in to each
    signal they want surfaced to the submitter. A future workflow-step
    toggle ("show all output signals") will give one-click access for
@@ -18,13 +18,13 @@ these helpers:
 
 This is a **cross-validator capability** — any validator type that
 populates ``step_run.output["signals"]`` gets signal display
-automatically.  The ``display_signals`` filter is read via
-``getattr(typed_config, "display_signals", [])`` so validators whose
+automatically.  The ``display_step_outputs`` filter is read via
+``getattr(typed_config, "display_step_outputs", [])`` so validators whose
 config model lacks that field simply surface no signals (consistent
 with the opt-in default).
 
 See Also:
-    - ``EnergyPlusStepConfig.display_signals`` (``workflows/step_configs.py``)
+    - ``EnergyPlusStepConfig.display_step_outputs`` (``workflows/step_configs.py``)
     - ``StepIODefinition`` (``validations/models.py``)
     - ``AdvancedValidationProcessor.store_signals()`` (persists signals)
 """
@@ -79,13 +79,13 @@ class DisplaySignal:
 # ── Public API ───────────────────────────────────────────────────────
 
 
-def build_display_signals(step_run: ValidationStepRun) -> list[DisplaySignal]:
+def build_display_step_outputs(step_run: ValidationStepRun) -> list[DisplaySignal]:
     """Build display-ready signals for a single step run.
 
     Steps:
         1. Read raw signals from ``step_run.output["signals"]``.
         2. Determine which signals to show using the step config's
-           ``display_signals`` list (empty = show all).
+           ``display_step_outputs`` list (empty = show all).
         3. Batch-fetch ``StepIODefinition`` records for enrichment
            (labels, units, precision).
         4. Format each value and return an ordered list.
@@ -107,8 +107,8 @@ def build_display_signals(step_run: ValidationStepRun) -> list[DisplaySignal]:
     #
     # A future "Show all output signals" workflow-step toggle is
     # tracked in validibot-project. Until that ships, the only way to
-    # show all signals is to enumerate them in ``display_signals``.
-    display_filter = _get_display_signals_filter(step_run)
+    # show all signals is to enumerate them in ``display_step_outputs``.
+    display_filter = _get_display_step_outputs_filter(step_run)
     if not display_filter:
         return []
     # Preserve the author's ordering by iterating display_filter.
@@ -229,14 +229,14 @@ def _build_template_param_meta(
 # ── Internal helpers ─────────────────────────────────────────────────
 
 
-def _get_display_signals_filter(step_run: ValidationStepRun) -> list[str]:
-    """Extract the ``display_signals`` list from the step's typed config.
+def _get_display_step_outputs_filter(step_run: ValidationStepRun) -> list[str]:
+    """Extract the ``display_step_outputs`` list from the step's typed config.
 
     Returns an empty list when:
     - The step has no workflow_step (defensive).
-    - The config model has no ``display_signals`` attribute (cross-
+    - The config model has no ``display_step_outputs`` attribute (cross-
       validator: show all signals).
-    - The author left ``display_signals`` empty (backward-compatible
+    - The author left ``display_step_outputs`` empty (backward-compatible
       default).
     """
     workflow_step = getattr(step_run, "workflow_step", None)
@@ -244,13 +244,13 @@ def _get_display_signals_filter(step_run: ValidationStepRun) -> list[str]:
         return []
     try:
         typed_config = workflow_step.typed_config
-        return getattr(typed_config, "display_signals", [])
+        return getattr(typed_config, "display_step_outputs", [])
     except (AttributeError, TypeError, KeyError, ValueError):
         # Parsing/attribute failures are safe to degrade (show all
         # signals).  Infrastructure errors (DatabaseError, etc.) are
         # intentionally NOT caught — they should propagate.
         logger.warning(
-            "Could not read display_signals from step config for step_run %s",
+            "Could not read display_step_outputs from step config for step_run %s",
             step_run.id,
             exc_info=True,
         )

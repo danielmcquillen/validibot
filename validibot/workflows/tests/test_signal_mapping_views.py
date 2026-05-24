@@ -2229,7 +2229,7 @@ class TestSignalMappingCreateModalClose(TestCase):
 
 
 class TestPromoteOutputView(TestCase):
-    """Tests for the WorkflowStepPromoteOutputView."""
+    """Tests for the WorkflowStepPromoteStepIOView."""
 
     @classmethod
     def setUpTestData(cls):
@@ -2268,7 +2268,7 @@ class TestPromoteOutputView(TestCase):
         signal_def = self._create_output_signal(workflow)
 
         url = reverse(
-            "workflows:workflow_step_promote_output",
+            "workflows:workflow_step_promote_step_io",
             kwargs={
                 "pk": workflow.pk,
                 "step_id": signal_def.workflow_step_id,
@@ -2296,7 +2296,7 @@ class TestPromoteOutputView(TestCase):
         signal_def.save(update_fields=["promoted_signal_name"])
 
         url = reverse(
-            "workflows:workflow_step_promote_output",
+            "workflows:workflow_step_promote_step_io",
             kwargs={
                 "pk": workflow.pk,
                 "step_id": signal_def.workflow_step_id,
@@ -2328,7 +2328,7 @@ class TestPromoteOutputView(TestCase):
         signal_def = self._create_output_signal(workflow)
 
         url = reverse(
-            "workflows:workflow_step_promote_output",
+            "workflows:workflow_step_promote_step_io",
             kwargs={
                 "pk": workflow.pk,
                 "step_id": signal_def.workflow_step_id,
@@ -2354,7 +2354,7 @@ class TestPromoteOutputView(TestCase):
         signal_def = self._create_output_signal(workflow)
 
         url = reverse(
-            "workflows:workflow_step_promote_output",
+            "workflows:workflow_step_promote_step_io",
             kwargs={
                 "pk": workflow.pk,
                 "step_id": signal_def.workflow_step_id,
@@ -2412,7 +2412,7 @@ class TestPromoteOutputView(TestCase):
         )
 
         url = reverse(
-            "workflows:workflow_step_promote_output",
+            "workflows:workflow_step_promote_step_io",
             kwargs={
                 "pk": workflow.pk,
                 "step_id": step.pk,
@@ -2470,7 +2470,7 @@ class TestPromoteOutputView(TestCase):
         )
 
         url = reverse(
-            "workflows:workflow_step_promote_output",
+            "workflows:workflow_step_promote_step_io",
             kwargs={
                 "pk": workflow.pk,
                 "step_id": step.pk,
@@ -2530,7 +2530,7 @@ class TestPromoteOutputView(TestCase):
         # Workflow A promotes to "zones"
         self.client.post(
             reverse(
-                "workflows:workflow_step_promote_output",
+                "workflows:workflow_step_promote_step_io",
                 kwargs={
                     "pk": workflow_a.pk,
                     "step_id": step_a.pk,
@@ -2542,7 +2542,7 @@ class TestPromoteOutputView(TestCase):
         # Workflow B promotes to "zone_total"
         self.client.post(
             reverse(
-                "workflows:workflow_step_promote_output",
+                "workflows:workflow_step_promote_step_io",
                 kwargs={
                     "pk": workflow_b.pk,
                     "step_id": step_b.pk,

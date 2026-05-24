@@ -128,9 +128,11 @@ Step-local values the validator has at the start of a step, before its
 container or main work runs. Three sources feed `i.*`:
 
 - **Parser-extracted facts** — values the validator extracts from the
-  submission payload via its `extract_input_signals()` classmethod (e.g.
-  EnergyPlus parses the IDF and exposes `i.zone_count`, `i.idf_version`).
-  Source for arcane-format validators that ship a parser.
+  submission payload (or stamped metadata) via its `extract_input_signals()`
+  hook (e.g. EnergyPlus parses the IDF and exposes `i.zone_count`,
+  `i.idf_version`; FMU reads stamped `introspection_metadata` and exposes
+  `i.fmi_version`, `i.input_variable_count`). Source for arcane-format
+  validators that ship a parser.
 - **Resolved StepInputBindings** — values resolved from author-configured
   bindings before the container runs. FMU's model input variables are the
   canonical example: the .fmu file declares its inputs; the author binds
@@ -239,11 +241,12 @@ Populated when this step begins, before its container runs (or before its
 main in-process work for built-in validators). Three sources:
 
 1. **Parser-extracted facts** from the validator's
-   `extract_input_signals(payload)` classmethod. Validators that
+   `extract_input_signals(payload)` instance method. Validators that
    understand an arcane format implement this to expose useful facts about
    the submission before doing their main work. EnergyPlus extracts IDF
-   facts; FMU could extract `modelDescription.xml` facts (currently
-   unused).
+   facts; FMU exposes `modelDescription.xml` metadata stamped at
+   upload/probe time via `FMUModel.introspection_metadata`
+   (Phase 6 per ADR-2026-05-22b).
 2. **Resolved StepInputBinding values** for inputs declared with
    `direction=INPUT` and bound to a payload path or signal. The launcher
    resolves each binding against the submission data before invoking the
@@ -747,21 +750,29 @@ validators), the engine populates `i.*` from up to three sources:
 
 A validator that understands an arcane format implements
 `extract_input_signals(payload)` to expose useful facts about the
-submission. Signature:
+submission (or about a validator-bound artifact, like the FMU's
+modelDescription.xml stamped at upload time). Signature:
 
 ```python
-@classmethod
-def extract_input_signals(cls, payload: Any) -> dict[str, Any] | None:
-    """Extract input-stage facts from the submission.
+def extract_input_signals(self, payload: Any) -> dict[str, Any] | None:
+    """Extract input-stage facts.
 
     Returns a dict keyed by catalog contract_key, or None if not
     applicable. Called after preprocess_submission() so template-mode
     submissions are parsed against the resolved IDF.
+
+    Instance method (not classmethod) so subclasses can reach
+    self.run_context to look up validator- or step-bound artifacts.
     """
 ```
 
 For EnergyPlus, this parses the IDF text and returns
 `{"idf_version": "25.1", "zone_count": 12, "north_axis_deg": 0.0}`.
+For FMU, this reads the stamped `FMUModel.introspection_metadata`
+(or `step.config["fmu_introspection"]` for step-level uploads) and
+returns `{"fmi_version": "2.0", "input_variable_count": 4, ...}` —
+filtered to the catalog-declared parser fact keys so the catalog
+stays the contract.
 
 The base class returns `None`; validators opt in by overriding.
 

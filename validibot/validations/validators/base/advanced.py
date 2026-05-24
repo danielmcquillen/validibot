@@ -426,10 +426,22 @@ class AdvancedValidator(BaseValidator):
         # Returning None when there are no issues was the original
         # (incorrect) approach — it silently dropped input-stage
         # totals. Per the May 2026 code review's P2 finding.
+        #
+        # Enrich the payload with namespaced values (i.* contract
+        # keys from parser facts + bindings, plus s.* workflow
+        # signals) so BASIC assertions targeting i.<name> /
+        # s.<name> resolve via the bare contract_key at the top
+        # level. CEL evaluation reads from its own namespaced
+        # context and ignores this payload, so the enrichment is a
+        # no-op for CEL targets.
+        enriched_payload = self._enrich_basic_payload(
+            payload,
+            stage="input",
+        )
         assertion_result = self.evaluate_assertions_for_stage(
             validator=validator,
             ruleset=ruleset,
-            payload=payload,
+            payload=enriched_payload,
             stage="input",
         )
 
@@ -604,7 +616,7 @@ class AdvancedValidator(BaseValidator):
             if validator and ruleset:
                 # Build assertion payload: merge submission input data with
                 # output signals so output-stage assertions can reference
-                # both.  For example, an FMU assertion like
+                # both. For example, an FMU assertion like
                 # ``Q_cooling_actual < Q_cooling_max * 0.85`` compares an
                 # output signal against a user-provided input value.
                 #
@@ -613,12 +625,25 @@ class AdvancedValidator(BaseValidator):
                 # the convention in ``_build_cel_context``.
                 #
                 # Prefer resolved_inputs (with defaults and nested-path
-                # resolution applied) over raw submission JSON when available.
+                # resolution applied) over raw submission JSON when
+                # available.
                 resolved_inputs = self._get_resolved_inputs(run_context)
                 assertion_payload = self._build_assertion_payload(
                     signals,
                     run_context,
                     resolved_inputs=resolved_inputs,
+                )
+                # Additionally enrich with workflow signals so BASIC
+                # assertions targeting s.<name> resolve via the bare
+                # name. ``_build_assertion_payload`` already merges
+                # resolved_inputs and signals; this adds workflow_signals
+                # for BASIC compatibility (CEL reads them from its own
+                # context regardless). Output stage so the helper skips
+                # re-running StepInputBinding resolution.
+                assertion_payload = self._enrich_basic_payload(
+                    assertion_payload,
+                    stage="output",
+                    output_signals=None,
                 )
 
                 assertion_result = self.evaluate_assertions_for_stage(

@@ -67,7 +67,7 @@ Context:
                         s.{{ signal.signal_name }}
                       </span>
                       <form class="d-inline"
-                            hx-post="{% url 'workflows:workflow_step_promote_output' workflow.pk step.pk signal.signal_definition.pk %}"
+                            hx-post="{% url 'workflows:workflow_step_promote_step_io' workflow.pk step.pk signal.signal_definition.pk %}"
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-swap="none"
                             hx-disabled-elt="find button">
@@ -81,7 +81,7 @@ Context:
                     </div>
                   {% else %}
                     <form class="d-inline"
-                          hx-post="{% url 'workflows:workflow_step_promote_output' workflow.pk step.pk signal.signal_definition.pk %}"
+                          hx-post="{% url 'workflows:workflow_step_promote_step_io' workflow.pk step.pk signal.signal_definition.pk %}"
                           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                           hx-swap="none"
                           hx-disabled-elt="find button">

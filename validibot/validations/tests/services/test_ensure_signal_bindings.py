@@ -111,9 +111,8 @@ class TestEnsureStepInputBindings(TestCase):
             direction=SignalDirection.INPUT,
         )
         # Per ADR-2026-05-22b, parser-extracted facts are INTERNAL:
-        # the validator's extract_input_signals() classmethod produces
-        # their values directly, so author-supplied source paths don't
-        # apply.
+        # the validator's extract_input_signals() hook produces their
+        # values directly, so author-supplied source paths don't apply.
         self.assertEqual(signal.source_kind, "internal")
         self.assertFalse(signal.is_path_editable)
 

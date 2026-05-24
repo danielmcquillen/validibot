@@ -86,11 +86,16 @@ dependencies = [
   # 0.7.0 adds ``StepValidatorRecord.validator_backend_image_digest``;
   # 0.7.1–0.7.3 shipped publish-workflow fixes;
   # 0.7.4 adds the optional ``EvidenceManifest.source`` field that
-  # documents the auth channel that produced each run.  The Django-side
-  # builder populates ``source`` automatically when the installed
-  # schema exposes the field, so bumping this pin activates the
-  # behaviour in production.
-  "validibot-shared==0.7.4",
+  # documents the auth channel that produced each run;
+  # 0.8.0 is the ADR-2026-05-22 catalog cleanup: removes
+  # ``EnergyPlusSimulationMetrics.zone_count`` (which is a step input
+  # under the provenance rule, not a step output) and renames
+  # ``floor_area_m2`` → ``simulated_conditioned_area_m2`` so the field
+  # name disambiguates the simulation-derived value from any
+  # design-floor-area input the IDF declares. Both changes are
+  # breaking for envelope consumers; the catalog v1.1 already reflects
+  # the new shape.
+  "validibot-shared==0.8.0",
   "django-csp==4.0",
   "django-permissions-policy==4.30.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in

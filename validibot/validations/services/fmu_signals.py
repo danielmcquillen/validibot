@@ -72,16 +72,32 @@ def sync_step_fmu_signals(
     if not step.pk:
         raise ValueError("Step must be saved before syncing FMU signals.")
 
-    # Track which (contract_key, direction) tuples we create/update so we
-    # can delete orphans afterward.
+    # ``seen`` tracks every (contract_key, direction) tuple we touched
+    # in this call (parser facts + variables). Two roles:
+    #   1. In-batch collision detection. Two variables slugifying to
+    #      the same key with the same direction get suffixed (-2, -3, …).
+    #      Cross-direction collisions are allowed by the model's
+    #      (workflow_step, contract_key, direction) uniqueness.
+    #   2. Tuple-aware orphan cleanup at the end. A row whose tuple
+    #      isn't in ``seen`` corresponds to a variable that's gone.
+    #
+    # We deliberately do NOT check pre-existing DB keys for collisions:
+    # ``update_or_create`` keyed on (workflow_step, contract_key,
+    # direction) reuses the existing row when those match, preserving
+    # StepIODefinition.pk so StepInputBinding / WorkflowStepIOPromotion /
+    # RulesetAssertion FKs survive re-upload (identity stability —
+    # May 2026 review's P1 finding).
     seen: set[tuple[str, str]] = set()
 
-    # Track contract_keys assigned in this batch to detect collisions
-    # when two different FMU variables slugify to the same key.
-    # We do NOT check against existing DB keys because on re-upload,
-    # existing keys should be updated in place (via update_or_create),
-    # not treated as collisions.
-    batch_keys: set[str] = set()
+    # Seed parser-fact StepIODefinition rows (Phase 6 / May 2026 P1
+    # finding). These mirror the static catalog entries on the system
+    # FMU validator so authors get identical i.* resolution whether
+    # they bind a workflow step to (a) the system FMU validator + a
+    # step-level FMU upload, or (b) a user-created library FMU
+    # validator. Without this branch, step-level FMU steps would have
+    # an empty i.* even though the system catalog declares the parser
+    # facts.
+    seed_step_parser_fact_signals(step, seen=seen)
 
     for var in fmu_variables:
         causality = (var.get("causality") or "").lower()
@@ -100,10 +116,12 @@ def sync_step_fmu_signals(
         base_key = slugify(name, separator="_") or "signal"
         contract_key = base_key
         counter = 2
-        while contract_key in batch_keys:
+        # Suffix only when THIS (key, direction) has already been
+        # claimed in this batch. Pre-existing DB rows with the same
+        # tuple are reused by update_or_create, not blocked here.
+        while (contract_key, direction) in seen:
             contract_key = f"{base_key}_{counter}"
             counter += 1
-        batch_keys.add(contract_key)
         seen.add((contract_key, direction))
 
         # Upsert StepIODefinition
@@ -135,11 +153,24 @@ def sync_step_fmu_signals(
             },
         )
 
-        # Upsert StepInputBinding for input signals.
-        # Leave source_data_path empty — the user must map each input
-        # to the correct payload path or signal for their data format.
+        # Ensure a StepInputBinding exists for each input signal.
+        # ``get_or_create`` (not ``update_or_create``) is deliberate:
+        # ``source_data_path``, ``source_scope``, and ``is_required``
+        # are AUTHOR STATE — the workflow author chooses how each
+        # input gets resolved at runtime. On re-upload of an unchanged
+        # FMU variable, ``update_or_create(defaults={"source_data_path":
+        # "", ...})`` would silently reset a hand-mapped path back to
+        # empty string (the May 2026 review's P1 finding caught
+        # exactly this). With ``get_or_create``, the defaults apply
+        # only when the binding is being created for the first time;
+        # existing bindings keep whatever the author has put in.
+        #
+        # This matches the contract that
+        # ``services.signal_bindings.ensure_step_signal_bindings``
+        # uses for catalog-driven bindings — create when missing,
+        # never overwrite author state.
         if direction == SignalDirection.INPUT:
-            StepInputBinding.objects.update_or_create(
+            StepInputBinding.objects.get_or_create(
                 workflow_step=step,
                 signal_definition=sig,
                 defaults={
@@ -149,24 +180,34 @@ def sync_step_fmu_signals(
                 },
             )
 
-    # Delete orphaned signals from a previous FMU upload whose variables
-    # no longer appear in the new FMU. CASCADE deletes associated bindings.
-    orphaned = StepIODefinition.objects.filter(
+    # ── Orphan cleanup (tuple-aware) ─────────────────────────────────
+    # Delete StepIODefinition rows whose (contract_key, direction) tuple
+    # didn't appear in this call. Tuple-aware filtering matters because
+    # the model's uniqueness is (workflow_step, contract_key, direction)
+    # — the same contract_key can coexist across INPUT and OUTPUT (e.g.,
+    # an FMU variable named ``T`` with causality=input and another
+    # ``T`` with causality=output). Filtering by contract_key alone
+    # would either over-delete (drop the surviving direction) or
+    # under-delete (miss a row whose key matches a survivor but
+    # direction doesn't).
+    #
+    # The queryset is small (one step) so the O(n) Python walk is
+    # fine. Same pattern as ``services.fmu._persist_variables``.
+    candidates = StepIODefinition.objects.filter(
         workflow_step=step,
         origin_kind=SignalOriginKind.FMU,
-    ).exclude(
-        # Keep only signals we just created/updated
-        contract_key__in=[ck for ck, _ in seen],
     )
+    orphan_ids = [
+        sig.pk for sig in candidates if (sig.contract_key, sig.direction) not in seen
+    ]
 
     # Before deleting orphaned signals, preserve assertion targets.
     # Assertions using SET_NULL FK would violate the XOR constraint
     # if all three target fields become empty. Set target_data_path
     # to the contract_key so the assertion remains valid.
-    if orphaned.exists():
+    if orphan_ids:
         from validibot.validations.models import RulesetAssertion
 
-        orphan_ids = list(orphaned.values_list("pk", flat=True))
         affected_assertions = RulesetAssertion.objects.filter(
             target_signal_definition_id__in=orphan_ids,
         )
@@ -179,7 +220,7 @@ def sync_step_fmu_signals(
                     update_fields=["target_data_path", "target_signal_definition"],
                 )
 
-    deleted_count, _ = orphaned.delete()
+    deleted_count, _ = candidates.filter(pk__in=orphan_ids).delete()
     if deleted_count:
         logger.info(
             "Deleted %d orphaned FMU signal definitions on step %s",
@@ -193,11 +234,54 @@ def clear_step_fmu_signals(step: WorkflowStep) -> None:
 
     Called when the user removes the FMU from a step. CASCADE deletes
     associated ``StepInputBinding`` rows.
+
+    Includes parser-fact rows (origin_kind=FMU, source_kind=INTERNAL)
+    seeded by ``seed_step_parser_fact_signals`` because they carry
+    the same origin_kind — removing the FMU should remove every
+    FMU-derived step input, parser facts included.
     """
     StepIODefinition.objects.filter(
         workflow_step=step,
         origin_kind=SignalOriginKind.FMU,
     ).delete()
+
+
+def seed_step_parser_fact_signals(
+    step: WorkflowStep,
+    *,
+    seen: set[tuple[str, str]],
+) -> None:
+    """Seed parser-fact StepIODefinition rows on a step-level FMU upload.
+
+    Step-level counterpart to
+    ``services.fmu._seed_parser_fact_signals`` (which handles library
+    FMU validators). Both call sites consume the same
+    ``PARSER_FACT_SPECS`` / ``_parser_fact_step_io_defaults`` so the
+    rows are identical regardless of which path was used — the May
+    2026 review's P2 finding caught that mismatch otherwise.
+
+    Identity-stable via ``update_or_create`` keyed on
+    ``(workflow_step, contract_key, direction)``: re-uploading an FMU
+    reuses the existing parser-fact rows rather than recreating them,
+    preserving any author-built ``StepInputBinding`` or
+    ``WorkflowStepIOPromotion`` FK relationships.
+
+    The ``seen`` set (mutated in-place) records the
+    (contract_key, INPUT) tuples we claimed, so the caller's
+    per-variable upsert can detect in-batch collisions and the
+    orphan-cleanup at the end can skip parser-fact rows.
+    """
+    from validibot.validations.services.fmu import PARSER_FACT_SPECS
+    from validibot.validations.services.fmu import _parser_fact_step_io_defaults
+
+    for spec in PARSER_FACT_SPECS:
+        StepIODefinition.objects.update_or_create(
+            workflow_step=step,
+            contract_key=spec.contract_key,
+            direction=SignalDirection.INPUT,
+            defaults=_parser_fact_step_io_defaults(spec),
+        )
+        seen.add((spec.contract_key, SignalDirection.INPUT))
 
 
 # ── Internal helpers ─────────────────────────────────────────────────

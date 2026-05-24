@@ -1117,7 +1117,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
         # alongside workflow-level mappings.
         #
         # Two sources, matching the runtime injection in
-        # _inject_promoted_outputs and the autocomplete in
+        # _inject_promotions and the autocomplete in
         # get_catalog_choices:
         #
         # 1. In-row promotions on step-owned StepIODefinitions.
@@ -1308,7 +1308,7 @@ class WorkflowStepTemplateVariablesView(WorkflowObjectMixin, FormView):
                 "workflow": self.get_workflow(),
                 "step": self.step,
                 "tplvar_form": context.get("form"),
-                "display_signals": step_config.get("display_signals", []),
+                "display_step_outputs": step_config.get("display_step_outputs", []),
             },
         )
         return context
@@ -1355,15 +1355,15 @@ class WorkflowStepTemplateVariablesView(WorkflowObjectMixin, FormView):
         return render(self.request, self.template_name, context)
 
 
-class WorkflowStepDisplaySignalsView(WorkflowObjectMixin, FormView):
+class WorkflowStepDisplayStepOutputsView(WorkflowObjectMixin, FormView):
     """HTMx modal endpoint for editing which output signals are shown to users.
 
-    GET returns the modal form content (loaded into displaySignalsModal).
-    POST validates and saves the selection to ``step.config["display_signals"]``,
+    GET returns the modal form content (loaded into displayStepOutputsModal).
+    POST validates and saves the selection to ``step.config["display_step_outputs"]``,
     then triggers a page reload via HX-Trigger.
     """
 
-    template_name = "workflows/partials/display_signals_modal_content.html"
+    template_name = "workflows/partials/display_step_outputs_modal_content.html"
 
     def dispatch(self, request, *args, **kwargs):
         if not self.user_can_manage_workflow():
@@ -1376,9 +1376,9 @@ class WorkflowStepDisplaySignalsView(WorkflowObjectMixin, FormView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_form(self, form_class=None):
-        from validibot.workflows.forms import DisplaySignalsForm
+        from validibot.workflows.forms import DisplayStepOutputsForm
 
-        return DisplaySignalsForm(
+        return DisplayStepOutputsForm(
             data=self.request.POST or None,
             step=self.step,
             validator=self.step.validator,
@@ -1395,16 +1395,16 @@ class WorkflowStepDisplaySignalsView(WorkflowObjectMixin, FormView):
         return context
 
     def form_valid(self, form):
-        selected = form.cleaned_data.get("display_signals", [])
+        selected = form.cleaned_data.get("display_step_outputs", [])
         config = dict(self.step.config or {})
-        config["display_signals"] = selected
+        config["display_step_outputs"] = selected
         self.step.config = config
         self.step.save(update_fields=["config"])
 
         response = HttpResponse(status=HTTPStatus.NO_CONTENT)
         response["HX-Trigger"] = json.dumps(
             {
-                "close-modal": "displaySignalsModal",
+                "close-modal": "displayStepOutputsModal",
                 "showToast": {
                     "message": str(_("Display signals updated.")),
                     "level": "success",
@@ -1419,14 +1419,14 @@ class WorkflowStepDisplaySignalsView(WorkflowObjectMixin, FormView):
         return render(self.request, self.template_name, context)
 
 
-class WorkflowStepToggleDisplaySignalView(WorkflowObjectMixin, View):
+class WorkflowStepToggleStepOutputDisplayView(WorkflowObjectMixin, View):
     """HTMx endpoint that toggles a single output signal's visibility.
 
     POST adds or removes the signal slug from the step's
-    ``config["display_signals"]`` list and returns the updated toggle
+    ``config["display_step_outputs"]`` list and returns the updated toggle
     button HTML fragment.
 
-    Semantics: an empty ``display_signals`` list means "show all".
+    Semantics: an empty ``display_step_outputs`` list means "show all".
     Toggling a signal OFF when the list is empty first populates the
     list with all output slugs, then removes the target slug.
     """
@@ -1444,7 +1444,7 @@ class WorkflowStepToggleDisplaySignalView(WorkflowObjectMixin, View):
     def post(self, request, *args, **kwargs):
         slug = self.kwargs["signal_slug"]
         config = dict(self.step.config or {})
-        display_signals = list(config.get("display_signals", []))
+        display_step_outputs = list(config.get("display_step_outputs", []))
 
         from validibot.validations.constants import SignalDirection
 
@@ -1459,26 +1459,26 @@ class WorkflowStepToggleDisplaySignalView(WorkflowObjectMixin, View):
             ).values_list("contract_key", flat=True),
         )
 
-        if not display_signals:
+        if not display_step_outputs:
             # Empty list means "show all". Expand to the explicit list
             # so we can remove the target slug.
-            display_signals = list(all_slugs)
+            display_step_outputs = list(all_slugs)
 
-        if slug in display_signals:
-            display_signals.remove(slug)
+        if slug in display_step_outputs:
+            display_step_outputs.remove(slug)
         else:
-            display_signals.append(slug)
+            display_step_outputs.append(slug)
 
         # If the result matches "all shown", normalize back to empty
         # list to preserve the "show all" semantic.
-        if set(display_signals) == set(all_slugs):
-            display_signals = []
+        if set(display_step_outputs) == set(all_slugs):
+            display_step_outputs = []
 
-        config["display_signals"] = display_signals
+        config["display_step_outputs"] = display_step_outputs
         self.step.config = config
         self.step.save(update_fields=["config"])
 
-        is_shown = not display_signals or slug in display_signals
+        is_shown = not display_step_outputs or slug in display_step_outputs
         return HttpResponse(
             render_to_string(
                 "workflows/partials/signal_show_toggle.html",
@@ -1864,7 +1864,7 @@ class WorkflowStepOutputsPartialView(WorkflowObjectMixin, View):
         unified_signals = build_unified_signals_from_definitions(step)
         return render(
             request,
-            "workflows/partials/output_signals_table.html",
+            "workflows/partials/step_outputs_table.html",
             {
                 "unified_signals": unified_signals,
                 "step": step,
@@ -1899,7 +1899,7 @@ class WorkflowStepInputsPartialView(WorkflowObjectMixin, View):
         unified_signals = build_unified_signals_from_definitions(step)
         return render(
             request,
-            "workflows/partials/input_signals_table.html",
+            "workflows/partials/step_inputs_table.html",
             {
                 "unified_signals": unified_signals,
                 "step": step,

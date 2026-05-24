@@ -216,8 +216,10 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
         )
         findings = list(run.findings.all())
 
-        # Build display signals and template params for each step run.
-        from validibot.validations.services.signal_display import build_display_signals
+        # Build display step outputs and template params for each step run.
+        from validibot.validations.services.signal_display import (
+            build_display_step_outputs,
+        )
         from validibot.validations.services.signal_display import (
             build_template_params_display,
         )
@@ -226,7 +228,7 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
         step_params: dict[int, list] = {}
         step_template_warnings: dict[int, list] = {}
         for sr in step_runs:
-            signals = build_display_signals(sr)
+            signals = build_display_step_outputs(sr)
             if signals:
                 step_signals[sr.pk] = signals
             params = build_template_params_display(sr)

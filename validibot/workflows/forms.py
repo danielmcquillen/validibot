@@ -2620,15 +2620,15 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
 # ---------------------------------------------------------------------------
 
 
-class DisplaySignalsForm(forms.Form):
+class DisplayStepOutputsForm(forms.Form):
     """Form for selecting which output signals appear in submission results.
 
     Rendered inside a modal on the step detail page.  Populates choices
     from the validator's output signal definitions.  The selection is stored
-    in ``step.config["display_signals"]``.
+    in ``step.config["display_step_outputs"]``.
     """
 
-    display_signals = forms.MultipleChoiceField(
+    display_step_outputs = forms.MultipleChoiceField(
         required=False,
         widget=forms.CheckboxSelectMultiple,
     )
@@ -2671,13 +2671,13 @@ class DisplaySignalsForm(forms.Form):
                     label = sig.label or sig.contract_key
                     choices.append((key, label))
 
-        self.fields["display_signals"].choices = choices
+        self.fields["display_step_outputs"].choices = choices
 
         # Pre-select currently displayed signals
         if step:
-            current = (step.config or {}).get("display_signals", [])
+            current = (step.config or {}).get("display_step_outputs", [])
             if current:
-                self.fields["display_signals"].initial = current
+                self.fields["display_step_outputs"].initial = current
 
 
 # ---------------------------------------------------------------------------

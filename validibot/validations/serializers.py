@@ -104,7 +104,9 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         return ValidationRunResult.UNKNOWN
 
     def get_steps(self, obj: ValidationRun) -> list[dict]:
-        from validibot.validations.services.signal_display import build_display_signals
+        from validibot.validations.services.signal_display import (
+            build_display_step_outputs,
+        )
         from validibot.validations.services.signal_display import (
             build_template_params_display,
         )
@@ -120,7 +122,7 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             output = step_run.output or {}
 
             # Enrich with output signals and template parameters.
-            signals = build_display_signals(step_run)
+            signals = build_display_step_outputs(step_run)
             params = build_template_params_display(step_run)
 
             payload.append(

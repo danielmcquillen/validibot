@@ -3272,14 +3272,29 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
         exit 1
     fi
-    # Compute stage-specific names
+    # Compute stage-specific names.
+    #
+    # JOB_NAME convention (May 2026 standardisation): all stages use
+    # ``${APP_NAME}-validator-backend-{name}`` for prod and
+    # ``${APP_NAME}-validator-backend-{name}-{stage}`` otherwise. This
+    # matches the convention the backend repo's ``just deploy-all``
+    # uses, AND it matches what ``ValidatorConfig.cloud_run_job_name``
+    # returns at runtime (which derives from ``image_name``, which is
+    # ``validibot-validator-backend-{slug}``). Standardising on a
+    # single name pattern across both deploy paths means whichever
+    # recipe an operator runs produces the same Cloud Run Job —
+    # eliminating the "two paths created two different jobs and the
+    # runtime points at neither" trap caught in the May 2026 review.
+    #
+    # Legacy jobs created under the older ``${APP_NAME}-validator-{name}``
+    # pattern can be deleted once nothing points at them.
     if [ "{{stage}}" = "prod" ]; then
-        JOB_NAME="${APP_NAME}-validator-{{name}}"
+        JOB_NAME="${APP_NAME}-validator-backend-{{name}}"
         MAIN_SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
         WORKER_SERVICE="${APP_NAME}-worker"
     else
-        JOB_NAME="${APP_NAME}-validator-{{name}}-{{stage}}"
+        JOB_NAME="${APP_NAME}-validator-backend-{{name}}-{{stage}}"
         MAIN_SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
@@ -3288,10 +3303,6 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
     # Deploy the job with the dedicated validator SA (least-privilege).
     # Image name MUST match what ``validator-build`` / ``validator-push``
     # actually produced — both use the ``-validator-backend-`` prefix.
-    # The earlier ``-validator-`` form here referred to an image that
-    # was never built; deploys would silently fail with "image not
-    # found" until a freshly built image happened to use the matching
-    # tag.
     echo "Deploying $JOB_NAME..."
     gcloud run jobs deploy "$JOB_NAME" \
         --image {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:{{validator_backend_git_sha}} \

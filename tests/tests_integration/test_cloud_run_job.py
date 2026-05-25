@@ -53,10 +53,12 @@ class CloudRunJobIntegrationTest(TestCase):
     Prerequisites:
     - GCP_PROJECT_ID environment variable set
     - GCS_VALIDATION_BUCKET environment variable set
-    - GCS_ENERGYPLUS_JOB_NAME environment variable set
     - GCP_REGION environment variable set
     - Valid GCP credentials (GOOGLE_APPLICATION_CREDENTIALS or default credentials)
-    - Cloud Run Job deployed and ready
+    - The EnergyPlus Cloud Run Job deployed and reachable at the
+      name returned by ``get_config('ENERGYPLUS').cloud_run_job_name``
+      (May 2026: the per-validator ``GCS_*_JOB_NAME`` env vars were
+      removed; the job name now comes from ``ValidatorConfig``).
     """
 
     @classmethod
@@ -68,6 +70,8 @@ class CloudRunJobIntegrationTest(TestCase):
     @classmethod
     def _check_prerequisites(cls) -> None:
         """Verify all required GCP settings are configured."""
+        from validibot.validations.validators.base.config import get_config
+
         logger.info("=" * 60)
         logger.info("CLOUD RUN JOB TEST: Checking prerequisites")
         logger.info("=" * 60)
@@ -75,7 +79,6 @@ class CloudRunJobIntegrationTest(TestCase):
         required_settings = [
             "GCP_PROJECT_ID",
             "GCS_VALIDATION_BUCKET",
-            "GCS_ENERGYPLUS_JOB_NAME",
             "GCP_REGION",
         ]
 
@@ -90,10 +93,23 @@ class CloudRunJobIntegrationTest(TestCase):
             logger.warning(reason)
             raise cls.skipTest(cls, reason)
 
+        # Resolve the EnergyPlus Cloud Run Job name via ValidatorConfig
+        # so the test stays aligned with the runtime path
+        # (cloud_run/launcher._resolve_cloud_run_job_name).
+        ep_config = get_config("ENERGYPLUS")
+        if ep_config is None or not ep_config.cloud_run_job_name:
+            reason = (
+                "Cloud Run test skipped: ValidatorConfig for ENERGYPLUS "
+                "is not registered or yields no cloud_run_job_name."
+            )
+            logger.warning(reason)
+            raise cls.skipTest(cls, reason)
+        cls.energyplus_job_name = ep_config.cloud_run_job_name
+
         # Log the settings we're using
         logger.info("GCP_PROJECT_ID: %s", settings.GCP_PROJECT_ID)
         logger.info("GCS_VALIDATION_BUCKET: %s", settings.GCS_VALIDATION_BUCKET)
-        logger.info("GCS_ENERGYPLUS_JOB_NAME: %s", settings.GCS_ENERGYPLUS_JOB_NAME)
+        logger.info("ENERGYPLUS Cloud Run Job: %s", cls.energyplus_job_name)
         logger.info("GCP_REGION: %s", settings.GCP_REGION)
 
         # Check for GCP credentials
@@ -275,9 +291,16 @@ class CloudRunJobIntegrationTest(TestCase):
         Note: This test requires a valid weather file to exist in GCS
         and may take several minutes to complete.
         """
-        # Skip if we don't have the EnergyPlus job configured
-        if not getattr(settings, "GCS_ENERGYPLUS_JOB_NAME", None):
-            self.skipTest("GCS_ENERGYPLUS_JOB_NAME not configured")
+        # Skip if we don't have the EnergyPlus job configured.
+        # ``setUpClass`` already resolved this via ValidatorConfig and
+        # skipped the whole class on failure — this guard catches the
+        # rare case where the attribute wasn't set on cls (subclass
+        # divergence or test-ordering edge cases).
+        job_name = getattr(self, "energyplus_job_name", None)
+        if not job_name:
+            self.skipTest(
+                "EnergyPlus Cloud Run Job name unresolved (no ValidatorConfig)",
+            )
 
         # Check for a test weather file - skip if not available
         weather_file = getattr(
@@ -393,11 +416,11 @@ class CloudRunJobIntegrationTest(TestCase):
             run_validator_job,
         )
 
-        logger.info("Triggering EnergyPlus Cloud Run Job...")
+        logger.info("Triggering EnergyPlus Cloud Run Job %s...", job_name)
         execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
-            job_name=settings.GCS_ENERGYPLUS_JOB_NAME,
+            job_name=job_name,
             input_uri=input_uri,
         )
         logger.info("Started execution: %s", execution_name)

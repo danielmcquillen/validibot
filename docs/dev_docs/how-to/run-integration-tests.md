@@ -56,13 +56,24 @@ For Cloud Run Job tests:
 ```bash
 export GCP_PROJECT_ID=your-project
 export GCS_VALIDATION_BUCKET=your-bucket
-export GCS_ENERGYPLUS_JOB_NAME=$GCP_APP_NAME-validator-energyplus
-export GCS_FMU_JOB_NAME=$GCP_APP_NAME-validator-fmu
 export GCP_REGION=us-west1
 ```
 
-These are typically exported in your shell (often via `source set-env.sh`) or
-loaded from `.envs/` in Docker/GCP.
+The Cloud Run Job names are no longer set via env vars. The tests
+resolve them at runtime via `ValidatorConfig.cloud_run_job_name`,
+which is derived from each validator's `image_name` field (defined
+in `validators/{slug}/config.py`). By project convention, the
+job name equals the image name and follows the
+`validibot-validator-backend-{slug}` pattern.
+
+If a test reports it can't resolve the job name, check that the
+validator's `config.py` is imported during app startup (see
+`validators/__init__.py`) — that's the path that registers
+`ValidatorConfig` and makes `get_config('ENERGYPLUS')` return a
+non-None value.
+
+These vars are typically exported in your shell (often via
+`source set-env.sh`) or loaded from `.envs/` in Docker/GCP.
 
 ## Cloud E2E tests (staging)
 

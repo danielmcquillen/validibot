@@ -297,10 +297,12 @@ VALIDATOR_IMAGE_REGISTRY=ghcr.io/your-org
 VALIDATOR_IMAGE_TAG=v1.2.0
 ```
 
-Images are pulled as `{VALIDATOR_IMAGE_REGISTRY}/$GCP_APP_NAME-validator-{type}:{tag}`. For example:
+Images are pulled as `{VALIDATOR_IMAGE_REGISTRY}/validibot-validator-backend-{type}:{tag}`.
+The image name matches `ValidatorConfig.image_name` for each validator
+(see `validators/<slug>/config.py`). For example:
 
-- `ghcr.io/your-org/$GCP_APP_NAME-validator-energyplus:v1.2.0`
-- `ghcr.io/your-org/$GCP_APP_NAME-validator-fmu:v1.2.0`
+- `ghcr.io/your-org/validibot-validator-backend-energyplus:v1.2.0`
+- `ghcr.io/your-org/validibot-validator-backend-fmu:v1.2.0`
 
 **Image availability:**
 
@@ -308,7 +310,7 @@ The Docker backend does not automatically pull images. Ensure validator images a
 
 ```bash
 # Pre-pull images on the host
-docker pull ghcr.io/your-org/$GCP_APP_NAME-validator-energyplus:v1.2.0
+docker pull ghcr.io/your-org/validibot-validator-backend-energyplus:v1.2.0
 ```
 
 Or configure a pull policy by extending the runner options if automatic pulls are needed.

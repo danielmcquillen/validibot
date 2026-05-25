@@ -162,9 +162,22 @@ just gcp setup-data <stage>
 ### Step 6: Deploy Validators
 
 ```bash
-# Deploy EnergyPlus and FMU validators
+# Deploy EnergyPlus and FMU validator Cloud Run Jobs
 just gcp validators-deploy-all <stage>
 ```
+
+This builds, pushes, and deploys Cloud Run Jobs named
+`validibot-validator-backend-<slug>` (e.g.
+`validibot-validator-backend-energyplus`). The same naming
+convention is what the runtime launcher looks up via
+`ValidatorConfig.cloud_run_job_name` and what the standalone
+`cd ../validibot-validator-backends && just deploy-all <stage>`
+recipe produces — so whichever path an operator picks, the
+result is the same.
+
+If you have legacy jobs from the older `validibot-validator-<slug>`
+naming convention, you can safely delete them once you've confirmed
+no `gcloud run jobs execute` calls reference them.
 
 ### Step 7: Set Up Scheduled Jobs
 

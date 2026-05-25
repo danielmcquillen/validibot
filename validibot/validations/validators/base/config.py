@@ -191,13 +191,56 @@ class ValidatorConfig(BaseModel):
     resolved_envelope_class: type[Any] | None = None
 
     # --- Container image (advanced/container-based validators) ---
-    # The Docker image / Cloud Run job base name. Must match the
-    # ``IMAGE_NAME`` declared in the corresponding validator backend's
-    # ``__metadata__.py`` in the ``validibot-validator-backends`` repo.
+    # The Docker image name for the validator backend container.
+    # Must match the ``IMAGE_NAME`` declared in the corresponding
+    # backend's ``__metadata__.py`` in the ``validibot-validator-backends``
+    # repo.
+    #
+    # By project convention this string is ALSO the Cloud Run Job
+    # resource name in GCP — the deploy recipes in
+    # ``validibot-validator-backends/justfile`` and
+    # ``validibot/just/gcp/mod.just`` both create a Cloud Run Job
+    # whose name equals the image name. Callers that need the Cloud
+    # Run Job name should read ``cloud_run_job_name`` (below) rather
+    # than ``image_name`` directly, even though they're the same
+    # string today — the alias keeps intent at the call site clear
+    # and lets us split them later if we ever need a different
+    # job-name convention without touching every caller.
+    #
+    # Standardisation (May 2026): all advanced validators use the
+    # ``validibot-validator-backend-{slug}`` prefix. The legacy
+    # ``validibot-validator-{slug}`` form is being retired — see
+    # the deploy-gcp docs.
+    #
     # When empty (the default), execution backends fall back to the
-    # naming convention ``validibot-validator-backend-{slug}`` derived
-    # from ``validation_type``.  Built-in validators leave this empty.
+    # convention ``validibot-validator-backend-{slug}``. Built-in
+    # validators leave this empty.
     image_name: str = ""
+
+    @property
+    def cloud_run_job_name(self) -> str:
+        """Return the Cloud Run Job resource name for this validator.
+
+        By project convention the GCP Cloud Run Job is named identically
+        to the Docker image (see ``image_name`` docstring). This
+        accessor exists so callers read intent rather than reaching
+        through ``image_name`` directly — important because Cloud Run
+        Job names live in the GCP control plane (they identify a
+        runtime resource), while image names live in Artifact Registry
+        (they identify an artifact). They share a string today but
+        are conceptually distinct.
+
+        Falls back to the ``validibot-validator-backend-{slug}``
+        convention when ``image_name`` is empty, matching what the
+        execution backend does for ``image_name`` resolution. The
+        ``slug`` here is the lowercased ``validation_type`` so a
+        validator with ``validation_type="ENERGYPLUS"`` resolves to
+        ``validibot-validator-backend-energyplus`` — same string the
+        backend repo's ``just deploy-all`` would create.
+        """
+        if self.image_name:
+            return self.image_name
+        return f"validibot-validator-backend-{self.validation_type.lower()}"
 
     # --- File handling ---
     supported_file_types: list[str] = Field(default_factory=list)

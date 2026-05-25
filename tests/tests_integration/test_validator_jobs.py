@@ -62,7 +62,16 @@ class EnergyPlusValidatorE2ETest(TestCase):
 
     @classmethod
     def _check_prerequisites(cls) -> None:
-        """Verify GCP settings needed for the test are present."""
+        """Verify GCP settings needed for the test are present.
+
+        The EnergyPlus Cloud Run Job name is resolved via
+        ``ValidatorConfig.cloud_run_job_name`` (May 2026 standardisation;
+        the legacy ``GCS_ENERGYPLUS_JOB_NAME`` env var was removed).
+        Stashes the resolved name on the class so tests don't have to
+        re-derive it per case.
+        """
+        from validibot.validations.validators.base.config import get_config
+
         logger.info("=" * 60)
         logger.info("ENERGYPLUS E2E TEST: Checking prerequisites")
         logger.info("=" * 60)
@@ -70,7 +79,6 @@ class EnergyPlusValidatorE2ETest(TestCase):
         required_settings = [
             "GCP_PROJECT_ID",
             "GCS_VALIDATION_BUCKET",
-            "GCS_ENERGYPLUS_JOB_NAME",
             "GCP_REGION",
         ]
         missing = [s for s in required_settings if not getattr(settings, s, None)]
@@ -79,10 +87,20 @@ class EnergyPlusValidatorE2ETest(TestCase):
             logger.warning(reason)
             raise cls.skipTest(cls, reason)
 
+        ep_config = get_config("ENERGYPLUS")
+        if ep_config is None or not ep_config.cloud_run_job_name:
+            reason = (
+                "EnergyPlus E2E skipped: ValidatorConfig for ENERGYPLUS "
+                "is not registered or yields no cloud_run_job_name."
+            )
+            logger.warning(reason)
+            raise cls.skipTest(cls, reason)
+        cls.energyplus_job_name = ep_config.cloud_run_job_name
+
         # Log the settings we're using
         logger.info("GCP_PROJECT_ID: %s", settings.GCP_PROJECT_ID)
         logger.info("GCS_VALIDATION_BUCKET: %s", settings.GCS_VALIDATION_BUCKET)
-        logger.info("GCS_ENERGYPLUS_JOB_NAME: %s", settings.GCS_ENERGYPLUS_JOB_NAME)
+        logger.info("ENERGYPLUS Cloud Run Job: %s", cls.energyplus_job_name)
         logger.info("GCP_REGION: %s", settings.GCP_REGION)
 
         try:
@@ -279,7 +297,7 @@ class EnergyPlusValidatorE2ETest(TestCase):
         execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
-            job_name=settings.GCS_ENERGYPLUS_JOB_NAME,
+            job_name=self.energyplus_job_name,
             input_uri=input_uri,
         )
         self.assertTrue(execution_name)
@@ -404,7 +422,7 @@ class EnergyPlusValidatorE2ETest(TestCase):
         execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
-            job_name=settings.GCS_ENERGYPLUS_JOB_NAME,
+            job_name=self.energyplus_job_name,
             input_uri=input_uri,
         )
         logger.info("Execution started: %s", execution_name)
@@ -509,10 +527,12 @@ class FMUValidatorE2ETest(TestCase):
     Prerequisites:
     - GCP_PROJECT_ID environment variable set
     - GCS_VALIDATION_BUCKET environment variable set
-    - GCS_FMU_JOB_NAME environment variable set
     - GCP_REGION environment variable set
     - Valid GCP credentials
-    - FMU Cloud Run Job deployed and ready
+    - The FMU Cloud Run Job deployed and reachable at the name
+      returned by ``get_config('FMU').cloud_run_job_name`` (May 2026:
+      the per-validator ``GCS_*_JOB_NAME`` env vars were removed;
+      the job name now comes from ``ValidatorConfig``).
     """
 
     @classmethod
@@ -522,7 +542,14 @@ class FMUValidatorE2ETest(TestCase):
 
     @classmethod
     def _check_prerequisites(cls) -> None:
-        """Verify GCP settings needed for the test are present."""
+        """Verify GCP settings needed for the test are present.
+
+        Resolves the FMU Cloud Run Job name via ``ValidatorConfig``
+        and stashes it on the class — matches the runtime path in
+        ``cloud_run/launcher._resolve_cloud_run_job_name``.
+        """
+        from validibot.validations.validators.base.config import get_config
+
         logger.info("=" * 60)
         logger.info("FMU E2E TEST: Checking prerequisites")
         logger.info("=" * 60)
@@ -530,7 +557,6 @@ class FMUValidatorE2ETest(TestCase):
         required_settings = [
             "GCP_PROJECT_ID",
             "GCS_VALIDATION_BUCKET",
-            "GCS_FMU_JOB_NAME",
             "GCP_REGION",
         ]
         missing = [s for s in required_settings if not getattr(settings, s, None)]
@@ -541,10 +567,20 @@ class FMUValidatorE2ETest(TestCase):
                 f"FMU E2E skipped: missing settings {missing}",
             )
 
+        fmu_config = get_config("FMU")
+        if fmu_config is None or not fmu_config.cloud_run_job_name:
+            reason = (
+                "FMU E2E skipped: ValidatorConfig for FMU is not "
+                "registered or yields no cloud_run_job_name."
+            )
+            logger.warning(reason)
+            raise cls.skipTest(cls, reason)
+        cls.fmu_job_name = fmu_config.cloud_run_job_name
+
         # Log the settings we're using
         logger.info("GCP_PROJECT_ID: %s", settings.GCP_PROJECT_ID)
         logger.info("GCS_VALIDATION_BUCKET: %s", settings.GCS_VALIDATION_BUCKET)
-        logger.info("GCS_FMU_JOB_NAME: %s", settings.GCS_FMU_JOB_NAME)
+        logger.info("FMU Cloud Run Job: %s", cls.fmu_job_name)
         logger.info("GCP_REGION: %s", settings.GCP_REGION)
 
         try:
@@ -785,12 +821,12 @@ class FMUValidatorE2ETest(TestCase):
         logger.info("Step 4: Triggering FMU Cloud Run Job")
         logger.info("  Project: %s", settings.GCP_PROJECT_ID)
         logger.info("  Region: %s", settings.GCP_REGION)
-        logger.info("  Job name: %s", settings.GCS_FMU_JOB_NAME)
+        logger.info("  Job name: %s", self.fmu_job_name)
 
         execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
-            job_name=settings.GCS_FMU_JOB_NAME,
+            job_name=self.fmu_job_name,
             input_uri=input_uri,
         )
         logger.info("Execution started: %s", execution_name)
@@ -983,7 +1019,7 @@ class FMUValidatorE2ETest(TestCase):
         execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
-            job_name=settings.GCS_FMU_JOB_NAME,
+            job_name=self.fmu_job_name,
             input_uri=input_uri,
         )
         logger.info("Execution started: %s", execution_name)
@@ -1071,11 +1107,17 @@ class FMUValidatorE2ETest(TestCase):
             f"Bucket {settings.GCS_VALIDATION_BUCKET} not accessible",
         )
 
-        # Test that FMU job exists by checking its name is configured
+        # Test that FMU job exists by checking its name is configured.
+        # ``setUpClass`` already resolved this via ValidatorConfig and
+        # skipped the whole class on failure; this assertion is a
+        # belt-and-braces guard against subclass divergence.
         logger.info("Step 2: Checking FMU job configuration")
-        job_name = settings.GCS_FMU_JOB_NAME
-        logger.info("  GCS_FMU_JOB_NAME: %s", job_name)
-        self.assertTrue(job_name, "GCS_FMU_JOB_NAME should be configured")
+        job_name = self.fmu_job_name
+        logger.info("  FMU Cloud Run Job: %s", job_name)
+        self.assertTrue(
+            job_name,
+            "FMU job name resolved from ValidatorConfig should be non-empty",
+        )
 
         # Test that we can upload the FMU
         logger.info("Step 3: Testing FMU upload")

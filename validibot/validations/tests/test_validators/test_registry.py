@@ -483,3 +483,84 @@ class TestRegisterValidatorConfig:
         )
         with pytest.raises(ImportError, match="Cannot import output envelope class"):
             register_validator_config(config)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Cloud Run Job name resolution (May 2026 standardisation)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# ``ValidatorConfig.cloud_run_job_name`` is the canonical source for the
+# GCP Cloud Run Job resource name used by ``cloud_run/launcher`` at
+# runtime. It replaces the legacy ``settings.GCS_ENERGYPLUS_JOB_NAME`` /
+# ``GCS_FMU_JOB_NAME`` env vars (removed because they had been silently
+# unset in prod Secret Manager for months, breaking validator dispatch).
+#
+# These tests pin the contract so a regression that drops the property,
+# changes the fallback convention, or splits image_name vs job_name
+# without updating both deploy recipes surfaces immediately.
+
+
+class TestCloudRunJobName:
+    """``ValidatorConfig.cloud_run_job_name`` derivation rules.
+
+    By project convention, the Cloud Run Job name equals the Docker
+    image name (see ``ValidatorConfig.image_name`` docstring). The
+    property exposes that with an intent-revealing name so callers
+    read ``config.cloud_run_job_name`` rather than ``config.image_name``
+    even though they're the same string today — keeps room to split
+    them later without touching every caller.
+    """
+
+    def test_returns_image_name_when_set(self):
+        """Explicit ``image_name`` wins over the convention fallback.
+
+        Every system advanced validator (EnergyPlus, FMU) sets
+        ``image_name`` in its config.py, so this is the normal path.
+        """
+        config = ValidatorConfig(
+            slug="example",
+            name="Example",
+            validation_type="EXAMPLE",
+            validator_class="validibot.validations.validators.basic.validator.BasicValidator",
+            image_name="validibot-validator-backend-example",
+        )
+        assert config.cloud_run_job_name == "validibot-validator-backend-example"
+
+    def test_falls_back_to_convention_when_image_name_empty(self):
+        """No ``image_name`` → ``validibot-validator-backend-{slug}``.
+
+        This matches the GCPExecutionBackend's image fallback so the
+        runtime can resolve a name even for validators that didn't
+        explicitly set image_name (e.g. user-created custom advanced
+        validators). The slug here is ``validation_type.lower()`` so
+        ``EXAMPLE`` → ``example``.
+        """
+        config = ValidatorConfig(
+            slug="example",
+            name="Example",
+            validation_type="EXAMPLE",
+            validator_class="validibot.validations.validators.basic.validator.BasicValidator",
+            # image_name deliberately left as default empty string
+        )
+        assert config.cloud_run_job_name == "validibot-validator-backend-example"
+
+    def test_system_validators_use_backend_prefix(self):
+        """Every system advanced validator's job name uses the prefix.
+
+        Pins the May 2026 naming standardisation: all
+        ``validibot-validator-backend-*`` so the runtime, the catalog,
+        and BOTH deploy paths (``validibot-validator-backends/justfile``
+        and ``validibot/just/gcp/mod.just``) produce the same Cloud Run
+        Job name. Drift here would re-introduce the bug where prod
+        pointed at a job nobody deployed to.
+        """
+        for vtype in ("ENERGYPLUS", "FMU"):
+            config = get_config(vtype)
+            assert config is not None, f"{vtype} config not registered"
+            assert config.cloud_run_job_name.startswith(
+                "validibot-validator-backend-"
+            ), (
+                f"{vtype} cloud_run_job_name {config.cloud_run_job_name!r} "
+                "does not follow the May 2026 standardised "
+                "'validibot-validator-backend-{slug}' convention."
+            )

@@ -115,7 +115,7 @@ just gcp validators-deploy-all dev
 1. **Builds** the container image with `linux/amd64` platform (required by Cloud Run)
 2. **Pushes** to Artifact Registry at `$GCP_REGION-docker.pkg.dev/project-xxx/validibot/`
 3. **Deploys** the Cloud Run Job with:
-   - Stage-appropriate job name (`$GCP_APP_NAME-validator-energyplus-dev` for dev, `$GCP_APP_NAME-validator-energyplus` for prod)
+   - Stage-appropriate job name (`$GCP_APP_NAME-validator-backend-energyplus-dev` for dev, `$GCP_APP_NAME-validator-backend-energyplus` for prod). The same name the runtime resolves at dispatch time via `ValidatorConfig.cloud_run_job_name`.
    - Dedicated validator service account (`$GCP_APP_NAME-validator-dev@...` for dev)
    - Memory (4Gi), CPU (2), timeout (1 hour), no retries
    - Labels for tracking (`validator=energyplus,stage=dev,version=abc123`)
@@ -350,8 +350,9 @@ just build fmu
 just build-all
 
 # Images are available locally as:
-# $GCP_APP_NAME-validator-energyplus:latest
-# $GCP_APP_NAME-validator-fmu:latest
+# validibot-validator-backend-energyplus:latest
+# validibot-validator-backend-fmu:latest
+# (same name as ValidatorConfig.image_name and cloud_run_job_name)
 ```
 
 ### Docker Compose Configuration

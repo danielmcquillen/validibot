@@ -2181,10 +2181,16 @@ class _LauncherMocks:
 
     def __enter__(self):
         self._patchers = []
+        # The launcher resolves the Cloud Run Job name via
+        # ValidatorConfig.cloud_run_job_name (May 2026 standardisation),
+        # not via a GCS_ENERGYPLUS_JOB_NAME setting. The EnergyPlus
+        # validator config registered at startup yields
+        # ``validibot-validator-backend-energyplus``, which is what
+        # the launcher uses in this test — no setting patch needed
+        # for the job name.
         self._settings_patcher = patch.multiple(
             "django.conf.settings",
             GCS_VALIDATION_BUCKET="test-bucket",
-            GCS_ENERGYPLUS_JOB_NAME="energyplus-job",
             GCP_PROJECT_ID="test-project",
             GCP_REGION="us-central1",
         )
@@ -2323,10 +2329,15 @@ class TestLauncherDirectMode:
                 step=fixtures["step"],
             )
 
-        # Should return pending (passed=None, no issues)
+        # Should return pending (passed=None, no issues).
+        # job_name is resolved at launch time via
+        # ValidatorConfig.cloud_run_job_name → ``image_name`` →
+        # ``validibot-validator-backend-energyplus`` (May 2026
+        # standardisation; the legacy GCS_ENERGYPLUS_JOB_NAME env
+        # var was removed).
         assert result.passed is None
         assert result.issues == []
-        assert result.stats["job_name"] == "energyplus-job"
+        assert result.stats["job_name"] == "validibot-validator-backend-energyplus"
         assert result.stats["execution_name"] == "executions/test-exec-001"
 
         # Template metadata should NOT be present

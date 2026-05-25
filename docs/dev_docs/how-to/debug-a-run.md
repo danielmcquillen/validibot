@@ -57,13 +57,16 @@ gcloud logging read "resource.labels.service_name=\"$GCP_APP_NAME-worker\" sever
 
 ### Check Cloud Run Job logs (for EnergyPlus/FMU validators)
 
+Job names follow the `$GCP_APP_NAME-validator-backend-<slug>` convention
+(May 2026 standardisation; matches `ValidatorConfig.cloud_run_job_name`).
+
 ```bash
 # EnergyPlus validator job logs
-gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"$GCP_APP_NAME-validator-energyplus\"" \
+gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"$GCP_APP_NAME-validator-backend-energyplus\"" \
   --limit=50
 
 # FMU validator job logs
-gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"$GCP_APP_NAME-validator-fmu\"" \
+gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"$GCP_APP_NAME-validator-backend-fmu\"" \
   --limit=50
 ```
 
@@ -136,7 +139,7 @@ This is the expected outcome when the validator finds issues with your file. Che
 
 1. Check Cloud Run Job execution status:
    ```bash
-   gcloud run jobs executions list --job=$GCP_APP_NAME-validator-energyplus
+   gcloud run jobs executions list --job=$GCP_APP_NAME-validator-backend-energyplus
    ```
 2. Check worker logs for callback attempts:
    ```bash

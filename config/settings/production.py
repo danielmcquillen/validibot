@@ -446,9 +446,15 @@ if DEPLOYMENT_TARGET == "gcp":
         "region": env("GCP_REGION", default="us-west1"),
     }
 
-    # Cloud Run Job names are derived from the validator's slug — see
-    # GoogleCloudRunExecutionBackend.get_container_image. No per-validator
-    # env vars needed here.
+    # Cloud Run Job names come from each validator's
+    # ``ValidatorConfig.cloud_run_job_name`` (which defaults to the same
+    # string as ``image_name``). The launcher resolves them via
+    # ``validations/services/cloud_run/launcher._resolve_cloud_run_job_name``
+    # at dispatch time. There are no per-validator env vars to set —
+    # the legacy ``GCS_ENERGYPLUS_JOB_NAME`` / ``GCS_FMU_JOB_NAME``
+    # vars were removed in May 2026 because they had been silently
+    # unset in prod Secret Manager for months and were causing runs
+    # to fail with empty-job-name errors.
     GCS_VALIDATION_BUCKET = STORAGE_BUCKET
     GCS_TASK_QUEUE_NAME = env("GCS_TASK_QUEUE_NAME", default="validibot-tasks")
 

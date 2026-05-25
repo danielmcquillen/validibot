@@ -180,8 +180,14 @@ When a validation fails, here's how to investigate:
 4. **Check Cloud Run Job logs** (for validator execution):
    ```
    resource.type="cloud_run_job"
-   resource.labels.job_name="$GCP_APP_NAME-validator-energyplus"
+   resource.labels.job_name="$GCP_APP_NAME-validator-backend-energyplus"
    ```
+
+   The job name follows the `$GCP_APP_NAME-validator-backend-<slug>`
+   convention (May 2026 standardisation; see
+   `ValidatorConfig.cloud_run_job_name`). For FMU substitute
+   `validator-backend-fmu`; for any new validator, use the slug
+   from its `validators/<slug>/config.py`.
 
 ## Related
 

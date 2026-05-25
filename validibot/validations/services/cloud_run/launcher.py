@@ -47,6 +47,7 @@ from validibot.validations.services.image_policy import enforce_image_policy
 from validibot.validations.services.image_policy import get_current_policy
 from validibot.validations.validators.base import ValidationIssue
 from validibot.validations.validators.base import ValidationResult
+from validibot.validations.validators.base.config import get_config
 
 if TYPE_CHECKING:
     from validibot.submissions.models import Submission
@@ -58,6 +59,46 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 VALIDATION_CALLBACK_PATH = "/api/v1/validation-callbacks/"
+
+
+def _resolve_cloud_run_job_name(validation_type: str) -> str:
+    """Return the Cloud Run Job name for a validator.
+
+    Reads from ``ValidatorConfig.cloud_run_job_name`` (which, by
+    project convention, equals the validator's container image name
+    — see ``ValidatorConfig.image_name`` docstring). Raises a clear
+    ``RuntimeError`` when the validator isn't registered or its
+    config doesn't yield a job name; the caller catches this as a
+    launch-blocking misconfiguration rather than letting an empty
+    string reach the GCP Jobs API.
+
+    Replaces the legacy ``settings.GCS_ENERGYPLUS_JOB_NAME`` /
+    ``GCS_FMU_JOB_NAME`` env-var reads (removed May 2026 — the env
+    vars were unset in production for months and silently broke runs,
+    see the post-mortem in this commit). Sourcing the name from the
+    validator config means deployers can't get the env var and the
+    deploy convention out of sync.
+    """
+    config = get_config(validation_type)
+    if config is None:
+        msg = (
+            f"No ValidatorConfig registered for validation_type="
+            f"{validation_type!r}. Cannot resolve a Cloud Run Job name "
+            "without a config — check that the validator's config.py is "
+            "imported during app startup (see validators/__init__.py)."
+        )
+        raise RuntimeError(msg)
+    job_name = config.cloud_run_job_name
+    if not job_name:
+        msg = (
+            f"ValidatorConfig for {validation_type!r} resolved to an "
+            "empty Cloud Run Job name. Check that the config sets "
+            "image_name OR that validation_type is non-empty so the "
+            "fallback convention 'validibot-validator-backend-{slug}' "
+            "can apply."
+        )
+        raise RuntimeError(msg)
+    return job_name
 
 
 def build_validation_callback_url() -> str:
@@ -245,8 +286,11 @@ def launch_energyplus_validation(
         logger.info("Uploading input envelope to %s", input_envelope_uri)
         upload_envelope(envelope, input_envelope_uri)
 
-        # 6. Trigger Cloud Run Job directly via Jobs API
-        job_name = settings.GCS_ENERGYPLUS_JOB_NAME
+        # 6. Trigger Cloud Run Job directly via Jobs API.
+        # Job name comes from ValidatorConfig (not from a per-validator
+        # env var) so the deploy convention and the runtime lookup
+        # can't drift — see _resolve_cloud_run_job_name.
+        job_name = _resolve_cloud_run_job_name("ENERGYPLUS")
 
         # Refuse to launch when the Job's configured image violates
         # VALIDATOR_BACKEND_IMAGE_POLICY.
@@ -429,11 +473,11 @@ def launch_fmu_validation(
 
             upload_envelope_local(envelope, Path(input_envelope_uri))
 
-        # Trigger Cloud Run Job directly via Jobs API
-        job_name = settings.GCS_FMU_JOB_NAME
-        if not job_name:
-            msg = "GCS_FMU_JOB_NAME is not configured."
-            raise ValueError(msg)  # noqa: TRY301
+        # Trigger Cloud Run Job directly via Jobs API.
+        # Job name comes from ValidatorConfig (not from a per-validator
+        # env var) so the deploy convention and the runtime lookup
+        # can't drift — see _resolve_cloud_run_job_name.
+        job_name = _resolve_cloud_run_job_name("FMU")
 
         # Trust ADR Phase 5 Session B + 2026-05-03 review (P2 #3):
         # same policy gate as the EnergyPlus path, with the same

@@ -135,7 +135,7 @@ services:
     environment:
       - STORAGE_ROOT=/app/storage
 
-  validator-energyplus:
+  validator-backend-energyplus:
     volumes:
       - storage_data:/app/storage # Same volume!
     environment:

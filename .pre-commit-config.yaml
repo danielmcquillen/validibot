@@ -46,8 +46,13 @@ repos:
         args: ['--target-version', '5.0']
 
   # Run the Ruff linter.
+  # Keep this rev pinned to the same version as the project's local
+  # ruff (see ``ruff --version``) so a noqa-flagging difference between
+  # the two doesn't make pre-commit and a local ``ruff check`` disagree.
+  # May 2026: v0.15.0 vs local 0.15.13 disagreed on S603 noqa
+  # necessity for shacl/engine.py subprocess calls.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.0
+    rev: v0.15.13
     hooks:
       # Linter
       - id: ruff-check

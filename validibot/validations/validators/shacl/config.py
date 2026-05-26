@@ -45,7 +45,7 @@ config = ValidatorConfig(
     ),
     validation_type=ValidationType.SHACL,
     validator_class=("validibot.validations.validators.shacl.validator.SHACLValidator"),
-    version="0.2",
+    version="0.3",
     order=4,
     supported_file_types=[
         SubmissionFileType.TEXT,

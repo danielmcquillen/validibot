@@ -1,4 +1,5 @@
 from datetime import timedelta
+from http import HTTPStatus
 
 from allauth.account.forms import LoginForm
 from allauth.account.forms import SignupForm
@@ -7,6 +8,8 @@ from crispy_forms.helper import FormHelper
 from django import forms
 from django.conf import settings
 from django.contrib.auth import forms as admin_forms
+from django.db import IntegrityError
+from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -16,6 +19,32 @@ from validibot.users.models import MemberInvite
 from validibot.users.models import Membership
 from validibot.users.models import Organization
 from validibot.users.models import User
+
+# Postgres unique-constraint name → (form field, user-facing message).
+#
+# Maps the underlying ``psycopg.errors.UniqueViolation.diag.constraint_name``
+# to the form field the message should attach to. The constraint name
+# is a stable DDL identifier (Django generates ``<table>_<column>_key``
+# by default for ``unique=True`` fields), so this dispatch table is the
+# single place to update if we add or rename a uniqueness constraint
+# that a signup can trip.
+#
+# Only constraints listed here are converted into form errors. Any
+# other ``IntegrityError`` (foreign-key violation, NOT NULL, an
+# unexpected new uniqueness constraint) is re-raised so genuine
+# integrity bugs surface loudly in development and error tracking
+# rather than being silently swallowed.
+SIGNUP_UNIQUE_CONSTRAINT_ERRORS: dict[str, tuple[str, str]] = {
+    # Django's default unique index for ``User.username = CharField(unique=True)``.
+    # Trips when two simultaneous signups submit the same username and
+    # both pass allauth's form-level uniqueness check before either
+    # INSERT runs. The race window is small but observable under spam
+    # / bot pressure.
+    "users_user_username_key": (
+        "username",
+        _("A user with that username already exists."),
+    ),
+}
 
 ROLE_HELP_TEXT: dict[str, str] = {
     RoleCode.OWNER: _(
@@ -689,6 +718,100 @@ class UserSignupForm(SignupForm):
             )
             raise forms.ValidationError(self._BOT_VALIDATION_ERROR)
         return value
+
+    def try_save(self, request):
+        """Convert a duplicate-key race into a re-rendered form, not a 500.
+
+        Allauth's stock ``clean_username`` does a case-sensitive
+        ``User.objects.filter(username=value).exists()`` check before
+        the INSERT, which catches the vast majority of duplicate-
+        username submissions. But two simultaneous signups of the
+        same username can both pass that check (because neither
+        INSERT has run yet) and then race at INSERT time. Postgres
+        rejects one with a ``UniqueViolation`` that Django wraps as
+        an ``IntegrityError``. Without this override, that exception
+        escapes the view as an HTTP 500 — a confusing user
+        experience and a noisy Sentry event for what is,
+        fundamentally, a user-input conflict.
+
+        Allauth's ``try_save`` contract is ``(user, response)``: when
+        ``user`` is ``None`` and ``response`` is truthy, the view
+        returns the response directly without going through the
+        ``complete_signup`` flow. We use that seam: catch the
+        ``IntegrityError``, attach a field-level error to ``self``, and
+        return a freshly-rendered signup template with the form errors
+        already populated.
+
+        Only known signup unique constraints (see
+        :data:`SIGNUP_UNIQUE_CONSTRAINT_ERRORS`) are caught. Any other
+        ``IntegrityError`` is re-raised so unexpected schema
+        violations still surface loudly during development and in
+        error tracking.
+        """
+        try:
+            return super().try_save(request)
+        except IntegrityError as exc:
+            field_message = _signup_integrity_error_field_message(exc)
+            if field_message is None:
+                # Not a known signup uniqueness violation — let the
+                # exception propagate so the operator sees it.
+                raise
+            field, message = field_message
+            # ``self`` is the bound form that already passed
+            # ``is_valid``. Attaching an error here re-marks it as
+            # invalid so the rendered template shows the error.
+            self.add_error(field, message)
+            response = render(
+                request,
+                "account/signup.html",
+                {"form": self},
+                status=HTTPStatus.CONFLICT,
+            )
+            return None, response
+
+
+def _signup_integrity_error_field_message(
+    exc: IntegrityError,
+) -> tuple[str, str] | None:
+    """Map an ``IntegrityError`` from signup to ``(field, message)`` or ``None``.
+
+    Inspects the underlying ``psycopg.errors.UniqueViolation`` (available
+    via ``exc.__cause__``) for the constraint name and looks it up in
+    :data:`SIGNUP_UNIQUE_CONSTRAINT_ERRORS`. Returns ``None`` for any
+    other integrity error (foreign-key violation, NOT NULL, etc.) so
+    the caller knows to re-raise.
+
+    The constraint-name path is preferred over string-matching the
+    exception message because constraint names are stable DDL
+    identifiers, whereas Postgres error messages are localised by
+    server ``lc_messages`` and can change between major versions.
+
+    Args:
+        exc: The ``IntegrityError`` raised by Django's DB backend.
+
+    Returns:
+        ``(field_name, user_facing_message)`` when the error is a
+        known signup uniqueness violation, else ``None``.
+    """
+    # The wrapped psycopg exception lives on ``__cause__``. Older or
+    # alternative backends may not chain it, in which case we fall
+    # back to a string match on the exception message — Postgres
+    # always names the constraint somewhere in the text.
+    diag = getattr(getattr(exc, "__cause__", None), "diag", None)
+    constraint_name = getattr(diag, "constraint_name", None)
+
+    if constraint_name and constraint_name in SIGNUP_UNIQUE_CONSTRAINT_ERRORS:
+        return SIGNUP_UNIQUE_CONSTRAINT_ERRORS[constraint_name]
+
+    # Fallback: scan the exception text for known constraint names.
+    # Slower and slightly more fragile than the diag path, but useful
+    # when ``__cause__`` is missing (e.g. some psycopg2/psycopg3 chains).
+    exc_text = str(exc)
+    for name, field_message in SIGNUP_UNIQUE_CONSTRAINT_ERRORS.items():
+        if name in exc_text:
+            return field_message
+
+    return None
 
 
 class UserLoginForm(LoginForm):

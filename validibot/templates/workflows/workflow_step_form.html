@@ -26,14 +26,6 @@
             {% endif %}
           </h1>
         </div>
-        {% if not is_create %}
-          <div class="d-flex flex-nowrap align-items-center gap-2 min-w-0">
-            <span class="text-muted text-truncate">
-              {% trans "Workflow" %}: {{ workflow.name }}
-            </span>
-            {% include "workflows/partials/workflow_version_pill.html" %}
-          </div>
-        {% endif %}
       </div>
     </div>
     <div class="card shadow-sm app-form-card  h-100">

@@ -466,23 +466,58 @@ class WorkflowForm(forms.ModelForm):
         self.fields["featured_image"].help_text = _(
             "Optional image shown on the workflow info page.",
         )
-        self.fields["history_policy"].label = _("History policy")
-        self.fields["history_policy"].required = False
-        self.fields["history_policy"].widget.attrs.update({"class": "form-select"})
-        self.fields["history_policy"].initial = (
+        history_field = self.fields["history_policy"]
+        history_field.label = _("History policy")
+        history_field.required = False
+        history_field.widget.attrs.update({"class": "form-select"})
+        history_field.initial = (
             self.instance.history_policy
             if self.instance and self.instance.pk
             else WorkflowHistoryPolicy.VERSIONED
         )
-        self.fields["history_policy"].help_text = _(
-            "Choose how this workflow treats edits after validation runs exist. "
-            "Versioned history is recommended: semantic edits create a new "
-            "workflow version so old runs remain tied to the definition that "
-            "produced them. Mutable history allows in-place edits for faster "
-            "iteration, but historical run results may not be reproducible "
-            "against the current workflow definition. After runs exist, change "
-            "history policy by creating a new workflow version."
+
+        # Surface the lock state in the UI instead of letting the user
+        # edit a field that the server will reject on submit. Disabling
+        # the field also makes Django's form layer ignore any submitted
+        # value, so the existing server-side check in
+        # ``_clean_history_policy_lock`` remains a defence-in-depth
+        # guard rather than the sole gate.
+        history_is_locked = (
+            self.instance
+            and self.instance.pk
+            and self.enforce_history_lock
+            and (self.instance.is_locked or self.instance.has_runs())
         )
+        is_superuser = bool(
+            self.user and getattr(self.user, "is_superuser", False),
+        )
+        if history_is_locked and not is_superuser:
+            history_field.disabled = True
+            if self.instance.is_locked:
+                lock_reason = _(
+                    "This workflow is locked, so its history policy is "
+                    "fixed. To change it, create a new workflow version."
+                )
+            else:
+                lock_reason = _(
+                    "This workflow already has validation runs, so its "
+                    "history policy is fixed to keep past runs tied to "
+                    "the definition that produced them. To change it, "
+                    "create a new workflow version."
+                )
+            history_field.help_text = lock_reason
+        else:
+            history_field.help_text = _(
+                "Choose how this workflow treats edits after validation "
+                "runs exist. Versioned history is recommended: semantic "
+                "edits create a new workflow version so old runs remain "
+                "tied to the definition that produced them. Mutable "
+                "history allows in-place edits for faster iteration, "
+                "but historical run results may not be reproducible "
+                "against the current workflow definition. After runs "
+                "exist, change history policy by creating a new "
+                "workflow version."
+            )
         self.fields["version"].widget.attrs.update(
             {
                 "class": "form-control",

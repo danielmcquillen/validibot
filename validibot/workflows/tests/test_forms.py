@@ -971,7 +971,7 @@ def test_workflow_form_blocks_versioned_to_mutable_with_existing_runs():
 
     workflow = WorkflowFactory(
         history_policy=WorkflowHistoryPolicy.VERSIONED,
-        allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.TEXT],
+        allowed_file_types=[SubmissionFileType.JSON],
     )
     workflow.user.set_current_org(workflow.org)
     submission = SubmissionFactory(workflow=workflow)
@@ -981,15 +981,20 @@ def test_workflow_form_blocks_versioned_to_mutable_with_existing_runs():
         data=_post_payload_for(
             workflow,
             history_policy=WorkflowHistoryPolicy.MUTABLE,
-            allowed_file_types=[SubmissionFileType.JSON],
         ),
         instance=workflow,
         user=workflow.user,
     )
 
-    assert not form.is_valid()
-    assert "history_policy" in form.errors
-    assert "new workflow version" in " ".join(form.errors["history_policy"]).lower()
+    # The field is disabled on render once runs exist, so Django drops
+    # any submitted change rather than surfacing a form error. The
+    # workflow's history_policy stays VERSIONED.
+    assert form.fields["history_policy"].disabled
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["history_policy"] == WorkflowHistoryPolicy.VERSIONED
+    help_text = str(form.fields["history_policy"].help_text)
+    assert "validation runs" in help_text
+    assert "new workflow version" in help_text
 
 
 def test_workflow_form_allows_versioned_to_mutable_before_runs():
@@ -1013,7 +1018,12 @@ def test_workflow_form_allows_versioned_to_mutable_before_runs():
 
 
 def test_workflow_form_blocks_history_policy_change_on_locked_workflow():
-    """An explicit lock is also a definition boundary, even before runs exist."""
+    """An explicit lock is also a definition boundary, even before runs exist.
+
+    A locked workflow renders the field disabled and explains why in the
+    help text. Django drops any value the user tries to submit, so the
+    form validates cleanly with the original ``history_policy`` intact.
+    """
     workflow = WorkflowFactory(
         is_locked=True,
         history_policy=WorkflowHistoryPolicy.VERSIONED,
@@ -1030,8 +1040,11 @@ def test_workflow_form_blocks_history_policy_change_on_locked_workflow():
         user=workflow.user,
     )
 
-    assert not form.is_valid()
-    assert "history_policy" in form.errors
+    assert form.fields["history_policy"].disabled
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["history_policy"] == WorkflowHistoryPolicy.VERSIONED
+    help_text = str(form.fields["history_policy"].help_text)
+    assert "locked" in help_text.lower()
 
 
 def test_workflow_form_blocks_mutable_to_versioned_with_existing_runs():
@@ -1061,9 +1074,44 @@ def test_workflow_form_blocks_mutable_to_versioned_with_existing_runs():
         user=workflow.user,
     )
 
-    assert not form.is_valid()
-    assert "history_policy" in form.errors
-    assert "new workflow version" in " ".join(form.errors["history_policy"]).lower()
+    # Field is disabled once runs exist regardless of which direction
+    # the policy would move, so the form ignores the submitted change
+    # and keeps the original MUTABLE policy.
+    assert form.fields["history_policy"].disabled
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["history_policy"] == WorkflowHistoryPolicy.MUTABLE
+    help_text = str(form.fields["history_policy"].help_text)
+    assert "new workflow version" in help_text
+
+
+def test_workflow_form_history_policy_field_stays_enabled_for_superusers():
+    """Superusers retain the existing override path on locked workflows.
+
+    The disabled-field UX is for regular operators; superusers can
+    still flip history_policy because the form's ``_clean_history_policy_lock``
+    path records an audit entry when they do. Disabling the field for
+    them would block legitimate operational repairs.
+    """
+    from validibot.submissions.tests.factories import SubmissionFactory
+    from validibot.validations.tests.factories import ValidationRunFactory
+
+    workflow = WorkflowFactory(
+        history_policy=WorkflowHistoryPolicy.VERSIONED,
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    superuser = workflow.user
+    superuser.is_superuser = True
+    superuser.save(update_fields=["is_superuser"])
+    superuser.set_current_org(workflow.org)
+    submission = SubmissionFactory(workflow=workflow)
+    ValidationRunFactory(workflow=workflow, submission=submission)
+
+    form = WorkflowForm(instance=workflow, user=superuser)
+
+    assert form.fields["history_policy"].disabled is False
+    # The full help text is rendered (not the locked-state variant)
+    help_text = str(form.fields["history_policy"].help_text)
+    assert "Versioned history is recommended" in help_text
 
 
 def test_workflow_form_allows_mutable_contract_edit_with_existing_runs():

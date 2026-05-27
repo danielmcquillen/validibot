@@ -586,6 +586,14 @@ MFA_ENCRYPTION_KEY = env("DJANGO_MFA_ENCRYPTION_KEY", default=None)
 # DMcQ: Using our our custom AgentAwareNegotiation so every API view gets the agent profile.
 REST_FRAMEWORK = {
     "DEFAULT_CONTENT_NEGOTIATION_CLASS": "validibot.core.api.negotiation.AgentAwareNegotiation",
+    # Custom handler that wraps DRF's default with a JSON-500 fallback for
+    # uncaught Python exceptions. Without this, programming errors raised
+    # in API views fall through to Django's HTML 500 page, which API
+    # clients can't parse. See validibot/core/api/exception_handler.py for
+    # the full rationale. The companion ``handler500`` in config/urls.py
+    # covers exceptions raised outside the DRF dispatch cycle (middleware,
+    # URL resolution).
+    "EXCEPTION_HANDLER": "validibot.core.api.exception_handler.api_exception_handler",
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework.authentication.SessionAuthentication",
         "validibot.core.api.authentication.BearerAuthentication",

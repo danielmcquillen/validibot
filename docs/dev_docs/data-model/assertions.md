@@ -78,8 +78,7 @@ enforced by the `ck_ruleset_assertion_target_oneof` database constraint:
 
 1. **Declared step input/output definition** (`target_signal_definition`
    FK on the `StepIODefinition` model, renamed from `SignalDefinition`
-   per
-   [ADR-2026-05-22b](../../../../../validibot-project/docs/adr/2026-05-22-signals-vs-step-io-terminology.md))
+   per ADR-2026-05-22b — internal)
    — used when the target resolves to a known step input
    (`i.<contract_key>`) or step output (`o.<contract_key>`). Provides
    type-appropriate operators and compile-time validation. The FK name

@@ -15,8 +15,7 @@ Use this guide when you need to answer questions like:
 - How does promotion lift a step-local value to a workflow signal?
 
 > **A note on vocabulary.** This tutorial uses the vocabulary
-> established by
-> [ADR-2026-05-22b](../../../../../validibot-project/docs/adr/2026-05-22-signals-vs-step-io-terminology.md):
+> established by ADR-2026-05-22b (internal):
 > *signal* refers only to workflow-vocabulary values (`s.*`); *step input*
 > and *step output* refer to step-local values (`i.*` and `o.*`).
 > The Django models match: `StepIODefinition` and `StepInputBinding`

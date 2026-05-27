@@ -9,7 +9,7 @@ This doc explains the mental model, the CEL context structure, the
 underlying Django models, and the runtime flow. For a worked example, see
 [Signals Tutorial Example](signals-tutorial-example.md). For the
 user-facing CEL reference, see
-[CEL Expressions](../../help_pages/concepts/cel-expressions.md).
+[CEL Expressions](https://docs.validibot.com/concepts/cel-expressions/).
 
 ## The mental model
 
@@ -409,9 +409,9 @@ named data point with a specific type. It is the "what" — the contract —
 not the "where" (that is the binding, `StepInputBinding`).
 
 This model was previously named `SignalDefinition`. The rename landed
-with [ADR-2026-05-22b](../../../../../validibot-project/docs/adr/2026-05-22-signals-vs-step-io-terminology.md);
-the database table (`validations_signaldefinition`) was kept stable to
-avoid a destructive rename across mature data.
+with ADR-2026-05-22b (internal); the database table
+(`validations_signaldefinition`) was kept stable to avoid a destructive
+rename across mature data.
 
 This model unifies step input/output metadata that was previously
 scattered across three legacy storage formats (`ValidatorCatalogEntry`,
@@ -1254,9 +1254,9 @@ Supported syntax:
 - [Step Processor](../overview/step_processor.md) — Step input/output extraction and storage implementation
 - [Workflow Engine](../overview/workflow_engine.md) — Value flow through workflow execution
 - [Results](results.md) — How values appear in run summaries
-- [CEL Expressions (user-facing)](../../help_pages/concepts/cel-expressions.md) — Author-oriented namespace reference
-- [ADR-2026-05-22](../../../../../validibot-project/docs/adr/2026-05-22-energyplus-catalog-cleanup-and-parsed-outputs.md) — EnergyPlus catalog cleanup and the `i.*` namespace
-- [ADR-2026-05-22b](../../../../../validibot-project/docs/adr/2026-05-22-signals-vs-step-io-terminology.md) — Terminology (signal vs. step input/output) and model rename
+- [CEL Expressions (user-facing)](https://docs.validibot.com/concepts/cel-expressions/) — Author-oriented namespace reference
+- ADR-2026-05-22 — EnergyPlus catalog cleanup and the `i.*` namespace (internal)
+- ADR-2026-05-22b — Terminology (signal vs. step input/output) and model rename (internal)
 
 ---
 
@@ -1265,11 +1265,10 @@ Supported syntax:
 The vocabulary used throughout this doc — *signal*, *step input*, *step
 output*, *promotion* — matches the user-facing UI and the public
 documentation. The Python class identifiers were aligned with this
-vocabulary in May 2026 per
-[ADR-2026-05-22b](../../../../../validibot-project/docs/adr/2026-05-22-signals-vs-step-io-terminology.md).
-The underlying database table names and a handful of URL slugs were
-intentionally left alone to avoid a destructive rename on mature data
-and to avoid churning every workflow link in the codebase.
+vocabulary in May 2026 per ADR-2026-05-22b (internal). The underlying
+database table names and a handful of URL slugs were intentionally left
+alone to avoid a destructive rename on mature data and to avoid
+churning every workflow link in the codebase.
 
 | Concept (this doc) | Python class / field | Database table / column |
 |---|---|---|

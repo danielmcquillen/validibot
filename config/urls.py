@@ -14,6 +14,16 @@ if _is_worker:
 else:
     from config.urls_web import urlpatterns
 
+# API-aware 500 handler. Exceptions raised inside a DRF view's dispatch
+# cycle are caught by the custom DRF ``EXCEPTION_HANDLER`` (see
+# ``REST_FRAMEWORK`` in ``config/settings/base.py``). Exceptions raised
+# earlier — in middleware, URL resolution, or signal handlers — bypass
+# DRF entirely and end up here. ``api_server_error_view`` sniffs the
+# request path and returns JSON for ``/api/*`` while letting the
+# default HTML 500 page handle every other route. The string-import
+# form is required by Django's handler-discovery contract.
+handler500 = "validibot.core.api.exception_handler.api_server_error_view"
+
 # Debug helpers are appended for local development when DEBUG is on.
 if settings.DEBUG:
     urlpatterns += staticfiles_urlpatterns()

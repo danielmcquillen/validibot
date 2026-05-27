@@ -1,10 +1,8 @@
 @prefix s223: <http://data.ashrae.org/standard223#> .
 @prefix bld:  <http://example.com/building/> .
 
-bld:Main-Building a s223:Building .
-
 bld:Zone-101 a s223:Zone ;
-    s223:isLocatedIn bld:Main-Building .
+    s223:hasDomain s223:Domain-HVAC .
 
 bld:Zone-102 a s223:Zone .
 

@@ -288,8 +288,8 @@ class ShaclLibraryValidatorCreateForm(ShaclConfigMixin, forms.Form):
     """Form to create an org-owned SHACL validator in the library.
 
     Mirrors the existing Custom + FMU library-validator forms in shape:
-    name + version + descriptions at the top, validator-specific config
-    fields below. The SHACL-specific fields (shapes, ontologies,
+    name + descriptions at the top, validator-specific config fields below.
+    The SHACL-specific fields (shapes, ontologies,
     bundled standards, engine knobs) come from
     :class:`validibot.validations.validators.shacl.form_fields.ShaclConfigMixin`
     so they stay in sync with the workflow step config form.
@@ -327,12 +327,6 @@ class ShaclLibraryValidatorCreateForm(ShaclConfigMixin, forms.Form):
         required=False,
         help_text=_("Supports Markdown. Plain text also works."),
     )
-    version = forms.CharField(
-        label=_("Version"),
-        max_length=40,
-        required=False,
-        help_text=_("Version label (e.g. '1.0', '2026-05')."),
-    )
     notes = forms.CharField(
         label=_("Notes"),
         required=False,
@@ -349,7 +343,6 @@ class ShaclLibraryValidatorCreateForm(ShaclConfigMixin, forms.Form):
             "name",
             "short_description",
             "description",
-            "version",
             HTML(
                 "<hr><h6 class='text-uppercase text-muted mt-3 mb-3'>{}</h6>".format(
                     _("SHACL shapes (required)")
@@ -461,12 +454,6 @@ class CustomValidatorCreateForm(forms.Form):
     )
     # custom_type removed from form — hardcoded to SIMPLE for now.
     # May re-enable with more options later.
-    version = forms.CharField(
-        label=_("Version"),
-        max_length=40,
-        required=False,
-        help_text=_("Version label (e.g. '1.0', '2025-01')."),
-    )
     allow_custom_assertion_targets = forms.BooleanField(
         label=_("Allow custom data paths in assertions"),
         required=False,
@@ -500,7 +487,6 @@ class CustomValidatorCreateForm(forms.Form):
             Row(Column("name", css_class="col-12")),
             "short_description",
             "description",
-            "version",
             Row(
                 Column("allow_custom_assertion_targets", css_class="col-12 col-xl-6"),
                 Column("supported_data_formats", css_class="col-12 col-xl-6"),
@@ -586,12 +572,6 @@ class CustomValidatorUpdateForm(forms.Form):
         required=False,
         help_text=_("Supports Markdown. Plain text also works."),
     )
-    version = forms.CharField(
-        label=_("Version"),
-        max_length=40,
-        required=False,
-        help_text=_("Version label (e.g. '1.0', '2025-01')."),
-    )
     allow_custom_assertion_targets = forms.BooleanField(
         label=_("Allow custom data paths in assertions"),
         required=False,
@@ -623,7 +603,6 @@ class CustomValidatorUpdateForm(forms.Form):
             Row(Column("name", css_class="col-12")),
             "short_description",
             "description",
-            "version",
             Row(
                 Column("allow_custom_assertion_targets", css_class="col-12 col-md-6"),
                 Column("supported_data_formats", css_class="col-12 col-md-6"),

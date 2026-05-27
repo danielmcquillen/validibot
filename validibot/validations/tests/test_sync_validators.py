@@ -88,7 +88,7 @@ class SyncValidatorsCommandTests(TestCase):
     def test_command_creates_specific_output_signals(self):
         """Test that specific output signal definitions are created.
 
-        Per ADR-2026-05-22 (catalog version 1.1):
+        Per ADR-2026-05-22 (validator revision 2 and later):
             - zone_count was removed from outputs (parsed-from-IDF facts
               are step inputs only, never step outputs)
             - floor_area_m2 was renamed to simulated_conditioned_area_m2
@@ -122,12 +122,12 @@ class SyncValidatorsCommandTests(TestCase):
         The unified signal model stores submission sourcing on
         StepInputBinding, so sync_validators must strip legacy
         ``source``/``path`` keys from provider_binding. For
-        parser-extracted facts (per ADR-2026-05-22, catalog v1.1), the
+        parser-extracted facts (per ADR-2026-05-22, validator revision 2+), the
         value is populated by EnergyPlusValidator.extract_input_signals()
         and no payload-path binding is involved at all.
 
         We test against ``idf_version`` here — one of the three POC
-        parser-extracted step inputs introduced in catalog v1.1. The
+        parser-extracted step inputs introduced in revision 2. The
         legacy ``expected_floor_area_m2`` and friends were removed
         because they were author-expectation values miscategorized as
         validator inputs.
@@ -207,22 +207,22 @@ class SyncValidatorsCommandTests(TestCase):
         advertises — otherwise sync would CREATE a new row alongside
         instead of updating the seed.
 
-        EnergyPlus catalog version history:
-        - v1.0: original
-        - v1.1: ADR-2026-05-22 cleanup + parser-extracted step inputs
-        - v1.2: ADR-2026-05-22 Phase 2 added nine more parser facts
+        EnergyPlus catalog revision history:
+        - v1: original
+        - v2: ADR-2026-05-22 cleanup + parser-extracted step inputs
+        - v3: ADR-2026-05-22 Phase 2 added nine more parser facts
           (building_name, terrain, solar_distribution, timestep_per_hour,
           surface_count, window_count, construction_count,
           run_period_count, has_hvac)
 
         The seed row must match the current advertised version
-        (currently 1.2) to exercise the update path rather than the
+        (currently 3) to exercise the update path rather than the
         create-new-row path.
         """
         # Create a validator with different name but matching (slug, version).
         Validator.objects.create(
             slug="energyplus-idf-validator",
-            version="1.2",
+            version=3,
             name="Old Name",
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,

@@ -276,7 +276,7 @@ with the step-level ruleset extras.
    picker modal. Pick **SHACL Validator (RDF graph rules)**.
 2. Fill in the create form. The fields mirror the workflow step config
    form (shapes upload, ontology upload, engine knobs) plus
-   validator-level metadata at the top (name, version, short
+  validator-level metadata at the top (name, short
    description, description, notes).
 3. Save. The service creates an org-owned `Validator` row
    (``validation_type=SHACL``, ``is_system=False``) with a populated

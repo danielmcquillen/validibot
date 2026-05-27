@@ -106,7 +106,7 @@ class AdvancedValidator(BaseValidator):
         like EnergyPlus can reach ``self.run_context.step.validator`` to
         scope catalog lookups to the exact validator row bound to this
         step's WorkflowStep. Without that scoping, multi-version catalogs
-        (e.g. v1.0 and v1.1 co-existing during a rollout) can silently
+        (e.g. validator revisions 1 and 2 co-existing during a rollout) can silently
         drop or admit the wrong outputs.
 
         Args:

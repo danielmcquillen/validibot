@@ -35,7 +35,7 @@ config = ValidatorConfig(
     ),
     validation_type=ValidationType.THERM,
     validator_class=("validibot.validations.validators.therm.validator.ThermValidator"),
-    version="1.1",
+    version=2,
     order=30,
     has_processor=False,
     is_system=True,

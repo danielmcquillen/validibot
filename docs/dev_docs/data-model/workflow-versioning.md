@@ -70,7 +70,7 @@ ordering; do not sort display strings lexicographically.
 | Workflow history mode | `Workflow.history_policy` | `WorkflowForm.clean()` blocks policy changes in either direction when runs exist or the row is locked |
 | Workflow contract fields | `Workflow.allowed_file_types`, `input_retention`, `output_retention` | `WorkflowForm.clean()` rejects unsafe edits via `Workflow.unsafely_changed_contract_fields()` when `history_policy=versioned` |
 | Validator semantic config | `Validator.semantic_digest` (SHA-256) | `sync_validators` raises `CommandError` on mismatch under the same `(slug, version)`; `--allow-drift` for dev override |
-| Validator class identity | `Validator.slug` + `Validator.version` (unique constraint `uq_validator_slug_version`) | `sync_validators` keys by `(slug, version)`; bumping `version` creates a new row |
+| Validator class identity | `Validator.slug` + integer `Validator.version` (unique constraint `uq_validator_slug_version`) | `sync_validators` keys by `(slug, version)`; bumping `version` creates a new row |
 | Ruleset rules | `Ruleset.rules_text`, `rules_file`, `metadata`, `ruleset_type` | `Ruleset.clean()` rejects mutation when `is_used_by_locked_workflow()` is true |
 | Ruleset assertions | `RulesetAssertion.operator`, `target`, `rhs`, `options`, `when_expression`, `severity`, `spec_version`, `assertion_type` | `RulesetAssertion.clean()` rejects mutation AND rejects adding new rows when parent is in use |
 | Catalog file content | `ValidatorResourceFile.content_hash` (SHA-256) | `ValidatorResourceFile.save()` raises if hash differs and the row is referenced by a versioned locked/run-having workflow |

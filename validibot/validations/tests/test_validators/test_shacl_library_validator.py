@@ -91,8 +91,8 @@ class ShaclLibraryValidatorCreateFormTests(TestCase):
     """Verify the create form enforces shapes-required + size + syntax rules.
 
     The create form has the same "shapes required" rule as the step
-    config form, plus the validator metadata fields (name, version,
-    descriptions) at the top.
+    config form, plus the validator metadata fields (name and descriptions)
+    at the top.
     """
 
     def _data(self, **overrides):
@@ -100,7 +100,6 @@ class ShaclLibraryValidatorCreateFormTests(TestCase):
             "name": "MeridianCx 223P Validator",
             "short_description": "Cx acceptance gate for 223P deliverables.",
             "description": "Full description.",
-            "version": "v1",
             "notes": "Maintained by Priya.",
             "shapes_text": SHAPES_PERSON_REQUIRES_NAME,
             "inference_mode": "rdfs",
@@ -157,7 +156,6 @@ class ShaclLibraryValidatorUpdateFormTests(TestCase):
         # Update form intentionally allows blank shapes (keep-existing).
         data = {
             "name": "MeridianCx 223P Validator",
-            "version": "v2",
             "inference_mode": "rdfs",
             "advanced_shacl": True,
             "submission_format": "auto",
@@ -169,8 +167,8 @@ class ShaclLibraryValidatorUpdateFormTests(TestCase):
         """The update form lets the author leave shapes blank to keep them.
 
         Mirrors the JSON Schema step config form's keep-existing mode
-        so library validators can refresh metadata (name, version,
-        engine knobs) without re-uploading the SHACL content.
+        so library validators can refresh metadata (name and engine knobs)
+        without re-uploading the SHACL content.
         """
         form = ShaclLibraryValidatorUpdateForm(data=self._data())
         assert form.is_valid(), form.errors
@@ -207,7 +205,6 @@ class CreateShaclLibraryValidatorServiceTests(TestCase):
             "name": "MeridianCx 223P Validator",
             "short_description": "Cx acceptance gate.",
             "description": "",
-            "version": "v1",
             "notes": "",
             "shapes_text": SHAPES_PERSON_REQUIRES_NAME,
             "inference_mode": "rdfs",
@@ -302,7 +299,6 @@ class CreateShaclLibraryValidatorServiceTests(TestCase):
         """
         data = {
             "name": "Test SHACL",
-            "version": "v1",
             "inference_mode": "rdfs",
             "advanced_shacl": True,
             "submission_format": "auto",
@@ -356,7 +352,6 @@ class UpdateShaclLibraryValidatorServiceTests(TestCase):
         create_form = ShaclLibraryValidatorCreateForm(
             data={
                 "name": "Original",
-                "version": "v1",
                 "shapes_text": SHAPES_PERSON_REQUIRES_NAME,
                 "inference_mode": "rdfs",
                 "advanced_shacl": True,
@@ -374,7 +369,7 @@ class UpdateShaclLibraryValidatorServiceTests(TestCase):
         """Blank shapes on update form → shapes preserved, metadata refreshed.
 
         This is the common case: an org renames a library validator
-        or bumps its version without re-uploading the shapes file.
+        or changes engine options without re-uploading the shapes file.
         """
         validator = self._create()
         original_shapes_text = validator.default_ruleset.rules_text
@@ -382,7 +377,6 @@ class UpdateShaclLibraryValidatorServiceTests(TestCase):
         update_form = ShaclLibraryValidatorUpdateForm(
             data={
                 "name": "Updated Name",
-                "version": "v2",
                 "inference_mode": "owlrl",
                 "advanced_shacl": True,
                 "submission_format": "auto",
@@ -395,7 +389,7 @@ class UpdateShaclLibraryValidatorServiceTests(TestCase):
         updated.default_ruleset.refresh_from_db()
 
         assert updated.name == "Updated Name"
-        assert updated.version == "v2"
+        assert updated.version == validator.version
         assert updated.default_ruleset.rules_text == original_shapes_text
         assert updated.default_ruleset.metadata["inference_mode"] == "owlrl"
 
@@ -406,7 +400,6 @@ class UpdateShaclLibraryValidatorServiceTests(TestCase):
         update_form = ShaclLibraryValidatorUpdateForm(
             data={
                 "name": "Original",
-                "version": "v1",
                 "shapes_text": SHAPES_REVISED,
                 "inference_mode": "rdfs",
                 "advanced_shacl": True,
@@ -430,7 +423,6 @@ class UpdateShaclLibraryValidatorServiceTests(TestCase):
         update_form = ShaclLibraryValidatorUpdateForm(
             data={
                 "name": "Original",
-                "version": "v1",
                 "ontology_text": ONTOLOGY_REVISED,
                 "inference_mode": "rdfs",
                 "advanced_shacl": True,
@@ -452,7 +444,6 @@ class UpdateShaclLibraryValidatorServiceTests(TestCase):
         update_form = ShaclLibraryValidatorUpdateForm(
             data={
                 "name": "Original",
-                "version": "v1",
                 "inference_mode": "rdfs",
                 "advanced_shacl": True,
                 "submission_format": "auto",
@@ -526,7 +517,6 @@ class ShaclLibraryValidatorViewTests(TestCase):
         form = ShaclLibraryValidatorCreateForm(
             data={
                 "name": "Blocker Test",
-                "version": "v1",
                 "shapes_text": SHAPES_PERSON_REQUIRES_NAME,
                 "inference_mode": "rdfs",
                 "advanced_shacl": True,

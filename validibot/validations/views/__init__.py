@@ -17,6 +17,7 @@ from validibot.validations.views.library import ValidatorLibraryMixin
 from validibot.validations.views.library import ValidatorResourceFilesTabView
 from validibot.validations.views.library import ValidatorSignalsListView
 from validibot.validations.views.library import ValidatorSignalsTabView
+from validibot.validations.views.library import ValidatorVersionsListView
 from validibot.validations.views.resources import ResourceFileCreateView
 from validibot.validations.views.resources import ResourceFileDeleteView
 from validibot.validations.views.resources import ResourceFileMixin
@@ -96,4 +97,5 @@ __all__ = [
     "ValidatorSignalUpdateView",
     "ValidatorSignalsListView",
     "ValidatorSignalsTabView",
+    "ValidatorVersionsListView",
 ]

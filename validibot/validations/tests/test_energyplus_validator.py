@@ -362,20 +362,20 @@ class TestInputStageAssertionGating:
 
         ``_filter_to_catalog_outputs`` decides which keys from the
         EnergyPlus envelope land in ``o.*``. In production, multiple
-        catalog versions co-exist briefly during a rollout — v1.0 still
-        bound to some steps, v1.1 the current default. The May 2026
+        validator revisions co-exist briefly during a rollout — revision 1 still
+        bound to some steps, revision 2 the current default. The May 2026
         review found that the original implementation used
         ``Validator.objects.filter(...).first()`` and was therefore
         non-deterministic: it could pick the wrong version and either
         admit retired outputs or silence current ones.
 
         This test pins the corrected behaviour: when a step's
-        validator FK points at v1.0 (which only declares
+        validator FK points at revision 1 (which only declares
         ``simulated_conditioned_area_m2`` as an OUTPUT), the filter
-        must use that catalog — even if a newer validator row (v1.1,
+        must use that catalog — even if a newer validator row (revision 2,
         declaring ``site_eui_kwh_m2``) also exists in the database.
         Without the run-context scoping fix, the filter would pick
-        v1.1 (or some other arbitrary row) and drop the legitimate
+        revision 2 (or some other arbitrary row) and drop the legitimate
         ``simulated_conditioned_area_m2`` value.
         """
         from validibot.validations.constants import SignalDirection
@@ -383,16 +383,16 @@ class TestInputStageAssertionGating:
         from validibot.validations.tests.factories import ValidationRunFactory
         from validibot.workflows.tests.factories import WorkflowStepFactory
 
-        # Two co-existing catalog versions. The step is bound to v1.0;
-        # the filter must honour that binding even though v1.1 is the
-        # newer row in the DB. (The v1.0/v1.1 labels are fictional
-        # for test purposes — both versions would actually declare
+        # Two co-existing catalog versions. The step is bound to v1;
+        # the filter must honour that binding even though v2 is the
+        # newer row in the DB. The exact revision contents are
+        # fictional for test purposes — both current versions would actually declare
         # both fields in the real catalog; here we contrive a
         # difference so the filtering machinery has something to
         # disagree about.)
         validator_v1_0 = ValidatorFactory(
             validation_type=ValidationType.ENERGYPLUS,
-            version="1.0",
+            version=1,
         )
         StepIODefinition.objects.create(
             validator=validator_v1_0,
@@ -404,7 +404,7 @@ class TestInputStageAssertionGating:
         )
         validator_v1_1 = ValidatorFactory(
             validation_type=ValidationType.ENERGYPLUS,
-            version="1.1",
+            version=2,
         )
         StepIODefinition.objects.create(
             validator=validator_v1_1,
@@ -427,7 +427,7 @@ class TestInputStageAssertionGating:
         engine.run_context = run_context
 
         # Raw envelope contains BOTH keys. The filter should keep only
-        # the one declared by v1.0 (this step's validator).
+        # the one declared by revision 1 (this step's validator).
         raw_metrics = {
             "simulated_conditioned_area_m2": 250.0,
             "site_eui_kwh_m2": 87.5,
@@ -435,9 +435,9 @@ class TestInputStageAssertionGating:
         filtered = engine._filter_to_catalog_outputs(raw_metrics)
         assert filtered == {"simulated_conditioned_area_m2": 250.0}, (
             "Output filter ignored the step's bound validator version. "
-            "v1.0 of the catalog only declares "
+            "Revision 1 of the catalog only declares "
             "simulated_conditioned_area_m2, but the filter included "
-            "site_eui_kwh_m2 (declared by v1.1). Check "
+            "site_eui_kwh_m2 (declared by revision 2). Check "
             "_resolve_catalog_validator() — it must read "
             "self.run_context.step.validator, not pick an arbitrary "
             "row."

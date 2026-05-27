@@ -18,7 +18,7 @@ config = ValidatorConfig(
     ),
     validation_type=ValidationType.BASIC,
     validator_class=("validibot.validations.validators.basic.validator.BasicValidator"),
-    version="1.0",
+    version=1,
     order=0,
     supported_file_types=[
         SubmissionFileType.JSON,

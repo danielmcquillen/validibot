@@ -62,6 +62,6 @@ Authors can create custom validators by:
 
 ## Tips
 
-- **Keep validators stable**: Create a new version rather than changing defaults if you need breaking changes
+- **Keep validators stable**: Use a new integer version rather than changing defaults if you need breaking changes
 - **Use default assertions wisely**: They run on every workflow using this validator
 - **Check compatibility**: Verify your validator supports the file types your workflow accepts

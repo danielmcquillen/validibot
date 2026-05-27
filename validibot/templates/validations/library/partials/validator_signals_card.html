@@ -4,7 +4,7 @@
   <div class="d-flex gap-2">
     {% if inputs or outputs %}
       <a class="btn btn-sm btn-secondary"
-         href="{% org_url 'validations:validator_signals_list' slug=validator.slug %}">
+         href="{{ validator_detail_urls.signals_list }}">
         <i class="bi bi-list-ul me-1"></i>{% trans "View all" %}
       </a>
     {% endif %}

@@ -120,13 +120,13 @@ class TestEnvelopeStructure:
         """
         validator = ValidatorFactory(
             validation_type=ValidationType.ENERGYPLUS,
-            version="24.2.0",
+            version=3,
         )
         envelope = _build_envelope(validator=validator)
 
         assert envelope.validator.id == str(validator.id)
         assert envelope.validator.type == ValidatorType.ENERGYPLUS
-        assert envelope.validator.version == "24.2.0"
+        assert envelope.validator.version == "3"
 
     def test_org_info(self):
         """Organization fields should be populated in the envelope.

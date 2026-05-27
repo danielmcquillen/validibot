@@ -19,7 +19,7 @@ config = ValidatorConfig(
     validator_class=(
         "validibot.validations.validators.json_schema.validator.JsonSchemaValidator"
     ),
-    version="1.1",
+    version=2,
     order=1,
     supported_file_types=[SubmissionFileType.JSON],
     supported_data_formats=[SubmissionDataFormat.JSON],

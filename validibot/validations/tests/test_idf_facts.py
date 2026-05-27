@@ -68,7 +68,7 @@ class TestIdfTextExtraction:
         If it doesn't work on a real IDF, the whole input-stage
         assertion story is broken for EnergyPlus users.
 
-        The catalog v1.2 fact set extracts twelve values from the
+        The revision 3 fact set extracts twelve values from the
         IDF; we assert each one against the known shape of
         1ZoneUncontrolled.idf. The fixture is a minimal one-zone
         model without HVAC.
@@ -253,7 +253,7 @@ class TestNorthAxis:
 class TestBuildingFields:
     """Building-object field extraction beyond just North Axis.
 
-    Phase 2 (catalog v1.2) added three more Building-object facts:
+    Phase 2 (validator revision 3) added three more Building-object facts:
     ``building_name`` (field 1), ``terrain`` (field 3), and
     ``solar_distribution`` (field 6). All three share the same
     fields-list parser as ``north_axis_deg`` and apply IDD defaults
@@ -475,7 +475,7 @@ class TestEpjsonExtraction:
     def test_extracts_all_phase_2_facts_from_epjson(self):
         """A complete epJSON dict produces the same shape of facts as IDF text.
 
-        Catalog v1.2 added nine facts on top of the original three.
+        Validator revision 3 added nine facts on top of the original three.
         The epJSON variant mirrors the IDF text extractor and
         produces the same field set for equivalent inputs — that's
         the cross-format parity guarantee.

@@ -9,6 +9,7 @@ from validibot.users.tests.factories import MembershipFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.validations.constants import VALIDATION_LIBRARY_LAYOUT_SESSION_KEY
+from validibot.validations.constants import ValidationType
 from validibot.validations.models import Validator
 from validibot.validations.utils import create_custom_validator
 from validibot.workflows.tests.factories import WorkflowFactory
@@ -55,6 +56,139 @@ class TestValidationLibraryViews:
         option_values = {opt["value"] for opt in options}
         assert {"custom-basic", "fmu"} <= option_values
         assert response.context["validator_create_selected"] == options[0]["value"]
+
+    def test_library_page_lists_only_latest_validator_version(self, client):
+        """The library index should show validator families, not every row.
+
+        Multiple rows with the same slug are legitimate version history. The
+        normal library page stays simple by showing only the latest visible
+        version; older rows remain reachable through the hidden versions URL.
+        """
+        self._setup_user(client, RoleCode.OWNER)
+        older = Validator.objects.create(
+            name="EnergyPlus Old",
+            slug="energyplus-idf-validator",
+            validation_type=ValidationType.ENERGYPLUS,
+            description="Old system validator",
+            is_system=True,
+            version=1,
+        )
+        latest = Validator.objects.create(
+            name="EnergyPlus Current",
+            slug="energyplus-idf-validator",
+            validation_type=ValidationType.ENERGYPLUS,
+            description="Current system validator",
+            is_system=True,
+            version=3,
+        )
+
+        response = client.get(reverse("validations:validation_library"))
+
+        assert response.status_code == HTTPStatus.OK
+        ids = {validator.pk for validator in response.context["system_validators"]}
+        assert latest.pk in ids
+        assert older.pk not in ids
+        content = response.content.decode()
+        assert "EnergyPlus Current" in content
+        assert "EnergyPlus Old" not in content
+        assert "v3" in content
+
+    def test_default_validator_detail_route_resolves_latest_version(self, client):
+        """The slug-only detail URL should resolve to the newest version row."""
+        self._setup_user(client, RoleCode.ADMIN)
+        Validator.objects.create(
+            name="Basic Old",
+            slug="basic-validator",
+            validation_type=ValidationType.BASIC,
+            description="Old",
+            is_system=True,
+            version=1,
+        )
+        latest = Validator.objects.create(
+            name="Basic Current",
+            slug="basic-validator",
+            validation_type=ValidationType.BASIC,
+            description="Current",
+            is_system=True,
+            version=2,
+        )
+
+        response = client.get(
+            reverse("validations:validator_detail", kwargs={"slug": "basic-validator"}),
+        )
+
+        assert response.status_code == HTTPStatus.OK
+        assert response.context["validator"].pk == latest.pk
+        assert response.context["is_latest_validator_version"] is True
+
+    def test_version_detail_route_resolves_exact_read_only_version(self, client):
+        """The hidden version URL should pin an older row and lock editing."""
+        _user, org = self._setup_user(client, RoleCode.AUTHOR)
+        older = Validator.objects.create(
+            name="Org Validator v1",
+            slug="org-validator",
+            validation_type=ValidationType.CUSTOM_VALIDATOR,
+            description="Old custom validator",
+            org=org,
+            is_system=False,
+            version=1,
+        )
+        Validator.objects.create(
+            name="Org Validator v2",
+            slug="org-validator",
+            validation_type=ValidationType.CUSTOM_VALIDATOR,
+            description="Latest custom validator",
+            org=org,
+            is_system=False,
+            version=2,
+        )
+
+        response = client.get(
+            reverse(
+                "validations:validator_version_detail",
+                kwargs={"slug": "org-validator", "version": 1},
+            ),
+        )
+
+        assert response.status_code == HTTPStatus.OK
+        assert response.context["validator"].pk == older.pk
+        assert response.context["can_edit_validator"] is False
+        assert response.context["is_locked_validator_version"] is True
+        assert "older validator version" in response.content.decode()
+
+    def test_hidden_versions_route_lists_all_versions(self, client):
+        """The manual versions URL should expose history without navbar links."""
+        self._setup_user(client, RoleCode.ADMIN)
+        v1 = Validator.objects.create(
+            name="SHACL v1",
+            slug="shacl-validator",
+            validation_type=ValidationType.SHACL,
+            description="Old",
+            is_system=True,
+            version=1,
+        )
+        v3 = Validator.objects.create(
+            name="SHACL v3",
+            slug="shacl-validator",
+            validation_type=ValidationType.SHACL,
+            description="Current",
+            is_system=True,
+            version=3,
+        )
+
+        response = client.get(
+            reverse(
+                "validations:validator_versions",
+                kwargs={"slug": "shacl-validator"},
+            ),
+        )
+
+        assert response.status_code == HTTPStatus.OK
+        versions = response.context["versions"]
+        assert [validator.pk for validator in versions] == [v3.pk, v1.pk]
+        content = response.content.decode()
+        assert "v1" in content
+        assert "v3" in content
 
     def test_library_page_honors_tab_query_param(self, client):
         self._setup_user(client, RoleCode.OWNER)

@@ -8,6 +8,7 @@ from django import forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import models
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
 from django.shortcuts import render
@@ -159,6 +160,149 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
             queryset = queryset.filter(is_system=True)
         return queryset
 
+    def get_object(self, queryset=None):
+        """Resolve validator detail objects by pk, latest slug, or exact version.
+
+        The default ``/library/custom/<slug>/`` route addresses a validator
+        family and returns the latest visible row for that slug. Hidden manual
+        routes under ``/versions/<int:version>/`` address an exact historical
+        row. Workflow steps still reference a concrete validator FK; this is
+        only library browsing behavior.
+        """
+        return self.get_library_validator_object(queryset)
+
+    def get_library_validator_object(self, queryset=None):
+        qs = queryset if queryset is not None else self.get_validator_queryset()
+        pk = self.kwargs.get("pk")
+        slug_val = self.kwargs.get("slug")
+        version = self.kwargs.get("version")
+
+        if pk:
+            return get_object_or_404(qs, pk=pk)
+        if slug_val:
+            if str(slug_val).isdigit() and version is None:
+                return get_object_or_404(qs, pk=slug_val)
+            family_qs = qs.filter(slug=slug_val)
+            if version is not None:
+                return get_object_or_404(family_qs, version=version)
+            family_qs = family_qs.exclude(
+                is_system=True,
+                release_state=ValidatorReleaseState.DRAFT,
+            )
+            latest = family_qs.order_by("-version", "-pk").first()
+            if latest is None:
+                raise Http404("No Validator matches the given query.")
+            return latest
+        raise Http404("No Validator matches the given query.")
+
+    def is_version_specific_request(self) -> bool:
+        return "version" in self.kwargs
+
+    def is_latest_validator_version(self, validator: Validator) -> bool:
+        latest = (
+            self.get_validator_queryset()
+            .filter(slug=validator.slug)
+            .exclude(is_system=True, release_state=ValidatorReleaseState.DRAFT)
+            .order_by("-version", "-pk")
+            .first()
+        )
+        return latest is not None and latest.pk == validator.pk
+
+    def latest_validators_by_slug(self, queryset):
+        """Collapse a queryset to one latest row per slug."""
+        latest_by_slug: dict[str, Validator] = {}
+        for validator in queryset.order_by("slug", "-version", "-pk"):
+            latest_by_slug.setdefault(validator.slug, validator)
+        return sorted(
+            latest_by_slug.values(),
+            key=lambda validator: (
+                validator.order,
+                validator.validation_type,
+                validator.name.lower(),
+                validator.slug,
+            ),
+        )
+
+    def build_validator_detail_urls(self, validator: Validator) -> dict[str, str]:
+        """Return tab/detail URLs, preserving exact-version context when present."""
+        if self.is_version_specific_request():
+            kwargs = {"slug": validator.slug, "version": validator.version}
+            return {
+                "description": reverse_with_org(
+                    "validations:validator_version_detail",
+                    request=self.request,
+                    kwargs=kwargs,
+                ),
+                "signals": reverse_with_org(
+                    "validations:validator_version_signals_tab",
+                    request=self.request,
+                    kwargs=kwargs,
+                ),
+                "assertions": reverse_with_org(
+                    "validations:validator_version_assertions_tab",
+                    request=self.request,
+                    kwargs=kwargs,
+                ),
+                "resource_files": reverse_with_org(
+                    "validations:validator_version_resource_files",
+                    request=self.request,
+                    kwargs=kwargs,
+                ),
+                "signals_list": reverse_with_org(
+                    "validations:validator_version_signals_list",
+                    request=self.request,
+                    kwargs=kwargs,
+                ),
+            }
+
+        kwargs = {"slug": validator.slug}
+        return {
+            "description": reverse_with_org(
+                "validations:validator_detail",
+                request=self.request,
+                kwargs=kwargs,
+            ),
+            "signals": reverse_with_org(
+                "validations:validator_signals_tab",
+                request=self.request,
+                kwargs=kwargs,
+            ),
+            "assertions": reverse_with_org(
+                "validations:validator_assertions_tab",
+                request=self.request,
+                kwargs=kwargs,
+            ),
+            "resource_files": reverse_with_org(
+                "validations:validator_resource_files",
+                request=self.request,
+                kwargs=kwargs,
+            ),
+            "signals_list": reverse_with_org(
+                "validations:validator_signals_list",
+                request=self.request,
+                kwargs=kwargs,
+            ),
+        }
+
+    def add_validator_version_context(
+        self,
+        context: dict,
+        validator: Validator,
+    ) -> None:
+        is_latest = self.is_latest_validator_version(validator)
+        context.update(
+            {
+                "validator_detail_urls": self.build_validator_detail_urls(validator),
+                "is_latest_validator_version": is_latest,
+                "is_locked_validator_version": not is_latest,
+                "validator_versions_url": reverse_with_org(
+                    "validations:validator_versions",
+                    request=self.request,
+                    kwargs={"slug": validator.slug},
+                ),
+            },
+        )
+
 
 class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
     template_name = "validations/library/library.html"
@@ -221,11 +365,12 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                     is_enabled=True,
                 )
                 .exclude(release_state=ValidatorReleaseState.DRAFT)
-                .order_by("order", "validation_type", "name")
                 .select_related("custom_validator", "org"),
-                "custom_validators": Validator.objects.filter(org=org)
-                .order_by("name")
-                .select_related("custom_validator"),
+                "custom_validators": self.latest_validators_by_slug(
+                    Validator.objects.filter(org=org).select_related(
+                        "custom_validator",
+                    ),
+                ),
                 "custom_validator_create_url": reverse_with_org(
                     "validations:custom_validator_create",
                     request=self.request,
@@ -245,6 +390,9 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                     "Create the first custom validator"
                 ),
             }
+        )
+        context["system_validators"] = self.latest_validators_by_slug(
+            context["system_validators"],
         )
         return context
 
@@ -347,18 +495,6 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
     context_object_name = "validator"
     pk_url_kwarg = "pk"
 
-    def get_object(self, queryset=None):
-        qs = self.get_queryset()
-        pk = self.kwargs.get("pk")
-        slug_val = self.kwargs.get("slug")
-        if pk:
-            return get_object_or_404(qs, pk=pk)
-        if slug_val:
-            if str(slug_val).isdigit():
-                return get_object_or_404(qs, pk=slug_val)
-            return get_object_or_404(qs, slug=slug_val)
-        return super().get_object(queryset)
-
     def dispatch(self, request, *args, **kwargs):
         if not self.require_library_access():
             return redirect(
@@ -388,12 +524,17 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
+        self.add_validator_version_context(context, validator)
+        can_edit = (
+            self.can_manage_validators()
+            and not validator.is_system
+            and context["is_latest_validator_version"]
+        )
         context.update(
             {
                 "active_tab": "description",
                 "can_manage_validators": self.can_manage_validators(),
-                "can_edit_validator": self.can_manage_validators()
-                and not validator.is_system,
+                "can_edit_validator": can_edit,
                 "return_tab": self._resolve_return_tab(validator),
                 "probe_result": getattr(validator.fmu_model, "probe_result", None)
                 if getattr(validator, "fmu_model", None)
@@ -429,6 +570,49 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
         return breadcrumbs
 
 
+class ValidatorVersionsListView(ValidatorLibraryMixin, TemplateView):
+    """Hidden manual list of historical versions for one validator family."""
+
+    template_name = "validations/library/validator_versions.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.require_library_access():
+            return redirect(
+                reverse_with_org(
+                    "workflows:workflow_list",
+                    request=request,
+                ),
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        slug = self.kwargs["slug"]
+        versions = list(
+            self.get_validator_queryset().filter(slug=slug).order_by("-version", "-pk"),
+        )
+        if not versions:
+            raise Http404("No Validator matches the given query.")
+        latest = versions[0]
+        context.update(
+            {
+                "validator_family_slug": slug,
+                "validator_family_name": latest.name or latest.slug,
+                "versions": versions,
+                "latest_validator": latest,
+                "return_tab": "system" if latest.is_system else "custom",
+            },
+        )
+        return context
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        slug = self.kwargs["slug"]
+        breadcrumbs.append({"name": slug, "url": ""})
+        breadcrumbs.append({"name": _("Versions"), "url": ""})
+        return breadcrumbs
+
+
 class ValidatorSignalsTabView(ValidatorLibraryMixin, DetailView):
     """Signals tab on the validator detail page."""
 
@@ -460,7 +644,12 @@ class ValidatorSignalsTabView(ValidatorLibraryMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
-        can_edit = self.can_manage_validators() and not validator.is_system
+        self.add_validator_version_context(context, validator)
+        can_edit = (
+            self.can_manage_validators()
+            and not validator.is_system
+            and context["is_latest_validator_version"]
+        )
 
         all_signals = validator.signal_definitions.all().order_by(
             "direction",
@@ -571,6 +760,7 @@ class ValidatorDefaultAssertionsView(ValidatorLibraryMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
+        self.add_validator_version_context(context, validator)
         default_ruleset = validator.default_ruleset
         assertions = (
             default_ruleset.assertions.all()
@@ -623,6 +813,7 @@ class ValidatorAssertionsTabView(ValidatorLibraryMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
+        self.add_validator_version_context(context, validator)
         default_ruleset = validator.default_ruleset
         default_assertions = (
             default_ruleset.assertions.all()
@@ -635,7 +826,11 @@ class ValidatorAssertionsTabView(ValidatorLibraryMixin, DetailView):
             (sig.id, sig.contract_key)
             for sig in validator.signal_definitions.order_by("contract_key")
         ]
-        can_edit = self.can_manage_validators() and not validator.is_system
+        can_edit = (
+            self.can_manage_validators()
+            and not validator.is_system
+            and context["is_latest_validator_version"]
+        )
 
         context.update(
             {
@@ -685,11 +880,7 @@ class ValidatorAssertionsTabView(ValidatorLibraryMixin, DetailView):
         breadcrumbs.append(
             {
                 "name": label,
-                "url": reverse_with_org(
-                    "validations:validator_detail",
-                    request=self.request,
-                    kwargs={"slug": validator.slug},
-                ),
+                "url": self.build_validator_detail_urls(validator)["description"],
             },
         )
         breadcrumbs.append({"name": _("Default Assertions"), "url": ""})
@@ -701,15 +892,6 @@ class ValidatorSignalsListView(ValidatorLibraryMixin, DetailView):
 
     template_name = "validations/library/validator_signals_list.html"
     context_object_name = "validator"
-
-    def get_object(self, queryset=None):
-        qs = self.get_queryset()
-        slug_val = self.kwargs.get("slug")
-        if slug_val:
-            if str(slug_val).isdigit():
-                return get_object_or_404(qs, pk=slug_val)
-            return get_object_or_404(qs, slug=slug_val)
-        return super().get_object(queryset)
 
     def dispatch(self, request, *args, **kwargs):
         if not self.require_library_access():
@@ -740,6 +922,7 @@ class ValidatorSignalsListView(ValidatorLibraryMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
+        self.add_validator_version_context(context, validator)
         # Get all signals ordered by direction then contract_key
         signals = list(
             validator.signal_definitions.all().order_by("direction", "contract_key"),
@@ -767,11 +950,7 @@ class ValidatorSignalsListView(ValidatorLibraryMixin, DetailView):
         breadcrumbs.append(
             {
                 "name": validator.name,
-                "url": reverse_with_org(
-                    "validations:validator_detail",
-                    request=self.request,
-                    kwargs={"slug": validator.slug},
-                ),
+                "url": self.build_validator_detail_urls(validator)["description"],
             },
         )
         breadcrumbs.append(
@@ -819,6 +998,7 @@ class ValidatorResourceFilesTabView(ValidatorLibraryMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
+        self.add_validator_version_context(context, validator)
         org = self.get_active_org()
 
         # Resource files visible to this org (org-specific + system-wide)
@@ -833,7 +1013,9 @@ class ValidatorResourceFilesTabView(ValidatorLibraryMixin, DetailView):
             .order_by("-is_default", "name")
         )
 
-        can_manage = self.can_manage_resource_files()
+        can_manage = (
+            self.can_manage_resource_files() and context["is_latest_validator_version"]
+        )
         resource_file_form = (
             ValidatorResourceFileForm(validator=validator) if can_manage else None
         )
@@ -854,7 +1036,9 @@ class ValidatorResourceFilesTabView(ValidatorLibraryMixin, DetailView):
                 "active_tab": "resource_files",
                 "can_manage_validators": self.can_manage_validators(),
                 "can_edit_validator": (
-                    self.can_manage_validators() and not validator.is_system
+                    self.can_manage_validators()
+                    and not validator.is_system
+                    and context["is_latest_validator_version"]
                 ),
                 "can_manage_resource_files": can_manage,
                 "resource_files": resource_files,
@@ -881,11 +1065,7 @@ class ValidatorResourceFilesTabView(ValidatorLibraryMixin, DetailView):
         breadcrumbs.append(
             {
                 "name": label,
-                "url": reverse_with_org(
-                    "validations:validator_detail",
-                    request=self.request,
-                    kwargs={"slug": validator.slug},
-                ),
+                "url": self.build_validator_detail_urls(validator)["description"],
             },
         )
         breadcrumbs.append({"name": _("Resource Files"), "url": ""})

@@ -38,7 +38,7 @@ class ValidatorLike(Protocol):
 
     id: str
     validation_type: str
-    version: str
+    version: int | str
 
 
 def build_energyplus_input_envelope(
@@ -117,7 +117,7 @@ def build_energyplus_input_envelope(
     validator_info = ValidatorInfo(
         id=str(validator.id),
         type=validator_type,
-        version=validator.version,
+        version=str(validator.version),
     )
 
     # Build organization info
@@ -575,7 +575,7 @@ def build_input_envelope(
             validator=ValidatorInfo(
                 id=str(validator.id),
                 type=ValidatorType(validator.validation_type),
-                version=validator.version,
+                version=str(validator.version),
             ),
             org=OrganizationInfo(id=str(run.org.id), name=run.org.name),
             workflow=WorkflowInfo(

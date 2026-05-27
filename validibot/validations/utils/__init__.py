@@ -39,7 +39,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.BASIC,
-            "version": "1.0",
+            "version": 1,
             "order": 0,
             "allow_custom_assertion_targets": True,
             "supports_assertions": True,
@@ -61,7 +61,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.JSON_SCHEMA,
-            "version": "1.0",
+            "version": 2,
             "order": 1,
             "supports_assertions": True,
         },
@@ -83,7 +83,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.XML_SCHEMA,
-            "version": "1.0",
+            "version": 2,
             "order": 2,
             "supports_assertions": True,
         },
@@ -101,7 +101,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.ENERGYPLUS,
-            "version": "1.0",
+            "version": 3,
             "order": 3,
             "has_processor": True,
             "supports_assertions": True,
@@ -135,7 +135,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.FMU,
-            "version": "1.0",
+            "version": 2,
             "order": 4,
             "has_processor": True,
             "supports_assertions": True,
@@ -155,7 +155,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.AI_ASSIST,
-            "version": "1.0",
+            "version": 1,
             "order": 5,
             "release_state": ValidatorReleaseState.COMING_SOON,
             "supports_assertions": True,
@@ -177,7 +177,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.THERM,
-            "version": "1.0",
+            "version": 2,
             "order": 6,
             "supports_assertions": True,
         },
@@ -197,6 +197,7 @@ def create_default_validators():
         }
         validator, was_created = Validator.objects.get_or_create(
             slug=validator_data["slug"],
+            version=validator_data["version"],
             defaults=defaults,
         )
         if was_created:
@@ -269,7 +270,6 @@ def create_custom_validator(
     description: str,
     custom_type: str,
     notes: str = "",
-    version: str | None = "",
     allow_custom_assertion_targets: bool = False,
     supported_data_formats: list[str] | None = None,
 ):
@@ -304,7 +304,6 @@ def create_custom_validator(
         supported_file_types=file_types,
         allow_custom_assertion_targets=allow_custom_assertion_targets,
         supports_assertions=True,
-        version=version or "",
     )
     custom_validator = CustomValidator.objects.create(
         validator=validator,
@@ -324,7 +323,6 @@ def update_custom_validator(
     short_description: str,
     description: str,
     notes: str,
-    version: str | None = "",
     allow_custom_assertion_targets: bool | None = None,
     supported_data_formats: list[str] | None = None,
 ):
@@ -335,8 +333,6 @@ def update_custom_validator(
     validator.name = name
     validator.short_description = short_description
     validator.description = description
-    if version is not None:
-        validator.version = version
     if allow_custom_assertion_targets is not None:
         validator.allow_custom_assertion_targets = allow_custom_assertion_targets
     if supported_data_formats:
@@ -349,7 +345,6 @@ def update_custom_validator(
             "name",
             "short_description",
             "description",
-            "version",
             "allow_custom_assertion_targets",
             "supported_data_formats",
             "supported_file_types",
@@ -510,8 +505,6 @@ def create_shacl_library_validator(
     name = form.cleaned_data["name"]
     short_description = form.cleaned_data.get("short_description") or ""
     description = form.cleaned_data.get("description") or ""
-    version = form.cleaned_data.get("version") or ""
-
     rules_text, metadata, _has_shapes_content, _has_ontology_content = (
         _shacl_form_data_to_ruleset_state(form)
     )
@@ -520,13 +513,13 @@ def create_shacl_library_validator(
     file_types = default_supported_file_types_for_validation(ValidationType.SHACL)
 
     # Build the default ruleset first so we can attach it on Validator creation.
-    ruleset_name = _unique_shacl_default_ruleset_name(org, slug, version or "1")
+    ruleset_name = _unique_shacl_default_ruleset_name(org, slug, "1")
     ruleset = Ruleset.objects.create(
         org=org,
         user=user,
         name=ruleset_name,
         ruleset_type=RulesetType.SHACL,
-        version=version or "1",
+        version="1",
         rules_text=rules_text,
         metadata=metadata,
     )
@@ -541,7 +534,6 @@ def create_shacl_library_validator(
         slug=slug,
         supported_file_types=file_types,
         supports_assertions=True,
-        version=version or "",
         default_ruleset=ruleset,
     )
     # SHACL library validators do not currently have a separate
@@ -562,8 +554,8 @@ def update_shacl_library_validator(
 ):
     """Update an org-owned SHACL library validator from a bound update form.
 
-    Mirrors :func:`update_custom_validator`. Validator metadata (name,
-    description, version) refreshes always. SHACL content (shapes,
+    Mirrors :func:`update_custom_validator`. Validator metadata (name and
+    descriptions) refreshes always. SHACL content (shapes,
     ontologies, bundled standards, engine knobs) only re-saves when the
     author supplied new uploads or text — leaving everything blank is
     treated as keep-existing, same semantics as the workflow step
@@ -575,14 +567,11 @@ def update_shacl_library_validator(
     validator.name = form.cleaned_data["name"]
     validator.short_description = form.cleaned_data.get("short_description") or ""
     validator.description = form.cleaned_data.get("description") or ""
-    if form.cleaned_data.get("version") is not None:
-        validator.version = form.cleaned_data.get("version") or ""
     validator.save(
         update_fields=[
             "name",
             "short_description",
             "description",
-            "version",
             "modified",
         ],
     )
@@ -595,7 +584,10 @@ def update_shacl_library_validator(
             org=validator.org,
             name=f"{validator.slug}-default",
             ruleset_type=RulesetType.SHACL,
-            version=validator.version or "1",
+            # ``Validator.version`` is a PositiveIntegerField with default=1
+            # and a MinValueValidator(1), so it cannot be falsy. The cast to
+            # str is still needed because ``Ruleset.version`` is a CharField.
+            version=str(validator.version),
         )
         validator.default_ruleset = ruleset
         validator.save(update_fields=["default_ruleset", "modified"])

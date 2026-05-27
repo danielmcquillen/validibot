@@ -190,9 +190,9 @@ class EnergyPlusValidator(AdvancedValidator):
         ``self.run_context.step.validator`` for catalog scoping. The
         May 2026 review showed that the old classmethod implementation
         used ``Validator.objects.filter(...).first()`` which can pick
-        the wrong row when v1.0 and v1.1 of the EnergyPlus catalog
-        co-exist in the database — silently dropping legitimate v1.1
-        outputs or admitting retired v1.0 ones. By scoping the catalog
+        the wrong row when EnergyPlus revisions 1 and 2 co-exist in
+        the database — silently dropping legitimate newer outputs or
+        admitting retired older ones. By scoping the catalog
         lookup to the validator bound to this step's run, we always
         use the catalog version that produced this run's contract.
 
@@ -252,13 +252,13 @@ class EnergyPlusValidator(AdvancedValidator):
         1. ``self.run_context.step.validator`` — the exact validator
            row bound to this step's WorkflowStep. This is the only
            lookup that is guaranteed correct when multiple catalog
-           versions (e.g. v1.0 and v1.1) co-exist in the database,
+           versions (e.g. v1 and v2) co-exist in the database,
            because the FK on WorkflowStep points at the specific row
            that produced this step's contract.
         2. Newest system EnergyPlus validator by ``-version`` —
            defensive fallback for the rare case where extraction is
            called without a run context (tests, sync_validators). The
-           ordering picks the highest version string, matching what
+           ordering picks the highest integer version, matching what
            ``sync_validators`` writes as the current catalog.
 
         Returns the input dict unchanged if catalog lookup fails for

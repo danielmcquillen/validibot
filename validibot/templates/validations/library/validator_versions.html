@@ -1,0 +1,78 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% block title %}
+  {{ validator_family_name }} · {% trans "Validator Versions" %}
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div id="validator-versions" class="container-fluid">
+    <div class="app-content-header-bar row align-items-center">
+      <div class="app-content-header col-12 col-lg-8 d-flex align-items-start mb-2 mb-lg-0">
+        <h1 class="app-page-title">
+          {% blocktrans trimmed with name=validator_family_name %}
+            Versions for {{ name }}
+          {% endblocktrans %}
+        </h1>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th class="text-muted small">
+              {% trans "Version" %}
+            </th>
+            <th class="text-muted small">
+              {% trans "Name" %}
+            </th>
+            <th class="text-muted small">
+              {% trans "Status" %}
+            </th>
+            <th class="text-muted small text-end">
+              {% trans "Actions" %}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for version in versions %}
+            <tr>
+              <td class="fw-semibold">
+                v{{ version.version }}
+              </td>
+              <td>
+                {{ version.name }}
+                {% if version.pk == latest_validator.pk %}
+                  <span class="badge bg-light text-dark border ms-2">{% trans "Latest" %}</span>
+                {% endif %}
+              </td>
+              <td class="text-muted small">
+                {% if version.is_system %}
+                  {{ version.get_release_state_display }}
+                {% else %}
+                  {% trans "Custom" %}
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-secondary"
+                   href="{% org_url 'validations:validator_version_detail' slug=version.slug version=version.version %}">
+                  {% trans "View" %}
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mt-3 mb-3">
+      <a href="{% org_url 'validations:validation_library' %}?tab={{ return_tab }}"
+         class="btn btn-secondary">
+        <i class="bi bi-arrow-left me-1"></i>
+        {% trans "Back to Validator Library" %}
+      </a>
+    </div>
+  </div>
+{% endblock app_content %}

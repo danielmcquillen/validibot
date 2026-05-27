@@ -149,7 +149,7 @@ class EvidenceManifestBuilder:
                     step_id=step.pk,
                     step_order=step.order,
                     validator_slug=validator.slug,
-                    validator_version=validator.version,
+                    validator_version=str(validator.version),
                     validator_semantic_digest=(validator.semantic_digest or None),
                     validator_backend_image_digest=(backend_digest or None),
                 ),

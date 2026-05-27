@@ -42,7 +42,7 @@ class RulesetFactory(DjangoModelFactory):
     org = factory.SubFactory(OrganizationFactory)
     name = factory.Sequence(lambda n: f"Test Ruleset {n}")
     ruleset_type = RulesetType.JSON_SCHEMA
-    version = "1"
+    version = 1
 
     @factory.lazy_attribute
     def rules_text(self):
@@ -80,7 +80,7 @@ class ValidatorFactory(DjangoModelFactory):
     description = factory.Faker("text", max_nb_chars=200)
     name = factory.Sequence(lambda n: f"Test Validator {n}")
     validation_type = ValidationType.JSON_SCHEMA
-    version = "1"
+    version = 1
     default_ruleset = None
     org = None
     is_system = True

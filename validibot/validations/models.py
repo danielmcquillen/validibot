@@ -7,6 +7,7 @@ import uuid
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
 from django.db.models import Value
@@ -1009,11 +1010,12 @@ class FMUProbeResult(TimeStampedModel):
 
 class Validator(TimeStampedModel):
     """
-    A pluggable validator 'type' and version.
-    Examples:
-      kind='json_schema', version='2020-12'
-      kind='xml_schema', version='1.0'
-      kind='energyplus', version='23.1'
+    A pluggable validator family and integer revision.
+
+    ``version`` is the Validibot contract revision for this validator row, not
+    a domain-standard label such as an EnergyPlus, FMI, or JSON Schema version.
+    Domain semantics belong in tags/metadata/capabilities; the integer keeps
+    URL routing and "latest version" resolution deterministic.
     """
 
     class Meta:
@@ -1081,11 +1083,14 @@ class Validator(TimeStampedModel):
         blank=False,
     )
 
-    version = models.CharField(
-        max_length=40,
-        blank=True,
-        default="",
-        help_text=_("Version label for this validator (e.g. '2020-12', '1.0')."),
+    version = models.PositiveIntegerField(
+        default=1,
+        validators=[MinValueValidator(1)],
+        help_text=_(
+            "Positive integer revision for this validator contract. Domain "
+            "versions such as EnergyPlus/FMI/JSON Schema versions belong in "
+            "tags or metadata, not this field."
+        ),
     )
 
     default_ruleset = models.ForeignKey(

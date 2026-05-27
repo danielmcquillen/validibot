@@ -31,7 +31,7 @@ config = ValidatorConfig(
         "validibot_shared.energyplus.envelopes.EnergyPlusOutputEnvelope"
     ),
     image_name="validibot-validator-backend-energyplus",
-    # Version bump to 1.2 per ADR-2026-05-22 Phase 2 parser facts
+    # Version bump to revision 3 per ADR-2026-05-22 Phase 2 parser facts
     # expansion: nine additional step inputs (building_name,
     # terrain, solar_distribution, timestep_per_hour, surface_count,
     # window_count, construction_count, run_period_count, has_hvac)
@@ -51,7 +51,7 @@ config = ValidatorConfig(
     #
     # sync_validators refuses to apply semantic drift under the same
     # (slug, version) so the bump is required.
-    version="1.2",
+    version=3,
     order=10,
     has_processor=True,
     processor_name="EnergyPlus\u2122 Simulation",
@@ -143,7 +143,7 @@ config = ValidatorConfig(
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
         ),
-        # ── Phase 2 (catalog v1.2) facts — Building characteristics ──
+        # ── Phase 2 (validator revision 3) facts — Building characteristics ──
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.INPUT,
@@ -207,7 +207,7 @@ config = ValidatorConfig(
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
         ),
-        # ── Phase 2 (catalog v1.2) facts — Simulation configuration ──
+        # ── Phase 2 (validator revision 3) facts — Simulation configuration ──
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.INPUT,
@@ -250,7 +250,7 @@ config = ValidatorConfig(
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
         ),
-        # ── Phase 2 (catalog v1.2) facts — Geometry counts ──
+        # ── Phase 2 (validator revision 3) facts — Geometry counts ──
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.INPUT,
@@ -312,7 +312,7 @@ config = ValidatorConfig(
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
         ),
-        # ── Phase 2 (catalog v1.2) facts — Capability flag ──
+        # ── Phase 2 (validator revision 3) facts — Capability flag ──
         CatalogEntrySpec(
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.INPUT,

@@ -153,7 +153,7 @@ The current manifest shape is top-level, not nested under `run`, `workflow`, or 
       "step_id": 1001,
       "step_order": 1,
       "validator_slug": "json-schema",
-      "validator_version": "1.0.0",
+      "validator_version": "3",
       "validator_semantic_digest": "sha256:...",
       "validator_backend_image_digest": null
     }

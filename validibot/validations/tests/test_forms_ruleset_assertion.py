@@ -283,13 +283,13 @@ class RulesetAssertionFormTests(TestCase):
         from validibot.validations.tests.factories import CustomValidatorFactory
 
         custom = CustomValidatorFactory()
+        original_version = custom.validator.version
         updated = update_custom_validator(
             custom,
             name="New Name",
             short_description="New short",
             description="New Desc",
             notes="New Notes",
-            version="9.9",
             allow_custom_assertion_targets=True,
             supported_data_formats=["json"],
         )
@@ -297,7 +297,7 @@ class RulesetAssertionFormTests(TestCase):
         self.assertEqual(updated.validator.name, "New Name")
         self.assertEqual(updated.validator.short_description, "New short")
         self.assertEqual(updated.validator.description, "New Desc")
-        self.assertEqual(updated.validator.version, "9.9")
+        self.assertEqual(updated.validator.version, original_version)
         self.assertTrue(updated.validator.allow_custom_assertion_targets)
         self.assertEqual(updated.validator.supported_data_formats, ["json"])
         self.assertEqual(updated.notes, "New Notes")

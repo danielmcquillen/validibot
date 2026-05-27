@@ -31,7 +31,7 @@ Expected context:
         {% trans "Version" %}
       </dt>
       <dd class="col-sm-8">
-        {{ validator.version|default:"-" }}
+        v{{ validator.version }}
       </dd>
       {% if validator.short_description %}
         <dt class="col-sm-4 text-muted small">

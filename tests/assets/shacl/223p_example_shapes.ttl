@@ -5,7 +5,7 @@
 bld:ZoneShape a sh:NodeShape ;
    sh:targetClass s223:Zone ;
    sh:property [
-       sh:path s223:isLocatedIn ;
+       sh:path s223:hasDomain ;
        sh:minCount 1 ;
-       sh:message "Every Zone must be located in a Building." ;
+       sh:message "Every Zone must declare a Domain." ;
    ] .

@@ -1,14 +1,17 @@
 # Validators
 
 Validators define the concrete validation class that a workflow step will call. One workflow step uses
-one validator. Validators bundle the technical contract (validation type + provider version), the catalog
-of signals/derivations the validator exposes, and optional organization-specific extensions (custom validators).
-The platform now ships with five stock validation types:
+one validator. Validators bundle the Validibot contract revision, the catalog
+of step inputs/outputs and derivations the validator exposes, and optional organization-specific extensions (custom validators).
+The platform ships with stock validation types such as:
 
 - **BASIC** — no provider backing; authors add assertions manually via the UI. These steps still produce
   rulesets so findings remain auditable, but there is no catalog beyond whatever the assertion references.
 - **JSON_SCHEMA / XML_SCHEMA** — schema validations that require uploading or pasting schema content.
 - **ENERGYPLUS** — advanced simulation validators with IDF/simulation options and catalog entries.
+- **FMU** — simulation validators backed by FMI/FMU metadata and execution.
+- **SHACL** — RDF graph validators backed by SHACL shapes and ontology resources.
+- **THERM** — thermal-bridge validation support for THERM workflows.
 - **AI_ASSIST** — template-driven AI validations (policy check, critic, etc.).
 - **CUSTOM_VALIDATOR** — organization-defined validators registered via the custom validator UI (displayed as “Custom Basic Validator”).
 
@@ -23,8 +26,33 @@ Validators are stored in the `validators` table. Each row records the following:
 - relationship to an organization (`org_id`) and `is_system` flag
 - timestamp fields plus the related `custom_validator` entry when the row was created by an org
 
+`version` is a positive integer revision of the Validibot validator contract. It is not an
+EnergyPlus, FMI, JSON Schema, SHACL, or ontology version. Those domain labels belong in
+tags/metadata/capabilities when we expose them; the integer version keeps row identity, URL routing,
+and "latest version" ordering deterministic.
+
 Every workflow step references a validator row. During execution the validator tells the runtime which
 provider class to load, which helper functions are legal, and how to interpret rule and assertion catalogs.
+
+## Validator version families
+
+Rows with the same `slug` and different integer `version` values are a validator family. The library
+index shows only the latest visible row for each family. The default detail route also resolves to the
+latest version:
+
+```text
+/app/validations/library/custom/basic-validator/
+```
+
+Older versions stay addressable through hidden manual routes:
+
+```text
+/app/validations/library/custom/basic-validator/versions/
+/app/validations/library/custom/basic-validator/versions/1/
+```
+
+Older version detail pages are read-only. Workflow steps are not rewritten when a newer validator
+version appears; each step remains pinned to the exact `Validator` FK it was configured with.
 
 ## Catalog entries (signals, outputs, derivations)
 
@@ -69,8 +97,10 @@ Rulesets that pick this custom validator automatically see the custom catalog, a
 detail page shows who owns and maintains it. Custom validators stay scoped to the org that created
 them; system validators remain read-only.
 
-Catalog changes are versioned on the validator. Editing a custom validator updates the catalog for all
-rulesets referencing it, so catalog slugs stay globally unique per validator.
+Catalog changes are versioned on the validator row. Editing the current custom-validator row updates
+the catalog for workflows that reference that row. Breaking catalog changes should be represented by a
+new integer validator version; user-facing semantic labels will be handled by tags/metadata rather than
+overloading `Validator.version`.
 
 ## Resource files
 
@@ -125,7 +155,7 @@ conditionally via `active_tab`. Each tab includes only its own modals to reduce 
 ## Provider resolution
 
 The runtime resolves a provider implementation for every validator. Providers are in-process classes
-registered per `(validation_type, semantic version range)` pair. Functions such as
+registered per validation type/config. Functions such as
 `BaseValidator.resolve_provider()` call the registry and cache the matching provider instance.
 
 Providers must implement the following contract:
@@ -139,7 +169,7 @@ Providers must implement the following contract:
 - `bind(run_ctx, merged_catalog)` — builds per-run bindings so CEL helpers (e.g., `series('meter')`) can resolve data on demand.
 
 The provider gives the validator its domain-specific abilities without storing Python dotted paths in
-the database. Version upgrades happen entirely inside code by registering new providers ranges.
+the database. Validator contract upgrades happen by creating a new integer `Validator.version` row.
 
 ## Validator configuration
 
@@ -147,7 +177,7 @@ the database. Version upgrades happen entirely inside code by registering new pr
 source of truth** for each system validator. Everything the platform needs to know about a
 validator is declared in one place:
 
-- **Identity and DB sync** — `slug`, `name`, `description`, `validation_type`, `version`, `order`.
+- **Identity and DB sync** — `slug`, `name`, `description`, `validation_type`, integer `version`, `order`.
   The `sync_validators` management command reads these fields and creates or updates `Validator`
   rows and their catalog entries in the database.
 - **Validator class binding** — `validator_class` is a dotted Python path to the `BaseValidator`
@@ -200,10 +230,12 @@ python manage.py sync_validators
 This command reads from the config registry and creates or updates `Validator` rows and their
 catalog entries. It is idempotent and runs automatically at container startup.
 
-**Versioning:** The `version` field tracks the validator version, and `sync_validators` keys
-validator rows by `(slug, version)`. Bumping the version in a config creates a *new* `Validator`
-row instead of mutating the existing one — preserving the launch contract that workflows pinned
-to the old version were running under.
+**Versioning:** The `version` field is a positive integer validator-contract revision, and
+`sync_validators` keys validator rows by `(slug, version)`. Bumping the integer in a config creates
+a *new* `Validator` row instead of mutating the existing one — preserving the launch contract that
+workflows pinned to the old version were running under. Do not encode domain-standard versions in
+this field; use future tags/metadata for labels such as `EnergyPlus 25.1`, `FMI 3.0`, or
+`JSON Schema 2020-12`.
 
 **Drift detection:** Each validator row stores a `semantic_digest` — a SHA-256 of the
 behavior-defining fields (`validation_type`, `processor_name`, `validator_class`,

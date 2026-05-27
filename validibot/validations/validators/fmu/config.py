@@ -69,12 +69,12 @@ config = ValidatorConfig(
     validator_class="validibot.validations.validators.fmu.validator.FMUValidator",
     output_envelope_class="validibot_shared.fmu.envelopes.FMUOutputEnvelope",
     image_name="validibot-validator-backend-fmu",
-    # Version bump to 1.1 per ADR-2026-05-22b Phase 6: seven parser-fact
+    # Version bump to revision 2 per ADR-2026-05-22b Phase 6: seven parser-fact
     # step inputs derived from modelDescription.xml at upload/probe
     # time (model_name, fmi_version, variable counts, has_simulation_defaults).
     # sync_validators refuses semantic drift under the same (slug, version)
     # so the bump is required.
-    version="1.1",
+    version=2,
     order=20,
     has_processor=True,
     processor_name="FMU Simulation",

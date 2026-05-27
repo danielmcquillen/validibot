@@ -56,6 +56,41 @@ urlpatterns = [
         name="custom_validator_delete",
     ),
     path(
+        "library/custom/<slug:slug>/versions/",
+        views.ValidatorVersionsListView.as_view(),
+        name="validator_versions",
+    ),
+    path(
+        "library/custom/<slug:slug>/versions/<int:version>/",
+        views.ValidatorDetailView.as_view(),
+        name="validator_version_detail",
+    ),
+    path(
+        "library/custom/<slug:slug>/versions/<int:version>/signals/",
+        views.ValidatorSignalsListView.as_view(),
+        name="validator_version_signals_list",
+    ),
+    path(
+        "library/custom/<slug:slug>/versions/<int:version>/signals-tab/",
+        views.ValidatorSignalsTabView.as_view(),
+        name="validator_version_signals_tab",
+    ),
+    path(
+        "library/custom/<slug:slug>/versions/<int:version>/assertions/",
+        views.ValidatorAssertionsTabView.as_view(),
+        name="validator_version_assertions_tab",
+    ),
+    path(
+        "library/custom/<slug:slug>/versions/<int:version>/assertions/modal/",
+        views.ValidatorDefaultAssertionsView.as_view(),
+        name="validator_version_default_assertions",
+    ),
+    path(
+        "library/custom/<slug:slug>/versions/<int:version>/resource-files/",
+        views.ValidatorResourceFilesTabView.as_view(),
+        name="validator_version_resource_files",
+    ),
+    path(
         "library/custom/<slug:slug>/",
         views.ValidatorDetailView.as_view(),
         name="validator_detail",

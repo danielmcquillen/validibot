@@ -6,6 +6,7 @@ import logging
 from django import forms
 from django.contrib import messages
 from django.core.exceptions import ObjectDoesNotExist
+from django.http import Http404
 from django.http import HttpResponse
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -59,6 +60,22 @@ class CustomValidatorManageMixin(ValidatorLibraryMixin):
             request=self.request,
             kwargs={"slug": validator.slug},
         )
+
+    def get_latest_custom_validator_row(self, **filters):
+        """Resolve slug-based custom CRUD routes to the latest validator row."""
+        validator = (
+            Validator.objects.filter(
+                slug=self.kwargs["slug"],
+                org=self.get_active_org(),
+                is_system=False,
+                **filters,
+            )
+            .order_by("-version", "-pk")
+            .first()
+        )
+        if validator is None:
+            raise Http404("No Validator matches the given query.")
+        return validator
 
 
 class FMUValidatorCreateView(CustomValidatorManageMixin, FormView):
@@ -187,7 +204,6 @@ class CustomValidatorCreateView(CustomValidatorManageMixin, FormView):
             description=form.cleaned_data.get("description") or "",
             custom_type=CustomValidatorType.SIMPLE,
             notes=form.cleaned_data.get("notes") or "",
-            version=form.cleaned_data.get("version") or "",
             allow_custom_assertion_targets=form.cleaned_data.get(
                 "allow_custom_assertion_targets",
                 False,
@@ -231,14 +247,7 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_object(self):
-        org = self.get_active_org()
-        validator = get_object_or_404(
-            Validator,
-            slug=self.kwargs["slug"],
-            org=org,
-            is_system=False,
-        )
-        return validator.custom_validator
+        return self.get_latest_custom_validator_row().custom_validator
 
     def get_initial(self):
         validator = self.custom_validator.validator
@@ -246,7 +255,6 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
             "name": validator.name,
             "short_description": validator.short_description,
             "description": validator.description,
-            "version": validator.version,
             "allow_custom_assertion_targets": validator.allow_custom_assertion_targets,
             "supported_data_formats": (
                 validator.supported_data_formats[0]
@@ -297,7 +305,6 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
             short_description=form.cleaned_data.get("short_description") or "",
             description=form.cleaned_data.get("description") or "",
             notes=form.cleaned_data.get("notes") or "",
-            version=form.cleaned_data.get("version") or "",
             allow_custom_assertion_targets=form.cleaned_data.get(
                 "allow_custom_assertion_targets",
             ),
@@ -324,14 +331,7 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_object(self):
-        org = self.get_active_org()
-        validator = get_object_or_404(
-            Validator,
-            slug=self.kwargs["slug"],
-            org=org,
-            is_system=False,
-        )
-        return validator.custom_validator
+        return self.get_latest_custom_validator_row().custom_validator
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -524,12 +524,7 @@ class ShaclLibraryValidatorUpdateView(CustomValidatorManageMixin, FormView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_validator(self):
-        org = self.get_active_org()
-        return get_object_or_404(
-            Validator,
-            slug=self.kwargs["slug"],
-            org=org,
-            is_system=False,
+        return self.get_latest_custom_validator_row(
             validation_type=ValidationType.SHACL,
         )
 
@@ -541,7 +536,6 @@ class ShaclLibraryValidatorUpdateView(CustomValidatorManageMixin, FormView):
             "name": validator.name,
             "short_description": validator.short_description,
             "description": validator.description,
-            "version": validator.version,
             "inference_mode": metadata.get("inference_mode", "rdfs"),
             "advanced_shacl": metadata.get("advanced_shacl", False),
             "submission_format": metadata.get("submission_format", "auto"),
@@ -599,12 +593,7 @@ class ShaclLibraryValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_validator(self):
-        org = self.get_active_org()
-        return get_object_or_404(
-            Validator,
-            slug=self.kwargs["slug"],
-            org=org,
-            is_system=False,
+        return self.get_latest_custom_validator_row(
             validation_type=ValidationType.SHACL,
         )
 

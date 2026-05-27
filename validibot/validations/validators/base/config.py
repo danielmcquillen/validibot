@@ -162,7 +162,7 @@ class ValidatorConfig(BaseModel):
     description: str = ""
     validation_type: str
     provider: str = ""
-    version: str = "1.0"
+    version: int = 1
     order: int = 0
     has_processor: bool = False
     processor_name: str = ""

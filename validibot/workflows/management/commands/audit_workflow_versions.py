@@ -342,7 +342,7 @@ class Command(BaseCommand):
                     "step_id": step.pk,
                     "validator_id": validator.pk,
                     "message": (
-                        f"Validator {validator.slug} v{validator.version!r} "
+                        f"Validator {validator.slug} v{validator.version} "
                         f"has no semantic_digest. Re-run sync_validators to "
                         f"populate, or accept that this workflow's behavior "
                         f"under this validator is legacy versioned."
@@ -362,7 +362,7 @@ class Command(BaseCommand):
                     "step_id": step.pk,
                     "validator_id": validator.pk,
                     "message": (
-                        f"Validator {validator.slug} v{validator.version!r}: "
+                        f"Validator {validator.slug} v{validator.version}: "
                         f"stored digest {validator.semantic_digest[:12]}... "
                         f"differs from current config digest "
                         f"{current[:12]}.... The validator's semantic "

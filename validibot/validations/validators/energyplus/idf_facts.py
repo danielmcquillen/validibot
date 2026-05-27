@@ -4,7 +4,7 @@ Extracts a set of facts from the (resolved) IDF and exposes them in
 the ``i.*`` CEL namespace for input-stage assertions. The catalog
 spec lives in ``config.py``; this module is the parser side.
 
-Facts produced (catalog v1.2, ADR-2026-05-22 Phase 2):
+Facts produced (validator revision 3, ADR-2026-05-22 Phase 2):
 
     Building characteristics
     - ``idf_version``         — string from the IDF ``Version`` object

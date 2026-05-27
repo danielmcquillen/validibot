@@ -87,7 +87,7 @@ class TestEnsureStepInputBindings(TestCase):
     def test_parser_extracted_inputs_use_internal_source_kind(self):
         """EnergyPlus parser-extracted step inputs use INTERNAL source_kind.
 
-        Per ADR-2026-05-22 (catalog v1.1), the legacy
+        Per ADR-2026-05-22 (validator revision 2+), the legacy
         ``submission.metadata``-bound expectation inputs
         (``expected_floor_area_m2``, ``target_eui_kwh_m2``,
         ``max_unmet_hours``) were removed because they were author

@@ -1071,3 +1071,90 @@ class TestStaleTokenDoesNotBypassClosedRegistration:
 
         with override_settings(ACCOUNT_ALLOW_REGISTRATION=False):
             assert adapter.is_open_for_signup(request, sociallogin=None) is False
+
+
+# =============================================================================
+# ACCOUNT_ALLOW_REGISTRATION wins even when the cloud layer is installed
+# =============================================================================
+
+
+class TestSettingWinsOverCloudInstalled:
+    """``DJANGO_ACCOUNT_ALLOW_REGISTRATION=False`` closes signup in every
+    deployment, cloud included.
+
+    Regression: previously the adapter short-circuited on
+    ``apps.is_installed("validibot_cloud.tenancy")`` and returned
+    ``True`` from ``is_open_for_signup`` whenever the cloud layer was
+    active. The cloud-running production deployment therefore ignored
+    the operator's explicit ``DJANGO_ACCOUNT_ALLOW_REGISTRATION=False``
+    in ``.envs/.production/.google-cloud/.django`` and kept
+    ``/accounts/signup/`` open. The override is removed; the setting
+    now wins everywhere.
+
+    These tests pin the new behaviour from both signup mechanisms.
+    They do not actually install the cloud app in ``INSTALLED_APPS``
+    (community tests must never depend on cloud), but the assertion
+    has the same meaning: there is no code path left in the adapter
+    that opens signup just because cloud is around.
+    """
+
+    def test_password_signup_respects_setting_with_no_invite_tokens(self, rf):
+        """No invite tokens in session, setting False → signup closed.
+
+        This is the exact request shape ``GET /accounts/signup/`` arrives
+        with in production. Before the fix it returned True via the
+        cloud short-circuit; after the fix it returns False from the
+        setting.
+        """
+        from django.test import override_settings
+
+        from validibot.users.adapters import AccountAdapter
+
+        request = rf.get("/accounts/signup/")
+        request.session = {}
+
+        adapter = AccountAdapter()
+
+        with override_settings(ACCOUNT_ALLOW_REGISTRATION=False):
+            assert adapter.is_open_for_signup(request) is False
+
+    def test_social_signup_respects_setting_with_no_invite_tokens(self, rf):
+        """OAuth callback path must mirror the password path.
+
+        If one path stayed open while the other closed, an operator
+        running ``ACCOUNT_ALLOW_REGISTRATION=False`` would still leak
+        a usable signup flow via the social-auth callback. Pinning
+        both paths together prevents that asymmetry from reappearing.
+        """
+        from django.test import override_settings
+
+        from validibot.users.adapters import SocialAccountAdapter
+
+        request = rf.get("/accounts/social/signup/")
+        request.session = {}
+
+        adapter = SocialAccountAdapter()
+
+        with override_settings(ACCOUNT_ALLOW_REGISTRATION=False):
+            assert adapter.is_open_for_signup(request, sociallogin=None) is False
+
+    def test_setting_true_opens_signup_with_no_invite_tokens(self, rf):
+        """Pin the positive case so the negative tests can't pass by
+        the adapter returning False unconditionally.
+
+        ``ACCOUNT_ALLOW_REGISTRATION=True`` (the community default) +
+        empty session must still open signup. Without this assertion,
+        a future refactor could accidentally over-restrict signup and
+        break every self-service onboarding flow.
+        """
+        from django.test import override_settings
+
+        from validibot.users.adapters import AccountAdapter
+
+        request = rf.get("/accounts/signup/")
+        request.session = {}
+
+        adapter = AccountAdapter()
+
+        with override_settings(ACCOUNT_ALLOW_REGISTRATION=True):
+            assert adapter.is_open_for_signup(request) is True

@@ -121,39 +121,6 @@ def _guest_invite_token_is_redeemable(token: str) -> bool:
     return invite.status == InviteStatus.PENDING
 
 
-def _is_cloud_installed() -> bool:
-    """Check whether the cloud layer is active in this deployment.
-
-    Returns True only when the cloud tenancy app is registered in
-    ``INSTALLED_APPS`` — i.e. when Django is running under
-    ``validibot_cloud.settings.cloud`` or ``.local``. That's a stronger
-    check than "is the package importable?" because the cloud package
-    may be on the Python path (e.g. editable-installed for tests)
-    without its apps being configured. Importing cloud models in the
-    latter case raises ``RuntimeError: doesn't declare an explicit
-    app_label and isn't in an application in INSTALLED_APPS``, which
-    took down /accounts/signup/ on community test settings.
-
-    Why tenancy and not the bare ``"validibot_cloud"`` label? The
-    cloud package is a namespace containing several Django apps
-    (tenancy, onboarding, billing, etc) — there's no app named
-    ``validibot_cloud`` itself, so that check would always return
-    False. We pick ``tenancy`` because ``CloudOrgProfile`` is the
-    bedrock model that signals "this is a cloud deployment" and
-    tenancy is the least likely cloud sub-app to ever be renamed
-    or split out.
-
-    Previously this function also read ``CloudSettings.signup_mode``
-    to distinguish invite-only from self-register. That distinction
-    was removed when the onboarding flow was collapsed to a single
-    path — installing the cloud package now always enables
-    self-registration.
-    """
-    from django.apps import apps
-
-    return apps.is_installed("validibot_cloud.tenancy")
-
-
 class AccountAdapter(DefaultAccountAdapter):
     """
     Custom account adapter for Validibot signup flow.
@@ -169,11 +136,10 @@ class AccountAdapter(DefaultAccountAdapter):
         Determine if signup is allowed for this request.
 
         Signup is allowed if:
-        1. ACCOUNT_ALLOW_REGISTRATION is True (open registration), OR
-        2. The user has a *redeemable* workflow invite token in their session, OR
-        3. The user has a *redeemable* guest invite token in their session, OR
-        4. The user has a trial invite token in their session (cloud), OR
-        5. Cloud is installed with self-registration enabled
+        1. The user has a *redeemable* workflow invite token in their session, OR
+        2. The user has a *redeemable* guest invite token in their session, OR
+        3. The user has a trial invite token in their session (cloud), OR
+        4. ``ACCOUNT_ALLOW_REGISTRATION`` is True (open registration).
 
         Token validation matters here: a stale invite token (expired,
         canceled, kill switch flipped) sitting in session must NOT
@@ -187,6 +153,14 @@ class AccountAdapter(DefaultAccountAdapter):
         Validation runs only when an invite token is the reason
         signup would be allowed — open-registration deployments
         skip the lookup entirely.
+
+        ``ACCOUNT_ALLOW_REGISTRATION=False`` closes self-service signup
+        in every deployment, including cloud. The cloud layer used to
+        force the gate open whenever ``validibot_cloud.tenancy`` was
+        installed; that override silently ignored the operator's
+        explicit "close signup" setting and is no longer applied.
+        Invite-driven signups are unaffected because they're checked
+        before the setting.
         """
         # Workflow invite token: only opens signup if redeemable.
         workflow_token = request.session.get(WORKFLOW_INVITE_SESSION_KEY)
@@ -200,10 +174,6 @@ class AccountAdapter(DefaultAccountAdapter):
 
         # Always allow signup if user has a trial invite token (cloud)
         if request.session.get(TRIAL_INVITE_SESSION_KEY):
-            return True
-
-        # Allow signup if cloud layer has self-registration enabled
-        if _is_cloud_installed():
             return True
 
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
@@ -685,10 +655,6 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
 
         # Always allow signup if user has a trial invite token (cloud)
         if request.session.get(TRIAL_INVITE_SESSION_KEY):
-            return True
-
-        # Allow signup if cloud layer has self-registration enabled
-        if _is_cloud_installed():
             return True
 
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)

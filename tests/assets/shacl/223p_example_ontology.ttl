@@ -3,3 +3,6 @@
 
 s223:Zone a rdfs:Class ;
     rdfs:label "Zone" .
+
+s223:Building a rdfs:Class ;
+    rdfs:label "Building" .

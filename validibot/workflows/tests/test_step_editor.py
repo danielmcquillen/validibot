@@ -38,6 +38,7 @@ from validibot.validations.models import Validator
 from validibot.validations.tests.factories import CustomValidatorFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
+from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.tests.factories import WorkflowFactory
@@ -789,6 +790,72 @@ def test_shacl_step_settings_shows_current_shapes_and_ontologies(client):
     assert "SHACL validator help" in body
     assert "Report only" in body
     assert '<div class="text-start">' in body
+
+
+def test_shacl_step_settings_locked_ruleset_renders_400_not_500(client):
+    """Saving SHACL settings on a step whose workflow has runs is a 400, not a 500.
+
+    A SHACL step's ``Ruleset`` becomes immutable once the workflow has any
+    validation runs (or the workflow itself is locked). Previously, the
+    ``Ruleset.full_clean()`` call inside ``build_shacl_config`` raised a
+    ``ValidationError`` that bubbled all the way to Django's request
+    handler, surfacing to the operator as an opaque 500 from the SHACL
+    step settings page.
+
+    The view now catches the ``ValidationError`` and re-renders the form
+    with the model-layer messages attached, so the operator gets a clear
+    explanation that they need to create a new workflow version. This
+    test pins that behaviour and guards against regressions that would
+    re-expose the original 500.
+    """
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ValidatorFactory(
+        validation_type=ValidationType.SHACL,
+        supports_assertions=True,
+    )
+    ruleset = RulesetFactory(
+        org=workflow.org,
+        ruleset_type=RulesetType.SHACL,
+        rules_text="@prefix sh: <http://www.w3.org/ns/shacl#> .",
+        metadata={
+            "has_inline_shapes": True,
+            "ontology_text": "",
+            "has_inline_ontology": False,
+            "shape_files": [],
+            "ontology_files": [],
+        },
+    )
+    step = WorkflowStepFactory(
+        workflow=workflow,
+        validator=validator,
+        ruleset=ruleset,
+        config={"shapes_text_preview": ruleset.rules_text},
+    )
+    # The lock invariant fires once the workflow has at least one run.
+    ValidationRunFactory(workflow=workflow)
+
+    edit_url = reverse(
+        "workflows:workflow_step_settings",
+        args=[workflow.pk, step.pk],
+    )
+    response = client.post(
+        edit_url,
+        data={
+            "name": step.name,
+            "description": "",
+            "notes": "",
+            "shapes_text": "@prefix sh: <http://www.w3.org/ns/shacl#> .\n# changed",
+            "ontology_text": "",
+            "inference_mode": "rdfs",
+            "submission_format": "auto",
+            "shacl_result_handling": "fail_after_assertions",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    body = response.content.decode()
+    assert "referenced by a workflow that has runs" in body
 
 
 def test_shacl_help_drawer_content_renders(client):

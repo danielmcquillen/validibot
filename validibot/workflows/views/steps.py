@@ -12,6 +12,7 @@ from http import HTTPStatus
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db import transaction
 from django.http import Http404
@@ -59,6 +60,24 @@ from validibot.workflows.views_helpers import save_workflow_action_step
 from validibot.workflows.views_helpers import save_workflow_step
 
 logger = logging.getLogger(__name__)
+
+
+def _add_validation_error_to_form(form, exc: ValidationError) -> None:
+    """Translate a model-layer ValidationError into form errors.
+
+    Per-field entries in ``exc.message_dict`` are attached to matching
+    form fields when they exist, and folded into non-field errors
+    otherwise so the user still sees the message. Errors raised with no
+    field key fall through to non-field errors as well.
+    """
+    if hasattr(exc, "message_dict"):
+        for field_name, messages_list in exc.message_dict.items():
+            target = field_name if field_name in form.fields else None
+            for message in messages_list:
+                form.add_error(target, message)
+    else:
+        for message in exc.messages:
+            form.add_error(None, message)
 
 
 def workflow_step_validator_queryset(
@@ -771,13 +790,21 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                     },
                 )
                 return self.form_invalid(form)
-            saved_step = save_workflow_step(
-                workflow,
-                validator,
-                form,
-                step=self.get_step(),
-                insert_after_step=insert_after_step,
-            )
+            try:
+                saved_step = save_workflow_step(
+                    workflow,
+                    validator,
+                    form,
+                    step=self.get_step(),
+                    insert_after_step=insert_after_step,
+                )
+            except ValidationError as exc:
+                # Model-level invariants (e.g. Ruleset's lock when the
+                # workflow has prior runs) raise during full_clean inside
+                # the per-validator config builders. Surface them as form
+                # errors instead of letting the 500 bubble up.
+                _add_validation_error_to_form(form, exc)
+                return self.form_invalid(form)
         resequence_workflow_steps(workflow)
         self.saved_step = saved_step
         if self.mode == "create":

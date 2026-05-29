@@ -16,6 +16,7 @@ from dataclasses import field
 from typing import TYPE_CHECKING
 from typing import Any
 
+from validibot.validations.cel import CUSTOM_HELPER_NAMES
 from validibot.validations.services.path_resolution import resolve_path
 
 if TYPE_CHECKING:
@@ -176,6 +177,10 @@ RESERVED_CEL_NAMES = frozenset(
         "matches",
         "in",
     }
+    # Fold in the canonical custom-helper names (mean, is_iso8601, now, …)
+    # from the single source so a helper name is never mistaken for a
+    # user-defined signal here while being a known function elsewhere.
+    | CUSTOM_HELPER_NAMES
 )
 
 _CEL_IDENT_RE = re.compile(r"^[_a-zA-Z][_a-zA-Z0-9]*$")

@@ -17,6 +17,7 @@ from django.views.generic.edit import FormView
 
 from validibot.core.utils import reverse_with_org
 from validibot.users.permissions import PermissionCode
+from validibot.validations.cel import CUSTOM_HELPER_NAMES
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import Severity
 from validibot.validations.forms import ValidatorRuleForm
@@ -129,13 +130,11 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
             "duration",
             "matches",
             "in",
-            "is_int",
-            "percentile",
-            "mean",
-            "sum",
-            "max",
-            "min",
         }
+        # Fold in the canonical custom-helper names from the single source
+        # (DEFAULT_HELPERS) so this allowlist stays in lockstep with the
+        # forms-layer ones and the runtime binding.
+        cel_builtins |= CUSTOM_HELPER_NAMES
 
         key_map = {sig.contract_key: sig for sig in available_entries}
         referenced: set[StepIODefinition] = set()

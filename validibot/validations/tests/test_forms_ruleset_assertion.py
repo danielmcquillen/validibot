@@ -119,6 +119,208 @@ class RulesetAssertionFormTests(TestCase):
         )
         self.assertTrue(form.is_valid())
 
+    def test_cel_accepts_v1_tabular_helper_functions(self):
+        """The V1 Tabular Validator helpers must be accepted at authoring
+        time, not rejected as unknown identifiers.
+
+        Why it matters: ``is_iso8601``, ``parse_date``, and ``now`` are
+        registered in three places (docs, this form allowlist, and the
+        runtime binding). This pins registration #2 — without the form's
+        ``custom_helpers`` allowlist entry (sourced from
+        ``V1_CEL_HELPER_NAMES``), ``is_iso8601(p.x)`` would be flagged as a
+        bare unknown identifier and the author could never save the rule,
+        even though it binds and executes correctly at runtime. The
+        expression exercises all three helper names in one realistic
+        "ISO date and not in the future" check.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=True,
+        )
+        validator.refresh_from_db()
+        entry = StepIODefinitionFactory(validator=validator, contract_key="event_date")
+        form = self._form(
+            validator=validator,
+            catalog_entries=[entry],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": entry.contract_key,
+                "severity": Severity.ERROR,
+                "cel_expression": (
+                    "is_iso8601(p.event_date) && parse_date(p.event_date) <= now()"
+                ),
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+
+    def test_tabular_step_accepts_row_assertion_and_tags_row_stage(self):
+        """A ``row.*`` CEL assertion is accepted on a Tabular Validator step and
+        tagged ``options.tabular_stage == "row"``.
+
+        Why it matters: the ``row.*`` namespace is only valid on a tabular step,
+        and the validator buckets assertions by ``tabular_stage`` — so authoring
+        a row assertion must both pass the (scoped) identifier check AND store
+        the stage tag that routes it into the per-row engine.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.TABULAR,
+            is_system=False,
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "",
+                "severity": Severity.ERROR,
+                "cel_expression": "row.lat >= -90 && row.lat <= 90",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        self.assertEqual(
+            form.cleaned_data["options_payload"],
+            {"tabular_stage": "row"},
+        )
+
+    def test_tabular_dataset_assertion_is_tagged_dataset_stage(self):
+        """A tabular CEL assertion over ``i.*`` (no ``row.*``) is tagged as the
+        dataset stage, so it flows through the generic input lane rather than
+        the per-row loop.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.TABULAR,
+            is_system=False,
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "",
+                "severity": Severity.ERROR,
+                "cel_expression": "i.num_rows >= 100",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        self.assertEqual(
+            form.cleaned_data["options_payload"],
+            {"tabular_stage": "dataset"},
+        )
+
+    def test_row_namespace_rejected_on_non_tabular_step(self):
+        """``row.*`` is scoped to tabular steps: a JSON Schema step must reject
+        it as an unknown identifier, so a stray ``row.x`` elsewhere is flagged
+        rather than silently accepted and then unbound at runtime.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.JSON_SCHEMA,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=True,
+        )
+        validator.refresh_from_db()
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "",
+                "severity": Severity.ERROR,
+                "cel_expression": "row.lat >= 0",
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("Bare identifiers are not allowed", str(form.errors))
+
+    def test_col_namespace_rejected_on_tabular_step_v1(self):
+        """``col.*`` (column-aggregate) assertions are V2; for V1 they must be
+        rejected even on a tabular step, so an author isn't allowed to save a
+        rule the engine can't yet run.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.TABULAR,
+            is_system=False,
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "",
+                "severity": Severity.ERROR,
+                "cel_expression": "col.lat.mean > 0",
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("Bare identifiers are not allowed", str(form.errors))
+
+    def _tabular_row_form(self, expression, *, tabular_columns):
+        """Build an assertion form for a row CEL expression on a tabular step."""
+        validator = ValidatorFactory(
+            validation_type=ValidationType.TABULAR,
+            is_system=False,
+        )
+        return RulesetAssertionForm(
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "",
+                "severity": Severity.ERROR,
+                "cel_expression": expression,
+                "when_expression": "",
+            },
+            catalog_entries=[],
+            validator=validator,
+            tabular_columns=tabular_columns,
+        )
+
+    def test_row_assertion_accepts_declared_columns(self):
+        """A row assertion referencing only declared columns saves cleanly —
+        the baseline that proves the column check doesn't false-positive.
+        """
+        form = self._tabular_row_form(
+            "row.lat >= -90 && row.lat <= 90",
+            tabular_columns={"lat", "lon"},
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+
+    def test_row_assertion_rejects_undeclared_column(self):
+        """A row assertion referencing a column not in the step's schema is
+        rejected at save time — the ADR's column-existence obligation, catching
+        a typo before it fails every run.
+        """
+        form = self._tabular_row_form("row.typo >= 0", tabular_columns={"lat", "lon"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("not declared in the step", str(form.errors))
+
+    def test_row_assertion_bracket_access_undeclared_column_rejected(self):
+        """Bracket access (``row["..."]``, the spelling for non-identifier
+        column names) is checked too — an undeclared bracketed column is
+        rejected, so the check can't be evaded by spelling.
+        """
+        form = self._tabular_row_form(
+            'row["dwc:missing"] != ""',
+            tabular_columns={"dwc:eventDate"},
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("not declared in the step", str(form.errors))
+
+    def test_row_assertion_column_check_skipped_without_schema(self):
+        """When no schema is configured yet (no declared columns), the column
+        check is skipped — authoring isn't blocked before the schema exists,
+        and the runtime still guards against an unbound column reference.
+        """
+        form = self._tabular_row_form("row.anything >= 0", tabular_columns=set())
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+
     def test_basic_assertion_accepts_parser_managed_input_target(self):
         """BASIC + i.<parser_input> is accepted post Phase 5.
 

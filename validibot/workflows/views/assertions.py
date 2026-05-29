@@ -22,6 +22,7 @@ from validibot.core.utils import reverse_with_org
 from validibot.core.view_helpers import hx_trigger_response
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogRunStage
+from validibot.validations.constants import ValidationType
 from validibot.validations.forms import RulesetAssertionForm
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import ValidationRun
@@ -105,7 +106,33 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
             set(),
         )
         kwargs["shacl_sparql_assertion_count"] = self.get_shacl_sparql_assertion_count()
+        kwargs["tabular_columns"] = self._get_tabular_columns()
         return kwargs
+
+    def _get_tabular_columns(self) -> set[str]:
+        """Declared column names for a Tabular Validator step (else empty).
+
+        Parsed from the step's stored Table Schema (``ruleset.rules_text``) so
+        the assertion form can reject a ``row.<column>`` reference to a column
+        that isn't declared. A missing/malformed schema yields an empty set,
+        which the form treats as "can't check" rather than an error.
+        """
+        validator = getattr(self.step, "validator", None)
+        if getattr(validator, "validation_type", None) != ValidationType.TABULAR:
+            return set()
+        ruleset = getattr(self.step, "ruleset", None)
+        raw_schema = getattr(ruleset, "rules_text", "") or ""
+        if not raw_schema:
+            return set()
+        import json
+
+        from validibot.validations.validators.tabular.schema import parse_table_schema
+
+        try:
+            schema = parse_table_schema(json.loads(raw_schema))
+        except (ValueError, TypeError):
+            return set()
+        return set(schema.field_names())
 
     def get_target_slug_datalist_id(self) -> str:
         step_id = getattr(self.step, "pk", "step")

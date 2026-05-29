@@ -3145,12 +3145,183 @@ class AiAssistStepConfigForm(BaseStepConfigForm):
         return cleaned
 
 
+# Delimiter choices for the tabular config form. Empty value = auto-detect
+# (the reader sniffs the delimiter at read time).
+TABULAR_DELIMITER_CHOICES = [
+    ("", _("Auto-detect")),
+    (",", _("Comma")),
+    ("\t", _("Tab")),
+    (";", _("Semicolon")),
+    ("|", _("Pipe")),
+]
+# Sample uploads for inference are small by nature; cap to keep it cheap.
+TABULAR_SAMPLE_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+class TabularStepConfigForm(BaseStepConfigForm):
+    """Settings form for a Tabular Validator step.
+
+    Configures the file dialect (delimiter / encoding / header) and the column
+    schema. The schema can be provided two ways: paste a Frictionless Table
+    Schema descriptor, or upload a sample CSV to *infer* one (the inferred
+    descriptor is stored and shown for the author to tighten next time). The
+    descriptor is written to ``ruleset.rules_text`` and the dialect to
+    ``ruleset.metadata`` by ``build_tabular_config``.
+
+    Heavy tabular imports (pandas via the inference path) are deferred to the
+    methods that need them, so this widely-imported forms module stays light.
+    """
+
+    show_display_schema = True
+
+    delimiter = forms.ChoiceField(
+        label=_("Delimiter"),
+        choices=TABULAR_DELIMITER_CHOICES,
+        required=False,
+        initial="",
+        help_text=_(
+            "Leave on auto-detect unless the file uses an unusual separator.",
+        ),
+    )
+    encoding = forms.CharField(
+        label=_("Encoding"),
+        required=False,
+        initial="utf-8",
+        max_length=40,
+    )
+    has_header = forms.BooleanField(
+        label=_("File has a header row"),
+        required=False,
+        initial=True,
+    )
+    table_schema = forms.CharField(
+        label=_("Table Schema (Frictionless descriptor)"),
+        widget=forms.Textarea(attrs={"rows": 12, "spellcheck": "false"}),
+        required=False,
+        help_text=_(
+            "Paste a Frictionless Table Schema descriptor, or upload a sample "
+            "below to infer one.",
+        ),
+    )
+    sample_file = forms.FileField(
+        label=_("Infer from a sample file"),
+        required=False,
+        help_text=_(
+            "Upload a small sample CSV to infer column names and types.",
+        ),
+    )
+
+    def __init__(self, *args, step=None, **kwargs):
+        super().__init__(*args, step=step, **kwargs)
+        if step and step.ruleset_id:
+            metadata = getattr(step.ruleset, "metadata", None) or {}
+            self.fields["table_schema"].initial = step.config.get(
+                "schema_text_preview",
+                "",
+            )
+            self.fields["delimiter"].initial = metadata.get("delimiter", "") or ""
+            self.fields["encoding"].initial = metadata.get("encoding", "utf-8")
+            self.fields["has_header"].initial = bool(metadata.get("has_header", True))
+            self.fields["table_schema"].help_text = _(
+                "Leave blank to keep the existing schema, paste a new descriptor "
+                "to replace it, or upload a sample to infer one.",
+            )
+
+    def clean(self):
+        cleaned = super().clean()
+        pasted = (cleaned.get("table_schema") or "").strip()
+        sample = cleaned.get("sample_file")
+        has_pasted = bool(pasted)
+        has_sample = bool(sample)
+
+        if has_pasted and has_sample:
+            error = _("Paste a descriptor or upload a sample, not both.")
+            self.add_error("table_schema", error)
+            self.add_error("sample_file", error)
+            return cleaned
+
+        if has_sample and sample.size > TABULAR_SAMPLE_MAX_BYTES:
+            self.add_error("sample_file", _("Sample files must be 5 MB or smaller."))
+            return cleaned
+
+        if has_sample:
+            descriptor = self._infer_descriptor(sample)
+            if descriptor is not None:
+                cleaned["descriptor"] = descriptor
+                cleaned["descriptor_json"] = json.dumps(descriptor, indent=2)
+                cleaned["schema_source"] = "infer"
+        elif has_pasted:
+            descriptor = self._validate_descriptor(pasted)
+            if descriptor is not None:
+                cleaned["descriptor"] = descriptor
+                cleaned["descriptor_json"] = pasted
+                cleaned["schema_source"] = "text"
+        elif self.step and self.step.ruleset_id:
+            cleaned["schema_source"] = "keep"
+        else:
+            self.add_error(
+                "table_schema",
+                _("Paste a Table Schema descriptor or upload a sample to infer one."),
+            )
+        return cleaned
+
+    def _build_dialect(self):
+        from validibot.validations.validators.tabular.preflight import TabularDialect
+
+        return TabularDialect(
+            delimiter=(self.cleaned_data.get("delimiter") or None),
+            encoding=(self.cleaned_data.get("encoding") or "utf-8"),
+            has_header=bool(self.cleaned_data.get("has_header")),
+        )
+
+    def _validate_descriptor(self, text: str) -> dict | None:
+        from validibot.validations.validators.tabular.schema import parse_table_schema
+
+        try:
+            descriptor = json.loads(text)
+        except json.JSONDecodeError as exc:
+            self.add_error(
+                "table_schema",
+                _("Descriptor is not valid JSON: %(err)s") % {"err": exc},
+            )
+            return None
+        try:
+            parse_table_schema(descriptor)
+        except (ValueError, TypeError) as exc:
+            self.add_error(
+                "table_schema",
+                _("Invalid Table Schema: %(err)s") % {"err": exc},
+            )
+            return None
+        return descriptor
+
+    def _infer_descriptor(self, sample) -> dict | None:
+        from validibot.validations.validators.tabular.infer import infer_table_schema
+        from validibot.validations.validators.tabular.preflight import TabularReadError
+
+        sample.seek(0)
+        content = sample.read()
+        sample.seek(0)
+        if not isinstance(content, bytes):
+            content = str(content).encode("utf-8")
+        try:
+            inferred = infer_table_schema(content, dialect=self._build_dialect())
+        except TabularReadError as exc:
+            self.add_error(
+                "sample_file",
+                _("Could not read the sample: %(err)s") % {"err": exc},
+            )
+            return None
+        return inferred.descriptor
+
+
 def get_config_form_class(validation_type: str) -> type[forms.Form]:
     mapping: dict[str, type[forms.Form]] = {
         ValidationType.BASIC: BasicStepConfigForm,
         ValidationType.JSON_SCHEMA: JsonSchemaStepConfigForm,
         ValidationType.XML_SCHEMA: XmlSchemaStepConfigForm,
         ValidationType.SHACL: ShaclStepConfigForm,
+        ValidationType.TABULAR: TabularStepConfigForm,
         ValidationType.ENERGYPLUS: EnergyPlusStepConfigForm,
         ValidationType.FMU: FMUValidatorStepConfigForm,
         ValidationType.AI_ASSIST: AiAssistStepConfigForm,

@@ -111,6 +111,38 @@ class XmlSchemaStepConfig(BaseStepConfig):
     """Human-readable label for the schema type (computed in views)."""
 
 
+class TabularStepConfig(BaseStepConfig):
+    """Config for Tabular Validator steps.
+
+    Display metadata only — the Table Schema descriptor itself lives on the
+    Ruleset (``rules_text``) and the dialect on ``ruleset.metadata``, mirroring
+    the JSON/XML schema validators. These fields drive the step-detail summary
+    card.
+    """
+
+    schema_source: str = ""
+    """How the schema was provided: "text" (pasted), "infer" (from a sample),
+    or "keep" (unchanged)."""
+
+    schema_text_preview: str = ""
+    """First 1200 characters of the Table Schema descriptor, for display."""
+
+    delimiter: str = ""
+    """Declared delimiter, or "" for auto-detect (sniffed at read time)."""
+
+    delimiter_label: str = ""
+    """Human-readable delimiter label for the summary card (e.g. "Tab")."""
+
+    encoding: str = ""
+    """Declared file encoding (e.g. "utf-8")."""
+
+    has_header: bool = True
+    """Whether the file has a header row."""
+
+    column_count: int = 0
+    """Number of declared columns, for the summary card."""
+
+
 # ---------------------------------------------------------------------------
 # EnergyPlus
 # ---------------------------------------------------------------------------
@@ -289,6 +321,7 @@ STEP_CONFIG_MODELS: dict[str, type[BaseStepConfig]] = {
     # Validator types (from ValidationType)
     "JSON_SCHEMA": JsonSchemaStepConfig,
     "XML_SCHEMA": XmlSchemaStepConfig,
+    "TABULAR": TabularStepConfig,
     "ENERGYPLUS": EnergyPlusStepConfig,
     "FMU": FmuStepConfig,
     "BASIC": BasicStepConfig,

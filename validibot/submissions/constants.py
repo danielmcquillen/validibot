@@ -147,6 +147,7 @@ class SubmissionDataFormat(models.TextChoices):
     FMU = "fmu", _("FMU")
     THERM_THMX = "therm_thmx", _("THERM THMX")
     THERM_THMZ = "therm_thmz", _("THERM THMZ (Archive)")
+    CSV = "csv", _("CSV (tabular)")
     # SYSMLV2_JSON = "sysmlv2_json", _("SysMLv2 JSON")
     UNKNOWN = "unknown", _("Unknown")
 
@@ -165,6 +166,8 @@ DATA_FORMAT_FILE_TYPE_MAP: dict[str, list[str]] = {
     SubmissionDataFormat.FMU: [SubmissionFileType.BINARY],
     SubmissionDataFormat.THERM_THMX: [SubmissionFileType.XML],
     SubmissionDataFormat.THERM_THMZ: [SubmissionFileType.BINARY],
+    # CSV is carried as a plain-text file (the Tabular Validator reads it).
+    SubmissionDataFormat.CSV: [SubmissionFileType.TEXT],
     SubmissionDataFormat.UNKNOWN: [SubmissionFileType.UNKNOWN],
 }
 

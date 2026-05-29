@@ -38,6 +38,7 @@ from validibot.workflows.forms import EnergyPlusStepConfigForm
 from validibot.workflows.forms import FMUValidatorStepConfigForm
 from validibot.workflows.forms import JsonSchemaStepConfigForm
 from validibot.workflows.forms import ShaclStepConfigForm
+from validibot.workflows.forms import TabularStepConfigForm
 from validibot.workflows.forms import XmlSchemaStepConfigForm
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
@@ -406,6 +407,73 @@ def build_json_schema_config(
         "schema_text_preview": preview,
         "schema_type": schema_type,
         "schema_type_label": str(JSONSchemaVersion(schema_type).label),
+    }
+    return config, ruleset
+
+
+def build_tabular_config(
+    workflow: Workflow,
+    form: TabularStepConfigForm,
+    step: WorkflowStep | None,
+) -> tuple[dict[str, Any], Ruleset | None]:
+    """Persist a Tabular Validator step's config to its ruleset.
+
+    Mirrors :func:`build_json_schema_config`: the Table Schema descriptor is
+    written to ``ruleset.rules_text`` and the dialect (delimiter / encoding /
+    has_header) to ``ruleset.metadata`` — the exact two places the
+    TabularValidator reads at run time. The form has already validated and
+    normalised everything in ``clean()``, so this only writes; ``"keep"`` means
+    the author edited dialect-only and left the existing schema in place.
+    """
+    cleaned = form.cleaned_data
+    source = cleaned.get("schema_source", "")
+    delimiter = cleaned.get("delimiter") or ""
+    encoding = cleaned.get("encoding") or "utf-8"
+    has_header = bool(cleaned.get("has_header"))
+
+    ruleset = ensure_ruleset(
+        workflow=workflow,
+        step=step,
+        ruleset_type=RulesetType.TABULAR,
+    )
+    metadata = dict(ruleset.metadata or {})
+    metadata["delimiter"] = delimiter
+    metadata["encoding"] = encoding
+    metadata["has_header"] = has_header
+
+    if source == "keep" and step and step.ruleset_id:
+        preview = step.config.get("schema_text_preview", "")
+        column_count = step.config.get("column_count", 0)
+        ruleset.metadata = metadata
+        ruleset.full_clean()
+        ruleset.save()
+    else:
+        descriptor_json = cleaned.get("descriptor_json", "")
+        ruleset.rules_text = descriptor_json
+        if ruleset.rules_file:
+            ruleset.rules_file.delete(save=False)
+        ruleset.rules_file = None
+        ruleset.metadata = metadata
+        ruleset.full_clean()
+        ruleset.save()
+        preview = descriptor_json[:1200]
+        column_count = len((cleaned.get("descriptor") or {}).get("fields", []))
+
+    delimiter_labels = {
+        "": str(_("Auto-detect")),
+        ",": str(_("Comma")),
+        "\t": str(_("Tab")),
+        ";": str(_("Semicolon")),
+        "|": str(_("Pipe")),
+    }
+    config = {
+        "schema_source": source,
+        "schema_text_preview": preview,
+        "delimiter": delimiter,
+        "delimiter_label": delimiter_labels.get(delimiter, delimiter),
+        "encoding": encoding,
+        "has_header": has_header,
+        "column_count": column_count,
     }
     return config, ruleset
 
@@ -1562,6 +1630,8 @@ def save_workflow_step(
             step,
             validator=validator,
         )
+    elif vtype == ValidationType.TABULAR:
+        config, ruleset = build_tabular_config(workflow, form, step)
     elif vtype == ValidationType.ENERGYPLUS:
         config, template_vars = build_energyplus_config(form, step)
         # File type enforcement: parameterized templates require JSON-only

@@ -1040,7 +1040,13 @@ class BaseValidator(ABC):
             stage_assertions.extend(
                 a
                 for a in assertions
-                if a.resolved_run_stage == stage and a.assertion_type not in excluded
+                if a.resolved_run_stage == stage
+                and a.assertion_type not in excluded
+                # Tabular row/column assertions reference row.*/col.*, which the
+                # generic stage context does not bind — the TabularValidator
+                # owns their evaluation (per ADR-2026-05-26's persistence
+                # decision), so skip them here regardless of stage.
+                and (a.options or {}).get("tabular_stage") not in {"row", "column"}
             )
 
         if not stage_assertions:

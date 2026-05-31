@@ -3161,7 +3161,7 @@ TABULAR_SAMPLE_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
 class TabularStepConfigForm(BaseStepConfigForm):
     """Settings form for a Tabular Validator step.
 
-    Configures the file dialect (delimiter / encoding / header) and the column
+    Configures the file dialect (delimiter / header) and the column
     schema. The schema can be provided two ways: paste a Frictionless Table
     Schema descriptor, or upload a sample CSV to *infer* one (the inferred
     descriptor is stored and shown for the author to tighten next time). The

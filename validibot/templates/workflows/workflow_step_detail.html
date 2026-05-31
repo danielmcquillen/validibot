@@ -71,6 +71,9 @@
       </div>
       <div class="resizable-panel d-flex flex-column gap-2 pb-3">
         {% include 'workflows/partials/components/step_details_card.html' %}
+        {% if step.validator.validation_type == "TABULAR" %}
+          {% include 'workflows/partials/components/tabular_config_card.html' %}
+        {% endif %}
         {% include 'workflows/partials/unified_signals_card.html' %}
       </div>
     </div>

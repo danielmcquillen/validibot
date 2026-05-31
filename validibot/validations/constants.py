@@ -172,6 +172,7 @@ class RulesetType(TextChoices):
     FMU = "FMU", _("FMU Validator")
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
     THERM = "THERM", _("THERM")
+    TABULAR = "TABULAR", _("Tabular")
 
 
 class ValidationType(TextChoices):
@@ -199,6 +200,7 @@ class ValidationType(TextChoices):
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
     AI_ASSIST = "AI_ASSIST", _("AI Assist")
     THERM = "THERM", _("THERM Thermal Analysis")
+    TABULAR = "TABULAR", _("Tabular Validator")
     # SYSMLV2 = "SYSMLV2", _("SysMLv2 Model Validator")
 
 
@@ -302,6 +304,9 @@ DEFAULT_COMPUTE_TIERS: dict[str, str] = {
     ValidationType.FMU: ComputeTier.HIGH,
     ValidationType.THERM: ComputeTier.HIGH,
     ValidationType.AI_ASSIST: ComputeTier.LOW,
+    # Tabular is in-process and human-scale (bounded by the reader's caps),
+    # so it is a low-compute validator metered by launch count.
+    ValidationType.TABULAR: ComputeTier.LOW,
     # ValidationType.SYSMLV2: ComputeTier.LOW,
 }
 

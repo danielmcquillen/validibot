@@ -1040,14 +1040,32 @@ class BaseValidator(ABC):
             stage_assertions.extend(
                 a
                 for a in assertions
-                if a.resolved_run_stage == stage and a.assertion_type not in excluded
+                if a.resolved_run_stage == stage
+                and a.assertion_type not in excluded
+                # Tabular row/column assertions reference row.*/col.*, which the
+                # generic stage context does not bind — the TabularValidator
+                # owns their evaluation (per ADR-2026-05-26's persistence
+                # decision), so skip them here regardless of stage.
+                and (a.options or {}).get("tabular_stage") not in {"row", "column"}
             )
 
         if not stage_assertions:
             return AssertionEvaluationResult(issues=[], total=0, failures=0)
 
-        # Build evaluation context (CEL context is lazy-built on first use)
-        context = AssertionContext(validator=validator, engine=self, stage=stage)
+        # Build evaluation context (CEL context is lazy-built on first use).
+        # Pin CEL now() to the run's started_at so a time-relative assertion is
+        # deterministic for the run; without a run context now() stays unbound
+        # and any expression using it fails cleanly (never the wall clock). This
+        # is what makes now() actually usable in generic (Basic/JSON/XML/tabular
+        # dataset) assertions — the authoring allowlist accepts it, and this
+        # binds it at runtime so it no longer fails every run.
+        run = getattr(getattr(self, "run_context", None), "validation_run", None)
+        context = AssertionContext(
+            validator=validator,
+            engine=self,
+            stage=stage,
+            now=getattr(run, "started_at", None),
+        )
 
         issues: list[ValidationIssue] = []
         evaluated_total = 0

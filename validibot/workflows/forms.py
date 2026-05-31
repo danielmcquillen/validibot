@@ -3145,12 +3145,211 @@ class AiAssistStepConfigForm(BaseStepConfigForm):
         return cleaned
 
 
+# Delimiter choices for the tabular config form. Empty value = auto-detect
+# (the reader sniffs the delimiter at read time).
+TABULAR_DELIMITER_CHOICES = [
+    ("", _("Auto-detect")),
+    (",", _("Comma")),
+    ("\t", _("Tab")),
+    (";", _("Semicolon")),
+    ("|", _("Pipe")),
+]
+# Sample uploads for inference are small by nature; cap to keep it cheap.
+TABULAR_SAMPLE_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+class TabularStepConfigForm(BaseStepConfigForm):
+    """Settings form for a Tabular Validator step.
+
+    Configures the file dialect (delimiter / encoding / header) and the column
+    schema. The schema can be provided two ways: paste a Frictionless Table
+    Schema descriptor, or upload a sample CSV to *infer* one (the inferred
+    descriptor is stored and shown for the author to tighten next time). The
+    descriptor is written to ``ruleset.rules_text`` and the dialect to
+    ``ruleset.metadata`` by ``build_tabular_config``.
+
+    Heavy tabular imports (pandas via the inference path) are deferred to the
+    methods that need them, so this widely-imported forms module stays light.
+    """
+
+    show_display_schema = True
+
+    delimiter = forms.ChoiceField(
+        label=_("Delimiter"),
+        choices=TABULAR_DELIMITER_CHOICES,
+        required=False,
+        initial="",
+        help_text=_(
+            "Leave on auto-detect unless the file uses an unusual separator.",
+        ),
+    )
+    # Encoding is intentionally NOT an editable field in V1. Submitted content
+    # reaches the validator already decoded as UTF-8 (Submission.get_content),
+    # so a per-step encoding setting could not be honored without silently
+    # corrupting non-UTF-8 input. The dialect is pinned to UTF-8 end-to-end;
+    # honoring other encodings needs a raw-bytes read path (a future slice).
+    has_header = forms.BooleanField(
+        label=_("File has a header row"),
+        required=False,
+        initial=True,
+    )
+    table_schema = forms.CharField(
+        label=_("Table Schema (Frictionless descriptor)"),
+        widget=forms.Textarea(attrs={"rows": 12, "spellcheck": "false"}),
+        required=False,
+        help_text=_(
+            "Paste a Frictionless Table Schema descriptor, or upload a sample "
+            "below to infer one.",
+        ),
+    )
+    sample_file = forms.FileField(
+        label=_("Infer from a sample file"),
+        required=False,
+        help_text=_(
+            "Upload a small sample CSV to infer column names and types.",
+        ),
+    )
+
+    def __init__(self, *args, step=None, **kwargs):
+        super().__init__(*args, step=step, **kwargs)
+        if step and step.ruleset_id:
+            metadata = getattr(step.ruleset, "metadata", None) or {}
+            self.fields["delimiter"].initial = metadata.get("delimiter", "") or ""
+            self.fields["has_header"].initial = bool(metadata.get("has_header", True))
+            # P2-review: start the editable textarea EMPTY on edit so a normal
+            # save (e.g. changing only the delimiter) keeps the stored schema
+            # untouched via the "keep" branch. It used to be pre-filled with the
+            # 1200-char *preview*; a plain browser re-POST then sent that
+            # truncated JSON back as a replacement, invalidating large schemas or
+            # overwriting them with partial content. The full current schema is
+            # shown read-only beneath the textarea instead of round-tripping it.
+            self.fields["table_schema"].initial = ""
+            self.fields["table_schema"].help_text = self._edit_help_text(
+                getattr(step.ruleset, "rules_text", "") or "",
+            )
+
+    @staticmethod
+    def _edit_help_text(current_schema: str):
+        """Build the edit-mode help text, with the full current schema shown
+        read-only in a collapsible block.
+
+        The schema is interpolated with :func:`format_html`, which escapes it —
+        so author-controlled JSON can never inject markup into the page. We show
+        the *full* descriptor (not the truncated summary-card preview) because
+        the point is for the author to see exactly what they'd be replacing.
+        """
+        intro = _(
+            "Leave blank to keep the current schema, paste a new descriptor to "
+            "replace it, or upload a sample to infer one.",
+        )
+        if not current_schema:
+            return intro
+        return format_html(
+            '{}<details class="mt-2"><summary class="small">{}</summary>'
+            '<pre class="small border rounded bg-body-tertiary p-2 mb-0" '
+            'style="max-height:18rem;overflow:auto;white-space:pre-wrap;">'
+            "{}</pre></details>",
+            intro,
+            _("Show current schema"),
+            current_schema,
+        )
+
+    def clean(self):
+        cleaned = super().clean()
+        pasted = (cleaned.get("table_schema") or "").strip()
+        sample = cleaned.get("sample_file")
+        has_pasted = bool(pasted)
+        has_sample = bool(sample)
+
+        if has_pasted and has_sample:
+            error = _("Paste a descriptor or upload a sample, not both.")
+            self.add_error("table_schema", error)
+            self.add_error("sample_file", error)
+            return cleaned
+
+        if has_sample and sample.size > TABULAR_SAMPLE_MAX_BYTES:
+            self.add_error("sample_file", _("Sample files must be 5 MB or smaller."))
+            return cleaned
+
+        if has_sample:
+            descriptor = self._infer_descriptor(sample)
+            if descriptor is not None:
+                cleaned["descriptor"] = descriptor
+                cleaned["descriptor_json"] = json.dumps(descriptor, indent=2)
+                cleaned["schema_source"] = "infer"
+        elif has_pasted:
+            descriptor = self._validate_descriptor(pasted)
+            if descriptor is not None:
+                cleaned["descriptor"] = descriptor
+                cleaned["descriptor_json"] = pasted
+                cleaned["schema_source"] = "text"
+        elif self.step and self.step.ruleset_id:
+            cleaned["schema_source"] = "keep"
+        else:
+            self.add_error(
+                "table_schema",
+                _("Paste a Table Schema descriptor or upload a sample to infer one."),
+            )
+        return cleaned
+
+    def _build_dialect(self):
+        from validibot.validations.validators.tabular.preflight import TabularDialect
+
+        return TabularDialect(
+            delimiter=(self.cleaned_data.get("delimiter") or None),
+            # Encoding is pinned to UTF-8 in V1 (see the field comment above).
+            encoding="utf-8",
+            has_header=bool(self.cleaned_data.get("has_header")),
+        )
+
+    def _validate_descriptor(self, text: str) -> dict | None:
+        from validibot.validations.validators.tabular.schema import parse_table_schema
+
+        try:
+            descriptor = json.loads(text)
+        except json.JSONDecodeError as exc:
+            self.add_error(
+                "table_schema",
+                _("Descriptor is not valid JSON: %(err)s") % {"err": exc},
+            )
+            return None
+        try:
+            parse_table_schema(descriptor)
+        except (ValueError, TypeError) as exc:
+            self.add_error(
+                "table_schema",
+                _("Invalid Table Schema: %(err)s") % {"err": exc},
+            )
+            return None
+        return descriptor
+
+    def _infer_descriptor(self, sample) -> dict | None:
+        from validibot.validations.validators.tabular.infer import infer_table_schema
+        from validibot.validations.validators.tabular.preflight import TabularReadError
+
+        sample.seek(0)
+        content = sample.read()
+        sample.seek(0)
+        if not isinstance(content, bytes):
+            content = str(content).encode("utf-8")
+        try:
+            inferred = infer_table_schema(content, dialect=self._build_dialect())
+        except TabularReadError as exc:
+            self.add_error(
+                "sample_file",
+                _("Could not read the sample: %(err)s") % {"err": exc},
+            )
+            return None
+        return inferred.descriptor
+
+
 def get_config_form_class(validation_type: str) -> type[forms.Form]:
     mapping: dict[str, type[forms.Form]] = {
         ValidationType.BASIC: BasicStepConfigForm,
         ValidationType.JSON_SCHEMA: JsonSchemaStepConfigForm,
         ValidationType.XML_SCHEMA: XmlSchemaStepConfigForm,
         ValidationType.SHACL: ShaclStepConfigForm,
+        ValidationType.TABULAR: TabularStepConfigForm,
         ValidationType.ENERGYPLUS: EnergyPlusStepConfigForm,
         ValidationType.FMU: FMUValidatorStepConfigForm,
         ValidationType.AI_ASSIST: AiAssistStepConfigForm,

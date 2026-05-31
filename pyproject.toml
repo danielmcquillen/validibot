@@ -113,6 +113,7 @@ dependencies = [
   # in the platform) — it is load-bearing for the SHACL validator's
   # RDF/XML hardening against XXE / billion-laughs / external-DTD attacks.
   # See ADR-2026-05-18 "Security" section.
+  "pandas==3.0.3",
 ]
 
 [project.optional-dependencies]

@@ -122,6 +122,7 @@ nav:
       - Signals: data-model/signals.md
       - Signals Tutorial Example: data-model/signals-tutorial-example.md
       - Assertions: data-model/assertions.md
+      - Tabular Validator: data-model/tabular-validator.md
       - Submissions: data-model/submissions.md
       - Runs: data-model/runs.md
       - Steps: data-model/steps.md

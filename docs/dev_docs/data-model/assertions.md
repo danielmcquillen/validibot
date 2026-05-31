@@ -171,6 +171,51 @@ During ruleset publish/attach the service parses every CEL expression (derivatio
 custom assertion payloads) to ensure they reference only allowlisted helpers. The parser also records
 dependencies between derivations so assertions evaluate after their inputs exist.
 
+### Adding a built-in helper: three registrations
+
+A Validibot-specific helper (one that is not a CEL builtin) is only usable end-to-end when it is
+registered in **three** places. Miss one and the helper either can't be authored or fails at run time:
+
+1. **Documentation** — a `CelHelper` entry in `validations/cel.py` `DEFAULT_HELPERS`. Drives the
+   editor's help tooltip. The set of names there is also the single source of truth for the
+   authoring-time allowlists, exported as `CUSTOM_HELPER_NAMES`.
+2. **Authoring-time allowlist** — every CEL identifier check derives its accepted custom-helper names
+   from `CUSTOM_HELPER_NAMES`, so a name added to `DEFAULT_HELPERS` is automatically accepted by the
+   ruleset form, the rule-builder view, and signal-name resolution. (These allowlists used to hand-list
+   the names in four separate places; they now share the one set so they cannot drift.)
+3. **Runtime binding** — an executable implementation in `validations/cel_helpers.py`, bound onto the
+   compiled program by `validations/cel_eval.py` via `celpy.Environment.program(ast, functions=...)`.
+   Without this a helper parses and saves but raises an unknown-function error when evaluated.
+
+`evaluate_cel_expression()` caches the parsed **AST** (the expensive step) and builds a fresh program
+per call, so run-specific helpers can be bound without sharing state across runs.
+
+### Built-in helpers and `now()`
+
+The runtime-bound built-in helpers, all implemented in `cel_helpers.py`, are:
+
+- **Date/time:** `is_iso8601(s)`, `parse_date(s)` (ISO 8601 string → `timestamp` or `null`), and `now()`.
+  Parsing is locale-independent and fixed-format (ISO 8601 only) so findings are reproducible.
+- **Scalar:** `is_finite(n)`, `is_int(n)` (integral check — `2.0` is integral, `2.5` is not), `abs(n)`
+  (type-preserving), and `round(n, digits=0)` (round-half-to-even, deterministic).
+- **Aggregate (over a list):** `mean`, `sum`, `min`, `max`, and `percentile(values, q)` (q in 0–100,
+  linear interpolation). These ignore nulls and **return a double**.
+
+Two practical notes on the aggregates. First, they return a double, and celpy rejects `double == int`
+equality (`mean(xs) == 2` errors), so compare against a double literal (`mean(xs) == 2.0`) or use an
+ordered comparison (`mean(xs) > 2`). Second, a malformed input (a non-list, or a non-numeric element)
+yields `null`, which makes the comparison fail rather than computing over garbage.
+
+Not every documented name is a Validibot binding. `duration("3600s")` is a **CEL built-in** (it parses a
+duration string), so it is intentionally *not* bound in `cel_helpers.py` — doing so would shadow the
+built-in. `has(...)` is a CEL macro with its own syntax. Both are allowlisted because CEL provides them.
+
+`now()` is **not** a CEL builtin and is **not** the wall clock — CEL has no nondeterministic builtins by
+design. It is bound to a pinned instant supplied per evaluation (`evaluate_cel_expression(..., now=...)`,
+which callers set to the run's `started_at`). If no clock is supplied, `now()` is left unbound and an
+expression that calls it fails cleanly rather than reading the wall clock. This is what makes a
+time-relative assertion such as `parse_date(row.eventDate) <= now()` reproducible for a given run.
+
 ## Preparation workflow
 
 Publishing or attaching a ruleset executes the following steps:

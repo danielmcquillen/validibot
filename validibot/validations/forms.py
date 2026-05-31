@@ -22,6 +22,7 @@ from django.utils.translation import gettext_lazy as _
 
 from validibot.projects.models import Project
 from validibot.submissions.constants import SubmissionDataFormat
+from validibot.validations.cel import CUSTOM_HELPER_NAMES
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogRunStage
@@ -833,6 +834,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         target_slug_datalist_id=None,
         workflow_signal_names=None,
         shacl_sparql_assertion_count=0,
+        tabular_columns=None,
         **kwargs,
     ):
         # Ignore fmu_variables kwarg if passed.
@@ -874,6 +876,11 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             list(self.inputs_by_slug.keys()) + list(self.outputs_by_slug.keys())
         )
         self.validator = validator
+        # Declared column names for a Tabular Validator step (from the step's
+        # stored Table Schema). Used to reject a row assertion that references
+        # an undeclared column at save time — the ADR's column-existence
+        # obligation. Empty when not a tabular step or no schema yet.
+        self.tabular_columns: set[str] = set(tabular_columns or [])
         self.shacl_sparql_assertion_count = shacl_sparql_assertion_count
         self.target_slug_datalist_id = target_slug_datalist_id
         self._configure_shacl_query_field()
@@ -1049,7 +1056,15 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             # would fail at evaluation time.
             self._validate_cel_identifiers(expression)
             cleaned["rhs_payload"] = {"expr": expression}
-            cleaned["options_payload"] = {}
+            # On a tabular step, tag the assertion's stage (row vs dataset) so
+            # the validator buckets it correctly; empty for other validators.
+            options_payload = self._tabular_cel_options(expression)
+            cleaned["options_payload"] = options_payload
+            # A row assertion may only reference columns declared in the step's
+            # Table Schema — catch a typo'd/absent column here rather than at
+            # run time (the ADR's column-existence obligation).
+            if options_payload.get("tabular_stage") == "row":
+                self._check_row_columns_exist(expression)
             cleaned["resolved_operator"] = AssertionOperator.CEL_EXPR
             cleaned["cel_cache"] = expression
             # Ensure the target constraint is satisfied for CEL assertions.
@@ -1071,6 +1086,80 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
 
     def _validator_is_shacl(self) -> bool:
         return getattr(self.validator, "validation_type", None) == ValidationType.SHACL
+
+    def _validator_is_tabular(self) -> bool:
+        return (
+            getattr(self.validator, "validation_type", None) == ValidationType.TABULAR
+        )
+
+    def _tabular_cel_options(self, expression: str) -> dict[str, str]:
+        """Tag a CEL assertion on a tabular step with its stage.
+
+        The Tabular Validator buckets assertions by ``options["tabular_stage"]``
+        (ADR-2026-05-26's persistence decision): an expression that references
+        ``row.*`` is a row-stage assertion (the validator's per-row loop owns
+        it); anything else (``i.*``/``s.*``) is a dataset-stage assertion that
+        flows through the generic input lane. Returns an empty dict for
+        non-tabular steps so their options are unchanged.
+        """
+        if not self._validator_is_tabular():
+            return {}
+        stripped = _strip_cel_string_literals(expression)
+        # ``row`` used as a namespace root (dot or bracket access), not as a
+        # substring of another identifier like ``arrow``.
+        if re.search(r"(?:^|[^\w.])row(?:\.|\[)", stripped):
+            return {"tabular_stage": "row"}
+        return {"tabular_stage": "dataset"}
+
+    def _row_columns_referenced(self, expression: str) -> set[str]:
+        """Return the column names a row assertion references via ``row.*``.
+
+        Handles both dot access (``row.lat``) and bracket access
+        (``row["dwc:eventDate"]`` — the canonical spelling for column names
+        that aren't valid CEL identifiers). Dot access is scanned on the
+        string-stripped expression so a column name inside a quoted literal
+        isn't mistaken for a reference; bracket access is scanned on the raw
+        expression because the column name lives inside the brackets' quotes.
+        """
+        columns: set[str] = set()
+        stripped = _strip_cel_string_literals(expression)
+        for match in re.finditer(
+            r"(?:^|[^\w.])row\.([A-Za-z_][A-Za-z0-9_]*)",
+            stripped,
+        ):
+            columns.add(match.group(1))
+        for match in re.finditer(
+            r"""row\s*\[\s*["']([^"']+)["']\s*\]""",
+            expression,
+        ):
+            columns.add(match.group(1))
+        return columns
+
+    def _check_row_columns_exist(self, expression: str) -> None:
+        """Reject a row assertion that references an undeclared column.
+
+        Skipped when the step has no declared columns yet (no schema
+        configured) — there's nothing to check against, and the runtime still
+        guards (an unbound ``row.x`` fails the run rather than passing). When
+        the schema *is* configured, every referenced column must be declared,
+        per the ADR's "to assert on a column you must declare it" rule.
+        """
+        if not self.tabular_columns:
+            return
+        referenced = self._row_columns_referenced(expression)
+        unknown = sorted(referenced - self.tabular_columns)
+        if unknown:
+            self.add_error(
+                "cel_expression",
+                _(
+                    "Row assertion references column(s) not declared in the "
+                    "step's schema: %(unknown)s. Declared columns: %(declared)s."
+                )
+                % {
+                    "unknown": ", ".join(unknown),
+                    "declared": ", ".join(sorted(self.tabular_columns)),
+                },
+            )
 
     @staticmethod
     def _resolve_shacl_query_max_length() -> int:
@@ -1209,6 +1298,11 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             "output",
             "steps",
         }
+        # row.* is a step-local namespace bound only by the Tabular Validator's
+        # row-stage loop, so it is accepted only on a tabular step (mandatory
+        # scoping per ADR-2026-05-26). col.* is deferred with V2.
+        if self._validator_is_tabular():
+            namespace_roots.add("row")
         cel_builtins = {
             "has",
             "exists",
@@ -1234,20 +1328,10 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             "matches",
             "in",
         }
-        # Validibot-specific helper functions
-        custom_helpers = {
-            "has",
-            "is_int",
-            "percentile",
-            "mean",
-            "sum",
-            "max",
-            "min",
-            "abs",
-            "round",
-            "duration",
-        }
-        cel_builtins.update(custom_helpers)
+        # Validibot-specific helper functions — sourced from the single
+        # canonical set (DEFAULT_HELPERS via CUSTOM_HELPER_NAMES) so this
+        # allowlist cannot drift from the documented/bound helper set.
+        cel_builtins.update(CUSTOM_HELPER_NAMES)
 
         # Reject pathological lengths up-front. ``_strip_cel_string_literals``
         # is linear-time on inputs that pass this check; without the cap an
@@ -1887,13 +1971,11 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             "duration",
             "matches",
             "in",
-            "is_int",
-            "percentile",
-            "mean",
-            "sum",
-            "max",
-            "min",
         }
+        # Fold in the canonical custom-helper names (is_int, mean, …, plus
+        # the V1 tabular helpers is_iso8601/parse_date/is_finite/now) from
+        # the single source so this allowlist never drifts from the others.
+        cel_builtins |= CUSTOM_HELPER_NAMES
         # Strip string literals (including escaped quotes) so identifiers
         # inside quotes are not treated as bare identifiers.
         stripped = _strip_cel_string_literals(expression)
@@ -1901,6 +1983,23 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             match.group(0)
             for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\.]*", stripped)
         }
+        namespace_roots = {
+            "p",
+            "payload",
+            "s",
+            "signal",
+            "i",
+            "input",
+            "o",
+            "output",
+            "steps",
+        }
+        # The row.* namespace is only valid on a Tabular Validator step (its
+        # row-stage CEL loop binds it). Scoped here so a stray ``row.x`` on a
+        # JSON/XML step is still flagged. (col.* is deferred with V2 column
+        # assertions, so it stays rejected for now.)
+        if self._validator_is_tabular():
+            namespace_roots.add("row")
         unknown = set()
         for ident in identifiers:
             if ident in reserved or ident in cel_builtins:
@@ -1908,17 +2007,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             if len(ident) == 1:
                 continue
             root = ident.split(".")[0]
-            if root in {
-                "p",
-                "payload",
-                "s",
-                "signal",
-                "i",
-                "input",
-                "o",
-                "output",
-                "steps",
-            }:
+            if root in namespace_roots:
                 continue
             unknown.add(ident)
         return unknown

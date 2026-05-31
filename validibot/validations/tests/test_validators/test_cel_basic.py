@@ -15,10 +15,14 @@ outputs and upstream step outputs respectively.
 from __future__ import annotations
 
 import json
+from datetime import UTC
+from datetime import datetime
+from types import SimpleNamespace
 
 from django.test import TestCase
 from django.test import override_settings
 
+from validibot.actions.protocols import RunContext
 from validibot.projects.tests.factories import ProjectFactory
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.tests.factories import OrganizationFactory
@@ -165,6 +169,69 @@ class CelBasicValidatorTests(TestCase):
         self.assertFalse(result.passed)
         self.assertEqual(len(result.issues), 1)
         self.assertIn("CEL evaluation failed", result.issues[0].message)
+
+    # ── now() in generic CEL is bound to the run clock (P2 regression) ──
+    # now() is allowlisted for authoring across ALL validator types, so an
+    # author can save it on a Basic/JSON/XML step. Previously the generic
+    # runtime never bound now(), so such an assertion failed every run — the
+    # authoring allowlist and the runtime disagreed. The fix pins now() to
+    # run.started_at in the generic evaluator (matching the tabular row stage).
+
+    def test_now_is_bound_to_the_run_clock(self):
+        """A saved generic CEL assertion using ``now()`` evaluates against the
+        run's pinned clock (``run.started_at``), not the wall clock.
+
+        We pin ``started_at`` to a known instant and assert ``now()`` equals it
+        exactly — proving the binding flows from the run context through the
+        generic evaluator, so a time-relative assertion is deterministic.
+        """
+        RulesetAssertionFactory(
+            ruleset=self.ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            rhs={"expr": 'now() == timestamp("2026-06-01T12:00:00Z")'},
+            severity=Severity.ERROR,
+        )
+        submission = self._submission({})
+        run_context = RunContext(
+            validation_run=SimpleNamespace(
+                started_at=datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC),
+            ),
+        )
+        engine = BasicValidator()
+
+        result = engine.validate(
+            self.validator,
+            submission,
+            self.ruleset,
+            run_context=run_context,
+        )
+
+        self.assertTrue(result.passed, result.issues)
+        self.assertEqual(len(result.issues), 0)
+
+    def test_now_without_run_clock_fails_cleanly(self):
+        """Without a run clock ``now()`` stays unbound and the assertion fails
+        cleanly (one issue) — never the wall clock, never a 500.
+
+        This is the deliberate degradation: ``now()`` is usable when a run pins
+        a clock and fails loudly when one isn't available, so it can never
+        silently read a nondeterministic wall-clock value.
+        """
+        RulesetAssertionFactory(
+            ruleset=self.ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            rhs={"expr": 'now() == timestamp("2026-06-01T12:00:00Z")'},
+            severity=Severity.ERROR,
+        )
+        submission = self._submission({})
+        engine = BasicValidator()
+
+        result = engine.validate(self.validator, submission, self.ruleset)
+
+        self.assertFalse(result.passed)
+        self.assertEqual(len(result.issues), 1)
 
     def test_dotted_slug_resolution(self):
         """Dotted path access on the payload namespace should resolve

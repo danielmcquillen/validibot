@@ -10,12 +10,14 @@ from __future__ import annotations
 import concurrent.futures
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import TYPE_CHECKING
 from typing import Any
 
 import celpy
 from lark import Token
 from lark import Tree
 
+from validibot.validations.cel_helpers import build_cel_functions
 from validibot.validations.constants import CEL_MAX_CONTEXT_DEPTH
 from validibot.validations.constants import CEL_MAX_CONTEXT_SYMBOLS
 from validibot.validations.constants import CEL_MAX_CONTEXT_TOTAL_SYMBOLS
@@ -23,6 +25,11 @@ from validibot.validations.constants import CEL_MAX_EVAL_TIMEOUT_MS
 from validibot.validations.constants import CEL_MAX_EXPRESSION_CHARS
 from validibot.validations.constants import CEL_MAX_MACRO_COUNT
 from validibot.validations.constants import CEL_MAX_MACRO_NESTING
+
+if TYPE_CHECKING:
+    # Only used in the ``now`` annotation; ``from __future__ import
+    # annotations`` makes the hint a string, so the import is type-only.
+    from datetime import datetime
 
 
 @dataclass(frozen=True)
@@ -166,17 +173,23 @@ def _validate_expression_shape(
 
 
 @lru_cache(maxsize=256)
-def _compile_expr(expr: str) -> celpy.Program:
+def _compile_ast(expr: str) -> Tree:
     """
-    Compile a CEL expression into a reusable program.
+    Parse a CEL expression into a validated AST (a Lark tree).
 
     Runs the AST shape check (see :func:`_validate_expression_shape`)
-    between Lark parse and celpy program construction, so a hostile
-    expression is rejected before we build a program object for it.
-    Cached by expression string — the check runs exactly once per
-    unique expression that reaches this function. Exceptions are not
-    cached by lru_cache, which is deliberate: repeated hostile
+    between the Lark parse and returning, so a hostile expression is
+    rejected here. Cached by expression string — the parse (the expensive
+    step, ~70µs versus ~0.4µs to build a program from the AST) and the
+    shape check run exactly once per unique expression. Exceptions are
+    not cached by lru_cache, which is deliberate: repeated hostile
     submissions re-parse (cheap) but never poison the cache.
+
+    Only the *parse* is cached, not a built program. A program binds
+    helper functions — notably a per-run ``now()`` (see
+    :func:`validibot.validations.cel_helpers.build_cel_functions`) — that
+    must not be shared across runs, so the cheap program-build step
+    happens fresh per evaluation in :func:`_build_program`.
     """
     env = celpy.Environment()
     ast = env.compile(expr)
@@ -185,7 +198,43 @@ def _compile_expr(expr: str) -> celpy.Program:
         max_macro_nesting=CEL_MAX_MACRO_NESTING,
         max_macro_count=CEL_MAX_MACRO_COUNT,
     )
-    return env.program(ast)
+    return ast
+
+
+def _build_program(ast: Tree, functions: dict[str, Any]) -> celpy.Runner:
+    """Bind *functions* onto *ast* and return an executable program.
+
+    A fresh ``Environment`` is constructed per call rather than reusing a
+    shared one: ``Environment.program`` assigns ``self.runnable`` as a
+    side effect, so sharing an env across the worker threads that evaluate
+    assertions would race on that attribute and could return the wrong
+    program. Construction is ~0.5µs and ``program()`` ~0.4µs, so a fresh
+    env per call is free relative to the cached ~70µs parse — and it lets
+    each evaluation bind its own run-specific ``now()`` without disturbing
+    the shared parse cache.
+    """
+    env = celpy.Environment()
+    return env.program(ast, functions=functions)
+
+
+def compile_program(expression: str, *, now: datetime | None = None) -> celpy.Runner:
+    """Compile and bind a CEL program once for reuse across many evaluations.
+
+    This is the row-loop counterpart to :func:`evaluate_cel_expression`. Where
+    that builds a program *and* arms a per-call ``ThreadPoolExecutor`` timeout
+    (the right shape for one possibly-hostile expression), this returns a ready
+    ``Runner`` that the caller evaluates directly against many contexts with
+    **no per-eval thread**. The expensive parse and AST shape-check happen once
+    (cached by :func:`_compile_ast`); helper functions — including a per-run
+    ``now()`` bound to *now* — are bound here.
+
+    The caller is responsible for bounding the loop's cost (row/assertion caps
+    plus a single wall-clock budget), exactly as the Tabular Validator's row
+    stage does. Raises on an invalid or pathological expression (syntax or the
+    shape-check), which the caller turns into a finding.
+    """
+    ast = _compile_ast(expression)
+    return _build_program(ast, build_cel_functions(now=now))
 
 
 def _validate_context_shape(
@@ -277,10 +326,18 @@ def evaluate_cel_expression(
     expression: str,
     context: dict[str, Any],
     timeout_ms: int | None = None,
+    now: datetime | None = None,
 ) -> CelEvaluationResult:
     """
     Evaluate a CEL expression against a context, enforcing simple limits.
     Returns a CelEvaluationResult indicating success/value/error.
+
+    The stateless Validibot helpers (``is_iso8601``, ``parse_date``,
+    ``is_finite``) are always available. ``now()`` is available **only**
+    when *now* is supplied — it is then pinned to that instant so a
+    time-relative assertion is deterministic for the run. Callers that do
+    not pin a clock (most non-tabular callers) leave ``now()`` unbound, so
+    an expression using it fails cleanly instead of reading the wall clock.
     """
     normalized = (expression or "").strip()
     if not normalized:
@@ -321,11 +378,21 @@ def evaluate_cel_expression(
     # instead of burning a thread-pool slot. See refactor-step item
     # ``[review-§14.ast_check]``.
     try:
-        program = _compile_expr(normalized)
+        ast = _compile_ast(normalized)
     except _CelExpressionShapeError as exc:
         return CelEvaluationResult(success=False, value=None, error=str(exc))
     except Exception as exc:
         # Lark parse errors / invalid CEL syntax / other celpy failures.
+        return CelEvaluationResult(success=False, value=None, error=str(exc))
+
+    # Bind helper functions onto the parsed AST. This is the runtime half
+    # of helper registration (see cel_helpers) — without it, ``now()`` /
+    # ``is_iso8601(...)`` etc. parse and save but fail here. Built fresh
+    # per call so each run's ``now()`` is pinned independently; cheap
+    # relative to the cached parse above.
+    try:
+        program = _build_program(ast, build_cel_functions(now=now))
+    except Exception as exc:  # pragma: no cover - defensive; valid AST builds
         return CelEvaluationResult(success=False, value=None, error=str(exc))
 
     def _evaluate() -> Any:

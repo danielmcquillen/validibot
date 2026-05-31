@@ -302,7 +302,7 @@ class CelContextEdgeCaseTests(TestCase):
 #
 # The tests below patch ``CEL_MAX_MACRO_NESTING`` and
 # ``CEL_MAX_MACRO_COUNT`` down to small numbers so the test
-# expressions stay readable. They also clear the ``_compile_expr``
+# expressions stay readable. They also clear the ``_compile_ast``
 # LRU cache in ``setUp`` because otherwise a test that compiles
 # expression X under patched limits could poison the cache for a
 # later test that evaluates X under different limits. (lru_cache
@@ -323,9 +323,9 @@ class CelExpressionMacroNestingTests(TestCase):
 
     def setUp(self):
         # See module-level docstring for why we clear.
-        from validibot.validations.cel_eval import _compile_expr
+        from validibot.validations.cel_eval import _compile_ast
 
-        _compile_expr.cache_clear()
+        _compile_ast.cache_clear()
 
     def test_single_macro_passes(self):
         """A single macro with a trivial predicate is the common case —
@@ -429,9 +429,9 @@ class CelExpressionMacroCountTests(TestCase):
     """
 
     def setUp(self):
-        from validibot.validations.cel_eval import _compile_expr
+        from validibot.validations.cel_eval import _compile_ast
 
-        _compile_expr.cache_clear()
+        _compile_ast.cache_clear()
 
     def test_expression_at_macro_count_limit_passes(self):
         """Off-by-one guard: exactly ``CEL_MAX_MACRO_COUNT`` macros
@@ -488,9 +488,9 @@ class CelExpressionMacroDetectionTests(TestCase):
     """
 
     def setUp(self):
-        from validibot.validations.cel_eval import _compile_expr
+        from validibot.validations.cel_eval import _compile_ast
 
-        _compile_expr.cache_clear()
+        _compile_ast.cache_clear()
 
     def test_non_macro_method_calls_do_not_count_toward_macro_limits(self):
         """``items.size()`` and similar non-macro methods must not be

@@ -11,6 +11,8 @@ from typing import Any
 from typing import Protocol
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from validibot.validations.models import RulesetAssertion
     from validibot.validations.models import Validator
     from validibot.validations.validators.base import BaseValidator
@@ -31,12 +33,18 @@ class AssertionContext:
         engine: The validator instance for shared utilities.
         stage: The assertion evaluation stage ("input" or "output").
         cel_context: CEL evaluation context, built lazily on first CEL assertion.
+        now: The run's pinned evaluation clock (``run.started_at``) used to bind
+            CEL ``now()``. ``None`` when there is no run context (e.g. a direct
+            unit-test call), in which case an expression using ``now()`` fails
+            cleanly rather than reading the wall clock — matching the tabular
+            row-stage behavior so ``now()`` is deterministic for the whole run.
     """
 
     validator: Validator
     engine: BaseValidator
     stage: str = "input"
     cel_context: dict[str, Any] | None = field(default=None)
+    now: datetime | None = field(default=None)
 
     def get_cel_context(self, payload: Any) -> dict[str, Any]:
         """

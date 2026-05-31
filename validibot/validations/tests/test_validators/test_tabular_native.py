@@ -127,6 +127,46 @@ class TableSchemaParseTests(SimpleTestCase):
         with pytest.raises(ValueError, match="no usable fields"):
             parse_table_schema({"fields": [{"type": "string"}]})
 
+    # ── Field-name uniqueness (P1 regression) ───────────────────────────
+    # Why this matters: for a headerless file the schema field names become
+    # the dataframe's column labels. A duplicate label makes ``frame[name]``
+    # return a DataFrame instead of a Series, so native validation's
+    # ``frame[field.name].tolist()`` would raise ``AttributeError`` mid-run.
+    # parse_table_schema must reject the bad descriptor up front (mirroring
+    # header validation) so the crash becomes a clean configuration error.
+
+    def test_duplicate_field_names_rejected(self):
+        """Two fields named identically are rejected at parse time.
+
+        Without this, a headerless validation against the schema crashes on a
+        pandas DataFrame-vs-Series ``.tolist()`` — see the section comment.
+        """
+        with pytest.raises(ValueError, match="duplicate field name"):
+            parse_table_schema(
+                {"fields": [{"name": "lat"}, {"name": "lat"}]},
+            )
+
+    def test_blank_after_trim_field_name_rejected(self):
+        """A present-but-blank name (empty or whitespace-only) is rejected.
+
+        A declared column with no usable name can't be addressed by ``row.*``
+        or by native validation, so it's a loud error rather than a silent skip
+        (unlike a field with no ``name`` key at all, which is genuinely
+        nameless and dropped).
+        """
+        with pytest.raises(ValueError, match="blank field name"):
+            parse_table_schema({"fields": [{"name": "   "}, {"name": "ok"}]})
+
+    def test_case_only_collision_field_names_rejected(self):
+        """``Lat`` and ``lat`` collide: Table Schema treats names as
+        not-case-sensitive for uniqueness, so this is one ambiguous column,
+        not two — rejected to match header validation.
+        """
+        with pytest.raises(ValueError, match="collide ignoring case"):
+            parse_table_schema(
+                {"fields": [{"name": "Lat"}, {"name": "lat"}]},
+            )
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Cell coercion

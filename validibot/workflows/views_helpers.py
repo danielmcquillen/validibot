@@ -428,7 +428,10 @@ def build_tabular_config(
     cleaned = form.cleaned_data
     source = cleaned.get("schema_source", "")
     delimiter = cleaned.get("delimiter") or ""
-    encoding = cleaned.get("encoding") or "utf-8"
+    # Encoding is pinned to UTF-8 in V1 — submitted content reaches the
+    # validator already decoded as UTF-8, so there is no editable encoding
+    # field. Stored as a constant so the i.encoding signal stays accurate.
+    encoding = "utf-8"
     has_header = bool(cleaned.get("has_header"))
 
     ruleset = ensure_ruleset(

@@ -87,7 +87,11 @@ jobs:
           python-version-file: '.python-version'
 
       - name: Install Dependencies
-        run: uv sync --group dev --frozen
+        # --extra docker-runner pulls in the docker SDK (already pinned in
+        # uv.lock, so --frozen still resolves). The trust-tier runner tests
+        # patch docker.from_env, which requires the module to be importable;
+        # without the extra they error with ModuleNotFoundError: docker.
+        run: uv sync --group dev --extra docker-runner --frozen
 
       - name: Audit dependencies
         run: uvx pip-audit

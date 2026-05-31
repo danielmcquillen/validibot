@@ -1,15 +1,12 @@
 """The Tabular Validator — ties the reader and native validation together.
 
 ``validate()`` reads the submitted CSV into the shared in-memory model, runs
-native structured validation against the ruleset's Table Schema, maps the
-resulting :class:`NativeFinding`s onto the platform's ``ValidationIssue``, and
-runs the standard CEL assertion lane (dataset ``i.*`` + output) for any
-assertions on the ruleset. It also exposes the ``i.*`` dataset signals so a
-``i.num_rows >= 100``-style assertion can resolve.
-
-Per-row CEL evaluation (the ``row.*`` namespace, with its compiled-once-per-run
-loop) is handled separately and lands in a later slice — this validator does the
-deterministic structured pass.
+native structured validation against the ruleset's Table Schema, evaluates
+per-row CEL assertions (the ``row.*`` namespace, with its compiled-once-per-run
+loop), maps the resulting :class:`NativeFinding`s onto the platform's
+``ValidationIssue``, and runs the standard CEL assertion lane (dataset ``i.*`` +
+output) for any assertions on the ruleset. It also exposes the ``i.*`` dataset
+signals so a ``i.num_rows >= 100``-style assertion can resolve.
 
 Configuration lives on the ruleset, mirroring the JSON Schema validator:
 
@@ -94,8 +91,10 @@ class TabularValidator(BaseValidator):
         dialect, limits, report_max_examples = self._load_settings(ruleset)
 
         # 2. Read the body. Content arrives pre-decoded from get_content(); we
-        #    re-encode as UTF-8 and read as UTF-8 (the dialect encoding applies
-        #    to a future raw-bytes read path). A read failure (oversized,
+        #    re-encode as UTF-8 and read as UTF-8. Encoding is pinned to UTF-8
+        #    in V1 (there is no editable encoding setting) because get_content()
+        #    has already decoded the submission — honoring another encoding needs
+        #    a raw-bytes read path (a future slice). A read failure (oversized,
         #    ragged, undecodable) becomes a single finding carrying its code.
         content = submission.get_content() or ""
         content_bytes = content.encode("utf-8") if isinstance(content, str) else content
@@ -252,6 +251,7 @@ class TabularValidator(BaseValidator):
             # None means "sniff"; an empty string in metadata also means sniff.
             delimiter=metadata.get("delimiter") or None,
             quotechar=metadata.get("quotechar", '"'),
+            # Pinned to UTF-8 in V1; metadata["encoding"] is always "utf-8".
             encoding="utf-8",
             has_header=bool(metadata.get("has_header", True)),
         )

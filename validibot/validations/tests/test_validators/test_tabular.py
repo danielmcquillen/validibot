@@ -212,6 +212,30 @@ class TabularValidatorRuntimeTests(TestCase):
         issue = next(i for i in result.issues if i.code == "tabular.out_of_range")
         self.assertEqual(issue.path, "lat")
 
+    def test_headerless_duplicate_schema_fields_is_a_finding_not_a_crash(self):
+        """A headerless file validated against a schema with duplicate field
+        names fails cleanly with a configuration finding — never a 500.
+
+        This is the P1 regression. For a headerless file the schema field
+        names become the dataframe's column labels; a duplicate label made
+        ``frame[name]`` return a DataFrame, so native validation's
+        ``frame[field.name].tolist()`` raised ``AttributeError`` mid-run.
+        parse_table_schema now rejects the duplicate, and the validator turns
+        that ``ValueError`` into a CODE_INVALID_SCHEMA finding — defense in
+        depth even if a bad descriptor somehow reaches run time.
+        """
+        result = _validate(
+            # Two fields both named "lat" — would crash native validation on a
+            # headerless read before parse_table_schema learned to reject it.
+            rules_text=_schema(
+                [{"name": "lat", "type": "number"}, {"name": "lat"}],
+            ),
+            content="10,20\n-5,30\n",  # no header; names come from the schema
+            metadata={"has_header": False},
+        )
+        self.assertFalse(result.passed)
+        self.assertIn(CODE_INVALID_SCHEMA, _codes(result))
+
 
 class TabularValidatorRegistrationTests(TestCase):
     """The validator must be discoverable through the registry at runtime."""

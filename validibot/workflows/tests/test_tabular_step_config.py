@@ -145,6 +145,32 @@ class TabularStepConfigFormTests(SimpleTestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("table_schema", form.errors)
 
+    def test_duplicate_field_descriptor_is_rejected(self):
+        """A pasted descriptor with duplicate field names is a field error, not
+        a deferred crash. The form surfaces the schema parser's ValueError, so
+        the author fixes it at save time rather than the validator blowing up on
+        a headerless read (the P1 regression, caught one layer earlier).
+        """
+        form = TabularStepConfigForm(
+            data={
+                "name": "x",
+                "table_schema": json.dumps(
+                    {"fields": [{"name": "lat"}, {"name": "lat"}]},
+                ),
+            },
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("table_schema", form.errors)
+
+    def test_encoding_is_not_an_editable_field(self):
+        """Encoding is intentionally absent in V1. Submitted content reaches the
+        validator already decoded as UTF-8, so a per-step encoding setting would
+        silently corrupt non-UTF-8 input — an honest no-field beats a field that
+        lies. The dialect is pinned to UTF-8 end-to-end.
+        """
+        form = TabularStepConfigForm(data={"name": "x"})
+        self.assertNotIn("encoding", form.fields)
+
 
 class BuildTabularConfigTests(TestCase):
     """The builder writes the descriptor + dialect to the ruleset."""
@@ -293,3 +319,68 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertEqual(step.ruleset.rules_text, _DESCRIPTOR)
         self.assertEqual(step.ruleset.metadata["delimiter"], ",")
         self.assertEqual(step.typed_config.column_count, 2)
+
+    def test_large_schema_survives_a_dialect_only_edit(self):
+        """A schema larger than the 1200-char preview is not corrupted when the
+        author re-saves after changing only the delimiter.
+
+        This is the P2 regression. The edit textarea used to be pre-filled with
+        the 1200-char *preview*; a normal browser re-POST then sent that
+        truncated JSON back as a replacement, either invalidating the schema or
+        overwriting it with partial content. The fix starts the textarea empty
+        (so an unchanged schema takes the "keep" path) and shows the full schema
+        read-only. Here we save a >1200-char schema, then POST with an empty
+        table_schema and a new delimiter, and assert the stored descriptor is
+        byte-for-byte intact while the delimiter updates.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+
+        # A descriptor comfortably larger than the 1200-char preview cap, with
+        # unique field names (duplicates are rejected — see the P1 fix).
+        big_descriptor = json.dumps(
+            {
+                "fields": [
+                    {"name": f"column_{i:03d}", "type": "string"} for i in range(60)
+                ],
+            },
+        )
+        self.assertGreater(len(big_descriptor), 1200)
+
+        # First save establishes the large schema.
+        first = self.client.post(
+            self._settings_url(workflow, step),
+            data={
+                "name": "Big schema step",
+                "table_schema": big_descriptor,
+                "delimiter": ",",
+                "has_header": "on",
+            },
+        )
+        self.assertEqual(first.status_code, 302)
+        step.refresh_from_db()
+        self.assertEqual(step.ruleset.rules_text, big_descriptor)
+
+        # The settings page shows the *full* schema read-only — proving the edit
+        # view no longer truncates it. A late field name only present past the
+        # 1200-char mark must appear in the rendered page.
+        page = self.client.get(self._settings_url(workflow, step))
+        self.assertContains(page, "column_059")
+
+        # Re-save changing ONLY the delimiter, with an empty schema textarea
+        # (what a browser sends when the author doesn't touch the schema).
+        second = self.client.post(
+            self._settings_url(workflow, step),
+            data={
+                "name": "Big schema step",
+                "table_schema": "",
+                "delimiter": ";",
+                "has_header": "on",
+            },
+        )
+        self.assertEqual(second.status_code, 302)
+        step.refresh_from_db()
+        # Schema preserved byte-for-byte; only the delimiter changed.
+        self.assertEqual(step.ruleset.rules_text, big_descriptor)
+        self.assertEqual(step.ruleset.metadata["delimiter"], ";")
+        self.assertEqual(step.typed_config.schema_source, "keep")

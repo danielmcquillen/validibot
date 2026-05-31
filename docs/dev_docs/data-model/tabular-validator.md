@@ -7,9 +7,9 @@ reader that ships first. TSV, Excel, and Parquet are planned as future readers
 in front of the same validation core, which is why the validator is called
 "Tabular" rather than "CSV".
 
-The full design lives in
-[ADR-2026-05-26](../../../../validibot-project/docs/adr/2026-05-26-csv-validator.md).
-This page documents the parts that are implemented and how they fit together.
+The full design lives in **ADR-2026-05-26** (`docs/adr/2026-05-26-csv-validator.md`
+in the private `validibot-project` repo). This page documents the parts that are
+implemented and how they fit together.
 
 !!! note "Status: usable end-to-end"
     The validator is configurable and runnable through the UI: the
@@ -201,12 +201,21 @@ one readable finding.
 A tabular step is configured on the normal full-screen step settings page
 (`steps/<id>/settings/`), which renders `TabularStepConfigForm` — the same
 per-validator config-form mechanism JSON Schema and SHACL use. The form has the
-dialect fields (delimiter / encoding / header) and two ways to supply the
-column schema: **paste a Frictionless descriptor**, or **upload a sample CSV to
-infer one** (via `infer.py`). On save, `build_tabular_config` writes the
-descriptor to `ruleset.rules_text` and the dialect to `ruleset.metadata` — the
-exact places the validator reads back at run time, so the editor and the engine
-meet at the ruleset.
+dialect fields (delimiter / header) and two ways to supply the column schema:
+**paste a Frictionless descriptor**, or **upload a sample CSV to infer one** (via
+`infer.py`). Encoding is pinned to UTF-8 in V1 (not an editable field):
+submitted content reaches the validator already decoded as UTF-8, so a per-step
+encoding setting could only silently corrupt non-UTF-8 input — honoring other
+encodings needs a raw-bytes read path, a future slice. On save,
+`build_tabular_config` writes the descriptor to `ruleset.rules_text` and the
+dialect to `ruleset.metadata` — the exact places the validator reads back at run
+time, so the editor and the engine meet at the ruleset.
+
+When editing an existing step the schema textarea starts **empty**: leaving it
+blank keeps the stored schema (only the dialect is updated), pasting a new
+descriptor replaces it, and the current schema is shown read-only beneath the
+field. This avoids round-tripping a truncated preview back as a replacement,
+which would corrupt a schema larger than the preview cap.
 
 The step-detail page shows a read-only **summary card** (reader, delimiter,
 header, column count, rule count) with an "Edit settings" link. Row/dataset CEL

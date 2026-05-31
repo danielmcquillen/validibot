@@ -97,6 +97,7 @@ class CelAssertionEvaluator:
                 expression=when_expr,
                 context=cel_context,
                 timeout_ms=CEL_MAX_EVAL_TIMEOUT_MS,
+                now=context.now,
             )
             if not guard_result.success:
                 return [
@@ -111,11 +112,14 @@ class CelAssertionEvaluator:
                 # Guard condition not met - skip this assertion
                 return []
 
-        # Evaluate the main expression
+        # Evaluate the main expression. now=context.now pins CEL now() to the
+        # run clock so a saved time-relative assertion evaluates deterministically
+        # instead of failing on an unbound now() (see AssertionContext.now).
         result = evaluate_cel_expression(
             expression=expr,
             context=cel_context,
             timeout_ms=CEL_MAX_EVAL_TIMEOUT_MS,
+            now=context.now,
         )
 
         if not result.success:

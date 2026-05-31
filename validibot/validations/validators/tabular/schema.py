@@ -139,6 +139,48 @@ def _parse_primary_key(raw: object) -> tuple[str, ...]:
     return ()
 
 
+def _validate_field_names(names: list[str]) -> None:
+    """Reject field-name sets that would make a column unaddressable.
+
+    Mirrors the header validation in ``readers/csv.py::_canonical_header_names``
+    so the two schema-acquisition paths (pasted descriptor vs. inferred header)
+    enforce the *same* contract. This is load-bearing, not cosmetic: for a
+    headerless file the field names become the dataframe's column labels, and a
+    duplicate label makes ``frame[name]`` return a ``DataFrame`` instead of a
+    ``Series`` — so ``native.py``'s ``frame[field.name].tolist()`` would raise
+    ``AttributeError`` mid-validation. Catching it here turns a crash into a
+    clean configuration error.
+
+    Three rules, all raising ``ValueError`` (an unusable *value*, not a wrong
+    *type*):
+
+    - blank-after-trim → a column with no usable name can't be addressed;
+    - exact duplicate → ``row.value`` / ``frame[name]`` would be ambiguous;
+    - case-only collision → Table Schema treats names as not-case-sensitive for
+      uniqueness, so ``Lat`` vs ``lat`` is a collision, not two columns.
+    """
+    blanks = [i + 1 for i, name in enumerate(names) if name.strip() == ""]
+    if blanks:
+        msg = f"Table Schema has blank field name(s) at position(s): {blanks}."
+        raise ValueError(msg)
+
+    # Track first occurrence by trimmed+casefolded key so an exact duplicate
+    # (same text) is distinguishable from a case-only collision.
+    seen: dict[str, str] = {}
+    for name in names:
+        key = name.strip().casefold()
+        if key in seen:
+            if seen[key] == name:
+                msg = f"Table Schema has a duplicate field name: {name!r}."
+                raise ValueError(msg)
+            msg = (
+                f"Table Schema has field names that collide ignoring case: "
+                f"{seen[key]!r} and {name!r}."
+            )
+            raise ValueError(msg)
+        seen[key] = name
+
+
 def parse_table_schema(descriptor: dict) -> TabularSchema:
     """Parse a Frictionless Table Schema descriptor into a ``TabularSchema``.
 
@@ -149,8 +191,11 @@ def parse_table_schema(descriptor: dict) -> TabularSchema:
 
     Raises ``TypeError`` if ``descriptor`` is not a dict or its ``fields`` is
     not an array (wrong *type*), and ``ValueError`` if it has no usable fields
-    (right type, unusable *value*). Either way a malformed schema fails loudly
-    at configuration time rather than silently validating nothing.
+    or its field names are unusable — blank-after-trim, duplicated, or
+    case-colliding (right type, unusable *value*). Either way a malformed schema
+    fails loudly at configuration time rather than silently validating nothing
+    (or, for duplicate names on a headerless file, crashing at run time — see
+    :func:`_validate_field_names`).
     """
     if not isinstance(descriptor, dict):
         msg = "Table Schema descriptor must be a JSON object."
@@ -166,7 +211,10 @@ def parse_table_schema(descriptor: dict) -> TabularSchema:
         if not isinstance(raw_field, dict):
             continue
         name = raw_field.get("name")
-        if not isinstance(name, str) or not name:
+        # A missing or non-string name is genuinely nameless (can't be
+        # addressed) and is skipped; a present-but-blank name is a declared
+        # mistake and is rejected by _validate_field_names below.
+        if not isinstance(name, str):
             continue
         declared_type = raw_field.get("type", _DEFAULT_TYPE)
         field_type = (
@@ -185,6 +233,10 @@ def parse_table_schema(descriptor: dict) -> TabularSchema:
     if not fields:
         msg = "Table Schema descriptor has no usable fields."
         raise ValueError(msg)
+
+    # Names must be unique and addressable before we build the schema — see
+    # the docstring for why a duplicate would otherwise crash native validation.
+    _validate_field_names([f.name for f in fields])
 
     return TabularSchema(
         fields=tuple(fields),

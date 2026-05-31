@@ -5,15 +5,18 @@ V1 *reader* in front of a shared validation core (TSV/Excel/Parquet are
 future readers, not separate validators). See ADR-2026-05-26 (Tabular
 Validator) for the full design.
 
-This package is built up across implementation slices:
+The package is organised as a pipeline:
 
 - ``readers/`` + ``preflight`` — parse a submission into an in-memory
   dataframe with enforceable caps and deterministic, locale-free reads.
-- (later) native structured validation, row-stage CEL evaluation, the
-  ``TabularValidator`` class, and its ``config`` for registration.
-
-Until a ``config.py`` exists here, validator auto-discovery
-(``validators/base/config.py::discover_configs``) skips this package, so
-the in-progress modules below are importable for tests without the
-validator being registered or surfaced as a choice.
+- ``schema`` + ``coercion`` — the internal Table Schema model and its
+  locale-free cell coercion.
+- ``native`` — structured validation (required/type/range/length/pattern/
+  enum/uniqueness) against the schema.
+- ``row_eval`` — per-row CEL assertions (the ``row.*`` namespace) with a
+  compiled-once-per-run loop and a pinned ``now()``.
+- ``infer`` — derive a starter schema from a sample.
+- ``validator`` + ``config`` — the registered ``TabularValidator`` and the
+  ``ValidatorConfig`` that auto-discovery (``validators/base/config.py::
+  discover_configs``) reads to surface it as a choice.
 """

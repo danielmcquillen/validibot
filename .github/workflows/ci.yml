@@ -58,6 +58,16 @@ jobs:
       PGHOST: localhost
       PGPORT: "5432"
       PGDATABASE: postgres
+      # ``manage.py`` defaults to config.settings.local (see manage.py), which
+      # hard-requires these two secrets at import time. The migrate /
+      # makemigrations steps below run with no settings override, so without
+      # these the job dies before it can check migrations. The pytest step
+      # overrides the settings module via --ds=config.settings.test (pyproject)
+      # and the deploy-check step sets its own env, so neither is affected.
+      # Both values are throwaway CI-only fakes (the Fernet key matches the
+      # public test default in config/settings/test.py).
+      DJANGO_SECRET_KEY: fake-key-for-ci-only
+      DJANGO_MFA_ENCRYPTION_KEY: qYy0eDvn7TRiLVXGJk1XeXgvr1SYathyVc9X-7HIV5E=
 
     steps:
       - name: Set DATABASE_URL

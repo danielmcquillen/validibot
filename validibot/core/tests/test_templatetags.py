@@ -70,8 +70,8 @@ def test_finding_badge_class_returns_expected_mappings():
 
 
 def test_finding_failed_rows_formats_truncated_meta():
-    """The tag turns a finding's meta into the "row #s: … (showing first N of M)"
-    line the findings table renders.
+    """The tag turns a finding's meta into the "row numbers: … (showing first N
+    of M)" line the findings table renders.
 
     Why it matters: this is the user-visible payoff of capturing failing rows —
     the tag must read ``sample_rows`` + ``count`` and surface the truncation, or

@@ -14,8 +14,8 @@ the web UI and the API never disagree:
   (``sample_rows`` / ``count`` / ``truncated``) — what the API hands clients so
   they can render it however they like.
 * :func:`format_failed_rows` returns the *human* string built from that summary
-  (e.g. ``"rows 1, 2, 4 (showing first 100 of 3,412)"``) — what the template tag
-  drops next to the message.
+  (e.g. ``"row numbers: 1, 2, 4 (showing first 100 of 3,412)"``) — what the template
+  tag drops next to the message.
 
 Both read ``meta`` defensively, so they are a no-op for findings that don't
 carry row examples (JSON Schema, XML, SHACL, …): no ``sample_rows`` key means
@@ -65,11 +65,11 @@ def format_failed_rows(meta: dict[str, Any] | None) -> str:
     """Return a human-readable failing-row line for a finding, or ``""``.
 
     Builds on :func:`summarize_failed_rows`. When the sample is the whole set
-    the string is just ``"row #s: 1, 2, 4"``; when it was capped it makes the
-    truncation explicit — ``"row #s: 1, 2, … (showing first 100 of 3,412)"`` — so
+    the string is just ``"row numbers: 1, 2, 4"``; when it was capped it makes the
+    truncation explicit — ``"row numbers: 1, 2, … (showing first 100 of 3,412)"`` — so
     the reader knows there are more failures than the ones listed.
 
-    The ``row #s:`` label is deliberate: a bare ``"rows 2"`` reads like a *count*
+    The ``row numbers:`` label is deliberate: a bare ``"rows 2"`` reads like a *count*
     ("two rows failed") rather than "row number 2". Naming it as a list of row
     numbers removes that ambiguity for single-row failures.
     """
@@ -78,9 +78,9 @@ def format_failed_rows(meta: dict[str, Any] | None) -> str:
         return ""
     rows = ", ".join(str(row) for row in summary["sample_rows"])
     if summary["truncated"]:
-        return _("row #s: %(rows)s (showing first %(shown)s of %(total)s)") % {
+        return _("row numbers: %(rows)s (showing first %(shown)s of %(total)s)") % {
             "rows": rows,
             "shown": len(summary["sample_rows"]),
             "total": summary["count"],
         }
-    return _("row #s: %(rows)s") % {"rows": rows}
+    return _("row numbers: %(rows)s") % {"rows": rows}

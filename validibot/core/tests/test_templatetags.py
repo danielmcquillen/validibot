@@ -70,7 +70,7 @@ def test_finding_badge_class_returns_expected_mappings():
 
 
 def test_finding_failed_rows_formats_truncated_meta():
-    """The tag turns a finding's meta into the "rows … (showing first N of M)"
+    """The tag turns a finding's meta into the "row #s: … (showing first N of M)"
     line the findings table renders.
 
     Why it matters: this is the user-visible payoff of capturing failing rows —
@@ -80,7 +80,7 @@ def test_finding_failed_rows_formats_truncated_meta():
     finding = SimpleNamespace(meta={"sample_rows": [1, 2, 4], "count": 12})
 
     assert core_tags.finding_failed_rows(finding) == (
-        "row #s: 1, 2, 4 (showing first 3 of 12)"
+        "row numbers: 1, 2, 4 (showing first 3 of 12)"
     )
 
 
@@ -113,4 +113,4 @@ def test_finding_failed_rows_is_usable_from_a_template():
 
     rendered = template.render(Context({"finding": finding}))
 
-    assert rendered == "row #s: 2"
+    assert rendered == "row numbers: 2"

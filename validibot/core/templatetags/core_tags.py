@@ -302,7 +302,7 @@ def finding_badge_class(finding) -> str:
 
 @register.simple_tag
 def finding_failed_rows(finding) -> str:
-    """Return a human-readable "rows …" line for a finding, or ``""``.
+    """Return a human-readable "row #s: …" line for a finding, or ``""``.
 
     Reads the finding's ``meta`` (``sample_rows`` + ``count``) and formats the
     failing-row examples with an explicit truncation marker. Returns ``""`` for

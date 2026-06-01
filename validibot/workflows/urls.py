@@ -9,6 +9,12 @@ urlpatterns = [
     path("", views.WorkflowListView.as_view(), name="workflow_list"),
     path("shared/", views.GuestWorkflowListView.as_view(), name="guest_workflow_list"),
     path("new/", views.WorkflowCreateView.as_view(), name="workflow_create"),
+    path("import/", views.WorkflowImportView.as_view(), name="workflow_import"),
+    path(
+        "<int:pk>/export/",
+        views.WorkflowExportView.as_view(),
+        name="workflow_export",
+    ),
     path(
         "<int:pk>/launch/",
         views.WorkflowLaunchDetailView.as_view(),

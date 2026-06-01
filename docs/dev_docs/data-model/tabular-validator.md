@@ -258,3 +258,13 @@ Read failures are raised as a `TabularReadError` carrying a machine-readable
 same kind of `tabular.*` code (e.g. `tabular.out_of_range`,
 `tabular.unique_violation`) plus a count and sample rows, so the validator can
 emit structured findings without matching on message text.
+
+## Import and export
+
+The Tabular Validator is the one validator that ships a custom step serializer
+for [workflow import/export](workflow-import-export.md). Its row assertions may
+only reference columns declared in the Table Schema — a rule the step-editor form
+enforces but import bypasses — so `TabularStepSerializer.validate_imported_ruleset`
+re-applies the check on import, raising `vaf.tabular_unknown_column` if a
+re-imported row assertion references an undeclared column. Every other inline
+validator uses the generic base serializer unchanged.

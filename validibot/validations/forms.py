@@ -23,6 +23,7 @@ from django.utils.translation import gettext_lazy as _
 from validibot.projects.models import Project
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.validations.cel import CUSTOM_HELPER_NAMES
+from validibot.validations.cel_columns import referenced_row_columns
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogRunStage
@@ -1114,26 +1115,12 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
     def _row_columns_referenced(self, expression: str) -> set[str]:
         """Return the column names a row assertion references via ``row.*``.
 
-        Handles both dot access (``row.lat``) and bracket access
-        (``row["dwc:eventDate"]`` — the canonical spelling for column names
-        that aren't valid CEL identifiers). Dot access is scanned on the
-        string-stripped expression so a column name inside a quoted literal
-        isn't mistaken for a reference; bracket access is scanned on the raw
-        expression because the column name lives inside the brackets' quotes.
+        Delegates to :func:`validibot.validations.cel_columns.referenced_row_columns`
+        so the authoring form and the workflow importer share one definition of
+        "which columns does this row assertion reference" — they must agree, or a
+        row assertion that saves here could be rejected on import.
         """
-        columns: set[str] = set()
-        stripped = _strip_cel_string_literals(expression)
-        for match in re.finditer(
-            r"(?:^|[^\w.])row\.([A-Za-z_][A-Za-z0-9_]*)",
-            stripped,
-        ):
-            columns.add(match.group(1))
-        for match in re.finditer(
-            r"""row\s*\[\s*["']([^"']+)["']\s*\]""",
-            expression,
-        ):
-            columns.add(match.group(1))
-        return columns
+        return referenced_row_columns(expression)
 
     def _check_row_columns_exist(self, expression: str) -> None:
         """Reject a row assertion that references an undeclared column.

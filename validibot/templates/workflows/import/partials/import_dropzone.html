@@ -1,0 +1,131 @@
+{% load i18n %}
+
+{% comment %}
+The import dropzone fragment: a drag-and-drop / file-select zone that posts the
+chosen file to the import view via HTMx (multipart), showing an indeterminate
+progress bar while the single request/response runs. The response (a results or
+error fragment) is swapped into #import-main, replacing this form.
+
+Mirrors the workflow launch dropzone UX but is self-contained: a small nonce'd
+script wires drag/drop + click-to-browse + auto-submit on selection, so it
+doesn't depend on the launch-page controller.
+{% endcomment %}
+<form id="workflow-import-form"
+      hx-post="{{ import_url }}"
+      hx-target="#import-main"
+      hx-swap="innerHTML"
+      hx-encoding="multipart/form-data"
+      hx-indicator="#import-progress"
+      hx-disabled-elt="#import-submit"
+      enctype="multipart/form-data"
+      method="post">
+  {% csrf_token %}
+  <div class="workflow-dropzone border border-2 border-secondary-subtle rounded p-4 text-center"
+       data-import-dropzone
+       role="button"
+       tabindex="0"
+       style="border-style: dashed !important;
+              cursor: pointer">
+    <div class="workflow-dropzone__icon mb-2">
+      <i class="bi bi-cloud-arrow-up fs-1 text-secondary"></i>
+    </div>
+    <div class="workflow-dropzone__text">
+      <strong>{% trans "Drag & drop a .vaf or .json file" %}</strong>
+      <span class="text-muted d-block">{% trans "or click to browse" %}</span>
+    </div>
+    <label class="btn btn-secondary btn-sm mt-2 mb-0"
+           data-import-browse
+           for="id_import_file"
+           role="button">
+      {% trans "Browse files" %}
+    </label>
+    <div class="workflow-dropzone__file d-none mt-3" data-import-file>
+      <i class="bi bi-file-earmark me-1"></i>
+      <span data-import-file-name></span>
+    </div>
+  </div>
+  <input type="file"
+         name="file"
+         id="id_import_file"
+         class="d-none"
+         accept=".vaf,.json,application/zip,application/json"
+         data-import-input />
+  <div id="import-progress"
+       class="htmx-indicator progress mt-3"
+       role="progressbar"
+       aria-label="{% trans 'Importing workflow' %}"
+       aria-valuenow="100"
+       aria-valuemin="0"
+       aria-valuemax="100">
+    <div class="progress-bar progress-bar-striped progress-bar-animated w-100">
+      {% trans "Importing…" %}
+    </div>
+  </div>
+  <button type="submit"
+          id="import-submit"
+          class="btn btn-primary mt-3"
+          disabled>
+    {% trans "Import workflow" %}
+  </button>
+</form>
+<script nonce="{{ CSP_NONCE }}">
+  (function() {
+    const form = document.getElementById('workflow-import-form');
+    if (!form) {
+      return;
+    }
+    const zone = form.querySelector('[data-import-dropzone]');
+    const input = form.querySelector('[data-import-input]');
+    const fileWrap = form.querySelector('[data-import-file]');
+    const fileName = form.querySelector('[data-import-file-name]');
+    const submit = document.getElementById('import-submit');
+
+    const showFile = () => {
+      if (input.files && input.files.length > 0) {
+        fileName.textContent = input.files[0].name;
+        fileWrap.classList.remove('d-none');
+        submit.disabled = false;
+      } else {
+        fileWrap.classList.add('d-none');
+        submit.disabled = true;
+      }
+    };
+
+    input.addEventListener('change', showFile);
+
+    // Click the zone (but not the browse label, which already targets the
+    // input) to open the file picker.
+    zone.addEventListener('click', (event) => {
+      if (event.target.closest('[data-import-browse]')) {
+        return;
+      }
+      input.click();
+    });
+    zone.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        input.click();
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach((name) => {
+      zone.addEventListener(name, (event) => {
+        event.preventDefault();
+        zone.classList.add('border-primary');
+      });
+    });
+    ['dragleave', 'drop'].forEach((name) => {
+      zone.addEventListener(name, (event) => {
+        event.preventDefault();
+        zone.classList.remove('border-primary');
+      });
+    });
+    zone.addEventListener('drop', (event) => {
+      const files = event.dataTransfer && event.dataTransfer.files;
+      if (files && files.length > 0) {
+        input.files = files;
+        showFile();
+      }
+    });
+  })();
+</script>

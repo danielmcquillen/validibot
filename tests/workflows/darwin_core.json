@@ -1,0 +1,123 @@
+{
+  "format_version": 1,
+  "steps": [
+    {
+      "config": {},
+      "derivations": [],
+      "description": "Validate a Darwin Core occurrence CSV against the occurrence Table Schema and four marine quality rules.",
+      "io_promotions": [],
+      "kind": "validator",
+      "name": "Check incoming CSV",
+      "notes": "",
+      "order": 10,
+      "resources": [],
+      "ruleset": {
+        "assertions": [
+          {
+            "assertion_type": "cel_expr",
+            "cel_cache": "",
+            "message_template": "Minimum depth exceeds maximum depth.",
+            "operator": "le",
+            "options": {
+              "tabular_stage": "row"
+            },
+            "order": 1,
+            "rhs": {
+              "expr": "row.minimumDepthInMeters <= row.maximumDepthInMeters"
+            },
+            "severity": "ERROR",
+            "spec_version": 1,
+            "success_message": "",
+            "target_data_path": "",
+            "target_signal_ref": null,
+            "when_expression": ""
+          },
+          {
+            "assertion_type": "cel_expr",
+            "cel_cache": "",
+            "message_template": "Coordinates are at Null Island (0, 0).",
+            "operator": "le",
+            "options": {
+              "tabular_stage": "row"
+            },
+            "order": 2,
+            "rhs": {
+              "expr": "!(row.decimalLatitude == 0.0 && row.decimalLongitude == 0.0)"
+            },
+            "severity": "ERROR",
+            "spec_version": 1,
+            "success_message": "",
+            "target_data_path": "",
+            "target_signal_ref": null,
+            "when_expression": ""
+          },
+          {
+            "assertion_type": "cel_expr",
+            "cel_cache": "",
+            "message_template": "A present occurrence must record at least one individual.",
+            "operator": "le",
+            "options": {
+              "tabular_stage": "row"
+            },
+            "order": 3,
+            "rhs": {
+              "expr": "row.occurrenceStatus != \"present\" || row.individualCount >= 1"
+            },
+            "severity": "ERROR",
+            "spec_version": 1,
+            "success_message": "",
+            "target_data_path": "",
+            "target_signal_ref": null,
+            "when_expression": ""
+          },
+          {
+            "assertion_type": "cel_expr",
+            "cel_cache": "",
+            "message_template": "coordinateUncertaintyInMeters must be greater than zero.",
+            "operator": "le",
+            "options": {
+              "tabular_stage": "row"
+            },
+            "order": 4,
+            "rhs": {
+              "expr": "row.coordinateUncertaintyInMeters > 0.0"
+            },
+            "severity": "ERROR",
+            "spec_version": 1,
+            "success_message": "",
+            "target_data_path": "",
+            "target_signal_ref": null,
+            "when_expression": ""
+          }
+        ],
+        "metadata": {},
+        "name": "Darwin Core Occurrence Table Schema",
+        "rules_text": "{\n  \"fields\": [\n    {\n      \"name\": \"occurrenceID\",\n      \"type\": \"string\"\n    },\n    {\n      \"name\": \"basisOfRecord\",\n      \"type\": \"string\",\n      \"constraints\": {\n        \"required\": true,\n        \"enum\": [\n          \"HumanObservation\",\n          \"MachineObservation\",\n          \"PreservedSpecimen\",\n          \"FossilSpecimen\",\n          \"LivingSpecimen\",\n          \"MaterialSample\",\n          \"MaterialEntity\",\n          \"Occurrence\"\n        ]\n      }\n    },\n    {\n      \"name\": \"occurrenceStatus\",\n      \"type\": \"string\",\n      \"constraints\": {\n        \"enum\": [\"present\", \"absent\"]\n      }\n    },\n    {\n      \"name\": \"scientificName\",\n      \"type\": \"string\",\n      \"constraints\": {\n        \"required\": true\n      }\n    },\n    {\n      \"name\": \"scientificNameID\",\n      \"type\": \"string\",\n      \"constraints\": {\n        \"pattern\": \"^urn:lsid:marinespecies\\\\.org:taxname:[0-9]+$\"\n      }\n    },\n    {\n      \"name\": \"eventDate\",\n      \"type\": \"string\",\n      \"constraints\": {\n        \"required\": true,\n        \"pattern\": \"^[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?(/[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?)?$\"\n      }\n    },\n    {\n      \"name\": \"decimalLatitude\",\n      \"type\": \"number\",\n      \"constraints\": {\n        \"required\": true,\n        \"minimum\": -90,\n        \"maximum\": 90\n      }\n    },\n    {\n      \"name\": \"decimalLongitude\",\n      \"type\": \"number\",\n      \"constraints\": {\n        \"required\": true,\n        \"minimum\": -180,\n        \"maximum\": 180\n      }\n    },\n    {\n      \"name\": \"coordinateUncertaintyInMeters\",\n      \"type\": \"number\",\n      \"constraints\": {\n        \"minimum\": 0\n      }\n    },\n    {\n      \"name\": \"minimumDepthInMeters\",\n      \"type\": \"number\",\n      \"constraints\": {\n        \"minimum\": 0\n      }\n    },\n    {\n      \"name\": \"maximumDepthInMeters\",\n      \"type\": \"number\",\n      \"constraints\": {\n        \"minimum\": 0\n      }\n    },\n    {\n      \"name\": \"individualCount\",\n      \"type\": \"integer\",\n      \"constraints\": {\n        \"minimum\": 0\n      }\n    }\n  ],\n  \"primaryKey\": \"occurrenceID\"\n}\n",
+        "ruleset_type": "TABULAR",
+        "version": "1"
+      },
+      "show_success_messages": true,
+      "signal_bindings": [],
+      "signal_definitions": [],
+      "step_key": "check_incoming_csv",
+      "validator_ref": {
+        "is_system": true,
+        "name": "Tabular Validator",
+        "slug": "tabular-validator",
+        "validation_type": "TABULAR",
+        "version": 1
+      }
+    }
+  ],
+  "workflow": {
+    "allowed_file_types": [
+      "text"
+    ],
+    "description": "Quality-gate Darwin Core occurrence records: column schema plus cross-field and domain assertions, mirroring OBIS QC.",
+    "name": "Darwin Core Occurrence QA",
+    "public_info": null,
+    "signal_mappings": [],
+    "slug": "darwin-core-occurrence-qa",
+    "success_message": ""
+  }
+}

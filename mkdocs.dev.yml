@@ -96,6 +96,7 @@ nav:
       - Debug a Run: how-to/debug-a-run.md
       - Doctor Check IDs: how-to/doctor-check-ids.md
       - Manage Guest Accounts: how-to/manage-guest-accounts.md
+      - Reset an Environment: how-to/reset-an-environment.md
       - Manage Organizations & Projects: organization_management.md
   - Testing:
       - Testing Overview: how-to/testing.md
@@ -130,6 +131,7 @@ nav:
       - Users & Roles: data-model/users_roles.md
       - Deletions: data-model/deletions.md
       - Workflow Versioning & Trust: data-model/workflow-versioning.md
+      - Workflow Import & Export: data-model/workflow-import-export.md
   - Deployment:
       - Deployment Overview: deployment/overview.md
       - Run Validibot Locally: deployment/deploy-local.md

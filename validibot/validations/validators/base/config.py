@@ -273,6 +273,20 @@ class ValidatorConfig(BaseModel):
     # Custom cards rendered in the step detail page's right column.
     step_editor_cards: list[StepEditorCardSpec] = Field(default_factory=list)
 
+    # --- Workflow import/export ---
+    # Dotted path to a ``StepSerializer`` subclass that knows how to serialize
+    # and deserialize *this validator's* step body (validator-specific ruleset
+    # body, config, validator-owned signals) for the ``.vaf`` workflow archive.
+    # Empty means "use the generic base serializer", which already round-trips
+    # the common case (rules_text + metadata + assertions). A validator only
+    # sets this when it needs special handling — e.g. the Tabular Validator
+    # revalidates that imported row assertions reference declared columns. This
+    # is what makes "each validator owns its own (de)serialization" real: adding
+    # import support for a new validator is implementing one class, not editing
+    # a central switch. Resolved lazily by
+    # ``validations.validators.base.step_serializer.get_step_serializer``.
+    step_serializer_class: str = ""
+
 
 def _get_allowed_validator_plugin_prefixes() -> tuple[str, ...]:
     """Return the allowlisted module prefixes for validator plugins."""

@@ -34,10 +34,12 @@
   {% else %}
     <div data-bs-toggle="tooltip"
          data-bs-placement="top"
-         {% if workflow.is_active %}
-           title="{% trans "Executor access required to run this workflow" %}"
-         {% else %}
+         {% if workflow.is_archived %}
            title="{% trans "This workflow is archived and cannot be launched" %}"
+         {% elif not workflow.is_active %}
+           title="{% trans "This workflow is inactive. Activate it to launch." %}"
+         {% else %}
+           title="{% trans "Executor access required to run this workflow" %}"
          {% endif %}>
       <div class="btn btn-sm btn-secondary disabled"
            role="button"

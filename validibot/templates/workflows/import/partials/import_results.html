@@ -1,0 +1,69 @@
+{% load i18n %}
+
+{% comment %}
+Shown (swapped into #import-main) after a successful import. Always rendered on
+success — even with no warnings — so the user gets an explicit confirmation and a
+clear next step rather than a silent redirect. Lists any warnings (validator
+version mismatches, skipped catalog resources) the import collected.
+{% endcomment %}
+<div class="import-results">
+  <div class="alert alert-success d-flex align-items-center" role="alert">
+    <i class="bi bi-check-circle-fill me-2 fs-5"></i>
+    <div>
+      {% blocktrans with name=workflow.name %}Workflow <strong>{{ name }}</strong> was imported.{% endblocktrans %}
+    </div>
+  </div>
+
+  <p class="text-muted small">
+    {% trans "Open the workflow to review its steps before you launch it." %}
+  </p>
+
+  <dl class="row small">
+    <dt class="col-5 col-sm-4">
+      {% trans "Steps" %}
+    </dt>
+    <dd class="col-7 col-sm-8">
+      {{ components.steps|default:0 }}
+    </dd>
+    <dt class="col-5 col-sm-4">
+      {% trans "Assertions" %}
+    </dt>
+    <dd class="col-7 col-sm-8">
+      {{ components.assertions|default:0 }}
+    </dd>
+    {% if components.signal_mappings %}
+      <dt class="col-5 col-sm-4">
+        {% trans "Signal mappings" %}
+      </dt>
+      <dd class="col-7 col-sm-8">
+        {{ components.signal_mappings }}
+      </dd>
+    {% endif %}
+  </dl>
+
+  {% if warnings %}
+    <div class="alert alert-warning" role="alert">
+      <div class="fw-semibold mb-1">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        {% blocktrans count counter=warnings|length %}1 thing needs your attention{% plural %}{{ counter }} things need your attention{% endblocktrans %}
+      </div>
+      <ul class="mb-0 small">
+        {% for warning in warnings %}
+          <li>
+            {{ warning }}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <div class="d-flex gap-2 mt-3">
+    <a class="btn btn-primary" href="{{ detail_url }}">
+      <i class="bi bi-box-arrow-in-right me-1"></i>
+      {% trans "Go to workflow" %}
+    </a>
+    <a class="btn btn-outline-secondary" href="{{ list_url }}">
+      {% trans "Back to workflow list" %}
+    </a>
+  </div>
+</div>

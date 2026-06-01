@@ -1,0 +1,420 @@
+"""Workflow import/export round-trip and import-service behaviour.
+
+These prove the serialize/deserialize halves agree and that the import rules from
+the design hold: a fresh workflow rebound to the importing org, validators
+resolved (not recreated) with version-mismatch warnings and a hard error when
+unresolvable, and the Tabular Validator's row-column guard re-applied on import.
+The committed Darwin Core fixtures (``tests/workflows/darwin_core.{json,vaf}``)
+are imported here too, so they can't silently drift from what the importer
+expects.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from django.conf import settings
+from django.core.files.base import ContentFile
+
+from validibot.users.tests.factories import OrganizationFactory
+from validibot.users.tests.factories import UserFactory
+from validibot.validations.constants import AssertionType
+from validibot.validations.constants import RulesetType
+from validibot.validations.constants import Severity
+from validibot.validations.constants import ValidationType
+from validibot.validations.tests.factories import RulesetAssertionFactory
+from validibot.validations.tests.factories import RulesetFactory
+from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.base.step_serializer import WorkflowImportError
+from validibot.workflows.services.io.exporter import export_definition
+from validibot.workflows.services.io.importer import import_definition
+from validibot.workflows.services.io.importer import import_from_upload
+from validibot.workflows.tests.factories import WorkflowFactory
+from validibot.workflows.tests.factories import WorkflowStepFactory
+
+pytestmark = pytest.mark.django_db
+
+# The four Darwin Core row rules, mirroring the committed example.
+_ROW_RULES = [
+    ("row.minimumDepthInMeters <= row.maximumDepthInMeters", "Depth order"),
+    ("!(row.decimalLatitude == 0.0 && row.decimalLongitude == 0.0)", "Null Island"),
+    ('row.occurrenceStatus != "present" || row.individualCount >= 1', "Present count"),
+    ("row.coordinateUncertaintyInMeters > 0.0", "Positive uncertainty"),
+]
+
+
+def _table_schema() -> str:
+    """Load the Darwin Core Table Schema asset as text (the ruleset rules)."""
+    path = (
+        Path(settings.BASE_DIR)
+        / "tests"
+        / "assets"
+        / "csv"
+        / "darwin_core"
+        / "occurrence_schema.json"
+    )
+    return path.read_text(encoding="utf-8")
+
+
+def _org_and_user():
+    """Create an org with an active member user, set as current org."""
+    org = OrganizationFactory()
+    user = UserFactory(orgs=[org])
+    user.set_current_org(org)
+    return org, user
+
+
+def _tabular_validator():
+    """A shared (system) Tabular Validator resolvable by validation_type."""
+    return ValidatorFactory(
+        validation_type=ValidationType.TABULAR,
+        slug="tabular-validator",
+        version=1,
+        is_system=True,
+        supports_assertions=True,
+    )
+
+
+def _darwin_core_workflow(org, user, validator):
+    """Build a live Darwin Core tabular workflow with the four row assertions."""
+    ruleset = RulesetFactory(
+        org=org,
+        user=user,
+        ruleset_type=RulesetType.TABULAR,
+        rules_text=_table_schema(),
+    )
+    for index, (expression, message) in enumerate(_ROW_RULES):
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            order=index + 1,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            target_data_path="",
+            rhs={"expr": expression},
+            options={"tabular_stage": "row"},
+            severity=Severity.ERROR,
+            message_template=message,
+        )
+    workflow = WorkflowFactory(org=org, user=user)
+    WorkflowStepFactory(
+        workflow=workflow,
+        validator=validator,
+        ruleset=ruleset,
+        order=10,
+        name="Check incoming CSV",
+    )
+    return workflow
+
+
+# ── Round-trip: export a live workflow, re-import into a different org ───────
+def test_export_then_import_rebuilds_the_workflow_in_a_new_org():
+    """A workflow survives a full export -> import into a fresh org unchanged.
+
+    This is the headline guarantee: the serialized form carries enough to rebuild
+    the workflow's shape (step, Table Schema ruleset, four row assertions) while
+    the importer rebinds ownership and mints a new identity — never mutating or
+    reusing the source rows.
+    """
+    src_org, src_user = _org_and_user()
+    validator = _tabular_validator()
+    workflow = _darwin_core_workflow(src_org, src_user, validator)
+
+    definition, files = export_definition(workflow)
+    assert files == {}  # file-free workflow -> importable as bare JSON too
+
+    dst_org, dst_user = _org_and_user()
+    result = import_definition(definition, files=files, org=dst_org, user=dst_user)
+
+    new = result.workflow
+    assert new.pk != workflow.pk
+    assert new.org_id == dst_org.pk
+    assert new.user_id == dst_user.pk
+    assert new.version == 1
+    assert new.uuid != workflow.uuid
+    # Imported workflows are active and launchable immediately (not archived).
+    assert new.is_active is True
+    assert new.is_archived is False
+    assert result.warnings == []
+
+    steps = list(new.steps.all())
+    assert len(steps) == 1
+    step = steps[0]
+    # Built-in validators are shared, so the SAME system row is reused.
+    assert step.validator_id == validator.pk
+    # The ruleset is a fresh copy owned by the importing org.
+    assert step.ruleset_id != workflow.steps.first().ruleset_id
+    assert step.ruleset.org_id == dst_org.pk
+    assert step.ruleset.ruleset_type == RulesetType.TABULAR
+
+    assertions = list(step.ruleset.assertions.all().order_by("order"))
+    assert len(assertions) == 4  # noqa: PLR2004
+    assert [a.rhs["expr"] for a in assertions] == [rule[0] for rule in _ROW_RULES]
+    assert all(a.options.get("tabular_stage") == "row" for a in assertions)
+
+
+def test_import_mints_a_unique_slug_on_collision():
+    """Importing twice into the same org yields two workflows with unique slugs.
+
+    "Always a new copy" means a name/slug collision is resolved by suffixing, not
+    by erroring or overwriting the first import.
+    """
+    src_org, src_user = _org_and_user()
+    validator = _tabular_validator()
+    workflow = _darwin_core_workflow(src_org, src_user, validator)
+    definition, files = export_definition(workflow)
+
+    dst_org, dst_user = _org_and_user()
+    first = import_definition(definition, files=files, org=dst_org, user=dst_user)
+    second = import_definition(definition, files=files, org=dst_org, user=dst_user)
+
+    assert first.workflow.slug != second.workflow.slug
+    assert second.workflow.slug.startswith(first.workflow.slug)
+
+
+# ── Importing the committed fixtures ────────────────────────────────────────
+def test_imports_committed_darwin_core_json():
+    """The committed darwin_core.json imports cleanly into a working workflow.
+
+    Guards the fixture: if the importer's expectations or the example drift apart,
+    this fails. Bare JSON is the file-free import path.
+    """
+    org, user = _org_and_user()
+    _tabular_validator()
+    data = (
+        Path(settings.BASE_DIR) / "tests" / "workflows" / "darwin_core.json"
+    ).read_bytes()
+
+    result = import_from_upload(data, filename="darwin_core.json", org=org, user=user)
+
+    assert result.warnings == []
+    workflow = result.workflow
+    assert workflow.name == "Darwin Core Occurrence QA"
+    assert workflow.steps.count() == 1
+    assert workflow.steps.first().ruleset.assertions.count() == 4  # noqa: PLR2004
+
+
+def test_imports_committed_darwin_core_vaf():
+    """The committed darwin_core.vaf imports identically to the .json.
+
+    Same definition, archive path — proves the .vaf packaging is wired into the
+    import flow end to end.
+    """
+    org, user = _org_and_user()
+    _tabular_validator()
+    data = (
+        Path(settings.BASE_DIR) / "tests" / "workflows" / "darwin_core.vaf"
+    ).read_bytes()
+
+    result = import_from_upload(data, filename="darwin_core.vaf", org=org, user=user)
+
+    assert result.workflow.steps.first().ruleset.assertions.count() == 4  # noqa: PLR2004
+
+
+# ── Validator resolution ────────────────────────────────────────────────────
+def test_unresolvable_validator_is_a_hard_error():
+    """A step whose validator isn't available fails the import outright.
+
+    A workflow with an unbacked step couldn't run, so a partial import would be
+    worse than a clear failure.
+    """
+    org, user = _org_and_user()  # note: no Tabular validator created
+    data = (
+        Path(settings.BASE_DIR) / "tests" / "workflows" / "darwin_core.json"
+    ).read_bytes()
+
+    with pytest.raises(WorkflowImportError) as ctx:
+        import_from_upload(data, filename="darwin_core.json", org=org, user=user)
+    assert ctx.value.code == "vaf.validator_unresolved"
+
+
+def test_version_mismatch_resolves_with_a_warning():
+    """A built-in present at a different version resolves, with a warning.
+
+    Portability over precision for built-ins: the definition asked for version 1,
+    only version 2 exists, so we use it and tell the user.
+    """
+    org, user = _org_and_user()
+    ValidatorFactory(
+        validation_type=ValidationType.TABULAR,
+        slug="tabular-validator",
+        version=2,
+        is_system=True,
+        supports_assertions=True,
+    )
+    data = (
+        Path(settings.BASE_DIR) / "tests" / "workflows" / "darwin_core.json"
+    ).read_bytes()
+
+    result = import_from_upload(data, filename="darwin_core.json", org=org, user=user)
+
+    assert any("version" in warning.lower() for warning in result.warnings)
+    assert result.workflow.steps.first().validator.version == 2  # noqa: PLR2004
+
+
+# ── Imports never inherit external exposure ─────────────────────────────────
+def test_import_forces_publication_and_agent_flags_private():
+    """An import never makes a workflow public/agent-exposed, even if asked to.
+
+    Imports are active (runnable), so the exposure toggles must not travel: a
+    crafted (or faithfully exported) definition that sets ``is_public`` /
+    ``make_info_page_public`` / ``agent_public_discovery`` /
+    ``agent_access_enabled`` must land private. Otherwise importing a public or
+    agent-discoverable workflow would auto-publish it in the target org.
+    """
+    org, user = _org_and_user()
+    _tabular_validator()
+    definition = json.loads(
+        (
+            Path(settings.BASE_DIR) / "tests" / "workflows" / "darwin_core.json"
+        ).read_text(),
+    )
+    # A hostile / over-eager definition asking for full external exposure.
+    definition["workflow"].update(
+        {
+            "is_public": True,
+            "make_info_page_public": True,
+            "agent_public_discovery": True,
+            "agent_access_enabled": True,
+        },
+    )
+
+    result = import_definition(definition, files={}, org=org, user=user)
+
+    new = result.workflow
+    assert new.is_public is False
+    assert new.make_info_page_public is False
+    assert new.agent_public_discovery is False
+    assert new.agent_access_enabled is False
+    # ...but still active and runnable by org members.
+    assert new.is_active is True
+
+
+# ── Uploaded-schema (rules_file) rulesets round-trip ────────────────────────
+def _json_schema_validator():
+    """A shared JSON Schema validator, resolvable by validation_type on import."""
+    return ValidatorFactory(
+        validation_type=ValidationType.JSON_SCHEMA,
+        slug="json-2020-12",
+        version=1,
+        is_system=True,
+        supports_assertions=True,
+    )
+
+
+def _file_backed_json_ruleset(org, user, schema_bytes: bytes):
+    """A JSON Schema ruleset whose schema lives in an uploaded file, not text."""
+    # Start from a valid factory ruleset (gives the required schema_type
+    # metadata), then convert it to the uploaded-file form the JSON/XML editors
+    # produce: schema in rules_file, rules_text cleared.
+    ruleset = RulesetFactory(org=org, user=user, ruleset_type=RulesetType.JSON_SCHEMA)
+    ruleset.rules_file = ContentFile(schema_bytes, name="schema.json")
+    ruleset.rules_text = ""
+    ruleset.save()
+    return ruleset
+
+
+def test_uploaded_schema_file_ruleset_round_trips():
+    """A ruleset that stores its schema in an uploaded file survives export/import.
+
+    Regression: the base serializer used to export only ``rules_text``, so a
+    JSON/XML upload (which stores the schema in ``rules_file`` and clears
+    ``rules_text``) came back with neither and failed model validation. Export now
+    bundles the file bytes and import restores them.
+    """
+    src_org, src_user = _org_and_user()
+    validator = _json_schema_validator()
+    schema_bytes = b'{"type": "object", "properties": {"name": {"type": "string"}}}'
+    ruleset = _file_backed_json_ruleset(src_org, src_user, schema_bytes)
+    workflow = WorkflowFactory(org=src_org, user=src_user)
+    WorkflowStepFactory(
+        workflow=workflow, validator=validator, ruleset=ruleset, order=10
+    )
+
+    definition, files = export_definition(workflow)
+
+    # The schema file is bundled, and the ruleset references it (no inline text).
+    assert len(files) == 1
+    body = definition["steps"][0]["ruleset"]
+    assert body["rules_text"] == ""
+    assert body["rules_file"]["content_ref"] in files
+
+    dst_org, dst_user = _org_and_user()
+    result = import_definition(definition, files=files, org=dst_org, user=dst_user)
+
+    new_ruleset = result.workflow.steps.first().ruleset
+    assert new_ruleset.rules_text == ""
+    assert new_ruleset.rules_file
+    with new_ruleset.rules_file.open("rb") as handle:
+        assert handle.read() == schema_bytes
+
+
+def test_importing_a_file_backed_ruleset_as_bare_json_fails_clearly():
+    """A definition that needs a bundled schema file can't be imported as bare JSON.
+
+    Without the file bytes the schema would be lost, so the import fails with a
+    clear, actionable error instead of a downstream model-validation crash.
+    """
+    src_org, src_user = _org_and_user()
+    validator = _json_schema_validator()
+    ruleset = _file_backed_json_ruleset(src_org, src_user, b'{"type": "object"}')
+    workflow = WorkflowFactory(org=src_org, user=src_user)
+    WorkflowStepFactory(
+        workflow=workflow, validator=validator, ruleset=ruleset, order=10
+    )
+    definition, _files = export_definition(workflow)
+
+    dst_org, dst_user = _org_and_user()
+    with pytest.raises(WorkflowImportError) as ctx:
+        # files={} simulates a bare-JSON import (no bundled bytes).
+        import_definition(definition, files={}, org=dst_org, user=dst_user)
+    assert ctx.value.code == "vaf.missing_bundled_file"
+
+
+# ── Tabular row-column guard re-applied on import ───────────────────────────
+def test_tabular_row_assertion_referencing_unknown_column_is_rejected():
+    """An imported tabular row assertion can't reference an undeclared column.
+
+    The step editor blocks this at authoring time; import bypasses the form, so
+    the Tabular serializer re-checks it. Without the guard the archive would
+    create a ruleset that fails every row at runtime.
+    """
+    org, user = _org_and_user()
+    _tabular_validator()
+    definition = json.loads(
+        (
+            Path(settings.BASE_DIR) / "tests" / "workflows" / "darwin_core.json"
+        ).read_text(),
+    )
+    # Point one row assertion at a column the Table Schema doesn't declare.
+    definition["steps"][0]["ruleset"]["assertions"][0]["rhs"] = {
+        "expr": "row.notAColumn > 0",
+    }
+
+    with pytest.raises(WorkflowImportError) as ctx:
+        import_definition(definition, files={}, org=org, user=user)
+    assert ctx.value.code == "vaf.tabular_unknown_column"
+
+
+def test_tabular_row_assertion_with_column_name_in_a_string_literal_is_allowed():
+    """A column-shaped token inside a CEL string literal must not be rejected.
+
+    Import and authoring share one column scan now, so a valid expression like
+    ``row.scientificName != "row.notAColumn"`` references only ``scientificName``
+    — the quoted ``row.notAColumn`` is a literal, not a reference. Before the fix
+    the importer flagged it as an undeclared column while the editor accepted it.
+    """
+    org, user = _org_and_user()
+    _tabular_validator()
+    definition = json.loads(
+        (
+            Path(settings.BASE_DIR) / "tests" / "workflows" / "darwin_core.json"
+        ).read_text(),
+    )
+    definition["steps"][0]["ruleset"]["assertions"][0]["rhs"] = {
+        "expr": 'row.scientificName != "row.notAColumn"',
+    }
+
+    # Must NOT raise — the literal isn't a real column reference.
+    result = import_definition(definition, files={}, org=org, user=user)
+    assert result.workflow.steps.first().ruleset.assertions.count() == 4  # noqa: PLR2004

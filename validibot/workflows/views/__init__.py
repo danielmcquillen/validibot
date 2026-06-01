@@ -24,6 +24,8 @@ from validibot.workflows.views.assertions import WorkflowStepAssertionMoveView
 from validibot.workflows.views.assertions import WorkflowStepAssertionsPartialView
 from validibot.workflows.views.assertions import WorkflowStepAssertionUpdateView
 from validibot.workflows.views.assertions import WorkflowValidationListView
+from validibot.workflows.views.io import WorkflowExportView
+from validibot.workflows.views.io import WorkflowImportView
 from validibot.workflows.views.launch import WorkflowLastRunStatusView
 from validibot.workflows.views.launch import WorkflowLaunchCancelView
 from validibot.workflows.views.launch import WorkflowLaunchDetailView
@@ -86,8 +88,10 @@ __all__ = [
     "WorkflowCreateView",
     "WorkflowDeleteView",
     "WorkflowDetailView",
+    "WorkflowExportView",
     "WorkflowGuestInviteView",
     "WorkflowGuestRevokeView",
+    "WorkflowImportView",
     "WorkflowInviteAcceptView",
     "WorkflowInviteCancelView",
     "WorkflowInviteResendView",

@@ -24,6 +24,16 @@ _db_url := 'DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POS
 
 # Start cloud containers locally
 #
+# Usage:
+#   just local-cloud up                 # web on http://localhost:8000
+#   just local-cloud up --port 8080     # web on http://localhost:8080 (-p works too)
+#   just local-cloud up --build         # rebuild image + refresh the venv volume
+#
+# The --port / -p flag remaps only the host side of the web container's port
+# (the container still serves on 8000). It is consumed by this recipe and not
+# passed through to `docker compose`, which has no --port flag of its own.
+# Port 8001 is rejected — it is reserved for the MCP server.
+#
 # Recipe-level knobs (ENABLE_MCP_SERVER, future flags) come from
 # ``.envs/.local/.build`` — see ``.envs.example/.local/.build`` for
 # the variable reference. Setting a knob inline
@@ -47,7 +57,47 @@ up *args:
         source .envs/.local/.build
         set +a
     fi
-    args="{{args}}"
+    # Pull an optional host-port override (-p / --port / --port=N) out of the
+    # args before the rest flow through to `docker compose up`, which has no
+    # --port flag of its own. WEB_PORT is read by the web service's ``ports``
+    # mapping in docker-compose.cloud.yml; the container always serves on 8000.
+    read -ra _parsed <<< "{{args}}" || true
+    args=""
+    port_set=0
+    skip_next=0
+    for ((i = 0; i < ${#_parsed[@]}; i++)); do
+        if [[ "$skip_next" == "1" ]]; then
+            skip_next=0
+            continue
+        fi
+        case "${_parsed[$i]}" in
+            -p|--port)
+                export WEB_PORT="${_parsed[$((i + 1))]:-}"
+                port_set=1
+                skip_next=1
+                ;;
+            -p=*|--port=*)
+                export WEB_PORT="${_parsed[$i]#*=}"
+                port_set=1
+                ;;
+            *)
+                args="${args:+$args }${_parsed[$i]}"
+                ;;
+        esac
+    done
+    if [[ "$port_set" == "1" ]]; then
+        if [[ ! "${WEB_PORT:-}" =~ ^[0-9]+$ ]]; then
+            echo "Error: --port expects a port number, e.g. 'just local-cloud up --port 8080'." >&2
+            exit 1
+        fi
+        # 8001 is the MCP server's host port (docker-compose.cloud.yml). Refuse
+        # it so the web container can't collide with or shadow the MCP server.
+        if [[ "${WEB_PORT}" == "8001" ]]; then
+            echo "Error: port 8001 is reserved for the MCP server. Choose a different --port." >&2
+            exit 1
+        fi
+        echo "Mapping web to http://localhost:${WEB_PORT} (container still serves on 8000)."
+    fi
     if [[ "$args" == *"--build"* ]]; then
         docker volume rm validibot_validibot_local_venv 2>/dev/null || true
     fi

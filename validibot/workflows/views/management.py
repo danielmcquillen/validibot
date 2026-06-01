@@ -188,6 +188,20 @@ def _workflow_detail_toolbar_context(
                 "url": related_validations_url,
             },
         )
+    if can_manage_workflow and not workflow.is_tombstoned:
+        grey_actions.append(
+            {
+                "kind": "link",
+                "button_class": "btn btn-light text-dark",
+                "icon_class": "bi-box-arrow-up",
+                "title": _("Export this workflow as a .vaf archive"),
+                "url": reverse_with_org(
+                    "workflows:workflow_export",
+                    request=request,
+                    kwargs={"pk": workflow.pk},
+                ),
+            },
+        )
     if can_manage_workflow:
         grey_actions.extend(
             [
@@ -430,6 +444,10 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
                 "can_view_workflow": self.user_can_view_workflow(),
                 "create_url": reverse_with_org(
                     "workflows:workflow_create",
+                    request=self.request,
+                ),
+                "import_url": reverse_with_org(
+                    "workflows:workflow_import",
                     request=self.request,
                 ),
             },

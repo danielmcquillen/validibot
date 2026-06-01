@@ -201,6 +201,36 @@ def test_default_list_hides_family_when_latest_version_is_archived(client):
     assert f'id="workflow-item-wrapper-{older.pk}"' not in html
 
 
+def test_inactive_workflow_reads_as_inactive_not_archived(client):
+    """An inactive (but not archived) workflow must not be mislabeled 'archived'.
+
+    Regression for the import bug: a non-active workflow used to show the launch
+    tooltip 'This workflow is archived and cannot be launched', conflating
+    inactive with archived. The launch control now distinguishes ``is_archived``
+    from a merely deactivated workflow, so the user sees an accurate reason and a
+    nudge to activate.
+    """
+    user = UserFactory()
+    org = OrganizationFactory(name="Inactive Org")
+    grant_role(user, org, RoleCode.OWNER)
+    workflow = WorkflowFactory(
+        org=org,
+        user=user,
+        name="Inactive Workflow",
+        slug="inactive-workflow",
+        is_active=False,
+        is_archived=False,
+    )
+    _log_in_owner(client, user=user, org=org)
+
+    response = client.get(reverse("workflows:workflow_list"))
+    html = response.content.decode()
+
+    assert f'id="workflow-item-wrapper-{workflow.pk}"' in html
+    assert "This workflow is inactive. Activate it to launch." in html
+    assert "This workflow is archived and cannot be launched" not in html
+
+
 def test_workflow_delete_button_has_target_id(client):
     user = UserFactory()
     org = OrganizationFactory(name="Delete Org")

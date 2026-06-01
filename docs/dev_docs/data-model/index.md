@@ -96,3 +96,5 @@ Dive deeper into each entity:
 - **[Signals Tutorial Example](signals-tutorial-example.md)** — Concrete example of validator-owned signals, step-owned signals, bindings, derivations, and traces
 - **[Users & Roles](users_roles.md)** — Membership and permissions
 - **[Deletions](deletions.md)** — Soft deletes and cascade behavior
+- **[Workflow Versioning & Trust](workflow-versioning.md)** — The launch contract and immutability
+- **[Workflow Import & Export](workflow-import-export.md)** — The `.vaf` archive, the definition schema, and per-validator serialization

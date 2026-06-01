@@ -39,4 +39,9 @@ config = ValidatorConfig(
     allowed_extensions=["csv", "tsv"],
     supports_assertions=True,
     icon="bi-table",
+    # Tabular owns its workflow import/export body so a re-imported ruleset's
+    # row assertions are re-checked against the declared Table Schema columns.
+    step_serializer_class=(
+        "validibot.validations.validators.tabular.serializer.TabularStepSerializer"
+    ),
 )

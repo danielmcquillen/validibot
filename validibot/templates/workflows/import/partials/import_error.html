@@ -1,0 +1,32 @@
+{% load i18n %}
+
+{% comment %}
+Shown (swapped into #import-main) when an import fails. Surfaces the specific
+reason (and a machine code for support) rather than a generic failure, and offers
+the two ways forward: try a different file, or go back to the list.
+{% endcomment %}
+<div class="import-error">
+  <div class="alert alert-danger" role="alert">
+    <div class="fw-semibold mb-1">
+      <i class="bi bi-x-octagon-fill me-1"></i>
+      {% trans "The workflow couldn't be imported" %}
+    </div>
+    <p class="mb-1">
+      {{ error_message }}
+    </p>
+    {% if error_code %}
+      <p class="mb-0 small text-muted font-monospace">
+        {{ error_code }}
+      </p>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-2 mt-3">
+    <a class="btn btn-primary" href="{{ import_url }}">
+      <i class="bi bi-arrow-counterclockwise me-1"></i>
+      {% trans "Try again" %}
+    </a>
+    <a class="btn btn-outline-secondary" href="{{ list_url }}">
+      {% trans "Back to workflow list" %}
+    </a>
+  </div>
+</div>

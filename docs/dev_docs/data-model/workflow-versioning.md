@@ -428,3 +428,10 @@ Versioned history remains the recommended mode for credential-bearing
 workflows because it gives operators a normal workflow row to inspect,
 but the credential does not rely on the row staying mutable-state-identical
 forever.
+
+## See also
+
+- [Workflow import and export](workflow-import-export.md) — the portable-file
+  cousin of cloning. It deliberately reuses this page's create-order and
+  FK-rebinding rules (rulesets before steps, signals before assertions) so the
+  two paths can't drift.

@@ -88,6 +88,7 @@ class Command(BaseCommand):
                         "resolved_envelope_class",
                         "resource_types",
                         "step_editor_cards",
+                        "step_serializer_class",
                         "validator_class",
                     },
                 )

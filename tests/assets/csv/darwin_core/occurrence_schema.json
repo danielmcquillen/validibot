@@ -1,0 +1,101 @@
+{
+  "fields": [
+    {
+      "name": "occurrenceID",
+      "type": "string"
+    },
+    {
+      "name": "basisOfRecord",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "enum": [
+          "HumanObservation",
+          "MachineObservation",
+          "PreservedSpecimen",
+          "FossilSpecimen",
+          "LivingSpecimen",
+          "MaterialSample",
+          "MaterialEntity",
+          "Occurrence"
+        ]
+      }
+    },
+    {
+      "name": "occurrenceStatus",
+      "type": "string",
+      "constraints": {
+        "enum": ["present", "absent"]
+      }
+    },
+    {
+      "name": "scientificName",
+      "type": "string",
+      "constraints": {
+        "required": true
+      }
+    },
+    {
+      "name": "scientificNameID",
+      "type": "string",
+      "constraints": {
+        "pattern": "^urn:lsid:marinespecies\\.org:taxname:[0-9]+$"
+      }
+    },
+    {
+      "name": "eventDate",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "pattern": "^[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?(/[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?)?$"
+      }
+    },
+    {
+      "name": "decimalLatitude",
+      "type": "number",
+      "constraints": {
+        "required": true,
+        "minimum": -90,
+        "maximum": 90
+      }
+    },
+    {
+      "name": "decimalLongitude",
+      "type": "number",
+      "constraints": {
+        "required": true,
+        "minimum": -180,
+        "maximum": 180
+      }
+    },
+    {
+      "name": "coordinateUncertaintyInMeters",
+      "type": "number",
+      "constraints": {
+        "minimum": 0
+      }
+    },
+    {
+      "name": "minimumDepthInMeters",
+      "type": "number",
+      "constraints": {
+        "minimum": 0
+      }
+    },
+    {
+      "name": "maximumDepthInMeters",
+      "type": "number",
+      "constraints": {
+        "minimum": 0
+      }
+    },
+    {
+      "name": "individualCount",
+      "type": "integer",
+      "constraints": {
+        "minimum": 0
+      }
+    }
+  ],
+  "primaryKey": "occurrenceID"
+}

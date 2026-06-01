@@ -29,6 +29,7 @@ from validibot.validations.validators.base.base import AssertionStats
 from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
+from validibot.validations.validators.tabular.native import DEFAULT_REPORT_MAX_EXAMPLES
 from validibot.validations.validators.tabular.native import validate_native
 from validibot.validations.validators.tabular.preflight import TabularDialect
 from validibot.validations.validators.tabular.preflight import TabularLimits
@@ -49,7 +50,11 @@ if TYPE_CHECKING:
 
 # A schema that won't parse is a configuration error, surfaced as a finding.
 CODE_INVALID_SCHEMA = "tabular.invalid_schema"
-_DEFAULT_REPORT_MAX_EXAMPLES = 10
+# The fallback when a ruleset doesn't pin its own ``report_max_examples``. Kept
+# as an alias of the canonical native default so there is one number to change,
+# and so a future per-step setting only has to write ``metadata`` — the override
+# path in ``_load_settings`` already reads it.
+_DEFAULT_REPORT_MAX_EXAMPLES = DEFAULT_REPORT_MAX_EXAMPLES
 
 
 class TabularValidator(BaseValidator):

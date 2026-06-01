@@ -61,7 +61,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.JSON_SCHEMA,
-            "version": 2,
+            "version": 1,
             "order": 1,
             "supports_assertions": True,
         },
@@ -83,7 +83,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.XML_SCHEMA,
-            "version": 2,
+            "version": 1,
             "order": 2,
             "supports_assertions": True,
         },
@@ -101,7 +101,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.ENERGYPLUS,
-            "version": 3,
+            "version": 1,
             "order": 3,
             "has_processor": True,
             "supports_assertions": True,
@@ -135,7 +135,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.FMU,
-            "version": 2,
+            "version": 1,
             "order": 4,
             "has_processor": True,
             "supports_assertions": True,
@@ -177,7 +177,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.THERM,
-            "version": 2,
+            "version": 1,
             "order": 6,
             "supports_assertions": True,
         },

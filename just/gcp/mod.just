@@ -2421,6 +2421,31 @@ management-cmd stage command: _require-gcp-config
 
     echo "Command completed on {{stage}}"
 
+# DESTRUCTIVE: completely reset a deployed environment.
+# Deletes all validation runs, submissions, workflows, projects and validators,
+# then rebuilds the validator catalogue from the current code. Users and
+# organizations are preserved. Dry-run by default — pass the literal word
+# `confirm` as the second argument to actually wipe data.
+#
+# Usage: just gcp reset-system prod            # preview only, deletes nothing
+# Usage: just gcp reset-system prod confirm    # actually reset
+[arg('stage', pattern='dev|staging|prod')]
+reset-system stage confirm="": _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{confirm}}" = "confirm" ]; then
+        echo "⚠️  About to RESET {{stage}}: deleting runs, submissions, workflows, projects and validators."
+        # No TTY on Cloud Run Jobs, so --noinput is implied; pass it explicitly
+        # to document intent. The --confirm phrase is the real gate.
+        just gcp management-cmd {{stage}} "reset_system --confirm RESET-EVERYTHING --noinput"
+    elif [ -n "{{confirm}}" ]; then
+        echo "Unrecognised argument '{{confirm}}'. Pass 'confirm' to reset, or omit it for a dry-run preview."
+        exit 1
+    else
+        echo "Dry-run preview (no data will be deleted). Pass 'confirm' to actually reset."
+        just gcp management-cmd {{stage}} "reset_system"
+    fi
+
 # View logs from a Cloud Run job execution
 # Usage: just gcp job-logs {app_name}-migrate-dev
 job-logs job:

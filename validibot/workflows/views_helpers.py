@@ -127,6 +127,13 @@ def get_validator_operation_display(
                 "assertions run.",
             ),
         },
+        ValidationType.TABULAR: {
+            "label": _("Tabular Validation"),
+            "description": _(
+                "Validates the submitted CSV against the configured column "
+                "schema and row rules before any step assertions run.",
+            ),
+        },
     }
     display = operation_copy.get(validator.validation_type)
     if display is None:

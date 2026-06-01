@@ -215,14 +215,16 @@ class SyncValidatorsCommandTests(TestCase):
           surface_count, window_count, construction_count,
           run_period_count, has_hvac)
 
-        The seed row must match the current advertised version
-        (currently 3) to exercise the update path rather than the
-        create-new-row path.
+        The catalogue versions were later reset to a clean v1 baseline (no
+        workflows were pinned to the earlier revisions), so the config now
+        advertises version 1 again — carrying the v3-era behaviour. The seed
+        row must match that advertised version (currently 1) to exercise the
+        update path rather than the create-new-row path.
         """
         # Create a validator with different name but matching (slug, version).
         Validator.objects.create(
             slug="energyplus-idf-validator",
-            version=3,
+            version=1,
             name="Old Name",
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,

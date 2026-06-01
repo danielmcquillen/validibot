@@ -36,6 +36,7 @@ from celpy.evaluation import CELEvalError
 from validibot.validations.cel_eval import compile_program
 from validibot.validations.constants import Severity
 from validibot.validations.validators.tabular.coercion import coerce_cell
+from validibot.validations.validators.tabular.native import DEFAULT_REPORT_MAX_EXAMPLES
 from validibot.validations.validators.tabular.native import NativeFinding
 
 if TYPE_CHECKING:
@@ -109,7 +110,7 @@ def evaluate_row_assertions(
     input_signals: dict[str, Any] | None = None,
     now: datetime | None = None,
     wall_clock_budget_s: float = _DEFAULT_WALL_CLOCK_BUDGET_S,
-    report_max_examples: int = 10,
+    report_max_examples: int = DEFAULT_REPORT_MAX_EXAMPLES,
 ) -> list[NativeFinding]:
     """Evaluate *row_assertions* against every row; return aggregated findings.
 

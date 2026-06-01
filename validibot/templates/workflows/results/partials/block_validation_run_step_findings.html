@@ -155,6 +155,12 @@ Context variables (passed via ``{% include ... with %}``):
                         </td>
                         <td class="align-middle">
                           {{ finding.message }}
+                          {% finding_failed_rows finding as failed_rows %}
+                          {% if failed_rows %}
+                            <div class="text-muted small font-monospace mt-1">
+                              {{ failed_rows }}
+                            </div>
+                          {% endif %}
                         </td>
                       </tr>
                     {% endfor %}

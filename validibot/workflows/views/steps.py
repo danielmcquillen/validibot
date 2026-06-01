@@ -346,14 +346,27 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
 
         Excludes DRAFT validators (not ready for display). COMING_SOON validators
         are included but will be disabled in the UI.
+
+        Multi-version validator families are collapsed to their latest version
+        per slug, so the picker shows each validator once. Validators are
+        integer-versioned per slug (``uq_validator_slug_version``); without this
+        collapse every published version would render as its own card (e.g. the
+        JSON Schema validator's v1 *and* v2). ``DISTINCT ON (slug)`` ordered by
+        ``slug, -version, -pk`` keeps the highest version of each slug (and also
+        absorbs any row duplication from the org/custom-validator joins). The
+        final display order is restored in Python afterwards.
         """
-        validators: list[Validator] = []
-        for validator in workflow_step_validator_queryset(
-            workflow,
-            include_coming_soon=True,
-        ).order_by("validation_type", "name", "pk"):
+        latest_per_slug = (
+            workflow_step_validator_queryset(workflow, include_coming_soon=True)
+            .order_by("slug", "-version", "-pk")
+            .distinct("slug")
+        )
+        validators = sorted(
+            latest_per_slug,
+            key=lambda v: (v.validation_type, v.name.lower(), v.pk),
+        )
+        for validator in validators:
             self._ensure_validator_defaults(validator)
-            validators.append(validator)
         return validators
 
     def _available_action_definitions(self) -> list[ActionDefinition]:
@@ -432,6 +445,9 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                     ValidationType.JSON_SCHEMA,
                     ValidationType.SHACL,
                     ValidationType.XML_SCHEMA,
+                    # Tabular runs in-process (no container backend), so it
+                    # belongs with the built-in validators, not "Advanced".
+                    ValidationType.TABULAR,
                 },
                 str(_("No validators available yet.")),
             ),

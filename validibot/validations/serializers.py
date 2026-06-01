@@ -21,6 +21,7 @@ from validibot.validations.constants import ValidationRunResult
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import project_run_state
 from validibot.validations.models import ValidationRun
+from validibot.validations.services.findings_display import summarize_failed_rows
 from validibot.workflows.constants import SUPPORTED_CONTENT_TYPES
 
 CONTENT_TYPE_BY_FILE_TYPE = {
@@ -138,6 +139,10 @@ class ValidationRunSerializer(serializers.ModelSerializer):
                             "severity": finding.severity,
                             "code": finding.code,
                             "assertion_id": finding.ruleset_assertion_id,
+                            # Structured failing-row examples ({sample_rows,
+                            # count, truncated}) for validators that aggregate a
+                            # bulk failure into one finding; None otherwise.
+                            "failed_rows": summarize_failed_rows(finding.meta),
                         }
                         for finding in findings
                     ],

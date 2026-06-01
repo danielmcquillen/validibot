@@ -17,7 +17,7 @@ config = ValidatorConfig(
     output_envelope_class=(
         "validibot_shared.validations.envelopes.ValidationOutputEnvelope"
     ),
-    version=2,
+    version=1,
     order=99,
     is_system=False,
     supported_file_types=[

@@ -1,0 +1,5 @@
+occurrenceID,basisOfRecord,occurrenceStatus,scientificName,scientificNameID,eventDate,decimalLatitude,decimalLongitude,coordinateUncertaintyInMeters,minimumDepthInMeters,maximumDepthInMeters,individualCount
+occ-001,HumanObservation,present,Calanus finmarchicus,urn:lsid:marinespecies.org:taxname:104464,2009-02-20,60.25,-19.5,50,0,200,12
+occ-002,PreservedSpecimen,present,Mytilus edulis,urn:lsid:marinespecies.org:taxname:140480,2015-07,54.1,8.3,100,0,10,1
+occ-003,MachineObservation,present,Gadus morhua,urn:lsid:marinespecies.org:taxname:126436,2018-09-03,71.0,25.6,500,50,300,8
+occ-004,HumanObservation,absent,Calanus finmarchicus,urn:lsid:marinespecies.org:taxname:104464,2020,58.0,-10.0,1000,0,1000,0

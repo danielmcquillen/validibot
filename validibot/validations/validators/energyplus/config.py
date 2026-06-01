@@ -49,9 +49,11 @@ config = ValidatorConfig(
     #   provenance clarity (lands with the validibot-shared 0.8.0
     #   release that ships the renamed Pydantic field).
     #
-    # sync_validators refuses to apply semantic drift under the same
-    # (slug, version) so the bump is required.
-    version=3,
+    # NOTE: validator versions were reset to a clean v1 baseline — no workflows
+    # were pinned to the earlier revisions. The changelog above is kept as
+    # history; sync_validators still rejects later in-place semantic drift, so
+    # any future behavioural change must bump version again.
+    version=1,
     order=10,
     has_processor=True,
     processor_name="EnergyPlus\u2122 Simulation",

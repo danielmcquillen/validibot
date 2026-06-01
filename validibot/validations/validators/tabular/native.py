@@ -55,6 +55,14 @@ CODE_INVALID_PATTERN = "tabular.invalid_pattern"
 CODE_UNIQUE_VIOLATION = "tabular.unique_violation"
 CODE_PRIMARY_KEY_NULL = "tabular.primary_key_null"
 
+# How many failing-row examples a finding carries by default. The full failure
+# *count* is always reported; this only caps the per-finding list of example
+# row numbers so a million-row failure stays one readable finding. It is the
+# single source of truth for the default — the validator falls back to it, and
+# the per-ruleset ``metadata["report_max_examples"]`` override (a future
+# user-facing setting) layers on top without any change here.
+DEFAULT_REPORT_MAX_EXAMPLES = 100
+
 _NUMERIC_TYPES = frozenset({"number", "integer"})
 
 
@@ -374,7 +382,7 @@ def validate_native(
     read_result: ReadResult,
     schema: TabularSchema,
     *,
-    report_max_examples: int = 10,
+    report_max_examples: int = DEFAULT_REPORT_MAX_EXAMPLES,
 ) -> list[NativeFinding]:
     """Validate the dataframe against *schema*; return aggregated findings.
 

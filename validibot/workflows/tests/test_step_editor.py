@@ -245,6 +245,67 @@ def test_wizard_groups_shacl_with_basic_validators(client):
     assert shacl_validator.name not in panes["workflow-tab-advanced"]
 
 
+def test_wizard_groups_tabular_with_basic_validators(client):
+    """Tabular runs in-process (no container backend), so it belongs with the
+    built-in validators, not under "Advanced Validators".
+
+    Tabular was landing in the Advanced tab only because its ValidationType was
+    absent from every tab's type set and fell through to the remaining-validators
+    catch-all. Listing it in the "Validators" set fixes both the placement and
+    removes it from that fallback.
+    """
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    tabular_validator = ensure_validator(
+        ValidationType.TABULAR,
+        "tabular-validator",
+        "Tabular Validator",
+    )
+
+    url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
+    response = client.get(url, HTTP_HX_REQUEST="true")
+
+    assert response.status_code == HTTPStatus.OK
+    panes = _tab_panes_by_id(response.content.decode())
+    assert tabular_validator.name in panes["workflow-tab-basic"]
+    assert tabular_validator.name not in panes["workflow-tab-advanced"]
+
+
+def test_wizard_shows_only_latest_version_per_validator_slug(client):
+    """The picker shows one card per validator family (the latest version),
+    not one card per published version.
+
+    Validators are integer-versioned per slug (``uq_validator_slug_version``).
+    Before the fix the picker listed every published row, so a validator with
+    two published versions rendered as two identical-looking cards. Here two
+    versions of the same slug must collapse to the newer one — the older
+    version's distinct name must not appear at all.
+    """
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    Validator.objects.create(
+        validation_type=ValidationType.JSON_SCHEMA,
+        slug="dup-json",
+        name="Dup JSON v1",
+        version=1,
+    )
+    Validator.objects.create(
+        validation_type=ValidationType.JSON_SCHEMA,
+        slug="dup-json",
+        name="Dup JSON v2",
+        version=2,
+    )
+
+    url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
+    response = client.get(url, HTTP_HX_REQUEST="true")
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    # Only the latest version is offered; the older one is collapsed away.
+    assert "Dup JSON v2" in html
+    assert "Dup JSON v1" not in html
+
+
 def test_wizard_shows_xml_validator_even_when_incompatible_file_type(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
@@ -1823,6 +1884,48 @@ def test_shacl_step_shows_validation_operation_before_assertions(client):
     assert "assertion-add-connector--terminal" in html
     assert html.count("assertion-add-button") == 1
     assert "insert_at_start=1" not in html
+    assert "No assertions have been added yet." not in html
+
+
+def test_tabular_step_shows_validation_operation_before_assertions(client):
+    """Tabular steps should show Tabular Validation as the first assertion item.
+
+    The Tabular Validator runs its column-schema + row-rule validation before
+    any step-level assertions, so — like JSON, XML, and SHACL — the editor must
+    surface that operation as a display-only card at the top of the assertion
+    lane rather than the bare "no assertions yet" placeholder. This is what keeps
+    the step editor consistent across every inline schema validator: an author
+    opening a tabular step sees the same "validation runs, then add assertions"
+    shape they see for JSON or XML, not a different empty state.
+    """
+    validator = ValidatorFactory(
+        validation_type=ValidationType.TABULAR,
+        supports_assertions=True,
+    )
+    workflow = WorkflowFactory()
+    step = WorkflowStepFactory(workflow=workflow, validator=validator)
+    _login_for_workflow(client, workflow)
+
+    response = client.get(
+        reverse(
+            "workflows:workflow_step_edit",
+            args=[workflow.pk, step.pk],
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    # The operation card appears first, ahead of the assertion add-connector,
+    # exactly like the JSON/XML/SHACL cards.
+    operation_index = html.index("Tabular Validation")
+    connector_index = html.index("assertion-add-connector")
+    assert "validator-operation-card" in html
+    assert "Validates the submitted CSV" in html
+    assert operation_index < connector_index
+    assert "assertion-add-connector--terminal" in html
+    assert html.count("assertion-add-button") == 1
+    # The bare placeholder must be gone now that the operation card stands in
+    # as the panel's first item.
     assert "No assertions have been added yet." not in html
 
 

@@ -12,6 +12,7 @@ from validibot.core.utils import pretty_json
 from validibot.core.utils import render_markdown_safe
 from validibot.core.utils import reverse_with_org
 from validibot.validations.constants import Severity
+from validibot.validations.services.findings_display import format_failed_rows
 from validibot.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 
 logger = logging.getLogger(__name__)
@@ -297,6 +298,19 @@ def finding_badge_class(finding) -> str:
         "INFO": "text-bg-secondary",
     }
     return mapping.get(severity_value, "text-bg-secondary")
+
+
+@register.simple_tag
+def finding_failed_rows(finding) -> str:
+    """Return a human-readable "rows …" line for a finding, or ``""``.
+
+    Reads the finding's ``meta`` (``sample_rows`` + ``count``) and formats the
+    failing-row examples with an explicit truncation marker. Returns ``""`` for
+    findings that don't carry row examples (JSON/XML/SHACL), so a template can
+    ``{% if %}`` it away. The formatting itself lives in
+    ``validations.services.findings_display`` so the API shares it.
+    """
+    return format_failed_rows(getattr(finding, "meta", None))
 
 
 @register.simple_tag

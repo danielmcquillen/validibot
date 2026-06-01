@@ -364,6 +364,27 @@ class NativeColumnChecksTests(SimpleTestCase):
         self.assertEqual(finding.count, 50)
         self.assertEqual(len(finding.sample_rows), 5)
 
+    def test_default_cap_is_100_and_still_counts_all_failures(self):
+        """Without an explicit cap, a finding lists up to 100 example rows while
+        ``count`` reports the true total.
+
+        This pins the shipped default (``DEFAULT_REPORT_MAX_EXAMPLES``). 100 is
+        enough context for a human to spot a pattern, but the full ``count`` is
+        what tells them how big the problem really is — and the gap between the
+        two is exactly what drives the "showing first 100 of N" truncation
+        marker in the UI/API.
+        """
+        read_result = read_csv(b"n\n" + b"x\n" * 150)  # 150 type errors
+        schema = parse_table_schema({"fields": [{"name": "n", "type": "integer"}]})
+        # No report_max_examples passed -> the default applies.
+        finding = _by_code(validate_native(read_result, schema))[CODE_TYPE_ERROR]
+        self.assertEqual(finding.count, 150)
+        self.assertEqual(len(finding.sample_rows), 100)
+        # The examples are the FIRST 100 rows in file order, not an arbitrary
+        # slice — so "rows 1, 2, 3 …" is meaningful to the reader.
+        self.assertEqual(finding.sample_rows[0], 1)
+        self.assertEqual(finding.sample_rows[-1], 100)
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Native validation — uniqueness (unique / primaryKey)

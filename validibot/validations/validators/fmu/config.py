@@ -72,9 +72,10 @@ config = ValidatorConfig(
     # Version bump to revision 2 per ADR-2026-05-22b Phase 6: seven parser-fact
     # step inputs derived from modelDescription.xml at upload/probe
     # time (model_name, fmi_version, variable counts, has_simulation_defaults).
-    # sync_validators refuses semantic drift under the same (slug, version)
-    # so the bump is required.
-    version=2,
+    # NOTE: validator versions were reset to a clean v1 baseline — no workflows
+    # were pinned to the earlier revisions. sync_validators still rejects later
+    # in-place semantic drift, so any future behavioural change must bump again.
+    version=1,
     order=20,
     has_processor=True,
     processor_name="FMU Simulation",

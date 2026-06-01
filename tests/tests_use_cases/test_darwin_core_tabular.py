@@ -405,7 +405,7 @@ def test_row_assertion_reports_up_to_100_failing_rows_then_truncates():
     # The shared display helper turns that meta into the user-facing line, with
     # the truncation made explicit rather than hidden.
     rendered = format_failed_rows(issue.meta)
-    assert rendered.startswith("rows 1, 2, 3,")
+    assert rendered.startswith("row #s: 1, 2, 3,")
     assert rendered.endswith("(showing first 100 of 150)")
 
 

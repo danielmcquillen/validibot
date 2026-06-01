@@ -80,7 +80,7 @@ def test_finding_failed_rows_formats_truncated_meta():
     finding = SimpleNamespace(meta={"sample_rows": [1, 2, 4], "count": 12})
 
     assert core_tags.finding_failed_rows(finding) == (
-        "rows 1, 2, 4 (showing first 3 of 12)"
+        "row #s: 1, 2, 4 (showing first 3 of 12)"
     )
 
 
@@ -113,4 +113,4 @@ def test_finding_failed_rows_is_usable_from_a_template():
 
     rendered = template.render(Context({"finding": finding}))
 
-    assert rendered == "rows 2"
+    assert rendered == "row #s: 2"

@@ -98,9 +98,13 @@ class FormatFailedRowsTests(SimpleTestCase):
         assert format_failed_rows({"column": "lat"}) == ""
 
     def test_full_sample_lists_rows_without_a_marker(self):
-        """A complete sample reads as a plain row list, no truncation noise."""
+        """A complete sample reads as a plain row list, no truncation noise.
+
+        The ``row #s:`` label disambiguates from a count — ``"row #s: 1, 2, 4"``
+        can't be misread as "three rows" the way ``"rows 1, 2, 4"`` might.
+        """
         assert format_failed_rows({"sample_rows": [1, 2, 4], "count": 3}) == (
-            "rows 1, 2, 4"
+            "row #s: 1, 2, 4"
         )
 
     def test_truncated_sample_shows_first_n_of_total(self):
@@ -111,5 +115,5 @@ class FormatFailedRowsTests(SimpleTestCase):
         more there is.
         """
         assert format_failed_rows({"sample_rows": [1, 2, 3], "count": 3412}) == (
-            "rows 1, 2, 3 (showing first 3 of 3412)"
+            "row #s: 1, 2, 3 (showing first 3 of 3412)"
         )

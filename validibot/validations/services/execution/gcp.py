@@ -196,6 +196,8 @@ class GCPExecutionBackend(ExecutionBackend):
                 return self._execute_energyplus(request)
             if validator_type == "FMU":
                 return self._execute_fmu(request)
+            if validator_type == "SHACL":
+                return self._execute_shacl(request)
             return ExecutionResponse(
                 execution_id="",
                 is_complete=True,
@@ -242,6 +244,36 @@ class GCPExecutionBackend(ExecutionBackend):
         )
 
         # Convert ValidationResult to ExecutionResponse
+        stats = result.stats or {}
+        return ExecutionResponse(
+            execution_id=stats.get("execution_name", ""),
+            is_complete=False,  # Async - waiting for callback
+            input_uri=stats.get("input_uri"),
+            output_uri=stats.get("result_uri"),
+            execution_bundle_uri=stats.get("execution_bundle_uri"),
+        )
+
+    def _execute_shacl(self, request: ExecutionRequest) -> ExecutionResponse:
+        """
+        Execute SHACL validation via Cloud Run.
+
+        Delegates to the launcher, which uploads the RDF submission + input
+        envelope and triggers the isolated SHACL Cloud Run Job.
+        """
+        from validibot.validations.services.cloud_run.launcher import (
+            launch_shacl_validation,
+        )
+
+        ruleset = request.step.ruleset
+
+        result = launch_shacl_validation(
+            run=request.run,
+            validator=request.validator,
+            submission=request.submission,
+            ruleset=ruleset,
+            step=request.step,
+        )
+
         stats = result.stats or {}
         return ExecutionResponse(
             execution_id=stats.get("execution_name", ""),

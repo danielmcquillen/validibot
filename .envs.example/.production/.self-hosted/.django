@@ -212,6 +212,21 @@ VALIDATOR_CPU_LIMIT=2.0
 # See docs/operations/self-hosting/overview.md for the full Pro
 # activation walkthrough.
 
+# SHACL validator. Core SHACL is always on. Advanced SHACL-AF
+# constructs — embedded SPARQL constraints and SHACL Rules — stay
+# disabled until you opt in here. These run author-supplied SPARQL, so
+# only enable them when your validation workers are trusted and
+# isolated. (SHACL-JS is always rejected.) Defaults to False; leave
+# commented unless you need it.
+#SHACL_ENABLE_ADVANCED_FEATURES=False
+#
+# Resource limits (triple-count caps, validation depth, pySHACL/SPARQL
+# timeouts) all ship with safe defaults and hard caps enforced in engine
+# code. Set these only to tighten a deployment below the defaults; see
+# validibot/validations/validators/shacl/engine.py for the full list.
+#SHACL_MAX_DATA_TRIPLES=100000
+#SHACL_VALIDATION_TIMEOUT_SECONDS=30
+
 # Signed credentials (Pro). Create a private key on the host outside
 # version control:
 #

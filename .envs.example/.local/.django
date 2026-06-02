@@ -84,6 +84,24 @@ DJANGO_ACCOUNT_ALLOW_LOGIN=true
 # Higher = fewer requests but slower feedback.
 WORKFLOW_RUN_POLL_INTERVAL_SECONDS=3
 
+# SHACL Validator
+# ------------------------------------------------------------------------------
+# Core SHACL validation is always on. Advanced SHACL-AF constructs —
+# embedded SPARQL constraints and SHACL Rules — are disabled at the
+# deployment level until you explicitly opt in. Only turn this on for
+# trusted, isolated worker environments, since these constructs can run
+# author-supplied SPARQL. (SHACL-JS is always rejected regardless.)
+# Defaults to False, so leave this commented out unless you need it.
+#SHACL_ENABLE_ADVANCED_FEATURES=False
+#
+# Resource limits guard the engine against oversized or malicious graphs.
+# Each has a safe default and a hard cap enforced in engine code, so you
+# only need to set these to tighten a deployment below the defaults. See
+# validibot/validations/validators/shacl/engine.py for the full list
+# (triple-count caps, validation depth, pySHACL/SPARQL timeouts).
+#SHACL_MAX_DATA_TRIPLES=100000
+#SHACL_VALIDATION_TIMEOUT_SECONDS=30
+
 # Signed Credentials (Pro / Enterprise)
 # ------------------------------------------------------------------------------
 # Generate a local P-256 signing key if you want to issue signed credentials:

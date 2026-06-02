@@ -119,6 +119,72 @@ class RulesetAssertionFormTests(TestCase):
         )
         self.assertTrue(form.is_valid())
 
+    def test_cel_allows_multi_letter_macro_loop_variable(self):
+        """A comprehension macro's loop variable may be any length, not 1 letter.
+
+        Regression: the identifier check only exempted single-letter loop
+        variables, so a readable rule like
+        ``i.namespaces_present.all(ns, ns in [...])`` was wrongly rejected with
+        "Bare identifiers are not allowed: ns" — even though ``ns`` is bound by
+        the ``.all(...)`` macro, not a free data reference. ``room.size`` also
+        exercises ``loopvar.field`` access inside the body.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=True,
+        )
+        validator.refresh_from_db()
+        entry = StepIODefinitionFactory(validator=validator, contract_key="ns_list")
+        form = self._form(
+            validator=validator,
+            catalog_entries=[entry],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": entry.contract_key,
+                "severity": Severity.ERROR,
+                "cel_expression": (
+                    'i.ns_list.all(ns, ns in ["a", "b"]) '
+                    "&& s.rooms.exists(room, room.size > 0)"
+                ),
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+
+    def test_cel_macro_exemption_does_not_allow_other_bare_identifiers(self):
+        """The loop-variable exemption must not blanket-allow bare identifiers.
+
+        ``ns`` is exempt (the macro binds it), but ``rating`` is still a free,
+        un-namespaced reference and must be rejected — proving the fix doesn't
+        weaken the check.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=True,
+        )
+        validator.refresh_from_db()
+        entry = StepIODefinitionFactory(validator=validator, contract_key="ns_list")
+        form = self._form(
+            validator=validator,
+            catalog_entries=[entry],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": entry.contract_key,
+                "severity": Severity.ERROR,
+                "cel_expression": 'i.ns_list.all(ns, ns == "x") && rating > 1',
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("Bare identifiers are not allowed", str(form.errors))
+        self.assertIn("rating", str(form.errors))
+
     def test_cel_accepts_v1_tabular_helper_functions(self):
         """The V1 Tabular Validator helpers must be accepted at authoring
         time, not rejected as unknown identifiers.

@@ -1,863 +1,338 @@
-"""Integration tests for :class:`SHACLValidator` (the orchestrator).
+"""Tests for the SHACL advanced validator (Django-side dispatch + result mapping).
 
-These tests exercise the full Django path — Validator + Ruleset +
-Submission models — to cover the parts the pure-function engine tests
-can't reach: namely the library-validator merge (``validator.default_ruleset``
-combined with the step-level ``ruleset``).
+SHACL is now an :class:`AdvancedValidator` — RDF parsing, pyshacl, and SPARQL
+execution happen in the isolated container backend (covered by
+``validibot-validator-backends``). What this suite guards is the Django half:
 
-The merge path is the key thing this file proves works. The
-single-source-of-shapes path is well-covered by ``test_shacl_engine.py``;
-here we focus on the wiring between Django models and the engine.
+1. SHACL routes through the advanced (container) processor at all.
+2. ``extract_output_signals`` surfaces exactly the catalog ``o.*`` keys.
+3. ``post_execute_validate`` rebuilds findings from the container's structured
+   ``outputs.findings`` (preserving SHACL ``meta`` and SPARQL-ASK
+   ``assertion_id``), determines pass/fail from the envelope status, and surfaces
+   the SHACL report in stats.
+4. **The mixed-assertion partition** — the case raised in review: a step with
+   both SHACL (SPARQL-ASK) and CEL/Basic assertions. The SHACL ones ran in the
+   container; the Django pass must EXCLUDE them (no double-count, no re-run
+   against a graph Django no longer has) and FOLD the container's tallies into
+   the final totals.
 """
 
 from __future__ import annotations
 
-from django.test import TestCase
+import pytest
+from validibot_shared.shacl.envelopes import SHACLFinding
+from validibot_shared.shacl.envelopes import SHACLOutputEnvelope
+from validibot_shared.shacl.envelopes import SHACLOutputs
+from validibot_shared.validations.envelopes import ValidationStatus
+from validibot_shared.validations.envelopes import ValidatorType
 
-from validibot.projects.tests.factories import ProjectFactory
-from validibot.submissions.constants import SubmissionFileType
-from validibot.submissions.tests.factories import SubmissionFactory
-from validibot.users.tests.factories import OrganizationFactory
-from validibot.users.tests.factories import UserFactory
+from validibot.validations.constants import ADVANCED_VALIDATION_TYPES
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
-from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
-from validibot.validations.tests.factories import RulesetAssertionFactory
-from validibot.validations.tests.factories import RulesetFactory
-from validibot.validations.tests.factories import ValidatorFactory
-from validibot.validations.validators.shacl.constants import (
-    SHACL_RESULT_FAIL_AFTER_ASSERTIONS,
-)
-from validibot.validations.validators.shacl.constants import (
-    SHACL_RESULT_FAIL_IMMEDIATELY,
-)
-from validibot.validations.validators.shacl.constants import SHACL_RESULT_REPORT_ONLY
 from validibot.validations.validators.shacl.validator import SHACLValidator
 
-# When both library default + step extras fire on the same submission,
-# we expect exactly this many ERROR findings — one per layered shape.
-LIBRARY_PLUS_STEP_ERROR_COUNT = 2
+# Catalog signal keys the SHACL ValidatorConfig declares. extract_output_signals
+# must return exactly these (the "catalog is the contract" rule).
+CATALOG_SIGNAL_KEYS = {
+    "parse_ok",
+    "parse_serialization",
+    "triple_count",
+    "namespaces_present",
+    "has_s223_namespace",
+    "has_g36_namespace",
+    "has_brick_namespace",
+    "shacl_violation_count",
+    "shacl_warning_count",
+    "shacl_info_count",
+    "shacl_total_count",
+}
 
-# Same fixture shape as the engine tests, repeated here to keep these
-# integration tests self-contained. (Sharing fixtures across test files
-# in pytest-django is fiddly; the tiny size keeps the duplication cheap.)
-SHAPES_PERSON_REQUIRES_NAME = """
-@prefix sh: <http://www.w3.org/ns/shacl#> .
-@prefix ex: <http://example.com/> .
-
-ex:PersonShape
-    a sh:NodeShape ;
-    sh:targetClass ex:Person ;
-    sh:property [
-        sh:path ex:name ;
-        sh:minCount 1 ;
-        sh:message "Person needs a name." ;
-    ] .
-"""
-
-# A separate shape used to verify library + step ruleset merging. When
-# this is layered on top of the library shape, Bob (who has no nickname
-# either) gets two findings, not one.
-SHAPES_PERSON_REQUIRES_NICKNAME = """
-@prefix sh: <http://www.w3.org/ns/shacl#> .
-@prefix ex: <http://example.com/> .
-
-ex:PersonNicknameShape
-    a sh:NodeShape ;
-    sh:targetClass ex:Person ;
-    sh:property [
-        sh:path ex:nickname ;
-        sh:minCount 1 ;
-        sh:message "Person needs a nickname (project rule)." ;
-    ] .
-"""
-
-DATA_BOB_NO_NAME = """
-@prefix ex: <http://example.com/> .
-ex:bob a ex:Person .
-"""
-
-DATA_ALICE_WITH_NAME_NO_NICKNAME = """
-@prefix ex: <http://example.com/> .
-ex:alice a ex:Person ; ex:name "Alice" .
-"""
+# Named test values (avoid magic literals in assertions).
+SAMPLE_TRIPLE_COUNT = 42
+SAMPLE_ASSERTION_ID = 42
+EXPECTED_FOLDED_TOTAL = 2
 
 
-class SHACLValidatorSystemPathTests(TestCase):
-    """Verify the ad-hoc system path: step ruleset only, no library validator.
+def _outputs(**overrides) -> SHACLOutputs:
+    """Build a SHACLOutputs with sensible defaults, overridable per test."""
+    base = {
+        "conforms": True,
+        "parse_ok": True,
+        "parse_serialization": "turtle",
+        "triple_count": 10,
+        "namespaces_present": ["http://example.org/"],
+        "has_s223_namespace": False,
+        "has_g36_namespace": False,
+        "has_brick_namespace": False,
+        "shacl_violation_count": 0,
+        "shacl_warning_count": 0,
+        "shacl_info_count": 0,
+        "shacl_total_count": 0,
+        "results_graph_turtle": "@prefix sh: <http://www.w3.org/ns/shacl#> .",
+        "shacl_shapes_sha256": "abc",
+        "advanced_shacl_requested": False,
+        "shacl_result_handling": "fail_after_assertions",
+        "assertion_total": 0,
+        "assertion_failures": 0,
+        "execution_seconds": 0.1,
+    }
+    base.update(overrides)
+    return SHACLOutputs(**base)
 
-    This is the simplest configuration — an author adds the system
-    SHACLValidator, uploads shapes via the step config form, validates
-    a submission. The validator has no default_ruleset; everything
-    comes from the step.
+
+def _envelope(
+    *, status: ValidationStatus, outputs: SHACLOutputs
+) -> SHACLOutputEnvelope:
+    return SHACLOutputEnvelope(
+        run_id="run-1",
+        validator={"id": "v1", "type": ValidatorType.SHACL, "version": "2"},
+        status=status,
+        timing={},
+        outputs=outputs,
+    )
+
+
+# ── Routing ──────────────────────────────────────────────────────────────────
+
+
+def test_shacl_is_an_advanced_validation_type():
+    """SHACL must be in ADVANCED_VALIDATION_TYPES so it routes to the container.
+
+    ``get_step_processor`` keys off this set; without membership, SHACL would run
+    in the in-process SimpleValidationProcessor — exactly the worker-side
+    execution we moved away from for safety.
+    """
+    assert ValidationType.SHACL in ADVANCED_VALIDATION_TYPES
+
+
+# ── extract_output_signals ───────────────────────────────────────────────────
+
+
+def test_extract_output_signals_returns_catalog_keys_only():
+    """Signals are exactly the catalog keys — no leakage of report/hash fields.
+
+    Django's CEL/Basic output assertions evaluate against these signals; leaking
+    non-catalog fields (the serialized report, hashes) into ``o.*`` would break
+    the "catalog is the contract" invariant the other advanced validators hold.
+    """
+    envelope = _envelope(
+        status=ValidationStatus.SUCCESS,
+        outputs=_outputs(triple_count=SAMPLE_TRIPLE_COUNT, has_s223_namespace=True),
+    )
+    signals = SHACLValidator().extract_output_signals(envelope)
+
+    assert set(signals) == CATALOG_SIGNAL_KEYS
+    assert signals["triple_count"] == SAMPLE_TRIPLE_COUNT
+    assert signals["has_s223_namespace"] is True
+    assert "results_graph_turtle" not in signals
+
+
+def test_extract_output_signals_none_when_no_outputs():
+    """A runtime-failure envelope (outputs=None) yields no signals, not a crash."""
+    envelope = SHACLOutputEnvelope(
+        run_id="run-1",
+        validator={"id": "v1", "type": ValidatorType.SHACL, "version": "2"},
+        status=ValidationStatus.FAILED_RUNTIME,
+        timing={},
+        outputs=None,
+    )
+    assert SHACLValidator().extract_output_signals(envelope) is None
+
+
+# ── post_execute_validate (no run_context: container-only path) ───────────────
+
+
+def test_post_execute_rebuilds_findings_with_meta_and_assertion_id():
+    """Findings come from outputs.findings with SHACL meta + assertion_id intact.
+
+    The generic envelope ``messages`` list is lossy (no meta, no assertion_id).
+    Rebuilding from the structured findings is what keeps SHACL focus-node /
+    source-shape detail and SPARQL-ASK attribution available for display.
+    """
+    outputs = _outputs(
+        conforms=False,
+        shacl_violation_count=1,
+        shacl_total_count=1,
+        assertion_total=1,
+        assertion_failures=1,
+        findings=[
+            SHACLFinding(
+                path="ex:bob",
+                message="Person needs a name.",
+                severity="ERROR",
+                code="shacl.MinCountConstraintComponent",
+                meta={"shacl_focus_node": "ex:bob", "shacl_source_shape": "ex:Person"},
+            ),
+            SHACLFinding(
+                message="ASK failed",
+                severity="ERROR",
+                code="shacl.sparql_ask_failed",
+                assertion_id=SAMPLE_ASSERTION_ID,
+            ),
+        ],
+    )
+    envelope = _envelope(status=ValidationStatus.FAILED_VALIDATION, outputs=outputs)
+
+    result = SHACLValidator().post_execute_validate(envelope, run_context=None)
+
+    assert result.passed is False
+    # SHACL violation finding keeps its meta and maps to ERROR.
+    violation = next(
+        i for i in result.issues if i.code.endswith("MinCountConstraintComponent")
+    )
+    assert violation.severity == Severity.ERROR
+    assert violation.meta["shacl_focus_node"] == "ex:bob"
+    assert violation.assertion_id is None
+    # SPARQL-ASK finding keeps its assertion_id for attribution.
+    ask = next(i for i in result.issues if i.code == "shacl.sparql_ask_failed")
+    assert ask.assertion_id == SAMPLE_ASSERTION_ID
+    # Container assertion tallies fold through (no run_context → no CEL added).
+    assert result.assertion_stats.total == 1
+    assert result.assertion_stats.failures == 1
+
+
+def test_post_execute_success_passes_and_surfaces_report():
+    """A conforming envelope with no findings passes; the report lands in stats."""
+    envelope = _envelope(
+        status=ValidationStatus.SUCCESS,
+        outputs=_outputs(results_graph_turtle="REPORT"),
+    )
+    result = SHACLValidator().post_execute_validate(envelope, run_context=None)
+
+    assert result.passed is True
+    assert result.issues == []
+    assert result.assertion_stats.total == 0
+    # The serialized SHACL report is preserved for evidence download.
+    assert result.stats["results_graph_turtle"] == "REPORT"
+    assert result.stats["shacl_result_handling"] == "fail_after_assertions"
+
+
+def test_post_execute_success_finding_maps_to_success_severity():
+    """A SUCCESS-severity finding (passed SPARQL-ASK with a message) maps cleanly.
+
+    The shared Severity enum has no SUCCESS member, so SHACLFinding carries it as
+    a string; the validator must map it back to Django's Severity.SUCCESS rather
+    than defaulting to ERROR.
+    """
+    outputs = _outputs(
+        assertion_total=1,
+        assertion_failures=0,
+        findings=[
+            SHACLFinding(
+                message="Robot present.",
+                severity="SUCCESS",
+                code="assertion_passed",
+                assertion_id=7,
+            ),
+        ],
+    )
+    envelope = _envelope(status=ValidationStatus.SUCCESS, outputs=outputs)
+    result = SHACLValidator().post_execute_validate(envelope, run_context=None)
+
+    success = next(i for i in result.issues if i.code == "assertion_passed")
+    assert success.severity == Severity.SUCCESS
+
+
+# ── The mixed-assertion partition (DB-backed integration) ────────────────────
+
+
+@pytest.mark.django_db
+class TestMixedAssertionPartition:
+    """Prove the SHACL (container) + CEL/Basic (Django) split is lossless.
+
+    This is the case raised in review: an author stacks SHACL SPARQL-ASK
+    assertions and Basic/CEL assertions on one step. The SHACL ones execute in
+    the container (and arrive pre-counted in ``outputs.assertion_total``); the
+    Django pass must evaluate ONLY the non-SHACL ones and ADD its tally to the
+    container's. Getting this wrong would either double-count the SHACL
+    assertions or re-run them against a graph Django no longer holds.
     """
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.org = OrganizationFactory()
-        cls.user = UserFactory()
-        cls.project = ProjectFactory(org=cls.org)
-        # System SHACL validator: no default_ruleset, is_system=True
-        # in production but the factory pattern doesn't care for tests.
-        cls.validator = ValidatorFactory(
+    def _run_context(self, ruleset):
+        """Build a real run_context (validator + step.ruleset + run + submission).
+
+        Real factories (not mocks) because post_execute_validate's CEL/Basic
+        payload builder issues ORM queries keyed on the step/run primary keys.
+        """
+        from validibot.actions.protocols import RunContext
+        from validibot.submissions.constants import SubmissionFileType
+        from validibot.submissions.tests.factories import SubmissionFactory
+        from validibot.validations.tests.factories import ValidationRunFactory
+        from validibot.validations.tests.factories import ValidatorFactory
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        validator = ValidatorFactory(
             validation_type=ValidationType.SHACL,
-            org=cls.org,
             is_system=False,
         )
+        submission = SubmissionFactory(
+            content="@prefix ex: <http://example.org/> . ex:a a ex:Thing .",
+            file_type=SubmissionFileType.TEXT,
+        )
+        step = WorkflowStepFactory(validator=validator, ruleset=ruleset)
+        run = ValidationRunFactory(workflow=step.workflow, submission=submission)
+        return validator, RunContext(
+            validation_run=run, step=step, downstream_signals={}
+        )
 
-    def test_passing_submission_returns_passed_true(self):
-        """A submission that conforms to the step shapes passes the gate."""
+    def test_shacl_assertions_excluded_and_counts_fold(self):
+        """One SHACL + one Basic assertion → container counts SHACL, Django the Basic.
+
+        Expected: total = container(1 SHACL) + Django(1 Basic) = 2; the SHACL
+        assertion is NOT re-evaluated in Django (it would appear as a duplicate or
+        an engine-error finding if it were).
+        """
+        from validibot.validations.constants import RulesetType
+        from validibot.validations.tests.factories import RulesetAssertionFactory
+        from validibot.validations.tests.factories import RulesetFactory
+
         ruleset = RulesetFactory(
-            org=self.org,
             ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
+            rules_text="# shapes",
         )
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.TEXT,
-        )
-        submission.content = """@prefix ex: <http://example.com/> .
-ex:alice a ex:Person ; ex:name "Alice" ."""
-        submission.save(update_fields=["content"])
-
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
-
-        assert result.passed is True
-        # SHACL conformance produces zero issues — operators only see
-        # findings when something is actually wrong.
-        assert all(i.severity != Severity.ERROR for i in result.issues)
-        assert result.signals["shacl_violation_count"] == 0
-        assert result.signals["parse_ok"] is True
-
-    def test_turtle_original_filename_overrides_broad_file_type(self):
-        """RDF serialization detection uses the original upload filename.
-
-        Workflow file types are broad categories. A Turtle upload may arrive as
-        ``file_type=TEXT`` or from an older path as ``file_type=JSON``. The
-        SHACL validator must prefer ``original_filename=.ttl`` so it does not
-        try to parse Turtle as JSON-LD.
-        """
-        ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-        )
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.JSON,
-            original_filename="building.ttl",
-        )
-        submission.content = """@prefix ex: <http://example.com/> .
-ex:alice a ex:Person ; ex:name "Alice" ."""
-        submission.save(update_fields=["content", "original_filename", "file_type"])
-
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
-
-        assert result.passed is True
-        assert result.stats["parse_serialization"] == "turtle"
-        assert result.signals["parse_ok"] is True
-
-    def test_failing_submission_returns_passed_false_with_error_finding(self):
-        """A SHACL Violation surfaces as Severity.ERROR and blocks passing."""
-        ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-        )
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.TEXT,
-        )
-        submission.content = DATA_BOB_NO_NAME
-        submission.save(update_fields=["content"])
-
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
-
-        assert result.passed is False
-        error_issues = [i for i in result.issues if i.severity == Severity.ERROR]
-        assert len(error_issues) == 1
-        assert "bob" in error_issues[0].meta["shacl_focus_node"].lower()
-        assert result.signals["shacl_violation_count"] == 1
-
-    def test_native_shacl_report_serialised_to_stats(self):
-        """The validation produces a downloadable SHACL ValidationReport.
-
-        Downstream tools (BuildingMOTIF, analytics platforms) can ingest
-        the native sh:ValidationReport Turtle directly. We attach it to
-        ``stats`` so the existing run-detail UI can surface it as an
-        artifact without schema changes.
-        """
-        ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-        )
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.TEXT,
-        )
-        submission.content = DATA_BOB_NO_NAME
-        submission.save(update_fields=["content"])
-
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
-
-        report = result.stats["results_graph_turtle"]
-        # Native SHACL reports always include a ValidationReport node
-        # plus at least one ValidationResult when violations exist.
-        assert "ValidationReport" in report
-        assert "ValidationResult" in report
-
-    def test_parse_failure_yields_error_finding_and_passed_false(self):
-        """Invalid RDF in the submission produces a clear ERROR.
-
-        Operators sometimes upload the wrong file type (e.g. plain
-        text labelled as Turtle). The validator should fail cleanly,
-        not crash.
-        """
-        ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-        )
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.TEXT,
-        )
-        submission.content = "this is not RDF at all <<<"
-        submission.save(update_fields=["content"])
-
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
-
-        assert result.passed is False
-        assert any(
-            "parse" in (i.code or "").lower() or "parse" in (i.message or "").lower()
-            for i in result.issues
-        )
-
-    def test_empty_shapes_returns_engine_error(self):
-        """A ruleset with no shapes content returns a clear engine error.
-
-        This guards against a library validator (or step) being saved
-        with empty rules_text. Without the guard, every submission would
-        silently pass.
-        """
-        ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text="",
-        )
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.TEXT,
-        )
-        submission.content = DATA_BOB_NO_NAME
-        submission.save(update_fields=["content"])
-
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
-
-        assert result.passed is False
-        assert any(i.code == "shacl.engine_error" for i in result.issues)
-
-
-class SHACLValidatorLibraryPathTests(TestCase):
-    """Verify the library validator path: default_ruleset + step extras merge.
-
-    This is the contract that distinguishes a library-level custom
-    SHACL validator (Priya's ``MeridianCx 223P + G36 Validator``) from
-    the ad-hoc system path. The engine concatenates the library
-    validator's bundled shapes with any step-level extras the workflow
-    author added.
-    """
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.org = OrganizationFactory()
-        cls.user = UserFactory()
-        cls.project = ProjectFactory(org=cls.org)
-        # Library validator: has a default_ruleset attached carrying the
-        # org's bundled shapes (e.g. 223P + G36 in real use).
-        cls.default_ruleset = RulesetFactory(
-            org=cls.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-        )
-        cls.library_validator = ValidatorFactory(
-            validation_type=ValidationType.SHACL,
-            org=cls.org,
-            is_system=False,
-            default_ruleset=cls.default_ruleset,
-        )
-
-    def test_library_shapes_apply_without_step_extras(self):
-        """When the step ruleset is empty, only the library shapes run.
-
-        Mirrors the common case: Anna picks Priya's library validator,
-        adds it to a workflow step with no project-specific extras,
-        and expects the library shapes to fire.
-        """
-        # Step ruleset with no shapes — engine should still merge in
-        # the library default and produce the violation.
-        step_ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text="",
-        )
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.TEXT,
-        )
-        submission.content = DATA_BOB_NO_NAME
-        submission.save(update_fields=["content"])
-
-        result = SHACLValidator().validate(
-            self.library_validator,
-            submission,
-            step_ruleset,
-        )
-
-        # The library shape fires even though the step ruleset is empty.
-        error_issues = [i for i in result.issues if i.severity == Severity.ERROR]
-        assert len(error_issues) == 1
-        assert "name" in error_issues[0].message.lower()
-
-    def test_step_extras_layer_on_top_of_library_shapes(self):
-        """Library shapes + step extras combine; Alice fails both rules.
-
-        Alice has a name (satisfies library rule) but no nickname
-        (fails the step extra). With merging, we expect exactly one
-        ERROR — the nickname rule from the step layer.
-        """
-        step_ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NICKNAME,
-        )
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.TEXT,
-        )
-        submission.content = DATA_ALICE_WITH_NAME_NO_NICKNAME
-        submission.save(update_fields=["content"])
-
-        result = SHACLValidator().validate(
-            self.library_validator,
-            submission,
-            step_ruleset,
-        )
-
-        error_issues = [i for i in result.issues if i.severity == Severity.ERROR]
-        # Library rule (needs name) passes; step rule (needs nickname) fails.
-        assert len(error_issues) == 1
-        assert "nickname" in error_issues[0].message.lower()
-
-    def test_inlined_library_snapshot_ignores_later_default_ruleset_edits(self):
-        """Snapshotted steps do not live-merge the current library default.
-
-        New SHACL workflow steps inline the library validator's default
-        ruleset into the step ruleset. If Priya later edits the library
-        default, Anna's existing workflow step should keep validating
-        against the snapshot captured when the step was authored.
-        """
-        self.default_ruleset.rules_text = SHAPES_PERSON_REQUIRES_NICKNAME
-        self.default_ruleset.save(update_fields=["rules_text"])
-        step_ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-            metadata={
-                "library_default_inlined": True,
-                "library_default_snapshot": {
-                    "default_ruleset_id": self.default_ruleset.pk,
-                },
-            },
-        )
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.TEXT,
-        )
-        submission.content = DATA_ALICE_WITH_NAME_NO_NICKNAME
-        submission.save(update_fields=["content"])
-
-        result = SHACLValidator().validate(
-            self.library_validator,
-            submission,
-            step_ruleset,
-        )
-
-        error_issues = [i for i in result.issues if i.severity == Severity.ERROR]
-        assert error_issues == []
-
-    def test_both_rules_fire_when_data_violates_both(self):
-        """When the submission violates both library + step rules, both surface.
-
-        Demonstrates the merge produces a union of findings, not
-        either-or. This is the value-add of shape stacking: project
-        rules supplement, they don't replace.
-        """
-        step_ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NICKNAME,
-        )
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.TEXT,
-        )
-        submission.content = DATA_BOB_NO_NAME  # no name, no nickname
-        submission.save(update_fields=["content"])
-
-        result = SHACLValidator().validate(
-            self.library_validator,
-            submission,
-            step_ruleset,
-        )
-
-        error_issues = [i for i in result.issues if i.severity == Severity.ERROR]
-        assert len(error_issues) == LIBRARY_PLUS_STEP_ERROR_COUNT
-
-    def test_step_metadata_overrides_library_engine_knobs(self):
-        """Step-level inference_mode wins over the library default.
-
-        Operators sometimes need to override a library validator's
-        defaults for a specific workflow (e.g. "this step doesn't need
-        OWL inference, run it cheaper"). The engine resolves
-        per-key with step > library > fallback precedence.
-        """
-        # Library default: rdfs. Step override: none.
-        self.default_ruleset.metadata = {"inference_mode": "rdfs"}
-        self.default_ruleset.save(update_fields=["metadata"])
-        step_ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NICKNAME,
-            metadata={"inference_mode": "none"},
-        )
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.TEXT,
-        )
-        submission.content = DATA_ALICE_WITH_NAME_NO_NICKNAME
-        submission.save(update_fields=["content"])
-
-        # We're indirectly verifying the override via the engine running
-        # successfully (any inference-mode mishandling would crash or
-        # produce wrong findings). The signal also confirms the parse
-        # happened.
-        result = SHACLValidator().validate(
-            self.library_validator,
-            submission,
-            step_ruleset,
-        )
-
-        assert result.signals["parse_ok"] is True
-
-    def test_bundled_standards_opt_out_at_step_level(self):
-        """A step can opt out of a library validator's bundled standards.
-
-        Library validator says "include Brick"; step says "no thanks,
-        empty list." Engine should treat the step's empty list as
-        intentional opt-out rather than inheriting the library default.
-        """
-        self.default_ruleset.metadata = {
-            "bundled_standards": ["brick-1.4", "qudt-2.1"],
-        }
-        self.default_ruleset.save(update_fields=["metadata"])
-        step_ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text="",
-            metadata={"bundled_standards": []},  # explicit opt-out
-        )
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.TEXT,
-        )
-        submission.content = DATA_BOB_NO_NAME
-        submission.save(update_fields=["content"])
-
-        result = SHACLValidator().validate(
-            self.library_validator,
-            submission,
-            step_ruleset,
-        )
-
-        # Opting out means zero bundle warnings get surfaced. If the
-        # engine had wrongly inherited the library defaults, we'd see
-        # two bundle-not-yet-shipped warnings instead.
-        bundle_warnings = [i for i in result.issues if i.code and "bundle" in i.code]
-        assert bundle_warnings == []
-
-
-# ──────────────────────────────────────────────────────────────────────
-# End-to-end SPARQL ASK assertion flow (Phase 1c).
-#
-# These tests exercise the full pipeline: RulesetAssertion rows with
-# assertion_type=SHACL flow through the validator's _resolve_sparql_assertions(),
-# the engine's parse_sparql_assertions() rehydration, run_sparql_ask execution,
-# and finally a ValidationIssue surfacing in result.issues.
-#
-# Maps to ADR-2026-05-18 "Phase 1c — SPARQL ASK assertions" acceptance
-# tests: functional happy paths, severity routing, and engine-error
-# escalation. The library-validator + step merge semantic is also
-# exercised here so we know assertions inherit correctly.
-# ──────────────────────────────────────────────────────────────────────
-
-
-class SHACLValidatorSparqlAskFlowTests(TestCase):
-    """End-to-end SPARQL ASK execution from assertion rows to findings."""
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.org = OrganizationFactory()
-        cls.user = UserFactory()
-        cls.project = ProjectFactory(org=cls.org)
-        cls.validator = ValidatorFactory(
-            validation_type=ValidationType.SHACL,
-            org=cls.org,
-            is_system=False,
-        )
-
-    def _submission(self, content: str):
-        """Build a submission with arbitrary inline Turtle content."""
-        submission = SubmissionFactory(
-            org=self.org,
-            project=self.project,
-            user=self.user,
-            file_type=SubmissionFileType.TEXT,
-        )
-        submission.content = content
-        submission.save(update_fields=["content"])
-        return submission
-
-    def _sparql_assertion(
-        self,
-        ruleset,
-        *,
-        query: str,
-        severity: str = Severity.ERROR,
-        description: str = "",
-        message: str = "",
-        target_graph: str = "data",
-    ):
-        """Attach one SHACL SPARQL ASK assertion row to a ruleset."""
-        return RulesetAssertionFactory(
+        # A SHACL SPARQL-ASK assertion — runs in the container, NOT in Django.
+        RulesetAssertionFactory(
             ruleset=ruleset,
             assertion_type=AssertionType.SHACL,
             operator=AssertionOperator.SPARQL_ASK,
-            target_data_path=f"shacl.{target_graph}",
-            severity=severity,
-            rhs={
-                "target_graph": target_graph,
-                "query": query,
-                "description": description,
-            },
-            options={},
-            message_template=message,
-            cel_cache=query,
-        )
-
-    def test_fail_immediately_skips_author_assertions_after_shacl_violation(self):
-        """Immediate mode should stop before later assertions run.
-
-        This mode is for strict workflows where native SHACL conformance is
-        the gate and downstream assertions should not execute against a graph
-        already known to be invalid.
-        """
-        ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-            metadata={"shacl_result_handling": SHACL_RESULT_FAIL_IMMEDIATELY},
-        )
-        self._sparql_assertion(
-            ruleset,
-            query="PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }",
+            target_data_path="shacl.data",
             severity=Severity.ERROR,
-            description="Must have at least one Robot",
-            message="No Robot instances found.",
+            rhs={"target_graph": "data", "query": "ASK { ?s ?p ?o }"},
         )
-        submission = self._submission(DATA_BOB_NO_NAME)
+        # A Basic assertion against an output signal — runs in Django, output stage.
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.BASIC,
+            operator=AssertionOperator.EQ,
+            target_data_path="shacl_violation_count",
+            severity=Severity.ERROR,
+            rhs={"value": 0},
+        )
 
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
+        validator, run_context = self._run_context(ruleset)
 
-        assert result.passed is False
-        assert result.assertion_stats.total == 0
-        assert result.stats["shacl_result_handling"] == SHACL_RESULT_FAIL_IMMEDIATELY
-        assert any(issue.message == "Person needs a name." for issue in result.issues)
+        # The container reports it evaluated the 1 SHACL ask (0 failures) and the
+        # graph conformed (shacl_violation_count=0 so the Basic assertion passes).
+        envelope = _envelope(
+            status=ValidationStatus.SUCCESS,
+            outputs=_outputs(
+                shacl_violation_count=0,
+                assertion_total=1,
+                assertion_failures=0,
+            ),
+        )
+
+        result = SHACLValidator().post_execute_validate(envelope, run_context)
+
+        # Folded totals: 1 (container SHACL) + 1 (Django Basic) = 2.
+        assert result.assertion_stats.total == EXPECTED_FOLDED_TOTAL
+        assert result.assertion_stats.failures == 0
+        assert result.passed is True
+        # The SHACL assertion was excluded from the Django pass — no SPARQL-ASK
+        # finding should be re-created here (the container owns that).
         assert not any(
-            issue.code == "shacl.sparql_ask_failed" for issue in result.issues
+            i.code in {"shacl.sparql_ask_failed", "shacl.sparql_ask_engine_error"}
+            for i in result.issues
         )
-
-    def test_fail_after_assertions_runs_author_assertions_before_failing(self):
-        """Default mode preserves all author feedback before marking failure.
-
-        Authors often want one run to return both native SHACL violations and
-        project-specific SPARQL assertion findings, so this mode keeps running
-        assertions even after SHACL reports violations.
-        """
-        ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-            metadata={"shacl_result_handling": SHACL_RESULT_FAIL_AFTER_ASSERTIONS},
-        )
-        self._sparql_assertion(
-            ruleset,
-            query="PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }",
-            severity=Severity.ERROR,
-            description="Must have at least one Robot",
-            message="No Robot instances found.",
-        )
-        submission = self._submission(DATA_BOB_NO_NAME)
-
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
-
-        assert result.passed is False
-        assert result.assertion_stats.total == 1
-        assert result.stats["shacl_result_handling"] == (
-            SHACL_RESULT_FAIL_AFTER_ASSERTIONS
-        )
-        assert any(issue.message == "Person needs a name." for issue in result.issues)
-        assert any(issue.code == "shacl.sparql_ask_failed" for issue in result.issues)
-
-    def test_report_only_exposes_shacl_counts_without_blocking(self):
-        """Report-only mode delegates pass/fail to explicit assertions.
-
-        Native SHACL results should still produce signals and the report graph,
-        but they should not become blocking Validibot findings by themselves.
-        """
-        ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-            metadata={"shacl_result_handling": SHACL_RESULT_REPORT_ONLY},
-        )
-        submission = self._submission(DATA_BOB_NO_NAME)
-
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
-
-        assert result.passed is True
-        assert result.issues == []
-        assert result.signals["shacl_violation_count"] == 1
-        assert result.stats["shacl_result_handling"] == SHACL_RESULT_REPORT_ONLY
-        assert "ValidationResult" in result.stats["results_graph_turtle"]
-
-    def test_passing_ask_produces_no_finding(self):
-        """A SPARQL ASK that returns true contributes no issue.
-
-        The basic proof that ASK execution is wired in: a passing query
-        leaves ``result.passed`` and ``result.issues`` unchanged from
-        what SHACL alone would produce.
-        """
-        ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-        )
-        self._sparql_assertion(
-            ruleset,
-            query="PREFIX ex: <http://example.com/> ASK { ?p a ex:Person }",
-            severity=Severity.ERROR,
-            description="Must have a Person",
-        )
-        submission = self._submission(
-            "@prefix ex: <http://example.com/> .\n"
-            'ex:alice a ex:Person ; ex:name "Alice" .',
-        )
-
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
-
-        assert result.passed is True
-        sparql_findings = [
-            i for i in result.issues if i.code and "sparql_ask" in i.code
-        ]
-        assert sparql_findings == []
-
-    def test_failing_ask_produces_finding_with_template_message(self):
-        """A SPARQL ASK that returns false produces one finding.
-
-        The author's ``error_message_template`` becomes the finding's
-        message (verbatim — V1 does not interpolate signals into the
-        template; that feature lands when named-SELECT signals do).
-        """
-        ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-        )
-        self._sparql_assertion(
-            ruleset,
-            query="PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }",
-            severity=Severity.ERROR,
-            description="Must have at least one Robot",
-            message="No Robot instances found.",
-        )
-        submission = self._submission(
-            "@prefix ex: <http://example.com/> .\n"
-            'ex:alice a ex:Person ; ex:name "Alice" .',
-        )
-
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
-
-        assert result.passed is False
-        sparql_findings = [
-            i for i in result.issues if i.code == "shacl.sparql_ask_failed"
-        ]
-        assert len(sparql_findings) == 1
-        assert sparql_findings[0].message == "No Robot instances found."
-        assert sparql_findings[0].severity == Severity.ERROR
-
-    def test_warning_severity_does_not_block_passing(self):
-        """A failing ASK at WARNING severity allows the step to pass.
-
-        Validates the severity routing: only ERROR-tier findings flip
-        ``result.passed`` to False. Authors layering advisory checks
-        on top of hard gates must be able to do so without escalating
-        every finding to a step failure.
-        """
-        ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-        )
-        self._sparql_assertion(
-            ruleset,
-            query="PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }",
-            severity=Severity.WARNING,
-            description="Robot expected (advisory)",
-            message="Advisory: no Robot found.",
-        )
-        submission = self._submission(
-            "@prefix ex: <http://example.com/> .\n"
-            'ex:alice a ex:Person ; ex:name "Alice" .',
-        )
-
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
-
-        assert result.passed is True  # WARNING doesn't block
-        sparql_findings = [
-            i for i in result.issues if i.code == "shacl.sparql_ask_failed"
-        ]
-        assert len(sparql_findings) == 1
-        assert sparql_findings[0].severity == Severity.WARNING
-
-    def test_library_and_step_assertions_both_run(self):
-        """Library-validator and step-level ASKs both execute and contribute.
-
-        Mirrors the shapes / ontology merge semantic for assertions:
-        a library validator can carry baseline gates that every workflow
-        inherits; individual steps add project-specific gates on top.
-        Both lists evaluate against the same submission.
-        """
-        # Library validator with a baseline assertion.
-        library_ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-        )
-        self._sparql_assertion(
-            library_ruleset,
-            query="PREFIX ex: <http://example.com/> ASK { ?p a ex:Person }",
-            severity=Severity.ERROR,
-            description="Library: must have a Person",
-            message="library failed",
-        )
-        library_validator = ValidatorFactory(
-            validation_type=ValidationType.SHACL,
-            org=self.org,
-            is_system=False,
-            default_ruleset=library_ruleset,
-        )
-        # Step-level ruleset with a different assertion that fails.
-        step_ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text="",
-        )
-        self._sparql_assertion(
-            step_ruleset,
-            query="PREFIX ex: <http://example.com/> ASK { ?r a ex:Robot }",
-            severity=Severity.ERROR,
-            description="Step: must have a Robot",
-            message="step failed",
-        )
-        submission = self._submission(
-            "@prefix ex: <http://example.com/> .\n"
-            'ex:alice a ex:Person ; ex:name "Alice" .',
-        )
-
-        result = SHACLValidator().validate(
-            library_validator,
-            submission,
-            step_ruleset,
-        )
-
-        # Library assertion passes; step assertion fails. Exactly one
-        # SPARQL finding should surface, attributed to the step entry.
-        sparql_findings = [
-            i for i in result.issues if i.code == "shacl.sparql_ask_failed"
-        ]
-        assert len(sparql_findings) == 1
-        assert sparql_findings[0].message == "step failed"
-
-    def test_engine_error_escalates_to_error_finding(self):
-        """A malformed assertion that bypassed the form scrub still gets caught.
-
-        Simulates a persistence-layer bypass: someone (admin import,
-        broken migration, manual SQL) writes a SELECT into
-        ``RulesetAssertion.rhs``. The engine's re-scrub catches it and
-        emits an ERROR finding regardless of the configured severity,
-        because the run cannot be trusted while the config is broken.
-        """
-        ruleset = RulesetFactory(
-            org=self.org,
-            ruleset_type=RulesetType.SHACL,
-            rules_text=SHAPES_PERSON_REQUIRES_NAME,
-        )
-        self._sparql_assertion(
-            ruleset,
-            # Malformed (SELECT, not ASK) — would never pass the form scrub,
-            # simulating a persistence-layer bypass.
-            query="SELECT * WHERE { ?s ?p ?o }",
-            severity=Severity.WARNING,
-            description="Bad assertion smuggled in",
-        )
-        submission = self._submission(
-            "@prefix ex: <http://example.com/> .\n"
-            'ex:alice a ex:Person ; ex:name "Alice" .',
-        )
-
-        result = SHACLValidator().validate(self.validator, submission, ruleset)
-
-        assert result.passed is False  # ERROR escalation forces failure
-        engine_errors = [
-            i for i in result.issues if i.code == "shacl.sparql_ask_engine_error"
-        ]
-        assert len(engine_errors) == 1
-        assert engine_errors[0].severity == Severity.ERROR

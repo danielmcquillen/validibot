@@ -1,0 +1,85 @@
+{% load i18n %}
+
+{% comment %}
+Stacked, full-width report layout (the default).
+
+Three full-width (``col-12``) sections, in order: Run Summary, User Inputs,
+Outputs.
+
+- Run Summary is a plain card (header + two-column body + footer). Its
+  metadata is laid out in two equal columns that stack on mobile
+  (``split=True``), and the "View report as JSON" action lives in the card
+  footer.
+- User Inputs and Outputs are each their own independent Bootstrap accordion
+  so collapsing one never affects the other (no shared ``data-bs-parent``).
+  Outputs defaults open; User Inputs defaults collapsed. They are included
+  with ``bare=True`` so they emit only their inner content — the accordion
+  supplies the chrome, avoiding a duplicated section title.
+
+Selected by ``validation_detail.html`` by default. The original two-column
+design lives in ``layout_validation_run_classic.html`` for a future toggle.
+
+Context variables: run, step_runs, step_signals, step_params,
+step_template_warnings, issued_credential, credential_download_url,
+evidence_artifact (all forwarded from the run detail view).
+{% endcomment %}
+<div class="row">
+  <div class="col-12">
+    {% comment %}
+      ── Run Summary ──
+      A plain card (header + two-column body + footer), not an accordion.
+      ``bare`` is left falsy so the block renders its own card chrome, and
+      the "View report as JSON" action sits in the card footer.
+    {% endcomment %}
+    <div class="mb-3">
+      {% include "workflows/results/partials/block_validation_run_summary.html" with run=run step_runs=step_runs split=True %}
+    </div>
+    {% comment %} ── User Inputs (default collapsed) ── {% endcomment %}
+    <div class="accordion mb-3" id="reportUserInputs">
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#reportUserInputsBody"
+                  aria-expanded="false"
+                  aria-controls="reportUserInputsBody">
+            {% trans "User Inputs" %}
+          </button>
+        </h2>
+        <div id="reportUserInputsBody" class="accordion-collapse collapse">
+          <div class="accordion-body">
+            {% include "workflows/results/partials/block_validation_run_user_inputs.html" with run=run bare=True %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% comment %} ── Outputs (default open) ── {% endcomment %}
+    <div class="accordion mb-3" id="reportOutputs">
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#reportOutputsBody"
+                  aria-expanded="true"
+                  aria-controls="reportOutputsBody">
+            {% trans "Outputs" %}
+          </button>
+        </h2>
+        <div id="reportOutputsBody" class="accordion-collapse collapse show">
+          <div class="accordion-body">
+            {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs step_signals=step_signals step_params=step_params step_template_warnings=step_template_warnings bare=True %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% comment %}
+      Auxiliary audit cards. Each renders only when its data exists
+      (signed credential / evidence manifest), so they are silent on
+      runs that have neither.
+    {% endcomment %}
+    {% include "workflows/results/partials/block_validation_run_credential.html" with issued_credential=issued_credential credential_download_url=credential_download_url %}
+    {% include "workflows/results/partials/block_validation_run_evidence.html" with run=run evidence_artifact=evidence_artifact %}
+  </div>
+</div>

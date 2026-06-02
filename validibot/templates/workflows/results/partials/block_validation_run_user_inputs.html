@@ -8,24 +8,30 @@ filename with view button for file uploads), submission metadata,
 and the content hash (SHA-256).
 
 Context variables (passed via ``{% include ... with %}``):
-  run — the ValidationRun object (with submission FK)
+  run  — the ValidationRun object (with submission FK)
+  bare — when truthy, render only the inner content (no card / header /
+         body chrome). Used by the stacked accordion layout where the
+         accordion supplies the chrome. Defaults to falsy, preserving the
+         standalone card for the classic layout and launch status card.
 {% endcomment %}
 {% if run.submission %}
-  <div class="card validation-info-card mb-3">
-    <div class="card-header">
-      {% trans "User Inputs" %}
-    </div>
-    <div class="card-body">
+  {% if not bare %}
+    <div class="card validation-info-card mb-3">
+      <div class="card-header">
+        {% trans "User Inputs" %}
+      </div>
+      <div class="card-body">
+      {% endif %}
       <section>
         <dl class="row small mb-0">
-          <dt class="col-sm-4">
+          <dt class="col-auto" style="width: 8rem">
             {% if run.submission.has_data_filename %}
               {% trans "Data file" %}
             {% else %}
               {% trans "Data" %}
             {% endif %}
           </dt>
-          <dd class="col-sm-8">
+          <dd class="col">
             {% if run.submission.has_data_filename %}
               <span class="font-monospace">{{ run.submission.data_filename }}</span>
             {% endif %}
@@ -64,25 +70,27 @@ Context variables (passed via ``{% include ... with %}``):
       {% if run.submission.checksum_sha256 %}
         <section class="mt-3">
           <dl class="row small mb-0">
-            <dt class="col-sm-4">
+            <dt class="col-auto" style="width: 8rem">
               {% trans "Data hash" %}
             </dt>
-            <dd class="col-sm-8">
+            <dd class="col">
               <span class="font-monospace small text-muted">{{ run.submission.checksum_sha256 }}</span>
             </dd>
             {% if run.submission.size_bytes %}
-              <dt class="col-sm-4">
+              <dt class="col-auto" style="width: 8rem">
                 {% trans "Size" %}
               </dt>
-              <dd class="col-sm-8">
+              <dd class="col">
                 <span class="small text-muted">{{ run.submission.size_bytes|filesizeformat }}</span>
               </dd>
             {% endif %}
           </dl>
         </section>
       {% endif %}
+      {% if not bare %}
+      </div>
     </div>
-  </div>
+  {% endif %}
   {% if submission_content_can_be_viewed %}
     <div class="modal fade"
          id="submissionContentModal"

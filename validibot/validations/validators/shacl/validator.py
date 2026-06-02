@@ -1,305 +1,171 @@
-"""SHACL validator orchestration.
+"""SHACL validator — dispatches to the isolated container backend.
 
-The :class:`SHACLValidator` class is intentionally thin — it walks
-through the pure functions in :mod:`engine` in order and assembles a
-:class:`ValidationResult`. The actual RDF parsing, inference, SHACL
-execution, finding mapping, and signal extraction all live in
-``engine.py`` so they can be unit-tested in isolation without any
-Django dependencies.
+SHACL parses untrusted RDF and executes author-supplied SPARQL (SHACL-AF
+constraints and SPARQL-ASK assertions). That work must never run next to the
+worker's database credentials, identity, or network, so — like EnergyPlus and
+FMU — SHACL is an :class:`AdvancedValidator`: Django resolves shapes/settings/
+assertions from the database, ships them in a ``SHACLInputEnvelope``, and the
+``validibot-validator-backends`` container does all graph/SPARQL execution. See
+ADR-2026-05-18 for the engine design and the cross-repo plan for the isolation
+rationale.
 
-See ADR-2026-05-18 ``SHACL Validator for RDF Graph Validation`` for the
-end-to-end design, including the library-level custom SHACL validator
-path (``validator.default_ruleset`` carries the bundled shapes; the
-step-level ``ruleset`` adds project-specific extras).
+The base class handles the full lifecycle (input-stage gate, dispatch via the
+configured execution backend, sync/async completion). This subclass supplies two
+things:
+
+1. :meth:`extract_output_signals` — the ``o.*`` signal dict for CEL/Basic
+   assertions, pulled from the container's ``SHACLOutputs``.
+2. :meth:`post_execute_validate` — a SHACL-specific override that (a) rebuilds
+   findings from the structured ``outputs.findings`` so the SHACL ``meta``
+   (focus node, source shape, constraint component) and SPARQL-ASK
+   ``assertion_id`` survive, (b) evaluates the Django-side CEL/Basic output
+   assertions while **excluding** SHACL-type rows (those run as SPARQL in the
+   container), and (c) folds the container's SPARQL-ASK assertion tallies into
+   the final :class:`AssertionStats`.
+
+Library-level custom SHACL validators (org-owned ``Validator`` rows with a
+populated ``default_ruleset``) reuse this same class and ``validation_type``.
 """
 
 from __future__ import annotations
 
 import logging
-from hashlib import sha256
 from typing import TYPE_CHECKING
 from typing import Any
 
-from django.utils.translation import gettext as _
-
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import Severity
+from validibot.validations.validators.base.advanced import AdvancedValidator
 from validibot.validations.validators.base.base import AssertionStats
-from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
-from validibot.validations.validators.shacl import engine
-from validibot.validations.validators.shacl.constants import (
-    SHACL_RESULT_FAIL_IMMEDIATELY,
-)
-from validibot.validations.validators.shacl.constants import (
-    SHACL_RESULT_HANDLING_DEFAULT,
-)
-from validibot.validations.validators.shacl.constants import (
-    SHACL_RESULT_HANDLING_VALUES,
-)
-from validibot.validations.validators.shacl.constants import SHACL_RESULT_REPORT_ONLY
 
 if TYPE_CHECKING:
     from validibot.actions.protocols import RunContext
-    from validibot.validations.models import Ruleset
-    from validibot.validations.models import Submission
-    from validibot.validations.models import Validator
 
 logger = logging.getLogger(__name__)
 
+# Map the container's finding-severity strings back to the Django Severity enum.
+_SEVERITY_FROM_STRING = {
+    "ERROR": Severity.ERROR,
+    "WARNING": Severity.WARNING,
+    "INFO": Severity.INFO,
+    "SUCCESS": Severity.SUCCESS,
+}
 
-class SHACLValidator(BaseValidator):
-    """Generic SHACL validator for RDF graphs.
+# The o.* signal keys this validator exposes — must match the catalog entries in
+# config.py (the "catalog is the contract" rule). Extra fields on SHACLOutputs
+# (report turtle, hashes, assertion tallies) are surfaced via stats, not signals.
+_SIGNAL_KEYS = (
+    "parse_ok",
+    "parse_serialization",
+    "triple_count",
+    "namespaces_present",
+    "has_s223_namespace",
+    "has_g36_namespace",
+    "has_brick_namespace",
+    "shacl_violation_count",
+    "shacl_warning_count",
+    "shacl_info_count",
+    "shacl_total_count",
+)
 
-    Validates RDF documents (Turtle, JSON-LD, RDF/XML, N-Triples,
-    N-Quads) against SHACL shape collections. The shapes come from two
-    sources, merged at validation time:
 
-    1. ``validator.default_ruleset`` — for library-level custom SHACL
-       validators that an organisation has created (e.g.
-       ``MeridianCx 223P + G36 Validator``). The default_ruleset bundles
-       the standard shapes once so multiple workflows can reuse them
-       without re-uploading.
-    2. ``ruleset`` (the step-level ruleset) — project-specific shapes
-       layered on top.
+class SHACLValidator(AdvancedValidator):
+    """SHACL RDF-graph validator dispatched to an isolated container backend."""
 
-    The merge mirrors the assertion-merge pattern in
-    :meth:`BaseValidator.evaluate_assertions_for_stage`.
+    @property
+    def validator_display_name(self) -> str:
+        return "SHACL"
 
-    The engine is pure Python (pyshacl + rdflib + owlrl). pySHACL runs
-    in a short-lived Python subprocess so pathological shape/data pairs
-    can be terminated on timeout, including inside Celery prefork
-    workers. It is NOT an advanced (Docker) validator — see
-    ADR-2026-05-18 for the cost-benefit analysis.
+    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
+        """Pull the ``o.*`` signal dict from the container's ``SHACLOutputs``.
 
-    Output:
+        Filtered to the catalog-declared keys so any extra output fields cannot
+        leak into the ``o.*`` namespace — the same "catalog is the contract"
+        invariant EnergyPlus/FMU enforce on their extractors.
+        """
+        outputs = getattr(output_envelope, "outputs", None)
+        if outputs is None:
+            return None
+        return {key: getattr(outputs, key, None) for key in _SIGNAL_KEYS}
 
-    - ``issues``: structured findings. By default, each SHACL constraint
-      violation becomes a blocking finding with severity mapped from
-      ``sh:resultSeverity`` (Violation → ERROR, Warning → WARNING,
-      Info → INFO). Authors can choose report-only handling to expose
-      the SHACL report and counts without converting validation results
-      into Validibot findings. Parse, shape, timeout, and engine failures
-      always remain blocking errors.
-    - ``signals``: the ``o.*`` signal dict for CEL assertions
-      (``o.shacl_violation_count``, ``o.has_s223_namespace``, etc.).
-    - ``stats.results_graph_turtle``: the native SHACL
-      ``sh:ValidationReport`` graph serialised as Turtle, available for
-      download and re-ingestion by downstream tools (BuildingMOTIF,
-      analytics platforms, AI agents).
-
-    The ``passed`` flag is True iff no blocking ``Severity.ERROR`` issues
-    exist. Warnings and infos do not block — operators decide whether to
-    gate on them via CEL assertions.
-
-    **No ``extract_input_signals`` override (per ADR-2026-05-22b
-    Phase 6).** SHACL evaluates a parsed RDF graph against shape
-    constraints; the engine's natural output is per-shape findings
-    plus the ``o.*`` signal dict (extracted by the engine, not by a
-    parser hook). There is no separate "input-stage facts" surface —
-    workflow authors gate on the SHACL report itself or on the
-    pre-validation file (``payload.*``).
-    """
-
-    def validate(
+    def post_execute_validate(
         self,
-        validator: Validator,
-        submission: Submission,
-        ruleset: Ruleset,
+        output_envelope: Any,
         run_context: RunContext | None = None,
     ) -> ValidationResult:
-        """Validate an RDF submission against the merged SHACL shapes.
+        """Process the container output: findings, signals, and folded assertions.
 
-        High-level flow (each step delegates to :mod:`engine`):
+        Overrides the base because SHACL needs three things the generic path
+        doesn't provide:
 
-        1. Read default_ruleset (library validator) and step ruleset.
-        2. Merge their shapes_text, ontology_text, and bundled_standards.
-        3. Load any opted-in bundled standards (Brick / QUDT). Phase 1
-           emits a WARNING when bundles are requested because the
-           content ships in Phase 2.
-        4. Parse the submission as RDF using the resolved serialization.
-        5. Run pyshacl with the resolved inference mode + advanced flag.
-        6. Map ``sh:ValidationResult`` nodes to ``ValidationIssue`` rows.
-        7. Extract output signals for CEL.
-        8. Apply SHACL result handling: fail immediately, fail after
-           assertions, or report-only.
-        9. Run SHACL SPARQL ASK assertion rows individually when the
-           result-handling mode allows later assertions to run.
-        10. Evaluate Basic/CEL output assertions against the SHACL signals.
-        11. Return ``ValidationResult(passed, issues, signals, stats)``.
-
-        The ``run_context`` argument is accepted for protocol consistency
-        but the built-in pySHACL path does not need it.
+        1. **Rich findings.** The generic ``_extract_issues_from_envelope`` reads
+           the lossy ``messages`` list. We instead rebuild ``ValidationIssue``
+           rows from ``outputs.findings`` so SHACL ``meta`` and SPARQL-ASK
+           ``assertion_id`` are preserved for display and attribution.
+        2. **Excluded SHACL assertions.** SPARQL-ASK assertions already ran in the
+           container; the Django-side CEL/Basic pass must exclude
+           ``AssertionType.SHACL`` so they aren't double-counted or re-run
+           (against a graph Django no longer has).
+        3. **Folded assertion totals.** Final assertion counts = container
+           SPARQL-ASK tallies + Django CEL/Basic tallies.
         """
         self.run_context = run_context
 
-        settings = self._resolve_settings(validator, ruleset)
+        outputs = getattr(output_envelope, "outputs", None)
+        issues = self._issues_from_outputs(outputs)
+        signals = self.extract_output_signals(output_envelope) or {}
 
-        # Combine library + step shapes/ontologies before loading bundles.
-        merged_shapes, merged_ontology, bundled_standards = (
-            engine.merge_shapes_and_ontologies(
-                default_shapes_text=settings["default_shapes_text"],
-                default_ontology_text=settings["default_ontology_text"],
-                default_bundled_standards=settings["default_bundled_standards"],
-                step_shapes_text=settings["step_shapes_text"],
-                step_ontology_text=settings["step_ontology_text"],
-                step_bundled_standards=settings["step_bundled_standards"],
-            )
-        )
+        # Container-side SPARQL-ASK assertion tallies.
+        container_total = getattr(outputs, "assertion_total", 0) if outputs else 0
+        container_failures = getattr(outputs, "assertion_failures", 0) if outputs else 0
 
-        # Bundled-standards loader is a Phase 1 stub that produces
-        # WARNING issues when the operator opted into Brick or QUDT.
-        bundled_shapes, bundled_ontology, bundle_warnings = (
-            engine.load_bundled_standards(bundled_standards)
-        )
-        if bundled_shapes:
-            merged_shapes = merged_shapes + engine.FILE_SEPARATOR + bundled_shapes
-        if bundled_ontology:
-            merged_ontology = merged_ontology + engine.FILE_SEPARATOR + bundled_ontology
+        cel_total = 0
+        cel_failures = 0
+        if run_context and run_context.step:
+            validator = run_context.step.validator
+            ruleset = run_context.step.ruleset
+            if validator and ruleset:
+                resolved_inputs = self._get_resolved_inputs(run_context)
+                payload = self._build_assertion_payload(
+                    signals,
+                    run_context,
+                    resolved_inputs=resolved_inputs,
+                )
+                payload = self._enrich_basic_payload(
+                    payload,
+                    stage="output",
+                    output_signals=None,
+                )
+                # Exclude SHACL-type rows — those executed in the container as
+                # SPARQL ASKs and are already counted in container_* above.
+                assertion_result = self.evaluate_assertions_for_stage(
+                    validator=validator,
+                    ruleset=ruleset,
+                    payload=payload,
+                    stage="output",
+                    exclude_assertion_types={AssertionType.SHACL},
+                )
+                issues.extend(assertion_result.issues)
+                cel_total = assertion_result.total
+                cel_failures = assertion_result.failures
 
-        # Parse the submission.
-        submission_file_name = (
-            getattr(submission, "original_filename", None)
-            or getattr(getattr(submission, "input_file", None), "name", None)
-            or getattr(submission, "filename", None)
-        )
-        serialization = engine.detect_serialization(
-            file_name=submission_file_name,
-            file_type=getattr(submission, "file_type", None),
-            explicit_format=settings["submission_format"],
-        )
-        content = submission.get_content()
-        data_graph, parse_error = engine.parse_rdf(content, serialization)
-        if data_graph is None:
-            return ValidationResult(
-                passed=False,
-                issues=[
-                    *bundle_warnings,
-                    ValidationIssue(
-                        path="",
-                        message=parse_error or _("Failed to parse submission."),
-                        severity=Severity.ERROR,
-                        code="shacl.parse_failed",
-                    ),
-                ],
-                signals=engine.extract_signals(
-                    data_graph=None,
-                    results_graph=None,
-                    parse_ok=False,
-                    parse_serialization=serialization,
-                ),
-                stats={"parse_serialization": serialization},
-            )
+        assertion_total = container_total + cel_total
+        assertion_failures = container_failures + cel_failures
 
-        # Run SHACL.
-        results_graph, shacl_error = engine.run_shacl_validation(
-            data_graph,
-            merged_shapes,
-            merged_ontology,
-            inference_mode=settings["inference_mode"],
-            advanced_shacl=settings["advanced_shacl"],
-        )
-        if results_graph is None:
-            return ValidationResult(
-                passed=False,
-                issues=[
-                    *bundle_warnings,
-                    ValidationIssue(
-                        path="",
-                        message=shacl_error or _("SHACL engine error."),
-                        severity=Severity.ERROR,
-                        code="shacl.engine_error",
-                    ),
-                ],
-                signals=engine.extract_signals(
-                    data_graph=data_graph,
-                    results_graph=None,
-                    parse_ok=True,
-                    parse_serialization=serialization,
-                ),
-                stats={"parse_serialization": serialization},
-            )
-
-        # Map findings + signals.
-        shacl_issues = engine.map_results_to_issues(results_graph)
-        signals = engine.extract_signals(
-            data_graph=data_graph,
-            results_graph=results_graph,
-            parse_ok=True,
-            parse_serialization=serialization,
-        )
-        report_turtle = self._serialize_results_graph(results_graph)
-        stats = self._build_stats(
-            serialization=serialization,
-            signals=signals,
-            merged_shapes=merged_shapes,
-            merged_ontology=merged_ontology,
-            advanced_shacl=settings["advanced_shacl"],
-            shacl_result_handling=settings["shacl_result_handling"],
-            report_turtle=report_turtle,
+        passed = self._determine_passed(
+            output_envelope,
+            assertion_failures=assertion_failures,
         )
 
-        if settings[
-            "shacl_result_handling"
-        ] == SHACL_RESULT_FAIL_IMMEDIATELY and self._has_error_issue(shacl_issues):
-            return ValidationResult(
-                passed=False,
-                issues=[*bundle_warnings, *shacl_issues],
-                assertion_stats=AssertionStats(total=0, failures=0),
-                signals=signals,
-                stats=stats,
-            )
-
-        # Execute author-defined SPARQL ASK assertions after SHACL
-        # completes. These are stored as RulesetAssertion rows rather
-        # than step-config metadata so each row keeps its own severity,
-        # message, ordering, and assertion_id attribution.
-        sparql_config_issues: list[ValidationIssue] = []
-        sparql_assertions = engine.parse_sparql_assertions(
-            self._resolve_sparql_assertions(validator, ruleset),
-            error_issues=sparql_config_issues,
-        )
-        sparql_issues = engine.evaluate_sparql_assertions(
-            assertions=sparql_assertions,
-            data_graph=data_graph,
-            results_graph=results_graph,
-        )
-
-        # Evaluate the regular assertion types (Basic + CEL) against the
-        # SHACL output signals. The base evaluator skips SHACL-specific
-        # assertion rows because those were handled above.
-        output_assertion_result = self.evaluate_assertions_for_stage(
-            validator=validator,
-            ruleset=ruleset,
-            payload=signals,
-            stage="output",
-            exclude_assertion_types={AssertionType.SHACL},
-        )
-
-        blocking_shacl_issues = self._blocking_shacl_issues(
-            shacl_issues,
-            settings["shacl_result_handling"],
-        )
-        all_issues: list[ValidationIssue] = [
-            *bundle_warnings,
-            *blocking_shacl_issues,
-            *sparql_config_issues,
-            *sparql_issues,
-            *output_assertion_result.issues,
-        ]
-        assertion_failures = self._count_assertion_failures(
-            sparql_config_issues + sparql_issues,
-        )
-        assertion_failures += output_assertion_result.failures
-
-        passed = not any(i.severity == Severity.ERROR for i in all_issues)
+        stats = self._build_stats(outputs)
 
         return ValidationResult(
             passed=passed,
-            issues=all_issues,
+            issues=issues,
             assertion_stats=AssertionStats(
-                total=len(sparql_assertions) + output_assertion_result.total,
+                total=assertion_total,
                 failures=assertion_failures,
             ),
             signals=signals,
@@ -310,200 +176,47 @@ class SHACLValidator(BaseValidator):
     # Helpers
     # ------------------------------------------------------------------
 
-    def _resolve_settings(
-        self,
-        validator: Validator,
-        ruleset: Ruleset | None,
-    ) -> dict[str, Any]:
-        """Pull shapes/ontology text and engine settings from both rulesets.
+    @staticmethod
+    def _issues_from_outputs(outputs: Any) -> list[ValidationIssue]:
+        """Rebuild ValidationIssue rows from the container's structured findings."""
+        findings = getattr(outputs, "findings", None) or []
+        issues: list[ValidationIssue] = []
+        for f in findings:
+            issues.append(
+                ValidationIssue(
+                    path=getattr(f, "path", "") or "",
+                    message=f.message,
+                    severity=_SEVERITY_FROM_STRING.get(f.severity, Severity.ERROR),
+                    code=getattr(f, "code", "") or "",
+                    meta=dict(getattr(f, "meta", None) or {}) or None,
+                    assertion_id=getattr(f, "assertion_id", None),
+                ),
+            )
+        return issues
 
-        Library-level custom SHACL validators carry their bundled
-        standard shapes on ``validator.default_ruleset``. The step's own
-        ``ruleset`` (always present for SHACL because
-        ``supports_assertions=True``) carries project-specific extras
-        plus the engine knobs (inference mode, advanced flag, submission
-        format).
+    @staticmethod
+    def _build_stats(outputs: Any) -> dict[str, Any]:
+        """Surface SHACL run metadata + the serialized report for evidence/UI.
 
-        Returns a flat dict consumed by the orchestrator above.
+        Preserves the top-level stats keys the in-process validator produced
+        (``results_graph_turtle`` for download, the shape/ontology hashes, the
+        result-handling mode) so downstream consumers (evidence manifest,
+        report-download view) keep working unchanged. The full envelope is also
+        serialized into step output by the processor.
         """
-        default_ruleset = getattr(validator, "default_ruleset", None)
-        default_metadata = self._safe_metadata(default_ruleset)
-        step_metadata = self._safe_metadata(ruleset)
-        library_default_inlined = bool(step_metadata.get("library_default_inlined"))
-        if library_default_inlined:
-            default_shapes_text = ""
-            default_ontology_text = ""
-            default_bundled_standards = None
-            default_metadata_for_settings: dict[str, Any] = {}
-        else:
-            default_shapes_text = (
-                getattr(default_ruleset, "rules", "") if default_ruleset else ""
-            )
-            default_ontology_text = default_metadata.get("ontology_text", "") or ""
-            default_bundled_standards = default_metadata.get("bundled_standards")
-            default_metadata_for_settings = default_metadata
-
-        # Engine knobs: step-level value wins if explicitly set; otherwise
-        # inherit from the library validator's default_ruleset; otherwise
-        # fall back to the SHACLValidator defaults documented in the ADR.
-        return {
-            "default_shapes_text": default_shapes_text,
-            "default_ontology_text": default_ontology_text,
-            "default_bundled_standards": default_bundled_standards,
-            "step_shapes_text": getattr(ruleset, "rules", "") if ruleset else "",
-            "step_ontology_text": step_metadata.get("ontology_text", "") or "",
-            "step_bundled_standards": step_metadata.get("bundled_standards"),
-            "inference_mode": self._pick_setting(
-                step_metadata,
-                default_metadata_for_settings,
-                "inference_mode",
-                "rdfs",
-            ),
-            "advanced_shacl": self._pick_setting(
-                step_metadata,
-                default_metadata_for_settings,
-                "advanced_shacl",
-                fallback=False,
-            ),
-            "submission_format": self._pick_setting(
-                step_metadata,
-                default_metadata_for_settings,
-                "submission_format",
-                "auto",
-            ),
-            "shacl_result_handling": self._pick_result_handling(
-                step_metadata,
-                default_metadata_for_settings,
-            ),
-        }
-
-    @staticmethod
-    def _safe_metadata(ruleset: Ruleset | None) -> dict[str, Any]:
-        if ruleset is None:
+        if outputs is None:
             return {}
-        meta = getattr(ruleset, "metadata", None) or {}
-        if not isinstance(meta, dict):
-            return {}
-        return meta
-
-    def _resolve_sparql_assertions(
-        self,
-        validator: Validator,
-        ruleset: Ruleset | None,
-    ) -> list[Any]:
-        """Merge library-validator + step-level SHACL assertion rows.
-
-        Mirrors the merge pattern used by
-        :meth:`BaseValidator.evaluate_assertions_for_stage`: validator
-        default assertions run first, then step assertions. Application
-        UI only creates SHACL SPARQL assertions at the step level, but
-        keeping the default-ruleset path makes admin imports and future
-        library defaults deterministic.
-        """
-        default_ruleset = getattr(validator, "default_ruleset", None)
-        step_metadata = self._safe_metadata(ruleset)
-
-        merged: list[Any] = []
-        if default_ruleset is not None and not step_metadata.get(
-            "library_default_inlined",
-        ):
-            merged.extend(
-                default_ruleset.assertions.filter(
-                    assertion_type=AssertionType.SHACL,
-                ).order_by("order", "pk"),
-            )
-        if ruleset is not None:
-            merged.extend(
-                ruleset.assertions.filter(
-                    assertion_type=AssertionType.SHACL,
-                ).order_by("order", "pk"),
-            )
-        return merged
-
-    @staticmethod
-    def _pick_setting(
-        step_metadata: dict[str, Any],
-        default_metadata: dict[str, Any],
-        key: str,
-        fallback: Any,
-    ) -> Any:
-        """Step value wins if explicitly set; else library default; else fallback."""
-        if key in step_metadata:
-            return step_metadata[key]
-        if key in default_metadata:
-            return default_metadata[key]
-        return fallback
-
-    @staticmethod
-    def _pick_result_handling(
-        step_metadata: dict[str, Any],
-        default_metadata: dict[str, Any],
-    ) -> str:
-        """Resolve SHACL result-handling mode with a conservative fallback."""
-
-        value = SHACLValidator._pick_setting(
-            step_metadata,
-            default_metadata,
-            "shacl_result_handling",
-            SHACL_RESULT_HANDLING_DEFAULT,
-        )
-        if value in SHACL_RESULT_HANDLING_VALUES:
-            return value
-        return SHACL_RESULT_HANDLING_DEFAULT
-
-    @staticmethod
-    def _blocking_shacl_issues(
-        shacl_issues: list[ValidationIssue],
-        result_handling: str,
-    ) -> list[ValidationIssue]:
-        """Return SHACL findings that should affect the Validibot outcome."""
-
-        if result_handling == SHACL_RESULT_REPORT_ONLY:
-            return []
-        return shacl_issues
-
-    @staticmethod
-    def _has_error_issue(issues: list[ValidationIssue]) -> bool:
-        """Return True if an issue list contains a blocking error."""
-
-        return any(issue.severity == Severity.ERROR for issue in issues)
-
-    @staticmethod
-    def _serialize_results_graph(results_graph: Any) -> str:
-        """Serialise the native SHACL ValidationReport for evidence download."""
-
-        try:
-            return results_graph.serialize(format="turtle")
-        except Exception as exc:
-            logger.warning("Failed to serialise SHACL report as Turtle: %s", exc)
-            return ""
-
-    @staticmethod
-    def _build_stats(
-        *,
-        serialization: str,
-        signals: dict[str, Any],
-        merged_shapes: str,
-        merged_ontology: str,
-        advanced_shacl: bool,
-        shacl_result_handling: str,
-        report_turtle: str,
-    ) -> dict[str, Any]:
-        """Build stable SHACL run stats shared by every successful SHACL path."""
-
         return {
-            "parse_serialization": serialization,
-            "triple_count": signals["triple_count"],
-            "shacl_total_count": signals["shacl_total_count"],
-            "shacl_shapes_sha256": sha256(
-                merged_shapes.encode("utf-8"),
-            ).hexdigest(),
-            "shacl_ontology_sha256": (
-                sha256(merged_ontology.encode("utf-8")).hexdigest()
-                if merged_ontology
-                else ""
+            "parse_serialization": getattr(outputs, "parse_serialization", ""),
+            "triple_count": getattr(outputs, "triple_count", 0),
+            "shacl_total_count": getattr(outputs, "shacl_total_count", 0),
+            "shacl_shapes_sha256": getattr(outputs, "shacl_shapes_sha256", ""),
+            "shacl_ontology_sha256": getattr(outputs, "shacl_ontology_sha256", ""),
+            "advanced_shacl_requested": getattr(
+                outputs,
+                "advanced_shacl_requested",
+                False,
             ),
-            "advanced_shacl_requested": bool(advanced_shacl),
-            "shacl_result_handling": shacl_result_handling,
-            "results_graph_turtle": report_turtle,
+            "shacl_result_handling": getattr(outputs, "shacl_result_handling", ""),
+            "results_graph_turtle": getattr(outputs, "results_graph_turtle", ""),
         }

@@ -53,6 +53,14 @@ Context:
           <span class="validator-process-chip">{{ validator.processor_name|default:_("Validator process") }}</span>
         </div>
         {% include 'workflows/partials/components/assertion_group.html' with stage="output" label=_("Output assertions") assertions=assertion_groups.output empty_label=_("No output assertions yet.") %}
+        {% if validator.validation_type == "SHACL" and assertion_groups.output %}
+          {# SHACL runs graph (SPARQL) checks in one isolated pass, then
+             expression checks; findings group by type, so the move controls
+             order within each type rather than interleaving across them. #}
+          <p class="small text-muted mt-1 mb-0">
+            {% trans "Graph and expression checks run in separate passes — ordering applies within each type." %}
+          </p>
+        {% endif %}
       {% else %}
         {% if assertions %}
           {% for assertion in assertions %}

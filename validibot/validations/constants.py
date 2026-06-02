@@ -227,11 +227,18 @@ class ValidatorReleaseState(TextChoices):
 # metered separately from simple validators that run inline in the
 # Django worker process.
 ADVANCED_VALIDATION_TYPES = {
+    ValidationType.SHACL,
     ValidationType.ENERGYPLUS,
     ValidationType.FMU,
     ValidationType.CUSTOM_VALIDATOR,
     ValidationType.AI_ASSIST,
 }
+# NOTE on SHACL: it is "advanced" purely for ROUTING — SHACL parses untrusted RDF
+# and runs author-supplied SPARQL, which must execute inside the isolated
+# container backend, not in the worker. It stays ``ComputeTier.LOW`` (see
+# DEFAULT_COMPUTE_TIERS below / config.py), so it is NOT metered as heavy compute:
+# cloud metering only deducts credits for ComputeTier.HIGH validators. Isolation
+# is a safety upgrade, not a price change.
 
 
 class ComputeTier(models.TextChoices):

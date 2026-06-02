@@ -3373,6 +3373,7 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
 validators-deploy-all stage: _require-gcp-config
     just gcp validator-deploy energyplus {{stage}}
     just gcp validator-deploy fmu {{stage}}
+    just gcp validator-deploy shacl {{stage}}
 
 # =============================================================================
 # Validator Assets Management

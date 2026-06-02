@@ -45,7 +45,20 @@ config = ValidatorConfig(
     ),
     validation_type=ValidationType.SHACL,
     validator_class=("validibot.validations.validators.shacl.validator.SHACLValidator"),
-    version=1,
+    # Typed container output contract — Django deserializes output.json with this.
+    output_envelope_class="validibot_shared.shacl.envelopes.SHACLOutputEnvelope",
+    # Cloud Run Job / Docker image. Set explicitly because the slug
+    # ("shacl-validator") would otherwise produce the wrong convention name
+    # ("validibot-validator-backend-shacl-validator").
+    image_name="validibot-validator-backend-shacl",
+    has_processor=True,
+    processor_name="SHACL Validation",
+    # v2: SHACL moved from in-process execution to the isolated container backend
+    # (RDF parsing + author SPARQL now run in validibot-validator-backend-shacl,
+    # never in the worker). The semantic digest changes with image_name /
+    # output_envelope_class / has_processor, so the version MUST bump — see
+    # services/validator_digest.py. compute_tier stays LOW: billing is unchanged.
+    version=2,
     order=4,
     supported_file_types=[
         SubmissionFileType.TEXT,

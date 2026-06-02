@@ -1,0 +1,27 @@
+{% load i18n %}
+
+{% comment %}
+Classic two-column report layout (the original design).
+
+Left column: User Inputs + Outputs. Right column (sidebar, moves above on
+narrow viewports): Run Summary + Signed Credential + Evidence Manifest.
+
+Preserved as a standalone partial so a future user-facing layout toggle can
+switch between this and ``layout_validation_run_stacked.html``. Selected by
+``validation_detail.html`` when ``report_layout == "classic"``.
+
+Context variables: run, step_runs, step_signals, step_params,
+step_template_warnings, issued_credential, credential_download_url,
+evidence_artifact (all forwarded from the run detail view).
+{% endcomment %}
+<div class="row">
+  <div class="col-12 col-xl-7 mb-3">
+    {% include "workflows/results/partials/block_validation_run_user_inputs.html" with run=run %}
+    {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs step_signals=step_signals step_params=step_params step_template_warnings=step_template_warnings %}
+  </div>
+  <div class="col-12 col-xl-5 order-first order-xl-last mb-3">
+    {% include "workflows/results/partials/block_validation_run_summary.html" with run=run step_runs=step_runs %}
+    {% include "workflows/results/partials/block_validation_run_credential.html" with issued_credential=issued_credential credential_download_url=credential_download_url %}
+    {% include "workflows/results/partials/block_validation_run_evidence.html" with run=run evidence_artifact=evidence_artifact %}
+  </div>
+</div>

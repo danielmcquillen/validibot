@@ -29,6 +29,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.shacl.constants import SHACL_RESULT_REPORT_ONLY
+from validibot.validations.validators.shacl.form_fields import SHACL_INFERENCE_CHOICES
 from validibot.workflows.forms import ShaclStepConfigForm
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -310,6 +311,104 @@ class ShaclStepConfigFormCleanTests(TestCase):
         assert "shapes_files" in form.errors
         joined = " ".join(form.errors["shapes_files"]).lower()
         assert "turtle" in joined
+
+
+class ShaclInferenceOptionFormTests(TestCase):
+    """Verify the form exposes exactly the three supported inference modes.
+
+    The engine tests
+    (:class:`validibot.validations.tests.test_validators.test_shacl_engine.TestInferenceModes`)
+    prove what each mode *does*. These tests prove the operator-facing form
+    offers precisely those modes plus the advanced toggle, and rejects
+    anything outside that set. Together they close the loop between the UI
+    options and the engine: a mode could work in the engine but be
+    unreachable from the form, or the form could offer a mode pyshacl would
+    crash on — both are caught here.
+    """
+
+    def _base_data(self, **overrides):
+        """Minimal valid form payload; override one field per test."""
+        data = {
+            "name": "Step name",
+            "description": "",
+            "shapes_text": VALID_SHAPES,
+            "ontology_text": "",
+            "inference_mode": "rdfs",
+            "advanced_shacl": False,
+            "submission_format": "auto",
+        }
+        data.update(overrides)
+        return data
+
+    def test_choices_match_the_three_engine_supported_modes(self):
+        """The form's choice keys are exactly the values pyshacl accepts here.
+
+        The keys ride untranslated into ``pyshacl.validate(inference=...)``,
+        so a drifting key (e.g. ``"owl2rl"``) would pass form validation and
+        only blow up at run time inside the worker subprocess. Pinning the
+        keys catches that at edit time. The labels are asserted too because
+        they are the operator's only guidance on which mode to pick — if a
+        label lost its "223P" hint or "fastest" cue, the UI's recommendation
+        semantics would silently change.
+        """
+        assert [key for key, _label in SHACL_INFERENCE_CHOICES] == [
+            "none",
+            "rdfs",
+            "owlrl",
+        ]
+        labels = {key: str(label) for key, label in SHACL_INFERENCE_CHOICES}
+        assert "fastest" in labels["none"].lower()
+        assert "223P" in labels["rdfs"]
+        assert "OWL 2 RL" in labels["owlrl"]
+
+    def test_form_accepts_each_supported_inference_mode(self):
+        """Every documented mode validates — none of the three is unreachable.
+
+        If a choice were declared in the dropdown but rejected by ``clean()``
+        (e.g. silently dropped from the ChoiceField's choices), an operator
+        could see the option yet never be able to save it. Walking all three
+        guarantees each is selectable end-to-end.
+        """
+        for mode in ("none", "rdfs", "owlrl"):
+            with self.subTest(inference_mode=mode):
+                form = ShaclStepConfigForm(data=self._base_data(inference_mode=mode))
+                assert form.is_valid(), form.errors
+                assert form.cleaned_data["inference_mode"] == mode
+
+    def test_form_rejects_unsupported_inference_mode(self):
+        """A mode outside the three (e.g. pyshacl's ``"both"``) must not validate.
+
+        pyshacl also understands ``"both"`` / ``"all"``, but Validibot
+        deliberately does not expose them — the docs, signal budgets, and
+        performance guidance only account for the three documented modes.
+        This guards against silently widening the surface: if ``"both"`` ever
+        became valid here, an operator could pick a mode the rest of the
+        product never planned for.
+        """
+        form = ShaclStepConfigForm(data=self._base_data(inference_mode="both"))
+        assert not form.is_valid()
+        assert "inference_mode" in form.errors
+
+    def test_advanced_toggle_accepts_on_and_off_and_defaults_off(self):
+        """The advanced-SHACL checkbox round-trips both states; default is off.
+
+        ``advanced=False`` is the safe default — advanced SHACL additionally
+        requires the deployment-level ``SHACL_ENABLE_ADVANCED_FEATURES`` flag
+        — so an omitted (unchecked) checkbox must clean to ``False`` rather
+        than erroring. Both explicit states must also validate so an author
+        can deliberately turn the feature on per step.
+        """
+        # Checked.
+        on = ShaclStepConfigForm(data=self._base_data(advanced_shacl=True))
+        assert on.is_valid(), on.errors
+        assert on.cleaned_data["advanced_shacl"] is True
+
+        # Unchecked / omitted: BooleanField(required=False) cleans to False.
+        data = self._base_data()
+        data.pop("advanced_shacl")
+        off = ShaclStepConfigForm(data=data)
+        assert off.is_valid(), off.errors
+        assert off.cleaned_data["advanced_shacl"] is False
 
 
 class BuildShaclConfigTests(TestCase):

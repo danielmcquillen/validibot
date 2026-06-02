@@ -43,16 +43,16 @@
       </div>
     {% endif %}
     {% include "workflows/results/partials/block_validation_run_status_alert.html" with run=run %}
-    <div class="row">
-      <div class="col-12 col-xl-7 mb-3">
-        {% include "workflows/results/partials/block_validation_run_user_inputs.html" with run=run %}
-        {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs step_signals=step_signals step_params=step_params step_template_warnings=step_template_warnings %}
-      </div>
-      <div class="col-12 col-xl-5 order-first order-xl-last mb-3">
-        {% include "workflows/results/partials/block_validation_run_summary.html" with run=run step_runs=step_runs %}
-        {% include "workflows/results/partials/block_validation_run_credential.html" with issued_credential=issued_credential credential_download_url=credential_download_url %}
-        {% include "workflows/results/partials/block_validation_run_evidence.html" with run=run evidence_artifact=evidence_artifact %}
-      </div>
-    </div>
+    {% comment %}
+    Report body layout. ``report_layout`` selects between the stacked,
+    full-width accordion design (default) and the original two-column
+    "classic" layout, both saved as partials so a future user-facing toggle
+    can switch between them without further template surgery.
+    {% endcomment %}
+    {% if report_layout == "classic" %}
+      {% include "workflows/results/partials/layout_validation_run_classic.html" %}
+    {% else %}
+      {% include "workflows/results/partials/layout_validation_run_stacked.html" %}
+    {% endif %}
   </div>
 {% endblock app_content %}

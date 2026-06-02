@@ -561,3 +561,167 @@ def launch_fmu_validation(
             ),
         ]
         return ValidationResult(passed=False, issues=issues, stats={})
+
+
+def launch_shacl_validation(
+    *,
+    run: ValidationRun,
+    validator: Validator,
+    submission: Submission,
+    ruleset: Ruleset | None,
+    step: WorkflowStep,
+) -> ValidationResult:
+    """
+    Launch a SHACL validation via Cloud Run Jobs.
+
+    Uploads the RDF submission to GCS (the submission IS the primary file, as for
+    EnergyPlus), builds a ``SHACLInputEnvelope`` via the shared envelope builder
+    (which resolves shapes/ontology/settings/SPARQL-ASK assertions from the DB),
+    triggers the Cloud Run Job, and returns a pending ValidationResult.
+    """
+    try:
+        # 0. Idempotency check.
+        current_step_run = run.current_step_run
+        if not current_step_run:
+            msg = f"No active step run for run {run.id}"
+            raise ValueError(msg)  # noqa: TRY301
+
+        already_launched = _check_already_launched(current_step_run)
+        if already_launched:
+            return already_launched
+
+        org_id = str(run.org.id)
+        run_id = str(run.id)
+        if settings.GCS_VALIDATION_BUCKET:
+            execution_bundle_uri = (
+                f"gs://{settings.GCS_VALIDATION_BUCKET}/runs/{org_id}/{run_id}"
+            )
+            input_envelope_uri = f"{execution_bundle_uri}/input.json"
+            submission_uri = f"{execution_bundle_uri}/submission.rdf"
+            is_gcs = True
+            local_submission_path = None
+        else:
+            # Local dev: store under media/files/runs/<org>/<run>/ for the
+            # local-async test path (the normal self-hosted path uses the
+            # synchronous Docker backend, not this launcher).
+            from pathlib import Path
+
+            base_dir = Path(settings.MEDIA_ROOT) / "files" / "runs" / org_id / run_id
+            base_dir.mkdir(parents=True, exist_ok=True)
+            execution_bundle_uri = str(base_dir)
+            input_envelope_uri = str(base_dir / "input.json")
+            local_submission_path = base_dir / "submission.rdf"
+            submission_uri = f"file://{local_submission_path}"
+            is_gcs = False
+
+        # 1. Upload the RDF submission. The container parses it using the
+        # rdf_format resolved Django-side, so the on-disk name is cosmetic.
+        content = submission.get_content()
+        content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+        if is_gcs:
+            logger.info("Uploading SHACL submission to %s", submission_uri)
+            upload_file(
+                content=content_bytes,
+                uri=submission_uri,
+                content_type="text/plain",
+            )
+        else:
+            local_submission_path.write_bytes(content_bytes)
+
+        # 2. Callback + idempotency key.
+        callback_url = build_validation_callback_url()
+        callback_id = f"step-run-{current_step_run.id}"
+
+        # 3. Build the typed envelope via the shared builder (SHACL branch reads
+        # primary_file_uri from input_file_uris and resolves rulesets/assertions).
+        from validibot.validations.services.cloud_run.envelope_builder import (
+            build_input_envelope,
+        )
+
+        envelope = build_input_envelope(
+            run=run,
+            callback_url=callback_url,
+            callback_id=callback_id,
+            execution_bundle_uri=execution_bundle_uri,
+            input_file_uris={"primary_file_uri": submission_uri},
+        )
+
+        # 4. Upload the input envelope.
+        if is_gcs:
+            upload_envelope(envelope, input_envelope_uri)
+        else:
+            from pathlib import Path
+
+            upload_envelope_local(envelope, Path(input_envelope_uri))
+
+        # 5. Trigger the Cloud Run Job. Job name comes from ValidatorConfig.
+        job_name = _resolve_cloud_run_job_name("SHACL")
+
+        # Same image-policy gate as the EnergyPlus/FMU paths (fail-closed under
+        # strict policy when the configured image can't be verified).
+        policy = get_current_policy()
+        configured_image = get_job_configured_image(
+            project_id=settings.GCP_PROJECT_ID,
+            region=settings.GCP_REGION,
+            job_name=job_name,
+        )
+        if policy != ValidatorBackendImagePolicy.TAG and configured_image is None:
+            msg = (
+                f"VALIDATOR_BACKEND_IMAGE_POLICY={policy.value} requires "
+                f"verifying the Cloud Run Job's configured image, but the "
+                f"lookup for '{job_name}' returned no image. Refusing to launch."
+            )
+            logger.warning(
+                "Refusing to trigger Cloud Run Job %s: image lookup failed "
+                "under strict policy '%s'",
+                job_name,
+                policy.value,
+            )
+            raise RuntimeError(msg)  # noqa: TRY301
+        if configured_image:
+            policy_result = enforce_image_policy(configured_image)
+            if not policy_result.should_proceed:
+                logger.warning(
+                    "Refusing to trigger Cloud Run Job %s: %s",
+                    job_name,
+                    policy_result.message,
+                )
+                msg = (
+                    f"Cloud Run Job '{job_name}' violates "
+                    f"VALIDATOR_BACKEND_IMAGE_POLICY: {policy_result.message}"
+                )
+                raise RuntimeError(msg)  # noqa: TRY301
+
+        execution_name = run_validator_job(
+            project_id=settings.GCP_PROJECT_ID,
+            region=settings.GCP_REGION,
+            job_name=job_name,
+            input_uri=input_envelope_uri,
+        )
+
+        backend_image_digest = get_execution_image_digest(execution_name)
+        _mark_step_run_running(current_step_run, image_digest=backend_image_digest)
+
+        stats = {
+            "job_status": CloudRunJobStatus.PENDING,
+            "job_name": job_name,
+            "execution_name": execution_name,
+            "input_uri": input_envelope_uri,
+            "execution_bundle_uri": execution_bundle_uri,
+            "signals": {},  # populated on callback; reserved for downstream steps
+        }
+        return ValidationResult(passed=None, issues=[], stats=stats)
+
+    except Exception:
+        logger.exception("Failed to launch SHACL Cloud Run Job for run %s", run.id)
+        issues = [
+            ValidationIssue(
+                path="",
+                message=(
+                    "Failed to launch SHACL validation. "
+                    "The error has been logged for investigation."
+                ),
+                severity=Severity.ERROR,
+            ),
+        ]
+        return ValidationResult(passed=False, issues=issues, stats={})

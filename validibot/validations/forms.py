@@ -23,6 +23,7 @@ from django.utils.translation import gettext_lazy as _
 from validibot.projects.models import Project
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.validations.cel import CUSTOM_HELPER_NAMES
+from validibot.validations.cel_columns import bound_macro_variables
 from validibot.validations.cel_columns import referenced_row_columns
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
@@ -1267,8 +1268,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         - ``steps.key.output.name`` — upstream step outputs
 
         Bare identifiers are only allowed for CEL literals (``true``,
-        ``false``, ``null``), CEL built-in functions, and single-letter
-        variables used as loop vars in quantifier expressions.
+        ``false``, ``null``), CEL built-in functions, and the loop variables
+        a comprehension macro introduces (``ns`` in ``items.all(ns, ...)`` —
+        any length, plus single letters for backward compatibility).
         """
         reserved_literals = {"true", "false", "null"}
         # The namespace root names that are valid bare identifiers.
@@ -1382,6 +1384,13 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             ):
                 misnamespaced_inputs.add(bracket_key)
 
+        # Loop variables a comprehension macro introduces (``ns`` in
+        # ``x.all(ns, ...)``) are defined by the expression itself, not free
+        # data references, so they are exempt — at any length. The old check
+        # only allowed single-letter loop variables, wrongly rejecting readable
+        # names like ``ns``/``room``/``device``.
+        macro_vars = bound_macro_variables(expression)
+
         # Strip string literals (including escaped quotes) so identifiers
         # inside quotes are not treated as bare identifiers.
         stripped = _strip_cel_string_literals(expression)
@@ -1389,8 +1398,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             name = match.group(0)
             if name in reserved_literals or name in cel_builtins:
                 continue
-            # Single-letter identifiers are allowed (loop variables in
-            # quantifier expressions like exists(x, items, x > 0))
+            # Single-letter identifiers stay allowed unconditionally for
+            # backward compatibility (the legacy loop-var shorthand).
             if len(name) == 1:
                 continue
             # Namespace-prefixed references are usually valid — but
@@ -1400,6 +1409,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             # (s.* never holds step inputs at runtime).
             parts = name.split(".")
             root = parts[0]
+            # A macro loop variable, used bare (``ns``) or as ``ns.field``.
+            if root in macro_vars:
+                continue
             if root in namespace_roots:
                 if (
                     root in {"s", "signal"}
@@ -1918,7 +1930,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         Under the four-namespace CEL design, all data access must use
         a namespace prefix (``p.``, ``s.``, ``output.``, ``steps.``).
         This method returns bare identifiers that aren't CEL builtins,
-        reserved literals, or single-letter loop variables.
+        reserved literals, or loop variables a comprehension macro introduces
+        (``ns`` in ``items.all(ns, ...)`` — any length; single letters also
+        stay allowed for backward compatibility).
         """
         reserved = {
             "true",
@@ -1963,6 +1977,11 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         # the V1 tabular helpers is_iso8601/parse_date/is_finite/now) from
         # the single source so this allowlist never drifts from the others.
         cel_builtins |= CUSTOM_HELPER_NAMES
+        # Loop variables a comprehension macro introduces (``ns`` in
+        # ``x.all(ns, ...)``) are defined by the expression, not free data
+        # references — exempt at any length (the old single-letter-only rule
+        # wrongly rejected names like ``ns``).
+        macro_vars = bound_macro_variables(expression)
         # Strip string literals (including escaped quotes) so identifiers
         # inside quotes are not treated as bare identifiers.
         stripped = _strip_cel_string_literals(expression)
@@ -1994,6 +2013,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             if len(ident) == 1:
                 continue
             root = ident.split(".")[0]
+            # A macro loop variable, used bare (``ns``) or as ``ns.field``.
+            if root in macro_vars:
+                continue
             if root in namespace_roots:
                 continue
             unknown.add(ident)

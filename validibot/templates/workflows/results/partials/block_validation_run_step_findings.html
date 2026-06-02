@@ -18,12 +18,20 @@ Context variables (passed via ``{% include ... with %}``):
   all_signals            — flat list of all DisplaySignal objects across steps
   step_params            — dict mapping step_run.pk → list of param dicts
   step_template_warnings — dict mapping step_run.pk → list of warning strings
+  bare                   — when truthy, render only the inner content (no
+                           card / header / body chrome). Used by the stacked
+                           accordion layout where the accordion supplies the
+                           chrome. Defaults to falsy, preserving the
+                           standalone card for the classic layout and the
+                           launch-page status card.
 {% endcomment %}
-<div class="card validation-info-card">
-  <div class="card-header">
-    {% trans "Outputs" %}
-  </div>
-  <div class="card-body">
+{% if not bare %}
+  <div class="card validation-info-card">
+    <div class="card-header">
+      {% trans "Outputs" %}
+    </div>
+    <div class="card-body">
+    {% endif %}
     {% comment %}
     ── Workflow Outputs ───────────────────────────────────────────────
     Aggregated signal metrics from all steps in a single table. Gives
@@ -176,5 +184,7 @@ Context variables (passed via ``{% include ... with %}``):
         </div>
       {% endfor %}
     </section>
+    {% if not bare %}
+    </div>
   </div>
-</div>
+{% endif %}

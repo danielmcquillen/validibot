@@ -1,17 +1,22 @@
-"""Static analysis of CEL row assertions: which ``row.<column>`` they reference.
+"""Lexical (text-level) static analysis of CEL expressions.
 
-Two code paths need this answer and **must agree**:
+Two pieces of the system read a CEL expression's *text* without fully parsing
+it, and they must agree, so the scans live here and both call them:
 
-- the assertion authoring form (``validations/forms.py``), to reject a row
-  assertion that references a column the tabular schema doesn't declare; and
-- the workflow importer (the Tabular Validator's step serializer), to re-apply
-  that same check on a re-imported ruleset.
+1. **Row-column references** (``referenced_row_columns``) — which
+   ``row.<column>`` a row assertion uses. The assertion authoring form
+   (``validations/forms.py``) and the workflow importer (the Tabular step
+   serializer) both call it; if they disagreed, a row assertion that saved
+   cleanly in the editor could be rejected on import.
+2. **Macro-bound loop variables** (``bound_macro_variables``) — the temporary
+   variable a comprehension macro (``all``/``exists``/``map``/``filter``/
+   ``exists_one``) introduces, e.g. ``ns`` in ``items.all(ns, ns in allowed)``.
+   The identifier checks in ``forms.py`` use it so a loop variable of any length
+   isn't mistaken for an un-namespaced data reference.
 
-If they disagreed, a row assertion that saved cleanly in the editor could be
-rejected on import (or vice versa). Keeping the scan here — used by both — is
-what guarantees they can't drift. The subtlety this exists to handle: a column
-name appearing *inside a CEL string literal* (e.g. ``"row.notAColumn"``) is not a
-real reference, so literals are stripped before the dot-access scan.
+Both scans handle the same subtlety: a token appearing *inside a CEL string
+literal* (e.g. ``"row.notAColumn"`` or ``".all(x,"``) is not real syntax, so
+string literals are stripped/masked before scanning.
 """
 
 from __future__ import annotations
@@ -117,3 +122,30 @@ def referenced_row_columns(expression: str) -> set[str]:
         if 0 <= index < len(literals):
             columns.add(literals[index])
     return columns
+
+
+# A comprehension macro binds its first argument as a loop variable:
+# ``<receiver>.all(VAR, <body>)`` and likewise for exists/exists_one/map/filter.
+# ``exists_one`` is listed before ``exists`` only for readability — the trailing
+# ``\s*\(`` makes the alternation unambiguous either way. ``has`` is excluded: it
+# takes a single field-selection argument and binds nothing.
+_MACRO_BOUND_VAR_RE = re.compile(
+    r"\.(?:all|exists_one|exists|map|filter)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,",
+)
+
+
+def bound_macro_variables(expression: str) -> set[str]:
+    """Return the loop-variable names a CEL comprehension macro introduces.
+
+    CEL's ``all``/``exists``/``exists_one``/``map``/``filter`` macros bind their
+    first argument as a temporary variable scoped to the macro body — e.g. ``ns``
+    in ``items.all(ns, ns in allowed)``. That name is *defined by the expression*,
+    not a free data reference, so the identifier checks that insist every name be
+    namespace-prefixed (``i.`` / ``p.`` / ``s.``) must exempt it — including a
+    multi-letter name, which the old single-letter-only shortcut wrongly rejected.
+
+    Scanned on the literal-stripped expression so a macro-looking token inside a
+    string (``"items.all(x,"``) doesn't count.
+    """
+    stripped = strip_cel_string_literals(expression)
+    return {match.group(1) for match in _MACRO_BOUND_VAR_RE.finditer(stripped)}

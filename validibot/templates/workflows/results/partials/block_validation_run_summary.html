@@ -1,174 +1,218 @@
 {% load i18n core_tags %}
 
 {% comment %}
-Run Summary sidebar card.
+Run Summary card.
 
 Displays run metadata: status, submission name, finding counts,
 source, timestamps, and duration. Submission content and metadata
 are shown in the User Inputs card instead.
+
+Context variables (passed via ``{% include ... with %}``):
+  run    — the ValidationRun object.
+  bare   — when truthy, render only the inner content (no card / header /
+           body chrome). The caller supplies the surrounding chrome — used
+           by the stacked accordion layout where the accordion is the chrome.
+           Defaults to falsy, preserving the standalone card for the classic
+           layout and the launch-page status card.
+  split  — when truthy, lay the metadata sections out in two equal columns
+           that collapse to one column under the ``md`` breakpoint. Only
+           meaningful in the full-width stacked layout; the narrow sidebar
+           card leaves it falsy.
 {% endcomment %}
-<div class="card app-card validation-info-card">
-  <div class="card-header">
-    <div class="card-title">
-      {% trans "Run Summary" %}
+{% if not bare %}
+  <div class="card app-card validation-info-card">
+    <div class="card-header border-bottom-0">
+      <div class="card-title">
+        {% trans "Run Summary" %}
+      </div>
     </div>
-    <div class="card-header-buttons">
-      <a class="btn btn-sm btn-light"
-         href="{% url 'validations:validation_json' run.pk %}"
-         data-bs-toggle="tooltip"
-         data-bs-placement="top"
-         title="{% trans "View JSON" %}"
-         rel="noopener">
-        <i class="bi-code-slash"></i>
-      </a>
-    </div>
-  </div>
-  <div class="card-body">
-    <section>
-      <dl class="row small mb-0">
-        <dt class="col-5 col-lg-4">
-          {% trans "Status" %}
-        </dt>
-        <dd class="col-7 col-lg-8">
-          {% if run.status == "SUCCEEDED" %}
-            <span class="badge text-bg-success">{{ run.get_status_display }}</span>
-          {% elif run.status == "FAILED" %}
-            <span class="badge text-bg-danger">{{ run.get_status_display }}</span>
-          {% elif run.status == "RUNNING" %}
-            <span class="badge text-bg-primary">{{ run.get_status_display }}</span>
-          {% elif run.status == "PENDING" %}
-            <span class="badge text-bg-secondary">{{ run.get_status_display }}</span>
-          {% elif run.status == "CANCELED" %}
-            <span class="badge text-bg-warning text-dark">{{ run.get_status_display }}</span>
-          {% elif run.status == "TIMED_OUT" %}
-            <span class="badge text-bg-warning text-dark">{{ run.get_status_display }}</span>
-          {% else %}
-            <span class="badge text-bg-secondary">{{ run.get_status_display }}</span>
-          {% endif %}
-        </dd>
-      </dl>
-    </section>
-    {% if run.submission and run.submission.name or run.short_description %}
-      <section>
-        <dl class="row small">
-          {% if run.submission and run.submission.name %}
-            <dt class="col-sm-4">
-              {% trans "Submission name" %}
-            </dt>
-            <dd class="col-sm-8">
-              {{ run.submission.name }}
-            </dd>
-          {% endif %}
-          {% if run.short_description %}
-            <dt class="col-sm-4">
-              {% trans "Short description" %}
-            </dt>
-            <dd class="col-sm-8">
-              {{ run.short_description }}
-            </dd>
-          {% endif %}
-        </dl>
-      </section>
+    <div class="card-body">
     {% endif %}
-    {% with summary_record=run.summary_record %}
-      {% if summary_record %}
+    {% comment %}
+  ── Two-column split ──────────────────────────────────────────────
+  When ``split`` is set the sections are distributed across two equal
+  Bootstrap columns (status + finding counts on the left; provenance +
+  output hash on the right). ``col-12 col-md-6`` reflows to a single
+  stacked column on narrow viewports, so nothing custom is needed for
+  mobile.
+    {% endcomment %}
+    {% if split %}
+      <div class="row">
+        <div class="col-12 col-md-6">
+        {% endif %}
         <section>
-          <dl class="row small">
+          <dl class="row small mb-0">
             <dt class="col-5 col-lg-4">
-              {% trans "Errors" %}
+              {% trans "Status" %}
             </dt>
             <dd class="col-7 col-lg-8">
-              <span class="badge text-bg-danger">{{ summary_record.error_count|default:"0" }}</span>
-            </dd>
-            <dt class="col-5 col-lg-4">
-              {% trans "Warnings" %}
-            </dt>
-            <dd class="col-7 col-lg-8">
-              <span class="badge text-bg-warning text-dark">{{ summary_record.warning_count|default:"0" }}</span>
-            </dd>
-            <dt class="col-5 col-lg-4">
-              {% trans "Info" %}
-            </dt>
-            <dd class="col-7 col-lg-8">
-              <span class="badge text-bg-info text-dark">{{ summary_record.info_count|default:"0" }}</span>
-            </dd>
-            <dt class="col-5 col-lg-4">
-              {% trans "Total findings" %}
-            </dt>
-            <dd class="col-7 col-lg-8">
-              {{ summary_record.total_findings }}
+              {% if run.status == "SUCCEEDED" %}
+                <span class="badge text-bg-success">{{ run.get_status_display }}</span>
+              {% elif run.status == "FAILED" %}
+                <span class="badge text-bg-danger">{{ run.get_status_display }}</span>
+              {% elif run.status == "RUNNING" %}
+                <span class="badge text-bg-primary">{{ run.get_status_display }}</span>
+              {% elif run.status == "PENDING" %}
+                <span class="badge text-bg-secondary">{{ run.get_status_display }}</span>
+              {% elif run.status == "CANCELED" %}
+                <span class="badge text-bg-warning text-dark">{{ run.get_status_display }}</span>
+              {% elif run.status == "TIMED_OUT" %}
+                <span class="badge text-bg-warning text-dark">{{ run.get_status_display }}</span>
+              {% else %}
+                <span class="badge text-bg-secondary">{{ run.get_status_display }}</span>
+              {% endif %}
             </dd>
           </dl>
         </section>
-      {% endif %}
-    {% endwith %}
-    <section>
-      <dl class="row small">
-        <dt class="col-5 col-lg-4">
-          {% trans "Source" %}
-        </dt>
-        <dd class="col-7 col-lg-8">
-          {{ run.get_source_display }}
-        </dd>
-        <dt class="col-sm-4">
-          {% trans "Organization" %}
-        </dt>
-        <dd class="col-sm-8">
-          {{ run.org.name }}
-        </dd>
-        {% if run.user %}
-          <dt class="col-5 col-lg-4">
-            {% trans "Submitter" %}
-          </dt>
-          <dd class="col-7 col-lg-8">
-            {{ run.user.username }}
-            {% if run.user.name and run.user.name != run.user.username %}
-              ({{ run.user.name }})
-            {% endif %}
-          </dd>
+        {% if run.submission and run.submission.name or run.short_description %}
+          <section>
+            <dl class="row small">
+              {% if run.submission and run.submission.name %}
+                <dt class="col-5 col-lg-4">
+                  {% trans "Submission name" %}
+                </dt>
+                <dd class="col-7 col-lg-8 text-break">
+                  {{ run.submission.name }}
+                </dd>
+              {% endif %}
+              {% if run.short_description %}
+                <dt class="col-5 col-lg-4">
+                  {% trans "Short description" %}
+                </dt>
+                <dd class="col-7 col-lg-8">
+                  {{ run.short_description }}
+                </dd>
+              {% endif %}
+            </dl>
+          </section>
         {% endif %}
-        <dt class="col-5 col-lg-4 ">
-          {% trans "Started" %}
-        </dt>
-        <dd class="col-7 col-lg-8">
-          {{ run.started_at|date:"M j, Y g:i a"|default:_("Pending") }}
-        </dd>
-        <dt class="col-5 col-lg-4">
-          {% trans "Completed" %}
-        </dt>
-        <dd class="col-7 col-lg-8">
-          {{ run.ended_at|date:"M j, Y g:i a"|default:_("Pending") }}
-        </dd>
-        <dt class="col-5 col-lg-4">
-          {% trans "Duration" %}
-        </dt>
-        <dd class="col-7 col-lg-8">
-          {% with duration=run.computed_duration_ms %}
-            {% if duration %}
-              {{ duration|floatformat:0 }} ms
-            {% elif is_polling %}
-              <span class="text-muted">{% trans "Running…" %}</span>
-            {% else %}
-              <span class="text-muted">{% trans "Not captured" %}</span>
+        {% with summary_record=run.summary_record %}
+          {% if summary_record %}
+            <section>
+              <dl class="row small">
+                <dt class="col-5 col-lg-4">
+                  {% trans "Errors" %}
+                </dt>
+                <dd class="col-7 col-lg-8">
+                  <span class="badge text-bg-danger">{{ summary_record.error_count|default:"0" }}</span>
+                </dd>
+                <dt class="col-5 col-lg-4">
+                  {% trans "Warnings" %}
+                </dt>
+                <dd class="col-7 col-lg-8">
+                  <span class="badge text-bg-warning text-dark">{{ summary_record.warning_count|default:"0" }}</span>
+                </dd>
+                <dt class="col-5 col-lg-4">
+                  {% trans "Info" %}
+                </dt>
+                <dd class="col-7 col-lg-8">
+                  <span class="badge text-bg-info text-dark">{{ summary_record.info_count|default:"0" }}</span>
+                </dd>
+                <dt class="col-5 col-lg-4">
+                  {% trans "Total findings" %}
+                </dt>
+                <dd class="col-7 col-lg-8">
+                  {{ summary_record.total_findings }}
+                </dd>
+              </dl>
+            </section>
+          {% endif %}
+        {% endwith %}
+        {% if split %}
+        </div>
+        <div class="col-12 col-md-6">
+        {% endif %}
+        <section>
+          <dl class="row small">
+            <dt class="col-5 col-lg-4">
+              {% trans "Source" %}
+            </dt>
+            <dd class="col-7 col-lg-8">
+              {{ run.get_source_display }}
+            </dd>
+            <dt class="col-5 col-lg-4">
+              {% trans "Organization" %}
+            </dt>
+            <dd class="col-7 col-lg-8">
+              {{ run.org.name }}
+            </dd>
+            {% if run.user %}
+              <dt class="col-5 col-lg-4">
+                {% trans "Submitter" %}
+              </dt>
+              <dd class="col-7 col-lg-8">
+                {{ run.user.username }}
+                {% if run.user.name and run.user.name != run.user.username %}
+                  ({{ run.user.name }})
+                {% endif %}
+              </dd>
             {% endif %}
-          {% endwith %}
-        </dd>
-      </dl>
-    </section>
-    {% if run.output_hash %}
-      <section>
-        <dl class="row small mb-0">
-          <dt class="col-5 col-lg-4">
-            {% trans "Output hash" %}
-            {% help_button "output-hash" %}
-          </dt>
-          <dd class="col-7 col-lg-8">
-            <span class="font-monospace small text-muted text-break">{{ run.output_hash }}</span>
-          </dd>
-        </dl>
-      </section>
+            <dt class="col-5 col-lg-4">
+              {% trans "Started" %}
+            </dt>
+            <dd class="col-7 col-lg-8">
+              {{ run.started_at|date:"M j, Y g:i a"|default:_("Pending") }}
+            </dd>
+            <dt class="col-5 col-lg-4">
+              {% trans "Completed" %}
+            </dt>
+            <dd class="col-7 col-lg-8">
+              {{ run.ended_at|date:"M j, Y g:i a"|default:_("Pending") }}
+            </dd>
+            <dt class="col-5 col-lg-4">
+              {% trans "Duration" %}
+            </dt>
+            <dd class="col-7 col-lg-8">
+              {% with duration=run.computed_duration_ms %}
+                {% if duration %}
+                  {{ duration|floatformat:0 }} ms
+                {% elif is_polling %}
+                  <span class="text-muted">{% trans "Running…" %}</span>
+                {% else %}
+                  <span class="text-muted">{% trans "Not captured" %}</span>
+                {% endif %}
+              {% endwith %}
+            </dd>
+          </dl>
+        </section>
+        {% if run.output_hash %}
+          <section>
+            <dl class="row small mb-0">
+              <dt class="col-5 col-lg-4">
+                {% trans "Output hash" %}
+                {% help_button "output-hash" %}
+              </dt>
+              <dd class="col-7 col-lg-8">
+                <span class="font-monospace small text-muted text-break">{{ run.output_hash }}</span>
+              </dd>
+            </dl>
+          </section>
+        {% endif %}
+        {% if split %}
+        </div>
+      </div>
     {% endif %}
-    <section>
-    </section>
+    {% if not bare %}
+    </div>
+  {% endif %}
+  {% comment %}
+    Footer with the JSON export action. Rendered once: a real
+    ``card-footer`` when the block owns its card (classic layout / launch
+    card), or a bordered footer strip inside the accordion body when the
+    stacked layout supplies the chrome (``bare``).
+  {% endcomment %}
+  <div class="{% if not bare %}
+                card-footer
+              {% else %}
+                border-top pt-3 mt-3
+              {% endif %}
+              text-end">
+    <a class="btn btn-sm btn-light"
+       href="{% url 'validations:validation_json' run.pk %}"
+       rel="noopener">
+      <i class="bi-filetype-json me-1"></i>{% trans "View report as JSON" %}
+    </a>
   </div>
-</div>
+  {% if not bare %}
+  </div>
+{% endif %}

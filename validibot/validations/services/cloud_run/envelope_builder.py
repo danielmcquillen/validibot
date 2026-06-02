@@ -17,6 +17,7 @@ from validibot_shared.energyplus.envelopes import EnergyPlusInputs
 from validibot_shared.fmu.envelopes import FMUInputEnvelope
 from validibot_shared.fmu.envelopes import FMUInputs
 from validibot_shared.fmu.envelopes import FMUSimulationConfig
+from validibot_shared.shacl.envelopes import build_shacl_input_envelope
 from validibot_shared.validations.envelopes import ExecutionContext
 from validibot_shared.validations.envelopes import InputFileItem
 from validibot_shared.validations.envelopes import OrganizationInfo
@@ -586,6 +587,41 @@ def build_input_envelope(
             input_files=input_files,
             inputs=fmu_inputs,
             context=context,
+        )
+
+    if validator.validation_type == ValidationType.SHACL:
+        # The RDF submission is the primary file. For sync Docker dispatch the
+        # workspace materialiser sets ``primary_file_uri`` to the container path;
+        # for async Cloud Run, ``launch_shacl_validation`` uploads the submission
+        # to GCS and passes its gs:// URI here via ``input_file_uris``.
+        submission_uri = step_config.get("primary_file_uri")
+        if not submission_uri:
+            msg = f"Step {step.id} has no primary_file_uri in config for SHACL"
+            raise ValueError(msg)
+
+        # Resolve shapes/ontology/settings/SPARQL-ASK assertions from the DB
+        # (the container has none) and ship them in the typed inputs.
+        from validibot.validations.validators.shacl.launch import resolve_shacl_inputs
+
+        shacl_inputs = resolve_shacl_inputs(
+            validator=validator,
+            ruleset=step.ruleset,
+            submission=run.submission,
+        )
+        return build_shacl_input_envelope(
+            run_id=str(run.id),
+            validator=validator,
+            org_id=str(run.org.id),
+            org_name=run.org.name,
+            workflow_id=str(run.workflow.id),
+            step_id=str(step.id),
+            step_name=step.name,
+            submission_uri=submission_uri,
+            inputs=shacl_inputs,
+            callback_url=callback_url,
+            callback_id=callback_id,
+            execution_bundle_uri=execution_bundle_uri,
+            skip_callback=skip_callback,
         )
 
     msg = f"Unsupported validator type: {validator.validation_type}"

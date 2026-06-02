@@ -9,6 +9,7 @@ substrings — are pinned here.
 
 from __future__ import annotations
 
+from validibot.validations.cel_columns import bound_macro_variables
 from validibot.validations.cel_columns import referenced_row_columns
 from validibot.validations.cel_columns import strip_cel_string_literals
 
@@ -58,3 +59,30 @@ def test_strip_removes_single_and_double_quoted_literals():
     """The literal-stripper drops quoted content (with escapes), keeps the rest."""
     assert strip_cel_string_literals(r'a + "he\"llo" + b') == "a +  + b"
     assert strip_cel_string_literals("x + 'row.y' + z") == "x +  + z"
+
+
+# ── Comprehension-macro loop variables ──────────────────────────────────────
+def test_macro_loop_variable_is_found_any_length():
+    """The loop variable a macro introduces is collected, even multi-letter.
+
+    This is the fix's core: ``ns`` in ``items.all(ns, ...)`` is bound by the
+    macro, so the identifier check must exempt it. The old code only recognised
+    single-letter loop variables.
+    """
+    assert bound_macro_variables("i.items.all(ns, ns in allowed)") == {"ns"}
+
+
+def test_all_comprehension_macros_and_nesting():
+    """every comprehension macro binds its first arg; nested macros stack."""
+    expr = "a.map(room, room.size).exists(device, device > 0)"
+    assert bound_macro_variables(expr) == {"room", "device"}
+
+
+def test_has_macro_binds_no_variable():
+    """``has(x)`` takes a field selection, not a loop variable, so binds nothing."""
+    assert bound_macro_variables("has(p.x) && i.y > 0") == set()
+
+
+def test_macro_inside_a_string_literal_does_not_count():
+    """A macro-looking token inside a quoted string isn't real syntax."""
+    assert bound_macro_variables('p.note == "items.all(x,"') == set()

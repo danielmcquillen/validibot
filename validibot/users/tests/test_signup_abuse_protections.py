@@ -14,8 +14,34 @@ regression in either direction is caught.
 
 from __future__ import annotations
 
+from django.template.loader import render_to_string
+from django.test import SimpleTestCase
 from django.test import TestCase
 from django.test import override_settings
+
+# The auto-assigned widget id Django gives the honeypot ``company`` field.
+# A crispy-rendered label would point at it via ``for="id_company"`` — that
+# leaking label was the original bug. Rendered raw, HoneypotInput emits only
+# the bare ``<input id="id_company">`` with no label at all.
+_HONEYPOT_DOM_ID = "id_company"
+
+# The off-screen offset HoneypotInput applies (kept in sync with
+# HoneypotInput.OFFSCREEN_STYLE) to hold the field in the DOM but out of sight.
+_OFFSCREEN_STYLE = "position:absolute;left:-10000px;"
+
+
+def _render_signup_partial():
+    """Render the community signup partial with an unbound UserSignupForm.
+
+    Imported lazily for the same reason as ``_build_form`` — to avoid pulling
+    in form-side optional dependencies at module collection time.
+    """
+    from validibot.users.forms import UserSignupForm
+
+    return render_to_string(
+        "account/partial/sign_up_form.html",
+        {"form": UserSignupForm()},
+    )
 
 
 def _build_form(data, **overrides):
@@ -172,3 +198,124 @@ class HoneypotAndDisposableIndependenceTests(TestCase):
         form = _build_form(data)
         form.is_valid()
         self.assertNotIn("email", form.errors)
+
+
+# ── Honeypot RENDERING ──────────────────────────────────────────────────────
+# The form-level tests above prove the honeypot's *logic* (a filled field is
+# rejected). They cannot prove its *presentation*, yet the original bug was a
+# rendering defect: crispy rendered the field as ``<label>Company</label>
+# <input …>`` and only the input was hidden, so the label leaked into the
+# visible form as a stray, field-less row. The fix renders the honeypot raw via
+# HoneypotInput (no crispy → no label). A honeypot has two contracts — reject
+# fills, and stay invisible to humans — so they need separate coverage.
+class HoneypotRenderingTests(TestCase):
+    """The honeypot must render with no visible label and a hidden input.
+
+    Regression tests for the visible "Company" label with no field beneath it.
+    HoneypotInput is rendered raw in the signup partial, so there is no crispy
+    label to leak; the input itself is pushed off-screen and removed from the
+    tab order and the accessibility tree.
+    """
+
+    @override_settings(USE_SIGNUP_HONEYPOT=True)
+    def test_honeypot_renders_without_a_visible_label(self):
+        """No ``<label>`` may point at the honeypot input.
+
+        This is the exact regression: crispy rendered ``for="id_company"`` beside
+        the off-screen input and it showed as a stray row. Rendering the field
+        raw emits only the input, so a ``for="id_company"`` in the output means
+        someone reintroduced crispy rendering for the honeypot — fail loudly.
+        """
+        html = _render_signup_partial()
+        # The honeypot input itself must be present...
+        self.assertIn('name="company"', html)
+        # ...but nothing may render a label tied to it.
+        self.assertNotIn(f'for="{_HONEYPOT_DOM_ID}"', html)
+
+    @override_settings(USE_SIGNUP_HONEYPOT=True)
+    def test_honeypot_input_hides_itself_from_sight_keyboard_and_screen_readers(self):
+        """With no wrapper, the bare input must carry every hiding attribute.
+
+        The input alone is now responsible for being invisible (off-screen),
+        unreachable by keyboard (``tabindex=-1``), and absent from the
+        accessibility tree (``aria-hidden``). A regression that drops any one of
+        these would let a real user encounter the trap.
+        """
+        html = _render_signup_partial()
+        self.assertIn('aria-hidden="true"', html)
+        self.assertIn('tabindex="-1"', html)
+        self.assertIn(_OFFSCREEN_STYLE, html)
+
+    @override_settings(USE_SIGNUP_HONEYPOT=True)
+    def test_honeypot_is_a_text_input_not_type_hidden(self):
+        """The trap must render ``type="text"``, never ``type="hidden"``.
+
+        Spam solver services skip ``type="hidden"`` inputs, so a honeypot that
+        renders hidden catches nothing. Guard the deliberate choice of a
+        visible-type input that is merely positioned off-screen.
+        """
+        html = _render_signup_partial()
+        self.assertIn('<input type="text" name="company"', html)
+
+    @override_settings(USE_SIGNUP_HONEYPOT=False)
+    def test_no_honeypot_markup_rendered_when_disabled(self):
+        """Community default — the partial must emit no honeypot markup.
+
+        With the feature off the field is absent from the form, so neither the
+        input id nor the field name should appear. Guards against accidentally
+        hard-coding the honeypot into the template.
+        """
+        html = _render_signup_partial()
+        self.assertNotIn(_HONEYPOT_DOM_ID, html)
+        self.assertNotIn('name="company"', html)
+
+
+# ── HoneypotInput widget ─────────────────────────────────────────────────────
+# Unit tests for the reusable widget itself, independent of the signup form —
+# it is meant to be dropped onto any form that wants a honeypot, so these pin
+# the contract those other callers will rely on.
+class HoneypotInputWidgetTests(SimpleTestCase):
+    """HoneypotInput bakes the hiding attributes so callers don't have to."""
+
+    def _widget(self, attrs=None):
+        """Build a HoneypotInput, importing lazily to match the form's usage."""
+        from validibot.users.widgets import HoneypotInput
+
+        return HoneypotInput(attrs=attrs)
+
+    def test_default_attrs_make_the_input_a_trap(self):
+        """Out of the box the widget must hide the input every way that matters.
+
+        Off-screen (sight), tabindex=-1 (keyboard), aria-hidden (assistive
+        tech), autocomplete=off (password managers) — exactly the properties a
+        paired clean_<field> check relies on real users never triggering.
+        """
+        attrs = self._widget().attrs
+        self.assertEqual(attrs["autocomplete"], "off")
+        self.assertEqual(attrs["tabindex"], "-1")
+        self.assertEqual(attrs["aria-hidden"], "true")
+        self.assertEqual(attrs["style"], _OFFSCREEN_STYLE)
+
+    def test_renders_a_text_input_not_hidden(self):
+        """The trap must render as a real text input, not ``type="hidden"``.
+
+        Solver bots skip ``type="hidden"`` inputs, so the widget must emit an
+        ordinary text input that merely sits off-screen and out of the a11y tree.
+        """
+        html = self._widget().render("company", "")
+        self.assertIn('type="text"', html)
+        self.assertNotIn('type="hidden"', html)
+        self.assertIn('aria-hidden="true"', html)
+        self.assertIn(_OFFSCREEN_STYLE, html)
+
+    def test_caller_attrs_override_defaults(self):
+        """A reusing form may override any baked-in attr while keeping the rest.
+
+        The defaults are a convenience, not a straitjacket — explicit attrs win
+        (matching Django widget conventions), and untouched defaults remain.
+        """
+        widget = self._widget(attrs={"style": "left:-9999px;", "data-x": "1"})
+        self.assertEqual(widget.attrs["style"], "left:-9999px;")
+        self.assertEqual(widget.attrs["data-x"], "1")
+        # A default the caller did not override must still be present.
+        self.assertEqual(widget.attrs["aria-hidden"], "true")

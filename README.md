@@ -52,23 +52,26 @@ Validibot is an **open-source data validation platform** that transforms fragmen
 
 ## Key Features
 
-### "Simple" Validators
+### Built-in ("Simple") Validators
 
-These validators run directly in a Django "worker" process -- no extra infrastructure needed:
-(Note : validators are at various stages of development):
+These validators run directly in the Django/Celery worker process — no extra
+infrastructure needed (validators are at various stages of development):
 
-- **JSON Schema**: Validate JSON against JSON Schema drafts 4-2020-12
-- **XML Schema (XSD)**: Validate XML against W3C XML Schema
-- **Basic Assertions**: Flexible field validation with CEL expressions
-- **AI Validation**: Natural language rules powered by LLMs (coming soon...)
+- **Basic Assertions**: Add signals and CEL assertions directly on a workflow step — no validator catalog required. The simplest way to validate JSON or XML payloads.
+- **JSON Schema**: Validate JSON against JSON Schema drafts 4 through 2020-12
+- **XML Schema (XSD)**: Validate XML against XSD, RelaxNG, or DTD schemas
+- **Tabular (CSV/TSV)**: Validate tables of typed rows — required columns, column types, numeric ranges, string length, regex, enum membership, single and composite uniqueness, plus CEL row assertions
+- **THERM**: Validate LBNL THERM thermal-analysis files (THMX/THMZ) — geometry closure, material property ranges, boundary-condition completeness, and reference integrity
 
-### "Advanced" Validators
+### Advanced Validators
 
-These validators include backends that run as isolated Docker containers for complex domain-specific operations:
+These validators run as isolated Docker container backends for heavier or domain-specific work:
 
-- **EnergyPlus™**: Validate IDF and epJSON building energy models
-- **FMU**: Validate Functional Mock-up Units via OpenModelica simulation
-- **Custom**: Bring your own validator backends
+- **EnergyPlus™**: Validate (and simulate) EnergyPlus IDF and epJSON building energy models
+- **FMU**: Validate and simulate Functional Mock-up Units (FMI)
+- **SHACL**: Validate RDF graphs (Turtle, JSON-LD, RDF/XML, N-Triples) against SHACL shapes — for example ASHRAE 223P, ASHRAE Guideline 36, Brick Schema, and Project Haystack 4
+- **AI Assisted**: Validate JSON or text against natural-language criteria using language models
+- **Custom**: Bring your own validator backend container image
 
 Validibot defines a simple container interface for validator backends: read an input envelope, perform validation, write an output envelope. This makes it straightforward to package any validation logic as a backend. See the [Container Interface Guide](https://dev.validibot.com/overview/validator_architecture/) for the full specification.
 
@@ -96,6 +99,16 @@ curl -X POST https://your-instance.com/api/v1/submissions/ \
 See the [API documentation](https://docs.validibot.com/api) for complete reference.
 
 (And check out the **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)** for a simple way to access the API...)
+
+### MCP Server for AI Agents
+
+Validibot ships a standalone [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server (in `mcp/`) that exposes your validation workflows to AI agents. An agent can discover workflows, submit a file, and wait for the verdict through a handful of tools:
+
+- `list_workflows` / `get_workflow_details` — discover the workflows available to the caller
+- `validate_file` — submit a file for validation and get back a run reference
+- `get_run_status` / `wait_for_run` — poll, or block until the run reaches a verdict
+
+The server is a thin protocol-translation layer: it forwards REST calls to Validibot's API (via the built-in `mcp_api` app) and carries no validation logic of its own. The source is open (AGPL-3.0), but the server checks the deployment's license at startup and only serves traffic when the `mcp_server` feature is enabled (included with Pro). See the [MCP documentation](https://dev.validibot.com/mcp/) for setup.
 
 ## Quick Start
 
@@ -145,6 +158,7 @@ Validibot is designed for **deployment on your own infrastructure**. You control
 | **PostgreSQL**    | Primary database                                          |
 | **Redis**         | Task queue broker and cache                               |
 | **Reverse Proxy** | User-provided (Caddy, Traefik, nginx) for TLS termination |
+| **MCP Server**    | *(optional, Pro)* FastMCP server exposing workflows to AI agents |
 
 ### Deployment Options
 

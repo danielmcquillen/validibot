@@ -322,6 +322,29 @@ class User(AbstractUser):
 
     last_name = None  # type: ignore[assignment]
 
+    def get_full_name(self) -> str:
+        """Return the user's display name (the single ``name`` field).
+
+        Validibot collapses the Western first/last split into one ``name``
+        field (``first_name``/``last_name`` are nulled out above), so
+        ``AbstractUser.get_full_name`` — which formats
+        ``"{first_name} {last_name}"`` — would return the literal string
+        ``"None None"``. That string is *truthy*, so it silently defeats
+        the common ``user.get_full_name() or user.username`` fallback used
+        across the email builders and ``core.views``. Returning ``name``
+        (blank when unset) keeps that fallback working.
+        """
+        return self.name.strip()
+
+    def get_short_name(self) -> str:
+        """Return a short display name.
+
+        Overridden for the same reason as :meth:`get_full_name`:
+        ``AbstractUser.get_short_name`` returns ``first_name``, which is
+        ``None`` on this model.
+        """
+        return self.name.strip()
+
     # Many-to-many relationship with Organization through Membership
     orgs = models.ManyToManyField(
         "Organization",

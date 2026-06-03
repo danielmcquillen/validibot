@@ -10,6 +10,36 @@ def test_user_get_absolute_url(user: User):
     assert user.get_absolute_url() == f"/app/users/{user.username}/"
 
 
+def test_get_full_name_returns_the_name_field():
+    """get_full_name() returns the single ``name`` field, never "None None".
+
+    The model nulls out first_name/last_name, so the inherited
+    ``AbstractUser.get_full_name`` would format the literal string
+    "None None". Because that string is truthy it silently defeated every
+    ``get_full_name() or username`` fallback (invite emails, core display
+    name). This pins the override that fixes it.
+    """
+    user = User(username="dmc", email="dmc@example.com", name="Daniel McQuillen")
+
+    assert user.get_full_name() == "Daniel McQuillen"
+    assert user.get_short_name() == "Daniel McQuillen"
+
+
+def test_get_full_name_is_blank_when_unset_so_fallback_works():
+    """A user with no display name yields '' so ``or username`` kicks in.
+
+    Call sites do ``user.get_full_name() or user.username``; the override
+    must return a *falsy* value (not "None None") when ``name`` is empty or
+    whitespace-only, so the username is shown instead.
+    """
+    nameless = User(username="nameless", email="n@example.com", name="")
+    assert nameless.get_full_name() == ""
+    assert (nameless.get_full_name() or nameless.username) == "nameless"
+
+    whitespace = User(username="spaced", email="s@example.com", name="   ")
+    assert whitespace.get_full_name() == ""
+
+
 def test_personal_org_assigns_executor_role(db):
     user = User.objects.create(username="solo-user", email="solo@example.com")
 

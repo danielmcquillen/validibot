@@ -83,7 +83,7 @@
                         {% endif %}
                       </div>
                       <small class="text-muted">
-                        {{ invite.roles|join:", " }}
+                        {{ invite.roles|role_labels|join:", " }}
                         ·
                         {% trans "Invited" %} {{ invite.created|date:"M j, Y" }}
                       </small>

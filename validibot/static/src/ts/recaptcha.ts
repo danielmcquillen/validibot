@@ -45,6 +45,22 @@ export function initRecaptcha(): void {
         return;
       }
 
+      // Idempotency guard. initRecaptcha() runs more than once per page:
+      // initAppFeatures() calls it from BOTH the DOMContentLoaded handler and
+      // the htmx.onLoad callback, and htmx fires onLoad for the body on the
+      // initial load too (the setTimeout retry above can also re-enter). Without
+      // this guard the submit listener is attached multiple times, so a single
+      // click kicks off several grecaptcha.execute() -> form.submit() chains and
+      // the form POSTs more than once. On signup that second POST collides with
+      // the just-created account and the user sees "A user with that username
+      // already exists" (the duplicate-key path in users/forms.try_save). Mark
+      // the form so exactly one handler is bound, while still allowing a
+      // genuinely new form (e.g. one swapped in later by htmx) to get its own.
+      if (form.dataset.recaptchaSubmitBound === 'true') {
+        return;
+      }
+      form.dataset.recaptchaSubmitBound = 'true';
+
       const siteKey = element.getAttribute('data-sitekey') || '';
       const action = element.getAttribute('data-action') || 'submit';
 

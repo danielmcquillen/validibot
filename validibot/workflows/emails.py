@@ -16,6 +16,8 @@ from django.core.mail import send_mail
 from django.urls import reverse
 from django.utils.translation import gettext as _
 
+from validibot.users.constants import RoleCode
+
 if TYPE_CHECKING:
     from validibot.workflows.models import WorkflowAccessGrant
     from validibot.workflows.models import WorkflowInvite
@@ -405,7 +407,16 @@ def send_member_invite_email(invite) -> bool:
     accept_url = f"{site_url}{accept_path}"
 
     # Describe the roles
-    roles_desc = ", ".join(invite.roles) if invite.roles else _("member")
+    # Render human-friendly role names ("Workflow Viewer") rather than the
+    # raw enum codes ("WORKFLOW_VIEWER") stored on the invite. Unknown codes
+    # fall back to the stored value so a future/removed role never breaks
+    # the email.
+    role_labels = dict(RoleCode.choices)
+    roles_desc = (
+        ", ".join(str(role_labels.get(code, code)) for code in invite.roles)
+        if invite.roles
+        else _("member")
+    )
 
     subject = _("You've been invited to join %(org_name)s on Validibot") % {
         "org_name": org_name,

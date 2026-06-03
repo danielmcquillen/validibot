@@ -97,6 +97,17 @@ adopts that *vocabulary* — `fields` with `type` and `constraints`, plus
 is parsed into a small internal schema model. An unrecognised type degrades to
 `string` so an imported descriptor still loads.
 
+**Where the standard is documented.** Table Schema's current canonical home is
+[datapackage.org](https://datapackage.org/) (the linked `specs.frictionlessdata.io`
+page is the v1 spec it grew from); both document the same
+`fields`/`type`/`constraints` vocabulary we consume, so either is a valid
+reference for authoring a descriptor. For *why* we adopt the vocabulary rather
+than the `frictionless` processor — and why the National Archives CSV Schema
+Language and W3C CSVW were considered and set aside — see **ADR-2026-05-26**,
+section *Standards alignment: Frictionless Table Schema* and its *Alternatives
+considered* subsection (`docs/adr/2026-05-26-csv-validator.md` in the private
+`validibot-project` repo).
+
 There are two ways to populate that descriptor: paste/import an existing one, or
 **infer one from a sample file** (the fastest common path — most users have a
 CSV, not a hand-written descriptor). Inference (`infer.py`) reads a bounded

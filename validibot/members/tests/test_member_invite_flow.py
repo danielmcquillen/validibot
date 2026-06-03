@@ -357,6 +357,66 @@ def test_invite_create_for_new_email_sends_tokenized_link(admin_ctx, mailoutbox)
     assert "/notifications/" not in body
 
 
+def test_member_page_shows_role_labels_not_codes(admin_ctx):
+    """The Members page renders role *labels*, never raw enum codes.
+
+    Regression: roles printed as the constant ("WORKFLOW_VIEWER") instead
+    of the human label ("Workflow Viewer"). This covers the pending-invite
+    list; the current-members table uses the same ``role_label`` filter.
+    """
+    client, org, admin = admin_ctx
+    MemberInvite.create_with_expiry(
+        org=org,
+        inviter=admin,
+        invitee_user=None,
+        invitee_email="pending@example.com",
+        roles=[RoleCode.WORKFLOW_VIEWER],
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+
+    response = client.get(reverse("members:member_list"))
+
+    assert response.status_code == HTTPStatus.OK
+    content = response.content.decode()
+    assert str(RoleCode.WORKFLOW_VIEWER.label) in content  # "Workflow Viewer"
+    assert "WORKFLOW_VIEWER" not in content
+
+
+def test_invite_email_uses_inviter_display_name_not_none_none(mailoutbox):
+    """The invite email shows a real inviter name and friendly role labels.
+
+    Regression for a user-reported bug: the custom ``User`` model nulls out
+    ``first_name``/``last_name``, so the inherited ``get_full_name()``
+    returned the literal "None None" — and being truthy, it defeated the
+    ``get_full_name() or username`` fallback, producing
+    "None None has invited you ...". An inviter with no display name must
+    now fall back to their username, and permissions must render as
+    friendly labels ("Workflow Viewer"), not raw enum codes
+    ("WORKFLOW_VIEWER").
+    """
+    from validibot.workflows.emails import send_member_invite_email
+
+    org = OrganizationFactory(name="daniel's Workspace")
+    inviter = UserFactory(orgs=[org], username="danielmc", name="")
+    invite = MemberInvite.create_with_expiry(
+        org=org,
+        inviter=inviter,
+        invitee_user=None,
+        invitee_email="newbie@example.com",
+        roles=[RoleCode.WORKFLOW_VIEWER],
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+
+    send_member_invite_email(invite)
+
+    assert len(mailoutbox) == 1
+    body = mailoutbox[0].body
+    assert "None None" not in body
+    assert "danielmc" in body
+    assert str(RoleCode.WORKFLOW_VIEWER.label) in body  # "Workflow Viewer"
+    assert "WORKFLOW_VIEWER" not in body
+
+
 # =============================================================================
 # Tokenized acceptance — MemberInviteAcceptView
 # =============================================================================

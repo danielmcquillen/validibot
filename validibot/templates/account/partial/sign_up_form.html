@@ -10,9 +10,16 @@
   {% comment %}
     Render all form fields except terms_accepted (rendered separately by the
     cloud template override) and captcha (rendered at the end before submit).
+    The honeypot "company" field (present only when USE_SIGNUP_HONEYPOT is on)
+    is rendered raw so it carries no label — HoneypotInput hides the input.
   {% endcomment %}
   {% for field in form %}
-    {% if field.name != 'terms_accepted' and field.name != 'captcha' %}
+    {% if field.name == 'company' %}
+      {# Honeypot: rendered raw (no crispy, so no label leaks). The #}
+      {# HoneypotInput widget hides the input itself off-screen and from #}
+      {# assistive tech — see validibot.users.widgets.HoneypotInput. #}
+      {{ field }}
+    {% elif field.name != 'terms_accepted' and field.name != 'captcha' %}
       {{ field|as_crispy_field }}
     {% endif %}
   {% endfor %}

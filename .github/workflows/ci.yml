@@ -112,3 +112,44 @@ jobs:
           DJANGO_ALLOWED_HOSTS: localhost
           DEPLOYMENT_TARGET: docker_compose
         run: uv run python manage.py check --deploy
+
+  # Guarantees the committed front-end bundle is a fresh, minified production
+  # build. Production ships the *committed* assets verbatim: the Docker image
+  # has no Node toolchain and never rebuilds them, and collectstatic only
+  # hashes/compresses whatever is checked in. So a stale or unminified bundle
+  # (e.g. an accidental `npm run watch` build, or forgetting to rebuild after
+  # editing a .ts/.scss file) would silently go live. This job rebuilds with
+  # the lockfile-pinned toolchain (esbuild --minify --sourcemap, sass
+  # --style=compressed) and fails if the result differs from what's committed.
+  frontend-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      # npm ci installs the exact versions from package-lock.json, so the build
+      # is deterministic and CI matches what a developer who ran `npm ci` locally
+      # produces — that byte-for-byte reproducibility is what makes the drift
+      # check below meaningful.
+      - name: Install pinned dependencies
+        run: npm ci
+
+      - name: Build CSS + JS bundles
+        run: npm run build
+
+      - name: Fail if the committed bundle is out of date
+        run: |
+          changes="$(git status --porcelain -- validibot/static/css validibot/static/js)"
+          if [ -n "$changes" ]; then
+            echo "::error::Committed front-end bundle is stale. Run 'npm run build' and commit validibot/static/{css,js}."
+            echo "$changes"
+            git --no-pager diff -- validibot/static/css validibot/static/js | head -n 200
+            exit 1
+          fi
+          echo "Committed front-end bundle matches a fresh production build."

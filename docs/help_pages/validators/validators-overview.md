@@ -10,8 +10,12 @@ Validators are the engines that check your data. Each workflow step uses one val
 |-----------|--------------|------------|
 | **JSON Schema** | Validates JSON structure against a schema | JSON |
 | **XML Schema** | Validates XML against an XSD | XML |
+| **[Tabular](tabular-validator.md)** | Validates rows against a Table Schema (column types, ranges, uniqueness) plus cross-field CEL row rules | CSV |
 | **Basic** | Custom rules using CEL expressions | JSON, YAML |
 | **AI** | Natural language validation rules | Any text |
+
+The [Tabular Validator](tabular-validator.md) page explains the column schema it
+expects (a Frictionless Table Schema) and the two ways to provide it.
 
 Advanced validators (available with Pro):
 

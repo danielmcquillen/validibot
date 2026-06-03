@@ -37,7 +37,7 @@
                   </td>
                   <td class="text-center">
                     {% for role in membership.role_codes %}
-                      <span class="badge text-bg-secondary me-1 text-uppercase">{{ role }}</span>
+                      <span class="badge text-bg-secondary me-1">{{ role|role_label }}</span>
                     {% empty %}
                       <span class="text-muted small">( {% trans "No roles assigned " %} )</span>
                     {% endfor %}

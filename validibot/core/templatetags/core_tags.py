@@ -11,6 +11,7 @@ from django.utils.translation import gettext_lazy as _
 from validibot.core.utils import pretty_json
 from validibot.core.utils import render_markdown_safe
 from validibot.core.utils import reverse_with_org
+from validibot.users.constants import RoleCode
 from validibot.validations.constants import Severity
 from validibot.validations.services.findings_display import format_failed_rows
 from validibot.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
@@ -23,6 +24,29 @@ register = template.Library()
 
 BRIGHTNESS_THRESHOLD = 128
 MAX_HEX_COLOR_LENGTH = 6
+
+# Authoritative code -> display-label map for organization roles, e.g.
+# ``"WORKFLOW_VIEWER" -> "Workflow Viewer"``. Sourced from the RoleCode enum
+# so templates render the same labels the invite dialog and emails use,
+# rather than the raw constant names.
+ROLE_CODE_LABELS = dict(RoleCode.choices)
+
+
+@register.filter
+def role_label(code):
+    """Human-readable label for a single organization role code.
+
+    Unknown codes pass through unchanged so a legacy or removed role never
+    breaks a template.
+    """
+    return ROLE_CODE_LABELS.get(code, code)
+
+
+@register.filter
+def role_labels(codes):
+    """Map an iterable of role codes to their human labels (see ``role_label``)."""
+    return [ROLE_CODE_LABELS.get(code, code) for code in (codes or [])]
+
 
 # INCLUSION TAGS
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

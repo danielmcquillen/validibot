@@ -705,24 +705,18 @@ class UserSignupForm(SignupForm):
                 },
             )
 
-        # Honeypot field — hidden via aria + off-screen CSS, not type=hidden,
-        # because solver services specifically look for hidden inputs. Real
-        # users never see or fill this field; bots that autofill every
-        # input will trip it. See clean_company below for the check.
+        # Honeypot field. HoneypotInput renders an off-screen, aria-hidden
+        # text input (not type=hidden/display:none, which solver bots skip);
+        # real users never see or fill it, while autofill bots trip
+        # clean_company() below. label="" and raw rendering in the template
+        # mean no visible label leaks — see HoneypotInput's rendering contract.
         if getattr(settings, "USE_SIGNUP_HONEYPOT", False):
+            from validibot.users.widgets import HoneypotInput
+
             self.fields["company"] = forms.CharField(
                 required=False,
-                label=_("Company"),
-                widget=forms.TextInput(
-                    attrs={
-                        "autocomplete": "off",
-                        "tabindex": "-1",
-                        "aria-hidden": "true",
-                        # Off-screen but still in the DOM — avoids display:none
-                        # which some bots skip.
-                        "style": "position:absolute;left:-10000px;",
-                    },
-                ),
+                label="",
+                widget=HoneypotInput(),
             )
 
         # Only add reCAPTCHA field if keys are configured

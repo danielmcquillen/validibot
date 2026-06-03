@@ -45,7 +45,7 @@ class TestResolveCloudRunJobName:
     digging through stack traces.
     """
 
-    def test_returns_job_name_for_registered_validator(self):
+    def test_returns_job_name_for_registered_validator(self, settings):
         """Registered validator → its cloud_run_job_name.
 
         Uses the real EnergyPlus registration (populated in
@@ -54,10 +54,13 @@ class TestResolveCloudRunJobName:
         chosen because it has an explicit ``image_name`` set in
         config.py — covers the property's "use image_name" branch.
         """
+        settings.VALIDIBOT_STAGE = "prod"
+        settings.GCP_APP_NAME = "validibot"
+
         result = _resolve_cloud_run_job_name("ENERGYPLUS")
         assert result == "validibot-validator-backend-energyplus"
 
-    def test_returns_job_name_for_fmu(self):
+    def test_returns_job_name_for_fmu(self, settings):
         """FMU resolves to its own backend job name.
 
         Symmetric coverage for the second system advanced validator
@@ -66,8 +69,40 @@ class TestResolveCloudRunJobName:
         env-var path used to do: two separate ``GCS_*_JOB_NAME``
         reads, one per validator).
         """
+        settings.VALIDIBOT_STAGE = "prod"
+        settings.GCP_APP_NAME = "validibot"
+
         result = _resolve_cloud_run_job_name("FMU")
         assert result == "validibot-validator-backend-fmu"
+
+    def test_appends_stage_for_non_prod_validator_jobs(self, settings):
+        """Non-prod deploys suffix validator jobs, so runtime must do the same.
+
+        The GCP deploy recipes create ``validibot-validator-backend-{slug}-dev``
+        and ``...-staging`` jobs for non-prod stages. If dispatch uses the bare
+        config image name, the worker targets a job that was never deployed.
+        """
+        settings.VALIDIBOT_STAGE = "dev"
+        settings.GCP_APP_NAME = "validibot"
+
+        result = _resolve_cloud_run_job_name("SHACL")
+
+        assert result == "validibot-validator-backend-shacl-dev"
+
+    def test_applies_custom_gcp_app_name(self, settings):
+        """Custom ``GCP_APP_NAME`` must match the deploy recipe's job prefix.
+
+        The config image names are intentionally ``validibot-*`` because they
+        also describe container image names. Cloud Run job names, however, use
+        the deployment's app-name prefix, so runtime dispatch has to translate
+        that prefix when operators override ``GCP_APP_NAME``.
+        """
+        settings.VALIDIBOT_STAGE = "prod"
+        settings.GCP_APP_NAME = "acmebot"
+
+        result = _resolve_cloud_run_job_name("SHACL")
+
+        assert result == "acmebot-validator-backend-shacl"
 
     def test_raises_when_no_config_registered(self):
         """Unknown validation_type → RuntimeError with diagnostic message.

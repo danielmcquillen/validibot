@@ -1,9 +1,10 @@
 # SHACL validator
 
 The SHACL validator validates RDF graphs (Turtle, JSON-LD, RDF/XML,
-N-Triples, N-Quads) against SHACL shape collections. It is a built-in
-validator that runs pySHACL in a killable Python subprocess — no Docker
-or JVM required. It ships with the community edition.
+N-Triples, N-Quads) against SHACL shape collections. It is an advanced
+validator: Django resolves shapes/settings/assertions, then an isolated
+`validibot-validator-backends` SHACL container runs RDF parsing, pySHACL, and
+SPARQL-ASK execution. It ships with the community edition.
 
 Common configurations include ASHRAE 223P, Guideline 36, Brick Schema,
 Project Haystack 4, and project-specific shapes the author uploads.
@@ -237,7 +238,7 @@ and splits into:
   results, extract signals. No Django imports. Unit-tested without
   the test database.
 
-Dependencies (all pure Python):
+Container backend dependencies (all pure Python):
 
 - [pyshacl](https://github.com/RDFLib/pySHACL) (Apache 2.0) — SHACL
   engine.
@@ -246,13 +247,11 @@ Dependencies (all pure Python):
 - [owlrl](https://github.com/RDFLib/OWL-RL) (W3C SD License) — OWL 2
   RL reasoner.
 
-The validator does NOT run in an advanced (Docker) validator container.
-pyshacl is fast enough for the published 223P examples (largest is
-2.6 MB / ~50K triples), and Docker boot overhead would dwarf the actual
-validation work. The pySHACL call still runs out-of-process so the engine can
-terminate pathological shape/data combinations on timeout. This uses a
-plain subprocess rather than ``multiprocessing.Process`` so it works
-inside Celery prefork workers, whose task processes are daemonic.
+The validator runs in an advanced validator container so untrusted RDF parsing
+and author-supplied SPARQL execute away from Django's database credentials,
+identity, and network access. The container still uses subprocess timeouts for
+pySHACL and SPARQL work so pathological shape/data combinations can be
+terminated inside the isolated backend.
 
 ## Library-level custom SHACL validators
 

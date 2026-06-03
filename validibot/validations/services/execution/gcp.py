@@ -34,12 +34,16 @@ Settings:
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 
 from validibot.validations.services.execution.base import ExecutionBackend
 from validibot.validations.services.execution.base import ExecutionRequest
 from validibot.validations.services.execution.base import ExecutionResponse
+
+if TYPE_CHECKING:
+    from validibot.validations.validators.base.base import ValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +170,36 @@ class GCPExecutionBackend(ExecutionBackend):
 
         return f"validibot-validator-backend-{vtype}"
 
+    def _launch_result_to_response(
+        self,
+        result: ValidationResult,
+    ) -> ExecutionResponse:
+        """Convert a Cloud Run launcher result into backend response semantics."""
+        stats = result.stats or {}
+        execution_id = stats.get("execution_name", "")
+        common = {
+            "execution_id": execution_id,
+            "input_uri": stats.get("input_uri"),
+            "output_uri": stats.get("result_uri"),
+            "execution_bundle_uri": stats.get("execution_bundle_uri"),
+        }
+        if result.passed is False:
+            messages = [
+                issue.message
+                for issue in result.issues
+                if getattr(issue, "message", None)
+            ]
+            error_message = "\n".join(messages) or "Failed to launch Cloud Run Job"
+            return ExecutionResponse(
+                is_complete=True,
+                error_message=error_message,
+                **common,
+            )
+        return ExecutionResponse(
+            is_complete=False,  # Async - waiting for callback
+            **common,
+        )
+
     def execute(self, request: ExecutionRequest) -> ExecutionResponse:
         """
         Execute a validation via Cloud Run Jobs (async).
@@ -243,15 +277,7 @@ class GCPExecutionBackend(ExecutionBackend):
             step=request.step,
         )
 
-        # Convert ValidationResult to ExecutionResponse
-        stats = result.stats or {}
-        return ExecutionResponse(
-            execution_id=stats.get("execution_name", ""),
-            is_complete=False,  # Async - waiting for callback
-            input_uri=stats.get("input_uri"),
-            output_uri=stats.get("result_uri"),
-            execution_bundle_uri=stats.get("execution_bundle_uri"),
-        )
+        return self._launch_result_to_response(result)
 
     def _execute_shacl(self, request: ExecutionRequest) -> ExecutionResponse:
         """
@@ -274,14 +300,7 @@ class GCPExecutionBackend(ExecutionBackend):
             step=request.step,
         )
 
-        stats = result.stats or {}
-        return ExecutionResponse(
-            execution_id=stats.get("execution_name", ""),
-            is_complete=False,  # Async - waiting for callback
-            input_uri=stats.get("input_uri"),
-            output_uri=stats.get("result_uri"),
-            execution_bundle_uri=stats.get("execution_bundle_uri"),
-        )
+        return self._launch_result_to_response(result)
 
     def _execute_fmu(self, request: ExecutionRequest) -> ExecutionResponse:
         """
@@ -316,7 +335,6 @@ class GCPExecutionBackend(ExecutionBackend):
             step=request.step,
         )
 
-        # Convert ValidationResult to ExecutionResponse
         stats = result.stats or {}
         execution_id = stats.get("execution_name", "")
         if not execution_id:
@@ -332,10 +350,4 @@ class GCPExecutionBackend(ExecutionBackend):
                 request.run_id,
                 execution_id,
             )
-        return ExecutionResponse(
-            execution_id=execution_id,
-            is_complete=False,  # Async - waiting for callback
-            input_uri=stats.get("input_uri"),
-            output_uri=stats.get("result_uri"),
-            execution_bundle_uri=stats.get("execution_bundle_uri"),
-        )
+        return self._launch_result_to_response(result)

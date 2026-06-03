@@ -45,6 +45,20 @@
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
+
+    // ── Active-tab seam fix ──────────────────────────────────────────────
+    // Bootstrap's `.card-header-tabs` seats the tab strip flush with the card
+    // header's bottom edge, so the ACTIVE tab kept its default 1px downward
+    // overlap (`.nav-tabs .nav-link` ships `margin-bottom: -1px`). That made
+    // the active tab's left/right borders run ~1px past the header/body seam —
+    // i.e. past the top border of the content area. Remove the overlap so the
+    // tab sits wholly within the header, and tint the now-flush bottom border
+    // to the header background so no stray line shows at the seam.
+    .card-header .nav-tabs .nav-link.active {
+      margin-bottom: 0;
+      border-bottom-color: var(--bs-card-cap-bg, transparent);
+    }
+
     .tab-content {
       background: #fff;
       padding: 1rem;

@@ -393,9 +393,16 @@ def send_member_invite_email(invite) -> bool:
     )
     org_name = invite.org.name
 
-    # Build the acceptance URL - members accept via notifications
+    # Build the tokenized acceptance URL. The previous implementation
+    # pointed at ``/notifications/``, which only works for users who
+    # already have an account AND have a notification waiting — useless
+    # for the brand-new external invitee this email is sent to (we only
+    # email when ``invitee_user`` is None). The tokenized URL routes
+    # through ``MemberInviteAcceptView``, which handles both the logged-
+    # in and anonymous-then-signup flows. Mirrors ``send_guest_invite_email``.
     site_url = get_site_url()
-    accept_url = f"{site_url}/notifications/"
+    accept_path = reverse("member_invite_accept", kwargs={"token": invite.token})
+    accept_url = f"{site_url}{accept_path}"
 
     # Describe the roles
     roles_desc = ", ".join(invite.roles) if invite.roles else _("member")

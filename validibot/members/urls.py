@@ -21,6 +21,11 @@ urlpatterns = [
         name="invite_search",
     ),
     path(
+        "invites/confirm/",
+        views.InviteConfirmView.as_view(),
+        name="invite_confirm",
+    ),
+    path(
         "invites/create/",
         views.InviteCreateView.as_view(),
         name="invite_create",

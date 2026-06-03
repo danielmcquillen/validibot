@@ -115,6 +115,8 @@ class SHACLValidator(AdvancedValidator):
 
         outputs = getattr(output_envelope, "outputs", None)
         issues = self._issues_from_outputs(outputs)
+        if outputs is None:
+            issues.extend(self._extract_issues_from_envelope(output_envelope))
         signals = self.extract_output_signals(output_envelope) or {}
 
         # Container-side SPARQL-ASK assertion tallies.

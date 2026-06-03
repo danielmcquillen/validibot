@@ -5,11 +5,14 @@ Views for managing organization members.
 import json
 from typing import Any
 
+from django.conf import settings
 from django.contrib import messages
 from django.db import models
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
+from django.shortcuts import resolve_url
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.views import View
@@ -36,6 +39,78 @@ from validibot.users.mixins import OrganizationPermissionRequiredMixin
 from validibot.users.models import MemberInvite
 from validibot.users.models import Membership
 from validibot.users.models import User
+
+# Session key under which an anonymous visitor's member-invite token is
+# stashed by ``MemberInviteAcceptView`` and later redeemed by the
+# allauth ``AccountAdapter`` after signup completes. The adapter defines
+# the same literal (``MEMBER_INVITE_SESSION_KEY``) — the two are kept in
+# lockstep, mirroring the guest-invite convention.
+MEMBER_INVITE_SESSION_KEY = "member_invite_token"
+
+
+def finalize_member_invite_accept(invite: MemberInvite, user: User) -> Membership:
+    """Bind, accept, and run the side effects of accepting a member invite.
+
+    Shared by the two non-notification acceptance paths —
+    :class:`MemberInviteAcceptView` (logged-in click) and the post-signup
+    redemption in :class:`validibot.users.adapters.AccountAdapter` — so
+    both create the :class:`~validibot.users.models.Membership`, log the
+    ``INVITE_ACCEPTED`` analytics event, and tell the inviter, exactly the
+    way the notification-based accept flow does. Keeping it in one place
+    stops the three accept surfaces from drifting apart.
+
+    For an email-only invite (``invitee_user is None``) the caller is
+    responsible for confirming the account owns the invited email *before*
+    calling this; here we simply bind the user and accept.
+
+    Raises:
+        SeatQuotaExceededError: If the org is at its seat cap. Callers
+            surface this as a friendly flash message rather than a 500 —
+            it's a routine "free a seat" moment, not a system failure.
+    """
+    if invite.invitee_user_id is None:
+        invite.invitee_user = user
+        invite.save(update_fields=["invitee_user"])
+
+    membership = invite.accept()
+
+    TrackingEventService().log_tracking_event(
+        event_type=TrackingEventType.APP_EVENT,
+        app_event_type=AppEventType.INVITE_ACCEPTED,
+        project=None,
+        org=invite.org,
+        user=user,
+        extra_data={
+            "invite_id": str(invite.id),
+            "inviter_id": getattr(invite.inviter, "id", None),
+            "invitee_user_id": user.id,
+            "invitee_email": invite.invitee_email,
+            "roles": invite.roles,
+        },
+        channel="web",
+    )
+
+    # Let the inviter know their invitation landed. Mirrors the
+    # notification-accept flow's inviter notification so an admin sees the
+    # same confirmation regardless of how the invitee accepted.
+    if invite.inviter:
+        Notification.objects.create(
+            user=invite.inviter,
+            org=invite.org,
+            type=Notification.Type.MEMBER_INVITE,
+            member_invite=invite,
+            payload={
+                "message": str(
+                    _("Invitation to '%(who)s' to join %(org)s was accepted.")
+                    % {
+                        "who": user.name or user.username,
+                        "org": invite.org.name,
+                    },
+                ),
+            },
+        )
+
+    return membership
 
 
 class MemberListView(
@@ -161,6 +236,73 @@ class InviteSearchView(
         return context
 
 
+class InviteConfirmView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
+    """Render a confirmation dialog before an invite is actually sent.
+
+    The invite modal posts here first — *not* straight to
+    :class:`InviteCreateView`. We validate the very same
+    :class:`~validibot.users.forms.InviteUserForm` the create view uses,
+    then render an interstitial that spells out *who* is being invited
+    and *which* permissions they'll receive, asking the admin to confirm.
+    Only the confirmation's "Invite" button posts to ``InviteCreateView``,
+    so the create endpoint keeps its existing one-POST-creates contract
+    and a misclick can't silently grant organization access.
+
+    The confirmation has two flavours, decided by whether the form
+    resolved an existing Validibot account for the target:
+
+    * **Existing user** — show their identity (avatar, name, username,
+      email) so the admin can be sure they're inviting the right person
+      before turning them into a member.
+    * **Brand-new email** — warn that no Validibot account exists yet for
+      this address; confirming emails them an invitation to sign up and
+      join with the selected permissions.
+    """
+
+    required_commercial_feature = CommercialFeature.TEAM_MANAGEMENT
+    organization_context_attr = "organization"
+
+    def post(self, request, *args, **kwargs):
+        form = InviteUserForm(
+            data=request.POST,
+            organization=self.organization,
+            inviter=request.user,
+        )
+        if not form.is_valid():
+            # Re-render the form with its errors, exactly like the create
+            # view does on invalid input, so the modal shows inline
+            # validation feedback instead of an empty confirmation.
+            return render(
+                request,
+                "members/partials/member_invite_form.html",
+                {"organization": self.organization, "invite_form": form},
+            )
+
+        invitee_user = form.cleaned_data.get("invitee_user")
+        invitee_email = form.cleaned_data.get("invitee_email")
+        # Mirror ``InviteUserForm.save()``'s default so the confirmation
+        # lists exactly the roles that will be granted on accept.
+        role_codes = form.cleaned_data.get("roles") or [RoleCode.WORKFLOW_VIEWER]
+        selected_roles = [
+            {"code": code, "label": RoleCode(code).label} for code in role_codes
+        ]
+        context = {
+            "organization": self.organization,
+            "invitee_user": invitee_user,
+            "invitee_email": invitee_email,
+            "selected_roles": selected_roles,
+            # Echoed back verbatim as hidden fields so the confirm POST
+            # re-binds the same form without re-entering anything.
+            "search_value": request.POST.get("search", ""),
+            "role_codes": role_codes,
+        }
+        return render(
+            request,
+            "members/partials/member_invite_confirm.html",
+            context,
+        )
+
+
 class InviteCreateView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
     """Handle invite creation via type-ahead selection or raw email."""
 
@@ -247,6 +389,107 @@ class InviteCancelView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, Vie
         return HttpResponseRedirect(
             reverse_with_org("members:member_list", request=request)
         )
+
+
+class MemberInviteAcceptView(View):
+    """Accept a membership invite via the tokenized URL we email.
+
+    This is the piece that was missing for brand-new invitees. We only
+    email a member invite when ``invitee_user`` is None (an address with
+    no Validibot account yet); the email used to point at
+    ``/notifications/`` — login-walled and token-less — so the invitee
+    had no way to accept. This view mirrors
+    :class:`~validibot.workflows.views.sharing.GuestInviteAcceptView`:
+
+    1. **Logged-in users** — accept immediately when the invite is
+       addressed to them (or to their email), creating the Membership and
+       dropping them into the inviting organization.
+    2. **Anonymous users** — stash the token in the session and route to
+       signup. After signup the :class:`AccountAdapter` redeems it,
+       binding the new account to the invite and creating the Membership.
+
+    Unlike guest invites there is no site-wide kill switch for member
+    invites, so this is a plain :class:`~django.views.View`. On
+    community deployments no member-invite tokens can be minted in the
+    first place (creation is feature-gated), so the token lookup simply
+    404s — there's nothing extra to gate here.
+    """
+
+    def get(self, request, token):
+        invite = get_object_or_404(
+            MemberInvite.objects.select_related("org", "inviter"),
+            token=token,
+        )
+
+        invite.mark_expired_if_needed()
+        if not invite.is_pending:
+            messages.error(
+                request,
+                _("This invitation is no longer valid (status: %(status)s).")
+                % {"status": invite.get_status_display()},
+            )
+            return HttpResponseRedirect(reverse("home:home"))
+
+        if not request.user.is_authenticated:
+            # Anonymous: stash the token and route through signup. The
+            # AccountAdapter consumes the session key after signup
+            # completes and redeems the invite on the new account.
+            request.session[MEMBER_INVITE_SESSION_KEY] = str(token)
+            messages.info(
+                request,
+                _(
+                    "Please sign up or log in to accept your invitation to "
+                    "join %(org)s.",
+                )
+                % {"org": invite.org.name},
+            )
+            return HttpResponseRedirect(reverse("account_signup"))
+
+        # Logged-in: the invite must be addressed to this account.
+        if invite.invitee_user_id and invite.invitee_user_id != request.user.id:
+            messages.error(
+                request,
+                _("This invitation was sent to a different user."),
+            )
+            return HttpResponseRedirect(reverse("home:home"))
+        if invite.invitee_user_id is None:
+            # Email-only invite: bind only if the logged-in account owns
+            # the invited email (case-insensitive), mirroring the
+            # notification accept view's guard. Without this, anyone with
+            # the link could redeem an invite addressed to someone else.
+            owns_email = (
+                invite.invitee_email
+                and invite.invitee_email.lower() == (request.user.email or "").lower()
+            )
+            if not owns_email:
+                messages.error(
+                    request,
+                    _("This invitation is not addressed to your account."),
+                )
+                return HttpResponseRedirect(reverse("home:home"))
+
+        # Seat-cap refusals on paid editions are raised by
+        # ``invite.accept()`` (inside the helper) and surfaced as a flash
+        # error rather than a 500 — a routine "ask your admin to free a
+        # seat" friction moment.
+        from validibot.users.seats import SeatQuotaExceededError
+
+        try:
+            finalize_member_invite_accept(invite, request.user)
+        except SeatQuotaExceededError as exc:
+            messages.error(request, str(exc))
+            return HttpResponseRedirect(reverse("home:home"))
+
+        messages.success(
+            request,
+            _("You're now a member of %(org)s.") % {"org": invite.org.name},
+        )
+        # Drop them into the organization they just joined.
+        request.user.set_current_org(invite.org)
+        # ``LOGIN_REDIRECT_URL`` is a URL *name* (``users:redirect``);
+        # resolve_url handles both names and paths so this stays correct
+        # if the setting ever changes to a literal path.
+        return HttpResponseRedirect(resolve_url(settings.LOGIN_REDIRECT_URL))
 
 
 class MemberUpdateView(

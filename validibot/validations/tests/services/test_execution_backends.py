@@ -48,6 +48,7 @@ from validibot_shared.validations.envelopes import SupportedMimeType
 
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.tests.factories import OrganizationFactory
+from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,
@@ -57,11 +58,14 @@ from validibot.validations.services.execution.base import ExecutionResponse
 from validibot.validations.services.execution.docker_compose import (
     DockerComposeExecutionBackend,
 )
+from validibot.validations.services.execution.gcp import GCPExecutionBackend
 from validibot.validations.services.execution.registry import clear_backend_cache
 from validibot.validations.services.execution.registry import get_execution_backend
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.base.base import ValidationIssue
+from validibot.validations.validators.base.base import ValidationResult
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
 
@@ -320,6 +324,68 @@ class TestBackendFactory:
 
         with pytest.raises(ValueError, match="Unknown VALIDATOR_RUNNER"):
             get_execution_backend()
+
+
+# ==============================================================================
+# GCPExecutionBackend — Cloud Run launcher result conversion
+# ==============================================================================
+# The GCP launcher returns ValidationResult because it predates the execution
+# backend abstraction. These tests keep the adapter honest: a successful launch is
+# pending, while a launch-blocking failure must be complete so the processor fails
+# the step immediately instead of waiting forever for a callback that cannot come.
+# ==============================================================================
+
+
+class TestGCPExecutionBackendLaunchResultConversion:
+    """Tests for converting Cloud Run launcher results into ExecutionResponse."""
+
+    def test_pending_launch_result_stays_async(self):
+        """``passed=None`` from the launcher means the Cloud Run Job dispatched."""
+        backend = GCPExecutionBackend()
+        result = ValidationResult(
+            passed=None,
+            issues=[],
+            stats={
+                "execution_name": "projects/p/locations/r/jobs/j/executions/e",
+                "input_uri": "gs://bucket/input.json",
+                "result_uri": "gs://bucket/output.json",
+                "execution_bundle_uri": "gs://bucket/bundle/",
+            },
+        )
+
+        response = backend._launch_result_to_response(result)
+
+        assert response.is_complete is False
+        assert response.execution_id.endswith("/executions/e")
+        assert response.error_message is None
+        assert response.input_uri == "gs://bucket/input.json"
+
+    def test_failed_launch_result_completes_with_error_message(self):
+        """Launch failures must fail immediately, not become async pending runs.
+
+        ``launch_shacl_validation`` catches GCP/image-policy/storage failures and
+        returns ``ValidationResult(passed=False)``. If the GCP adapter discards
+        that and returns ``is_complete=False``, the step is marked RUNNING and no
+        callback will ever arrive.
+        """
+        backend = GCPExecutionBackend()
+        result = ValidationResult(
+            passed=False,
+            issues=[
+                ValidationIssue(
+                    path="",
+                    message="Failed to launch SHACL validation.",
+                    severity=Severity.ERROR,
+                ),
+            ],
+            stats={},
+        )
+
+        response = backend._launch_result_to_response(result)
+
+        assert response.is_complete is True
+        assert response.execution_id == ""
+        assert "Failed to launch SHACL validation" in response.error_message
 
 
 # ==============================================================================

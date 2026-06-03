@@ -18,6 +18,7 @@ from validibot.core.health import deep_health_check
 from validibot.core.health import health_check
 from validibot.idp.views import oauth_authorization_server_metadata
 from validibot.idp.views import openid_configuration_metadata
+from validibot.members import views as members_views
 from validibot.workflows import views as workflow_views
 
 urlpatterns = [
@@ -65,6 +66,15 @@ urlpatterns = [
         "guest-invite/<uuid:token>/",
         workflow_views.GuestInviteAcceptView.as_view(),
         name="guest_invite_accept",
+    ),
+    # Tokenized membership-invite acceptance. Top-level (not under the
+    # login-required ``app/members/`` include) because a brand-new
+    # invitee following the emailed link is anonymous and must reach
+    # signup. Mirrors ``guest_invite_accept`` above.
+    path(
+        "members/invite/<uuid:token>/",
+        members_views.MemberInviteAcceptView.as_view(),
+        name="member_invite_accept",
     ),
     path(settings.ADMIN_URL, admin.site.urls),
     path("app/core/", include("validibot.core.urls", namespace="core")),

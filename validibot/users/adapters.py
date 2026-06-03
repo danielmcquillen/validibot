@@ -25,6 +25,15 @@ WORKFLOW_INVITE_SESSION_KEY = "workflow_invite_token"
 # ``invite.accept()`` and reclassify the new user as GUEST.
 GUEST_INVITE_SESSION_KEY = "guest_invite_token"
 
+# Session key for storing an org *membership* invite token during signup.
+# Set by ``MemberInviteAcceptView`` when an unauthenticated invitee clicks
+# the emailed link; consumed by this adapter post-signup to bind the
+# invite to the new account and create the Membership. Unlike guest
+# invites, member signups are NOT routed through invite-driven
+# suppression — a new member keeps the normal personal workspace + BASIC
+# classification and *additionally* gains a membership in the inviting org.
+MEMBER_INVITE_SESSION_KEY = "member_invite_token"
+
 # Session key for storing cloud trial invite token during signup flow.
 # Set by the cloud onboarding AcceptTrialInviteView, consumed after signup
 # to activate the trial on the user's personal organization.
@@ -121,6 +130,33 @@ def _guest_invite_token_is_redeemable(token: str) -> bool:
     return invite.status == InviteStatus.PENDING
 
 
+def _member_invite_token_is_redeemable(token: str) -> bool:
+    """True iff an org-membership invite token is currently redeemable.
+
+    Mirrors :func:`_guest_invite_token_is_redeemable` for the
+    ``MemberInvite`` flow. There is no site-wide kill switch for member
+    invites (that toggle is guest-specific), so this only verifies the
+    token maps to a PENDING invite.
+
+    Used by both adapters' ``is_open_for_signup`` so a brand-new invitee
+    can complete signup even on a closed-registration deployment, while a
+    stale (expired/canceled/accepted) token cannot reopen it.
+    """
+
+    from django.core.exceptions import ValidationError
+
+    from validibot.core.constants import InviteStatus
+    from validibot.users.models import MemberInvite
+
+    try:
+        invite = MemberInvite.objects.get(token=token)
+    except (MemberInvite.DoesNotExist, ValueError, ValidationError):
+        return False
+
+    invite.mark_expired_if_needed()
+    return invite.status == InviteStatus.PENDING
+
+
 class AccountAdapter(DefaultAccountAdapter):
     """
     Custom account adapter for Validibot signup flow.
@@ -170,6 +206,14 @@ class AccountAdapter(DefaultAccountAdapter):
         # Guest invite token: only opens signup if redeemable.
         guest_token = request.session.get(GUEST_INVITE_SESSION_KEY)
         if guest_token and _guest_invite_token_is_redeemable(guest_token):
+            return True
+
+        # Member invite token: only opens signup if redeemable. This is
+        # the path a brand-new external invitee takes — the emailed link
+        # stashes the token, and it must let them sign up even when
+        # ``ACCOUNT_ALLOW_REGISTRATION`` is False.
+        member_token = request.session.get(MEMBER_INVITE_SESSION_KEY)
+        if member_token and _member_invite_token_is_redeemable(member_token):
             return True
 
         # Always allow signup if user has a trial invite token (cloud)
@@ -312,6 +356,24 @@ class AccountAdapter(DefaultAccountAdapter):
             redirect_url = self._handle_guest_invite_signup(
                 request,
                 guest_invite_token,
+            )
+            if redirect_url:
+                return redirect_url
+
+        # Org membership invite (parallel flow). The new user clicked a
+        # tokenized member-invite link while unauthenticated;
+        # ``MemberInviteAcceptView`` stashed the token and now we redeem
+        # it. Deliberately NOT setting ``attempted_invite_redemption``:
+        # unlike guest/workflow invites, member signups do not suppress
+        # the default side effects in ``save_user``, so the new account
+        # already has its personal workspace + BASIC classification. The
+        # redemption merely *adds* a membership in the inviting org — so
+        # there's no default setup to finalize even if it falls through.
+        member_invite_token = request.session.get(MEMBER_INVITE_SESSION_KEY)
+        if member_invite_token:
+            redirect_url = self._handle_member_invite_signup(
+                request,
+                member_invite_token,
             )
             if redirect_url:
                 return redirect_url
@@ -554,6 +616,84 @@ class AccountAdapter(DefaultAccountAdapter):
             messages.error(request, str(e))
             return None
 
+    def _handle_member_invite_signup(
+        self,
+        request: HttpRequest,
+        invite_token: str,
+    ) -> str | None:
+        """Handle org-membership invite acceptance after signup.
+
+        Redeems a tokenized ``MemberInvite`` on the brand-new account:
+        binds the invite to the user, creates the ``Membership`` with the
+        invited roles, logs analytics, notifies the inviter, and drops the
+        user into the inviting org.
+
+        Returns the post-accept redirect URL, or None if the invite is
+        invalid (missing/expired/canceled/already accepted), addressed to
+        a different existing user, or the org is at its seat cap — in
+        which case the caller falls back to the normal post-signup
+        redirect. Nothing is stranded on fallback: ``save_user`` already
+        provisioned the personal workspace + BASIC classification for
+        member signups (we don't suppress those), so the account is fully
+        functional even without the org membership.
+        """
+
+        from django.contrib import messages
+        from django.shortcuts import resolve_url
+        from django.utils.translation import gettext_lazy as _
+
+        from validibot.core.constants import InviteStatus
+        from validibot.members.views import finalize_member_invite_accept
+        from validibot.users.models import MemberInvite
+        from validibot.users.seats import SeatQuotaExceededError
+
+        del request.session[MEMBER_INVITE_SESSION_KEY]
+
+        try:
+            invite = MemberInvite.objects.select_related("org").get(
+                token=invite_token,
+            )
+        except MemberInvite.DoesNotExist:
+            logger.warning("Member invite not found: %s", invite_token)
+            return None
+
+        invite.mark_expired_if_needed()
+        if invite.status != InviteStatus.PENDING:
+            logger.warning(
+                "Member invite %s is no longer pending (status: %s)",
+                invite_token,
+                invite.status,
+            )
+            messages.warning(request, _("The invitation is no longer valid."))
+            return None
+
+        # If the invite named a specific existing user that isn't this new
+        # account, don't redeem it on the wrong person. (The email-only
+        # invites we actually send have ``invitee_user`` None, so binding
+        # proceeds for the expected brand-new-invitee case.)
+        if invite.invitee_user_id and invite.invitee_user_id != request.user.id:
+            logger.warning(
+                "Member invite %s addressed to a different user; not redeeming",
+                invite_token,
+            )
+            return None
+
+        try:
+            finalize_member_invite_accept(invite, request.user)
+        except SeatQuotaExceededError as exc:
+            logger.info("Member invite %s blocked by seat cap", invite_token)
+            messages.error(request, str(exc))
+            return None
+
+        messages.success(
+            request,
+            _("Welcome! You're now a member of %(org)s.") % {"org": invite.org.name},
+        )
+        request.user.set_current_org(invite.org)
+        # ``LOGIN_REDIRECT_URL`` is a URL name; resolve_url handles both
+        # names and paths.
+        return resolve_url(settings.LOGIN_REDIRECT_URL)
+
     def _invites_enabled(self) -> bool:
         """Return True iff guest invites are currently enabled site-wide.
 
@@ -651,6 +791,10 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
 
         guest_token = request.session.get(GUEST_INVITE_SESSION_KEY)
         if guest_token and _guest_invite_token_is_redeemable(guest_token):
+            return True
+
+        member_token = request.session.get(MEMBER_INVITE_SESSION_KEY)
+        if member_token and _member_invite_token_is_redeemable(member_token):
             return True
 
         # Always allow signup if user has a trial invite token (cloud)

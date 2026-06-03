@@ -11,8 +11,8 @@
   </button>
 </div>
 <form method="post"
-      action="{% org_url 'members:invite_create' %}"
-      hx-post="{% org_url 'members:invite_create' %}"
+      action="{% org_url 'members:invite_confirm' %}"
+      hx-post="{% org_url 'members:invite_confirm' %}"
       hx-target="#member-invite-modal-content"
       hx-swap="innerHTML"
       novalidate>
@@ -83,7 +83,7 @@
       {% trans "Cancel" %}
     </button>
     <button type="submit" class="btn btn-primary action-button">
-      <i class="bi-send me-1"></i>{% trans "Send Invitation" %}
+      {% trans "Continue" %}<i class="bi-arrow-right ms-1"></i>
     </button>
   </div>
 </form>

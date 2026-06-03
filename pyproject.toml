@@ -110,9 +110,10 @@ dependencies = [
   # only ran in the hosted offering.
   "oauthlib==3.3.1",
   "pyjwt[crypto]==2.12.1",
-  "pyshacl==0.31.0",
+  # Django still uses rdflib for SHACL authoring-time syntax checks and
+  # SPARQL security scrubbing. pySHACL/owlrl execution dependencies live in
+  # validibot-validator-backends now that SHACL runs in an isolated backend.
   "rdflib==7.6.0",
-  "owlrl==7.1.4",
   # NOTE: defusedxml is already listed above as a base dep (used elsewhere
   # in the platform) — it is load-bearing for the SHACL validator's
   # RDF/XML hardening against XXE / billion-laughs / external-DTD attacks.

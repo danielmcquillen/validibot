@@ -1,0 +1,120 @@
+{% load i18n core_tags %}
+
+{% comment %}
+Confirmation interstitial shown between the invite form and the actual
+send (``InviteConfirmView`` -> here -> ``InviteCreateView``). It spells
+out *who* is being invited and *which* permissions they'll receive so an
+admin can catch a misclick before org access is granted.
+
+Two flavours, decided by ``invitee_user``:
+  * set   -> existing Validibot account; show their identity card.
+  * unset -> brand-new email; warn no account exists yet (they'll be
+             emailed a sign-up-and-join link).
+
+Expected context: organization, invitee_user (User|None), invitee_email,
+selected_roles (list of {code,label}), search_value, role_codes.
+{% endcomment %}
+
+<div class="modal-header">
+  <h5 class="modal-title">
+    <i class="bi-shield-check me-2"></i>{% trans "Confirm invitation" %}
+  </h5>
+  <button type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="{% trans 'Close' %}">
+  </button>
+</div>
+<div class="modal-body">
+  {% if invitee_user %}
+    {# Existing account: surface identity so the admin confirms the right person. #}
+    <div class="d-flex align-items-center gap-3 mb-3">
+      {% if invitee_user.avatar %}
+        <img src="{{ invitee_user.avatar.url }}"
+             alt="{% blocktrans with name=invitee_user.username %}
+                    Avatar for {{ name }}
+                  {% endblocktrans %}"
+             width="56"
+             height="56"
+             class="rounded-circle border object-fit-cover" />
+      {% else %}
+        <i class="bi-person-circle text-secondary fs-1"></i>
+      {% endif %}
+      <div>
+        <div class="fw-semibold">
+          {{ invitee_user.name|default:invitee_user.username }}
+        </div>
+        <div class="text-muted small">
+          @{{ invitee_user.username }}
+        </div>
+        <div class="text-muted small">
+          {{ invitee_user.email }}
+        </div>
+      </div>
+    </div>
+    <p class="mb-2">
+      {% blocktrans with org=organization.name %}
+        Are you sure you want to make this user a member of "{{ org }}" with the
+        following permissions?
+      {% endblocktrans %}
+    </p>
+  {% else %}
+    {# No account yet: confirm an email-to-sign-up invitation. #}
+    <div class="alert alert-info d-flex align-items-start gap-2" role="alert">
+      <i class="bi-info-circle mt-1"></i>
+      <div>
+        {% blocktrans with email=invitee_email %}
+          <strong>{{ email }}</strong> does not currently have a Validibot account.
+        {% endblocktrans %}
+      </div>
+    </div>
+    <p class="mb-2">
+      {% blocktrans with email=invitee_email org=organization.name %}
+        Are you sure you want to invite {{ email }} to become a member of "{{ org }}"
+        with the following permissions? They'll receive an email with a link to sign
+        up and join.
+      {% endblocktrans %}
+    </p>
+  {% endif %}
+  <ul class="list-group mb-0">
+    {% for role in selected_roles %}
+      <li class="list-group-item d-flex align-items-center">
+        <i class="bi-check-circle-fill text-success me-2"></i>
+        <span class="fw-medium">{{ role.label }}</span>
+      </li>
+    {% empty %}
+      <li class="list-group-item text-muted">
+        {% trans "No permissions selected." %}
+      </li>
+    {% endfor %}
+  </ul>
+</div>
+<div class="modal-footer">
+  <button type="button"
+          class="btn btn-light action-button"
+          data-bs-dismiss="modal">
+    {% trans "Cancel" %}
+  </button>
+  {# The only path that actually creates the invite. Hidden fields echo
+     the validated selection so InviteCreateView re-binds the same form
+     without the admin re-entering anything. #}
+  <form method="post"
+        action="{% org_url 'members:invite_create' %}"
+        hx-post="{% org_url 'members:invite_create' %}"
+        hx-target="#member-invite-modal-content"
+        hx-swap="innerHTML"
+        class="d-inline">
+    {% csrf_token %}
+    <input type="hidden" name="search" value="{{ search_value }}" />
+    {% if invitee_user %}
+      <input type="hidden" name="invitee_user" value="{{ invitee_user.id }}" />
+    {% endif %}
+    <input type="hidden" name="invitee_email" value="{{ invitee_email }}" />
+    {% for code in role_codes %}
+      <input type="hidden" name="roles" value="{{ code }}" />
+    {% endfor %}
+    <button type="submit" class="btn btn-primary action-button">
+      <i class="bi-send me-1"></i>{% trans "Invite" %}
+    </button>
+  </form>
+</div>

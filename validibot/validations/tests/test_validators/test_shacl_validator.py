@@ -23,6 +23,8 @@ import pytest
 from validibot_shared.shacl.envelopes import SHACLFinding
 from validibot_shared.shacl.envelopes import SHACLOutputEnvelope
 from validibot_shared.shacl.envelopes import SHACLOutputs
+from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
+from validibot_shared.validations.envelopes import ValidationMessage
 from validibot_shared.validations.envelopes import ValidationStatus
 from validibot_shared.validations.envelopes import ValidatorType
 
@@ -83,13 +85,17 @@ def _outputs(**overrides) -> SHACLOutputs:
 
 
 def _envelope(
-    *, status: ValidationStatus, outputs: SHACLOutputs
+    *,
+    status: ValidationStatus,
+    outputs: SHACLOutputs | None,
+    messages: list[ValidationMessage] | None = None,
 ) -> SHACLOutputEnvelope:
     return SHACLOutputEnvelope(
         run_id="run-1",
         validator={"id": "v1", "type": ValidatorType.SHACL, "version": "2"},
         status=status,
         timing={},
+        messages=messages or [],
         outputs=outputs,
     )
 
@@ -233,6 +239,33 @@ def test_post_execute_success_finding_maps_to_success_severity():
 
     success = next(i for i in result.issues if i.code == "assertion_passed")
     assert success.severity == Severity.SUCCESS
+
+
+def test_post_execute_runtime_failure_preserves_envelope_messages():
+    """Runtime-failure envelopes have no SHACLOutputs but still need findings.
+
+    The backend entrypoint uploads ``outputs=None`` when the process catches an
+    unexpected runtime error. In that path the only user-facing explanation is
+    the generic envelope ``messages`` list, so the SHACL override must fall back
+    to the base message extractor instead of returning an empty finding set.
+    """
+    envelope = _envelope(
+        status=ValidationStatus.FAILED_RUNTIME,
+        outputs=None,
+        messages=[
+            ValidationMessage(
+                severity=EnvelopeSeverity.ERROR,
+                text="SHACL validator failed. Please retry or contact support.",
+            ),
+        ],
+    )
+
+    result = SHACLValidator().post_execute_validate(envelope, run_context=None)
+
+    assert result.passed is False
+    assert len(result.issues) == 1
+    assert result.issues[0].severity == Severity.ERROR
+    assert "SHACL validator failed" in result.issues[0].message
 
 
 # ── The mixed-assertion partition (DB-backed integration) ────────────────────

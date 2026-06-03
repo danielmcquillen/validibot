@@ -22,6 +22,7 @@ IDF, regardless of whether the original was a template or a direct upload.
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 from django.conf import settings
@@ -66,11 +67,12 @@ def _resolve_cloud_run_job_name(validation_type: str) -> str:
 
     Reads from ``ValidatorConfig.cloud_run_job_name`` (which, by
     project convention, equals the validator's container image name
-    — see ``ValidatorConfig.image_name`` docstring). Raises a clear
-    ``RuntimeError`` when the validator isn't registered or its
-    config doesn't yield a job name; the caller catches this as a
-    launch-blocking misconfiguration rather than letting an empty
-    string reach the GCP Jobs API.
+    — see ``ValidatorConfig.image_name`` docstring), then applies the
+    deployment's ``GCP_APP_NAME`` prefix and non-prod ``VALIDIBOT_STAGE``
+    suffix to match the GCP deploy recipes. Raises a clear ``RuntimeError``
+    when the validator isn't registered or its config doesn't yield a job
+    name; the caller catches this as a launch-blocking misconfiguration rather
+    than letting an empty string reach the GCP Jobs API.
 
     Replaces the legacy ``settings.GCS_ENERGYPLUS_JOB_NAME`` /
     ``GCS_FMU_JOB_NAME`` env-var reads (removed May 2026 — the env
@@ -98,6 +100,19 @@ def _resolve_cloud_run_job_name(validation_type: str) -> str:
             "can apply."
         )
         raise RuntimeError(msg)
+    app_name = getattr(settings, "GCP_APP_NAME", None) or os.environ.get(
+        "GCP_APP_NAME",
+        "validibot",
+    )
+    if app_name != "validibot" and job_name.startswith("validibot-"):
+        job_name = f"{app_name}-{job_name.removeprefix('validibot-')}"
+
+    stage = getattr(settings, "VALIDIBOT_STAGE", None) or os.environ.get(
+        "VALIDIBOT_STAGE",
+        "prod",
+    )
+    if stage and stage != "prod" and not job_name.endswith(f"-{stage}"):
+        job_name = f"{job_name}-{stage}"
     return job_name
 
 

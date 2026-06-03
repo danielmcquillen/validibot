@@ -122,7 +122,17 @@ up *args:
 # across restarts; use `just local-cloud clean` for a full reset.
 [no-cd]
 down:
-    docker compose -f {{cloud_compose}} down
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Always enable the "mcp" profile so `down` removes the MCP container too.
+    # The MCP service is profile-gated (profiles: ["mcp"]); a plain
+    # `docker compose down` leaves profiled services as orphans because they're
+    # out of scope unless the profile is active. Without this, an MCP container
+    # started via `ENABLE_MCP_SERVER=true ... up` would be left running after a
+    # `down`. Enabling the profile here only widens teardown scope — it never
+    # starts anything — and mirrors the local-pro `down` recipe.
+    export COMPOSE_PROFILES="${COMPOSE_PROFILES:+${COMPOSE_PROFILES},}mcp"
+    docker compose -f "{{cloud_compose}}" down
 
 # Rebuild and start containers, clearing the venv volume
 #

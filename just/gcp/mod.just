@@ -939,7 +939,7 @@ _deploy-web stage:
         --service-account "$SA" \
         --add-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
-        --set-env-vars APP_ROLE=web,VALIDIBOT_STAGE={{stage}},VALIDIBOT_VERSION="${VALIDIBOT_VERSION:-{{validibot_version}}}" \
+        --set-env-vars APP_ROLE=web,GCP_APP_NAME={{app_name}},VALIDIBOT_STAGE={{stage}},VALIDIBOT_VERSION="${VALIDIBOT_VERSION:-{{validibot_version}}}" \
         --min-instances $MIN_INSTANCES \
         --max-instances $MAX_INSTANCES \
         --memory 1Gi \
@@ -997,7 +997,7 @@ _deploy-worker stage:
         --service-account "$SA" \
         --add-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
-        --set-env-vars APP_ROLE=worker,VALIDIBOT_STAGE={{stage}},VALIDIBOT_VERSION="${VALIDIBOT_VERSION:-{{validibot_version}}}" \
+        --set-env-vars APP_ROLE=worker,GCP_APP_NAME={{app_name}},VALIDIBOT_STAGE={{stage}},VALIDIBOT_VERSION="${VALIDIBOT_VERSION:-{{validibot_version}}}" \
         --no-allow-unauthenticated \
         --ingress internal \
         --min-instances 0 \
@@ -3303,13 +3303,13 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
     # ``${APP_NAME}-validator-backend-{name}`` for prod and
     # ``${APP_NAME}-validator-backend-{name}-{stage}`` otherwise. This
     # matches the convention the backend repo's ``just deploy-all``
-    # uses, AND it matches what ``ValidatorConfig.cloud_run_job_name``
-    # returns at runtime (which derives from ``image_name``, which is
-    # ``validibot-validator-backend-{slug}``). Standardising on a
-    # single name pattern across both deploy paths means whichever
-    # recipe an operator runs produces the same Cloud Run Job —
-    # eliminating the "two paths created two different jobs and the
-    # runtime points at neither" trap caught in the May 2026 review.
+    # uses, AND it matches the runtime resolver after it applies
+    # ``GCP_APP_NAME`` and ``VALIDIBOT_STAGE`` around
+    # ``ValidatorConfig.cloud_run_job_name``. Standardising on a single
+    # name pattern across both deploy paths means whichever recipe an
+    # operator runs produces the same Cloud Run Job — eliminating the
+    # "two paths created two different jobs and the runtime points at
+    # neither" trap caught in the May 2026 review.
     #
     # Legacy jobs created under the older ``${APP_NAME}-validator-{name}``
     # pattern can be deleted once nothing points at them.
@@ -3339,7 +3339,7 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
         --network default \
         --subnet default \
         --vpc-egress all-traffic \
-        --set-env-vars VALIDIBOT_STAGE={{stage}},DEPLOYMENT_TARGET=gcp \
+        --set-env-vars GCP_APP_NAME={{app_name}},VALIDIBOT_STAGE={{stage}},DEPLOYMENT_TARGET=gcp \
         --labels validator={{name}},revision={{validator_backend_git_sha}},stage={{stage}} \
         --project {{gcp_project}}
     echo "$JOB_NAME deployed"

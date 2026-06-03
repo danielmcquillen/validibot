@@ -420,6 +420,15 @@ class InviteUserForm(forms.Form):
         self.helper = FormHelper()
         self.helper.form_method = "post"
         self.helper.form_tag = False
+        # OWNER is assigned once at org setup and is never grantable
+        # through an invitation. Track the assignable (non-OWNER) roles so
+        # ``clean_roles`` can reject anything else — mirrors
+        # ``OrganizationMemberForm``. The field keeps the full choices so
+        # the disabled OWNER checkbox still renders; the guard (not the
+        # choice list) is what blocks a hand-crafted ``roles=[OWNER]`` POST.
+        self.assignable_role_codes = {
+            code for code, _label in RoleCode.choices if code != RoleCode.OWNER
+        }
         self.fields["roles"].choices = RoleCode.choices
         if self.is_bound:
             selected_roles = set(_extract_role_values(self.data, "roles"))
@@ -431,6 +440,25 @@ class InviteUserForm(forms.Form):
             disable_owner_checkbox=True,
         )
 
+    def clean_roles(self):
+        """Reject the OWNER role and return the assignable selection.
+
+        OWNER is fixed at organization setup and intentionally cannot be
+        granted through an invitation. The checkbox is disabled in the UI,
+        but a hand-crafted POST could still submit ``OWNER`` — so we reject
+        it here with a clear message, mirroring ``OrganizationMemberForm``.
+        We read the *raw* submitted values (``self.data``) so the guard
+        holds even though OWNER remains a valid field choice (kept so the
+        disabled checkbox renders).
+        """
+        submitted = set(_extract_role_values(self.data, "roles"))
+        if submitted - self.assignable_role_codes:
+            raise forms.ValidationError(
+                _("Owner role cannot be assigned through this form."),
+            )
+        roles = self.cleaned_data.get("roles") or []
+        return [code for code in roles if code in self.assignable_role_codes]
+
     def clean(self):
         cleaned = super().clean()
         if self.organization is None or self.inviter is None:
@@ -438,8 +466,11 @@ class InviteUserForm(forms.Form):
 
         user_id = cleaned.get("invitee_user")
         email = cleaned.get("invitee_email") or cleaned.get("search")
+        if isinstance(email, str):
+            email = email.strip()
         if not user_id and not email:
             raise forms.ValidationError(_("Select a user or provide an email."))
+
         invitee_user = None
         if user_id:
             try:
@@ -449,8 +480,36 @@ class InviteUserForm(forms.Form):
             cleaned["invitee_user"] = invitee_user
             cleaned["invitee_email"] = invitee_user.email
         else:
-            cleaned["invitee_user"] = None
-            cleaned["invitee_email"] = email
+            # No type-ahead pick: the admin typed a raw address. Resolve
+            # it to an existing account when one owns that email so the
+            # confirmation dialog shows the real person and the invite
+            # routes through the in-app notification path. Only genuinely
+            # unknown addresses fall through to the email-only sign-up
+            # flow (``send_email=invitee_user is None`` in ``save``).
+            invitee_user = (
+                User.objects.filter(email__iexact=email, is_active=True).first()
+                if email
+                else None
+            )
+            cleaned["invitee_user"] = invitee_user
+            cleaned["invitee_email"] = invitee_user.email if invitee_user else email
+
+        # Guard against re-inviting an existing active member — mirrors
+        # the guest-invite create flow. Without it the confirmation could
+        # promise to "make this user a member" when they already are, and
+        # accepting would be a confusing near no-op.
+        if (
+            invitee_user
+            and Membership.objects.filter(
+                user=invitee_user,
+                org=self.organization,
+                is_active=True,
+            ).exists()
+        ):
+            raise forms.ValidationError(
+                _("That user is already a member of this organization."),
+            )
+
         return cleaned
 
     def save(self) -> MemberInvite:

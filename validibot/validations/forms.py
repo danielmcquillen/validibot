@@ -45,6 +45,21 @@ from validibot.validations.validators.shacl.form_fields import _max_asks_per_ste
 # hundred characters at most); 4096 is generous headroom while bounding
 # worst-case time on the string-literal stripper below.
 _MAX_CEL_EXPRESSION_LEN = 4096
+# Curly / "smart" quote characters that sneak in when an author copy-pastes a
+# CEL expression from a word processor, email, chat client, or PDF. CEL's lexer
+# — and our ``_strip_cel_string_literals`` preprocessor — only recognise
+# straight quotes, so a smart-quoted string literal is NOT treated as a literal:
+# its contents get scanned as bare identifiers, and the author is met with a
+# baffling "unknown identifier" error naming fragments of their own string
+# (e.g. ``http``, ``onuma.com``) instead of the real culprit. We detect these
+# up front and explain the actual fix. Maps each smart quote to its straight
+# equivalent so the message can show exactly what to replace.
+_SMART_QUOTE_REPLACEMENTS = {
+    "“": '"',  # “ LEFT DOUBLE QUOTATION MARK
+    "”": '"',  # ” RIGHT DOUBLE QUOTATION MARK
+    "‘": "'",  # ‘ LEFT SINGLE QUOTATION MARK
+    "’": "'",  # ’ RIGHT SINGLE QUOTATION MARK
+}
 _SHACL_TARGET_GRAPH_CHOICES = (
     ("data", _("Submitted RDF data graph")),
     ("results", _("SHACL results graph")),
@@ -1351,6 +1366,17 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         # them as a separate, more specific error.
         misnamespaced_inputs: set[str] = set()
 
+        # ``i.<step output>`` / ``o.<step input>`` is the wrong-stage trap.
+        # Step outputs live in ``o.*`` and step inputs in ``i.*``; crossing
+        # them passes the namespace-root check (both ``i`` and ``o`` are valid
+        # roots) but reads null at runtime. SHACL is the headline case: every
+        # SHACL signal (``namespaces_present``, ``conforms``, …) is a step
+        # output, so an author who writes ``i.namespaces_present`` gets a
+        # silently-null assertion. We map each offender to the prefix it should
+        # have used ("o" for an output, "i" for an input) and raise a targeted
+        # error pointing at the correct spelling.
+        misnamespaced_stage: dict[str, str] = {}
+
         # ── Pre-strip pass: bracket-access trap (``s["name"]``) ──────
         # Per the CEL spec, ``m.x`` and ``m["x"]`` are equivalent for
         # maps with valid keys. If we only scanned the stripped
@@ -1420,6 +1446,24 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                     and parts[1] not in self.workflow_signal_names
                 ):
                     misnamespaced_inputs.add(parts[1])
+                elif (
+                    root in {"i", "input"}
+                    and len(parts) >= 2  # noqa: PLR2004
+                    and parts[1] in self.outputs_by_slug
+                    and parts[1] not in self.inputs_by_slug
+                    and parts[1] not in self.workflow_signal_names
+                ):
+                    # i.<step output> — outputs live in o.*, never i.*.
+                    misnamespaced_stage[parts[1]] = "o"
+                elif (
+                    root in {"o", "output"}
+                    and len(parts) >= 2  # noqa: PLR2004
+                    and parts[1] in self.inputs_by_slug
+                    and parts[1] not in self.outputs_by_slug
+                    and parts[1] not in self.workflow_signal_names
+                ):
+                    # o.<step input> — the mirror image: inputs live in i.*.
+                    misnamespaced_stage[parts[1]] = "i"
                 continue
             unknown.add(name)
 
@@ -1440,6 +1484,33 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                         "names": ", ".join(
                             f"s.{n}" for n in sorted(misnamespaced_inputs)
                         ),
+                    },
+                },
+            )
+
+        if misnamespaced_stage:
+            example = sorted(misnamespaced_stage)[0]
+            correct = misnamespaced_stage[example]
+            wrong = "i" if correct == "o" else "o"
+            kind = _("output") if correct == "o" else _("input")
+            corrected = ", ".join(
+                f"{misnamespaced_stage[n]}.{n}" for n in sorted(misnamespaced_stage)
+            )
+            raise ValidationError(
+                {
+                    "cel_expression": _(
+                        "%(name)s is a step %(kind)s — reference it as "
+                        "%(correct)s.%(name)s, not %(wrong)s.%(name)s. The "
+                        "%(wrong)s.* namespace never holds step %(kind)ss at "
+                        "run time, so the assertion would silently read null. "
+                        "Use: %(corrected)s"
+                    )
+                    % {
+                        "name": example,
+                        "kind": kind,
+                        "correct": correct,
+                        "wrong": wrong,
+                        "corrected": corrected,
                     },
                 },
             )
@@ -1884,6 +1955,26 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                         "length": len(expression),
                         "limit": _MAX_CEL_EXPRESSION_LEN,
                     },
+                },
+            )
+        # Catch curly/"smart" quotes before the bare-identifier scan below.
+        # Otherwise a copy-pasted ``["…uri…"]`` list slips past the
+        # straight-quote-only string stripper, the URI text gets lexed as
+        # identifiers, and the author sees a confusing "unknown identifier"
+        # error naming pieces of their own string instead of the real fix.
+        smart_found = [c for c in _SMART_QUOTE_REPLACEMENTS if c in expression]
+        if smart_found:
+            raise ValidationError(
+                {
+                    "cel_expression": _(
+                        'Your expression contains curly ("smart") quote '
+                        "characters: %(found)s. These usually appear when "
+                        "pasting from a document, email, or chat. CEL only "
+                        "recognises straight quotes, so the text inside them "
+                        "is read as code rather than as a string. Replace each "
+                        "one with a straight double (\") or single (') quote."
+                    )
+                    % {"found": " ".join(smart_found)},
                 },
             )
         if not self._delimiters_balanced(expression):

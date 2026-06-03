@@ -1868,3 +1868,239 @@ class PrefixBasedTargetResolutionTests(TestCase):
             form.cleaned_data["target_data_path_value"],
             "panel_area",
         )
+
+    # ── Smart-quote (curly quote) detection ─────────────────────────
+    # A CEL string literal must use straight quotes. When an author pastes
+    # an expression from a document, email, or chat, the quotes around a
+    # string list often arrive as curly "smart" quotes (U+201C/D, U+2018/9).
+    # CEL's lexer — and our string-literal stripper — only recognise straight
+    # quotes, so the text *inside* a smart-quoted literal (e.g. a URI list)
+    # gets scanned as bare identifiers. The author then sees a baffling
+    # "unknown identifier" error naming fragments of their own string. These
+    # tests prove we intercept that case with a message that names the real
+    # fix (replace the curly quotes) instead.
+
+    def test_cel_rejects_curly_double_quotes_with_clear_message(self):
+        """Curly double quotes get a targeted "smart quotes" error.
+
+        Why it matters: this is the exact failure a SHACL author hits when
+        pasting a namespace allow-list — ``["http://…"]`` arrives with
+        ``“ ”`` around each URI, the URI body is lexed as ``http``,
+        ``onuma.com`` … and the bare-identifier check fires with a message
+        that points at the author's data, not the actual mistake. The
+        smart-quote guard must win first and explain the real fix.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        # A string list using curly double quotes around each element.
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "severity": Severity.ERROR,
+                "cel_expression": ("p.ns.all(x, x in [“http://onuma.com/schema#”])"),
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        joined = " ".join(str(e) for e in form.errors.get("cel_expression", []))
+        # The error must name the real cause, not "bare identifiers".
+        self.assertIn("curly", joined.lower())
+        self.assertNotIn("Bare identifiers", joined)
+
+    def test_cel_rejects_curly_single_quotes_with_clear_message(self):
+        """Curly single quotes are caught the same way as double quotes.
+
+        Why it matters: single-quoted CEL string literals are equally valid,
+        so a pasted ``'…'`` that arrives as ``‘ ’`` must trigger the same
+        helpful guidance rather than slipping into the identifier scanner.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "severity": Severity.ERROR,
+                "cel_expression": "p.note == ‘hello’",
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        joined = " ".join(str(e) for e in form.errors.get("cel_expression", []))
+        self.assertIn("curly", joined.lower())
+
+    def test_cel_allows_straight_quoted_string_list(self):
+        """The straight-quote version of the same expression is accepted.
+
+        This is the control for the smart-quote tests above: the only
+        difference is the quote characters, so a passing straight-quote
+        case proves the guard targets the quotes specifically and does not
+        reject the surrounding expression shape.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        output_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="ns",
+            direction="output",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[output_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "severity": Severity.ERROR,
+                "cel_expression": ('o.ns.all(x, x in ["http://onuma.com/schema#"])'),
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    # ── Wrong-stage namespace detection (i.<output> / o.<input>) ─────
+    # Step outputs live in the o.* CEL namespace and step inputs in i.*.
+    # Crossing them passes the namespace-root check (both roots are valid)
+    # but reads null at runtime, because i.* never carries outputs and o.*
+    # never carries inputs. SHACL is the headline case: every SHACL signal
+    # (namespaces_present, conforms, …) is a step output, so an author who
+    # writes ``i.namespaces_present`` would save a silently-null assertion.
+    # These tests prove the form catches the mistake and names the correct
+    # spelling, mirroring the existing s.<input> trap guard.
+
+    def test_cel_rejects_input_prefix_on_known_step_output(self):
+        """``i.<output>`` is rejected and the author is pointed at o.*.
+
+        Why it matters: this is the precise trap a SHACL author falls into.
+        ``namespaces_present`` is an output-only signal, so ``i.*`` will be
+        empty for it at run time and the assertion would silently evaluate
+        against null. The guard must reject the save and suggest
+        ``o.namespaces_present``.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.SHACL,
+            is_system=False,
+        )
+        output_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="namespaces_present",
+            direction="output",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[output_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "severity": Severity.ERROR,
+                "cel_expression": (
+                    'i.namespaces_present.all(ns, ns in ["http://onuma.com/schema#"])'
+                ),
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        joined = " ".join(str(e) for e in form.errors.get("cel_expression", []))
+        self.assertIn("o.namespaces_present", joined)
+        self.assertIn("step output", joined.lower())
+        # Must NOT degrade into the generic bare-identifier message.
+        self.assertNotIn("Bare identifiers", joined)
+
+    def test_cel_rejects_output_prefix_on_known_step_input(self):
+        """The mirror image: ``o.<input>`` is rejected and points at i.*.
+
+        Why it matters: the same wrong-stage class of bug applies in reverse.
+        A step input referenced through ``o.*`` reads null at run time, so the
+        guard should be symmetric and suggest the ``i.<name>`` spelling.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        input_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="panel_area",
+            direction="input",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "severity": Severity.ERROR,
+                "cel_expression": "o.panel_area > 0",
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        joined = " ".join(str(e) for e in form.errors.get("cel_expression", []))
+        self.assertIn("i.panel_area", joined)
+        self.assertIn("step input", joined.lower())
+
+    def test_cel_allows_output_prefix_on_known_step_output(self):
+        """``o.<output>`` (the correct spelling) validates cleanly.
+
+        This is the positive control for the wrong-stage guard: a SHACL
+        output referenced via ``o.*`` must pass, proving the guard fires on
+        the wrong namespace only — never on the correct one.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.SHACL,
+            is_system=False,
+        )
+        output_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="namespaces_present",
+            direction="output",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[output_sig],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "severity": Severity.ERROR,
+                "cel_expression": (
+                    'o.namespaces_present.all(ns, ns in ["http://onuma.com/schema#"])'
+                ),
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_cel_wrong_stage_guard_skips_name_that_is_also_workflow_signal(self):
+        """A name that is also a workflow signal is exempt from the guard.
+
+        Why it matters: the guard must only fire for names that are
+        *exclusively* a step output (or input). If the same name is also a
+        workflow signal — a promoted upstream value — then it legitimately
+        resolves through s.* at run time, so the author has not made the
+        wrong-stage mistake and the save must be allowed. This mirrors the
+        collision exception already in the s.<input> guard.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.SHACL,
+            is_system=False,
+        )
+        output_sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="namespaces_present",
+            direction="output",
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[output_sig],
+            workflow_signal_names={"namespaces_present"},
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "severity": Severity.ERROR,
+                "cel_expression": "i.namespaces_present == true",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)

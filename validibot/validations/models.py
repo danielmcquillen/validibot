@@ -516,8 +516,18 @@ class RulesetAssertion(TimeStampedModel):
         help_text=_("Reference to a signal definition when targeting a known signal."),
     )
 
-    target_data_path = models.CharField(
-        max_length=255,
+    # A TextField, not a bounded CharField, on purpose. Besides custom
+    # JSON-style paths (which are short), this column is reused as the
+    # display source for CEL assertions: ``target_display`` returns it for
+    # AssertionType.CEL_EXPRESSION, and the form stores the whole expression
+    # here. CEL expressions are validated up to ``_MAX_CEL_EXPRESSION_LEN``
+    # (4096 chars) at the form layer, so a 255-char cap here would reject a
+    # perfectly valid expression at ``full_clean`` time — and, because the
+    # target field is hidden for CEL assertions in the UI, the error would
+    # land on an invisible field. Matching the column to the form's contract
+    # removes that whole failure mode. (Evaluation and the edit form read the
+    # canonical expression from ``rhs["expr"]``, never from here.)
+    target_data_path = models.TextField(
         blank=True,
         default="",
         help_text=_(

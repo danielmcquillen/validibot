@@ -18,7 +18,44 @@
   </div>
   <div class="modal-body">
     {% csrf_token %}
-    {% include "core/partial/_form_errors_summary.html" %}
+    {% comment %}
+      Assertion-specific error summary (lists messages, not just a heading).
+
+      The generic banner (core/partial/_form_errors_summary.html) is
+      heading-only — it relies on crispy rendering each field error next to
+      its field. That assumption breaks here: this modal has several
+      conditional field groups (BASIC operator fields, CEL expression, SHACL
+      query, target path) that JavaScript shows/hides by Assertion Type. When
+      an error lands on a field in a hidden group (e.g. a model-level error on
+      the hidden target field for a CEL assertion), crispy still renders it —
+      into an invisible element — so the user sees "something is wrong" with no
+      detail. Listing every error (non-field + per-field, with the field label)
+      here guarantees the message is always visible regardless of which group
+      is active. Crispy still renders inline errors for visible fields, so a
+      visible-field error can appear both here and beside the field — a
+      deliberate, minor redundancy in exchange for never hiding an error.
+    {% endcomment %}
+    {% if form.errors %}
+      <div class="alert alert-danger" role="alert" aria-live="assertive">
+        <h2 class="h6">
+          {% trans "We found a few issues:" %}
+        </h2>
+        <ul class="mb-0 ps-3">
+          {% for error in form.non_field_errors %}
+            <li>
+              {{ error }}
+            </li>
+          {% endfor %}
+          {% for field in form %}
+            {% for error in field.errors %}
+              <li>
+                {{ error }}
+              </li>
+            {% endfor %}
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
     {% crispy form %}
     <datalist id="{{ target_slug_datalist_id }}">
       {% for value, label in catalog_choices %}

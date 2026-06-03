@@ -60,10 +60,10 @@ selected_roles (list of {code,label}), search_value, role_codes.
     </p>
   {% else %}
     {# No account yet: confirm an email-to-sign-up invitation. #}
-    <div class="alert alert-info d-flex align-items-start gap-2" role="alert">
-      <i class="bi-info-circle mt-1 me-1"></i>
+    <div class="alert alert-info d-flex align-items-end" role="alert">
+      <i class="bi-info-circle mt-1 me-2"></i>
       {% blocktrans with email=invitee_email %}
-          <strong>{{ email }}</strong> does not currently have a Validibot account.
+          <strong>{{ email }}</strong>&nbsp;does not currently have a Validibot account.
       {% endblocktrans %}
     </div>
     <p class="mb-2">

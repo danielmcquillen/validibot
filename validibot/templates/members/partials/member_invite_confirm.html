@@ -61,12 +61,10 @@ selected_roles (list of {code,label}), search_value, role_codes.
   {% else %}
     {# No account yet: confirm an email-to-sign-up invitation. #}
     <div class="alert alert-info d-flex align-items-start gap-2" role="alert">
-      <i class="bi-info-circle mt-1"></i>
-      <div>
-        {% blocktrans with email=invitee_email %}
+      <i class="bi-info-circle mt-1 me-1"></i>
+      {% blocktrans with email=invitee_email %}
           <strong>{{ email }}</strong> does not currently have a Validibot account.
-        {% endblocktrans %}
-      </div>
+      {% endblocktrans %}
     </div>
     <p class="mb-2">
       {% blocktrans with email=invitee_email org=organization.name %}
@@ -95,9 +93,9 @@ selected_roles (list of {code,label}), search_value, role_codes.
           data-bs-dismiss="modal">
     {% trans "Cancel" %}
   </button>
-  {# The only path that actually creates the invite. Hidden fields echo
+  {% comment %} The only path that actually creates the invite. Hidden fields echo
      the validated selection so InviteCreateView re-binds the same form
-     without the admin re-entering anything. #}
+  without the admin re-entering anything. {% endcomment %}
   <form method="post"
         action="{% org_url 'members:invite_create' %}"
         hx-post="{% org_url 'members:invite_create' %}"

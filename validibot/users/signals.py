@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 from contextvars import ContextVar
 
 from django.conf import settings
 from django.contrib.auth.models import Group
+from django.contrib.auth.signals import user_logged_in
 from django.db import transaction
 from django.db.models.signals import m2m_changed
 from django.db.models.signals import post_save
@@ -12,6 +14,8 @@ from django.dispatch import receiver
 
 from validibot.users.models import User
 from validibot.users.models import ensure_personal_workspace
+
+logger = logging.getLogger(__name__)
 
 # Flag set during invite-driven user creation so the post_save
 # signals below skip the auto-personal-workspace and auto-BASIC
@@ -202,3 +206,52 @@ def audit_user_group_changes(sender, instance, action, pk_set, **kwargs):
             "group_names": group_names,
         },
     )
+
+
+@receiver(user_logged_in)
+def claim_member_invites_on_login(sender, request, user, **kwargs):
+    """Rescue stranded email-only member invites when their invitee logs in.
+
+    The session-token signup flow (:class:`~validibot.users.adapters.AccountAdapter`)
+    only redeems a member invite when the invitee clicked the emailed link and
+    signed up in the *same* browser. A user who signed up another way, or who
+    already had an account when invited by email, leaves the invite stuck
+    ``PENDING`` with no in-app way to find it.
+
+    Login is the trustworthy moment to fix that: the email is the
+    authenticated account's. We bind any such invites to the user and surface
+    them in-app for an explicit Accept/Decline — see
+    :func:`~validibot.members.views.claim_pending_member_invites_for_user`. We
+    never auto-accept.
+
+    Login must never fail because of this side effect, so any error is logged
+    and swallowed rather than propagated.
+    """
+    # Local import: members.views imports from users, so importing it at module
+    # load would risk a cycle. The adapter redeems invites the same lazy way.
+    from validibot.members.views import claim_pending_member_invites_for_user
+
+    try:
+        claimed = claim_pending_member_invites_for_user(user)
+    except Exception:
+        logger.exception(
+            "Failed to claim pending member invites on login for user %s",
+            getattr(user, "pk", None),
+        )
+        return
+
+    # Surface a heads-up. Guard on the messages middleware so programmatic
+    # logins (tests, API token exchange) without a message store don't error.
+    if claimed and request is not None and hasattr(request, "_messages"):
+        from django.contrib import messages
+        from django.utils.translation import gettext
+
+        orgs = ", ".join(sorted({invite.org.name for invite in claimed}))
+        messages.info(
+            request,
+            gettext(
+                "You have a pending invitation to join %(orgs)s. "
+                "Open your notifications to accept it.",
+            )
+            % {"orgs": orgs},
+        )

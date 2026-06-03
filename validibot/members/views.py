@@ -113,6 +113,66 @@ def finalize_member_invite_accept(invite: MemberInvite, user: User) -> Membershi
     return membership
 
 
+def claim_pending_member_invites_for_user(user: User) -> list[MemberInvite]:
+    """Bind and surface pending, email-only member invites for *user*.
+
+    Member-invite acceptance normally rides on a browser-session token: the
+    invitee clicks the emailed link (which stashes the token) and signs up in
+    the *same* browser, where
+    :class:`~validibot.users.adapters.AccountAdapter` redeems it. A user who
+    obtains an account any other way — signing up directly without the link,
+    or *already* having an account when invited by email — never carries that
+    token, so the invite is stranded ``PENDING`` with ``invitee_user`` unset
+    and the invitee has no in-app way to see it.
+
+    Called at login (see ``validibot.users.signals``), this rescues those
+    orphaned invites: for every ``PENDING``, non-expired invite addressed to
+    ``user.email`` (case-insensitive) that is not yet bound to an account, it
+    binds ``invitee_user`` and creates the *same* ``MEMBER_INVITE``
+    notification a user-targeted invite would have received at creation time
+    (see :class:`InviteCreateView`). The existing notification UI then offers
+    one-click Accept/Decline.
+
+    It deliberately does **not** auto-accept — joining an organization stays
+    an explicit choice — and it is idempotent: only invites with no
+    ``invitee_user`` are claimed, so repeat logins are no-ops.
+
+    Args:
+        user: The freshly-authenticated account.
+
+    Returns:
+        The invites newly claimed in this call (for surfacing a message).
+    """
+    email = (user.email or "").strip()
+    if not email:
+        return []
+
+    invites = list(
+        MemberInvite.objects.select_related("org", "inviter").filter(
+            invitee_user__isnull=True,
+            invitee_email__iexact=email,
+            status=MemberInvite.InviteStatus.PENDING,
+            expires_at__gt=timezone.now(),
+        ),
+    )
+
+    claimed: list[MemberInvite] = []
+    for invite in invites:
+        invite.invitee_user = user
+        invite.save(update_fields=["invitee_user", "modified"])
+        # Mirror InviteCreateView's user-targeted notification so the invite
+        # appears in the invitee's notification bell with Accept/Decline.
+        Notification.objects.create(
+            user=user,
+            org=invite.org,
+            type=Notification.Type.MEMBER_INVITE,
+            member_invite=invite,
+            payload={"roles": invite.roles, "inviter": invite.inviter_id},
+        )
+        claimed.append(invite)
+    return claimed
+
+
 class MemberListView(
     FeatureRequiredMixin,
     OrganizationAdminRequiredMixin,

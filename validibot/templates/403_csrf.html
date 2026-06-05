@@ -3,7 +3,7 @@
 {% load i18n static %}
 
 {% block title %}
-  {% trans "Server Error" %}
+  {% trans "Forbidden" %}
 {% endblock title %}
 {% block meta_description %}
   {% blocktrans %}
@@ -14,42 +14,23 @@
   container py-5 py-lg-5 flex-grow-1 d-flex align-items-center
 {% endblock mainclass %}
 {% block content %}
-  <style>
-    .robot-403 {
-      max-width: 400px;
-      width: 100%;
-      height: auto;
-    }
-
-    @media (min-width: 992px) {
-      .robot-403 {
-        max-width: 500px;
-      }
-    }
-
-    .message-403 {
-      font-family: "Space Grotesk", Arial, sans-serif;
-      margin: 2rem 0 2rem;
-      font-size: 2rem;
-    }
-  </style>
   <div class="d-flex flex-column align-items-center text-center">
-    <div class="message-403">
-      {% blocktrans %}
-         ERROR 403. Forbidden.
-      {% endblocktrans %}
+    <div class="error-message">
+      {% trans "ERROR 403. Forbidden." %}
     </div>
     <figure class="text-center">
       <img src="{% static 'images/robot_scene_403.png' %}"
-           alt="{% trans 'Validibot robot dealing with a big issue.' %}"
-           class="img-fluid mx-auto rounded-4 shadow-sm w-100 robot-403" />
+           alt="{% trans 'Validibot robot standing beside a no-entry door.' %}"
+           class="img-fluid mx-auto rounded-4 shadow-sm error-robot"
+           width="1536"
+           height="1024" />
     </figure>
     <div class="mt-4">
       <h3>
-        Access forbidden.
+        {% trans "Access forbidden." %}
       </h3>
       <p>
-        Sorry, you're not allowed to access this page.
+        {% trans "Sorry, you're not allowed to access this page." %}
       </p>
     </div>
   </div>

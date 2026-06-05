@@ -1,4 +1,4 @@
-// Standalone error page styles (404, 500).
+// Standalone/shared error page styles (403, 404, 500).
 //
 // Error pages do not extend core/base.html — they render even if the main
 // layout's context processors or middleware are partially broken. Keeping

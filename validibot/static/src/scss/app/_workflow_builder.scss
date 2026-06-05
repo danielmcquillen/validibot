@@ -41,7 +41,9 @@
   gap: 0;
   .workflow-step-arrow {
     width: 2px;
-    height: 1.5rem;
+    // Matches the assertion-editor connector (0.67rem) so the workflow editor
+    // and the step editor space their items identically.
+    height: 0.67rem;
     border-left: 2px dotted rgba(var(--bs-primary-rgb), 0.45);
   }
 }
@@ -67,7 +69,8 @@
 
 .workflow-step-dotted-line {
   width: 2px;
-  height: 1.5rem;
+  // Matches the assertion editor's connector (0.67rem) for identical spacing.
+  height: 0.67rem;
   border-left: 2px dotted rgba(var(--bs-primary-rgb), 0.45);
 }
 

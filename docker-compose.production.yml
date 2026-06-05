@@ -56,6 +56,19 @@ services:
         VALIDIBOT_PRIVATE_INDEX_URL: ${VALIDIBOT_PRIVATE_INDEX_URL:-}
         VALIDIBOT_VERSION: ${VALIDIBOT_VERSION:-}
         VALIDIBOT_REVISION: ${VALIDIBOT_REVISION:-}
+        # Always install the docker-runner extra (docker==7.1.0) for the
+        # self-hosted stack. This service hard-pins VALIDATOR_RUNNER=docker
+        # below, so the worker dispatches advanced validators (EnergyPlus,
+        # FMU, SHACL) through the mounted Docker socket and needs the docker
+        # SDK. Without it DockerValidatorRunner.is_available() returns False
+        # and every advanced validator reports "Validation backend is not
+        # available." (mirrors compose/local/django/Dockerfile.) docker-runner
+        # is prepended so any operator-supplied EXTRA_UV_EXTRAS is appended,
+        # not overwritten. The space-separated list is expanded into repeated
+        # --extra flags by compose/production/django/Dockerfile. GCP builds use
+        # a different path (just gcp) and the cloud-run runner, so they are
+        # unaffected by this and correctly omit docker-runner.
+        EXTRA_UV_EXTRAS: docker-runner ${EXTRA_UV_EXTRAS:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -20,7 +20,7 @@ Context variables (passed via ``{% include ... with %}``):
            card leaves it falsy.
 {% endcomment %}
 {% if not bare %}
-  <div class="card app-card validation-info-card">
+  <div class="card app-card validation-info-card run-summary-card">
     <div class="card-header border-bottom-0">
       <div class="card-title">
         {% trans "Run Summary" %}
@@ -64,28 +64,6 @@ Context variables (passed via ``{% include ... with %}``):
             </dd>
           </dl>
         </section>
-        {% if run.submission and run.submission.name or run.short_description %}
-          <section>
-            <dl class="row small">
-              {% if run.submission and run.submission.name %}
-                <dt class="col-5 col-lg-4">
-                  {% trans "Submission name" %}
-                </dt>
-                <dd class="col-7 col-lg-8 text-break">
-                  {{ run.submission.name }}
-                </dd>
-              {% endif %}
-              {% if run.short_description %}
-                <dt class="col-5 col-lg-4">
-                  {% trans "Short description" %}
-                </dt>
-                <dd class="col-7 col-lg-8">
-                  {{ run.short_description }}
-                </dd>
-              {% endif %}
-            </dl>
-          </section>
-        {% endif %}
         {% with summary_record=run.summary_record %}
           {% if summary_record %}
             <section>
@@ -121,6 +99,28 @@ Context variables (passed via ``{% include ... with %}``):
         {% if split %}
         </div>
         <div class="col-12 col-md-6">
+        {% endif %}
+        {% if run.submission and run.submission.name or run.short_description %}
+          <section>
+            <dl class="row small">
+              {% if run.submission and run.submission.name %}
+                <dt class="col-5 col-lg-4">
+                  {% trans "Submission name" %}
+                </dt>
+                <dd class="col-7 col-lg-8 text-break">
+                  {{ run.submission.name }}
+                </dd>
+              {% endif %}
+              {% if run.short_description %}
+                <dt class="col-5 col-lg-4">
+                  {% trans "Short description" %}
+                </dt>
+                <dd class="col-7 col-lg-8">
+                  {{ run.short_description }}
+                </dd>
+              {% endif %}
+            </dl>
+          </section>
         {% endif %}
         <section>
           <dl class="row small">

@@ -248,14 +248,29 @@ Here is a quick reference for how to access data in CEL expressions:
 | `i.name` | `input.name` | This step's step inputs (parsed facts, resolved bindings) |
 | `o.name` | `output.name` | This step's step outputs (after the validator runs) |
 | `steps.step_key.input.name` / `steps.step_key.output.name` | | An earlier step's step inputs and outputs |
+| `submission.field` / `submission.metadata.key` | | The submission envelope — submitter metadata and server facts, any file type |
 
 **Which namespaces are populated depends on the validator type:**
 
-| Validator type | `p.*` | `s.*` | `i.*` | `o.*` |
-|---|---|---|---|---|
-| JSON Schema, XML Schema, Basic | ✅ primary | ✅ if defined | ❌ empty | ❌ empty |
-| SHACL, THERM | ✅ available | ✅ if defined | ❌ empty | ✅ primary |
-| EnergyPlus, FMU | ❌ payload is opaque | ✅ if defined | ✅ primary at input stage | ✅ primary at output stage |
+| Validator type | `p.*` | `s.*` | `i.*` | `o.*` | `submission.*` |
+|---|---|---|---|---|---|
+| JSON Schema, XML Schema, Basic | ✅ primary | ✅ if defined | ❌ empty | ❌ empty | ✅ always |
+| SHACL, THERM | ✅ available | ✅ if defined | ❌ empty | ✅ primary | ✅ always |
+| EnergyPlus, FMU | ❌ payload is opaque | ✅ if defined | ✅ primary at input stage | ✅ primary at output stage | ✅ always |
+| Tabular | dataset facts via `i.*` | ✅ if defined | ✅ dataset-level | ✅ dataset-level | ✅ always (except the per-row `row.*` lane) |
+
+`submission.*` is the one namespace populated for **every** validator regardless
+of file format — it carries metadata and server facts that live beside the
+file, so it works even for non-JSON submissions (RDF `.ttl`, CSV) where `p.*`
+is opaque. `s.*` is likewise available everywhere when signals are defined. The
+only place `submission.*` is not bound is the Tabular per-row `row.*` loop,
+which is intentionally limited to `row`/`s`/`i` for performance.
+
+These prefixes apply to **BASIC and CEL** assertions. SHACL's **SPARQL-ASK**
+assertions are a separate type — a raw SPARQL query run in the container against
+the RDF `shacl.data`/`shacl.report` graphs — and do **not** use the namespace
+prefixes at all (the submission envelope is not in the graph). To gate a SHACL
+workflow on submission metadata, use a CEL assertion, not a SPARQL one.
 
 ---
 

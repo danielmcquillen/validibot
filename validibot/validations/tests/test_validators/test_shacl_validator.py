@@ -369,3 +369,75 @@ class TestMixedAssertionPartition:
             i.code in {"shacl.sparql_ask_failed", "shacl.sparql_ask_engine_error"}
             for i in result.issues
         )
+
+    def test_submission_namespace_resolves_for_shacl_ttl(self):
+        """submission.* resolves for a real SHACL validator on a NON-JSON (.ttl).
+
+        This is the ADR-2026-06-03b headline requirement: the envelope namespace
+        must carry a per-submission gate value precisely where ``s.*``/``p.*``
+        cannot — an RDF Turtle submission that is not JSON. We use an
+        OUTPUT-stage CEL assertion (it reads ``o.*`` so it runs in
+        ``post_execute_validate``) that ALSO reads ``submission.metadata``,
+        proving the envelope is available to a real container-backed validator's
+        post-run assertion evaluation. The metadata says "handover" and the
+        graph conforms, so the combined gate passes; flipping either side would
+        fail it.
+        """
+        from validibot.actions.protocols import RunContext
+        from validibot.submissions.constants import SubmissionFileType
+        from validibot.submissions.tests.factories import SubmissionFactory
+        from validibot.validations.constants import RulesetType
+        from validibot.validations.tests.factories import RulesetAssertionFactory
+        from validibot.validations.tests.factories import RulesetFactory
+        from validibot.validations.tests.factories import ValidationRunFactory
+        from validibot.validations.tests.factories import ValidatorFactory
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        ruleset = RulesetFactory(ruleset_type=RulesetType.SHACL, rules_text="# shapes")
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            rhs={
+                "expr": (
+                    'submission.metadata.deliverable == "handover" '
+                    "&& o.shacl_violation_count == 0"
+                ),
+            },
+            severity=Severity.ERROR,
+        )
+
+        validator = ValidatorFactory(
+            validation_type=ValidationType.SHACL,
+            is_system=False,
+        )
+        # A Turtle (.ttl) submission — NOT JSON — carrying submitter metadata.
+        submission = SubmissionFactory(
+            content="@prefix ex: <http://example.org/> . ex:a a ex:Thing .",
+            file_type=SubmissionFileType.TEXT,
+            metadata={"deliverable": "handover"},
+        )
+        step = WorkflowStepFactory(validator=validator, ruleset=ruleset)
+        run = ValidationRunFactory(workflow=step.workflow, submission=submission)
+        run_context = RunContext(
+            validation_run=run,
+            step=step,
+            downstream_signals={},
+        )
+
+        envelope = _envelope(
+            status=ValidationStatus.SUCCESS,
+            outputs=_outputs(
+                shacl_violation_count=0,
+                assertion_total=0,
+                assertion_failures=0,
+            ),
+        )
+
+        result = SHACLValidator().post_execute_validate(envelope, run_context)
+
+        # The submission+output CEL gate was evaluated against the real RDF run
+        # and passed — submission.metadata read "handover" and the graph
+        # conformed, so no ERROR finding is produced.
+        assert result.passed is True
+        assert not any(issue.severity == Severity.ERROR for issue in result.issues)

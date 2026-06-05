@@ -472,6 +472,94 @@ class TestChainedBrackets:
         assert val == "b"
 
 
+class TestStringKeyedBrackets:
+    """Tests for string-keyed bracket notation like ``m["a-b"]``.
+
+    Added for the ``submission.`` namespace (ADR-2026-06-03b): free-form
+    metadata keys are frequently NOT valid identifiers — ``"deliverable-type"``
+    (hyphen), ``"phase 2"`` (space), ``"schema.version"`` (dot) — so they
+    cannot be reached by dot notation in CEL and must use bracket notation.
+    celpy supports ``m["key"]`` natively; the shared resolver must match it so
+    basic assertions can address exactly the same metadata keys as CEL. These
+    cases were previously *not-found* because every bracket segment was coerced
+    with ``int()``.
+    """
+
+    def test_hyphenated_key(self, resolve):
+        """A hyphenated key resolves via double-quoted brackets."""
+        data = {"metadata": {"deliverable-type": "handover"}}
+        val, found = resolve(data, 'metadata["deliverable-type"]')
+        assert found is True
+        assert val == "handover"
+
+    def test_space_key_single_quoted(self, resolve):
+        """A key containing a space resolves via single-quoted brackets."""
+        data = {"metadata": {"phase 2": "wip"}}
+        val, found = resolve(data, "metadata['phase 2']")
+        assert found is True
+        assert val == "wip"
+
+    def test_dotted_key_is_not_split(self, resolve):
+        """A quoted key containing a dot is NOT split into path segments.
+
+        This is the case a naive ``str.split(".")`` got wrong — the
+        bracket/quote-aware tokenizer keeps ``"schema.version"`` whole.
+        """
+        data = {"metadata": {"schema.version": "1.0"}}
+        val, found = resolve(data, 'metadata["schema.version"]')
+        assert found is True
+        assert val == "1.0"
+
+    def test_nested_then_string_key(self, resolve):
+        """A string-keyed bracket composes after dotted traversal.
+
+        This mirrors the real ``submission.metadata["deliverable-type"]``
+        shape: walk two dict keys, then a string-keyed bracket.
+        """
+        data = {"submission": {"metadata": {"deliverable-type": "handover"}}}
+        val, found = resolve(data, 'submission.metadata["deliverable-type"]')
+        assert found is True
+        assert val == "handover"
+
+    def test_missing_string_key_returns_not_found(self, resolve):
+        """A string key that is absent resolves to not-found, never raising."""
+        data = {"metadata": {"present": 1}}
+        val, found = resolve(data, 'metadata["absent"]')
+        assert found is False
+        assert val is None
+
+    def test_string_key_on_non_dict_returns_not_found(self, resolve):
+        """A string-keyed bracket applied to a non-dict is not-found.
+
+        ``["x"]`` only makes sense against a mapping; applying it to a list
+        must fail cleanly rather than coercing or raising.
+        """
+        data = {"items": [1, 2, 3]}
+        val, found = resolve(data, 'items["x"]')
+        assert found is False
+
+    def test_integer_index_still_works_alongside(self, resolve):
+        """Integer indices remain unaffected by string-key support.
+
+        Regression guard: the int path and the string-key path coexist in the
+        same bracket loop, so a numeric index must still resolve.
+        """
+        data = {"items": [{"id": 1}, {"id": 2}]}
+        val, found = resolve(data, "items[1].id")
+        assert found is True
+        assert val == 2  # noqa: PLR2004
+
+    def test_unquoted_non_integer_bracket_still_rejected(self, resolve):
+        """A bare (unquoted) non-integer bracket key is still not-found.
+
+        Only QUOTED string keys are dict lookups; ``[abc]`` without quotes is
+        neither a valid index nor a quoted key, preserving the prior contract.
+        """
+        data = {"metadata": {"abc": 1}}
+        val, found = resolve(data, "metadata[abc]")
+        assert found is False
+
+
 # ===================================================================
 # Realistic scenario tests
 # ===================================================================

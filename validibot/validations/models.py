@@ -7,6 +7,7 @@ import uuid
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxLengthValidator
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
@@ -16,6 +17,7 @@ from model_utils.models import TimeStampedModel
 from slugify import slugify
 
 from validibot.core.models import CallbackReceiptStatus
+from validibot.core.textsafety import sanitize_plain_text
 from validibot.projects.models import Project
 from validibot.submissions.constants import OutputRetention
 from validibot.submissions.constants import SubmissionDataFormat
@@ -24,6 +26,8 @@ from validibot.submissions.constants import data_format_allowed_file_types
 from validibot.submissions.models import Submission
 from validibot.users.models import Organization
 from validibot.users.models import User
+from validibot.validations.constants import RULESET_ASSERTION_NOTES_MAX_LENGTH
+from validibot.validations.constants import VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import BindingSourceScope
@@ -56,9 +60,19 @@ _INPUT_NAMESPACE_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_])(?:i|input)\.[A-Za-z_]",
 )
 
+# Same shape as the input pattern, for the output (o./output.) and submission
+# namespaces. The negative-lookbehind keeps ``info.x`` / ``ratio.x`` /
+# ``my_submission.x`` from false-matching — only a true namespace root counts.
+_OUTPUT_NAMESPACE_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_])(?:o|output)\.[A-Za-z_]",
+)
+_SUBMISSION_NAMESPACE_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_])submission\.[A-Za-z_]",
+)
+
 
 def _expr_references_input_namespace(expr: str) -> bool:
-    """Heuristic: does this CEL expression reference i.* or input.*?
+    """Heuristic: does this CEL expression reference i.* or input.?
 
     Used by ``RulesetAssertion.resolved_run_stage`` to classify CEL
     expressions stored in ``rhs["expr"]``. An expression that mentions
@@ -79,6 +93,27 @@ def _expr_references_input_namespace(expr: str) -> bool:
     ``my.input.x``) — only true namespace prefixes count.
     """
     return bool(_INPUT_NAMESPACE_PATTERN.search(expr or ""))
+
+
+def _expr_references_output_namespace(expr: str) -> bool:
+    """Heuristic: does this text reference o.* or output.*?
+
+    Used to keep a ``submission.*`` assertion OUTPUT-stage when it also
+    needs output values (which only exist after the validator runs). See
+    ``RulesetAssertion.resolved_run_stage``.
+    """
+    return bool(_OUTPUT_NAMESPACE_PATTERN.search(expr or ""))
+
+
+def _expr_references_submission_namespace(expr: str) -> bool:
+    """Heuristic: does this text reference the submission.* namespace?
+
+    The submission envelope (ADR-2026-06-03b) is fixed at submission time, so
+    an assertion that reads it can be evaluated as an early INPUT-stage gate —
+    unless it ALSO reads ``o.*``/``output.*``. See
+    ``RulesetAssertion.resolved_run_stage``.
+    """
+    return bool(_SUBMISSION_NAMESPACE_PATTERN.search(expr or ""))
 
 
 def get_allowed_extensions_for_workflow(workflow) -> set[str]:
@@ -484,6 +519,14 @@ class RulesetAssertion(TimeStampedModel):
     ``message_template`` is rendered when the assertion *fails*;
     ``success_message`` when it *passes*.  Both support template variables
     from the evaluation context.
+
+    Documentation:
+
+    ``notes`` is a free-form, author-facing record of the rationale behind
+    the assertion (which standard it enforces, why a threshold was chosen).
+    Unlike the message templates it is never shown to data submitters; it
+    travels with the assertion through export/import, version cloning, and
+    the read API so the reasoning is preserved alongside the rule.
     """
 
     ruleset = models.ForeignKey(
@@ -576,6 +619,30 @@ class RulesetAssertion(TimeStampedModel):
         help_text=_("Message rendered when the assertion passes."),
     )
 
+    # Author-facing rationale, not an end-user message. ``message_template`` and
+    # ``success_message`` are shown to people submitting data; ``notes`` records
+    # *why* the author wrote the assertion (the standard it enforces, the edge
+    # case it guards) for whoever maintains the workflow later. Like the message
+    # templates it is non-semantic — editing it never changes what the assertion
+    # checks — so it stays off ``IMMUTABLE_ASSERTION_FIELDS`` and remains editable
+    # on a locked ruleset.
+    notes = models.TextField(
+        blank=True,
+        default="",
+        help_text=_(
+            "Internal notes on the rationale behind this assertion. "
+            "Not shown to data submitters.",
+        ),
+        # Bounds the storage/DoS surface of a free-text field. A ``TextField``
+        # does NOT add a length validator from ``max_length`` (unlike
+        # ``CharField``), so the explicit ``MaxLengthValidator`` is what actually
+        # enforces the cap during ``full_clean()`` — covering every write path
+        # (assertion form, mutation service, AND VAF import). ``max_length`` is
+        # kept so the cap is declared on the field and inherited by form fields.
+        max_length=RULESET_ASSERTION_NOTES_MAX_LENGTH,
+        validators=[MaxLengthValidator(RULESET_ASSERTION_NOTES_MAX_LENGTH)],
+    )
+
     cel_cache = models.TextField(
         blank=True,
         default="",
@@ -626,6 +693,11 @@ class RulesetAssertion(TimeStampedModel):
         - **Signal-definition target** → direction (INPUT or OUTPUT)
         - **Path target starting with ``p.``, ``payload.``, ``s.``,
           ``signal.``, ``i.``, ``input.``** → INPUT
+        - **``submission.*`` (basic target or CEL expression)** → INPUT,
+          UNLESS it also references ``o.*``/``output.*`` — the envelope is
+          knowable before the run, so a submission-only rule is an early
+          gate, but one that also reads outputs genuinely needs results
+          (ADR-2026-06-03b)
         - **CEL expression that explicitly references ``i.*`` or
           ``input.*``** → INPUT (opt-in reclassification — the only
           case where we override the legacy output-stage default for
@@ -645,6 +717,25 @@ class RulesetAssertion(TimeStampedModel):
             ("s.", "signal.", "p.", "payload.", "i.", "input."),
         ):
             return CatalogRunStage.INPUT
+
+        # submission.* (ADR-2026-06-03b): the envelope is fixed at submission
+        # time, so an assertion that reads it is an INPUT-stage gate — UNLESS
+        # it also needs output values (o.*/output.*), which exist only after
+        # the run. The text to inspect is the CEL expression (rhs["expr"]) for
+        # a CEL assertion, otherwise the basic target path. A basic submission
+        # target is a clean path that never mentions o.*, so it classifies
+        # INPUT; a CEL ``submission.x == o.y`` correctly stays OUTPUT. This
+        # block only fires when submission.* is actually referenced, so it has
+        # no effect on any pre-existing assertion.
+        is_cel = self.assertion_type == AssertionType.CEL_EXPRESSION
+        cel_expr = ((self.rhs or {}).get("expr") or "").strip() if is_cel else ""
+        submission_text = cel_expr or path
+        if (
+            submission_text.startswith("submission.")
+            or _expr_references_submission_namespace(submission_text)
+        ) and not _expr_references_output_namespace(submission_text):
+            return CatalogRunStage.INPUT
+
         # CEL expressions store their expression in rhs["expr"]. Only
         # reclassify as INPUT when the expression explicitly references
         # i./input. — this is the opt-in path that makes
@@ -652,14 +743,23 @@ class RulesetAssertion(TimeStampedModel):
         # silently reclassifying any pre-existing CEL assertion that
         # happens to reference only s.* (which was always output-stage
         # by default).
-        if self.assertion_type == AssertionType.CEL_EXPRESSION:
-            expr = ((self.rhs or {}).get("expr") or "").strip()
-            if expr and _expr_references_input_namespace(expr):
-                return CatalogRunStage.INPUT
+        if cel_expr and _expr_references_input_namespace(cel_expr):
+            return CatalogRunStage.INPUT
         return CatalogRunStage.OUTPUT
 
     def clean(self):
         super().clean()
+
+        # Notes are author-entered free text. They are stored verbatim and made
+        # safe at render time by output escaping (template autoescaping / JSON),
+        # so we do NOT strip markup here — doing so would mangle the comparison
+        # and generic syntax notes are full of (e.g. "value <max>", "List<int>").
+        # We only strip control characters / NUL (which can fail a Postgres text
+        # insert) and normalize whitespace. Done in clean() rather than the form
+        # so it covers every write path that runs full_clean(): the assertion
+        # form/mutation service AND VAF import.
+        self.notes = sanitize_plain_text(self.notes)
+
         signal_set = bool(self.target_signal_definition_id)
         path_set = bool((self.target_data_path or "").strip())
         if signal_set and path_set:
@@ -772,6 +872,13 @@ class RulesetAssertion(TimeStampedModel):
         if self.assertion_type == AssertionType.SHACL:
             description = (self.rhs or {}).get("description") or ""
             return description or _("SPARQL ASK")
+        if self.assertion_type == AssertionType.CEL_EXPRESSION:
+            # When the author gave the expression a description, show that on
+            # the assertion card instead of the raw CEL (the expression itself
+            # is stored in ``target_data_path`` and falls through below as the
+            # default). Mirrors the SHACL description above.
+            description = (self.rhs or {}).get("description") or ""
+            return description or self.target_data_path
         if self.target_signal_definition_id and self.target_signal_definition:
             sig = self.target_signal_definition
             # Per ADR-2026-05-22: INPUT-direction targets live in i.*,
@@ -2484,7 +2591,7 @@ class ValidationRun(TimeStampedModel):
     )
 
     short_description = models.CharField(
-        max_length=255,
+        max_length=VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH,
         blank=True,
         default="",
         help_text=_("Optional short description of this validation run."),

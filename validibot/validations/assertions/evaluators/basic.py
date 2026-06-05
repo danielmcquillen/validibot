@@ -64,7 +64,14 @@ class BasicAssertionEvaluator:
             List of ValidationIssue objects (empty if passed without success message).
         """
         path = self._assertion_path(assertion)
-        actual, found = self._resolve_path(payload, path)
+        # Resolve against the namespace-enriched payload so BASIC targets like
+        # ``submission.metadata.deliverable`` and ``s.target_eui`` work for
+        # EVERY validator — including JSON Schema, XML Schema and the Tabular
+        # generic lane, which hand the evaluator a raw/empty payload. The
+        # enrichment is cached per stage and is idempotent for validators that
+        # already enriched before dispatch. See AssertionContext.get_enriched_payload.
+        enriched_payload = context.get_enriched_payload(payload)
+        actual, found = self._resolve_path(enriched_payload, path)
         options = assertion.options or {}
 
         if not found and not options.get("treat_missing_as_null"):

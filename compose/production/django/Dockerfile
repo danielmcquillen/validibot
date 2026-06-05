@@ -53,10 +53,13 @@ ARG APP_HOME=/app
 ARG VALIDIBOT_COMMERCIAL_PACKAGE=""
 ARG VALIDIBOT_PRIVATE_INDEX_URL=""
 
-# Extra uv extras passed through to ``uv sync`` (comma-separated, or
+# Extra uv extras passed through to ``uv sync`` (space-separated, or
 # empty). Used by cloud/enterprise builds to pull in provider-specific
-# dependency groups (e.g. ``cloud`` enables the Stripe extra).
-# Self-hosters leave this blank.
+# dependency groups (e.g. ``cloud`` enables the Stripe extra), and by the
+# self-hosted compose file (docker-compose.production.yml), which injects
+# ``docker-runner`` so the worker can dispatch advanced validators through
+# the mounted Docker socket. GCP builds (just gcp) use the cloud-run runner
+# and omit ``docker-runner``.
 ARG EXTRA_UV_EXTRAS=""
 
 # Optional overlay packages are read from the ``extras`` named context

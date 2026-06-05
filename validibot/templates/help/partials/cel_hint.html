@@ -17,9 +17,12 @@
     <li>
       <code class="target-signal-name">p.thermostat[3].setpoint</code> &lt; 78
     </li>
+    <li>
+      <code class="target-signal-name">submission.metadata.deliverable</code> == "handover"
+    </li>
   </ul>
   <p class="mb-1">
-    <strong>{% trans 'Namespace prefixes:' %}</strong> {% trans 'Use' %} <code>p.</code> {% trans 'for payload (raw submission data) and' %} <code>s.</code> {% trans 'for signals (author-defined named values).' %}
+    <strong>{% trans 'Namespace prefixes:' %}</strong> {% trans 'Use' %} <code>p.</code> {% trans 'for payload (raw submission data),' %} <code>s.</code> {% trans 'for signals (author-defined named values), and' %} <code>submission.</code> {% trans 'for submission metadata and server facts (e.g.' %} <code>submission.uploaded_at</code>{% trans ').' %}
   </p>
   <p class="mb-1">
     <strong>{% trans 'XML tip:' %}</strong> {% trans 'Numeric values need casting:' %} <code>double(<span class="target-signal-name">s.price</span>) &gt; 0</code>

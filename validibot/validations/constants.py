@@ -189,6 +189,18 @@ class ValidationType(TextChoices):
     - SHACL: Supports CEL assertions against output signals
     - CUSTOM_VALIDATOR: Supports BASIC and CEL assertions
     - THERM: Supports CEL assertions against output signals
+    - TABULAR: Supports CEL assertions (dataset-level i.*/o.* plus per-row
+      ``row.*`` rules; the ``row.*`` lane is CEL-only)
+
+    Namespace availability is otherwise per the validator's place on the
+    process spectrum: ``i.*`` (step inputs) and ``o.*`` (step outputs) exist
+    only for validators that parse/produce them (EnergyPlus, FMU, SHACL, THERM,
+    Custom, Tabular); schema validators (BASIC, JSON_SCHEMA, XML_SCHEMA) have
+    none. The ``submission.*`` namespace (envelope metadata + server facts) and
+    ``s.*`` (workflow signals) are available to BASIC and CEL assertions for
+    EVERY validator regardless of file format — that universality is the whole
+    point of ``submission.*`` (ADR-2026-06-03b). The one exception is the
+    Tabular ``row.*`` lane, which binds only ``row``/``s``/``i`` per row.
     """
 
     BASIC = "BASIC", _("Basic Assertions")
@@ -627,3 +639,18 @@ REGEX_EVAL_TIMEOUT_MS = getattr(django_settings, "REGEX_EVAL_TIMEOUT_MS", 1000)
 # nested arrays has O(n^N) worst-case complexity. The motivating use case
 # (SysML v2 named-element resolution) typically uses 1-2 filters.
 MAX_JSONPATH_FILTER_SEGMENTS = 4
+
+# Maximum length of an assertion's author-facing ``notes`` (rationale) field.
+# A generous cap for prose that still bounds the storage/DoS surface of a
+# free-text input. On a Postgres ``text`` column this is enforced at the
+# validation layer (model MaxLengthValidator + form field), not by the DB.
+RULESET_ASSERTION_NOTES_MAX_LENGTH = 5000
+
+# Maximum length of ``ValidationRun.short_description`` — the submitter-set run
+# description surfaced to assertions as ``submission.short_description``. The
+# DB column is ``varchar`` at this width, and the launch path creates the run
+# via ``objects.create(**extra)`` (no ``full_clean``), so this cap MUST be
+# enforced at every input layer (the model field, the web launch form, and the
+# API serializer) — otherwise an over-long value reaches the DB as a 500
+# instead of a clean validation error. Single source so the three can't drift.
+VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH = 255

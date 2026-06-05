@@ -8,40 +8,59 @@
   <div class="assertion-card card shadow-sm">
     <div class="card-body">
       <div class="d-flex justify-content-between align-items-start gap-2">
-        <div class="min-w-0 flex-grow-1">
-          <div class="d-flex align-items-center gap-2 mb-1">
-            <span class="badge text-bg-light text-uppercase">{{ assertion.short_type_label }}</span>
+        {% comment %}
+          The pills sit in their own fixed-width column; the assertion text
+          flows in a second column to their right. align-items-start pins the
+          pills to the top so multi-line text stacks vertically beside them
+          rather than wrapping underneath. Severity pill renders first
+          (Error/Warning), then the assertion language.
+        {% endcomment %}
+        <div class="min-w-0 flex-grow-1 d-flex align-items-start gap-2">
+          <div class="d-flex align-items-center gap-2 flex-shrink-0">
             <span class="badge text-bg-secondary">{{ assertion.get_severity_display }}</span>
+            <span class="badge text-bg-light text-uppercase">{{ assertion.short_type_label }}</span>
           </div>
-          <h2 class="h6 mb-1">
-            {% if assertion.assertion_type == "shacl" %}
-              {% trans "SPARQL ASK" %} :
-              {% if assertion.rhs.description %}
-                {{ assertion.rhs.description|truncatechars:80 }}
+          <div class="min-w-0">
+            <h2 class="h6 mb-1 text-break">
+              {% if assertion.assertion_type == "shacl" %}
+                {% comment %}
+                  The "SPARQL" pill already names the language, so the label
+                  only needs the query verb (ASK).
+                {% endcomment %}
+                {% trans "ASK" %}:
+                {% if assertion.rhs.description %}
+                  {{ assertion.rhs.description|truncatechars:80 }}
+                {% else %}
+                  {% trans "(no description)" %}
+                {% endif %}
               {% else %}
-                {% trans "(no description)" %}
+                {{ assertion.target_display }}
               {% endif %}
-            {% else %}
-              {{ assertion.target_display }}
+            </h2>
+            {% if assertion.assertion_type != "shacl" and assertion.condition_display %}
+              <p class="text-muted small mb-1">
+                {{ assertion.condition_display }}
+              </p>
             {% endif %}
-          </h2>
-          {% if assertion.assertion_type != "shacl" and assertion.condition_display %}
-            <p class="text-muted small mb-1">
-              {{ assertion.condition_display }}
-            </p>
-          {% endif %}
-          {% if assertion.message_template %}
-            <p class="text-muted small mb-0">
-              {{ assertion.message_template|linebreaksbr }}
-            </p>
-          {% endif %}
+            {% if assertion.notes %}
+              {% comment %}
+                Author rationale, not an end-user failure message. The icon and
+                hidden label keep this internal context distinct from assertion text.
+              {% endcomment %}
+              <p class="text-muted small fst-italic mb-0 mt-1">
+                <i class="bi-journal-text me-1" aria-hidden="true"></i>
+                <span class="visually-hidden">{% trans "Notes" %}:</span>
+                {{ assertion.notes|linebreaksbr }}
+              </p>
+            {% endif %}
+          </div>
         </div>
         {% if can_manage_assertions %}
           <div class="btn-group btn-group-sm assertion-actions flex-shrink-0"
                role="group"
                aria-label="{% trans 'Assertion actions' %}">
             <button type="button"
-                    class="btn btn-secondary"
+                    class="btn btn-light"
                     data-bs-toggle="modal"
                     data-bs-target="#workflowAssertionModal"
                     hx-get="{% org_url 'workflows:workflow_step_assertion_update' workflow.pk step.pk assertion.pk %}"
@@ -51,7 +70,7 @@
               <i class="bi-pencil-square"></i>
               <span class="visually-hidden">{% trans "Edit assertion" %}</span>
             </button>
-            <button class="btn btn-secondary"
+            <button class="btn btn-light"
                     hx-post="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}"
                     hx-target="this"
                     hx-swap="none"
@@ -62,7 +81,7 @@
               <i class="bi-arrow-up"></i>
               <span class="visually-hidden">{% trans "Move assertion up" %}</span>
             </button>
-            <button class="btn btn-secondary"
+            <button class="btn btn-light"
                     hx-post="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}"
                     hx-target="this"
                     hx-swap="none"

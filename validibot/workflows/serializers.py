@@ -53,6 +53,7 @@ class RulesetAssertionSerializer(serializers.ModelSerializer):
             "rhs",
             "message_template",
             "success_message",
+            "notes",
         ]
         read_only_fields = fields
 

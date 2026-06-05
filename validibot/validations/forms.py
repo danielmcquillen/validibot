@@ -22,9 +22,11 @@ from django.utils.translation import gettext_lazy as _
 
 from validibot.projects.models import Project
 from validibot.submissions.constants import SubmissionDataFormat
+from validibot.validations.cel import CEL_NAMESPACE_ROOTS
 from validibot.validations.cel import CUSTOM_HELPER_NAMES
 from validibot.validations.cel_columns import bound_macro_variables
 from validibot.validations.cel_columns import referenced_row_columns
+from validibot.validations.constants import RULESET_ASSERTION_NOTES_MAX_LENGTH
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogRunStage
@@ -635,6 +637,16 @@ CUSTOM_ASSERTION_TARGET_PATTERN = re.compile(
     r"(?:\.[A-Za-z_][A-Za-z0-9_\-]*)"
     r"|"
     r"(?:\[[0-9]+\])"
+    r"|"
+    # String-keyed brackets for free-form metadata keys that are not valid
+    # identifiers (hyphens, spaces, dots), e.g.
+    # ``submission.metadata["deliverable-type"]``. Both quote styles; the key
+    # is any run of chars except the quote and brackets. Matches celpy's native
+    # ``m["key"]`` and the basic-path resolver's string-key support so the two
+    # engines validate and resolve the same targets (ADR-2026-06-03b).
+    r'(?:\["[^"\[\]]+"\])'
+    r"|"
+    r"(?:\['[^'\[\]]+'\])"
     r")*$",
 )
 
@@ -804,6 +816,32 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 "placeholder": _("e.g. EUI is within acceptable range"),
             }
         ),
+    )
+    notes = forms.CharField(
+        label=_("Notes"),
+        required=False,
+        # Matches RulesetAssertion.notes; also renders a maxlength on the
+        # textarea so the cap is enforced (and surfaced) at the form layer, not
+        # only when the model's full_clean() runs in the mutation service.
+        max_length=RULESET_ASSERTION_NOTES_MAX_LENGTH,
+        help_text=_(
+            "Internal rationale for this assertion (the standard it enforces, "
+            "why a threshold was chosen). Not shown to data submitters."
+        ),
+        widget=forms.Textarea(
+            attrs={
+                "rows": 2,
+                "placeholder": _(
+                    "e.g. ASHRAE 90.1 caps lighting power density at 1.0 W/sqft"
+                ),
+            }
+        ),
+    )
+    cel_description = forms.CharField(
+        label=_("Description"),
+        required=False,
+        max_length=255,
+        help_text=_("Short label shown on the assertion card and findings."),
     )
     cel_expression = forms.CharField(
         label=_("CEL expression"),
@@ -979,6 +1017,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             Row(
                 Column("assertion_type", css_class="col-12 col-lg-3"),
             ),
+            "cel_description",
             "cel_expression",
             Row(
                 Column("shacl_description", css_class="col-12 col-lg-4"),
@@ -1020,6 +1059,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             ),
             "message_template",
             "success_message",
+            "notes",
         )
         self._append_cel_help_to_label("cel_expression")
 
@@ -1072,7 +1112,12 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             # no longer promotes bare payload keys, so bare identifiers
             # would fail at evaluation time.
             self._validate_cel_identifiers(expression)
-            cleaned["rhs_payload"] = {"expr": expression}
+            # An optional human-readable label. When set, the assertion card
+            # and default success messages show this instead of the raw CEL
+            # expression (mirrors the SHACL description; see
+            # ``RulesetAssertion.target_display``).
+            description = (cleaned.get("cel_description") or "").strip()
+            cleaned["rhs_payload"] = {"expr": expression, "description": description}
             # On a tabular step, tag the assertion's stage (row vs dataset) so
             # the validator buckets it correctly; empty for other validators.
             options_payload = self._tabular_cel_options(expression)
@@ -1279,8 +1324,11 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         All data references must use a namespace prefix:
         - ``p.key`` / ``payload.key`` — raw submission data
         - ``s.name`` / ``signal.name`` — author-defined signals
+        - ``i.name`` / ``input.name`` — this step's step inputs
         - ``o.name`` / ``output.name`` — this step's step outputs
         - ``steps.key.output.name`` — upstream step outputs
+        - ``submission.field`` / ``submission.metadata.key`` — the submission
+          envelope (submitter metadata + server facts; ADR-2026-06-03b)
 
         Bare identifiers are only allowed for CEL literals (``true``,
         ``false``, ``null``), CEL built-in functions, and the loop variables
@@ -1288,23 +1336,15 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         any length, plus single letters for backward compatibility).
         """
         reserved_literals = {"true", "false", "null"}
-        # The namespace root names that are valid bare identifiers.
-        # Five CEL namespaces per ADR-2026-05-22b: payload (p), signal (s),
-        # input (i), output (o), steps.
-        namespace_roots = {
-            "p",
-            "payload",
-            "s",
-            "signal",
-            "i",
-            "input",
-            "o",
-            "output",
-            "steps",
-        }
+        # The namespace root names that are valid bare identifiers, sourced
+        # from the single canonical set in cel.py (payload/p, signal/s,
+        # input/i, output/o, steps, submission) so this allowlist cannot drift
+        # from the runtime context or the other allowlists.
+        namespace_roots = set(CEL_NAMESPACE_ROOTS)
         # row.* is a step-local namespace bound only by the Tabular Validator's
         # row-stage loop, so it is accepted only on a tabular step (mandatory
-        # scoping per ADR-2026-05-26). col.* is deferred with V2.
+        # scoping per ADR-2026-05-26) and is therefore added contextually here
+        # rather than living in CEL_NAMESPACE_ROOTS. col.* is deferred with V2.
         if self._validator_is_tabular():
             namespace_roots.add("row")
         cel_builtins = {
@@ -1557,7 +1597,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 {
                     "target_data_path": _(
                         "Enter a target path. Use s.<name> for workflow signals, "
-                        "p.<path> for payload data, or o.<name> for step outputs."
+                        "p.<path> for payload data, o.<name> for step outputs, "
+                        "or submission.<field> for submission metadata."
                     ),
                 },
             )
@@ -1689,13 +1730,43 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             )
             return
 
+        # ── Submission prefix: submission. (ADR-2026-06-03b) ─────────
+        # The submission envelope (submitter metadata + server facts) is a
+        # first-class namespace available to EVERY validator, independent of
+        # the submitted file format — so no custom-target permission is needed,
+        # just like s./p./o. Unlike p./o. the prefix is NOT stripped: the
+        # runtime injects a nested ``submission`` sub-dict into the BASIC
+        # payload (see _enrich_basic_payload), so the full path
+        # ``submission.metadata.deliverable`` resolves against it directly.
+        # Always INPUT-stage here — the envelope is knowable before the
+        # validator runs (the stage classifier downgrades to OUTPUT only for a
+        # CEL expression that also reads o.*, which a basic target never does).
+        if value.startswith("submission."):
+            if not self._is_valid_target_path(value):
+                raise ValidationError(
+                    {
+                        "target_data_path": _(
+                            "Invalid path syntax. Use dot notation "
+                            "(e.g. submission.metadata.deliverable) or a "
+                            "quoted key for non-identifier names "
+                            '(e.g. submission.metadata["deliverable-type"]).'
+                        ),
+                    },
+                )
+            self._set_resolved(
+                path=value,  # keep the full submission.* path (nested sub-dict)
+                stage=CatalogRunStage.INPUT,
+            )
+            return
+
         # ── Bare name (no recognised prefix) ─────────────────────────
         if not self._validator_allows_custom_targets():
             raise ValidationError(
                 {
                     "target_data_path": _(
                         "Use s.<name> for workflow signals, p.<path> for "
-                        "payload data, or o.<name> for step outputs."
+                        "payload data, o.<name> for step outputs, or "
+                        "submission.<field> for submission metadata."
                     ),
                 },
             )
@@ -2080,17 +2151,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             match.group(0)
             for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\.]*", stripped)
         }
-        namespace_roots = {
-            "p",
-            "payload",
-            "s",
-            "signal",
-            "i",
-            "input",
-            "o",
-            "output",
-            "steps",
-        }
+        # Sourced from the single canonical set in cel.py so this allowlist
+        # stays in lockstep with the runtime context and the other allowlists.
+        namespace_roots = set(CEL_NAMESPACE_ROOTS)
         # The row.* namespace is only valid on a Tabular Validator step (its
         # row-stage CEL loop binds it). Scoped here so a stray ``row.x`` on a
         # JSON/XML step is still flagged. (col.* is deferred with V2 column
@@ -2189,6 +2252,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             "when_expression": assertion.when_expression,
             "message_template": assertion.message_template,
             "success_message": assertion.success_message,
+            "notes": assertion.notes,
         }
         if assertion.target_signal_definition_id:
             sig = assertion.target_signal_definition
@@ -2213,7 +2277,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             options = assertion.options or {}
             cls._apply_operator_initial(initial, assertion.operator, rhs, options)
         else:
-            initial["cel_expression"] = (assertion.rhs or {}).get("expr", "")
+            rhs = assertion.rhs or {}
+            initial["cel_expression"] = rhs.get("expr", "")
+            initial["cel_description"] = rhs.get("description", "")
         return initial
 
     @staticmethod

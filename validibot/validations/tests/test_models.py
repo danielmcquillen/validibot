@@ -114,3 +114,50 @@ def test_cel_assertion_with_long_expression_passes_full_clean(db):
     assertion.save()
     assertion.refresh_from_db()
     assert assertion.target_data_path == expr
+
+
+def test_cel_target_display_prefers_description(db):
+    """A CEL assertion with a description shows it on the card, not the raw CEL.
+
+    Why it matters: a raw CEL expression (``o.eui <= 50.0 && i.area > 0``) is
+    noise to a reviewer scanning a step's assertions. Like SHACL's SPARQL ASK
+    description, an optional human label lets the author title the rule
+    ("Site EUI within ASHRAE target"). ``target_display`` is the single source
+    of truth for the card label — the ``assertion_step.html`` template renders
+    it directly — so this is the property that decides what the reviewer sees.
+    The description lives in ``rhs["description"]`` (a JSON key, no migration),
+    mirroring where SHACL stores its own.
+    """
+    assertion = RulesetAssertion(
+        ruleset=RulesetFactory(),
+        order=10,
+        assertion_type=AssertionType.CEL_EXPRESSION,
+        operator=AssertionOperator.CEL_EXPR,
+        target_data_path="o.eui <= 50.0",
+        rhs={"expr": "o.eui <= 50.0", "description": "Site EUI within target"},
+        severity=Severity.ERROR,
+    )
+
+    assert assertion.target_display == "Site EUI within target"
+
+
+def test_cel_target_display_falls_back_to_expression(db):
+    """Without a description, the CEL card still shows the expression itself.
+
+    Why it matters: the description is optional. When it is blank (the default,
+    and the behaviour for every CEL assertion authored before this field
+    existed), ``target_display`` must fall back to the stored expression so the
+    card never renders empty. This pins the back-compatible default and proves
+    the new branch only changes behaviour when a description is actually set.
+    """
+    assertion = RulesetAssertion(
+        ruleset=RulesetFactory(),
+        order=10,
+        assertion_type=AssertionType.CEL_EXPRESSION,
+        operator=AssertionOperator.CEL_EXPR,
+        target_data_path="o.eui <= 50.0",
+        rhs={"expr": "o.eui <= 50.0", "description": ""},
+        severity=Severity.ERROR,
+    )
+
+    assert assertion.target_display == "o.eui <= 50.0"

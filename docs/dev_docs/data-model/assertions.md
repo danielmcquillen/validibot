@@ -56,10 +56,33 @@ checks. The form's "Target Path" field accepts these prefixes:
 | `i.` | `input.` | Input + Output | Step input (parser facts, resolved bindings) | `i.zone_count` |
 | `o.` | `output.` | **Output only** | Step output | `o.site_eui_kwh_m2` |
 | `steps.<key>.input.` / `steps.<key>.output.` | — | Input + Output | Earlier step's inputs/outputs | `steps.preflight.output.warning_count` |
+| `submission.` | — | Input + Output | Submission envelope: metadata + server facts (any file type) | `submission.metadata.deliverable` |
 
 **Stage-aware availability.** Step outputs (`o.*`) only exist after the
 step's validator runs, so they should not be referenced in input-stage
-assertions — at runtime such references silently resolve to null.
+assertions — at runtime such references silently resolve to null. The
+`submission.*` envelope is available at **both** stages (it is fixed at
+submission time); a basic `submission.*` target classifies as INPUT, and a CEL
+expression that reads `submission.*` classifies INPUT unless it also reads
+`o.*`/`output.*` (which genuinely needs results). String-keyed brackets address
+non-identifier metadata keys, e.g. `submission.metadata["deliverable-type"]`.
+
+**The prefixes above apply to BASIC and CEL assertions only — not SPARQL.**
+`AssertionType` has three kinds. `BASIC` and `CEL_EXPRESSION` both evaluate
+against the namespaced context built by `_build_cel_context` /
+`_enrich_basic_payload`, so they share every prefix here, including
+`submission.*`. The third kind, **`SHACL` (SPARQL-ASK)**, is a different
+paradigm: it is a raw SPARQL `ASK` query evaluated **inside the isolated SHACL
+container** against an RDF graph — selected by `shacl.data` (the submission's
+graph) or `shacl.report` (the pySHACL report graph). It is **not** registered
+in the Django evaluator registry; the SHACL validator ships it to the container
+and excludes it from the Django pass
+(`exclude_assertion_types={AssertionType.SHACL}`). Consequently the namespace
+prefixes — including `submission.*` — are **not available inside a SPARQL
+query**: it can see only the RDF triples in its target graph, and the
+submission envelope is not injected into that graph. To gate a SHACL workflow
+on submission metadata, use a **CEL** assertion (it can read `submission.*`
+alongside `o.*` output signals), not a SPARQL assertion.
 
 **Partial enforcement today.** Per ADR-2026-05-22's reconciliation
 notes, ``get_catalog_choices()`` accepts a ``stage`` parameter and
@@ -135,7 +158,7 @@ implementation (`cel-go`).
 
 ### CEL namespace convention
 
-All CEL expressions use explicit namespaces to avoid ambiguity. The five
+All CEL expressions use explicit namespaces to avoid ambiguity. The six
 top-level namespaces (each with a short alias where applicable) are:
 
 | Namespace | Alias | Contents | Example |
@@ -145,8 +168,13 @@ top-level namespaces (each with a short alias where applicable) are:
 | `input` | `i` | This step's step inputs (parser facts, resolved bindings) | `i.zone_count` |
 | `output` | `o` | This step's step outputs (after the validator runs) | `o.site_eui_kwh_m2` |
 | `steps` | — | Earlier steps' inputs and outputs | `steps.step_a.output.value`, `steps.step_a.input.zone_count` |
+| `submission` | — | Submission envelope: submitter metadata + server facts, any file type | `submission.metadata.deliverable`, `submission.uploaded_at` |
 
-Raw payload keys are never promoted to bare top-level CEL variables.
+The legal roots are defined once in `CEL_NAMESPACE_ROOTS`
+(`validibot/validations/cel.py`); see
+[the signals doc](signals.md#one-source-of-truth-cel_namespace_roots) for how
+the allowlists derive from it. Raw payload keys are never promoted to bare
+top-level CEL variables.
 Authors access raw data via `p.key`, workflow signals via `s.name`, step
 inputs via `i.name`, and step outputs via `o.name`. See
 [Signals — The CEL context structure](signals.md#the-cel-context-structure)

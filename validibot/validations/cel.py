@@ -171,3 +171,59 @@ DEFAULT_HELPERS: dict[str, CelHelper] = {
 # allowlist from this one set keeps them in lockstep — a helper added to
 # ``DEFAULT_HELPERS`` is automatically accepted everywhere CEL is authored.
 CUSTOM_HELPER_NAMES: frozenset[str] = frozenset(DEFAULT_HELPERS)
+
+
+# Canonical set of legal CEL namespace ROOT tokens — the single source of
+# truth for "which bare identifier may begin a data reference in an
+# assertion." These are exactly the top-level keys that
+# ``BaseValidator._build_cel_context`` binds at runtime, and the set that
+# every authoring-time allowlist derives from:
+#
+#   - ``RESERVED_CEL_NAMES``        — validations/services/signal_resolution.py
+#   - ``_validate_cel_identifiers`` — validations/forms.py (CEL assertions)
+#   - ``_find_unknown_cel_slugs``   — validations/forms.py (slug discovery)
+#   - ``_validate_cel_expression``  — validations/views/rules.py (custom rules)
+#
+# Six namespaces — five from ADR-2026-05-22b (four with a short/long alias
+# pair plus the alias-free ``steps``) and ``submission`` from ADR-2026-06-03b:
+#
+#   p / payload  — raw submission file data
+#   s / signal   — workflow vocabulary (author-defined named values)
+#   i / input    — step-local input-stage values
+#   o / output   — step-local output-stage values
+#   steps        — cross-step inputs and outputs (no short alias)
+#   submission   — submission envelope: submitter metadata + server facts
+#                  (long-only; ``s`` already means ``signal``)
+#
+# ``submission`` is deliberately long-only and carries data that lives BESIDE
+# the file (metadata bag + server-stamped facts), so it resolves identically
+# for any submitted format — including RDF ``.ttl``/SHACL, where ``p``/``s``
+# are barely populated. It is assembled by ``build_submission_assertion_context``
+# (validations/services/submission_context.py) and bound in ``_build_cel_context``.
+#
+# Why this exists: the roots had been hand-copied into the four allowlists
+# above plus the runtime context dict, and they had ALREADY drifted —
+# ``views/rules.py`` silently omitted ``i``/``input``, so the custom-validator
+# rule editor rejected valid ``i.<name>`` references that the runtime context
+# binds. Centralizing here applies the same discipline ``CUSTOM_HELPER_NAMES``
+# already gives helper names: a namespace change is one edit in one place
+# (adding ``submission`` here flowed straight through to every allowlist).
+#
+# One deliberate exclusion: ``row`` is NOT here. It is a step-local namespace
+# bound ONLY by the Tabular Validator's row-stage loop (ADR-2026-05-26), so the
+# tabular-aware allowlists add it contextually — it must stay rejected on a
+# JSON/XML step.
+CEL_NAMESPACE_ROOTS: frozenset[str] = frozenset(
+    {
+        "p",
+        "payload",
+        "s",
+        "signal",
+        "i",
+        "input",
+        "o",
+        "output",
+        "steps",
+        "submission",
+    },
+)

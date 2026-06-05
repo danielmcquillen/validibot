@@ -20,6 +20,7 @@ from django.core.files.base import ContentFile
 
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
+from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
@@ -151,6 +152,134 @@ def test_export_then_import_rebuilds_the_workflow_in_a_new_org():
     assert len(assertions) == 4  # noqa: PLR2004
     assert [a.rhs["expr"] for a in assertions] == [rule[0] for rule in _ROW_RULES]
     assert all(a.options.get("tabular_stage") == "row" for a in assertions)
+
+
+# ── Author notes survive the export -> import round-trip ────────────────────
+def test_assertion_notes_survive_export_import():
+    """An assertion's author ``notes`` field round-trips through .vaf import.
+
+    ``notes`` is non-semantic documentation (the rationale behind the rule),
+    but it is part of the assertion's serialized contract — listed in
+    ``_ASSERTION_SCALAR_FIELDS`` so export and import can't disagree on whether
+    it travels. This test asserts both halves: the note appears in the exported
+    definition AND is rebuilt verbatim on import into a fresh org. It guards
+    against a future change dropping ``notes`` from one side of the round-trip
+    while leaving the other, which would silently lose the reasoning a workflow
+    author recorded.
+    """
+    src_org, src_user = _org_and_user()
+    validator = _tabular_validator()
+    ruleset = RulesetFactory(
+        org=src_org,
+        user=src_user,
+        ruleset_type=RulesetType.TABULAR,
+        rules_text=_table_schema(),
+    )
+    note = (
+        "Zero uncertainty means the coordinate precision is unknown; Darwin "
+        "Core treats that as a data-quality failure."
+    )
+    RulesetAssertionFactory(
+        ruleset=ruleset,
+        order=1,
+        assertion_type=AssertionType.CEL_EXPRESSION,
+        target_data_path="",
+        rhs={"expr": "row.coordinateUncertaintyInMeters > 0.0"},
+        options={"tabular_stage": "row"},
+        severity=Severity.ERROR,
+        message_template="Positive uncertainty",
+        notes=note,
+    )
+    workflow = WorkflowFactory(org=src_org, user=src_user)
+    WorkflowStepFactory(
+        workflow=workflow,
+        validator=validator,
+        ruleset=ruleset,
+        order=10,
+        name="Check incoming CSV",
+    )
+
+    definition, files = export_definition(workflow)
+
+    # Export half: the note is written into the serialized assertion.
+    exported_assertion = definition["steps"][0]["ruleset"]["assertions"][0]
+    assert exported_assertion["notes"] == note
+
+    # Import half: the note is rebuilt verbatim on the new org's assertion row.
+    dst_org, dst_user = _org_and_user()
+    result = import_definition(definition, files=files, org=dst_org, user=dst_user)
+    imported = result.workflow.steps.first().ruleset.assertions.first()
+    assert imported.notes == note
+
+
+def test_submission_assertion_targets_survive_export_import():
+    """``submission.*`` assertion targets and expressions round-trip unchanged.
+
+    ADR-2026-06-03b surface H records that assertion targets and CEL
+    expressions travel as opaque strings, so the ``submission`` namespace needs
+    no special import/export handling — but the ADR mandates a test proving it.
+    We pack a BASIC ``submission.metadata.*`` target and a CEL expression using
+    a string-keyed bracket (``submission.metadata["deliverable-type"]``, a
+    non-identifier key) through a full export -> import into a fresh org and
+    assert both survive verbatim on each half. This guards against a future
+    serializer change silently mangling the new namespace or its bracket syntax.
+    """
+    src_org, src_user = _org_and_user()
+    validator = ValidatorFactory(
+        validation_type=ValidationType.BASIC,
+        slug="basic-validator",
+        version=1,
+        is_system=True,
+        supports_assertions=True,
+    )
+    ruleset = RulesetFactory(
+        org=src_org,
+        user=src_user,
+        ruleset_type=RulesetType.BASIC,
+    )
+    RulesetAssertionFactory(
+        ruleset=ruleset,
+        order=1,
+        assertion_type=AssertionType.BASIC,
+        operator=AssertionOperator.EQ,
+        target_data_path="submission.metadata.deliverable",
+        rhs={"value": "handover"},
+        severity=Severity.ERROR,
+    )
+    cel_expr = 'submission.metadata["deliverable-type"] == "final"'
+    RulesetAssertionFactory(
+        ruleset=ruleset,
+        order=2,
+        assertion_type=AssertionType.CEL_EXPRESSION,
+        operator=AssertionOperator.CEL_EXPR,
+        target_data_path="",
+        rhs={"expr": cel_expr},
+        severity=Severity.ERROR,
+    )
+    workflow = WorkflowFactory(org=src_org, user=src_user)
+    WorkflowStepFactory(
+        workflow=workflow,
+        validator=validator,
+        ruleset=ruleset,
+        order=10,
+        name="Deliverable gate",
+    )
+
+    definition, files = export_definition(workflow)
+
+    # Export half: both submission references are written verbatim.
+    exported = definition["steps"][0]["ruleset"]["assertions"]
+    assert exported[0]["target_data_path"] == "submission.metadata.deliverable"
+    assert exported[1]["rhs"]["expr"] == cel_expr
+
+    # Import half: both are rebuilt verbatim on the new org's assertion rows.
+    dst_org, dst_user = _org_and_user()
+    result = import_definition(definition, files=files, org=dst_org, user=dst_user)
+    imported = list(
+        result.workflow.steps.first().ruleset.assertions.all().order_by("order"),
+    )
+    assert imported[0].target_data_path == "submission.metadata.deliverable"
+    assert imported[1].rhs["expr"] == cel_expr
 
 
 def test_import_mints_a_unique_slug_on_collision():

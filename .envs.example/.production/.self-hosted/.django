@@ -225,7 +225,7 @@ VALIDATOR_CPU_LIMIT=2.0
 # code. Set these only to tighten a deployment below the defaults; see
 # validibot/validations/validators/shacl/engine.py for the full list.
 #SHACL_MAX_DATA_TRIPLES=100000
-#SHACL_VALIDATION_TIMEOUT_SECONDS=30
+#SHACL_VALIDATION_TIMEOUT_SECONDS=300
 
 # Signed credentials (Pro). Create a private key on the host outside
 # version control:

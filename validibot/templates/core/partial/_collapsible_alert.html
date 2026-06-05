@@ -1,0 +1,62 @@
+{% load i18n %}
+
+{% comment %}
+  Collapsible one-line alert (info / warning).
+
+  Shows a single-line headline with a subtle "Details" toggle that expands to
+  reveal the full message. We use it for the lead guidance alert on the
+  workflow step list (workflow detail edit) and the step detail edit screen so
+  the guidance stays out of the way until the author asks for it.
+
+  Context parameters (pass via {% templatetag openblock %} include ... with {% templatetag closeblock %}):
+    headline    – required one-line summary (string)
+    details     – list of strings shown when the alert is expanded
+    variant     – Bootstrap alert variant: "info" (default) or "warning"
+    icon        – optional Bootstrap icon class; sensible default per variant
+    collapse_id – unique id for the collapse target (default "collapsibleAlert").
+                  Pass an explicit id if more than one collapsible alert can
+                  appear on the same page.
+
+  This relies on Bootstrap's collapse data-api, which is delegated on the
+  document, so the toggle keeps working after HTMx swaps the partial back in.
+{% endcomment %}
+
+{% with cid=collapse_id|default:"collapsibleAlert" %}
+  <div class="alert alert-{{ variant|default:'info' }} collapsible-alert mb-4"
+       role="alert">
+    <div class="d-flex gap-2 align-items-start">
+      {% if variant == 'warning' %}
+        <i class="bi {{ icon|default:'bi-exclamation-triangle-fill' }} collapsible-alert__icon flex-shrink-0 mt-1"></i>
+      {% else %}
+        <i class="bi {{ icon|default:'bi-info-circle-fill' }} collapsible-alert__icon flex-shrink-0 mt-1"></i>
+      {% endif %}
+      <div class="flex-grow-1">
+        <div class="d-flex align-items-start justify-content-between gap-3">
+          <span class="fw-semibold">{{ headline }}</span>
+          {% if details %}
+            <button class="btn btn-link btn-sm p-0 collapsible-alert__toggle collapsed flex-shrink-0"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#{{ cid }}"
+                    aria-expanded="false"
+                    aria-controls="{{ cid }}">
+              <span class="small text-muted">{% trans "Details" %}</span>
+              <i class="bi bi-chevron-down small ms-1 collapsible-alert__chevron"></i>
+            </button>
+          {% endif %}
+        </div>
+        {% if details %}
+          <div class="collapse mt-2" id="{{ cid }}">
+            {% for line in details %}
+              {% if line %}
+                <div class="small{% if not forloop.first %} text-muted{% endif %}">
+                  {{ line }}
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endwith %}

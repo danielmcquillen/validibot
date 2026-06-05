@@ -31,6 +31,7 @@ from validibot.validations.credential_utils import get_signed_credential_display
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
+from validibot.validations.services.report_layout import resolve_report_layout
 from validibot.workflows.models import Workflow
 
 logger = logging.getLogger(__name__)
@@ -290,6 +291,8 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
                 run=run,
             ),
         )
+        # Stacked vs classic report layout — session-remembered, default stacked.
+        context["report_layout"] = resolve_report_layout(self.request)
         return context
 
     def get_breadcrumbs(self):

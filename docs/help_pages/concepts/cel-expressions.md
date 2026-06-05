@@ -20,6 +20,7 @@ Every CEL expression runs in a context where your data is organized into clear n
 | `i.name` | `input.name` | This step's inputs — values the validator has at the start of the step (parser facts, resolved bindings, template variables) |
 | `o.name` | `output.name` | This step's outputs — values produced by the validator after it runs |
 | `steps.step_key.input.name` / `steps.step_key.output.name` | | An earlier step's inputs or outputs |
+| `submission.field` (e.g. `submission.metadata.deliverable`, `submission.uploaded_at`) | | The submission *envelope* — the submitter's metadata plus server-stamped facts (file type, size, upload time). Available for **any** file type, even when the file isn't JSON. Long-only (no short form). See [Using submission metadata](#using-submission-metadata). |
 
 ### The teaching analogy
 
@@ -28,7 +29,8 @@ Think of each step as a function in a program.
 - **Inputs (`i.*`)** are the function's parameters — values handed to it at the start.
 - **Outputs (`o.*`)** are what the function returns.
 - **The workflow vocabulary (`s.*`)** is module-level state shared across functions.
-- **The submission (`p.*`)** is the raw data the program started with, always available.
+- **The submission file (`p.*`)** is the raw data the program started with, always available.
+- **The submission envelope (`submission.*`)** is the metadata *about* that data — who/when/what-named/how-big, plus any key-value tags attached at upload. It sits beside the file, not inside it, so it works the same for every format.
 
 Just like in a program, you can lift a function-local value (an input or an output) into module-level state when you want other functions to see it. In Validibot, that ceremony is called **promotion** — "Copy to Signal" lifts a step-local `i.*` or `o.*` into the workflow's `s.*` vocabulary.
 
@@ -51,6 +53,13 @@ Use `s.*` for values you want to use in multiple steps, or values whose source m
 `o.*` is **step-local** too, and **temporally bound** — only available in *output-stage* assertions on the step that produced it. An input-stage assertion can't reference `o.*` because the validator hasn't run yet. Validibot's assertion editor enforces this: when you're editing an input-stage assertion, the autocomplete won't offer `o.*` references.
 
 **`steps.<step_key>.input.*` / `steps.<step_key>.output.*`** — values from an earlier step in the workflow, by step key. Use this for ad-hoc cross-step access. For values you reference often across steps, promotion to `s.*` is cleaner.
+
+**`submission.*` — the submission envelope.** Context *about* the submission that lives beside the file rather than inside it, so it resolves the same way no matter what was uploaded — JSON, XML, CSV, or an RDF `.ttl` graph. This is the one namespace you can rely on for a per-submission gate when the file itself isn't JSON. It has two kinds of value:
+
+- **Submitter-provided** (treat as untrusted): `submission.name`, `submission.short_description`, and the free-form `submission.metadata.<key>` bag. Whoever launched the run set these.
+- **Server-stamped** (trustworthy): `submission.file_type`, `submission.size` (bytes), `submission.uploaded_at` (a timestamp). Validibot sets these; a submitter can't forge them.
+
+`submission` is long-only — there's no single-letter alias, because `s` already means signals. It is *not* a copy of the file: the file's contents stay at `p.*`/`payload.*`, and there is deliberately no `submission.payload`.
 
 ### Where do I find each kind of value?
 
@@ -94,6 +103,47 @@ Yes, it's true — you can use the Validibot JSON Schema validator or XML Schema
 CEL expressions, on the other hand, handle behavioural and cross-field rules that schemas either can't express cleanly or make horribly verbose — things like numeric relationships between fields, tolerances, conditional requirements, or checks on simulation outputs from an FMU Validator. In Validibot, schemas define "what the data looks like"; CEL assertions define "what must be true about this data for it to be acceptable." They're complementary, not competing.
 
 You could create a workflow that has both a JSON schema validation and detailed CEL assertions.
+
+## Using submission metadata
+
+Sometimes the rule you want depends on *context about the submission* that isn't in the file at all — for example, "be strict for a final handover, lenient for a draft." That context lives in the `submission.*` namespace.
+
+**Attaching metadata at upload.** There are three ways to send it, depending on how the run is launched:
+
+- **Web launch form** — when the workflow enables it, the launch page shows an "Extra data" tab where the submitter can add a name, a short description, and key-value metadata.
+- **API** — include a `metadata` object (and optionally `filename`, `short_description`) in the start request.
+- **CLI** — `validibot validate model.ttl -w my-workflow -o my-org --meta deliverable=handover --short-description "Final package"` (repeat `--meta` for more keys).
+
+**Reading it in a rule.** Reference any field by its path:
+
+```
+submission.metadata.deliverable == "handover"
+```
+
+If a metadata key isn't a simple word — it has a hyphen, space, or dot — use bracket notation with quotes:
+
+```
+submission.metadata["deliverable-type"] == "handover"
+```
+
+**A worked example — the deliverable gate.** Suppose a workflow should apply a strict acceptance check only to final handovers. Put the strict rule behind a condition on the metadata:
+
+```
+submission.metadata.deliverable != "handover" || o.unmet_load_hours < 300
+```
+
+Read it as: "either this isn't a handover, or it must meet the strict limit." Drafts pass; handovers must clear the bar.
+
+### A note on trust
+
+`submission.metadata.*`, `submission.name`, and `submission.short_description` are **submitter-provided** — whoever launches the run chooses them. Treat them as *advisory* by default: a submitter could mark a real handover as a "draft" to dodge a strict branch. When a value must be **authoritative** (it truly gates acceptance), make sure only a trusted party sets it — for example, a CI pipeline holding an API token, or the workflow owner — rather than an anonymous web submitter.
+
+The server-stamped facts are always safe to trust, because Validibot sets them and a submitter can't forge them:
+
+- `submission.uploaded_at` — when Validibot received the file (a timestamp). A trustworthy freshness check looks like `now() - submission.uploaded_at < duration("720h")` (within 30 days).
+- `submission.file_type` and `submission.size` — the detected type and byte count.
+
+(One subtlety: `submission.original_filename` *looks* like a server fact but is really the submitter's own filename, only cleaned up for safety — so don't rely on it for gating.)
 
 ## Examples
 

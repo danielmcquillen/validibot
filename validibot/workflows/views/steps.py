@@ -182,8 +182,10 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
             "credential_ordering_guidance": (
                 {
                     "headline": str(CREDENTIAL_PLACEMENT_GUIDANCE),
-                    "followup": str(CREDENTIAL_PLACEMENT_FOLLOWUP),
-                    "move_note": str(CREDENTIAL_MOVE_GUIDANCE),
+                    "details": [
+                        str(CREDENTIAL_PLACEMENT_FOLLOWUP),
+                        str(CREDENTIAL_MOVE_GUIDANCE),
+                    ],
                 }
                 if has_credential_step
                 else None
@@ -973,9 +975,11 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
 
         return {
             "headline": str(CREDENTIAL_PLACEMENT_GUIDANCE),
-            "followup": str(CREDENTIAL_PLACEMENT_FOLLOWUP),
-            "status": status,
-            "summary": summary,
+            "details": [
+                str(CREDENTIAL_PLACEMENT_FOLLOWUP),
+                summary,
+                status,
+            ],
         }
 
     def _has_dedicated_step_edit_view(self) -> bool:

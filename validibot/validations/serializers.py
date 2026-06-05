@@ -15,6 +15,7 @@ from rest_framework.relations import SlugRelatedField
 from rest_framework.reverse import reverse
 
 from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.constants import VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH
 from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunResult
@@ -355,6 +356,23 @@ class ValidationRunStartSerializer(serializers.Serializer):
 
     filename = serializers.CharField(required=False, allow_blank=True)
     metadata = serializers.JSONField(required=False, default=dict)
+    # Submitter-set run description, surfaced to assertions as
+    # ``submission.short_description`` (ADR-2026-06-03b). Accepted on the API
+    # as a trusted-setter field — it is NOT gated by the workflow's
+    # ``allow_submission_short_description`` flag, which governs only the
+    # anonymous web form. (filename maps to ``submission.name``; metadata to
+    # the ``submission.metadata.*`` bag.)
+    #
+    # ``max_length`` mirrors the model column (single source:
+    # ``VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH``) so an over-long value
+    # returns a clean 400 here instead of reaching ``ValidationRun.objects
+    # .create(**extra)`` (which skips ``full_clean``) and erroring at the DB
+    # as a 500.
+    short_description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH,
+    )
 
     # Multipart binary file
     file = serializers.FileField(required=False)

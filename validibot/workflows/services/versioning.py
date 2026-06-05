@@ -483,6 +483,7 @@ class WorkflowVersioningService:
                     options=deepcopy(assertion.options),
                     message_template=assertion.message_template,
                     success_message=assertion.success_message,
+                    notes=assertion.notes,
                     cel_cache=assertion.cel_cache,
                     spec_version=assertion.spec_version,
                 )

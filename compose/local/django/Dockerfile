@@ -39,7 +39,13 @@ COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/ins
 
 # Install dependencies with dev group for local work
 # --no-install-project skips installing validibot itself (it's not a package, just a Django project)
-RUN uv sync --group dev --frozen --no-install-project
+# --extra docker-runner pulls in the docker SDK (docker==7.1.0). The local
+# stacks default to VALIDATOR_RUNNER=docker, so the worker/web containers need
+# the SDK to dispatch advanced validators (EnergyPlus, FMU, SHACL) through the
+# mounted Docker socket. Without it DockerValidatorRunner.is_available() returns
+# False and every advanced validator reports "Validation backend is not
+# available." This mirrors the CI install (.github/workflows/ci.yml).
+RUN uv sync --group dev --extra docker-runner --frozen --no-install-project
 RUN install-commercial-package ${APP_HOME}/.venv/bin/python
 
 # Copy the rest of the project

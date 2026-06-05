@@ -41,6 +41,50 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _split_path_tokens(path: str) -> list[str]:
+    """Split a path on dots that are NOT inside bracket notation.
+
+    A naive ``str.split(".")`` mis-splits a quoted bracket key that contains a
+    dot — ``submission.metadata["schema.version"]`` would break into a dangling
+    ``metadata["schema`` and ``version"]``. We instead track bracket depth and
+    in-bracket quoting and split only at top level, so a free-form metadata key
+    may contain dots, spaces, or hyphens:
+
+        ``a.b["c.d"].e`` → ``["a", 'b["c.d"]', "e"]``
+
+    Quote tracking inside brackets keeps a literal ``.``/``[``/``]`` within a
+    quoted key from being treated as structure. This mirrors celpy's native
+    ``m["key"]`` support so basic assertions can address the same metadata keys
+    as CEL (ADR-2026-06-03b).
+    """
+    tokens: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    quote = ""  # the active quote char while inside a bracketed string, else ""
+    for ch in path:
+        if quote:
+            buf.append(ch)
+            if ch == quote:
+                quote = ""
+            continue
+        if ch in "\"'" and depth > 0:
+            quote = ch
+            buf.append(ch)
+        elif ch == "[":
+            depth += 1
+            buf.append(ch)
+        elif ch == "]":
+            depth = max(0, depth - 1)
+            buf.append(ch)
+        elif ch == "." and depth == 0:
+            tokens.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    tokens.append("".join(buf))
+    return tokens
+
+
 def resolve_path(data: Any, path: str | None) -> tuple[Any, bool]:
     """Resolve a dotted/bracket path against a nested data structure.
 
@@ -83,7 +127,7 @@ def resolve_path(data: Any, path: str | None) -> tuple[Any, bool]:
         return resolve_jsonpath(data, str(path))
 
     current = data
-    tokens = str(path).split(".")
+    tokens = _split_path_tokens(str(path))
 
     for token in tokens:
         if not token:
@@ -106,12 +150,32 @@ def resolve_path(data: Any, path: str | None) -> tuple[Any, bool]:
                 else:
                     return None, False
 
-            # Apply each bracket index in sequence.
-            # "[0][1]" → ["0", "1"] after stripping brackets.
+            # Apply each bracket segment in sequence.
+            # "[0][1]" → ["0", "1"]; '["a-b"]' → ['"a-b"'] after splitting.
             for segment in brackets.split("["):
                 if not segment:
                     continue
                 index_str = segment.rstrip("]")
+
+                # String-keyed bracket: ["key"] / ['key'] → dict-key lookup.
+                # Enables free-form metadata keys that are not valid CEL
+                # identifiers (hyphens, spaces, dots), matching celpy's native
+                # ``m["key"]`` so basic assertions address the same keys as CEL
+                # (ADR-2026-06-03b). A non-integer bracket that is NOT quoted is
+                # still rejected below by int(), preserving prior behaviour.
+                # A quoted key needs at least the two surrounding quote chars.
+                min_quoted_len = 2
+                if (
+                    len(index_str) >= min_quoted_len
+                    and index_str[0] in "\"'"
+                    and index_str[-1] == index_str[0]
+                ):
+                    dict_key = index_str[1:-1]
+                    if isinstance(current, dict) and dict_key in current:
+                        current = current[dict_key]
+                        continue
+                    return None, False
+
                 try:
                     position = int(index_str)
                 except ValueError:

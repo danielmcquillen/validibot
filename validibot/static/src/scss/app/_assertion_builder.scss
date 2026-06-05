@@ -56,7 +56,9 @@
     .assertion-card {
       background: #fff;
       width: 100%;
-      margin-bottom: 1rem;
+      // Tightened in two ~1/3 steps (1rem → 0.67rem → 0.44rem) to reduce the
+      // vertical gap between cards.
+      margin-bottom: 0.44rem;
       &.default-assertions-card {
         border-top: 4px solid var(--bs-primary);
         box-shadow: 0 4px 12px rgba(0, 102, 204, 0.15);
@@ -78,6 +80,9 @@
       }
     }
     .assertion-actions {
+      // Edit / move buttons use .btn-light (light bg, dark icons); Delete keeps
+      // .btn-danger. Nothing to recolour here — just keep disabled controls
+      // visibly muted.
       .btn {
         &:disabled {
           opacity: 0.4;
@@ -98,7 +103,10 @@
 
       .assertion-add-dotted-line {
         border-left: 2px dotted rgba(var(--bs-primary-rgb), 0.45);
-        height: 1.5rem;
+        // Tightened in two ~1/3 steps (1.5rem → 1rem → 0.67rem) so connected
+        // cards sit closer together. The workflow-builder step connector uses
+        // the same 0.67rem so both editors space items identically.
+        height: 0.67rem;
         width: 2px;
       }
 

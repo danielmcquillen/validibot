@@ -70,6 +70,7 @@ _ASSERTION_SCALAR_FIELDS = (
     "when_expression",
     "message_template",
     "success_message",
+    "notes",
     "cel_cache",
     "spec_version",
 )
@@ -261,8 +262,19 @@ class StepSerializer:
         """Create one assertion row from serialized data, re-binding its signal."""
         from validibot.validations.models import RulesetAssertion
 
+        # Skip fields the definition omits so the model's own default applies.
+        # A definition exported before a scalar field existed (e.g. ``notes``)
+        # simply has no key for it; passing the resulting ``None`` through would
+        # defeat the model default and hit the column's NOT NULL constraint,
+        # because Django's clean_fields skips ``blank=True`` empty values rather
+        # than coercing them. This mirrors how the importer rebinds other rows
+        # (``_create_workflow``, ``_import_signal_bindings``): present-and-set
+        # wins, absent falls back to the default. Keeps adding an optional
+        # assertion field backward-compatible without bumping ``format_version``.
         kwargs: dict[str, Any] = {
-            field: data.get(field) for field in _ASSERTION_SCALAR_FIELDS
+            field: data[field]
+            for field in _ASSERTION_SCALAR_FIELDS
+            if data.get(field) is not None
         }
         for field in _ASSERTION_JSON_FIELDS:
             kwargs[field] = deepcopy(data.get(field) or {})

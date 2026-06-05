@@ -194,6 +194,10 @@ def launch_api_validation_run(
             workflow=workflow,
             submission=submission_build.submission,
             metadata=submission_build.metadata,
+            # Carry run-level extras (e.g. short_description) through the API
+            # path too — previously only the web path forwarded these, so an
+            # API-supplied short_description was silently dropped (ADR-2026-06-03b).
+            extra=submission_build.extra,
             user_id=getattr(request.user, "id", None),
             source=source,
         )
@@ -439,7 +443,15 @@ def process_structured_payload(
             user=user if getattr(user, "is_authenticated", False) else None,
             project=project,
             name=safe_filename,
-            metadata={},
+            # Persist the submitter-supplied metadata (already policy-enforced
+            # above). This branch previously hard-coded ``{}``, silently
+            # dropping metadata on every multipart file upload — which broke
+            # SUBMISSION_METADATA → ``i.*`` input bindings (e.g. EnergyPlus's
+            # ``expected_floor_area_m2``) for file uploads, even though the
+            # inline-content branch below persisted it correctly. The file
+            # branch stores the checksum in its own ``checksum_sha256`` column,
+            # so unlike the inline branch we do NOT fold ``sha256`` into here.
+            metadata=metadata,
             checksum_sha256=ingest.sha256,
             # Snapshot retention from the workflow — see
             # _resolve_submission_retention for rationale.
@@ -520,10 +532,25 @@ def process_structured_payload(
             status_code=400,
         )
 
+    # short_description is surfaced to assertions as
+    # ``submission.short_description`` (ADR-2026-06-03b). On the API it is a
+    # TRUSTED-SETTER field: the caller holds a token scoped to a user permitted
+    # to launch this workflow, so it is persisted ungated — unlike the web form,
+    # which gates it behind ``allow_submission_short_description``. It lands on
+    # the ValidationRun (not the Submission) via the launch service's ``extra``.
+    run_extra: dict[str, Any] = {}
+    short_description = (vd.get("short_description") or "").strip()
+    if short_description:
+        run_extra["short_description"] = short_description
+
     with transaction.atomic():
         submission.full_clean()
         submission.save()
-        return SubmissionBuild(submission=submission, metadata=metadata)
+        return SubmissionBuild(
+            submission=submission,
+            metadata=metadata,
+            extra=run_extra or None,
+        )
 
 
 def handle_json_envelope(

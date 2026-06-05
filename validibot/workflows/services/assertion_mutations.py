@@ -38,6 +38,7 @@ class AssertionMutationPayload:
     options: dict[str, Any]
     message_template: str
     success_message: str
+    notes: str
     cel_cache: str
 
 
@@ -157,6 +158,7 @@ class AssertionMutationService:
             options=cleaned_data["options_payload"],
             message_template=cleaned_data.get("message_template") or "",
             success_message=cleaned_data.get("success_message") or "",
+            notes=cleaned_data.get("notes") or "",
             cel_cache=cleaned_data.get("cel_cache") or "",
         )
 

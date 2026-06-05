@@ -3,20 +3,14 @@
 {% comment %}
 Completed run detail shown inside the launch page status card.
 
-Mirrors the layout of the standalone validation detail page:
-status alert → user inputs → merged outputs (left column),
-run summary sidebar (right column).
+Renders the shared report body (``report_body.html``) — the same toggle +
+stacked/classic layout the standalone validation detail page uses — so the two
+views stay identical and honour the same session layout preference. Defaults to
+the stacked layout. ``report_layout`` and the run-report context
+(step_runs, step_signals, …) are supplied by the launch view's
+``build_run_detail_context``.
 {% endcomment %}
 <div id="validation-run-results" class="card-body">
   {% include "workflows/results/partials/block_validation_run_status_alert.html" with run=run %}
-  <div class="row w-100">
-    <div class="col-12 col-xl-7 mb-3">
-      {% include "workflows/results/partials/block_validation_run_user_inputs.html" with run=run %}
-      {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs step_signals=step_signals step_params=step_params step_template_warnings=step_template_warnings %}
-    </div>
-    <div class="col-12 col-xl-5 order-first order-xl-last mb-3">
-      {% include "workflows/results/partials/block_validation_run_summary.html" with run=run %}
-      {% include "workflows/results/partials/block_validation_run_credential.html" with issued_credential=issued_credential credential_download_url=credential_download_url credential_download_name=credential_download_name credential_resource_label=credential_resource_label %}
-    </div>
-  </div>
+  {% include "workflows/results/partials/report_body.html" %}
 </div>

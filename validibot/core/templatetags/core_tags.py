@@ -13,7 +13,11 @@ from validibot.core.utils import render_markdown_safe
 from validibot.core.utils import reverse_with_org
 from validibot.users.constants import RoleCode
 from validibot.validations.constants import Severity
+from validibot.validations.services.findings_display import (
+    abbreviate_iri as _abbreviate_iri,
+)
 from validibot.validations.services.findings_display import format_failed_rows
+from validibot.validations.services.findings_display import group_step_findings
 from validibot.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 
 logger = logging.getLogger(__name__)
@@ -335,6 +339,34 @@ def finding_failed_rows(finding) -> str:
     ``validations.services.findings_display`` so the API shares it.
     """
     return format_failed_rows(getattr(finding, "meta", None))
+
+
+@register.filter
+def abbreviate_iri(value):
+    """Template filter: shorten an IRI to its local name, pass non-IRIs through.
+
+    ``{{ finding.path|abbreviate_iri }}`` renders
+    ``http://data.ashrae.org/standard223#hasConnectionPoint`` as
+    ``hasConnectionPoint``. Pair it with ``title="{{ finding.path }}"`` so the
+    full IRI is still available on hover. JSON pointers / XPaths are returned
+    unchanged. Logic lives in ``findings_display`` so the API can share it.
+    """
+    return _abbreviate_iri(value)
+
+
+@register.simple_tag
+def grouped_step_findings(findings):
+    """Group a step's findings for display (by severity, then by rule).
+
+    Thin wrapper over ``findings_display.group_step_findings`` so the report
+    template can collapse repeated rule violations into one counted row and
+    surface each finding's *subject* (the SHACL focus node) — without the view
+    needing to change. The grouping logic itself lives in the service so the
+    API can share it. Returns the structured dict the template iterates; see
+    the service for its shape. Presentation-only — the underlying findings are
+    untouched, so counts/totals elsewhere stay exact.
+    """
+    return group_step_findings(findings)
 
 
 @register.simple_tag

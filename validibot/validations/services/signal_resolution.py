@@ -16,6 +16,7 @@ from dataclasses import field
 from typing import TYPE_CHECKING
 from typing import Any
 
+from validibot.validations.cel import CEL_NAMESPACE_ROOTS
 from validibot.validations.cel import CUSTOM_HELPER_NAMES
 from validibot.validations.services.path_resolution import resolve_path
 
@@ -130,33 +131,28 @@ def resolve_workflow_signals(
 
 # ── Signal name validation ──────────────────────────────────────────────
 
-# Reserved top-level CEL context keys. Signal names must not use these.
-# Five namespaces per ADR-2026-05-22b: payload (p), signal (s),
-# input (i), output (o), steps.
+# Reserved top-level CEL context keys. A signal name must not collide with a
+# namespace root, a CEL literal/built-in, or a Validibot helper function —
+# any of those would shadow (or be shadowed by) the signal at evaluation
+# time. The set is assembled from three single sources:
+#
+#   1. ``CEL_NAMESPACE_ROOTS`` — the canonical namespace roots (p, payload,
+#      s, signal, i, input, o, output, steps) defined once in cel.py. Listing
+#      them inline here is what let ``views/rules.py`` drift; deriving instead
+#      keeps this list and the namespace itself in lockstep.
+#   2. The CEL literals and spec built-ins below (true/false/null, has, all,
+#      map, size, …) — stable, low-churn, owned by the CEL spec.
+#   3. ``CUSTOM_HELPER_NAMES`` — the Validibot helper functions (mean,
+#      is_iso8601, now, …), already centralized in cel.py.
 RESERVED_CEL_NAMES = frozenset(
-    {
-        "p",
-        "payload",
-        "s",
-        "signal",
-        "i",
-        "input",
-        "o",
-        "output",
-        "steps",
-        "has",
-        "mean",
-        "percentile",
-        "sum",
-        "max",
-        "min",
-        "abs",
-        "round",
-        "duration",
-        "is_int",
+    CEL_NAMESPACE_ROOTS
+    # CEL literals and spec built-ins (not namespace roots, not Validibot
+    # helpers) — a signal named ``true`` or ``size`` would be ambiguous.
+    | {
         "true",
         "false",
         "null",
+        "has",
         "exists",
         "exists_one",
         "all",

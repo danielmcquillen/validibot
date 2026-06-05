@@ -1,0 +1,28 @@
+{% load i18n %}
+
+{% comment %}
+Shared run-report body: whichever layout the user picked. Included by BOTH the
+standalone run-detail page (``validations/validation_detail.html``) and the
+launch-page status card
+(``workflows/launch/partials/run_status_card_body_complete.html``) so the two
+stay in lockstep and honour the same session preference. The layout toggle
+itself lives in each page's header (``_report_layout_toggle.html``), not here.
+
+``report_layout`` is resolved per request by ``resolve_report_layout`` (default
+"stacked"). The classic and stacked partials read the surrounding context
+(run, step_runs, step_signals, step_params, step_template_warnings,
+issued_credential, evidence_artifact, …); each section is independently guarded,
+so a caller that supplies only a subset (the launch card omits the evidence
+manifest) simply renders fewer sections.
+
+Context variables:
+  report_layout — "stacked" (default) or "classic".
+  (plus the run-report context the selected layout consumes)
+{% endcomment %}
+<div id="run-report-body">
+  {% if report_layout == "classic" %}
+    {% include "workflows/results/partials/layout_validation_run_classic.html" %}
+  {% else %}
+    {% include "workflows/results/partials/layout_validation_run_stacked.html" %}
+  {% endif %}
+</div>

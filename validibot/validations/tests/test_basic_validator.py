@@ -46,6 +46,7 @@ from django.test import TestCase
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.tests.factories import SubmissionFactory
+from validibot.validations.cel import CEL_NAMESPACE_ROOTS
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import RulesetType
@@ -524,16 +525,26 @@ class CelContextNamespaceTests(TestCase):
         self.assertEqual(context["p"]["root"]["child"]["@id"], "42")
 
     def test_context_root_keys_are_fixed(self):
-        """The context root should only contain the fixed namespace keys.
+        """The runtime context root must equal the canonical namespace set.
 
-        Per ADR-2026-05-22 the five namespaces are:
-            - p / payload (raw submission)
-            - s / signal (workflow vocabulary)
-            - i / input (step-local input-stage values)
-            - o / output (step-local output-stage values)
-            - steps (cross-step inputs and outputs)
+        This is the canary that ties three things together: the single
+        source of truth (``CEL_NAMESPACE_ROOTS`` in cel.py), the runtime
+        context dict built by ``_build_cel_context``, and — transitively —
+        every authoring-time allowlist that derives from the same constant.
+        Asserting equality against the constant (rather than a hand-listed
+        set) means a namespace can only be added in ONE place: the moment
+        ``CEL_NAMESPACE_ROOTS`` gains a member, this test fails until
+        ``_build_cel_context`` actually binds it, forcing the runtime and the
+        allowlists to move together.
 
-        Payload keys are never at the root regardless of their names.
+        Per ADR-2026-05-22b the five base namespaces are p/payload (raw
+        submission file), s/signal (workflow vocabulary), i/input (step-local
+        input-stage values), o/output (step-local output-stage values), and
+        steps (cross-step inputs and outputs); ADR-2026-06-03b adds the sixth,
+        submission (submission envelope: metadata + server facts). Here the
+        submission envelope resolves to ``{}`` because this unit test builds
+        the context without a run, but the ``submission`` root key is still
+        present. Payload keys are never at the root regardless of their names.
         """
         engine = BasicValidator()
         payload = {
@@ -542,19 +553,9 @@ class CelContextNamespaceTests(TestCase):
         }
         context = engine._build_cel_context(payload, self.validator)
 
-        # Root keys are only the fixed namespaces (always present).
-        expected_root_keys = {
-            "p",
-            "payload",
-            "s",
-            "signal",
-            "i",
-            "input",
-            "o",
-            "output",
-            "steps",
-        }
-        self.assertEqual(set(context.keys()), expected_root_keys)
+        # The runtime context binds exactly the canonical namespace roots —
+        # no more (no leaked payload keys), no fewer (every namespace present).
+        self.assertEqual(set(context.keys()), set(CEL_NAMESPACE_ROOTS))
         # Both payload keys are accessible under p
         self.assertIn("THERM-XML", context["p"])
         self.assertIn("Materials", context["p"])

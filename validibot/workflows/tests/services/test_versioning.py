@@ -637,6 +637,7 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             target_signal_definition=signal,
             target_data_path="",
             rhs={"value": 0},
+            notes="No findings expected once the model passes QA.",
         )
         user = UserFactory()
 
@@ -650,6 +651,9 @@ class WorkflowVersioningServiceCloneTests(TestCase):
         assert new_step.ruleset_id != ruleset.pk
         assert new_signal.pk != signal.pk
         assert new_assertion.target_signal_definition_id == new_signal.pk
+        # Author rationale is non-semantic but part of the copied contract, so a
+        # new version carries the reasoning forward rather than dropping it.
+        assert new_assertion.notes == "No findings expected once the model passes QA."
         assert new_step.signal_bindings.get().signal_definition_id == new_signal.pk
         assert new_step.derivations.get(contract_key="has_findings").pk is not None
         assert report.components_copied["rulesets"] == 1

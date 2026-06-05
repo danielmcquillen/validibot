@@ -17,6 +17,7 @@ from django.views.generic.edit import FormView
 
 from validibot.core.utils import reverse_with_org
 from validibot.users.permissions import PermissionCode
+from validibot.validations.cel import CEL_NAMESPACE_ROOTS
 from validibot.validations.cel import CUSTOM_HELPER_NAMES
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import Severity
@@ -92,11 +93,13 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
         """Validate CEL and return the signal definitions that are referenced.
 
         The parser enforces the namespaced convention: all data references
-        must use a namespace prefix (``p.``, ``s.``, ``output.``, ``steps.``).
-        Bare identifiers are rejected.
+        must use a namespace prefix (``p.``/``payload.``, ``s.``/``signal.``,
+        ``i.``/``input.``, ``o.``/``output.``, ``steps.``). Bare identifiers
+        are rejected.
 
         Output signals may be referenced as ``output.<contract_key>`` or
-        ``o.<contract_key>``.
+        ``o.<contract_key>``; step inputs as ``input.<contract_key>`` or
+        ``i.<contract_key>``.
         """
         expr = (expr or "").strip()
         if not expr:
@@ -105,7 +108,12 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
             raise ValidationError(_("Parentheses and brackets must be balanced."))
 
         reserved_literals = {"true", "false", "null"}
-        namespace_roots = {"p", "payload", "s", "signal", "o", "output", "steps"}
+        # Sourced from the single canonical set in cel.py. This site had
+        # drifted — it omitted ``i``/``input``, so a valid ``i.<name>``
+        # reference (bound by the runtime context) was rejected here as a
+        # bare identifier. Deriving from CEL_NAMESPACE_ROOTS fixes that and
+        # prevents the next namespace from being missed.
+        namespace_roots = set(CEL_NAMESPACE_ROOTS)
         cel_builtins = {
             "has",
             "exists",
@@ -152,7 +160,14 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
                 continue
             root = name.split(".")[0]
             if root in namespace_roots:
-                # Track referenced signal definitions for output.*
+                # Track referenced signal definitions for output.* and s.* only.
+                # The first tracked reference becomes the assertion's target
+                # signal (see the caller), and an assertion's target is the
+                # output/signal being asserted about — not an input. So an
+                # ``i.``/``input.`` reference is a valid namespace root (it must
+                # not be flagged as unknown) but is intentionally NOT tracked as
+                # a target: in ``o.result > i.threshold`` the target is
+                # ``o.result``, never ``i.threshold``.
                 if (root in ("output", "o") and "." in name) or (
                     root == "s" and "." in name
                 ):

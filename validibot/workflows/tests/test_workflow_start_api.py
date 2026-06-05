@@ -166,13 +166,18 @@ def mock_validation_service_success(monkeypatch):
     Returns 201 with minimal payload that tests assert on.
     """
 
-    def make_run(*, org, workflow, submission, status):
+    def make_run(*, org, workflow, submission, status, extra=None):
         return ValidationRun.objects.create(
             org=org,
             workflow=workflow,
             submission=submission,
             project=getattr(submission, "project", None),
             status=status,
+            # Mirror the real ValidationRunService.launch, which applies
+            # ``**(extra or {})`` to the create — so run-level fields the
+            # launch path forwards (e.g. short_description) are reflected here
+            # and tests that assert on them stay faithful to production.
+            **(extra or {}),
         )
 
     def launch_side_effect(*_, **kwargs):
@@ -185,6 +190,7 @@ def mock_validation_service_success(monkeypatch):
             workflow=kwargs["workflow"],
             submission=kwargs["submission"],
             status=ValidationRunStatus.SUCCEEDED,
+            extra=kwargs.get("extra"),
         )
         tracking_service = TrackingEventService()
         tracking_service.log_validation_run_created(
@@ -689,6 +695,125 @@ class TestWorkflowStartAPI:
         run = ValidationRun.objects.get(pk=body["id"])
         assert run.submission
         assert run.submission.input_file
+
+    def test_multipart_file_upload_persists_metadata(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+    ):
+        """A multipart file upload must persist its submitter metadata.
+
+        Regression test. The multipart/file-upload branch previously
+        hard-coded ``metadata={}`` when constructing the ``Submission``,
+        silently dropping any metadata sent alongside the file — even though
+        the serializer accepted it and the inline-content branch persisted it
+        correctly. The drop broke ``SUBMISSION_METADATA`` → ``i.*`` input
+        bindings (e.g. EnergyPlus's ``expected_floor_area_m2``) for every file
+        upload, and the metadata namespace work depends on this field being
+        honoured. We assert the value actually round-trips onto the model.
+        """
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        file_bytes = b"Version, 9.6.0\nBuilding, Example;"
+        up = SimpleUploadedFile("building.idf", file_bytes, content_type="text/x-idf")
+
+        resp = api_client.post(
+            start_url(workflow),
+            data={
+                "file": up,
+                "filename": "building.idf",
+                "content_type": "text/x-idf",
+                "metadata": json.dumps({"deliverable": "handover"}),
+            },
+            format="multipart",
+        )
+
+        assert resp.status_code == status.HTTP_201_CREATED, resp.data
+        run = ValidationRun.objects.get(pk=resp.json()["id"])
+        # The submitter-supplied metadata must survive to the Submission row,
+        # not be discarded as an empty dict.
+        assert run.submission.metadata.get("deliverable") == "handover"
+
+    def test_api_persists_short_description_ungated(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+    ):
+        """The API persists short_description as a trusted-setter field.
+
+        Surfaced to assertions as ``submission.short_description``
+        (ADR-2026-06-03b). Unlike the web form (gated by
+        ``allow_submission_short_description``), the API is a trusted-setter
+        path: the caller holds a token scoped to a workflow launcher, so the
+        value is persisted regardless of the flag. We assert it lands on the
+        ValidationRun even though the default workflow does not enable the flag,
+        proving the ungated behaviour — and guarding the previously-missing
+        ``extra`` hand-off on the API launch path.
+        """
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        file_bytes = b"Version, 9.6.0\nBuilding, Example;"
+        up = SimpleUploadedFile("building.idf", file_bytes, content_type="text/x-idf")
+
+        resp = api_client.post(
+            start_url(workflow),
+            data={
+                "file": up,
+                "filename": "building.idf",
+                "content_type": "text/x-idf",
+                "short_description": "Final handover package",
+            },
+            format="multipart",
+        )
+
+        assert resp.status_code == status.HTTP_201_CREATED, resp.data
+        run = ValidationRun.objects.get(pk=resp.json()["id"])
+        assert run.short_description == "Final handover package"
+
+    def test_api_rejects_over_long_short_description_with_400(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+    ):
+        """An over-long short_description returns a clean 400, not a DB 500.
+
+        ``short_description`` maps to ``ValidationRun.short_description``
+        (``varchar(255)``), and the launch path creates the run via
+        ``objects.create(**extra)`` without ``full_clean()``. Without serializer
+        enforcement, a value over 255 chars would reach the DB as an
+        integrity/data error (HTTP 500). The serializer caps it at the model's
+        max_length, so the caller gets actionable validation feedback instead.
+        """
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        up = SimpleUploadedFile(
+            "building.idf",
+            b"Version, 9.6.0;",
+            content_type="text/x-idf",
+        )
+        resp = api_client.post(
+            start_url(workflow),
+            data={
+                "file": up,
+                "filename": "building.idf",
+                "content_type": "text/x-idf",
+                "short_description": "x" * 300,  # well over the 255 cap
+            },
+            format="multipart",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.data
+        # No run should have been created — validation fails before launch.
+        assert not ValidationRun.objects.exists()
 
     def test_start_long_running_returns_202_and_polling_then_succeeds(
         self,

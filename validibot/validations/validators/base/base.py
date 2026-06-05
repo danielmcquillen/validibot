@@ -63,6 +63,9 @@ from validibot.validations.cel import CelHelper
 from validibot.validations.constants import Severity
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import ValidationType
+from validibot.validations.services.submission_context import (
+    build_submission_assertion_context,
+)
 
 if TYPE_CHECKING:
     from validibot.actions.protocols import RunContext
@@ -336,13 +339,16 @@ class BaseValidator(ABC):
         """
         Build the namespaced CEL context for assertion evaluation.
 
-        Per ADR-2026-05-22b, the context has FIVE namespaces, four
-        with short/long aliases. Singular long names are used
+        Per ADR-2026-05-22b (five namespaces) and ADR-2026-06-03b
+        (the sixth, ``submission``), the context has SIX namespaces,
+        four with short/long aliases. Singular long names are used
         throughout (``payload``, ``signal``, ``input``, ``output``) —
         each namespace is a singular "thing" from the author's
         perspective, even when the underlying dict holds many
-        values. ``steps`` is the one exception because it really is
-        a collection of per-step records.
+        values. ``steps`` and ``submission`` are the exceptions:
+        ``steps`` is a collection of per-step records, and
+        ``submission`` is long-only because ``s`` already means
+        ``signal``.
 
         - ``p`` / ``payload`` — raw submission data (or validator
           output payload for output-stage assertions). Always
@@ -370,6 +376,19 @@ class BaseValidator(ABC):
         - ``steps`` — both inputs and outputs from completed upstream
           steps, accessible as ``steps.<step_key>.input.<name>`` and
           ``steps.<step_key>.output.<name>``.
+        - ``submission`` — the submission *envelope* (NOT the file
+          content): submitter-set fields (``submission.name``,
+          ``submission.short_description``, the free-form
+          ``submission.metadata.<key>`` bag) plus server-stamped facts
+          (``submission.file_type``, ``submission.size``,
+          ``submission.uploaded_at``). Assembled by
+          ``build_submission_assertion_context`` from
+          ``run_context.validation_run`` and present at BOTH input and
+          output stages because the envelope is fixed at submission
+          time. Long-only (no short alias). Unlike ``s.*``/``p.*`` it
+          resolves identically for any file format — the one namespace
+          usable in a SHACL/``.ttl`` workflow. Resolves to ``{}`` when
+          there is no run/submission (e.g. unit tests).
 
         Raw payload keys are **never promoted** to top-level CEL
         variables. Authors access raw data via ``p.key`` (or
@@ -509,15 +528,36 @@ class BaseValidator(ABC):
         if steps_context:
             self._inject_promotions(signals_dict, steps_context)
 
+        # ── Submission envelope namespace (submission) ───────────────
+        # The submitter metadata + server facts that live BESIDE the file.
+        # Built once by the shared builder so CEL and basic assertions (and
+        # the tests) see byte-identical data. Resolved from the run on the
+        # run context; ``{}`` when there is no run/submission (e.g. a unit
+        # test that calls _build_cel_context without a run context). Present
+        # at both input and output stages — the envelope is fixed at
+        # submission time, so it has no stage of its own.
+        run = getattr(getattr(self, "run_context", None), "validation_run", None)
+        submission_dict = build_submission_assertion_context(run)
+
         # ── Assemble the context ─────────────────────────────────────
         # All namespace roots are always present (even if empty) so CEL
         # expressions can reference them without undefined-variable
-        # errors. Five namespaces with their long-form aliases:
-        #   p / payload   — raw submission data
+        # errors. Six namespaces, four with their long-form aliases:
+        #   p / payload   — raw submission file data
         #   s / signal    — workflow vocabulary
         #   i / input     — step-local input-stage values
         #   o / output    — step-local output-stage values
         #   steps         — cross-step inputs and outputs
+        #   submission    — submission envelope (metadata + server facts)
+        #
+        # The keys here ARE the canonical namespace roots. The set is the
+        # single source of truth ``CEL_NAMESPACE_ROOTS`` (validations/cel.py),
+        # from which every authoring-time allowlist derives. This dict can't
+        # derive from that set directly (each root maps to a different value
+        # object), so the coupling is enforced by the canary test
+        # ``test_context_root_keys_are_fixed``: it asserts these keys equal
+        # ``CEL_NAMESPACE_ROOTS``, failing if either side gains a namespace
+        # the other lacks.
         context: dict[str, Any] = {
             "p": payload,
             "payload": payload,
@@ -528,6 +568,7 @@ class BaseValidator(ABC):
             "o": output_dict,
             "output": output_dict,
             "steps": steps_context if steps_context else {},
+            "submission": submission_dict,
         }
         return context
 
@@ -814,11 +855,26 @@ class BaseValidator(ABC):
            would be redundant.
         4. Output signals — only when supplied (output stage on
            advanced validators).
+        5. The ``submission`` envelope — a NESTED sub-dict (not
+           flattened to bare keys), so a target like
+           ``submission.metadata.deliverable`` walks naturally. Per
+           ADR-2026-06-03b it is injected last and authoritatively
+           (it overwrites any same-named payload key), because
+           ``submission`` is a reserved namespace and a
+           ``submission.*`` target must read the envelope, never a
+           file key that happens to be called ``submission``. This is
+           the basic-path analogue of CEL's separate top-level
+           ``submission`` context key.
 
-        Non-dict payloads (e.g. lxml ElementTree from XML Schema,
-        RDF graphs from SHACL) are returned unchanged — those
-        validators don't use BASIC's payload-walking evaluator on
-        their parsed object directly.
+        Non-dict payloads (lxml ElementTree from XML Schema, RDF
+        graphs from SHACL/``.ttl``) cannot be walked or merged into,
+        but the INJECTABLE namespaces (``s.*``, ``o.*`` and
+        ``submission``) live beside the file and must still resolve.
+        For those we therefore return a MINIMAL enriched dict
+        carrying just those namespaces — so a metadata-only basic
+        assertion on a ``.ttl`` submission sees the envelope. ``p.*``
+        stays unavailable for them (the raw content isn't walkable),
+        which is unchanged behaviour.
 
         Args:
             base_payload: The validator-specific base payload
@@ -831,15 +887,16 @@ class BaseValidator(ABC):
                 dict to merge into the payload. None at input stage.
 
         Returns:
-            The enriched dict (or the unchanged base for non-dict
-            inputs).
+            The enriched dict — either the dict payload with the
+            namespaces merged in, or (for a non-dict base) a minimal
+            dict carrying only the injectable namespaces.
         """
-        if not isinstance(base_payload, dict):
-            # XML Schema / SHACL / THERM parsers may produce
-            # non-dict objects; we can't merge into those.
-            return base_payload
-
-        enriched = dict(base_payload)
+        # For a non-dict base (XML Schema ElementTree, SHACL/THERM RDF graph) we
+        # can't walk or merge the parsed object, so we start from an empty dict
+        # and inject only the namespaces that live beside the file (s.*/o.*/
+        # submission). ``p.*`` (the raw content) stays unavailable for those —
+        # unchanged behaviour.
+        enriched = dict(base_payload) if isinstance(base_payload, dict) else {}
 
         # Workflow signals — the s.* namespace's runtime values.
         workflow_signals = (
@@ -854,8 +911,9 @@ class BaseValidator(ABC):
             enriched.setdefault(key, value)
 
         # Resolved input bindings — i.* values via StepInputBinding
-        # source-path resolution. Only at input stage.
-        if stage == "input":
+        # source-path resolution. Only at input stage, and only for a dict
+        # base (binding resolution walks the submission payload).
+        if stage == "input" and isinstance(base_payload, dict):
             try:
                 bound = self._resolve_bound_input_context(base_payload)
             except Exception:
@@ -873,6 +931,14 @@ class BaseValidator(ABC):
         if stage == "output" and output_signals:
             for key, value in output_signals.items():
                 enriched.setdefault(key, value)
+
+        # Submission envelope — injected last as a nested, authoritative
+        # sub-dict (see merge-order note above). Built by the shared builder
+        # so basic and CEL see byte-identical data; ``{}`` when there is no
+        # run/submission. Available at both stages because the envelope is
+        # fixed at submission time.
+        run = getattr(getattr(self, "run_context", None), "validation_run", None)
+        enriched["submission"] = build_submission_assertion_context(run)
 
         return enriched
 

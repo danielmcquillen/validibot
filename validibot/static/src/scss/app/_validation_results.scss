@@ -36,6 +36,58 @@
   }
 }
 
+// Findings table ("Outputs by Step"). Fixed layout so one long Message column
+// can't starve the short Path / Severity columns: the explicit-width columns
+// hold their size and Message absorbs whatever is left. The Subject column is
+// optional — when it is absent Message simply gains its width, so no separate
+// 3-column rule set is needed. The min-width keeps the table readable inside
+// the narrow classic-layout column; below it the surrounding .table-responsive
+// wrapper scrolls horizontally instead of crushing cells. Scoped to the class
+// (not the card) because the bare accordion layout renders the table without
+// the .validation-info-card chrome.
+.findings-table {
+  table-layout: fixed;
+  min-width: 52rem;
+
+  .findings-col-severity {
+    width: 7rem;
+  }
+  .findings-col-subject {
+    width: 18rem;
+  }
+  .findings-col-path {
+    width: 11rem;
+  }
+  .findings-cell-subject,
+  .findings-cell-path {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .findings-cell-subject details,
+  .findings-cell-subject summary,
+  .findings-cell-subject li {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .findings-cell-subject li,
+  .findings-cell-path span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+// The Run Summary card reads cleaner without the dotted section dividers the
+// other results cards use — the two-column split already groups the metadata,
+// so the dotted lines were just visual noise. Scoped to ``.run-summary-card``
+// (and made specific enough to beat ``.validation-info-card section``) so the
+// Outputs / User Inputs cards keep their dividers. Spacing is preserved; only
+// the border is removed.
+.validation-info-card.run-summary-card section {
+  border-bottom: 0;
+}
+
 .organization-role-list {
   .organization-role-option {
     margin-bottom: 0.75rem;

@@ -3,17 +3,7 @@
 <div class="workflow-step-list d-flex flex-column gap-0"
      id="workflow-step-list-inner">
   {% if credential_ordering_guidance %}
-    <div class="alert alert-info mb-4" role="alert">
-      <div class="fw-semibold">
-        {{ credential_ordering_guidance.headline }}
-      </div>
-      <div>
-        {{ credential_ordering_guidance.followup }}
-      </div>
-      <div class="small text-muted mt-1">
-        {{ credential_ordering_guidance.move_note }}
-      </div>
-    </div>
+    {% include "core/partial/_collapsible_alert.html" with headline=credential_ordering_guidance.headline details=credential_ordering_guidance.details collapse_id="credentialOrderingGuidance" %}
   {% endif %}
   {% if steps %}
     {% for step in steps %}
@@ -24,7 +14,7 @@
               <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
                 <div>
                   {% with validator=step.validator action=step.action meta=step.action_meta %}
-                    <div class="d-flex align-items-center gap-2 mb-1">
+                    <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
                       <span class="badge text-bg-primary">{% trans 'Step' %} {{ step.step_number }}</span>
                       {% if validator %}
                         <span class="badge text-bg-light text-uppercase small">{{ validator.get_validation_type_display }}</span>
@@ -39,12 +29,10 @@
                       <h3 class="h6 mb-0">
                         {{ step.name|default:_("Untitled step") }}
                       </h3>
+                      {% if step.description %}
+                        <span class="text-muted small">{{ step.description }}</span>
+                      {% endif %}
                     </div>
-                    {% if step.description %}
-                      <p class="text-muted small mb-2">
-                        {{ step.description|linebreaksbr }}
-                      </p>
-                    {% endif %}
                     {% if validator %}
                       {% if validator.validation_type == 'AI_ASSIST' %}
                         <p class="text-muted small mb-2">
@@ -124,18 +112,7 @@
                         </dl>
                       {% endif %}
                     {% elif action %}
-                      <p class="text-muted small mb-2">
-                        <i class="bi {{ meta.icon|default:'bi-gear' }} me-1"></i>
-                        {{ meta.definition_name|default:action.definition.name }}
-                      </p>
                       {% with summary=step.action_summary %}
-                        {% if summary.message %}
-                          <p class="text-muted small mb-2">
-                            <span class="fw-semibold">{% trans "Message" %}:</span>
-                            <br />
-                            {{ summary.message|linebreaksbr }}
-                          </p>
-                        {% endif %}
                         {% if summary.extras and not step.is_signed_credential_step %}
                           <dl class="row small text-muted mb-0">
                             {% for key, value in summary.extras.items %}
@@ -161,12 +138,12 @@
                   <div class="btn-group btn-group-sm"
                        role="group"
                        aria-label="{% trans 'Step actions' %}">
-                    <a class="btn btn-secondary"
+                    <a class="btn btn-light"
                        href="{% url 'workflows:workflow_step_edit' workflow.pk step.id %}">
                       <i class="bi-pencil-square"></i>
                       <span class="visually-hidden">{% trans "Edit" %}</span>
                     </a>
-                    <button class="btn btn-secondary"
+                    <button class="btn btn-light"
                             hx-post="{% url 'workflows:workflow_step_move' workflow.pk step.id %}"
                             hx-target="this"
                             hx-swap="none"
@@ -179,7 +156,7 @@
                       <i class="bi-arrow-up"></i>
                       <span class="visually-hidden">{% trans "Move up" %}</span>
                     </button>
-                    <button class="btn btn-secondary"
+                    <button class="btn btn-light"
                             hx-post="{% url 'workflows:workflow_step_move' workflow.pk step.id %}"
                             hx-target="this"
                             hx-swap="none"
@@ -291,7 +268,7 @@
           {% trans "Add workflow steps to build your validation workflow." %}
         </p>
         {% if can_manage_workflow %}
-          {# add your first step button #}
+          {% comment %}add your first step button{% endcomment %}
           <button class="btn btn-secondary mt-4"
                   type="button"
                   data-bs-toggle="modal"

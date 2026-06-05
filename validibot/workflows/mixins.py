@@ -21,6 +21,7 @@ from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.credential_utils import get_signed_credential_display_context
 from validibot.validations.models import Ruleset
 from validibot.validations.models import ValidationRun
+from validibot.validations.services.report_layout import resolve_report_layout
 from validibot.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 from validibot.workflows.forms import WorkflowForm
 from validibot.workflows.forms import WorkflowLaunchForm
@@ -427,6 +428,34 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
                     (f"s.{signal_name}", f"{signal_name} · {source_label}"),
                 )
 
+        # ── Submission envelope appears as submission.* (ADR-2026-06-03b) ──
+        # Available at BOTH stages and for every validator regardless of file
+        # format — the envelope (submitter metadata + server facts) lives
+        # beside the file. We enumerate the FIXED fields; the free-form
+        # metadata bag has arbitrary keys that can't be listed, so we offer a
+        # single hint entry the author completes with their own key.
+        submission_label = _("Submission")
+        choices.extend(
+            [
+                (
+                    "submission.metadata.",
+                    f"{_('Submission metadata — add your key')} · {submission_label}",
+                ),
+                ("submission.name", f"{_('Submission name')} · {submission_label}"),
+                (
+                    "submission.short_description",
+                    f"{_('Submission description')} · {submission_label}",
+                ),
+                (
+                    "submission.original_filename",
+                    f"{_('Original filename')} · {submission_label}",
+                ),
+                ("submission.file_type", f"{_('File type')} · {submission_label}"),
+                ("submission.size", f"{_('File size (bytes)')} · {submission_label}"),
+                ("submission.uploaded_at", f"{_('Uploaded at')} · {submission_label}"),
+            ],
+        )
+
         self._catalog_entries_cache = signal_defs
         setattr(self, cache_key, choices)
         self._workflow_signal_names_cache = seen_signal_names
@@ -745,6 +774,10 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "is_polling": run.status in self.polling_statuses,
             "submission_content": submission_content,
             "submission_content_can_be_viewed": submission_content_can_be_viewed,
+            # Stacked vs classic report layout — session-remembered, default
+            # stacked. Shared with the standalone run-detail page so the launch
+            # card and the detail page render the same layout.
+            "report_layout": resolve_report_layout(self.request),
         }
         context.update(status_context)
         return context

@@ -1043,10 +1043,16 @@ SHACL_MAX_VALIDATION_DEPTH = env.int("SHACL_MAX_VALIDATION_DEPTH", default=25)
 
 # pySHACL process timeout. The engine launches pySHACL in a child
 # process and terminates it if validation exceeds this wall-clock
-# budget. The code hard-caps this at 120 seconds.
+# budget. This is a backstop against pathological shapes, NOT the size
+# guard — input size is bounded by SHACL_MAX_DATA_TRIPLES (up to 1M). The
+# default is therefore generous (5 min) so real building models near the
+# triple cap can validate; the code hard-caps this at 1800s (30 min),
+# which sits below the 3600s container timeout. Cloud overrides this env
+# var down for cost / anonymous-agent tiers; self-hosted operators own
+# their compute and keep the generous default.
 SHACL_VALIDATION_TIMEOUT_SECONDS = env.int(
     "SHACL_VALIDATION_TIMEOUT_SECONDS",
-    default=30,
+    default=300,
 )
 
 # SPARQL ASK assertion budgets. Authors write SPARQL ASK queries as

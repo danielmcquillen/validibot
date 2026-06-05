@@ -44,6 +44,7 @@ class AssertionContext:
     engine: BaseValidator
     stage: str = "input"
     cel_context: dict[str, Any] | None = field(default=None)
+    enriched_payload: Any = field(default=None)
     now: datetime | None = field(default=None)
 
     def get_cel_context(self, payload: Any) -> dict[str, Any]:
@@ -58,6 +59,33 @@ class AssertionContext:
                 payload, self.validator, stage=self.stage
             )
         return self.cel_context
+
+    def get_enriched_payload(self, payload: Any) -> Any:
+        """Get or build the namespace-enriched payload for BASIC assertions.
+
+        BASIC assertions walk a dotted path against the payload, so the
+        namespaced values must be merged in first: ``s.*``/``i.*``/``o.*``
+        flattened to bare keys, plus a nested ``submission`` sub-dict. Without
+        this, a BASIC target like ``submission.metadata.deliverable`` or
+        ``s.target_eui`` resolves to "not found" for any validator that hands
+        the evaluator a raw payload (JSON Schema, XML Schema, the Tabular
+        generic lane) — even though the same reference works in CEL.
+
+        Centralizing the enrichment here (rather than at each validator's call
+        site) guarantees the property for every validator and every future one.
+        It is **idempotent**: validators that already enrich before dispatch
+        (Basic, THERM, and the advanced validators) pass an already-enriched
+        dict, and re-running the merge is a no-op (the values are present, so
+        the ``setdefault`` merges do nothing and ``submission`` is re-injected
+        with identical data). Built once per stage and cached, mirroring
+        ``get_cel_context``; ``_build_cel_context`` is unaffected, so CEL keeps
+        seeing the raw payload under ``p`` with ``submission`` as its own key.
+        """
+        if self.enriched_payload is None:
+            self.enriched_payload = self.engine._enrich_basic_payload(
+                payload, stage=self.stage
+            )
+        return self.enriched_payload
 
 
 class AssertionEvaluator(Protocol):

@@ -27,6 +27,7 @@ from validibot.validations.constants import AssertionType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.forms import RulesetAssertionForm
+from validibot.validations.models import RulesetAssertion
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
@@ -118,6 +119,94 @@ class RulesetAssertionFormTests(TestCase):
             },
         )
         self.assertTrue(form.is_valid())
+
+    def test_cel_description_persisted_into_rhs_payload(self):
+        """An optional CEL description is saved alongside the expression in rhs.
+
+        Why it matters: the description is the human label shown on the
+        assertion card (see ``RulesetAssertion.target_display``), so it must
+        survive form submission. It rides in the same ``rhs`` JSONField as the
+        expression — ``{"expr": ..., "description": ...}`` — mirroring exactly
+        where SHACL stores its description, with no schema change. This pins the
+        clean() contract that the mutation service later writes to the model.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=True,
+        )
+        validator.refresh_from_db()
+        entry = StepIODefinitionFactory(validator=validator, contract_key="eui")
+        form = self._form(
+            validator=validator,
+            catalog_entries=[entry],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": entry.contract_key,
+                "severity": Severity.ERROR,
+                "cel_description": "Site EUI within ASHRAE target",
+                "cel_expression": "i.eui <= 50.0",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        rhs_payload = form.cleaned_data["rhs_payload"]
+        self.assertEqual(rhs_payload["expr"], "i.eui <= 50.0")
+        self.assertEqual(rhs_payload["description"], "Site EUI within ASHRAE target")
+
+    def test_cel_blank_description_persists_as_empty_string(self):
+        """Omitting the description stores an empty string, never a missing key.
+
+        Why it matters: ``target_display`` reads ``rhs.get("description")`` and
+        falls back to the expression when it is falsy. Persisting a consistent
+        empty string (rather than omitting the key) keeps the payload shape
+        identical whether or not the author filled the field, which makes the
+        round-trip back into the edit form deterministic.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=True,
+        )
+        validator.refresh_from_db()
+        entry = StepIODefinitionFactory(validator=validator, contract_key="eui")
+        form = self._form(
+            validator=validator,
+            catalog_entries=[entry],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": entry.contract_key,
+                "severity": Severity.ERROR,
+                "cel_expression": "i.eui <= 50.0",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["rhs_payload"]["description"], "")
+
+    def test_initial_from_instance_round_trips_cel_description(self):
+        """Editing a CEL assertion repopulates the description field.
+
+        Why it matters: the edit modal is built from
+        ``initial_from_instance``. If it didn't read back ``rhs["description"]``,
+        a saved label would silently vanish on the next edit (and a re-save would
+        blank it). This closes the save → edit → save loop for the new field.
+        """
+        assertion = RulesetAssertion(
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            target_data_path="o.eui <= 50.0",
+            rhs={"expr": "o.eui <= 50.0", "description": "Site EUI within target"},
+            severity=Severity.ERROR,
+        )
+
+        initial = RulesetAssertionForm.initial_from_instance(assertion)
+
+        self.assertEqual(initial["cel_expression"], "o.eui <= 50.0")
+        self.assertEqual(initial["cel_description"], "Site EUI within target")
 
     def test_cel_allows_multi_letter_macro_loop_variable(self):
         """A comprehension macro's loop variable may be any length, not 1 letter.

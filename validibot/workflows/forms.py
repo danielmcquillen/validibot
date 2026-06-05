@@ -27,6 +27,7 @@ from django.utils.translation import gettext_lazy as _
 
 from validibot.projects.models import Project
 from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.constants import VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
@@ -1357,6 +1358,11 @@ class WorkflowLaunchForm(forms.Form):
     short_description = forms.CharField(
         label=_("Short description"),
         required=False,
+        # Mirror the model column so an over-long value is rejected with a form
+        # error rather than reaching ``objects.create`` (which skips
+        # ``full_clean``) and erroring at the DB as a 500. Single source:
+        # VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH.
+        max_length=VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH,
         widget=forms.Textarea(
             attrs={
                 "rows": 2,
@@ -3628,6 +3634,14 @@ class SignalBindingEditForm(forms.Form):
                 #
                 # p. / payload. → SUBMISSION_PAYLOAD scope (raw submission data)
                 #   e.g. "p.building.floor_area" → path="building.floor_area"
+                #
+                # submission. is deliberately NOT recognized here (ADR-2026-06-03b):
+                # binding a validator INPUT from submission metadata already has a
+                # dedicated, typed path — the BindingSourceScope.SUBMISSION_METADATA
+                # scope — so adding a second ``submission.`` spelling would create
+                # two ways to express the same intent. The new ``submission.``
+                # namespace is the rule-author-facing READER (used in assertions),
+                # not a binding source; keep the two layers distinct.
                 #
                 # No prefix → preserve existing scope (could be UPSTREAM_STEP,
                 # etc.) unless it was SIGNAL, in which case reset to

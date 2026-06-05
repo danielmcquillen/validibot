@@ -260,13 +260,15 @@ class TestValidateSignalName:
 
     @pytest.mark.parametrize(
         "name",
-        ["payload", "output", "steps", "has", "true"],
+        ["payload", "output", "steps", "submission", "has", "true"],
     )
     def test_reserved_name_rejected(self, name):
         """Reserved CEL context keys (``payload``, ``output``, ``steps``,
-        builtins like ``has``, ``true``, etc.) must be rejected.  If
-        allowed, they would shadow built-in CEL names and cause subtle
-        expression evaluation bugs.
+        ``submission``, builtins like ``has``, ``true``, etc.) must be
+        rejected.  If allowed, they would shadow built-in CEL names or a
+        namespace root and cause subtle expression evaluation bugs.
+        ``submission`` is the sixth namespace (ADR-2026-06-03b); a signal
+        named ``submission`` would collide with the envelope namespace.
         """
         assert name in RESERVED_CEL_NAMES, (
             f"Test assumption: '{name}' should be in RESERVED_CEL_NAMES"

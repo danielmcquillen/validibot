@@ -1,0 +1,35 @@
+// Collapsible one-line alert
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//
+// A lead alert (info / warning) that shows a single-line headline plus a
+// subtle "Details" toggle. Clicking the toggle expands the full message via
+// Bootstrap's collapse component, and the chevron rotates to signal state.
+//
+// Markup: core/partial/_collapsible_alert.html
+// Used on the workflow step list (workflow detail edit) and the step detail
+// edit screen.
+
+.collapsible-alert {
+  &__toggle {
+    // Keep the toggle visually quiet — it is a secondary affordance sitting
+    // next to the headline, not a primary call to action. We suppress the
+    // hover underline that the global .btn-link rule would otherwise add.
+    white-space: nowrap;
+    text-decoration: none;
+
+    &:hover,
+    &:focus {
+      text-decoration: none;
+    }
+  }
+
+  &__chevron {
+    transition: transform 0.2s ease;
+  }
+
+  // Bootstrap removes the `.collapsed` class from the toggle while the panel
+  // is open, so an expanded alert points the chevron up.
+  &__toggle:not(.collapsed) &__chevron {
+    transform: rotate(180deg);
+  }
+}

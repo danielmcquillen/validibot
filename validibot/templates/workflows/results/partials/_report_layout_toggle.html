@@ -1,0 +1,54 @@
+{% load i18n %}
+
+{% comment %}
+Report layout toggle — switches the run report between the stacked
+(full-width accordion) and classic (two-column) layouts.
+
+Icons only, with the label in a Bootstrap tooltip (initialised globally in
+project.ts on [data-bs-toggle="tooltip"]); aria-label carries the same text for
+screen readers since there is no visible text. Two links rather than JS: each
+carries ``?layout=`` which the rendering view reads via ``resolve_report_layout``
+and persists to the session, so the choice sticks across pages. A full reload is
+fine for a layout preference. The active button reflects the current
+``report_layout`` (anything that isn't "classic" is the stacked default).
+
+Renders just the btn-group — the caller (a card header) positions it. No outer
+spacing wrapper.
+
+Context variables:
+  report_layout — "stacked" (default) or "classic".
+{% endcomment %}
+<div class="btn-group"
+     role="group"
+     aria-label="{% trans 'Report layout' %}">
+  <a href="?layout=stacked"
+     class="btn
+            {% if report_layout != 'classic' %}
+              btn-light
+            {% else %}
+              btn-outline-light
+            {% endif %}"
+     data-bs-toggle="tooltip"
+     title="{% trans 'Stacked layout' %}"
+     aria-label="{% trans 'Stacked layout' %}"
+     {% if report_layout != 'classic' %}
+       aria-current="true"
+     {% endif %}>
+    <i class="bi-list-task"></i>
+  </a>
+  <a href="?layout=classic"
+     class="btn
+            {% if report_layout == 'classic' %}
+              btn-light
+            {% else %}
+              btn-outline-light
+            {% endif %}"
+     data-bs-toggle="tooltip"
+     title="{% trans 'Two-column layout' %}"
+     aria-label="{% trans 'Two-column layout' %}"
+     {% if report_layout == 'classic' %}
+       aria-current="true"
+     {% endif %}>
+    <i class="bi-layout-split"></i>
+  </a>
+</div>

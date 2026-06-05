@@ -191,9 +191,12 @@ the inputs or outputs table.
 
 ## The CEL context structure
 
-Every CEL expression evaluates against a context with five namespaces and
-their long-form aliases. The context is built by `_build_cel_context()`
-in `validibot/validations/validators/base/base.py`.
+Every CEL expression evaluates against a context with six namespaces (four
+with long-form aliases). The context is built by `_build_cel_context()`
+in `validibot/validations/validators/base/base.py`. The legal root names are
+defined once in `CEL_NAMESPACE_ROOTS` (`validibot/validations/cel.py`), from
+which every authoring-time allowlist derives — see "One source of truth"
+below.
 
 ```python
 context = {
@@ -206,6 +209,7 @@ context = {
     "o": output_dict,        # alias for output
     "output": output_dict,   # this step's declared output signals
     "steps": steps_context,  # inputs and outputs from completed upstream steps
+    "submission": submission_dict,  # submission envelope (metadata + facts)
 }
 ```
 
@@ -299,6 +303,51 @@ sub-dicts:
 Authors access cross-step values via
 `steps.preflight.output.warning_count` or
 `steps.preflight.input.zone_count`.
+
+### `submission` — the submission envelope
+
+The sixth namespace (ADR-2026-06-03b). It carries context that lives *beside*
+the file rather than inside it — submitter-supplied metadata plus
+server-stamped facts — so it resolves identically for any submitted format,
+including non-JSON RDF `.ttl`/SHACL where `p.*` and `s.*` are barely populated.
+It is **long-only**: there is no single-letter alias because `s` already means
+`signal`.
+
+It is assembled by a single shared builder,
+`build_submission_assertion_context(validation_run)` in
+`validibot/validations/services/submission_context.py`, which both the CEL
+context (`context["submission"]`) and the basic-assertion payload
+(`payload["submission"]`, a nested sub-dict) consume — so the two engines see
+byte-identical data. A null run/submission yields `{}` (never raises), and
+every exposed field survives `Submission.purge_content()`, so the namespace is
+stable after the file bytes are gone.
+
+**Trust is per field, not inferred from nesting:**
+
+| Field | Source | Trust |
+|-------|--------|-------|
+| `submission.name` | `Submission.name` | submitter-set (untrusted) |
+| `submission.short_description` | `ValidationRun.short_description` | submitter-set (untrusted) |
+| `submission.metadata.<key>` | `Submission.metadata` bag | submitter-set (untrusted) |
+| `submission.original_filename` | `Submission.original_filename` (basename-normalized) | submitter-sourced (untrusted) |
+| `submission.file_type` | `SubmissionFileType` | server-derived (trustworthy) |
+| `submission.size` | `Submission.size_bytes` (bytes) | server-derived (trustworthy) |
+| `submission.uploaded_at` | `Submission.created` (TZ-aware UTC; a CEL `timestamp`) | server-derived (trustworthy) |
+
+**No duplication.** The file's *contents* stay at the single canonical address
+`p`/`payload`; there is deliberately no `submission.payload`. The guiding rule
+for the whole namespace set: it does not become confusing because it is large,
+only when two prefixes can reach the same value — so guard against overlap, not
+against count.
+
+**Relationship to the `SUBMISSION_METADATA` binding scope.** Both read
+`Submission.metadata`, but they serve different actors. `submission.metadata.<key>`
+is the general-purpose, rule-author-facing reader used in assertions. The
+`BindingSourceScope.SUBMISSION_METADATA` scope is the *validator's* way to
+consume a specific metadata field as a typed, declared `i.<name>` input (e.g.
+EnergyPlus's `expected_floor_area_m2`). They coexist as complementary layers;
+the signal-binding form does **not** treat a `submission.` prefix as a binding
+source, by design.
 
 ### CEL expression examples
 
@@ -658,7 +707,32 @@ Both models call this function in their `clean()` methods.
 Additionally, `validate_signal_name()` checks that names are valid CEL
 identifiers and not reserved words. The reserved names list includes all
 CEL context keys (`p`, `payload`, `s`, `signal`, `i`, `input`, `o`,
-`output`, `steps`), CEL built-in functions, and CEL keywords.
+`output`, `steps`, `submission`), CEL built-in functions, and CEL keywords.
+A one-time data migration
+(`workflows/0028_guard_submission_reserved_name`) also blocks deploys where a
+*pre-existing* signal or promotion was named `submission` before the name was
+reserved, with a clear remediation message.
+
+## One source of truth: `CEL_NAMESPACE_ROOTS`
+
+The legal namespace roots are defined once, in `CEL_NAMESPACE_ROOTS`
+(`validibot/validations/cel.py`), and every authoring-time allowlist derives
+from it:
+
+- `RESERVED_CEL_NAMES` (`services/signal_resolution.py`)
+- `_validate_cel_identifiers()` and `_find_unknown_cel_slugs()`
+  (`validations/forms.py`)
+- `_validate_cel_expression()` (`validations/views/rules.py`)
+
+The runtime context dict in `_build_cel_context()` can't derive from a flat set
+(each root maps to a different value object), so it is locked to the constant by
+the canary test `test_context_root_keys_are_fixed`, which asserts the context
+keys equal `CEL_NAMESPACE_ROOTS`. Before centralization these lists were
+hand-copied and had already drifted — the rules view silently omitted
+`i`/`input` — so adding a namespace is now a one-line edit in one place. (`row`
+is the one root deliberately *not* in the constant: it is bound only by the
+Tabular Validator's row-stage loop and is added contextually by the
+tabular-aware allowlists.)
 
 ## Signals vs custom data paths
 

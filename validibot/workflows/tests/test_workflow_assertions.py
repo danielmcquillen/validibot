@@ -13,6 +13,7 @@ from lxml import html as lxml_html
 
 from validibot.users.constants import RoleCode
 from validibot.users.tests.utils import ensure_all_roles_exist
+from validibot.validations.constants import RULESET_ASSERTION_NOTES_MAX_LENGTH
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogRunStage
@@ -159,6 +160,173 @@ class WorkflowStepAssertionsTests(TestCase):
         self.assertEqual(response.status_code, 204)
         step.refresh_from_db()
         self.assertEqual(step.ruleset.assertions.count(), 1)
+
+    def test_create_assertion_records_notes(self):
+        """The notes field flows from the form through to the saved assertion.
+
+        Notes are the author's record of *why* a rule exists. The whole point of
+        the field is lost if the create form accepts the text but the mutation
+        service drops it, so this drives the real view -> form -> service path
+        (not the service in isolation) and confirms the rationale is persisted.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_energyplus_step(workflow)
+        create_url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        rationale = "ASHRAE 90.1 caps peak electric demand for this building class."
+        response = self.client.post(
+            create_url,
+            data={
+                "assertion_type": "basic",
+                "target_catalog_entry": "output:facility_electric_demand_w",
+                "operator": "le",
+                "comparison_value": "1000",
+                "severity": "ERROR",
+                "when_expression": "",
+                "message_template": "Too high",
+                "notes": rationale,
+            },
+            headers={"hx-request": "true"},
+        )
+        self.assertEqual(response.status_code, 204)
+        step.refresh_from_db()
+        assertion = step.ruleset.assertions.get()
+        self.assertEqual(assertion.notes, rationale)
+
+    def test_edit_modal_prefills_existing_notes(self):
+        """Opening the edit dialog pre-fills the saved notes into the form.
+
+        ``initial_from_instance`` must echo the stored note back into the Notes
+        box. If it didn't, an author editing an assertion (say, to change a
+        threshold) would see an empty box and silently WIPE their rationale on
+        save — the modal re-submits every field and the update overwrites notes
+        with the blank value. This pins the prefill so that data-loss regression
+        can't slip in unnoticed; the create-path test alone would not catch it.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_energyplus_step(workflow)
+        rationale = "Threshold per ASHRAE 90.1 Table 8.4.1 — do not relax."
+        assertion = RulesetAssertionFactory(ruleset=step.ruleset, notes=rationale)
+        url = reverse(
+            "workflows:workflow_step_assertion_update",
+            kwargs={
+                "pk": workflow.pk,
+                "step_id": step.pk,
+                "assertion_id": assertion.pk,
+            },
+        )
+        response = self.client.get(url, headers={"hx-request": "true"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(rationale, response.content.decode())
+
+    def test_update_assertion_persists_changed_notes(self):
+        """Editing an assertion writes the revised notes through to the model.
+
+        Covers the update half of the round-trip (the create test covers insert):
+        the form -> ``update_from_cleaned_data`` -> model path must persist a
+        changed note, not just accept it. The row is first created through the
+        real create endpoint so it is in a genuinely form-valid shape.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_energyplus_step(workflow)
+        base_data = {
+            "assertion_type": "basic",
+            "target_catalog_entry": "output:facility_electric_demand_w",
+            "operator": "le",
+            "comparison_value": "1000",
+            "severity": "ERROR",
+            "message_template": "Too high",
+        }
+        create_url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        self.client.post(
+            create_url,
+            data={**base_data, "notes": "original rationale"},
+            headers={"hx-request": "true"},
+        )
+        assertion = step.ruleset.assertions.get()
+
+        update_url = reverse(
+            "workflows:workflow_step_assertion_update",
+            kwargs={
+                "pk": workflow.pk,
+                "step_id": step.pk,
+                "assertion_id": assertion.pk,
+            },
+        )
+        response = self.client.post(
+            update_url,
+            data={**base_data, "notes": "revised rationale after design review"},
+            headers={"hx-request": "true"},
+        )
+        self.assertEqual(response.status_code, 204)
+        assertion.refresh_from_db()
+        self.assertEqual(assertion.notes, "revised rationale after design review")
+
+    def test_create_assertion_rejects_notes_over_max_length(self):
+        """The form rejects an over-long note (cap enforced at the form layer).
+
+        The model test pins enforcement in ``full_clean()``; this proves the
+        independent form-layer cap is wired too, so an oversized note is turned
+        away with a re-rendered form (HTMx error convention: 200, not 204) and no
+        row is written — rather than only being caught deeper in the stack.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_energyplus_step(workflow)
+        create_url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = self.client.post(
+            create_url,
+            data={
+                "assertion_type": "basic",
+                "target_catalog_entry": "output:facility_electric_demand_w",
+                "operator": "le",
+                "comparison_value": "1000",
+                "severity": "ERROR",
+                "notes": "x" * (RULESET_ASSERTION_NOTES_MAX_LENGTH + 1),
+            },
+            headers={"hx-request": "true"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(step.ruleset.assertions.count(), 0)
+
+    def test_assertion_notes_are_html_escaped_on_the_card(self):
+        """Notes containing markup are escaped, not rendered, on the editor card.
+
+        ``notes`` is free-form text an author types, so it is an untrusted
+        injection surface. The card renders it with ``{{ ... |linebreaksbr }}``,
+        which relies on Django's autoescaping. This test stores a ``<script>``
+        payload and confirms the rendered page contains the escaped form
+        (``&lt;script&gt;``) and never the live tag — guarding against a future
+        change adding ``|safe`` or building the markup by hand, which would turn
+        the notes field into a stored-XSS vector.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_energyplus_step(workflow)
+        RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            notes="<script>alert('xss')</script>",
+        )
+        url = reverse(
+            "workflows:workflow_step_edit",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;", body)
+        self.assertNotIn("<script>alert('xss')</script>", body)
 
     def test_create_assertion_blocked_on_locked_versioned_workflow(self):
         """Versioned workflows cannot add assertions after the contract locks.
@@ -553,7 +721,14 @@ class WorkflowStepAssertionsTests(TestCase):
         self.assertNotIn("Inputs and Outputs", body)
 
     def test_shacl_assertion_card_uses_non_redundant_fallback_copy(self):
-        """Unnamed SHACL assertions should summarize as one compact card line."""
+        """Unnamed SHACL assertions should summarize as one compact card line.
+
+        Also pins two presentation decisions on the card: the label drops the
+        redundant "SPARQL" prefix (the type pill already says SPARQL, so just
+        the query verb "ASK" remains), and the pills render severity-first then
+        type — both verified against the real step-editor render so the template
+        wiring, not just the model, is exercised.
+        """
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         step = self._make_shacl_step(workflow)
@@ -577,10 +752,20 @@ class WorkflowStepAssertionsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertRegex(body, r"SPARQL ASK\s*:\s*\(no description\)")
+        # Label is just the query verb now — the "SPARQL" type pill carries the
+        # language, so "SPARQL ASK :" would be redundant.
+        self.assertRegex(body, r"ASK\s*:\s*\(no description\)")
+        self.assertNotIn("SPARQL ASK :", body)
         self.assertNotIn("Against submitted RDF data graph", body)
         self.assertNotIn("SHACL SPARQL ASK", body)
         self.assertNotIn("SPARQL ASK against data graph", body)
+        # Pills render severity first (text-bg-secondary), then the assertion
+        # type (text-bg-light text-uppercase), adjacent in that order.
+        self.assertRegex(
+            body,
+            r'badge text-bg-secondary">[^<]*</span>\s*'
+            r'<span class="badge text-bg-light text-uppercase">',
+        )
 
     def test_shacl_step_renders_line_connectors_and_terminal_add_button(self):
         """The step editor should match the workflow builder flow affordance.

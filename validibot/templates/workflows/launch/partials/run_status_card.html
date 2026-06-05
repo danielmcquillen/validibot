@@ -5,7 +5,7 @@
        hx-get="{{ run_detail_refresh_url }}" hx-trigger="every {{ poll_interval_seconds|default:3 }}s" hx-target="#workflow-run-detail-panel" hx-swap="innerHTML"
      {% endif %}
      class="card app-card launch-status-card">
-  {# CARD HEADER #}
+  {% comment %} CARD HEADER {% endcomment %}
   <div class="card-header d-flex justify-content-between align-items-center">
     <div>
       <span class="fw-semibold">
@@ -22,19 +22,22 @@
         {% endif %}
       </span>
     </div>
-    {% if is_polling %}
-      <div class="text-muted small">
-        started {{ run.created|naturaltime }}
-      </div>
-    {% endif %}
+    <div class="d-flex align-items-center gap-2">
+      {% if is_polling %}
+        <span class="text-muted small">started {{ run.created|naturaltime }}</span>
+      {% else %}
+        {% comment %} Layout toggle (icons only, tooltips) — only on a finished run. {% endcomment %}
+        {% include "workflows/results/partials/_report_layout_toggle.html" %}
+      {% endif %}
+    </div>
   </div>
-  {# CARD BODY #}
+  {% comment %} CARD BODY {% endcomment %}
   {% if is_polling %}
     {% include "workflows/launch/partials/run_status_card_body_polling.html" %}
   {% else %}
     {% include "workflows/launch/partials/run_status_card_body_complete.html" %}
   {% endif %}
-  {# CARD FOOTER #}
+  {% comment %} CARD FOOTER {% endcomment %}
   <div class="card-footer text-muted small">
     {% if is_polling %}
       {% if cancel_url %}

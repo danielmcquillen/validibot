@@ -385,9 +385,13 @@ The headline mitigations:
   SHACL-JS constructs are rejected before pySHACL starts.
 - **pyshacl subprocess timeout.** The engine launches pySHACL in a
   plain Python subprocess and terminates it if it exceeds
-  `SHACL_VALIDATION_TIMEOUT_SECONDS` (default 30 s, hard-capped at
-  120 s). This avoids Celery prefork's restriction against
-  multiprocessing children from daemonic task processes.
+  `SHACL_VALIDATION_TIMEOUT_SECONDS` (default 300 s, hard-capped at
+  1800 s). This is a backstop against pathological shapes, not a size
+  limit — input size is bounded separately by `SHACL_MAX_DATA_TRIPLES`.
+  The hard cap stays below the 3600 s container timeout so pySHACL ends
+  cleanly with a useful finding. The subprocess design also avoids
+  Celery prefork's restriction against multiprocessing children from
+  daemonic task processes.
 - **pyshacl JS off, owl:imports off.** Hard-coded as kwargs on every
   `pyshacl.validate` call; the validate kwargs cannot be overridden.
 - **SPARQL ASK queries scrubbed at form save.** The scrubber
@@ -413,7 +417,7 @@ maximums the operator cannot exceed):
 | `SHACL_MAX_SHAPE_TRIPLES` | 50,000 | 200,000 |
 | `SHACL_MAX_ONTOLOGY_TRIPLES` | 100,000 | 500,000 |
 | `SHACL_MAX_VALIDATION_DEPTH` | 25 | 50 |
-| `SHACL_VALIDATION_TIMEOUT_SECONDS` | 30 | 120 |
+| `SHACL_VALIDATION_TIMEOUT_SECONDS` | 300 | 1800 |
 | `SHACL_SPARQL_QUERY_TIMEOUT_SECONDS` | 10 | 60 |
 | `SHACL_SPARQL_QUERY_LENGTH_MAX` | 10,000 chars | 50,000 chars |
 | `SHACL_SPARQL_PROPERTY_PATH_DEPTH_MAX` | 8 | 32 |

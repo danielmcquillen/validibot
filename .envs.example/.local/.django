@@ -100,7 +100,7 @@ WORKFLOW_RUN_POLL_INTERVAL_SECONDS=3
 # validibot/validations/validators/shacl/engine.py for the full list
 # (triple-count caps, validation depth, pySHACL/SPARQL timeouts).
 #SHACL_MAX_DATA_TRIPLES=100000
-#SHACL_VALIDATION_TIMEOUT_SECONDS=30
+#SHACL_VALIDATION_TIMEOUT_SECONDS=300
 
 # Signed Credentials (Pro / Enterprise)
 # ------------------------------------------------------------------------------

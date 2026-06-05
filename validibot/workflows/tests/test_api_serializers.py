@@ -80,6 +80,7 @@ def workflow_with_step(db, org, member):
         severity=Severity.ERROR,
         rhs={"value": 100},
         message_template="Score must be <= 100.",
+        notes="Ceiling set by the v2 grading rubric, section 4.",
     )
     wf = WorkflowFactory(
         org=org,
@@ -275,8 +276,26 @@ class TestWorkflowDetailShape:
             "target_field",
             "rhs",
             "message_template",
+            "notes",
         ):
             assert field in assertion, f"Missing assertion field: {field}"
+
+    def test_detail_step_assertion_exposes_notes(
+        self, api_client, member, org, workflow_with_step
+    ):
+        """The author's rationale ``notes`` are carried through to the read API.
+
+        Notes are deliberately part of the public-facing representation (the
+        product owner wants the reasoning behind a rule visible alongside it),
+        so a consumer of the detail endpoint must see the stored text verbatim,
+        not just an empty placeholder.
+        """
+        api_client.force_authenticate(user=member)
+        resp = api_client.get(
+            f"/api/v1/orgs/{org.slug}/workflows/{workflow_with_step.slug}/"
+        )
+        assertion = resp.json()["steps"][0]["ruleset"]["assertions"][0]
+        assert assertion["notes"] == "Ceiling set by the v2 grading rubric, section 4."
 
     def test_detail_step_assertion_target_field_from_data_path(
         self, api_client, member, org, workflow_with_step

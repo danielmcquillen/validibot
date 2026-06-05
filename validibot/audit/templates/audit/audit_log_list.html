@@ -18,6 +18,7 @@
               <i class="bi bi-shield-check me-2"></i>{% trans "Audit log" %}
             </h1>
           </div>
+          {% comment %}
           <p class="text-muted mb-0">
             {% blocktrans with org_name=organization.name %}
               Append-only record of configuration changes, security
@@ -26,6 +27,8 @@
               for the full taxonomy and retention policy.
             {% endblocktrans %}
           </p>
+          {% endcomment %}
+
         </div>
       </div>
     </div>

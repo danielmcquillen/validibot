@@ -35,6 +35,7 @@ from validibot.users.models import User
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import Validator
 from validibot.validations.tests.factories import ValidationRunFactory
+from validibot.validations.validators.base.config import get_all_configs
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -175,15 +176,12 @@ class TestFullReset:
         assert Validator.objects.count() > 0
         assert Validator.objects.filter(slug="basic-validator").exists()
 
-        # Every rebuilt validator lands at the clean v1 baseline. This pins the
-        # "reset versions to 1" requirement: the configs themselves now declare
-        # version 1, so a rebuild can never produce a v2/v3 row. The EnergyPlus
-        # validator (historically v3) is the canonical proof it collapsed to v1.
-        assert Validator.objects.exclude(version=1).count() == 0
-        assert Validator.objects.filter(
-            slug="energyplus-idf-validator",
-            version=1,
-        ).exists()
+        # The rebuilt rows must exactly match the versions declared by the
+        # current configs. This keeps reset_system aligned with sync_validators
+        # when an individual validator intentionally advances its contract.
+        expected_catalog = {(cfg.slug, cfg.version) for cfg in get_all_configs()}
+        rebuilt_catalog = set(Validator.objects.values_list("slug", "version"))
+        assert rebuilt_catalog == expected_catalog
 
         # Identity is untouched.
         assert Organization.objects.count() == orgs_before

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "npm run build:css && npm run build:js",
-    "build:css": "sass --style=compressed --quiet-deps --load-path=node_modules --load-path=validibot/static/src/scss validibot/static/src/scss/project.scss:validibot/static/css/project.css",
+    "build:css": "sass --style=compressed --quiet-deps --load-path=node_modules --load-path=validibot/static/src/scss validibot/static/src/scss/project.scss:validibot/static/css/project.css && node -e \"require('fs').appendFileSync('validibot/static/css/project.css.map', '\\n')\"",
     "build:js": "esbuild validibot/static/src/ts/project.ts --bundle --minify --sourcemap --outdir=validibot/static/js",
     "watch": "npm run watch:css & npm run watch:js",
     "watch:css": "sass --watch --quiet-deps --load-path=node_modules validibot/static/src/scss/project.scss:validibot/static/css/project.css",

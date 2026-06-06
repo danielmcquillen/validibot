@@ -945,24 +945,17 @@ class AdvancedValidator(BaseValidator):
                 stats=stats,
             )
 
-        # Process the output envelope
-        result = self._process_output_envelope(response.output_envelope, stats)
+        # Defer output findings to post_execute_validate(). The step processor
+        # calls that method for both synchronous and callback completions, and
+        # persisting envelope messages here as well would duplicate every
+        # container finding. SHACL also needs that single post-processing pass
+        # to preserve its richer outputs.findings metadata.
+        stats.update(self._extract_outputs_stats(response.output_envelope))
+        result = ValidationResult(
+            passed=self._determine_passed(response.output_envelope),
+            issues=[],
+            stats=stats,
+        )
         # Attach envelope for processor to use in post_execute_validate()
         result.output_envelope = response.output_envelope
         return result
-
-    def _process_output_envelope(
-        self,
-        envelope: Any,
-        stats: dict,
-    ) -> ValidationResult:
-        """
-        Process a ValidationOutputEnvelope and extract results.
-
-        Used for sync backends where the output is available immediately.
-        """
-        issues = self._extract_issues_from_envelope(envelope)
-        stats.update(self._extract_outputs_stats(envelope))
-        passed = self._determine_passed(envelope)
-
-        return ValidationResult(passed=passed, issues=issues, stats=stats)

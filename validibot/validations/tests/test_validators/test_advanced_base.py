@@ -77,7 +77,7 @@ def _make_output_envelope(
     Create a mock output envelope matching the ValidationOutputEnvelope interface.
 
     Uses a MagicMock that behaves like a Pydantic model with the fields
-    that post_execute_validate() and _process_output_envelope() access.
+    that validate() and post_execute_validate() access.
     """
     from validibot_shared.validations.envelopes import ValidationStatus
 
@@ -234,6 +234,57 @@ class AdvancedValidatorValidateTests(TestCase):
         self.assertEqual(result.stats["execution_id"], "exec-123")
         self.assertFalse(result.stats["is_async"])
         backend.execute.assert_called_once()
+
+    @patch("validibot.validations.services.execution.get_execution_backend")
+    def test_validate_sync_defers_envelope_findings_to_post_execute(
+        self,
+        mock_get_backend,
+    ):
+        """Sync output findings must be processed exactly once.
+
+        The processor persists ``validate()`` issues as input-stage findings,
+        then calls ``post_execute_validate()`` for container output. Returning
+        envelope messages from both passes duplicates every container finding
+        and discards richer validator-specific metadata on one copy.
+        """
+        message = _make_envelope_message(
+            text="Container finding",
+            severity="ERROR",
+            path="model.zone",
+        )
+        envelope = _make_output_envelope(
+            status="failed_validation",
+            messages=[message],
+        )
+        response = ExecutionResponse(
+            execution_id="exec-findings",
+            is_complete=True,
+            output_envelope=envelope,
+            input_uri="file:///input.json",
+            output_uri="file:///output.json",
+            execution_bundle_uri="file:///bundle/",
+        )
+        backend = _make_mock_backend(is_async=False)
+        backend.execute.return_value = response
+        mock_get_backend.return_value = backend
+
+        engine = _StubAdvancedValidator()
+        context = RunContext(
+            validation_run=MagicMock(),
+            step=self.step,
+        )
+
+        dispatch_result = engine.validate(
+            self.validator,
+            self.submission,
+            self.ruleset,
+            run_context=context,
+        )
+        post_result = engine.post_execute_validate(envelope, run_context=None)
+
+        self.assertEqual(dispatch_result.issues, [])
+        self.assertEqual(len(post_result.issues), 1)
+        self.assertEqual(post_result.issues[0].message, "Container finding")
 
     @patch("validibot.validations.services.execution.get_execution_backend")
     def test_validate_async_pending_returns_none_passed(self, mock_get_backend):
@@ -482,12 +533,9 @@ class AdvancedValidatorPostExecuteTests(TestCase):
 class AdvancedValidatorHelperTests(TestCase):
     """Tests for the extracted static helper methods on AdvancedValidator.
 
-    These helpers were extracted from duplicated logic in
-    ``post_execute_validate()`` and ``_process_output_envelope()`` to
-    ensure both code paths share the same behavior.  Testing them
-    independently verifies the extraction preserved correctness and
-    allows each method to be tested in isolation without constructing
-    a full envelope workflow.
+    These helpers centralize envelope message mapping and status semantics for
+    post-processing and dispatch. Testing them independently verifies those
+    contracts without constructing a full envelope workflow.
     """
 
     # ── _extract_issues_from_envelope ─────────────────────────────

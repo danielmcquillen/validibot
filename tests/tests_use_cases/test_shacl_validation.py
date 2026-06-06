@@ -7,14 +7,15 @@ Mirrors the existing JSON Schema + XSD use-case test patterns:
 3. Poll the run to completion.
 4. Assert the run status and the issues list.
 
-The tests exercise the full Django path — API → validation run launch
-→ SHACLValidator → SHACL report → findings — without any external
-infrastructure (no Docker, no Cloud Run, no network). SHACL is a
-built-in validator, so the entire flow runs in-process during the test.
+The tests exercise the full local self-hosted path — API → validation run
+launch → Docker runner → isolated SHACL backend → findings. They require a
+Docker daemon and the ``validibot-validator-backend-shacl:latest`` image.
+CI builds the image from the pinned compatible backend release before pytest.
 
 These tests live alongside the other use-case tests for parity. The
-finer-grained engine tests for SHACL (parse, severity mapping, signal
-extraction, library-validator merge) live next to the SHACL package at
+finer-grained Django-side tests for SHACL (launch envelope construction,
+finding persistence, signal extraction, library-validator merge) live next
+to the SHACL package at
 ``validibot/validations/tests/test_validators/test_shacl_*.py``.
 """
 

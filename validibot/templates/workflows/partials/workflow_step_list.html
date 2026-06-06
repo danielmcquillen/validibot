@@ -113,6 +113,11 @@
                       {% endif %}
                     {% elif action %}
                       {% with summary=step.action_summary %}
+                        {% if summary.message and not step.is_signed_credential_step %}
+                          <p class="small text-muted mb-1 text-break">
+                            {{ summary.message }}
+                          </p>
+                        {% endif %}
                         {% if summary.extras and not step.is_signed_credential_step %}
                           <dl class="row small text-muted mb-0">
                             {% for key, value in summary.extras.items %}

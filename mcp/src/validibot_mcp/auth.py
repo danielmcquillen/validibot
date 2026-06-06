@@ -61,7 +61,9 @@ def _is_public_surface_request() -> bool:
         return False
     if request is None:
         return False
-    return request.url.path.startswith(_PUBLIC_MCP_PATH_PREFIX)
+    # Use the ASGI routing path; request.url.path can be derived from Host.
+    raw_path = str(request.scope.get("path", ""))
+    return raw_path.startswith(_PUBLIC_MCP_PATH_PREFIX)
 
 
 def get_api_key() -> str:

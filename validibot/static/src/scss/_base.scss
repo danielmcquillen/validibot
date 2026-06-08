@@ -81,3 +81,13 @@
 .bg-cyan-lt {
   background-color: $cyan-lt !important;
 }
+
+// Force white text on success buttons. Bootstrap's YIQ contrast algorithm picks
+// black against the bright Tabler green ($success: #2fb344), but white reads
+// better visually and matches the rest of our primary/info/danger buttons.
+.btn-success {
+  --bs-btn-color: #fff;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-active-color: #fff;
+  --bs-btn-disabled-color: #fff;
+}

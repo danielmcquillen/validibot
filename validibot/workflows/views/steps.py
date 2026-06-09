@@ -21,6 +21,7 @@ from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
 from django.template.loader import render_to_string
+from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import TemplateView
@@ -45,9 +46,14 @@ from validibot.validations.models import StepInputBinding
 from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.validators.base.config import get_config
+from validibot.workflows.forms import TABULAR_COLUMN_FORMSET_PREFIX
+from validibot.workflows.forms import TABULAR_SAMPLE_MAX_BYTES
+from validibot.workflows.forms import TABULAR_SCHEMA_MAX_BYTES
 from validibot.workflows.forms import SignalBindingEditForm
+from validibot.workflows.forms import TabularColumnFormSet
 from validibot.workflows.forms import WorkflowStepTypeForm
 from validibot.workflows.forms import get_config_form_class
+from validibot.workflows.forms import tabular_column_initial
 from validibot.workflows.mixins import WorkflowObjectMixin
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
@@ -636,6 +642,392 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         return tabs[0]["slug"] if tabs else "basic"
 
 
+class TabularSettingsEndpointMixin(WorkflowObjectMixin):
+    """Shared authorization and rendering for the tabular HTMx endpoints."""
+
+    def dispatch(self, request, *args, **kwargs):
+        self.workflow = self.get_workflow()
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=403)
+        self.step = self._get_tabular_step()
+        self.validator = self._get_tabular_validator()
+        return super().dispatch(request, *args, **kwargs)
+
+    def _get_tabular_step(self) -> WorkflowStep | None:
+        step_id = self.kwargs.get("step_id")
+        if step_id is None:
+            return None
+        return get_object_or_404(
+            WorkflowStep,
+            workflow=self.workflow,
+            pk=step_id,
+            validator__validation_type=ValidationType.TABULAR,
+        )
+
+    def _get_tabular_validator(self) -> Validator:
+        if self.step is not None:
+            return self.step.validator
+        validator_id = self.kwargs.get("validator_id")
+        return get_object_or_404(
+            workflow_step_validator_queryset(self.workflow),
+            pk=validator_id,
+            validation_type=ValidationType.TABULAR,
+        )
+
+    def _endpoint_url(self, route_name: str) -> str:
+        kwargs: dict[str, int] = {"pk": self.workflow.pk}
+        if self.step is not None:
+            kwargs["step_id"] = self.step.pk
+            route_name = f"{route_name}_existing"
+        else:
+            kwargs["validator_id"] = self.validator.pk
+        return reverse_with_org(
+            f"workflows:{route_name}",
+            request=self.request,
+            kwargs=kwargs,
+        )
+
+    def _workspace_context(
+        self,
+        *,
+        descriptor: dict,
+        column_formset=None,
+        table_schema_value: str = "",
+        import_error: str = "",
+        sample_error: str = "",
+        success_message: str = "",
+        compatibility_warnings: list[str] | None = None,
+        pending_descriptor: dict | None = None,
+        pending_source: str = "",
+        resolved_delimiter: str | None = None,
+        resolved_has_header: bool | None = None,
+    ) -> dict[str, object]:
+        if column_formset is None:
+            initial = tabular_column_initial(descriptor) or [{}]
+            column_formset = TabularColumnFormSet(
+                initial=initial,
+                prefix=TABULAR_COLUMN_FORMSET_PREFIX,
+            )
+        return {
+            "column_formset": column_formset,
+            "schema_base": json.dumps(descriptor),
+            "table_schema_value": table_schema_value,
+            "import_error": import_error,
+            "sample_error": sample_error,
+            "schema_success_message": success_message,
+            "schema_compatibility_warnings": compatibility_warnings or [],
+            "pending_schema": (
+                json.dumps(pending_descriptor) if pending_descriptor else ""
+            ),
+            "pending_schema_source": pending_source,
+            "pending_schema_column_count": len(
+                (pending_descriptor or {}).get("fields", []),
+            ),
+            "tabular_columns_url": self._endpoint_url("workflow_tabular_columns"),
+            "tabular_import_url": self._endpoint_url(
+                "workflow_tabular_schema_import",
+            ),
+            "tabular_infer_url": self._endpoint_url(
+                "workflow_tabular_schema_infer",
+            ),
+            "tabular_apply_url": self._endpoint_url(
+                "workflow_tabular_schema_apply",
+            ),
+            "tabular_export_url": (
+                self._endpoint_url("workflow_tabular_schema_export")
+                if self.step
+                else ""
+            ),
+            "resolved_delimiter": resolved_delimiter,
+            "resolved_has_header": resolved_has_header,
+            "has_resolved_dialect": resolved_delimiter is not None,
+        }
+
+    def _current_descriptor(self) -> dict:
+        raw = self.request.POST.get("schema_base", "")
+        if raw:
+            try:
+                descriptor = json.loads(raw)
+            except (TypeError, json.JSONDecodeError):
+                descriptor = {}
+            if isinstance(descriptor, dict):
+                return descriptor
+        if self.step and self.step.ruleset_id and self.step.ruleset.rules_text:
+            try:
+                descriptor = json.loads(self.step.ruleset.rules_text)
+            except (TypeError, json.JSONDecodeError):
+                return {}
+            return descriptor if isinstance(descriptor, dict) else {}
+        return {}
+
+    def _posted_column_formset(self):
+        if f"{TABULAR_COLUMN_FORMSET_PREFIX}-TOTAL_FORMS" not in self.request.POST:
+            return None
+        return TabularColumnFormSet(
+            data=self.request.POST,
+            prefix=TABULAR_COLUMN_FORMSET_PREFIX,
+        )
+
+    def _render_workspace(self, context: dict[str, object]) -> HttpResponse:
+        return render(
+            self.request,
+            "workflows/partials/tabular_schema_workspace.html",
+            context,
+        )
+
+
+class TabularColumnCreateView(TabularSettingsEndpointMixin, View):
+    """Return one correctly-prefixed column row for HTMx insertion."""
+
+    MAX_COLUMNS = 1024
+
+    def get(self, request, *args, **kwargs):
+        try:
+            index = int(
+                request.GET.get(
+                    f"{TABULAR_COLUMN_FORMSET_PREFIX}-TOTAL_FORMS",
+                    "0",
+                ),
+            )
+        except (TypeError, ValueError):
+            index = 0
+        if index < 0 or index >= self.MAX_COLUMNS:
+            return HttpResponse(
+                _("A tabular schema can contain at most 1,024 columns."),
+                status=400,
+            )
+        empty_formset = TabularColumnFormSet(
+            prefix=TABULAR_COLUMN_FORMSET_PREFIX,
+        )
+        form = empty_formset.empty_form
+        form.prefix = f"{TABULAR_COLUMN_FORMSET_PREFIX}-{index}"
+        return render(
+            request,
+            "workflows/partials/tabular_column_row.html",
+            {
+                "column_form": form,
+                "management_total": index + 1,
+                "is_new_column": True,
+            },
+        )
+
+
+class TabularSchemaImportView(TabularSettingsEndpointMixin, View):
+    """Validate an imported descriptor and preview it before replacement."""
+
+    def post(self, request, *args, **kwargs):
+        from validibot.validations.validators.tabular.schema import parse_table_schema
+        from validibot.validations.validators.tabular.schema import (
+            table_schema_compatibility_notices,
+        )
+
+        raw = (request.POST.get("table_schema") or "").strip()
+        uploaded = request.FILES.get("schema_file")
+        descriptor = self._current_descriptor()
+        if raw and uploaded:
+            return self._render_workspace(
+                self._workspace_context(
+                    descriptor=descriptor,
+                    column_formset=self._posted_column_formset(),
+                    table_schema_value=raw,
+                    import_error=str(
+                        _("Paste a descriptor or upload one, not both."),
+                    ),
+                ),
+            )
+        if uploaded:
+            if uploaded.size > TABULAR_SCHEMA_MAX_BYTES:
+                return self._render_workspace(
+                    self._workspace_context(
+                        descriptor=descriptor,
+                        column_formset=self._posted_column_formset(),
+                        import_error=str(
+                            _("Descriptor files must be 2 MB or smaller."),
+                        ),
+                    ),
+                )
+            try:
+                raw = uploaded.read().decode("utf-8-sig")
+            except UnicodeDecodeError:
+                return self._render_workspace(
+                    self._workspace_context(
+                        descriptor=descriptor,
+                        column_formset=self._posted_column_formset(),
+                        import_error=str(
+                            _("Descriptor files must be UTF-8 JSON."),
+                        ),
+                    ),
+                )
+        if not raw:
+            return self._render_workspace(
+                self._workspace_context(
+                    descriptor=descriptor,
+                    column_formset=self._posted_column_formset(),
+                    import_error=str(_("Paste a Table Schema descriptor first.")),
+                ),
+            )
+        try:
+            imported = json.loads(raw)
+            parse_table_schema(imported)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            return self._render_workspace(
+                self._workspace_context(
+                    descriptor=descriptor,
+                    column_formset=self._posted_column_formset(),
+                    table_schema_value=raw,
+                    import_error=str(
+                        _("Could not import the descriptor: %(error)s")
+                        % {"error": exc},
+                    ),
+                ),
+            )
+        return self._render_workspace(
+            self._workspace_context(
+                descriptor=descriptor,
+                column_formset=self._posted_column_formset(),
+                table_schema_value=raw,
+                pending_descriptor=imported,
+                pending_source="import",
+                compatibility_warnings=[
+                    notice.message
+                    for notice in table_schema_compatibility_notices(imported)
+                ],
+                success_message=str(
+                    _(
+                        "Import ready. Review the compatibility report, then "
+                        "apply it to replace the current columns.",
+                    ),
+                ),
+            ),
+        )
+
+
+class TabularSchemaInferView(TabularSettingsEndpointMixin, View):
+    """Infer a starting descriptor and preview it before replacement."""
+
+    def post(self, request, *args, **kwargs):
+        from validibot.validations.validators.tabular.infer import infer_table_schema
+        from validibot.validations.validators.tabular.preflight import TabularDialect
+        from validibot.validations.validators.tabular.preflight import TabularReadError
+
+        descriptor = self._current_descriptor()
+        sample = request.FILES.get("sample_file")
+        if sample is None:
+            return self._render_workspace(
+                self._workspace_context(
+                    descriptor=descriptor,
+                    column_formset=self._posted_column_formset(),
+                    sample_error=str(_("Choose a sample CSV first.")),
+                ),
+            )
+        if sample.size > TABULAR_SAMPLE_MAX_BYTES:
+            return self._render_workspace(
+                self._workspace_context(
+                    descriptor=descriptor,
+                    column_formset=self._posted_column_formset(),
+                    sample_error=str(_("Sample files must be 5 MB or smaller.")),
+                ),
+            )
+
+        raw_content = sample.read()
+        delimiter = request.POST.get("delimiter") or None
+        dialect = TabularDialect(
+            delimiter=delimiter,
+            encoding="utf-8",
+            has_header=request.POST.get("has_header") in {"on", "true", "1"},
+        )
+        try:
+            inferred = infer_table_schema(raw_content, dialect=dialect)
+        except TabularReadError as exc:
+            return self._render_workspace(
+                self._workspace_context(
+                    descriptor=descriptor,
+                    column_formset=self._posted_column_formset(),
+                    sample_error=str(
+                        _("Could not read the sample: %(error)s") % {"error": exc},
+                    ),
+                ),
+            )
+
+        return self._render_workspace(
+            self._workspace_context(
+                descriptor=descriptor,
+                column_formset=self._posted_column_formset(),
+                pending_descriptor=inferred.descriptor,
+                pending_source="infer",
+                success_message=str(
+                    _(
+                        "Inference ready. Review the proposed columns, then "
+                        "apply them to replace the current columns.",
+                    ),
+                ),
+                resolved_delimiter=inferred.dialect.delimiter,
+                resolved_has_header=inferred.dialect.has_header,
+            ),
+        )
+
+
+class TabularSchemaApplyView(TabularSettingsEndpointMixin, View):
+    """Apply a previously previewed imported or inferred descriptor."""
+
+    def post(self, request, *args, **kwargs):
+        from validibot.validations.validators.tabular.schema import parse_table_schema
+        from validibot.validations.validators.tabular.schema import (
+            table_schema_compatibility_notices,
+        )
+
+        raw = (request.POST.get("pending_schema") or "").strip()
+        current = self._current_descriptor()
+        try:
+            descriptor = json.loads(raw)
+            parse_table_schema(descriptor)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            return self._render_workspace(
+                self._workspace_context(
+                    descriptor=current,
+                    column_formset=self._posted_column_formset(),
+                    import_error=str(
+                        _("Could not apply the proposed schema: %(error)s")
+                        % {"error": exc},
+                    ),
+                ),
+            )
+        return self._render_workspace(
+            self._workspace_context(
+                descriptor=descriptor,
+                compatibility_warnings=[
+                    notice.message
+                    for notice in table_schema_compatibility_notices(descriptor)
+                ],
+                success_message=str(
+                    _("Proposed columns applied. Save changes to persist them."),
+                ),
+            ),
+        )
+
+
+class TabularSchemaExportView(TabularSettingsEndpointMixin, View):
+    """Download the saved Table Schema descriptor for an existing step."""
+
+    def get(self, request, *args, **kwargs):
+        if (
+            not self.step
+            or not self.step.ruleset_id
+            or not self.step.ruleset.rules_text
+        ):
+            return HttpResponse(
+                _("Save a column schema before downloading it."),
+                status=404,
+            )
+        filename = f"{slugify(self.step.name) or 'tabular-schema'}.json"
+        response = HttpResponse(
+            self.step.ruleset.rules_text,
+            content_type="application/json; charset=utf-8",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+
 class WorkflowStepFormView(WorkflowObjectMixin, FormView):
     """Render the full-screen workflow step editor for create/update."""
 
@@ -830,6 +1222,8 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         else:
             message = _("Workflow step updated.")
         messages.success(self.request, message)
+        for warning in form.cleaned_data.get("schema_warnings", []):
+            messages.warning(self.request, warning)
         return HttpResponseRedirect(self.get_success_url())
 
     def form_invalid(self, form):
@@ -888,6 +1282,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         context = super().get_context_data(**kwargs)
         workflow = self.get_workflow()
         step = self.get_step()
+        form = context.get("form")
         details: dict[str, object]
         icon = "bi-sliders"
         if self.is_action_step():
@@ -937,7 +1332,91 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 "credential_step_guidance": self._get_credential_step_guidance(),
             },
         )
+        if (
+            not self.is_action_step()
+            and self.get_validator().validation_type == ValidationType.TABULAR
+        ):
+            context.update(self._get_tabular_settings_context(form, step))
         return context
+
+    def _get_tabular_settings_context(self, form, step) -> dict[str, object]:
+        """Build URLs and the read-only assertion summary for the rich editor."""
+        workflow = self.get_workflow()
+        if step is not None:
+            route_suffix = "_existing"
+            route_kwargs = {"pk": workflow.pk, "step_id": step.pk}
+        else:
+            route_suffix = ""
+            route_kwargs = {
+                "pk": workflow.pk,
+                "validator_id": self.get_validator().pk,
+            }
+
+        def endpoint(name: str) -> str:
+            return reverse_with_org(
+                f"workflows:{name}{route_suffix}",
+                request=self.request,
+                kwargs=route_kwargs,
+            )
+
+        assertion_groups = []
+        assertions = (
+            list(step.ruleset.assertions.all().order_by("order", "pk"))
+            if step and step.ruleset_id
+            else []
+        )
+        labels = {
+            "dataset": _("Dataset"),
+            "row": _("Row"),
+            "column": _("Column"),
+        }
+        for stage in ("dataset", "row", "column"):
+            stage_assertions = [
+                assertion
+                for assertion in assertions
+                if (assertion.options or {}).get("tabular_stage", "dataset") == stage
+            ]
+            preview = ""
+            if stage_assertions:
+                first = stage_assertions[0]
+                preview = (
+                    (first.rhs or {}).get("expr")
+                    or first.target_data_path
+                    or first.message_template
+                    or ""
+                )
+            assertion_groups.append(
+                {
+                    "stage": stage,
+                    "label": labels[stage],
+                    "count": len(stage_assertions),
+                    "preview": preview,
+                    "deferred": False,
+                },
+            )
+
+        return {
+            "is_tabular_settings": True,
+            "column_formset": getattr(form, "column_formset", None),
+            "tabular_columns_url": endpoint("workflow_tabular_columns"),
+            "tabular_import_url": endpoint("workflow_tabular_schema_import"),
+            "tabular_infer_url": endpoint("workflow_tabular_schema_infer"),
+            "tabular_apply_url": endpoint("workflow_tabular_schema_apply"),
+            "tabular_export_url": (
+                endpoint("workflow_tabular_schema_export") if step else ""
+            ),
+            "tabular_assertion_groups": assertion_groups,
+            "tabular_assertions_url": (
+                reverse_with_org(
+                    "workflows:workflow_step_edit",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk, "step_id": step.pk},
+                )
+                + "#workflow-step-assertions"
+                if step
+                else ""
+            ),
+        }
 
     def _get_credential_step_guidance(self) -> dict[str, str] | None:
         """Return UI guidance for signed credential action steps."""
@@ -1080,6 +1559,65 @@ def _resolve_assertion_stage(assertion) -> CatalogRunStage:
     return assertion.resolved_run_stage
 
 
+def _tabular_assertion_counts(assertions) -> dict[str, int]:
+    """Count tabular assertions by their persisted execution stage."""
+    counts = {"dataset": 0, "row": 0, "column": 0}
+    for assertion in assertions:
+        stage = (assertion.options or {}).get("tabular_stage", "dataset")
+        counts[stage if stage in counts else "dataset"] += 1
+    return counts
+
+
+def _tabular_summary_config(step: WorkflowStep) -> dict[str, object]:
+    """Build summary values with Ruleset fallbacks for pre-editor steps."""
+    config = dict(step.config or {})
+    ruleset = step.ruleset if step.ruleset_id else None
+    metadata = dict(ruleset.metadata or {}) if ruleset else {}
+
+    delimiter = config.get("delimiter", metadata.get("delimiter", ""))
+    delimiter_labels = {
+        "": str(_("Auto-detect")),
+        ",": str(_("Comma")),
+        "\t": str(_("Tab")),
+        ";": str(_("Semicolon")),
+        "|": str(_("Pipe")),
+    }
+    config.setdefault("delimiter", delimiter)
+    config.setdefault(
+        "delimiter_label",
+        delimiter_labels.get(str(delimiter), str(delimiter)),
+    )
+    config.setdefault("has_header", metadata.get("has_header", True))
+    config.setdefault("encoding", metadata.get("encoding", "utf-8"))
+
+    if ruleset and (
+        "column_count" not in config or "required_column_count" not in config
+    ):
+        try:
+            descriptor = json.loads(ruleset.rules_text or "{}")
+        except (TypeError, json.JSONDecodeError):
+            descriptor = {}
+        if not isinstance(descriptor, dict):
+            descriptor = {}
+        fields = [
+            field for field in descriptor.get("fields", []) if isinstance(field, dict)
+        ]
+        config.setdefault("column_count", len(fields))
+        config.setdefault(
+            "required_column_count",
+            sum(
+                1
+                for field in fields
+                if isinstance(field.get("constraints"), dict)
+                and field["constraints"].get("required")
+            ),
+        )
+
+    config.setdefault("column_count", 0)
+    config.setdefault("required_column_count", 0)
+    return config
+
+
 class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
     """Two-column overview for validator-based steps."""
 
@@ -1133,6 +1671,23 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
         uses_signal_stages = bool(
             validator and _step_has_signal_stages(self.step) and allow_assertions,
         )
+        uses_tabular_stages = bool(
+            validator
+            and validator.validation_type == ValidationType.TABULAR
+            and allow_assertions,
+        )
+        tabular_assertion_groups = {
+            "dataset": [],
+            "row": [],
+            "column": [],
+        }
+        for assertion in assertions:
+            stage = (assertion.options or {}).get("tabular_stage", "dataset")
+            group = tabular_assertion_groups.get(
+                stage,
+                tabular_assertion_groups["dataset"],
+            )
+            group.append(assertion)
         validator_operation = get_validator_operation_display(validator)
         default_assertions_count = (
             validator.default_ruleset.assertions.count()
@@ -1259,6 +1814,32 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "assertions": assertions,
                 "assertion_groups": grouped_assertions,
                 "uses_signal_stages": uses_signal_stages,
+                "uses_tabular_stages": uses_tabular_stages,
+                "tabular_assertion_groups": tabular_assertion_groups,
+                "tabular_stage_choices": [
+                    (
+                        "dataset",
+                        _("Dataset assertion"),
+                        _("Dataset shape, row count, and column presence."),
+                        "bi-table",
+                    ),
+                    (
+                        "row",
+                        _("Row assertion"),
+                        _("Relationships and conditions within each row."),
+                        "bi-list-check",
+                    ),
+                    (
+                        "column",
+                        _("Column assertion"),
+                        _("Cross-row aggregates for one or more columns."),
+                        "bi-bar-chart",
+                    ),
+                ],
+                "tabular_assertion_counts": _tabular_assertion_counts(assertions),
+                "tabular_config": (
+                    _tabular_summary_config(self.step) if uses_tabular_stages else {}
+                ),
                 "validator_operation": validator_operation,
                 "ruleset": ruleset,
                 "can_manage_assertions": self.user_can_manage_workflow()

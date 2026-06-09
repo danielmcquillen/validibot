@@ -39,6 +39,22 @@ These tests live in `tests/tests_e2e/test_stress.py` and run against a real,
 running Validibot environment. They make real HTTP requests and exercise the
 complete stack including Celery dispatch, Redis broker, and worker concurrency.
 
+## Local Browser Regression Tests
+
+The Tabular settings editor has opt-in Selenium coverage for interactions that
+server-rendered tests cannot observe: HTMx row insertion, focus placement,
+reordering, type-aware fields, primary-key behavior, and schema preview/apply.
+
+Chrome and the development dependency group are required:
+
+```bash
+RUN_BROWSER_TESTS=1 uv run pytest \
+  validibot/workflows/tests/test_tabular_step_config_browser.py -v
+```
+
+These tests are skipped during the normal suite so contributors without a
+browser installation can still run all server-side tests.
+
 ### Why separate tests?
 
 Normal `pytest` runs use Django's test database and in-process execution, which

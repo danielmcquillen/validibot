@@ -70,6 +70,7 @@ class RowAssertion:
     message: str = ""
     severity: Severity = Severity.ERROR
     assertion_id: int | None = None
+    report_max_examples: int = DEFAULT_REPORT_MAX_EXAMPLES
 
 
 def _to_cel(value: Any) -> Any:
@@ -245,6 +246,7 @@ def _build_findings(
     """Turn the per-assertion accumulators into findings (one per outcome class)."""
     findings: list[NativeFinding] = []
     for (assertion, _program), outcome in zip(programs, outcomes, strict=True):
+        example_limit = assertion.report_max_examples or report_max_examples
         if outcome.failed:
             findings.append(
                 NativeFinding(
@@ -253,7 +255,7 @@ def _build_findings(
                     or f"Row assertion failed: {assertion.expression}",
                     severity=assertion.severity,
                     count=len(outcome.failed),
-                    sample_rows=_rows_1based(outcome.failed, report_max_examples),
+                    sample_rows=_rows_1based(outcome.failed, example_limit),
                     assertion_id=assertion.assertion_id,
                 ),
             )
@@ -267,7 +269,7 @@ def _build_findings(
                     ),
                     severity=Severity.ERROR,
                     count=len(outcome.null),
-                    sample_rows=_rows_1based(outcome.null, report_max_examples),
+                    sample_rows=_rows_1based(outcome.null, example_limit),
                     assertion_id=assertion.assertion_id,
                 ),
             )
@@ -281,7 +283,7 @@ def _build_findings(
                     ),
                     severity=Severity.ERROR,
                     count=len(outcome.errored),
-                    sample_rows=_rows_1based(outcome.errored, report_max_examples),
+                    sample_rows=_rows_1based(outcome.errored, example_limit),
                     assertion_id=assertion.assertion_id,
                 ),
             )

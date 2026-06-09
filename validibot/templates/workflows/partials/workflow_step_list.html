@@ -8,7 +8,10 @@
   {% if steps %}
     {% for step in steps %}
       {% with config=step.config %}
-        <div class="workflow-step-wrapper" data-step-id="{{ step.id }}">
+        <div class="workflow-step-wrapper"
+             id="workflow-step-{{ step.id }}"
+             data-step-id="{{ step.id }}"
+             tabindex="-1">
           <div class="workflow-step-card card shadow-sm">
             <div class="card-body">
               <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">

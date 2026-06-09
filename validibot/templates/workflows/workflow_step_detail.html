@@ -55,11 +55,11 @@
               <div class="card-header-buttons">
                 <button class="btn btn-secondary btn-sm"
                         data-bs-toggle="modal"
-                        data-bs-target="#workflowAssertionModal"
-                        hx-get="{% org_url 'workflows:workflow_step_assertion_create' workflow.pk step.pk %}"
-                        hx-target="#workflow-assertion-modal-content"
-                        hx-swap="innerHTML"
-                        hx-trigger="click">
+                        {% if uses_tabular_stages %}
+                          data-bs-target="#tabularAssertionStageModal"
+                        {% else %}
+                          data-bs-target="#workflowAssertionModal" hx-get="{% org_url 'workflows:workflow_step_assertion_create' workflow.pk step.pk %}" hx-target="#workflow-assertion-modal-content" hx-swap="innerHTML" hx-trigger="click"
+                        {% endif %}>
                   <i class="bi bi-plus me-1"></i>
                   {% trans "Add assertion" %}
                 </button>
@@ -104,6 +104,52 @@
       </div>
     </div>
   </div>
+  {% if uses_tabular_stages %}
+    <div class="modal fade"
+         id="tabularAssertionStageModal"
+         tabindex="-1"
+         aria-labelledby="tabular-assertion-stage-title"
+         aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div>
+              <h2 class="modal-title fs-5" id="tabular-assertion-stage-title">
+                {% trans "Which kind of assertion?" %}
+              </h2>
+              <p class="small text-muted mb-0">
+                {% trans "Choose when the rule has enough context to run." %}
+              </p>
+            </div>
+            <button type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                    aria-label="{% trans 'Close' %}">
+            </button>
+          </div>
+          <div class="modal-body d-grid gap-2">
+            {% for stage, label, description, icon in tabular_stage_choices %}
+              <button type="button"
+                      class="btn btn-light border text-start p-3"
+                      data-tabular-stage-choice="{{ stage }}"
+                      hx-get="{% org_url 'workflows:workflow_step_assertion_create' workflow.pk step.pk %}?tabular_stage={{ stage }}"
+                      hx-target="#workflow-assertion-modal-content"
+                      hx-swap="innerHTML"
+                      hx-disabled-elt="this">
+                <span class="d-flex align-items-start gap-3">
+                  <i class="bi {{ icon }} text-primary fs-4" aria-hidden="true"></i>
+                  <span>
+                    <span class="d-block fw-semibold">{{ label }}</span>
+                    <span class="d-block small text-muted">{{ description }}</span>
+                  </span>
+                </span>
+              </button>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
   <div class="modal fade"
        id="catalogEntryDetailModal"
        tabindex="-1"
@@ -194,6 +240,24 @@
     if (assertionModalEl && assertionModalContentEl) {
       assertionModalEl.addEventListener('hidden.bs.modal', () => {
         resetAssertionModalContent(assertionModalContentEl);
+      });
+    }
+    const tabularStageModalEl = document.getElementById('tabularAssertionStageModal');
+    let openAssertionAfterStageChoice = false;
+    if (tabularStageModalEl && assertionModalEl) {
+      tabularStageModalEl.addEventListener('hidden.bs.modal', () => {
+        if (!openAssertionAfterStageChoice) {
+          return;
+        }
+        openAssertionAfterStageChoice = false;
+        bootstrap.Modal.getOrCreateInstance(assertionModalEl).show();
+      });
+      document.body.addEventListener('htmx:afterRequest', (event) => {
+        if (!event.detail?.successful || !event.detail?.elt?.hasAttribute?.('data-tabular-stage-choice')) {
+          return;
+        }
+        openAssertionAfterStageChoice = true;
+        bootstrap.Modal.getOrCreateInstance(tabularStageModalEl).hide();
       });
     }
     // After the assertions-changed HTMx swap completes, scroll to

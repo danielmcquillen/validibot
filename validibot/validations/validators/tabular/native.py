@@ -27,6 +27,7 @@ Uniqueness semantics (pinned by the ADR):
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
 
 # ── Native finding codes (prefix ``tabular.``; never ``csv.``) ──────────
 CODE_MISSING_REQUIRED_COLUMN = "tabular.missing_required_column"
+CODE_CONDITIONAL_REQUIRED_COLUMN = "tabular.conditional_required_column"
 CODE_REQUIRED_VALUE_MISSING = "tabular.required_value_missing"
 CODE_TYPE_ERROR = "tabular.type_error"
 CODE_OUT_OF_RANGE = "tabular.out_of_range"
@@ -54,16 +56,27 @@ CODE_ENUM_VIOLATION = "tabular.enum_violation"
 CODE_INVALID_PATTERN = "tabular.invalid_pattern"
 CODE_UNIQUE_VIOLATION = "tabular.unique_violation"
 CODE_PRIMARY_KEY_NULL = "tabular.primary_key_null"
+# Emitted when the native pass exhausts its wall-clock budget (shares the code
+# the row-stage loop uses, so the UI treats both timeouts identically).
+CODE_TIMED_OUT = "tabular.timed_out"
 
 # How many failing-row examples a finding carries by default. The full failure
 # *count* is always reported; this only caps the per-finding list of example
 # row numbers so a million-row failure stays one readable finding. It is the
-# single source of truth for the default — the validator falls back to it, and
-# the per-ruleset ``metadata["report_max_examples"]`` override (a future
-# user-facing setting) layers on top without any change here.
-DEFAULT_REPORT_MAX_EXAMPLES = 100
+# single source of truth for the default. Ruleset metadata and per-row-assertion
+# options layer on top without changing native validation.
+DEFAULT_REPORT_MAX_EXAMPLES = 10
 
 _NUMERIC_TYPES = frozenset({"number", "integer"})
+
+# Native validation shares the row lane's wall-clock-budget shape. The only
+# superlinear work here is the author-supplied regex ``pattern`` matched against
+# every cell, so the deadline is checked between cells (every N) and between
+# columns. This bounds *cumulative* matching time; it does not preempt a single
+# catastrophic match, because CPython does not release the GIL during one ``re``
+# call — RE2 (backtracking-free) remains the recommended platform-wide hardening.
+_WALL_CLOCK_CHECK_INTERVAL = 5000
+_DEFAULT_WALL_CLOCK_BUDGET_S = 30.0
 
 
 @dataclass(frozen=True)
@@ -96,6 +109,8 @@ def _validate_field(
     field: FieldSpec,
     values: list[str],
     report_max_examples: int,
+    *,
+    deadline: float | None = None,
 ) -> list[NativeFinding]:
     """Validate one present column's cells against its field spec."""
     findings: list[NativeFinding] = []
@@ -141,7 +156,12 @@ def _validate_field(
         )
 
     findings.extend(
-        _validate_value_constraints(field, valid, report_max_examples),
+        _validate_value_constraints(
+            field,
+            valid,
+            report_max_examples,
+            deadline=deadline,
+        ),
     )
     return findings
 
@@ -150,6 +170,8 @@ def _validate_value_constraints(
     field: FieldSpec,
     valid: list[tuple[int, Any, str]],
     report_max_examples: int,
+    *,
+    deadline: float | None = None,
 ) -> list[NativeFinding]:
     """Apply min/max, length, pattern, and enum to the valid (typed) cells."""
     findings: list[NativeFinding] = []
@@ -208,7 +230,13 @@ def _validate_value_constraints(
     # Regex pattern — full-match on the raw string (Table Schema semantics).
     if constraints.pattern is not None:
         findings.extend(
-            _validate_pattern(field, valid, constraints.pattern, report_max_examples),
+            _validate_pattern(
+                field,
+                valid,
+                constraints.pattern,
+                report_max_examples,
+                deadline=deadline,
+            ),
         )
 
     # Enum — raw string membership.
@@ -236,8 +264,19 @@ def _validate_pattern(
     valid: list[tuple[int, Any, str]],
     pattern: str,
     report_max_examples: int,
+    *,
+    deadline: float | None = None,
 ) -> list[NativeFinding]:
-    """Full-match each raw value against *pattern*; flag non-matches."""
+    """Full-match each raw value against *pattern*; flag non-matches.
+
+    The scan honours *deadline* (a ``time.monotonic`` timestamp, checked every
+    ``_WALL_CLOCK_CHECK_INTERVAL`` cells): if the native budget is exhausted
+    mid-column it abandons the partial result and returns empty, letting
+    :func:`validate_native` emit one ``tabular.timed_out`` finding rather than a
+    misleading partial mismatch count. A regex run against up to ``max_rows``
+    submitter-controlled cells is the one place native validation can become
+    superlinear, so this is where the budget has to bite.
+    """
     try:
         compiled = re.compile(pattern)
     except re.error:
@@ -250,7 +289,16 @@ def _validate_pattern(
                 column=field.name,
             ),
         ]
-    mismatched = [pos for pos, _value, raw in valid if compiled.fullmatch(raw) is None]
+    mismatched: list[int] = []
+    for index, (pos, _value, raw) in enumerate(valid):
+        if (
+            deadline is not None
+            and index % _WALL_CLOCK_CHECK_INTERVAL == 0
+            and time.monotonic() > deadline
+        ):
+            return []
+        if compiled.fullmatch(raw) is None:
+            mismatched.append(pos)
     if not mismatched:
         return []
     return [
@@ -383,6 +431,7 @@ def validate_native(
     schema: TabularSchema,
     *,
     report_max_examples: int = DEFAULT_REPORT_MAX_EXAMPLES,
+    wall_clock_budget_s: float = _DEFAULT_WALL_CLOCK_BUDGET_S,
 ) -> list[NativeFinding]:
     """Validate the dataframe against *schema*; return aggregated findings.
 
@@ -391,10 +440,18 @@ def validate_native(
     primary key. An absent optional column is simply skipped. Present columns
     are checked cell-by-cell (nullability, type, then value constraints), and
     uniqueness runs last over the typed values.
+
+    The per-column pass is bounded by *wall_clock_budget_s*: an author's regex
+    ``pattern`` runs against every submitter-supplied cell, so without a budget a
+    pathological pattern could pin a shared worker. On exhaustion the remaining
+    column work (and the primary-key pass) is skipped and one
+    ``tabular.timed_out`` finding is emitted — the same fail-closed shape the
+    row-stage loop uses.
     """
     frame = read_result.dataframe
     present = set(read_result.column_names)
     findings: list[NativeFinding] = []
+    deadline = time.monotonic() + wall_clock_budget_s
 
     # One place decides "this column must exist": required fields + primary key.
     must_be_present = {f.name for f in schema.fields if f.constraints.required} | set(
@@ -410,14 +467,56 @@ def validate_native(
         )
 
     for field in schema.fields:
+        trigger = field.constraints.required_when_present
+        if (
+            trigger
+            and not field.constraints.required
+            and trigger in present
+            and field.name not in present
+        ):
+            findings.append(
+                NativeFinding(
+                    code=CODE_CONDITIONAL_REQUIRED_COLUMN,
+                    message=(
+                        f"Column {field.name!r} is required when column "
+                        f"{trigger!r} is present."
+                    ),
+                    column=field.name,
+                ),
+            )
+
+    for field in schema.fields:
         if field.name not in present:
             continue
+        # Stop before starting another column once the budget is spent; a
+        # column's own pattern scan also stops mid-loop, so this catches that on
+        # the next iteration.
+        if time.monotonic() > deadline:
+            break
         values = frame[field.name].tolist()
-        findings.extend(_validate_field(field, values, report_max_examples))
+        findings.extend(
+            _validate_field(field, values, report_max_examples, deadline=deadline),
+        )
         if field.constraints.unique:
             findings.extend(
                 _validate_single_unique(field, values, report_max_examples),
             )
+
+    # Re-check after the loop so the *last* column's pattern scan (which never
+    # re-enters the loop head) is covered too. When over budget we skip the
+    # primary-key pass and report the timeout instead of a partial verdict.
+    if time.monotonic() > deadline:
+        findings.append(
+            NativeFinding(
+                code=CODE_TIMED_OUT,
+                message=(
+                    f"Native validation exceeded the {wall_clock_budget_s:g}s "
+                    f"budget; some column checks were skipped. Simplify a column "
+                    f"regex pattern or reduce the file size."
+                ),
+            ),
+        )
+        return findings
 
     findings.extend(
         _validate_primary_key(schema, frame, present, report_max_examples),

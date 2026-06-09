@@ -25,10 +25,15 @@ builds inputs through the real ``read_csv`` reader.
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from django.test import SimpleTestCase
 
 from validibot.validations.validators.tabular.coercion import coerce_cell
+from validibot.validations.validators.tabular.native import (
+    CODE_CONDITIONAL_REQUIRED_COLUMN,
+)
 from validibot.validations.validators.tabular.native import CODE_ENUM_VIOLATION
 from validibot.validations.validators.tabular.native import CODE_LENGTH_ERROR
 from validibot.validations.validators.tabular.native import CODE_MISSING_REQUIRED_COLUMN
@@ -36,8 +41,11 @@ from validibot.validations.validators.tabular.native import CODE_OUT_OF_RANGE
 from validibot.validations.validators.tabular.native import CODE_PATTERN_MISMATCH
 from validibot.validations.validators.tabular.native import CODE_PRIMARY_KEY_NULL
 from validibot.validations.validators.tabular.native import CODE_REQUIRED_VALUE_MISSING
+from validibot.validations.validators.tabular.native import CODE_TIMED_OUT
 from validibot.validations.validators.tabular.native import CODE_TYPE_ERROR
 from validibot.validations.validators.tabular.native import CODE_UNIQUE_VIOLATION
+from validibot.validations.validators.tabular.native import DEFAULT_REPORT_MAX_EXAMPLES
+from validibot.validations.validators.tabular.native import _validate_pattern
 from validibot.validations.validators.tabular.native import validate_native
 from validibot.validations.validators.tabular.readers.csv import read_csv
 from validibot.validations.validators.tabular.schema import parse_table_schema
@@ -87,6 +95,46 @@ class TableSchemaParseTests(SimpleTestCase):
         self.assertTrue(schema.fields[0].constraints.required)
         self.assertEqual(schema.fields[0].constraints.minimum, -90.0)
         self.assertTrue(schema.fields[1].constraints.unique)
+
+    def test_parses_validibot_conditional_requiredness_extension(self):
+        """The V2 no-CEL widget round-trips through the schema model.
+
+        The extension is deliberately narrow: one declared column becomes
+        required when another declared column is present in the submitted file.
+        """
+        schema = parse_table_schema(
+            {
+                "fields": [
+                    {"name": "measurementType"},
+                    {
+                        "name": "measurementTypeID",
+                        "constraints": {
+                            "x-validibot-requiredWhenPresent": "measurementType",
+                        },
+                    },
+                ],
+            },
+        )
+        self.assertEqual(
+            schema.fields[1].constraints.required_when_present,
+            "measurementType",
+        )
+
+    def test_conditional_requiredness_rejects_unknown_trigger(self):
+        """A descriptor cannot depend on a column it does not declare."""
+        with pytest.raises(ValueError, match="unknown conditional-requiredness"):
+            parse_table_schema(
+                {
+                    "fields": [
+                        {
+                            "name": "measurementTypeID",
+                            "constraints": {
+                                "x-validibot-requiredWhenPresent": "missing",
+                            },
+                        },
+                    ],
+                },
+            )
 
     def test_string_primary_key_is_normalised_to_tuple(self):
         """A scalar ``primaryKey`` string becomes a one-element tuple, so the
@@ -268,6 +316,31 @@ class NativeColumnChecksTests(SimpleTestCase):
         schema = parse_table_schema({"fields": [{"name": "lat"}]})
         self.assertEqual(validate_native(read_result, schema), [])
 
+    def test_conditional_required_column_depends_on_companion_presence(self):
+        """The structured V2 condition fires only when its trigger exists."""
+        schema = parse_table_schema(
+            {
+                "fields": [
+                    {"name": "measurementType"},
+                    {
+                        "name": "measurementTypeID",
+                        "constraints": {
+                            "x-validibot-requiredWhenPresent": "measurementType",
+                        },
+                    },
+                ],
+            },
+        )
+
+        triggered = validate_native(
+            read_csv(b"measurementType\nlength\n"),
+            schema,
+        )
+        not_triggered = validate_native(read_csv(b"other\nvalue\n"), schema)
+
+        self.assertIn(CODE_CONDITIONAL_REQUIRED_COLUMN, _codes(triggered))
+        self.assertNotIn(CODE_CONDITIONAL_REQUIRED_COLUMN, _codes(not_triggered))
+
     def test_required_value_missing_counts_null_cells(self):
         """An empty *field* in a required column is a nullability violation,
         with a count and 1-based sample rows (file order).
@@ -364,14 +437,14 @@ class NativeColumnChecksTests(SimpleTestCase):
         self.assertEqual(finding.count, 50)
         self.assertEqual(len(finding.sample_rows), 5)
 
-    def test_default_cap_is_100_and_still_counts_all_failures(self):
-        """Without an explicit cap, a finding lists up to 100 example rows while
+    def test_default_cap_is_10_and_still_counts_all_failures(self):
+        """Without an explicit cap, a finding lists up to 10 example rows while
         ``count`` reports the true total.
 
-        This pins the shipped default (``DEFAULT_REPORT_MAX_EXAMPLES``). 100 is
+        This pins the ADR default (``DEFAULT_REPORT_MAX_EXAMPLES``). Ten is
         enough context for a human to spot a pattern, but the full ``count`` is
         what tells them how big the problem really is — and the gap between the
-        two is exactly what drives the "showing first 100 of N" truncation
+        two is exactly what drives the "showing first 10 of N" truncation
         marker in the UI/API.
         """
         read_result = read_csv(b"n\n" + b"x\n" * 150)  # 150 type errors
@@ -379,11 +452,11 @@ class NativeColumnChecksTests(SimpleTestCase):
         # No report_max_examples passed -> the default applies.
         finding = _by_code(validate_native(read_result, schema))[CODE_TYPE_ERROR]
         self.assertEqual(finding.count, 150)
-        self.assertEqual(len(finding.sample_rows), 100)
-        # The examples are the FIRST 100 rows in file order, not an arbitrary
+        self.assertEqual(len(finding.sample_rows), 10)
+        # The examples are the FIRST 10 rows in file order, not an arbitrary
         # slice — so "rows 1, 2, 3 …" is meaningful to the reader.
         self.assertEqual(finding.sample_rows[0], 1)
-        self.assertEqual(finding.sample_rows[-1], 100)
+        self.assertEqual(finding.sample_rows[-1], 10)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -472,3 +545,86 @@ class NativeUniquenessTests(SimpleTestCase):
         codes = _codes(validate_native(read_result, schema))
         self.assertIn(CODE_MISSING_REQUIRED_COLUMN, codes)
         self.assertNotIn(CODE_PRIMARY_KEY_NULL, codes)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Wall-clock budget — the native lane's defence against a pathological regex
+#
+# A column ``pattern`` is the one native check that runs an author-supplied
+# regex against every submitter-supplied cell (up to ``max_rows`` of them). A
+# catastrophic-backtracking pattern could otherwise pin a shared worker, so the
+# native pass carries the same wall-clock budget the row-stage CEL loop uses.
+# These tests pin that the budget is honoured and fails *closed* (a timeout is a
+# finding, never a silent partial pass).
+# ─────────────────────────────────────────────────────────────────────
+
+
+class NativeWallClockBudgetTests(SimpleTestCase):
+    """Native pattern matching is wall-clock bounded and fails closed."""
+
+    def test_pattern_scan_abandons_partial_result_past_deadline(self):
+        """A scan whose deadline has already passed returns no findings.
+
+        The deadline is checked at the first cell (index 0), so an exhausted
+        budget is caught *before* a potentially catastrophic match runs. The
+        scan yields nothing rather than a misleading mismatch count computed from
+        the handful of rows it managed to see; ``validate_native`` surfaces the
+        timeout once instead.
+        """
+        schema = parse_table_schema(
+            {"fields": [{"name": "sku", "constraints": {"pattern": r"\d+"}}]},
+        )
+        field = schema.fields[0]
+        # None of these match ``\d+`` — with a live budget each is a mismatch.
+        valid = [(index, f"x{index}", f"x{index}") for index in range(3)]
+
+        findings = _validate_pattern(
+            field,
+            valid,
+            r"\d+",
+            DEFAULT_REPORT_MAX_EXAMPLES,
+            deadline=time.monotonic() - 1.0,
+        )
+
+        self.assertEqual(findings, [])
+
+    def test_exhausted_budget_reports_timeout_not_a_partial_verdict(self):
+        """A spent budget skips the remaining checks and emits one timeout.
+
+        A negative budget puts the deadline in the past, so the per-column loop
+        stops before validating ``sku`` (whose pattern every row would otherwise
+        fail). The verdict is a single ``tabular.timed_out`` finding — never a
+        pattern-mismatch conclusion drawn from a fraction of the file, which
+        would be a misleading (and exploitable) silent truncation.
+        """
+        read_result = read_csv(b"sku\nx\ny\nz\n")
+        schema = parse_table_schema(
+            {"fields": [{"name": "sku", "constraints": {"pattern": r"\d+"}}]},
+        )
+
+        codes = _codes(
+            validate_native(read_result, schema, wall_clock_budget_s=-1.0),
+        )
+
+        self.assertIn(CODE_TIMED_OUT, codes)
+        self.assertNotIn(CODE_PATTERN_MISMATCH, codes)
+
+    def test_pattern_within_budget_validates_normally(self):
+        """A generous budget leaves normal pattern validation unchanged.
+
+        The budget is a safety valve, not a behaviour change: with time to spare,
+        a non-matching value is still reported as a pattern mismatch and no
+        timeout finding appears. This guards against the budget accidentally
+        short-circuiting ordinary runs.
+        """
+        read_result = read_csv(b"sku\nA-1\nbad\n")
+        schema = parse_table_schema(
+            {"fields": [{"name": "sku", "constraints": {"pattern": r"[A-Z]-\d"}}]},
+        )
+
+        codes = _codes(
+            validate_native(read_result, schema, wall_clock_budget_s=30.0),
+        )
+
+        self.assertIn(CODE_PATTERN_MISMATCH, codes)
+        self.assertNotIn(CODE_TIMED_OUT, codes)

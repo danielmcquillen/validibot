@@ -81,6 +81,15 @@ class TabularLimits:
     max_bytes: int = 50 * 1024 * 1024  # 50 MB
     max_rows: int = 1_000_000
     max_columns: int = 1024
+    # Wall-clock budget for the *native* validation pass (per submission). The
+    # per-row CEL lane already caps its loop; native validation needs the same
+    # because an author-supplied regex ``pattern`` runs against every cell, and
+    # a pathological pattern (catastrophic backtracking) over up to ``max_rows``
+    # cells could otherwise pin a shared worker. Checked between cells, so it
+    # bounds *cumulative* matching cost; it cannot preempt a single in-flight
+    # match (CPython holds the GIL through one ``re`` call) — a backtracking-free
+    # engine (RE2) is the recommended platform-wide hardening. See ``native.py``.
+    max_wallclock_s: float = 30.0
 
 
 @dataclass(frozen=True)

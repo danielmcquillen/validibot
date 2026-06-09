@@ -3,7 +3,7 @@
 These prove the serialize/deserialize halves agree and that the import rules from
 the design hold: a fresh workflow rebound to the importing org, validators
 resolved (not recreated) with version-mismatch warnings and a hard error when
-unresolvable, and the Tabular Validator's row-column guard re-applied on import.
+unresolvable, and the Tabular Validator's staged column guards re-applied on import.
 The committed Darwin Core fixtures (``tests/workflows/darwin_core.{json,vaf}``)
 are imported here too, so they can't silently drift from what the importer
 expects.
@@ -500,7 +500,7 @@ def test_importing_a_file_backed_ruleset_as_bare_json_fails_clearly():
     assert ctx.value.code == "vaf.missing_bundled_file"
 
 
-# ── Tabular row-column guard re-applied on import ───────────────────────────
+# ── Tabular staged-column guards re-applied on import ───────────────────────
 def test_tabular_row_assertion_referencing_unknown_column_is_rejected():
     """An imported tabular row assertion can't reference an undeclared column.
 
@@ -547,3 +547,39 @@ def test_tabular_row_assertion_with_column_name_in_a_string_literal_is_allowed()
     # Must NOT raise — the literal isn't a real column reference.
     result = import_definition(definition, files={}, org=org, user=user)
     assert result.workflow.steps.first().ruleset.assertions.count() == 4  # noqa: PLR2004
+
+
+def test_tabular_column_assertion_with_unknown_aggregate_is_rejected():
+    """Imported V2 assertions cannot bypass aggregate-name validation."""
+    org, user = _org_and_user()
+    _tabular_validator()
+    definition = json.loads(
+        (
+            Path(settings.BASE_DIR) / "tests" / "workflows" / "darwin_core.json"
+        ).read_text(),
+    )
+    assertion = definition["steps"][0]["ruleset"]["assertions"][0]
+    assertion["options"] = {"tabular_stage": "column"}
+    assertion["rhs"] = {"expr": "col.decimalLatitude.mean > 0"}
+
+    with pytest.raises(WorkflowImportError) as ctx:
+        import_definition(definition, files={}, org=org, user=user)
+    assert ctx.value.code == "vaf.tabular_unknown_aggregate"
+
+
+def test_tabular_column_assertion_cannot_mix_row_namespace():
+    """An archive cannot tag a row expression as a column-stage assertion."""
+    org, user = _org_and_user()
+    _tabular_validator()
+    definition = json.loads(
+        (
+            Path(settings.BASE_DIR) / "tests" / "workflows" / "darwin_core.json"
+        ).read_text(),
+    )
+    assertion = definition["steps"][0]["ruleset"]["assertions"][0]
+    assertion["options"] = {"tabular_stage": "column"}
+    assertion["rhs"] = {"expr": "row.decimalLatitude > 0"}
+
+    with pytest.raises(WorkflowImportError) as ctx:
+        import_definition(definition, files={}, org=org, user=user)
+    assert ctx.value.code == "vaf.tabular_invalid_assertion_stage"

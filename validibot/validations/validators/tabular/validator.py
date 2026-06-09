@@ -2,11 +2,11 @@
 
 ``validate()`` reads the submitted CSV into the shared in-memory model, runs
 native structured validation against the ruleset's Table Schema, evaluates
-per-row CEL assertions (the ``row.*`` namespace, with its compiled-once-per-run
-loop), maps the resulting :class:`NativeFinding`s onto the platform's
-``ValidationIssue``, and runs the standard CEL assertion lane (dataset ``i.*`` +
-output) for any assertions on the ruleset. It also exposes the ``i.*`` dataset
-signals so a ``i.num_rows >= 100``-style assertion can resolve.
+per-row CEL assertions through ``row.*`` and aggregate assertions through
+``col.*``, maps the resulting :class:`NativeFinding`s onto the platform's
+``ValidationIssue``, and runs the standard dataset ``i.*`` CEL lane. It also
+exposes the ``i.*`` dataset signals so a ``i.num_rows >= 100``-style assertion
+can resolve.
 
 Configuration lives on the ruleset, mirroring the JSON Schema validator:
 
@@ -29,6 +29,10 @@ from validibot.validations.validators.base.base import AssertionStats
 from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
+from validibot.validations.validators.tabular.column_eval import ColumnAssertion
+from validibot.validations.validators.tabular.column_eval import (
+    evaluate_column_assertions,
+)
 from validibot.validations.validators.tabular.native import DEFAULT_REPORT_MAX_EXAMPLES
 from validibot.validations.validators.tabular.native import validate_native
 from validibot.validations.validators.tabular.preflight import TabularDialect
@@ -52,8 +56,8 @@ if TYPE_CHECKING:
 CODE_INVALID_SCHEMA = "tabular.invalid_schema"
 # The fallback when a ruleset doesn't pin its own ``report_max_examples``. Kept
 # as an alias of the canonical native default so there is one number to change,
-# and so a future per-step setting only has to write ``metadata`` — the override
-# path in ``_load_settings`` already reads it.
+# Ruleset metadata remains the native-check default; row assertions can override
+# it individually through their options.
 _DEFAULT_REPORT_MAX_EXAMPLES = DEFAULT_REPORT_MAX_EXAMPLES
 
 
@@ -61,8 +65,8 @@ class TabularValidator(BaseValidator):
     """In-process validator for tabular data (CSV in V1).
 
     See the module docstring and ADR-2026-05-26 for the full design. The
-    validate flow is: load schema → read CSV → native validation → CEL
-    assertion lane, returning aggregated ``ValidationIssue``s.
+    validate flow is: load schema → read CSV → native validation → row CEL →
+    column CEL → dataset CEL, returning aggregated ``ValidationIssue``s.
     """
 
     def __init__(self, *, config: dict[str, Any] | None = None) -> None:
@@ -118,11 +122,14 @@ class TabularValidator(BaseValidator):
                 stats={"read_error": exc.code},
             )
 
-        # 3. Native structured validation against the schema.
+        # 3. Native structured validation against the schema. The wall-clock
+        #    budget bounds the author-supplied regex pattern checks (which run
+        #    against every submitter cell) the same way the row lane is bounded.
         native_findings = validate_native(
             read_result,
             schema,
             report_max_examples=report_max_examples,
+            wall_clock_budget_s=limits.max_wallclock_s,
         )
         issues = [self._to_issue(finding) for finding in native_findings]
 
@@ -146,7 +153,19 @@ class TabularValidator(BaseValidator):
         )
         issues.extend(self._to_issue(finding) for finding in row_findings)
 
-        # 6. The standard CEL assertion lane (dataset i.* + output). We pass an
+        # 6. Column-stage CEL runs once against typed per-column aggregates.
+        column_assertions = self._collect_column_assertions(validator, ruleset)
+        column_findings = evaluate_column_assertions(
+            read_result,
+            schema,
+            column_assertions,
+            signals=self._workflow_signals(run_context),
+            input_signals=self._input_signals,
+            now=self._run_clock(run_context),
+        )
+        issues.extend(self._to_issue(finding) for finding in column_findings)
+
+        # 7. The standard CEL assertion lane (dataset i.* + output). We pass an
         #    empty payload because i.* is supplied via extract_input_signals();
         #    row/column assertions are excluded by the lane itself.
         assertion_result = self.evaluate_assertions_for_stages(
@@ -164,13 +183,26 @@ class TabularValidator(BaseValidator):
             for finding in row_findings
             if finding.assertion_id is not None
         }
+        failed_column_assertion_ids = {
+            finding.assertion_id
+            for finding in column_findings
+            if finding.assertion_id is not None
+        }
         passed = not any(issue.severity == Severity.ERROR for issue in issues)
         return ValidationResult(
             passed=passed,
             issues=issues,
             assertion_stats=AssertionStats(
-                total=assertion_result.total + len(row_assertions),
-                failures=assertion_result.failures + len(failed_row_assertion_ids),
+                total=(
+                    assertion_result.total
+                    + len(row_assertions)
+                    + len(column_assertions)
+                ),
+                failures=(
+                    assertion_result.failures
+                    + len(failed_row_assertion_ids)
+                    + len(failed_column_assertion_ids)
+                ),
             ),
             signals=self._input_signals,
             stats={
@@ -178,6 +210,7 @@ class TabularValidator(BaseValidator):
                 "num_columns": read_result.num_columns,
                 "native_finding_count": len(native_findings),
                 "row_assertion_count": len(row_assertions),
+                "column_assertion_count": len(column_assertions),
             },
         )
 
@@ -300,9 +333,50 @@ class TabularValidator(BaseValidator):
                         message=assertion.message_template or "",
                         severity=Severity(assertion.severity or Severity.ERROR),
                         assertion_id=assertion.pk,
+                        report_max_examples=self._assertion_example_limit(assertion),
                     ),
                 )
         return specs
+
+    def _collect_column_assertions(
+        self,
+        validator: Validator,
+        ruleset: Ruleset,
+    ) -> list[ColumnAssertion]:
+        """Gather V2 column-stage assertions as engine specs."""
+        specs: list[ColumnAssertion] = []
+        for source in (getattr(validator, "default_ruleset", None), ruleset):
+            if source is None:
+                continue
+            for assertion in source.assertions.all():
+                if (assertion.options or {}).get("tabular_stage") != "column":
+                    continue
+                expression = (
+                    (assertion.rhs or {}).get("expr") or assertion.cel_cache or ""
+                )
+                if not expression:
+                    continue
+                specs.append(
+                    ColumnAssertion(
+                        expression=expression,
+                        message=assertion.message_template or "",
+                        severity=Severity(assertion.severity or Severity.ERROR),
+                        assertion_id=assertion.pk,
+                    ),
+                )
+        return specs
+
+    @staticmethod
+    def _assertion_example_limit(assertion: Any) -> int:
+        """Return a bounded per-assertion sample-row limit."""
+        raw = (assertion.options or {}).get(
+            "report_max_examples",
+            _DEFAULT_REPORT_MAX_EXAMPLES,
+        )
+        try:
+            return max(1, min(100, int(raw)))
+        except (TypeError, ValueError):
+            return _DEFAULT_REPORT_MAX_EXAMPLES
 
     def _run_clock(self, run_context: RunContext | None) -> Any:
         """Return the run's ``started_at`` to pin ``now()`` (or None).

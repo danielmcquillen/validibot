@@ -143,6 +143,26 @@ urlpatterns = [
         name="workflow_step_create",
     ),
     path(
+        "<int:pk>/steps/add/<int:validator_id>/tabular/columns/",
+        views.TabularColumnCreateView.as_view(),
+        name="workflow_tabular_columns",
+    ),
+    path(
+        "<int:pk>/steps/add/<int:validator_id>/tabular/schema/import/",
+        views.TabularSchemaImportView.as_view(),
+        name="workflow_tabular_schema_import",
+    ),
+    path(
+        "<int:pk>/steps/add/<int:validator_id>/tabular/schema/infer/",
+        views.TabularSchemaInferView.as_view(),
+        name="workflow_tabular_schema_infer",
+    ),
+    path(
+        "<int:pk>/steps/add/<int:validator_id>/tabular/schema/apply/",
+        views.TabularSchemaApplyView.as_view(),
+        name="workflow_tabular_schema_apply",
+    ),
+    path(
         "<int:pk>/steps/add/action/<int:action_definition_id>/",
         views.WorkflowActionStepCreateView.as_view(),
         name="workflow_step_action_create",
@@ -161,6 +181,31 @@ urlpatterns = [
         "<int:pk>/steps/<int:step_id>/settings/",
         views.WorkflowStepUpdateView.as_view(),
         name="workflow_step_settings",
+    ),
+    path(
+        "<int:pk>/steps/<int:step_id>/tabular/columns/",
+        views.TabularColumnCreateView.as_view(),
+        name="workflow_tabular_columns_existing",
+    ),
+    path(
+        "<int:pk>/steps/<int:step_id>/tabular/schema/import/",
+        views.TabularSchemaImportView.as_view(),
+        name="workflow_tabular_schema_import_existing",
+    ),
+    path(
+        "<int:pk>/steps/<int:step_id>/tabular/schema/infer/",
+        views.TabularSchemaInferView.as_view(),
+        name="workflow_tabular_schema_infer_existing",
+    ),
+    path(
+        "<int:pk>/steps/<int:step_id>/tabular/schema/apply/",
+        views.TabularSchemaApplyView.as_view(),
+        name="workflow_tabular_schema_apply_existing",
+    ),
+    path(
+        "<int:pk>/steps/<int:step_id>/tabular/schema/export/",
+        views.TabularSchemaExportView.as_view(),
+        name="workflow_tabular_schema_export_existing",
     ),
     path(
         "<int:pk>/steps/<int:step_id>/template-variables/",

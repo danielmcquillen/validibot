@@ -1,0 +1,96 @@
+{% load i18n crispy_forms_tags %}
+
+<article class="tabular-column-card"
+         data-tabular-column-row
+         data-column-index="{{ column_form.prefix }}"
+         {% if is_new_column %}
+           data-tabular-new-row
+         {% endif %}>
+  {{ column_form.original_name }}
+  {{ column_form.ORDER }}
+  <div class="d-none">
+    {{ column_form.DELETE }}
+  </div>
+  {% if column_form.non_field_errors %}
+    <div class="alert alert-danger py-2" role="alert">
+      {% for error in column_form.non_field_errors %}
+        <div>{{ error }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  <div class="row g-3 align-items-start">
+    <div class="col-12 col-lg-5">
+      {{ column_form.name|as_crispy_field }}
+    </div>
+    <div class="col-10 col-lg-4">
+      {{ column_form.type|as_crispy_field }}
+    </div>
+    <div class="col-2 col-lg-3 d-flex justify-content-end">
+      <div class="btn-group btn-group-sm mt-4"
+           role="group"
+           aria-label="{% trans 'Column actions' %}">
+        <button type="button"
+                class="btn btn-light"
+                data-tabular-move-column="up"
+                aria-label="{% trans 'Move column up' %}">
+          <i class="bi bi-arrow-up" aria-hidden="true"></i>
+        </button>
+        <button type="button"
+                class="btn btn-light"
+                data-tabular-move-column="down"
+                aria-label="{% trans 'Move column down' %}">
+          <i class="bi bi-arrow-down" aria-hidden="true"></i>
+        </button>
+        <button type="button"
+                class="btn btn-light text-danger"
+                data-tabular-remove-column
+                aria-label="{% trans 'Remove column' %}">
+          <i class="bi bi-trash3" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="tabular-column-card__flags">
+    {{ column_form.required|as_crispy_field }}
+    {{ column_form.unique|as_crispy_field }}
+    {{ column_form.primary_key|as_crispy_field }}
+  </div>
+  <div class="row g-3 mt-0">
+    <div class="col-12 col-lg-6">
+      {{ column_form.required_when_present|as_crispy_field }}
+    </div>
+  </div>
+  <details class="tabular-column-card__constraints"
+           {% if column_form.errors or column_form.minimum.value != None or column_form.maximum.value != None or column_form.min_length.value != None or column_form.max_length.value != None or column_form.pattern.value or column_form.enum_values.value %}
+             open
+           {% endif %}>
+    <summary>{% trans "Value constraints" %}</summary>
+    <div class="row g-3 pt-3">
+      <div class="col-12 col-md-6" data-tabular-constraint="numeric">
+        {{ column_form.minimum|as_crispy_field }}
+      </div>
+      <div class="col-12 col-md-6" data-tabular-constraint="numeric">
+        {{ column_form.maximum|as_crispy_field }}
+      </div>
+      <div class="col-12 col-md-6" data-tabular-constraint="string">
+        {{ column_form.min_length|as_crispy_field }}
+      </div>
+      <div class="col-12 col-md-6" data-tabular-constraint="string">
+        {{ column_form.max_length|as_crispy_field }}
+      </div>
+      <div class="col-12" data-tabular-constraint="string">
+        {{ column_form.pattern|as_crispy_field }}
+      </div>
+      <div class="col-12">
+        {{ column_form.enum_values|as_crispy_field }}
+      </div>
+    </div>
+  </details>
+</article>
+{% if management_total %}
+  <input type="hidden"
+         name="columns-TOTAL_FORMS"
+         id="id_columns-TOTAL_FORMS"
+         value="{{ management_total }}"
+         hx-swap-oob="outerHTML" />
+{% endif %}

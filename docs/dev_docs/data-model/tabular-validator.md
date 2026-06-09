@@ -15,14 +15,13 @@ implemented and how they fit together.
     The validator is configurable and runnable through the UI: the
     reader/PREFLIGHT layer, native structured validation, **row-stage CEL
     assertions** (the `row.*` compiled-once-per-run loop), the registered
-    `TabularValidator`, the **step settings editor** (dialect + paste/infer a
-    schema), and a step-detail **summary card** are all in place. After applying
-    migrations and running `manage.py sync_validators`, an author can select
-    **Tabular Validator**, configure it on the step settings page, add `row.*`
-    assertions, and run it. A `row.<column>` reference to a column not declared
-    in the step's schema is rejected at save time (the ADR's column-existence
-    obligation). Remaining polish is a richer settings UX — inline HTMx
-    column-constraint CRUD instead of the paste/infer textarea.
+    `TabularValidator`, the full-screen **Expected columns** editor, and a
+    step-detail **summary card** are all in place. After applying migrations and
+    running `manage.py sync_validators`, an author can select **Tabular
+    Validator**, configure columns manually or through import/inference, add
+    `row.*` assertions, and run it. A `row.<column>` reference to a column not
+    declared in the step's schema is rejected at save time (the ADR's
+    column-existence obligation).
 
 ## How a table becomes an in-memory model
 
@@ -108,12 +107,14 @@ section *Standards alignment: Frictionless Table Schema* and its *Alternatives
 considered* subsection (`docs/adr/2026-05-26-csv-validator.md` in the private
 `validibot-project` repo).
 
-There are two ways to populate that descriptor: paste/import an existing one, or
-**infer one from a sample file** (the fastest common path — most users have a
-CSV, not a hand-written descriptor). Inference (`infer.py`) reads a bounded
-sample, resolves the dialect and column names through the normal reader, and
-guesses each column's type from its values using the *same* coercion the
-validator enforces (so an inferred type means what validation will check).
+There are three ways to populate that descriptor: edit columns directly,
+paste/import an existing descriptor, or **infer one from a sample file** (the
+fastest common path — most users have a CSV, not a hand-written descriptor).
+Import and inference populate the same ordered Django formset used for manual
+editing. Inference (`infer.py`) reads a bounded sample, resolves the dialect and
+column names through the normal reader, and guesses each column's type from its
+values using the *same* coercion the validator enforces (so an inferred type
+means what validation will check).
 Candidate order is deliberate — `integer` before `boolean` (so `0`/`1` reads as
 integer), and a column whose values don't all fit one type stays `string`.
 Inference produces a *starting point* the author tightens: it picks types only,
@@ -126,7 +127,8 @@ row-stage CEL layer will use, so the two never disagree about what a cell *is*.
 
 Findings follow the reporting shape the whole validator uses: **one finding per
 failed check** (per column), carrying the total failure count and up to
-`report_max_examples` sample row numbers — never one finding per failing row, so
+`report_max_examples` sample row numbers (10 by default) — never one finding per
+failing row, so
 a column with a million bad cells produces one readable finding, not a million.
 
 ### Uniqueness semantics
@@ -156,12 +158,13 @@ validator works. Its configuration lives on the ruleset: `ruleset.rules`
 structured column config), and `ruleset.metadata` holds the **dialect**
 (`delimiter`, `has_header`, `quotechar`) and `report_max_examples`.
 
-A run does five things: load the schema (a schema that won't parse is a
+A run does six things: load the schema (a schema that won't parse is a
 `tabular.invalid_schema` finding, not a crash); read the body (a read failure
 becomes a finding carrying its `tabular.*` code); run native validation, mapping
 each `NativeFinding` onto a platform `ValidationIssue` with the count and sample
-rows preserved in `meta`; run the **row-stage CEL** loop (below); and run the
-standard dataset (`i.*`) / output CEL assertion lane. The `i.*` dataset signals
+rows preserved in `meta`; run the **row-stage CEL** loop; run the
+**column-stage CEL** aggregate assertions; and run the standard dataset (`i.*`)
+/ output CEL assertion lane. The `i.*` dataset signals
 (`num_rows`, `column_names`, `delimiter`, …) are exposed for those assertions and
 returned for downstream steps.
 
@@ -182,9 +185,8 @@ unbound context), so the validator owns their evaluation.
 **Authoring.** The assertion form accepts the `row.*` namespace **only on a
 tabular step** (it's rejected elsewhere as an unknown identifier), and on save
 it derives the stage from the expression: a `row.*` reference tags the assertion
-`tabular_stage="row"`, anything else (`i.*`/`s.*`) tags it `"dataset"`. The
-`col.*` namespace is deferred with V2 column assertions, so it is rejected for
-now even on a tabular step — an author can't save a rule the engine can't run.
+`tabular_stage="row"`, a `col.*` reference tags it `"column"`, and anything else
+(`i.*`/`s.*`) tags it `"dataset"`.
 The form also checks that every `row.<column>` (dot or bracket) names a column
 declared in the step's stored schema, rejecting a typo'd or absent column at
 save time (skipped only when no schema is configured yet).
@@ -207,14 +209,37 @@ comparison by comparing as null. A `false` result is the ordinary rule violation
 outcome class, with a count and capped sample rows, so a million-row failure is
 one readable finding.
 
+## Column-stage CEL assertions
+
+Column assertions run once after row validation against `col.*`. Each declared
+column exposes aggregates computed from the same canonical typed values used by
+native and row validation:
+
+- `distinct_count`, `null_count`, `non_null_count`, and `null_ratio`
+- `min` and `max`
+- `sum` for `integer` and `number` columns
+
+For example, `col.depth.null_ratio < 0.05` limits missing depth values, while
+`col.temperature.max <= 60` caps the observed range. Empty cells and coercion
+errors count as null. An optional declared column that is absent from the file
+still has a stable empty aggregate, while actual column presence remains
+available through `i.column_names`.
+
+Column references are checked against the saved schema at author and import
+time. Unknown aggregate names and `sum` on non-numeric columns are rejected
+before the assertion is persisted. Null, non-boolean, and evaluation-error
+results fail explicitly, matching the row-stage determinism contract.
+
 ## Configuring a step (the settings editor)
 
 A tabular step is configured on the normal full-screen step settings page
-(`steps/<id>/settings/`), which renders `TabularStepConfigForm` — the same
-per-validator config-form mechanism JSON Schema and SHACL use. The form has the
-dialect fields (delimiter / header) and two ways to supply the column schema:
-**paste a Frictionless descriptor**, or **upload a sample CSV to infer one** (via
-`infer.py`). Encoding is pinned to UTF-8 in V1 (not an editable field):
+(`steps/<id>/settings/`). `TabularStepConfigForm` owns the ordinary step and
+dialect fields plus an ordered `TabularColumnFormSet`. Each column form exposes
+the Table Schema field vocabulary: name/type, required, unique, primary-key
+membership, numeric bounds, string length/pattern, and enum values. A narrow
+Validibot extension, `x-validibot-requiredWhenPresent`, backs the no-CEL
+**Required when another column exists** control. Encoding is
+pinned to UTF-8 in V1 (not an editable field):
 submitted content reaches the validator already decoded as UTF-8, so a per-step
 encoding setting could only silently corrupt non-UTF-8 input — honoring other
 encodings needs a raw-bytes read path, a future slice. On save,
@@ -222,16 +247,58 @@ encodings needs a raw-bytes read path, a future slice. On save,
 dialect to `ruleset.metadata` — the exact places the validator reads back at run
 time, so the editor and the engine meet at the ruleset.
 
-When editing an existing step the schema textarea starts **empty**: leaving it
-blank keeps the stored schema (only the dialect is updated), pasting a new
-descriptor replaces it, and the current schema is shown read-only beneath the
-field. This avoids round-tripping a truncated preview back as a replacement,
-which would corrupt a schema larger than the preview cap.
+`build_tabular_descriptor()` converts the cleaned formset back into a
+descriptor. It replaces the keys the editor owns while preserving unknown
+top-level, field-level, and constraint-level metadata from an imported
+descriptor. This prevents an edit to one range from stripping titles or
+extension keys the UI does not expose. Primary-key checkboxes are serialized
+in form order, and primary-key membership implies `required=true`.
+
+Four HTMx endpoints support the authoring flow:
+
+- `tabular/columns/` returns a correctly prefixed formset row and updates
+  `TOTAL_FORMS` out of band.
+- `tabular/schema/import/` validates pasted or uploaded JSON and returns a
+  compatibility report plus a replacement preview.
+- `tabular/schema/infer/` reads the bounded upload, returns a replacement
+  preview, and updates resolved dialect controls out of band.
+- `tabular/schema/apply/` validates the preview payload again and replaces the
+  workspace only after explicit author confirmation.
+
+The endpoints return server-rendered partials and never create temporary
+database records. Invalid import/inference responses bind the posted formset
+back into the replacement workspace, so unsaved column edits survive. The
+ordinary POST path still accepts a pasted descriptor or sample upload without
+HTMx, preserving progressive enhancement.
+
+The formset enables Django's native ordering field. Up/down buttons reorder the
+DOM and rewrite the hidden `ORDER` values; `build_tabular_descriptor()` uses
+`ordered_forms`, so headerless-file position and composite-key order survive
+the POST. Added rows receive focus after the HTMx swap. Request buttons use
+`hx-disabled-elt`, `hx-indicator`, and `hx-sync` to prevent duplicate or
+competing replacements.
+
+Import compatibility is intentionally explicit. `schema.py` reports preserved
+but unenforced features including `foreignKeys`, custom `missingValues`,
+locale-specific number parsing, formats, unsupported scalar types, and unknown
+standard constraints. The same notices appear in HTMx previews and as Django
+messages on the no-JavaScript save path.
+
+Saved descriptors can be downloaded from `tabular/schema/export/`. Encoding is
+fixed to UTF-8 in V1 because the current submission API supplies decoded text;
+presenting a selectable encoding before a raw-byte path exists would create a
+setting the validator cannot honor.
 
 The step-detail page shows a read-only **summary card** (reader, delimiter,
-header, column count, rule count) with an "Edit settings" link. Row/dataset CEL
-assertions are authored through the existing step-assertion surface (the form
-accepts `row.*` on a tabular step and tags the stage — see above).
+header, total/required columns, and dataset/row/column assertion counts) with
+an "Edit settings" link. The existing assertion surface renders Tabular
+assertions in stage-specific groups. Dataset and row groups each have a scoped
+Add action, and the column group provides the same scoped flow for `col.*`.
+A global Add action first asks which execution stage the rule belongs to.
+The CEL editor provides stage-aware namespace hints and schema-derived
+completions; row assertions also expose a per-assertion example-row limit.
+Canceling Tabular settings returns to the workflow editor and focuses the
+originating step card.
 
 ## Limits
 
@@ -256,11 +323,15 @@ run with a clear finding; it never silently truncates.
 | `validations/validators/tabular/coercion.py` | Deterministic, locale-free coercion of a string cell to its declared type (shared with row-stage CEL) |
 | `validations/validators/tabular/native.py` | Native structured validation: produces `NativeFinding`s for required/type/range/length/pattern/enum/uniqueness checks |
 | `validations/validators/tabular/row_eval.py` | Row-stage CEL engine: compile-once-per-run, evaluate per row, typed `row.*` binding, null/error-as-failure, wall-clock budget |
-| `validations/validators/tabular/validator.py` | `TabularValidator`: reads the submission, runs native + row-stage validation, maps findings to `ValidationIssue`, runs the dataset/output CEL lane |
+| `validations/validators/tabular/column_eval.py` | Column-stage CEL engine: deterministic typed aggregates and one-shot `col.*` evaluation |
+| `validations/validators/tabular/validator.py` | `TabularValidator`: reads the submission, runs native + row + column validation, maps findings to `ValidationIssue`, runs the dataset/output CEL lane |
 | `validations/validators/tabular/config.py` | The `ValidatorConfig` that makes the validator discoverable and DB-syncable |
-| `workflows/forms.py` (`TabularStepConfigForm`) | Step settings form: dialect fields + paste/infer the schema |
+| `workflows/forms.py` (`TabularStepConfigForm`, `TabularColumnFormSet`) | Step settings, column validation, and metadata-preserving descriptor serialization |
+| `workflows/views/steps.py` (`Tabular*View`) | HTMx row/import/inference endpoints and settings-page context |
 | `workflows/views_helpers.py` (`build_tabular_config`) | Writes the descriptor to `ruleset.rules_text` and dialect to `ruleset.metadata` on save |
 | `workflows/step_configs.py` (`TabularStepConfig`) | Typed display config for the step-detail summary card |
+| `templates/workflows/partials/tabular_*` | Full-screen settings sections, schema workspace, and column-card partials |
+| `static/src/ts/tabularSchema.ts` | Type-aware constraint visibility, deletion, and live column count |
 | `templates/.../components/tabular_config_card.html` | The read-only step-detail summary card |
 
 Read failures are raised as a `TabularReadError` carrying a machine-readable
@@ -273,9 +344,9 @@ emit structured findings without matching on message text.
 ## Import and export
 
 The Tabular Validator is the one validator that ships a custom step serializer
-for [workflow import/export](workflow-import-export.md). Its row assertions may
-only reference columns declared in the Table Schema — a rule the step-editor form
-enforces but import bypasses — so `TabularStepSerializer.validate_imported_ruleset`
-re-applies the check on import, raising `vaf.tabular_unknown_column` if a
-re-imported row assertion references an undeclared column. Every other inline
-validator uses the generic base serializer unchanged.
+for [workflow import/export](workflow-import-export.md). Its row and column
+assertions may only reference columns declared in the Table Schema — a rule the
+step-editor form enforces but import bypasses — so
+`TabularStepSerializer.validate_imported_ruleset` re-applies the check on import,
+raising `vaf.tabular_unknown_column` for an undeclared reference. Every other
+inline validator uses the generic base serializer unchanged.

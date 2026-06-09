@@ -56,6 +56,11 @@ from validibot.workflows.views.sharing import WorkflowInviteCancelView
 from validibot.workflows.views.sharing import WorkflowInviteResendView
 from validibot.workflows.views.sharing import WorkflowSharingView
 from validibot.workflows.views.sharing import WorkflowVisibilityUpdateView
+from validibot.workflows.views.steps import TabularColumnCreateView
+from validibot.workflows.views.steps import TabularSchemaApplyView
+from validibot.workflows.views.steps import TabularSchemaExportView
+from validibot.workflows.views.steps import TabularSchemaImportView
+from validibot.workflows.views.steps import TabularSchemaInferView
 from validibot.workflows.views.steps import WorkflowActionStepCreateView
 from validibot.workflows.views.steps import WorkflowStepCreateView
 from validibot.workflows.views.steps import WorkflowStepDeleteView
@@ -80,6 +85,11 @@ __all__ = [
     "GuestWorkflowListView",
     "PublicWorkflowInfoView",
     "PublicWorkflowListView",
+    "TabularColumnCreateView",
+    "TabularSchemaApplyView",
+    "TabularSchemaExportView",
+    "TabularSchemaImportView",
+    "TabularSchemaInferView",
     "WorkflowActionStepCreateView",
     "WorkflowActivationUpdateView",
     "WorkflowArchiveView",

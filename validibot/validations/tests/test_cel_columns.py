@@ -10,6 +10,8 @@ substrings — are pinned here.
 from __future__ import annotations
 
 from validibot.validations.cel_columns import bound_macro_variables
+from validibot.validations.cel_columns import referenced_column_aggregates
+from validibot.validations.cel_columns import referenced_column_metrics
 from validibot.validations.cel_columns import referenced_row_columns
 from validibot.validations.cel_columns import strip_cel_string_literals
 
@@ -53,6 +55,20 @@ def test_bracket_reference_inside_a_string_literal_is_not_a_reference():
 def test_real_bracket_reference_is_still_found():
     """A genuine ``row["col"]`` access is still recognised after the fix."""
     assert referenced_row_columns('row["dwc:eventDate"] != ""') == {"dwc:eventDate"}
+
+
+def test_column_aggregate_references_support_dot_and_bracket_access():
+    """V2 column checks identify both the column and selected aggregate.
+
+    Authors may use readable dot aliases or canonical bracket access, and import
+    validation must understand both spellings without inspecting string literals.
+    """
+    expression = 'col.depth.null_ratio < 0.05 && col["dwc:eventDate"].max <= now()'
+    assert referenced_column_aggregates(expression) == {"depth", "dwc:eventDate"}
+    assert referenced_column_metrics(expression) == {
+        ("depth", "null_ratio"),
+        ("dwc:eventDate", "max"),
+    }
 
 
 def test_strip_removes_single_and_double_quoted_literals():

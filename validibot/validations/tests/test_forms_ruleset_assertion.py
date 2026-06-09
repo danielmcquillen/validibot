@@ -339,7 +339,7 @@ class RulesetAssertionFormTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors.as_json())
         self.assertEqual(
             form.cleaned_data["options_payload"],
-            {"tabular_stage": "row"},
+            {"tabular_stage": "row", "report_max_examples": 10},
         )
 
     def test_tabular_dataset_assertion_is_tagged_dataset_stage(self):
@@ -395,10 +395,38 @@ class RulesetAssertionFormTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("Bare identifiers are not allowed", str(form.errors))
 
-    def test_col_namespace_rejected_on_tabular_step_v1(self):
-        """``col.*`` (column-aggregate) assertions are V2; for V1 they must be
-        rejected even on a tabular step, so an author isn't allowed to save a
-        rule the engine can't yet run.
+    def test_tabular_step_accepts_column_assertion_and_tags_column_stage(self):
+        """A supported ``col.*`` aggregate saves as a V2 column-stage assertion.
+
+        The stage tag routes it away from the generic and row evaluators and
+        into the one-shot aggregate evaluator.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.TABULAR,
+            is_system=False,
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "",
+                "severity": Severity.ERROR,
+                "cel_expression": "col.lat.null_ratio < 0.05",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        self.assertEqual(
+            form.cleaned_data["options_payload"],
+            {"tabular_stage": "column"},
+        )
+
+    def test_tabular_column_assertion_rejects_unknown_aggregate(self):
+        """An aggregate outside the ADR contract is rejected at save time.
+
+        This prevents an author from publishing ``col.lat.mean`` and discovering
+        only at run time that the aggregate map has no ``mean`` member.
         """
         validator = ValidatorFactory(
             validation_type=ValidationType.TABULAR,
@@ -416,7 +444,33 @@ class RulesetAssertionFormTests(TestCase):
             },
         )
         self.assertFalse(form.is_valid())
-        self.assertIn("Bare identifiers are not allowed", str(form.errors))
+        self.assertIn("Unknown column aggregate", str(form.errors))
+
+    def test_row_assertion_persists_custom_example_limit(self):
+        """A row assertion stores its bounded diagnostic sample limit.
+
+        The evaluator still counts every failure; this option controls only how
+        many example row numbers are attached to the finding.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.TABULAR,
+            is_system=False,
+        )
+        form = RulesetAssertionForm(
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": "",
+                "severity": Severity.ERROR,
+                "cel_expression": "row.lat >= 0",
+                "when_expression": "",
+                "report_max_examples": 7,
+            },
+            catalog_entries=[],
+            validator=validator,
+            requested_tabular_stage="row",
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        self.assertEqual(form.cleaned_data["options_payload"]["report_max_examples"], 7)
 
     def _tabular_row_form(self, expression, *, tabular_columns):
         """Build an assertion form for a row CEL expression on a tabular step."""

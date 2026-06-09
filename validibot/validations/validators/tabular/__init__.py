@@ -15,6 +15,8 @@ The package is organised as a pipeline:
   enum/uniqueness) against the schema.
 - ``row_eval`` — per-row CEL assertions (the ``row.*`` namespace) with a
   compiled-once-per-run loop and a pinned ``now()``.
+- ``column_eval`` — one-shot CEL assertions over deterministic ``col.*``
+  aggregates.
 - ``infer`` — derive a starter schema from a sample.
 - ``validator`` + ``config`` — the registered ``TabularValidator`` and the
   ``ValidatorConfig`` that auto-discovery (``validators/base/config.py::

@@ -16,10 +16,32 @@
   <div id="workflow-step-form" class="container-fluid">
     <div class="app-content-header-bar row">
       <div class="app-content-header col-12 col-lg-8 d-flex flex-column gap-2">
+        {% if is_tabular_settings %}
+          <nav aria-label="{% trans 'Breadcrumb' %}">
+            <ol class="breadcrumb small mb-0">
+              <li class="breadcrumb-item">
+                <a href="{% org_url 'workflows:workflow_list' %}">{% trans "Workflows" %}</a>
+              </li>
+              <li class="breadcrumb-item">
+                <a href="{% org_url 'workflows:workflow_detail' workflow.pk %}">{{ workflow.name }}</a>
+              </li>
+              {% if step %}
+                <li class="breadcrumb-item">
+                  <a href="{% org_url 'workflows:workflow_step_edit' workflow.pk step.pk %}">{{ step.name }}</a>
+                </li>
+              {% endif %}
+              <li class="breadcrumb-item active" aria-current="page">
+                {% trans "Tabular settings" %}
+              </li>
+            </ol>
+          </nav>
+        {% endif %}
         <div class="d-flex align-items-center gap-2">
           <i class="bi {{ subject_details.icon|default_if_none:'bi-gear-wide-connected' }} text-primary fs-4"></i>
           <h1 class="app-page-title mb-0">
-            {% if is_create %}
+            {% if is_tabular_settings %}
+              {% trans "Tabular settings" %}
+            {% elif is_create %}
               {% trans "Add workflow step" %}
             {% else %}
               {% trans "Edit step details" %} : {{ step.name|default_if_none:"( no name )" }}
@@ -58,13 +80,22 @@
               class="d-flex flex-column gap-2">
           {% csrf_token %}
           {{ form.media }}
-          {% crispy form %}
+          {% if is_tabular_settings %}
+            {% include "workflows/partials/tabular_settings_fields.html" %}
+          {% else %}
+            {% crispy form %}
+          {% endif %}
           <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center gap-3 mt-2 pt-3 border-top">
             <div class="d-flex flex-wrap gap-2">
               {% if step %}
                 <a class="btn btn-secondary"
-                   href="{% url 'workflows:workflow_step_edit' workflow.pk step.pk %}">
-                  <i class="bi-arrow-left-short me-1"></i>{% trans "Back to workflow step" %}
+                   href="{% if is_tabular_settings %}{% org_url 'workflows:workflow_detail' workflow.pk %}#workflow-step-{{ step.pk }}{% else %}{% org_url 'workflows:workflow_step_edit' workflow.pk step.pk %}{% endif %}">
+                  <i class="bi-x-lg me-1"></i>
+                  {% if is_tabular_settings %}
+                    {% trans "Cancel" %}
+                  {% else %}
+                    {% trans "Back to workflow step" %}
+                  {% endif %}
                 </a>
               {% else %}
                 <a class="btn btn-secondary"

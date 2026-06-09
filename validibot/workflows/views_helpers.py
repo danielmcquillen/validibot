@@ -1,3 +1,4 @@
+import json
 import logging
 from dataclasses import asdict
 from hashlib import sha256
@@ -454,6 +455,19 @@ def build_tabular_config(
     if source == "keep" and step and step.ruleset_id:
         preview = step.config.get("schema_text_preview", "")
         column_count = step.config.get("column_count", 0)
+        required_column_count = step.config.get("required_column_count")
+        if required_column_count is None:
+            try:
+                existing_descriptor = json.loads(ruleset.rules_text or "{}")
+            except (TypeError, json.JSONDecodeError):
+                existing_descriptor = {}
+            required_column_count = sum(
+                1
+                for field in existing_descriptor.get("fields", [])
+                if isinstance(field, dict)
+                and isinstance(field.get("constraints"), dict)
+                and field["constraints"].get("required")
+            )
         ruleset.metadata = metadata
         ruleset.full_clean()
         ruleset.save()
@@ -467,7 +481,15 @@ def build_tabular_config(
         ruleset.full_clean()
         ruleset.save()
         preview = descriptor_json[:1200]
-        column_count = len((cleaned.get("descriptor") or {}).get("fields", []))
+        descriptor = cleaned.get("descriptor") or {}
+        column_count = len(descriptor.get("fields", []))
+        required_column_count = sum(
+            1
+            for field in descriptor.get("fields", [])
+            if isinstance(field, dict)
+            and isinstance(field.get("constraints"), dict)
+            and field["constraints"].get("required")
+        )
 
     delimiter_labels = {
         "": str(_("Auto-detect")),
@@ -484,6 +506,7 @@ def build_tabular_config(
         "encoding": encoding,
         "has_header": has_header,
         "column_count": column_count,
+        "required_column_count": required_column_count,
     }
     return config, ruleset
 

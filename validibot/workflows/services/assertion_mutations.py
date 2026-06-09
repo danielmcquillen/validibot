@@ -111,6 +111,7 @@ class AssertionMutationService:
         assertion: RulesetAssertion,
         direction: str | None,
         use_stage_buckets: bool,
+        use_tabular_stage_buckets: bool = False,
     ) -> bool:
         """Move an assertion up/down in display order.
 
@@ -120,7 +121,13 @@ class AssertionMutationService:
         """
 
         assertions = list(ruleset.assertions.order_by("order", "pk"))
-        if use_stage_buckets:
+        if use_tabular_stage_buckets:
+            assertions = cls._reordered_within_tabular_stage(
+                assertions=assertions,
+                assertion=assertion,
+                direction=direction,
+            )
+        elif use_stage_buckets:
             assertions = cls._reordered_within_stage(
                 assertions=assertions,
                 assertion=assertion,
@@ -140,6 +147,31 @@ class AssertionMutationService:
                 item.order = pos * 10
             RulesetAssertion.objects.bulk_update(assertions, ["order"])
         return True
+
+    @classmethod
+    def _reordered_within_tabular_stage(
+        cls,
+        *,
+        assertions: list[RulesetAssertion],
+        assertion: RulesetAssertion,
+        direction: str | None,
+    ) -> list[RulesetAssertion] | None:
+        """Move within dataset/row/column buckets without crossing stages."""
+        grouped: dict[str, list[RulesetAssertion]] = {
+            "dataset": [],
+            "row": [],
+            "column": [],
+        }
+        for item in assertions:
+            stage = (item.options or {}).get("tabular_stage", "dataset")
+            grouped.setdefault(stage, grouped["dataset"]).append(item)
+        target_stage = (assertion.options or {}).get("tabular_stage", "dataset")
+        target_group = grouped.get(target_stage, grouped["dataset"])
+        moved = cls._move_in_list(target_group, assertion, direction)
+        if moved is None:
+            return None
+        grouped[target_stage] = moved
+        return grouped["dataset"] + grouped["row"] + grouped["column"]
 
     @staticmethod
     def payload_from_cleaned_data(

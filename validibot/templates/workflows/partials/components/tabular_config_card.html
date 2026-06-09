@@ -30,13 +30,13 @@ Configuration itself is edited on the full-screen step settings page.
         {% trans "Delimiter" %}
       </dt>
       <dd class="col-7">
-        {{ step.typed_config.delimiter_label|default:_("Auto-detect") }}
+        {{ tabular_config.delimiter_label|default:_("Auto-detect") }}
       </dd>
       <dt class="col-5">
         {% trans "Header row" %}
       </dt>
       <dd class="col-7">
-        {% if step.typed_config.has_header %}
+        {% if tabular_config.has_header %}
           {% trans "Yes" %}
         {% else %}
           {% trans "No" %}
@@ -46,18 +46,36 @@ Configuration itself is edited on the full-screen step settings page.
         {% trans "Columns" %}
       </dt>
       <dd class="col-7">
-        {{ step.typed_config.column_count }}
+        {{ tabular_config.column_count }}
+      </dd>
+      <dt class="col-5">
+        {% trans "Required columns" %}
+      </dt>
+      <dd class="col-7">
+        {{ tabular_config.required_column_count }}
       </dd>
       {% if step.ruleset_id %}
         <dt class="col-5">
-          {% trans "Row/dataset rules" %}
+          {% trans "Dataset assertions" %}
         </dt>
         <dd class="col-7">
-          {{ step.ruleset.assertions.count }}
+          {{ tabular_assertion_counts.dataset }}
+        </dd>
+        <dt class="col-5">
+          {% trans "Row assertions" %}
+        </dt>
+        <dd class="col-7">
+          {{ tabular_assertion_counts.row }}
+        </dd>
+        <dt class="col-5">
+          {% trans "Column assertions" %}
+        </dt>
+        <dd class="col-7">
+          {{ tabular_assertion_counts.column }}
         </dd>
       {% endif %}
     </dl>
-    {% if not step.typed_config.column_count %}
+    {% if not tabular_config.column_count %}
       <p class="text-muted small mt-2 mb-0">
         {% trans "No column schema yet — open settings to paste a Table Schema or infer one from a sample." %}
       </p>

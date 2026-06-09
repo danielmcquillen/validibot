@@ -11,17 +11,18 @@ has to make sense.
 
 ## What schema does it expect?
 
-Column rules are described with a **[Frictionless Table
-Schema](https://datapackage.org/standard/table-schema/)** — a small, plain-JSON
-description of your columns: each field's name, its type, and any constraints
-(required, a numeric range, a string length, a regex pattern, an allowed set of
-values, or uniqueness).
+Validibot stores column rules as a **[Frictionless Table
+Schema](https://datapackage.org/standard/table-schema/)**. You normally edit
+that schema through the visual **Expected columns** editor: one card per column,
+with controls for its name, type, required/unique status, primary-key
+membership, and value constraints.
 
 Table Schema is an open standard, not a Validibot invention — the same way our
 JSON Schema validator uses JSON Schema and our XML validator uses XSD. If you
 already have a descriptor (many open-data portals and research data packages
-ship one), you can drop it straight in. If you don't, Validibot can write a
-first draft for you from a sample file.
+ship one), import it and review the resulting column cards. If you don't,
+Validibot can create a first draft from a sample file. You only need to work
+with the JSON directly when importing or exchanging a descriptor.
 
 A minimal descriptor looks like this:
 
@@ -37,25 +38,56 @@ A minimal descriptor looks like this:
 }
 ```
 
-You don't have to learn the format to get started — see the two setup paths
+You don't have to learn the format to get started — see the setup paths
 below.
 
 ---
 
-## Two ways to set up the schema
+## Ways to set up the schema
 
-When you configure a Tabular step you supply the column schema one of two ways:
+When you configure a Tabular step you can build the column schema three ways:
 
 1. **Infer it from a sample file (the quick path).** Upload a representative
-   CSV and Validibot reads the header, works out the delimiter, and guesses each
-   column's type from its values. This is a *starting point* you then tighten —
-   inference picks types only, so you add the ranges, enums, and "required"
-   flags that matter for your check.
-2. **Paste or import a descriptor.** If you already have a Frictionless Table
-   Schema descriptor, paste it in and the column rules populate directly.
+   CSV and select **Infer columns**. Validibot reads the header, resolves the
+   delimiter, and guesses each column's type from its values. Review the
+   proposal, then select **Apply proposed schema**. Your current unsaved
+   columns are not replaced until you apply it. Inference picks types only, so
+   add the ranges, allowed values, and required flags that matter for your
+   check.
+2. **Import a descriptor.** Paste or upload a Frictionless Table Schema JSON
+   descriptor and select **Import schema**. Validibot shows a compatibility
+   report and proposal before replacing the current editor. Unsupported
+   features are preserved where possible but clearly identified as not
+   enforced.
+3. **Define columns manually.** Select **Add column** and build the expected
+   shape directly. This is often quickest for small, stable formats.
 
 Either way, the file's delimiter and whether it has a header row are set
-alongside the schema.
+alongside the schema. UTF-8 is fixed in V1. After saving, use **Download saved
+schema** to export the portable descriptor.
+
+---
+
+## Defining an expected column
+
+Each column card has:
+
+- **Column name** and **data type** (`Text`, `Integer`, `Number`, `Boolean`,
+  `Date`, or `Date and time`).
+- **Required**, which means the column must exist and its cells cannot be empty.
+- **Required when another column exists**, which keeps this column optional
+  unless the selected companion column appears in the submitted file.
+- **Unique values**, which rejects repeated non-empty values.
+- **Primary key**. Select this on more than one column to create a composite
+  key. Primary-key columns are required automatically.
+- **Value constraints**. Number columns can have minimum/maximum values; text
+  columns can have length and regular-expression rules; every type can use a
+  list of allowed values.
+- **Move up / Move down** controls. These change the stored order and are
+  keyboard accessible.
+
+For headerless files, keep the cards in file-column order. For files with a
+header, Validibot matches the declared names to the header.
 
 ---
 
@@ -64,9 +96,9 @@ alongside the schema.
 A Tabular step checks your data in two complementary ways, and both feed the
 same findings list:
 
-- **Column rules (from the schema).** Per-column checks — required, type, range,
-  length, pattern, allowed values, and uniqueness. These come straight from the
-  Table Schema descriptor and run automatically.
+- **Column rules (from the schema).** Per-column checks — required, conditional
+  requiredness, type, range, length, pattern, allowed values, and uniqueness.
+  These run automatically.
 - **Row rules (CEL assertions).** Anything that compares *across* columns or is
   conditional — for example "minimum depth must not exceed maximum depth", or
   "a recorded date can't be in the future". These are
@@ -74,8 +106,24 @@ same findings list:
   using the `row.` prefix (e.g. `row.min_depth <= row.max_depth`). They cover
   the rules a column-by-column schema can't express.
 
+The assertion editor groups Tabular rules by execution stage:
+
+- **Dataset assertions** run once against `i.*` metadata such as row count and
+  column names.
+- **Row assertions** run against each `row.*` value and aggregate failures.
+- **Column assertions** run once after row checks against typed aggregates such
+  as `col.depth.null_ratio`, `col.depth.distinct_count`, `col.depth.min`,
+  `col.depth.max`, and numeric `col.depth.sum`.
+
 A rule can only reference a column you've declared in the schema, so a typo'd
 column name is caught when you save the step, not at run time.
+
+Use the Add button in a specific section when you already know the stage, or
+the global **Add assertion** button to choose Dataset, Row, or Column. The CEL
+editor suggests the namespaces, declared columns, aggregates, and helper
+functions available in that stage. Row assertions also let you choose how many
+example row numbers each finding should include; the total failure count is
+always retained.
 
 ---
 

@@ -1888,15 +1888,12 @@ def test_shacl_step_shows_validation_operation_before_assertions(client):
 
 
 def test_tabular_step_shows_validation_operation_before_assertions(client):
-    """Tabular steps should show Tabular Validation as the first assertion item.
+    """Tabular steps show validation before their stage-scoped assertion groups.
 
     The Tabular Validator runs its column-schema + row-rule validation before
-    any step-level assertions, so — like JSON, XML, and SHACL — the editor must
-    surface that operation as a display-only card at the top of the assertion
-    lane rather than the bare "no assertions yet" placeholder. This is what keeps
-    the step editor consistent across every inline schema validator: an author
-    opening a tabular step sees the same "validation runs, then add assertions"
-    shape they see for JSON or XML, not a different empty state.
+    any step-level assertions, so the display-only operation card must remain
+    first. Unlike JSON/XML, Tabular assertions are added from their dataset or
+    row group; retaining the old global connector would erase that stage choice.
     """
     validator = ValidatorFactory(
         validation_type=ValidationType.TABULAR,
@@ -1915,15 +1912,15 @@ def test_tabular_step_shows_validation_operation_before_assertions(client):
 
     assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
-    # The operation card appears first, ahead of the assertion add-connector,
-    # exactly like the JSON/XML/SHACL cards.
+    # The operation card appears before the staged assertion authoring surface.
     operation_index = html.index("Tabular Validation")
-    connector_index = html.index("assertion-add-connector")
+    dataset_index = html.index("Dataset assertions")
     assert "validator-operation-card" in html
     assert "Validates the submitted CSV" in html
-    assert operation_index < connector_index
-    assert "assertion-add-connector--terminal" in html
-    assert html.count("assertion-add-button") == 1
+    assert operation_index < dataset_index
+    assert "assertion-add-connector" not in html
+    assert "Add dataset assertion" in html
+    assert "Add row assertion" in html
     # The bare placeholder must be gone now that the operation card stands in
     # as the panel's first item.
     assert "No assertions have been added yet." not in html

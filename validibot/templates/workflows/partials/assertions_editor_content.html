@@ -35,7 +35,7 @@ Context:
               {% endif %}">
     {% if validator_operation and not uses_signal_stages %}
       {% include 'workflows/partials/components/validator_operation_card.html' with operation=validator_operation %}
-      {% if can_manage_assertions and supports_assertions %}
+      {% if can_manage_assertions and supports_assertions and not uses_tabular_stages %}
         {% if assertions %}
           {% include 'workflows/partials/components/assertion_add_connector.html' with line_only=True %}
         {% else %}
@@ -47,7 +47,11 @@ Context:
       {% if validator_default_assertions_count %}
         {% include 'workflows/partials/components/default_assertions_card.html' with default_assertions_count=validator_default_assertions_count %}
       {% endif %}
-      {% if uses_signal_stages %}
+      {% if uses_tabular_stages %}
+        {% include 'workflows/partials/components/tabular_assertion_group.html' with stage="dataset" label=_("Dataset assertions") add_label=_("Add dataset assertion") description=_("Run once against dataset metadata such as row count and column names.") assertions=tabular_assertion_groups.dataset %}
+        {% include 'workflows/partials/components/tabular_assertion_group.html' with stage="row" label=_("Row assertions") add_label=_("Add row assertion") description=_("Run against each row and aggregate failures into bounded findings.") assertions=tabular_assertion_groups.row %}
+        {% include 'workflows/partials/components/tabular_assertion_group.html' with stage="column" label=_("Column assertions") add_label=_("Add column assertion") description=_("Run once against typed aggregates such as null ratio, distinct count, range, and sum.") assertions=tabular_assertion_groups.column %}
+      {% elif uses_signal_stages %}
         {% include 'workflows/partials/components/assertion_group.html' with stage="input" label=_("Input assertions") assertions=assertion_groups.input empty_label=_("No input assertions yet.") %}
         <div class="validator-process-divider">
           <span class="validator-process-chip">{{ validator.processor_name|default:_("Validator process") }}</span>

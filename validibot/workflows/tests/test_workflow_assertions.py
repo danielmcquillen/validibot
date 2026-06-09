@@ -5,6 +5,8 @@ server-side persistence of assertion rows, and the step editor surfaces that
 show validator signals used by those assertions.
 """
 
+import json
+
 from django.test import Client
 from django.test import TestCase
 from django.test import override_settings
@@ -122,6 +124,38 @@ class WorkflowStepAssertionsTests(TestCase):
             ruleset = RulesetFactory(org=workflow.org)
             step.ruleset = ruleset
             step.save(update_fields=["ruleset"])
+        return step
+
+    def _make_tabular_step(self, workflow):
+        """Create a configured Tabular step for stage-specific UI tests."""
+        validator = ValidatorFactory(
+            validation_type=ValidationType.TABULAR,
+            supports_assertions=True,
+        )
+        step = WorkflowStepFactory(workflow=workflow, validator=validator)
+        if not step.ruleset_id:
+            step.ruleset = RulesetFactory(org=workflow.org)
+            step.save(update_fields=["ruleset"])
+        step.ruleset.rules_text = json.dumps(
+            {
+                "fields": [
+                    {
+                        "name": "reading",
+                        "type": "number",
+                        "constraints": {"required": True},
+                    },
+                    {"name": "status", "type": "string"},
+                ],
+            },
+        )
+        step.ruleset.save(update_fields=["rules_text"])
+        step.config = {
+            "delimiter_label": "Comma",
+            "has_header": True,
+            "column_count": 2,
+            "required_column_count": 1,
+        }
+        step.save(update_fields=["config"])
         return step
 
     def test_assertions_page_renders(self):
@@ -913,6 +947,309 @@ class WorkflowStepAssertionsTests(TestCase):
         html = response.content.decode()
         self.assertIn("JSON Schema Validation", html)
         self.assertIn("Add assertion", html)
+
+    def test_tabular_step_groups_assertions_by_execution_stage(self):
+        """Tabular assertion authoring exposes all three execution stages.
+
+        The settings editor links here, so this surface must make the execution
+        distinction visible and give every stage its own Add action.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_tabular_step(workflow)
+        RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            options={"tabular_stage": "dataset"},
+        )
+        RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            options={"tabular_stage": "row"},
+        )
+        url = reverse(
+            "workflows:workflow_step_edit",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.get(url)
+        body = response.content.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Dataset assertions", body)
+        self.assertIn("Row assertions", body)
+        self.assertIn("Column assertions", body)
+        self.assertIn("tabular_stage=dataset", body)
+        self.assertIn("tabular_stage=row", body)
+        self.assertIn("tabular_stage=column", body)
+        self.assertIn("Add column assertion", body)
+        self.assertIn("Which kind of assertion?", body)
+
+    def test_tabular_row_add_action_constrains_the_modal_to_row_cel(self):
+        """The Row Add button opens a stage-aware CEL form.
+
+        Authors should not have to choose an assertion mechanism after they
+        already chose a stage, and the guidance must expose the row namespace
+        spelling used by the validator.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_tabular_step(workflow)
+        url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.get(
+            f"{url}?tabular_stage=row",
+            headers={"hx-request": "true"},
+        )
+        body = response.content.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Add Row assertion", body)
+        self.assertIn('name="assertion_type"', body)
+        self.assertIn('value="cel_expr"', body)
+        self.assertIn("row.column_name", body)
+        self.assertIn("Example rows per finding", body)
+        self.assertIn("tabular-cel-assist-data", body)
+        self.assertIn('"name": "reading"', body)
+
+    def test_tabular_column_add_action_exposes_aggregate_guidance(self):
+        """The Column Add action opens a scoped, assisted CEL form.
+
+        Authors see the aggregate vocabulary and schema-derived completion data
+        instead of having to memorize the ``col.*`` contract.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_tabular_step(workflow)
+        url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.get(
+            f"{url}?tabular_stage=column",
+            headers={"hx-request": "true"},
+        )
+        body = response.content.decode()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Add Column assertion", body)
+        self.assertIn("null_ratio", body)
+        self.assertIn("typed column aggregates", body)
+        self.assertIn("tabular-cel-assist-data", body)
+
+    def test_tabular_column_stage_create_persists_column_stage(self):
+        """A valid aggregate expression is persisted in the column bucket."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_tabular_step(workflow)
+        url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.post(
+            f"{url}?tabular_stage=column",
+            data={
+                "assertion_type": "cel_expr",
+                "cel_description": "Missing readings are bounded",
+                "cel_expression": "col.reading.null_ratio <= 0.05",
+                "severity": "ERROR",
+            },
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 204)
+        assertion = step.ruleset.assertions.get()
+        self.assertEqual(assertion.options["tabular_stage"], "column")
+
+    def test_tabular_column_edit_keeps_stage_scoped_form(self):
+        """Editing a column assertion derives its stage from stored options.
+
+        The edit URL has no stage query parameter, so losing this derivation
+        would hide aggregate guidance and could reclassify the assertion.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_tabular_step(workflow)
+        assertion = RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            rhs={"expr": "col.reading.null_ratio <= 0.05"},
+            options={"tabular_stage": "column"},
+        )
+        url = reverse(
+            "workflows:workflow_step_assertion_update",
+            kwargs={
+                "pk": workflow.pk,
+                "step_id": step.pk,
+                "assertion_id": assertion.pk,
+            },
+        )
+
+        response = self.client.get(url, headers={"hx-request": "true"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Column assertion")
+        self.assertContains(response, "null_ratio")
+
+    def test_tabular_stage_specific_create_persists_requested_stage(self):
+        """A row-stage modal can save only an expression that uses row.*.
+
+        The stage is persisted in ``options`` and drives both runtime routing
+        and the grouped editor after the HTMx refresh.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_tabular_step(workflow)
+        url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.post(
+            f"{url}?tabular_stage=row",
+            data={
+                "assertion_type": "cel_expr",
+                "cel_description": "Reading is non-negative",
+                "cel_expression": "row.reading >= 0",
+                "severity": "ERROR",
+            },
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 204)
+        assertion = step.ruleset.assertions.get()
+        self.assertEqual(assertion.options["tabular_stage"], "row")
+
+    def test_tabular_row_modal_rejects_dataset_expression(self):
+        """A stage-specific Row form rejects an expression without row.*.
+
+        Without this guard, clicking Add Row could silently create a dataset
+        assertion that reappears in a different group after save.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_tabular_step(workflow)
+        url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.post(
+            f"{url}?tabular_stage=row",
+            data={
+                "assertion_type": "cel_expr",
+                "cel_expression": "i.num_rows > 0",
+                "severity": "ERROR",
+            },
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "must reference at least one value",
+            response.content.decode(),
+        )
+        self.assertEqual(step.ruleset.assertions.count(), 0)
+
+    def test_tabular_assertion_move_stays_within_its_stage(self):
+        """Move controls reorder row assertions without crossing dataset rules."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_tabular_step(workflow)
+        dataset = RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            order=10,
+            options={"tabular_stage": "dataset"},
+        )
+        row_one = RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            order=20,
+            options={"tabular_stage": "row"},
+        )
+        row_two = RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            order=30,
+            options={"tabular_stage": "row"},
+        )
+        url = reverse(
+            "workflows:workflow_step_assertion_move",
+            kwargs={
+                "pk": workflow.pk,
+                "step_id": step.pk,
+                "assertion_id": row_two.pk,
+            },
+        )
+
+        response = self.client.post(url, {"direction": "up"})
+
+        self.assertEqual(response.status_code, 204)
+        ordered = list(
+            step.ruleset.assertions.order_by("order").values_list("pk", flat=True),
+        )
+        self.assertEqual(ordered, [dataset.pk, row_two.pk, row_one.pk])
+
+    def test_tabular_configuration_card_shows_richer_counts(self):
+        """The step summary exposes required columns and per-stage rule counts."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_tabular_step(workflow)
+        RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            options={"tabular_stage": "dataset"},
+        )
+        RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            options={"tabular_stage": "row"},
+        )
+        url = reverse(
+            "workflows:workflow_step_edit",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.get(url)
+        body = response.content.decode()
+
+        self.assertIn("Required columns", body)
+        self.assertIn("Dataset assertions", body)
+        self.assertIn("Row assertions", body)
+        self.assertIn("Column assertions", body)
+
+    def test_tabular_configuration_card_derives_legacy_ruleset_counts(self):
+        """A saved descriptor remains visible when newer config counts are absent.
+
+        Tabular Rulesets predate the structured settings editor, so upgraded or
+        imported steps may have authoritative ``rules_text`` without the newer
+        denormalized summary fields on ``WorkflowStep.config``.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_tabular_step(workflow)
+        step.config = {}
+        step.save(update_fields=["config"])
+        step.ruleset.metadata = {
+            "delimiter": ",",
+            "encoding": "utf-8",
+            "has_header": False,
+        }
+        step.ruleset.save(update_fields=["metadata"])
+        url = reverse(
+            "workflows:workflow_step_edit",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["tabular_config"]["column_count"], 2)
+        self.assertEqual(
+            response.context["tabular_config"]["required_column_count"],
+            1,
+        )
+        self.assertEqual(response.context["tabular_config"]["delimiter_label"], "Comma")
+        self.assertFalse(response.context["tabular_config"]["has_header"])
 
     def test_cel_expression_requires_namespace_prefix(self):
         """Bare identifiers (without a namespace prefix like s. or p.)

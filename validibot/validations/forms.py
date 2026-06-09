@@ -25,6 +25,8 @@ from validibot.submissions.constants import SubmissionDataFormat
 from validibot.validations.cel import CEL_NAMESPACE_ROOTS
 from validibot.validations.cel import CUSTOM_HELPER_NAMES
 from validibot.validations.cel_columns import bound_macro_variables
+from validibot.validations.cel_columns import referenced_column_aggregates
+from validibot.validations.cel_columns import referenced_column_metrics
 from validibot.validations.cel_columns import referenced_row_columns
 from validibot.validations.constants import RULESET_ASSERTION_NOTES_MAX_LENGTH
 from validibot.validations.constants import AssertionOperator
@@ -41,6 +43,7 @@ from validibot.validations.models import StepIODefinition
 from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.validators.shacl.form_fields import ShaclConfigMixin
 from validibot.validations.validators.shacl.form_fields import _max_asks_per_step
+from validibot.validations.validators.tabular.native import DEFAULT_REPORT_MAX_EXAMPLES
 
 # Hard upper bound on CEL expression length, enforced before regex-based
 # identifier extraction. CEL expressions in practice are short (a few
@@ -848,6 +851,17 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         required=False,
         widget=forms.Textarea(attrs={"rows": 4}),
     )
+    report_max_examples = forms.IntegerField(
+        label=_("Example rows per finding"),
+        required=False,
+        min_value=1,
+        max_value=100,
+        initial=DEFAULT_REPORT_MAX_EXAMPLES,
+        help_text=_(
+            "Keep the full failure count but include at most this many example "
+            "row numbers in each finding.",
+        ),
+    )
     shacl_description = forms.CharField(
         label=_("Description"),
         required=False,
@@ -890,6 +904,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         workflow_signal_names=None,
         shacl_sparql_assertion_count=0,
         tabular_columns=None,
+        tabular_column_types=None,
+        requested_tabular_stage=None,
         **kwargs,
     ):
         # Ignore fmu_variables kwarg if passed.
@@ -936,6 +952,12 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         # an undeclared column at save time — the ADR's column-existence
         # obligation. Empty when not a tabular step or no schema yet.
         self.tabular_columns: set[str] = set(tabular_columns or [])
+        self.tabular_column_types: dict[str, str] = dict(tabular_column_types or {})
+        self.requested_tabular_stage = (
+            requested_tabular_stage
+            if requested_tabular_stage in {"dataset", "row", "column"}
+            else None
+        )
         self.shacl_sparql_assertion_count = shacl_sparql_assertion_count
         self.target_slug_datalist_id = target_slug_datalist_id
         self._configure_shacl_query_field()
@@ -1009,6 +1031,38 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         operator_choices.extend(self._basic_operator_choices())
         self.fields["operator"].choices = operator_choices
         self.fields["assertion_type"].choices = self._assertion_type_choices()
+        if self._validator_is_tabular() and self.requested_tabular_stage:
+            self.fields["assertion_type"].choices = [
+                (
+                    AssertionType.CEL_EXPRESSION.value,
+                    AssertionType.CEL_EXPRESSION.label,
+                ),
+            ]
+            self.fields["assertion_type"].initial = AssertionType.CEL_EXPRESSION
+            self.fields["assertion_type"].widget = forms.HiddenInput()
+            if self.requested_tabular_stage == "row":
+                self.fields["cel_expression"].help_text = _(
+                    'Use row.column_name or row["column name"] for values in '
+                    "the current row. Workflow signals remain available as s.*.",
+                )
+                self.fields["report_max_examples"].widget.attrs.update(
+                    {"class": "form-control", "inputmode": "numeric"},
+                )
+            elif self.requested_tabular_stage == "column":
+                self.fields["cel_expression"].help_text = _(
+                    "Use col.<column> aggregates such as null_ratio, "
+                    "distinct_count, min, max, and sum. Dataset metadata and "
+                    "workflow signals remain available as i.* and s.*.",
+                )
+                self.fields["report_max_examples"].widget = forms.HiddenInput()
+            else:
+                self.fields["cel_expression"].help_text = _(
+                    "Use i.* for dataset metadata such as row count and column "
+                    "names. Workflow signals remain available as s.*.",
+                )
+                self.fields["report_max_examples"].widget = forms.HiddenInput()
+        else:
+            self.fields["report_max_examples"].widget = forms.HiddenInput()
         if self._validator_is_shacl() and not self.initial.get("assertion_type"):
             self.fields["assertion_type"].initial = AssertionType.SHACL
         self.helper = FormHelper()
@@ -1019,6 +1073,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             ),
             "cel_description",
             "cel_expression",
+            "report_max_examples",
             Row(
                 Column("shacl_description", css_class="col-12 col-lg-4"),
                 Column("shacl_target_graph", css_class="col-12 col-lg-4"),
@@ -1122,11 +1177,44 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             # the validator buckets it correctly; empty for other validators.
             options_payload = self._tabular_cel_options(expression)
             cleaned["options_payload"] = options_payload
+            inferred_stage = options_payload.get("tabular_stage")
+            if (
+                self.requested_tabular_stage
+                and inferred_stage != self.requested_tabular_stage
+            ):
+                if self.requested_tabular_stage == "row":
+                    self.add_error(
+                        "cel_expression",
+                        _(
+                            "A row assertion must reference at least one value "
+                            "through the row.* namespace.",
+                        ),
+                    )
+                elif self.requested_tabular_stage == "column":
+                    self.add_error(
+                        "cel_expression",
+                        _(
+                            "A column assertion must reference at least one "
+                            "aggregate through the col.* namespace and cannot "
+                            "reference row.* values.",
+                        ),
+                    )
+                else:
+                    self.add_error(
+                        "cel_expression",
+                        _(
+                            "Dataset assertions cannot reference row.* values or "
+                            "col.* aggregates. Add the expression from the matching "
+                            "Row or Column assertions section.",
+                        ),
+                    )
             # A row assertion may only reference columns declared in the step's
             # Table Schema — catch a typo'd/absent column here rather than at
             # run time (the ADR's column-existence obligation).
             if options_payload.get("tabular_stage") == "row":
                 self._check_row_columns_exist(expression)
+            elif options_payload.get("tabular_stage") == "column":
+                self._check_column_aggregates_exist(expression)
             cleaned["resolved_operator"] = AssertionOperator.CEL_EXPR
             cleaned["cel_cache"] = expression
             # Ensure the target constraint is satisfied for CEL assertions.
@@ -1154,24 +1242,34 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             getattr(self.validator, "validation_type", None) == ValidationType.TABULAR
         )
 
-    def _tabular_cel_options(self, expression: str) -> dict[str, str]:
+    def _tabular_cel_options(self, expression: str) -> dict[str, str | int]:
         """Tag a CEL assertion on a tabular step with its stage.
 
-        The Tabular Validator buckets assertions by ``options["tabular_stage"]``
-        (ADR-2026-05-26's persistence decision): an expression that references
-        ``row.*`` is a row-stage assertion (the validator's per-row loop owns
-        it); anything else (``i.*``/``s.*``) is a dataset-stage assertion that
-        flows through the generic input lane. Returns an empty dict for
-        non-tabular steps so their options are unchanged.
+        Explicit stage-scoped Add actions are authoritative. The fallback
+        inference keeps imported/legacy form submissions working: ``col.*``
+        wins the column stage, then ``row.*``, otherwise dataset.
         """
         if not self._validator_is_tabular():
             return {}
         stripped = _strip_cel_string_literals(expression)
-        # ``row`` used as a namespace root (dot or bracket access), not as a
-        # substring of another identifier like ``arrow``.
-        if re.search(r"(?:^|[^\w.])row(?:\.|\[)", stripped):
-            return {"tabular_stage": "row"}
-        return {"tabular_stage": "dataset"}
+        has_row = bool(re.search(r"(?:^|[^\w.])row(?:\.|\[)", stripped))
+        has_column = bool(re.search(r"(?:^|[^\w.])col(?:\.|\[)", stripped))
+        if has_row and has_column:
+            self.add_error(
+                "cel_expression",
+                _(
+                    "One assertion cannot mix row.* values with col.* aggregates "
+                    "because those namespaces are bound in different stages.",
+                ),
+            )
+        stage = "column" if has_column else "row" if has_row else "dataset"
+        options: dict[str, str | int] = {"tabular_stage": stage}
+        if stage == "row":
+            options["report_max_examples"] = (
+                self.cleaned_data.get("report_max_examples")
+                or DEFAULT_REPORT_MAX_EXAMPLES
+            )
+        return options
 
     def _row_columns_referenced(self, expression: str) -> set[str]:
         """Return the column names a row assertion references via ``row.*``.
@@ -1182,6 +1280,10 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         row assertion that saves here could be rejected on import.
         """
         return referenced_row_columns(expression)
+
+    def _column_aggregates_referenced(self, expression: str) -> set[str]:
+        """Return column names referenced through ``col.*``."""
+        return referenced_column_aggregates(expression)
 
     def _check_row_columns_exist(self, expression: str) -> None:
         """Reject a row assertion that references an undeclared column.
@@ -1207,6 +1309,66 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                     "unknown": ", ".join(unknown),
                     "declared": ", ".join(sorted(self.tabular_columns)),
                 },
+            )
+
+    def _check_column_aggregates_exist(self, expression: str) -> None:
+        """Reject a column assertion that references an undeclared column."""
+        referenced = self._column_aggregates_referenced(expression)
+        unknown = (
+            sorted(referenced - self.tabular_columns) if self.tabular_columns else []
+        )
+        if unknown:
+            self.add_error(
+                "cel_expression",
+                _(
+                    "Column assertion references column(s) not declared in the "
+                    "step's schema: %(unknown)s. Declared columns: %(declared)s."
+                )
+                % {
+                    "unknown": ", ".join(unknown),
+                    "declared": ", ".join(sorted(self.tabular_columns)),
+                },
+            )
+        metrics = referenced_column_metrics(expression)
+        valid_metrics = {
+            "distinct_count",
+            "null_count",
+            "non_null_count",
+            "null_ratio",
+            "min",
+            "max",
+            "sum",
+        }
+        invalid_metrics = sorted(
+            f"{column}.{metric}"
+            for column, metric in metrics
+            if metric not in valid_metrics
+        )
+        if invalid_metrics:
+            self.add_error(
+                "cel_expression",
+                _(
+                    "Unknown column aggregate(s): %(metrics)s. Available "
+                    "aggregates are distinct_count, null_count, non_null_count, "
+                    "null_ratio, min, max, and sum."
+                )
+                % {"metrics": ", ".join(invalid_metrics)},
+            )
+        invalid_sums = sorted(
+            column
+            for column, metric in metrics
+            if metric == "sum"
+            and self.tabular_column_types
+            and self.tabular_column_types.get(column) not in {"integer", "number"}
+        )
+        if invalid_sums:
+            self.add_error(
+                "cel_expression",
+                _(
+                    "The sum aggregate is available only for numeric columns: "
+                    "%(columns)s.",
+                )
+                % {"columns": ", ".join(invalid_sums)},
             )
 
     @staticmethod
@@ -1341,12 +1503,11 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         # input/i, output/o, steps, submission) so this allowlist cannot drift
         # from the runtime context or the other allowlists.
         namespace_roots = set(CEL_NAMESPACE_ROOTS)
-        # row.* is a step-local namespace bound only by the Tabular Validator's
-        # row-stage loop, so it is accepted only on a tabular step (mandatory
-        # scoping per ADR-2026-05-26) and is therefore added contextually here
-        # rather than living in CEL_NAMESPACE_ROOTS. col.* is deferred with V2.
+        # row.* and col.* are step-local namespaces bound only by the Tabular
+        # Validator's staged evaluators, so they are accepted contextually
+        # rather than becoming platform-wide namespace roots.
         if self._validator_is_tabular():
-            namespace_roots.add("row")
+            namespace_roots.update({"row", "col"})
         cel_builtins = {
             "has",
             "exists",
@@ -2154,12 +2315,10 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         # Sourced from the single canonical set in cel.py so this allowlist
         # stays in lockstep with the runtime context and the other allowlists.
         namespace_roots = set(CEL_NAMESPACE_ROOTS)
-        # The row.* namespace is only valid on a Tabular Validator step (its
-        # row-stage CEL loop binds it). Scoped here so a stray ``row.x`` on a
-        # JSON/XML step is still flagged. (col.* is deferred with V2 column
-        # assertions, so it stays rejected for now.)
+        # The row.* and col.* namespaces are only valid on Tabular Validator
+        # steps, whose staged evaluators bind them.
         if self._validator_is_tabular():
-            namespace_roots.add("row")
+            namespace_roots.update({"row", "col"})
         unknown = set()
         for ident in identifiers:
             if ident in reserved or ident in cel_builtins:
@@ -2278,8 +2437,13 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             cls._apply_operator_initial(initial, assertion.operator, rhs, options)
         else:
             rhs = assertion.rhs or {}
+            options = assertion.options or {}
             initial["cel_expression"] = rhs.get("expr", "")
             initial["cel_description"] = rhs.get("description", "")
+            initial["report_max_examples"] = options.get(
+                "report_max_examples",
+                DEFAULT_REPORT_MAX_EXAMPLES,
+            )
         return initial
 
     @staticmethod

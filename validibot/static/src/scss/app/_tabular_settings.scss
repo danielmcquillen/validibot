@@ -1,0 +1,124 @@
+.tabular-settings-section {
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--bs-border-color);
+
+  &:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+}
+
+.tabular-settings-section__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.tabular-schema-source {
+  padding: 1rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.65rem;
+  background: var(--bs-tertiary-bg);
+}
+
+.tabular-schema-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(var(--bs-primary-rgb), 0.35);
+  border-radius: 0.65rem;
+  background: rgba(var(--bs-primary-rgb), 0.06);
+}
+
+.tabular-request-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+  margin-top: 1rem;
+  color: var(--bs-secondary-color);
+  font-size: 0.875rem;
+}
+
+.tabular-request-indicator:not(.htmx-request) {
+  visibility: hidden;
+}
+
+.tabular-schema-source__icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  color: var(--bs-primary);
+  font-size: 1.15rem;
+  background: rgba(var(--bs-primary-rgb), 0.1);
+  border-radius: 0.6rem;
+}
+
+.tabular-column-count {
+  color: var(--bs-secondary-color);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.tabular-column-card {
+  padding: 1rem;
+  border: 1px solid var(--bs-border-color);
+  border-left: 0.25rem solid rgba(var(--bs-primary-rgb), 0.55);
+  border-radius: 0.65rem;
+  background: var(--bs-body-bg);
+  box-shadow: 0 0.125rem 0.4rem rgba(25, 35, 45, 0.05);
+
+  &[hidden] {
+    display: none;
+  }
+
+  .mb-3 {
+    margin-bottom: 0 !important;
+  }
+}
+
+.tabular-column-card__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  padding: 0.75rem 0;
+
+  .form-check {
+    margin-bottom: 0;
+  }
+}
+
+.tabular-column-card__constraints {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--bs-border-color);
+
+  summary {
+    width: fit-content;
+    color: var(--bs-secondary-color);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+}
+
+.tabular-assertion-summary {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.55rem;
+  background: var(--bs-tertiary-bg);
+}
+
+@media (min-width: 992px) {
+  #workflow-step-form:has(.tabular-settings-section) .app-form-card {
+    max-width: 92rem;
+  }
+}

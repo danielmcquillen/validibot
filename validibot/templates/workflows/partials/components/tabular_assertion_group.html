@@ -1,0 +1,40 @@
+{% load i18n core_tags %}
+
+<section class="assertion-group mb-4"
+         data-tabular-assertion-stage="{{ stage }}"
+         aria-labelledby="tabular-assertion-{{ stage }}-heading">
+  <div class="assertion-group-panel">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <h3 id="tabular-assertion-{{ stage }}-heading" class="h6 mb-1">
+          {{ label }}
+        </h3>
+        <p class="small text-muted mb-0">{{ description }}</p>
+      </div>
+      {% if can_manage_assertions %}
+        <button type="button"
+                class="btn btn-secondary btn-sm flex-shrink-0 text-nowrap"
+                data-bs-toggle="modal"
+                data-bs-target="#workflowAssertionModal"
+                hx-get="{% org_url 'workflows:workflow_step_assertion_create' workflow.pk step.pk %}?tabular_stage={{ stage }}"
+                hx-target="#workflow-assertion-modal-content"
+                hx-swap="innerHTML"
+                hx-disabled-elt="this">
+          <i class="bi bi-plus me-1" aria-hidden="true"></i>
+          {{ add_label }}
+        </button>
+      {% endif %}
+    </div>
+    {% if assertions %}
+      <div class="d-flex flex-column gap-2">
+        {% for assertion in assertions %}
+          {% include 'workflows/partials/components/assertion_step.html' with assertion=assertion run_stage=stage %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="assertion-group-empty text-muted mb-0">
+        {% trans "No assertions in this stage yet." %}
+      </p>
+    {% endif %}
+  </div>
+</section>

@@ -121,8 +121,8 @@ class TabularStepConfig(BaseStepConfig):
     """
 
     schema_source: str = ""
-    """How the schema was provided: "text" (pasted), "infer" (from a sample),
-    or "keep" (unchanged)."""
+    """How the schema was provided: "editor" (column UI), "text" (pasted),
+    "upload" (JSON file), "infer" (from a sample), or "keep" (unchanged)."""
 
     schema_text_preview: str = ""
     """First 1200 characters of the Table Schema descriptor, for display."""
@@ -141,6 +141,9 @@ class TabularStepConfig(BaseStepConfig):
 
     column_count: int = 0
     """Number of declared columns, for the summary card."""
+
+    required_column_count: int = 0
+    """Number of columns whose values are required."""
 
 
 # ---------------------------------------------------------------------------

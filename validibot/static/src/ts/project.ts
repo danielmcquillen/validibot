@@ -269,6 +269,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (target instanceof HTMLElement) {
             target.classList.add('reorder-flash');
             target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            target.focus({ preventScroll: true });
             target.addEventListener('animationend', () => {
                 target.classList.remove('reorder-flash');
             }, { once: true });

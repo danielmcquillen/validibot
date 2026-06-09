@@ -82,6 +82,24 @@ const STRING_OPERATORS = new Set<string>([
   'matches',
 ]);
 
+type CelAssistColumn = {
+  name: string;
+  type: string;
+  alias?: string;
+};
+
+type CelAssistData = {
+  stage: 'dataset' | 'row' | 'column';
+  columns: CelAssistColumn[];
+  catalog: Array<{ value: string; label: string }>;
+};
+
+type CelSuggestion = {
+  label: string;
+  insert: string;
+  detail: string;
+};
+
 class AssertionFormController {
   private wrappers = new Map<ConditionalFieldName, HTMLElement>();
   private typeField: HTMLSelectElement | null;
@@ -92,6 +110,7 @@ class AssertionFormController {
   private targetCatalogInput: HTMLInputElement | null;
   private shaclQueryField: HTMLTextAreaElement | null;
   private shaclFileInputInjected = false;
+  private celAssistInitialized = false;
   private focusApplied = false;
 
   constructor(private form: HTMLFormElement) {
@@ -110,6 +129,7 @@ class AssertionFormController {
     }
     this.bindEvents();
     this.injectShaclFileUpload();
+    this.initCelAssist();
     this.refresh();
   }
 
@@ -301,6 +321,215 @@ class AssertionFormController {
 
     wrapper.insertBefore(container, textarea);
     this.shaclFileInputInjected = true;
+  }
+
+  private initCelAssist(): void {
+    if (this.celAssistInitialized) {
+      return;
+    }
+    const textarea = this.form.querySelector<HTMLTextAreaElement>('#id_cel_expression');
+    const dataElement = this.form.querySelector<HTMLScriptElement>(
+      '#tabular-cel-assist-data',
+    );
+    const wrapper = textarea?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS);
+    if (!textarea || !dataElement || !wrapper) {
+      return;
+    }
+
+    let data: CelAssistData;
+    try {
+      data = JSON.parse(dataElement.textContent ?? '') as CelAssistData;
+    } catch {
+      return;
+    }
+
+    const suggestions = this.buildCelSuggestions(data);
+    const panel = document.createElement('div');
+    panel.className = 'border rounded bg-body-tertiary mt-2 p-2';
+    panel.setAttribute('data-cel-assist-panel', '');
+
+    const heading = document.createElement('div');
+    heading.className = 'd-flex flex-wrap align-items-center gap-2 small mb-2';
+    const title = document.createElement('span');
+    title.className = 'fw-semibold';
+    title.textContent = 'CEL suggestions';
+    const hint = document.createElement('span');
+    hint.className = 'text-muted';
+    hint.textContent = 'Type to filter, or press Ctrl+Space.';
+    heading.append(title, hint);
+
+    const namespaces = document.createElement('div');
+    namespaces.className = 'd-flex flex-wrap gap-1 mb-2';
+    const namespaceLabels =
+      data.stage === 'dataset'
+        ? ['i.* dataset', 's.* signals', 'submission.*']
+        : data.stage === 'row'
+          ? ['row.* current row', 'i.* dataset', 's.* signals']
+          : ['col.* aggregates', 'i.* dataset', 's.* signals'];
+    namespaceLabels.forEach((label) => {
+      const badge = document.createElement('span');
+      badge.className = 'badge text-bg-light border';
+      badge.textContent = label;
+      namespaces.appendChild(badge);
+    });
+
+    const list = document.createElement('div');
+    list.className = 'list-group';
+    list.setAttribute('role', 'listbox');
+    list.hidden = true;
+    panel.append(heading, namespaces, list);
+    wrapper.appendChild(panel);
+
+    let visible: CelSuggestion[] = [];
+    let activeIndex = 0;
+
+    const currentQuery = (): { text: string; start: number; end: number } => {
+      const end = textarea.selectionStart ?? textarea.value.length;
+      const prefix = textarea.value.slice(0, end);
+      const match = prefix.match(/[A-Za-z0-9_.\[\]"':-]*$/);
+      const text = match?.[0] ?? '';
+      return { text, start: end - text.length, end };
+    };
+
+    const insertSuggestion = (suggestion: CelSuggestion): void => {
+      const query = currentQuery();
+      textarea.setRangeText(suggestion.insert, query.start, query.end, 'end');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      list.hidden = true;
+      textarea.focus();
+    };
+
+    const render = (force = false): void => {
+      const query = currentQuery().text.toLowerCase();
+      if (!force && !query) {
+        list.hidden = true;
+        return;
+      }
+      visible = suggestions
+        .filter((suggestion) => {
+          const haystack = `${suggestion.label} ${suggestion.detail}`.toLowerCase();
+          return !query || haystack.includes(query);
+        })
+        .slice(0, 10);
+      activeIndex = Math.min(activeIndex, Math.max(visible.length - 1, 0));
+      list.replaceChildren();
+      visible.forEach((suggestion, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className =
+          'list-group-item list-group-item-action d-flex justify-content-between gap-3 py-2';
+        button.setAttribute('role', 'option');
+        button.setAttribute('aria-selected', String(index === activeIndex));
+        if (index === activeIndex) {
+          button.classList.add('active');
+        }
+        const label = document.createElement('code');
+        label.textContent = suggestion.label;
+        const detail = document.createElement('span');
+        detail.className = 'small opacity-75 text-end';
+        detail.textContent = suggestion.detail;
+        button.append(label, detail);
+        button.addEventListener('mousedown', (event) => event.preventDefault());
+        button.addEventListener('click', () => insertSuggestion(suggestion));
+        list.appendChild(button);
+      });
+      list.hidden = visible.length === 0;
+    };
+
+    textarea.addEventListener('input', () => render());
+    textarea.addEventListener('focus', () => render(false));
+    textarea.addEventListener('keydown', (event) => {
+      if (event.ctrlKey && event.code === 'Space') {
+        event.preventDefault();
+        render(true);
+        return;
+      }
+      if (list.hidden || visible.length === 0) {
+        return;
+      }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        activeIndex =
+          event.key === 'ArrowDown'
+            ? (activeIndex + 1) % visible.length
+            : (activeIndex - 1 + visible.length) % visible.length;
+        render(true);
+      } else if (event.key === 'Tab' && visible[activeIndex]) {
+        event.preventDefault();
+        insertSuggestion(visible[activeIndex]);
+      } else if (event.key === 'Escape') {
+        list.hidden = true;
+      }
+    });
+    this.celAssistInitialized = true;
+  }
+
+  private buildCelSuggestions(data: CelAssistData): CelSuggestion[] {
+    const suggestions: CelSuggestion[] = data.catalog.map((entry) => ({
+      label: entry.value,
+      insert: entry.value,
+      detail: entry.label,
+    }));
+    const datasetEntries = [
+      'i.num_rows',
+      'i.num_columns',
+      'i.column_names',
+      'i.delimiter',
+      'i.encoding',
+      'i.has_header',
+      'i.size_bytes',
+      'i.filename',
+    ];
+    datasetEntries.forEach((value) => {
+      if (!suggestions.some((suggestion) => suggestion.insert === value)) {
+        suggestions.push({ label: value, insert: value, detail: 'Dataset metadata' });
+      }
+    });
+
+    if (data.stage === 'row') {
+      data.columns.forEach((column) => {
+        const canonical = `row[${JSON.stringify(column.name)}]`;
+        suggestions.push({
+          label: column.alias ? `row.${column.alias}` : canonical,
+          insert: canonical,
+          detail: `${column.type} column`,
+        });
+      });
+    } else if (data.stage === 'column') {
+      const commonAggregates = [
+        'distinct_count',
+        'null_count',
+        'non_null_count',
+        'null_ratio',
+        'min',
+        'max',
+      ];
+      data.columns.forEach((column) => {
+        const aggregates =
+          column.type === 'number' || column.type === 'integer'
+            ? [...commonAggregates, 'sum']
+            : commonAggregates;
+        aggregates.forEach((aggregate) => {
+          const canonical = `col[${JSON.stringify(column.name)}].${aggregate}`;
+          const prefix = column.alias ? `col.${column.alias}` : `col[${JSON.stringify(column.name)}]`;
+          suggestions.push({
+            label: `${prefix}.${aggregate}`,
+            insert: canonical,
+            detail: `${column.type} aggregate`,
+          });
+        });
+      });
+    }
+
+    [
+      ['is_iso8601()', 'ISO-8601 helper'],
+      ['parse_date()', 'Parse a text date'],
+      ['is_finite()', 'Finite-number helper'],
+      ['now()', 'Pinned run clock'],
+    ].forEach(([value, detail]) => {
+      suggestions.push({ label: value, insert: value, detail });
+    });
+    return suggestions;
   }
 
   private toggleTargetVisibility(show: boolean): void {

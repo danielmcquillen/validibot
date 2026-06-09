@@ -33,6 +33,7 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.users.constants import RoleCode
 from validibot.users.tests.utils import ensure_all_roles_exist
 from validibot.validations.constants import ValidationType
+from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.tabular.schema import parse_table_schema
 from validibot.workflows.forms import TabularStepConfigForm
@@ -60,6 +61,44 @@ _DESCRIPTOR = json.dumps(
         ],
     },
 )
+
+
+def _column_formset_data(
+    columns: list[dict[str, object]],
+    *,
+    base_descriptor: dict | None = None,
+) -> dict[str, object]:
+    """Build browser-shaped formset POST data for column-editor tests."""
+    data: dict[str, object] = {
+        "columns-TOTAL_FORMS": str(len(columns)),
+        "columns-INITIAL_FORMS": str(len(columns)),
+        "columns-MIN_NUM_FORMS": "1",
+        "columns-MAX_NUM_FORMS": "1000",
+        "schema_base": json.dumps(base_descriptor or {}),
+    }
+    for index, column in enumerate(columns):
+        prefix = f"columns-{index}"
+        data[f"{prefix}-original_name"] = column.get("original_name", "")
+        data[f"{prefix}-name"] = column.get("name", "")
+        data[f"{prefix}-type"] = column.get("type", "string")
+        data[f"{prefix}-ORDER"] = str(column.get("order", index + 1))
+        data[f"{prefix}-required_when_present"] = column.get(
+            "required_when_present",
+            "",
+        )
+        for boolean_field in ("required", "unique", "primary_key", "DELETE"):
+            if column.get(boolean_field):
+                data[f"{prefix}-{boolean_field}"] = "on"
+        for field_name in (
+            "minimum",
+            "maximum",
+            "min_length",
+            "max_length",
+            "pattern",
+            "enum_values",
+        ):
+            data[f"{prefix}-{field_name}"] = column.get(field_name, "")
+    return data
 
 
 class TabularStepConfigFormTests(SimpleTestCase):
@@ -170,6 +209,263 @@ class TabularStepConfigFormTests(SimpleTestCase):
         """
         form = TabularStepConfigForm(data={"name": "x"})
         self.assertNotIn("encoding", form.fields)
+
+    def test_column_editor_builds_structured_descriptor(self):
+        """Column form rows serialize to the supported Table Schema vocabulary.
+
+        This matters because the visual editor must write the exact descriptor
+        the runtime parser already consumes, including composite-primary-key
+        order and type-specific constraints.
+        """
+        data = {
+            "name": "Check coordinates",
+            "delimiter": ",",
+            "has_header": "on",
+            **_column_formset_data(
+                [
+                    {
+                        "name": "site_id",
+                        "type": "string",
+                        "required": True,
+                        "primary_key": True,
+                        "pattern": r"^[A-Z]{2}-\d+$",
+                    },
+                    {
+                        "name": "latitude",
+                        "type": "number",
+                        "required": True,
+                        "minimum": "-90",
+                        "maximum": "90",
+                        "primary_key": True,
+                    },
+                    {
+                        "name": "status",
+                        "type": "string",
+                        "enum_values": "present\nabsent",
+                    },
+                ],
+            ),
+        }
+
+        form = TabularStepConfigForm(data=data)
+
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        descriptor = form.cleaned_data["descriptor"]
+        self.assertEqual(descriptor["primaryKey"], ["site_id", "latitude"])
+        self.assertEqual(
+            descriptor["fields"][1]["constraints"],
+            {"required": True, "minimum": -90.0, "maximum": 90.0},
+        )
+        self.assertEqual(
+            descriptor["fields"][2]["constraints"]["enum"],
+            ["present", "absent"],
+        )
+        self.assertEqual(form.cleaned_data["schema_source"], "editor")
+
+    def test_column_editor_preserves_unexposed_descriptor_metadata(self):
+        """Editing a supported constraint must not erase richer imported data.
+
+        Table Schema descriptors can carry titles and extension keys that this
+        V1 editor does not expose. Preserving those keys makes the editor a
+        respectful round-trip rather than a lossy format converter.
+        """
+        base_descriptor = {
+            "title": "Survey export",
+            "x-project": "coastal",
+            "fields": [
+                {
+                    "name": "latitude",
+                    "title": "Latitude",
+                    "type": "number",
+                    "constraints": {"minimum": -90, "x-quality": "measured"},
+                },
+            ],
+        }
+        data = {
+            "name": "Check coordinates",
+            **_column_formset_data(
+                [
+                    {
+                        "original_name": "latitude",
+                        "name": "latitude",
+                        "type": "number",
+                        "minimum": "-80",
+                    },
+                ],
+                base_descriptor=base_descriptor,
+            ),
+        }
+
+        form = TabularStepConfigForm(data=data)
+
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        descriptor = form.cleaned_data["descriptor"]
+        self.assertEqual(descriptor["title"], "Survey export")
+        self.assertEqual(descriptor["x-project"], "coastal")
+        self.assertEqual(descriptor["fields"][0]["title"], "Latitude")
+        self.assertEqual(
+            descriptor["fields"][0]["constraints"],
+            {"minimum": -80.0, "x-quality": "measured"},
+        )
+
+    def test_column_editor_serializes_conditional_requiredness(self):
+        """The V2 no-CEL widget writes the narrow Validibot schema extension.
+
+        The target remains optional by default, but native validation requires
+        it whenever the selected companion column appears in a submitted file.
+        """
+        form = TabularStepConfigForm(
+            data={
+                "name": "Conditional extension columns",
+                **_column_formset_data(
+                    [
+                        {"name": "measurementType", "type": "string"},
+                        {
+                            "name": "measurementTypeID",
+                            "type": "string",
+                            "required_when_present": "measurementType",
+                        },
+                    ],
+                ),
+            },
+        )
+
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        constraints = form.cleaned_data["descriptor"]["fields"][1]["constraints"]
+        self.assertEqual(
+            constraints["x-validibot-requiredWhenPresent"],
+            "measurementType",
+        )
+
+    def test_column_editor_rejects_unknown_conditional_trigger(self):
+        """A stale or forged companion-column value cannot enter the schema."""
+        form = TabularStepConfigForm(
+            data={
+                "name": "Bad conditional",
+                **_column_formset_data(
+                    [
+                        {
+                            "name": "measurementTypeID",
+                            "required_when_present": "missing",
+                        },
+                    ],
+                ),
+            },
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("declared in this schema", str(form.column_formset.errors))
+
+    def test_column_editor_rejects_case_colliding_names(self):
+        """Case-only name collisions are rejected in the editor.
+
+        Runtime column addressing is case-sensitive while Table Schema name
+        uniqueness is not, so allowing ``Lat`` and ``lat`` would create an
+        ambiguous schema that cannot be addressed safely in row assertions.
+        """
+        data = {
+            "name": "Bad columns",
+            **_column_formset_data(
+                [
+                    {"name": "Lat", "type": "number"},
+                    {"name": "lat", "type": "number"},
+                ],
+            ),
+        }
+
+        form = TabularStepConfigForm(data=data)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("letter case", str(form.column_formset.non_form_errors()))
+
+    def test_column_editor_rejects_constraints_for_wrong_type(self):
+        """Numeric limits on a text column are field errors, not silent no-ops.
+
+        Immediate authoring feedback avoids a schema that appears constrained in
+        the UI while the runtime correctly ignores an inapplicable constraint.
+        """
+        data = {
+            "name": "Bad shape",
+            **_column_formset_data(
+                [{"name": "status", "type": "string", "minimum": "1"}],
+            ),
+        }
+
+        form = TabularStepConfigForm(data=data)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("minimum", form.column_formset.forms[0].errors)
+
+    def test_column_editor_serializes_the_explicit_formset_order(self):
+        """Move controls must change persisted field order, not only the DOM.
+
+        Headerless files align values by position, so the hidden ``ORDER``
+        values are part of the validation contract. This proves a browser move
+        survives the POST and also controls composite-primary-key ordering.
+        """
+        data = {
+            "name": "Ordered columns",
+            **_column_formset_data(
+                [
+                    {
+                        "name": "first",
+                        "type": "string",
+                        "primary_key": True,
+                        "order": 2,
+                    },
+                    {
+                        "name": "second",
+                        "type": "string",
+                        "primary_key": True,
+                        "order": 1,
+                    },
+                ],
+            ),
+        }
+
+        form = TabularStepConfigForm(data=data)
+
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        descriptor = form.cleaned_data["descriptor"]
+        self.assertEqual(
+            [field["name"] for field in descriptor["fields"]],
+            ["second", "first"],
+        )
+        self.assertEqual(descriptor["primaryKey"], ["second", "first"])
+
+    def test_uploaded_descriptor_is_validated_and_reports_compatibility(self):
+        """JSON descriptor upload is equivalent to paste but remains honest.
+
+        Unsupported Table Schema features are preserved for round-tripping,
+        while the cleaned form exposes warnings so the redirect can tell the
+        author exactly what V1 will not enforce.
+        """
+        descriptor = {
+            "foreignKeys": [{"fields": "id", "reference": {"resource": "x"}}],
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "geopoint",
+                    "decimalChar": ",",
+                },
+            ],
+        }
+        uploaded = SimpleUploadedFile(
+            "schema.json",
+            json.dumps(descriptor).encode(),
+            content_type="application/json",
+        )
+        form = TabularStepConfigForm(
+            data={"name": "Imported schema"},
+            files={"schema_file": uploaded},
+        )
+
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        self.assertEqual(form.cleaned_data["schema_source"], "upload")
+        warnings = " ".join(form.cleaned_data["schema_warnings"])
+        self.assertIn("Foreign keys", warnings)
+        self.assertIn("Unsupported field types", warnings)
+        self.assertIn("Locale-specific", warnings)
 
 
 class BuildTabularConfigTests(TestCase):
@@ -296,6 +592,12 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Table Schema")
         self.assertContains(response, "Delimiter")
+        self.assertContains(response, "Expected columns")
+        self.assertContains(response, "Infer from a sample")
+        self.assertContains(response, "data-tabular-column-editor")
+        self.assertContains(response, "Edit assertions")
+        self.assertContains(response, "Required when another column exists")
+        self.assertContains(response, f"#workflow-step-{step.pk}")
 
     def test_settings_post_saves_descriptor_to_ruleset(self):
         """POSTing a valid tabular config persists the descriptor to the
@@ -384,3 +686,260 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertEqual(step.ruleset.rules_text, big_descriptor)
         self.assertEqual(step.ruleset.metadata["delimiter"], ";")
         self.assertEqual(step.typed_config.schema_source, "keep")
+
+    def test_settings_post_saves_column_editor_descriptor(self):
+        """The full settings request persists formset-authored columns.
+
+        This is the primary UI path: the request must reach
+        ``build_tabular_config`` with the same descriptor proven in the form
+        unit tests, then update the summary metadata used by the step page.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        data = {
+            "name": "Validate meter export",
+            "delimiter": ",",
+            "has_header": "on",
+            **_column_formset_data(
+                [
+                    {
+                        "name": "meter_id",
+                        "type": "string",
+                        "required": True,
+                        "primary_key": True,
+                    },
+                    {
+                        "name": "reading",
+                        "type": "number",
+                        "minimum": "0",
+                    },
+                ],
+            ),
+        }
+
+        response = self.client.post(self._settings_url(workflow, step), data=data)
+
+        self.assertEqual(response.status_code, 302)
+        step.refresh_from_db()
+        descriptor = json.loads(step.ruleset.rules_text)
+        self.assertEqual(
+            [field["name"] for field in descriptor["fields"]],
+            ["meter_id", "reading"],
+        )
+        self.assertEqual(descriptor["primaryKey"], ["meter_id"])
+        self.assertEqual(step.typed_config.column_count, 2)
+
+    def test_add_column_htmx_endpoint_returns_next_prefixed_row(self):
+        """HTMx row insertion advances the management count and field prefix.
+
+        Formset prefixes are the persistence contract. A visually added row
+        with a duplicate index would overwrite another column on POST, so the
+        endpoint response is tested at the HTML boundary.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_tabular_columns_existing",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.get(
+            url, {"columns-TOTAL_FORMS": "2"}, headers={"hx-request": "true"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="columns-2-name"')
+        self.assertContains(response, 'name="columns-2-DELETE"')
+        self.assertContains(response, 'value="3"')
+        self.assertContains(response, 'hx-swap-oob="outerHTML"')
+
+    def test_import_endpoint_previews_then_applies_to_column_editor(self):
+        """Import protects unsaved work with an explicit preview/apply step.
+
+        The first response keeps current columns and presents the proposal.
+        Applying that proposal then lands in the same editable row surface as
+        manual authoring, so replacement is deliberate rather than accidental.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_tabular_schema_import_existing",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.post(
+            url,
+            {"table_schema": _DESCRIPTOR, "schema_base": "{}"},
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Review imported schema")
+        self.assertContains(response, "Apply proposed schema")
+        self.assertContains(response, 'name="pending_schema"')
+        self.assertNotContains(response, 'value="lat"')
+
+        apply_url = reverse(
+            "workflows:workflow_tabular_schema_apply_existing",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        applied = self.client.post(
+            apply_url,
+            {
+                "pending_schema": _DESCRIPTOR,
+                "schema_base": "{}",
+                **_column_formset_data(
+                    [{"name": "current", "type": "string"}],
+                ),
+            },
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(applied.status_code, 200)
+        self.assertContains(applied, "Proposed columns applied")
+        self.assertContains(applied, 'value="lat"')
+        self.assertContains(applied, 'value="lon"')
+
+    def test_invalid_import_keeps_current_columns_and_shows_error(self):
+        """A failed import does not destroy unsaved column-editor work.
+
+        HTMx posts the surrounding form; the error response binds those rows
+        back into the replacement workspace so authors can fix the JSON without
+        re-entering their existing columns.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_tabular_schema_import_existing",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        data = {
+            "table_schema": "{not json",
+            **_column_formset_data([{"name": "unsaved_column", "type": "string"}]),
+        }
+
+        response = self.client.post(url, data, headers={"hx-request": "true"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Could not import the descriptor")
+        self.assertContains(response, 'value="unsaved_column"')
+
+    def test_infer_endpoint_previews_columns_and_resolves_dialect(self):
+        """Inference previews typed rows and updates dialect controls.
+
+        The sample upload cannot be replayed after the response, so inference
+        stores the proposed descriptor in the preview. Applying that descriptor
+        is a separate request and the resolved dialect is still returned
+        through HTMx out-of-band swaps.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_tabular_schema_infer_existing",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        sample = SimpleUploadedFile(
+            "sample.csv",
+            b"site_id,reading\nA-1,12.5\nA-2,13.75\n",
+            content_type="text/csv",
+        )
+
+        response = self.client.post(
+            url,
+            {
+                "sample_file": sample,
+                "delimiter": "",
+                "has_header": "on",
+                "schema_base": "{}",
+            },
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Review inferred schema")
+        self.assertContains(response, "Apply proposed schema")
+        self.assertContains(response, "site_id")
+        self.assertNotContains(response, 'value="site_id"')
+        self.assertContains(response, 'hx-swap-oob="outerHTML"')
+
+        apply_url = reverse(
+            "workflows:workflow_tabular_schema_apply_existing",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        pending = json.dumps(
+            {
+                "fields": [
+                    {"name": "site_id", "type": "string"},
+                    {"name": "reading", "type": "number"},
+                ],
+            },
+        )
+        applied = self.client.post(
+            apply_url,
+            {
+                "pending_schema": pending,
+                "schema_base": "{}",
+                **_column_formset_data(
+                    [{"name": "current", "type": "string"}],
+                ),
+            },
+            headers={"hx-request": "true"},
+        )
+
+        self.assertContains(applied, 'value="site_id"')
+        self.assertContains(applied, 'value="reading"')
+        self.assertContains(applied, 'value="number" selected')
+
+    def test_import_preview_reports_unsupported_features(self):
+        """Import compatibility warnings are visible before replacement.
+
+        Preserving unsupported keys is not enough: authors must know that
+        foreign keys and exotic types will not be enforced before they choose
+        to apply the proposal.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_tabular_schema_import_existing",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        descriptor = json.dumps(
+            {
+                "foreignKeys": [{"fields": "id", "reference": {"resource": "x"}}],
+                "fields": [{"name": "id", "type": "geopoint"}],
+            },
+        )
+
+        response = self.client.post(
+            url,
+            {"table_schema": descriptor, "schema_base": "{}"},
+            headers={"hx-request": "true"},
+        )
+
+        self.assertContains(response, "Compatibility report")
+        self.assertContains(response, "Foreign keys")
+        self.assertContains(response, "Unsupported field types")
+
+    def test_saved_descriptor_can_be_downloaded(self):
+        """A saved schema is exportable as portable JSON.
+
+        The editor adopts Table Schema partly to avoid lock-in, so authors need
+        a direct way to retrieve the exact descriptor persisted on the ruleset.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        step.ruleset = RulesetFactory(org=workflow.org)
+        step.save(update_fields=["ruleset"])
+        step.ruleset.rules_text = _DESCRIPTOR
+        step.ruleset.save(update_fields=["rules_text"])
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_tabular_schema_export_existing",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content.decode(), _DESCRIPTOR)
+        self.assertEqual(response["Content-Type"], "application/json; charset=utf-8")
+        self.assertIn("attachment;", response["Content-Disposition"])

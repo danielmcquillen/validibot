@@ -5,6 +5,7 @@ assertions within workflow steps (create, update, delete, move).
 """
 
 import logging
+import re
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
@@ -96,7 +97,9 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        kwargs["catalog_choices"] = self.get_catalog_choices()
+        requested_stage = self._requested_tabular_stage()
+        catalog_stage = "input" if requested_stage else None
+        kwargs["catalog_choices"] = self.get_catalog_choices(catalog_stage)
         kwargs["catalog_entries"] = getattr(self, "_catalog_entries_cache", [])
         kwargs["validator"] = self.step.validator
         kwargs["target_slug_datalist_id"] = self.get_target_slug_datalist_id()
@@ -107,7 +110,26 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
         )
         kwargs["shacl_sparql_assertion_count"] = self.get_shacl_sparql_assertion_count()
         kwargs["tabular_columns"] = self._get_tabular_columns()
+        kwargs["tabular_column_types"] = {
+            field["name"]: field["type"] for field in self._get_tabular_fields()
+        }
+        kwargs["requested_tabular_stage"] = requested_stage
         return kwargs
+
+    def _requested_tabular_stage(self) -> str | None:
+        """Return a valid stage requested by a Tabular assertion Add action."""
+        validator = getattr(self.step, "validator", None)
+        if getattr(validator, "validation_type", None) != ValidationType.TABULAR:
+            return None
+        stage = self.request.GET.get("tabular_stage")
+        if stage in {"dataset", "row", "column"}:
+            return stage
+        get_assertion = getattr(self, "_get_assertion", None)
+        if callable(get_assertion):
+            stored_stage = (get_assertion().options or {}).get("tabular_stage")
+            if stored_stage in {"dataset", "row", "column"}:
+                return stored_stage
+        return None
 
     def _get_tabular_columns(self) -> set[str]:
         """Declared column names for a Tabular Validator step (else empty).
@@ -117,22 +139,7 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
         that isn't declared. A missing/malformed schema yields an empty set,
         which the form treats as "can't check" rather than an error.
         """
-        validator = getattr(self.step, "validator", None)
-        if getattr(validator, "validation_type", None) != ValidationType.TABULAR:
-            return set()
-        ruleset = getattr(self.step, "ruleset", None)
-        raw_schema = getattr(ruleset, "rules_text", "") or ""
-        if not raw_schema:
-            return set()
-        import json
-
-        from validibot.validations.validators.tabular.schema import parse_table_schema
-
-        try:
-            schema = parse_table_schema(json.loads(raw_schema))
-        except (ValueError, TypeError):
-            return set()
-        return set(schema.field_names())
+        return {field["name"] for field in self._get_tabular_fields()}
 
     def get_target_slug_datalist_id(self) -> str:
         step_id = getattr(self.step, "pk", "step")
@@ -163,6 +170,24 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        requested_stage = self._requested_tabular_stage()
+        stage_labels = {
+            "dataset": _("Dataset assertion"),
+            "row": _("Row assertion"),
+            "column": _("Column assertion"),
+        }
+        stage_guidance = {
+            "dataset": _(
+                "Runs once against dataset metadata before native column and "
+                "row checks.",
+            ),
+            "row": _(
+                "Runs for each row and is aggregated into a bounded finding.",
+            ),
+            "column": _(
+                "Runs once after row validation against typed column aggregates.",
+            ),
+        }
         context.update(
             {
                 "modal_title": getattr(self, "modal_title", _("Assertion")),
@@ -177,9 +202,62 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
                         False,
                     ),
                 ),
+                "requested_tabular_stage": requested_stage,
+                "tabular_stage_label": stage_labels.get(requested_stage, ""),
+                "tabular_stage_guidance": stage_guidance.get(requested_stage, ""),
+                "tabular_cel_assist": self._tabular_cel_assist(requested_stage),
             },
         )
         return context
+
+    def _tabular_cel_assist(self, stage: str | None) -> dict[str, object] | None:
+        """Return stage-aware completion data for the Tabular CEL editor."""
+        if stage not in {"dataset", "row", "column"}:
+            return None
+        fields = self._get_tabular_fields()
+        aliases: dict[str, list[str]] = {}
+        for field in fields:
+            candidate = re.sub(r"[^A-Za-z0-9_]", "_", field["name"])
+            if candidate and re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", candidate):
+                aliases.setdefault(candidate, []).append(field["name"])
+        columns = [
+            {
+                **field,
+                "alias": next(
+                    (
+                        alias
+                        for alias, names in aliases.items()
+                        if names == [field["name"]]
+                    ),
+                    "",
+                ),
+            }
+            for field in fields
+        ]
+        catalog = [
+            {"value": value, "label": str(label)}
+            for value, label in self.get_catalog_choices("input")
+        ]
+        return {"stage": stage, "columns": columns, "catalog": catalog}
+
+    def _get_tabular_fields(self) -> list[dict[str, str]]:
+        """Return declared Tabular fields in schema order for CEL assistance."""
+        validator = getattr(self.step, "validator", None)
+        if getattr(validator, "validation_type", None) != ValidationType.TABULAR:
+            return []
+        ruleset = getattr(self.step, "ruleset", None)
+        raw_schema = getattr(ruleset, "rules_text", "") or ""
+        if not raw_schema:
+            return []
+        import json
+
+        from validibot.validations.validators.tabular.schema import parse_table_schema
+
+        try:
+            schema = parse_table_schema(json.loads(raw_schema))
+        except (ValueError, TypeError):
+            return []
+        return [{"name": field.name, "type": field.type} for field in schema.fields]
 
     def get_shacl_sparql_assertion_count(self) -> int:
         return (
@@ -199,6 +277,14 @@ class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
         if not self.user_can_manage_workflow():
             raise PermissionDenied
         return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if context.get("tabular_stage_label"):
+            context["modal_title"] = _("Add %(stage)s") % {
+                "stage": context["tabular_stage_label"],
+            }
+        return context
 
     def form_valid(self, form):
         ruleset = self.get_ruleset()
@@ -338,11 +424,15 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
         direction = request.POST.get("direction")
         validator = getattr(self.step, "validator", None)
         use_stage_buckets = bool(validator and validator.has_processor)
+        use_tabular_stage_buckets = bool(
+            validator and validator.validation_type == ValidationType.TABULAR,
+        )
         moved = AssertionMutationService.move(
             ruleset=ruleset,
             assertion=assertion,
             direction=direction,
             use_stage_buckets=use_stage_buckets,
+            use_tabular_stage_buckets=use_tabular_stage_buckets,
         )
         if not moved:
             return hx_trigger_response(status_code=204)
@@ -419,6 +509,23 @@ class WorkflowStepAssertionsPartialView(WorkflowObjectMixin, TemplateView):
         uses_signal_stages = bool(
             validator and _step_has_signal_stages(self.step) and allow_assertions,
         )
+        uses_tabular_stages = bool(
+            validator
+            and validator.validation_type == ValidationType.TABULAR
+            and allow_assertions,
+        )
+        tabular_assertion_groups = {
+            "dataset": [],
+            "row": [],
+            "column": [],
+        }
+        for assertion in assertions:
+            stage = (assertion.options or {}).get("tabular_stage", "dataset")
+            group = tabular_assertion_groups.get(
+                stage,
+                tabular_assertion_groups["dataset"],
+            )
+            group.append(assertion)
         validator_operation = get_validator_operation_display(validator)
         default_assertions_count = (
             validator.default_ruleset.assertions.count()
@@ -434,6 +541,8 @@ class WorkflowStepAssertionsPartialView(WorkflowObjectMixin, TemplateView):
                 "assertions": assertions,
                 "assertion_groups": grouped_assertions,
                 "uses_signal_stages": uses_signal_stages,
+                "uses_tabular_stages": uses_tabular_stages,
+                "tabular_assertion_groups": tabular_assertion_groups,
                 "validator_operation": validator_operation,
                 "can_manage_assertions": self.user_can_manage_workflow()
                 and allow_assertions,

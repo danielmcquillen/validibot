@@ -1,0 +1,120 @@
+{% load i18n crispy_forms_tags %}
+
+{% comment %}
+The Tabular Validator has a richer settings surface than the generic crispy
+layout. The parent form still owns submission and validation; these sections
+only arrange its fields and the nested column formset.
+{% endcomment %}
+
+<section class="tabular-settings-section"
+         aria-labelledby="tabular-step-details-heading">
+  <div class="tabular-settings-section__heading">
+    <div>
+      <h3 id="tabular-step-details-heading" class="h5 mb-1">
+        {% trans "Step details" %}
+      </h3>
+      <p class="text-muted small mb-0">
+        {% trans "Name this check so workflow authors and submitters understand its purpose." %}
+      </p>
+    </div>
+  </div>
+  <div class="row g-3">
+    <div class="col-12 col-xl-5">
+      {{ form.name|as_crispy_field }}
+    </div>
+    <div class="col-12 col-xl-7">
+      {{ form.description|as_crispy_field }}
+    </div>
+  </div>
+</section>
+
+<section class="tabular-settings-section"
+         aria-labelledby="tabular-file-format-heading">
+  <div class="tabular-settings-section__heading">
+    <div>
+      <h3 id="tabular-file-format-heading" class="h5 mb-1">
+        {% trans "File format" %}
+      </h3>
+      <p class="text-muted small mb-0">
+        {% trans "CSV is the current reader. UTF-8 is used consistently for reproducible validation." %}
+      </p>
+    </div>
+    <span class="badge rounded-pill text-bg-light border">{% trans "CSV · UTF-8" %}</span>
+  </div>
+  <div class="row g-3 align-items-start">
+    <div class="col-12 col-md-5">
+      {{ form.delimiter|as_crispy_field }}
+    </div>
+    <div class="col-12 col-md-5 pt-md-4">
+      {{ form.has_header|as_crispy_field }}
+    </div>
+  </div>
+</section>
+
+{% include "workflows/partials/tabular_schema_workspace.html" %}
+
+{% if step %}
+  <section class="tabular-settings-section"
+           aria-labelledby="tabular-assertions-heading">
+    <div class="tabular-settings-section__heading">
+      <div>
+        <h3 id="tabular-assertions-heading" class="h5 mb-1">
+          {% trans "Assertions" %}
+        </h3>
+        <p class="text-muted small mb-0">
+          {% trans "Cross-column and conditional rules are authored on the existing assertion surface." %}
+        </p>
+      </div>
+      <a class="btn btn-sm btn-outline-secondary"
+         href="{{ tabular_assertions_url }}">
+        <i class="bi bi-pencil-square me-1"></i>{% trans "Edit assertions" %}
+      </a>
+    </div>
+    <div class="row g-3">
+      {% for group in tabular_assertion_groups %}
+        <div class="col-12 col-lg-4">
+          <div class="tabular-assertion-summary h-100">
+            <div class="d-flex align-items-center justify-content-between gap-2">
+              <span class="fw-semibold">{{ group.label }}</span>
+              <span class="badge text-bg-secondary">{{ group.count }}</span>
+            </div>
+            {% if group.preview %}
+              <code class="d-block small text-truncate mt-2" title="{{ group.preview }}">{{ group.preview }}</code>
+            {% elif group.deferred %}
+              <span class="d-block small text-muted mt-2">{% trans "Available in V2" %}</span>
+            {% else %}
+              <span class="d-block small text-muted mt-2">{% trans "No assertions" %}</span>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+
+<section class="tabular-settings-section"
+         aria-labelledby="tabular-publishing-heading">
+  <div class="tabular-settings-section__heading">
+    <div>
+      <h3 id="tabular-publishing-heading" class="h5 mb-1">
+        {% trans "Publishing and author notes" %}
+      </h3>
+      <p class="text-muted small mb-0">
+        {% trans "Control what submitters see and preserve context for future workflow authors." %}
+      </p>
+    </div>
+  </div>
+  <div class="row g-3">
+    {% if form.display_schema %}
+      <div class="col-12 col-xl-5">
+        {{ form.display_schema|as_crispy_field }}
+      </div>
+    {% endif %}
+    <div class="col-12 col-xl-7">
+      {{ form.show_success_messages|as_crispy_field }}
+    </div>
+    <div class="col-12">
+      {{ form.notes|as_crispy_field }}
+    </div>
+  </div>
+</section>

@@ -19,12 +19,155 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 
+from django.utils.translation import gettext_lazy as _
+
 # The field types V1 understands. Anything else is treated as ``string``.
 SUPPORTED_TYPES: frozenset[str] = frozenset(
     {"string", "number", "integer", "boolean", "date", "datetime"},
 )
 
 _DEFAULT_TYPE = "string"
+_SUPPORTED_CONSTRAINTS = frozenset(
+    {
+        "required",
+        "unique",
+        "minimum",
+        "maximum",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "enum",
+    },
+)
+_IGNORED_LOCALE_KEYS = frozenset({"decimalChar", "groupChar", "bareNumber"})
+
+
+@dataclass(frozen=True)
+class SchemaCompatibilityNotice:
+    """One author-facing warning about a descriptor feature V1 cannot enforce."""
+
+    code: str
+    message: str
+
+
+def table_schema_compatibility_notices(
+    descriptor: object,
+) -> list[SchemaCompatibilityNotice]:
+    """Describe imported Table Schema features outside the V1 contract.
+
+    The descriptor is still accepted and its unknown metadata is preserved.
+    These notices prevent that permissive round-trip behavior from implying
+    that Validibot enforces every preserved keyword.
+    """
+    if not isinstance(descriptor, dict):
+        return []
+
+    notices: list[SchemaCompatibilityNotice] = []
+    if descriptor.get("foreignKeys"):
+        notices.append(
+            SchemaCompatibilityNotice(
+                code="foreign_keys",
+                message=str(
+                    _(
+                        "Foreign keys are preserved but are not validated in V1, "
+                        "because a Tabular step validates one file at a time.",
+                    ),
+                ),
+            ),
+        )
+    if descriptor.get("missingValues"):
+        notices.append(
+            SchemaCompatibilityNotice(
+                code="missing_values",
+                message=str(
+                    _(
+                        "Custom missingValues are preserved but are not interpreted "
+                        "in V1; empty cells are treated as missing.",
+                    ),
+                ),
+            ),
+        )
+
+    raw_fields = descriptor.get("fields")
+    if not isinstance(raw_fields, (list, tuple)):
+        return notices
+
+    unsupported_types: list[str] = []
+    locale_fields: list[str] = []
+    format_fields: list[str] = []
+    unsupported_constraints: set[str] = set()
+    for raw_field in raw_fields:
+        if not isinstance(raw_field, dict):
+            continue
+        name = str(raw_field.get("name") or _("Unnamed field"))
+        declared_type = raw_field.get("type", _DEFAULT_TYPE)
+        if isinstance(declared_type, str) and declared_type not in SUPPORTED_TYPES:
+            unsupported_types.append(f"{name} ({declared_type})")
+        if any(key in raw_field for key in _IGNORED_LOCALE_KEYS):
+            locale_fields.append(name)
+        if raw_field.get("format") not in (None, ""):
+            format_fields.append(name)
+        constraints = raw_field.get("constraints")
+        if isinstance(constraints, dict):
+            unsupported_constraints.update(
+                str(key)
+                for key in constraints
+                if key not in _SUPPORTED_CONSTRAINTS and not str(key).startswith("x-")
+            )
+
+    if unsupported_types:
+        notices.append(
+            SchemaCompatibilityNotice(
+                code="unsupported_types",
+                message=str(
+                    _(
+                        "Unsupported field types will be edited and validated as "
+                        "Text: %(fields)s.",
+                    )
+                    % {"fields": ", ".join(unsupported_types)},
+                ),
+            ),
+        )
+    if locale_fields:
+        notices.append(
+            SchemaCompatibilityNotice(
+                code="locale_options",
+                message=str(
+                    _(
+                        "Locale-specific number options are preserved but ignored "
+                        "for deterministic parsing: %(fields)s.",
+                    )
+                    % {"fields": ", ".join(locale_fields)},
+                ),
+            ),
+        )
+    if format_fields:
+        notices.append(
+            SchemaCompatibilityNotice(
+                code="field_formats",
+                message=str(
+                    _(
+                        "Field format keywords are preserved but are not enforced "
+                        "by the V1 editor: %(fields)s.",
+                    )
+                    % {"fields": ", ".join(format_fields)},
+                ),
+            ),
+        )
+    if unsupported_constraints:
+        notices.append(
+            SchemaCompatibilityNotice(
+                code="unsupported_constraints",
+                message=str(
+                    _(
+                        "These constraint keywords are preserved but are not "
+                        "enforced in V1: %(constraints)s.",
+                    )
+                    % {"constraints": ", ".join(sorted(unsupported_constraints))},
+                ),
+            ),
+        )
+    return notices
 
 
 @dataclass(frozen=True)
@@ -45,6 +188,7 @@ class FieldConstraints:
     max_length: int | None = None
     pattern: str | None = None
     enum: tuple[str, ...] | None = None
+    required_when_present: str | None = None
 
 
 @dataclass(frozen=True)
@@ -118,6 +262,7 @@ def _parse_constraints(raw: object) -> FieldConstraints:
         enum = tuple(str(value) for value in enum_raw)
 
     pattern = raw.get("pattern")
+    required_when_present = raw.get("x-validibot-requiredWhenPresent")
     return FieldConstraints(
         required=bool(raw.get("required", False)),
         unique=bool(raw.get("unique", False)),
@@ -127,6 +272,11 @@ def _parse_constraints(raw: object) -> FieldConstraints:
         max_length=_coerce_optional_int(raw.get("maxLength")),
         pattern=pattern if isinstance(pattern, str) else None,
         enum=enum,
+        required_when_present=(
+            required_when_present
+            if isinstance(required_when_present, str) and required_when_present
+            else None
+        ),
     )
 
 
@@ -179,6 +329,24 @@ def _validate_field_names(names: list[str]) -> None:
             )
             raise ValueError(msg)
         seen[key] = name
+
+
+def _validate_conditional_requiredness(fields: list[FieldSpec]) -> None:
+    """Validate references used by the Validibot conditional extension."""
+    names = {field.name for field in fields}
+    for field in fields:
+        trigger = field.constraints.required_when_present
+        if not trigger:
+            continue
+        if trigger == field.name:
+            msg = f"Field {field.name!r} cannot be conditionally required by itself."
+            raise ValueError(msg)
+        if trigger not in names:
+            msg = (
+                f"Field {field.name!r} has an unknown conditional-requiredness "
+                f"trigger: {trigger!r}."
+            )
+            raise ValueError(msg)
 
 
 def parse_table_schema(descriptor: dict) -> TabularSchema:
@@ -237,6 +405,7 @@ def parse_table_schema(descriptor: dict) -> TabularSchema:
     # Names must be unique and addressable before we build the schema — see
     # the docstring for why a duplicate would otherwise crash native validation.
     _validate_field_names([f.name for f in fields])
+    _validate_conditional_requiredness(fields)
 
     return TabularSchema(
         fields=tuple(fields),

@@ -1,0 +1,269 @@
+{% load i18n %}
+
+<section id="tabular-schema-workspace"
+         class="tabular-settings-section"
+         aria-labelledby="tabular-columns-heading">
+  {% if form %}
+    {{ form.schema_base }}
+  {% else %}
+    <input type="hidden"
+           name="schema_base"
+           id="id_schema_base"
+           value="{{ schema_base }}" />
+  {% endif %}
+
+  {% if schema_success_message %}
+    <div class="alert alert-success d-flex align-items-start gap-2"
+         role="status"
+         aria-live="polite">
+      <i class="bi bi-check-circle-fill mt-1"></i>
+      <div>{{ schema_success_message }}</div>
+    </div>
+  {% endif %}
+
+  {% if schema_compatibility_warnings %}
+    <div class="alert alert-warning"
+         role="status"
+         aria-live="polite"
+         data-tabular-compatibility-report>
+      <div class="d-flex gap-2">
+        <i class="bi bi-exclamation-triangle-fill mt-1" aria-hidden="true"></i>
+        <div>
+          <h4 class="h6 mb-2">{% trans "Compatibility report" %}</h4>
+          <ul class="mb-0 ps-3">
+            {% for warning in schema_compatibility_warnings %}
+              <li>{{ warning }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pending_schema %}
+    <div class="tabular-schema-preview mb-4"
+         role="region"
+         aria-labelledby="tabular-schema-preview-heading">
+      <input type="hidden" name="pending_schema" value="{{ pending_schema }}" />
+      <div>
+        <h4 id="tabular-schema-preview-heading" class="h6 mb-1">
+          {% if pending_schema_source == "infer" %}
+            {% trans "Review inferred schema" %}
+          {% else %}
+            {% trans "Review imported schema" %}
+          {% endif %}
+        </h4>
+        <p class="small text-muted mb-0">
+          {% blocktrans count count=pending_schema_column_count trimmed %}
+            This proposal contains {{ count }} column. Your current unsaved columns remain unchanged until you apply it.
+          {% plural %}
+            This proposal contains {{ count }} columns. Your current unsaved columns remain unchanged until you apply it.
+          {% endblocktrans %}
+        </p>
+      </div>
+      <button type="button"
+              class="btn btn-primary btn-sm"
+              hx-post="{{ tabular_apply_url }}"
+              hx-target="#tabular-schema-workspace"
+              hx-swap="outerHTML"
+              hx-include="closest form"
+              hx-disabled-elt="this"
+              hx-sync="#tabular-schema-workspace:replace"
+              hx-indicator="#tabular-schema-request-indicator">
+        <i class="bi bi-check2 me-1" aria-hidden="true"></i>
+        {% trans "Apply proposed schema" %}
+      </button>
+    </div>
+  {% endif %}
+
+  <div class="tabular-settings-section__heading">
+    <div>
+      <h3 id="tabular-columns-heading" class="h5 mb-1">
+        {% trans "Expected columns" %}
+      </h3>
+      <p class="text-muted small mb-0">
+        {% trans "Define the ordered columns, their data types, and the shape each value must have." %}
+      </p>
+    </div>
+    <span class="tabular-column-count"
+          data-tabular-column-count
+          data-singular-label="{% trans 'column' %}"
+          data-plural-label="{% trans 'columns' %}"
+          aria-live="polite"></span>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-xl-6">
+      <div class="tabular-schema-source h-100">
+        <div class="d-flex gap-3">
+          <span class="tabular-schema-source__icon" aria-hidden="true">
+            <i class="bi bi-file-earmark-spreadsheet"></i>
+          </span>
+          <div class="flex-grow-1">
+            <h4 class="h6 mb-1">{% trans "Infer from a sample" %}</h4>
+            <p class="text-muted small">
+              {% trans "Upload a representative CSV. Validibot reads the header and proposes a type for each column." %}
+            </p>
+            <label class="form-label" for="id_sample_file">{% trans "Sample CSV" %}</label>
+            {% if form %}
+              {{ form.sample_file }}
+              {% for error in form.sample_file.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            {% else %}
+              <input type="file"
+                     name="sample_file"
+                     id="id_sample_file"
+                     class="form-control"
+                     accept=".csv,.tsv,text/csv,text/tab-separated-values" />
+            {% endif %}
+            {% if sample_error %}
+              <div class="invalid-feedback d-block" role="alert" aria-live="assertive">{{ sample_error }}</div>
+            {% endif %}
+            <button type="button"
+                    class="btn btn-outline-primary btn-sm mt-3"
+                    hx-post="{{ tabular_infer_url }}"
+                    hx-target="#tabular-schema-workspace"
+                    hx-swap="outerHTML"
+                    hx-encoding="multipart/form-data"
+                    hx-include="closest form"
+                    hx-disabled-elt="this"
+                    hx-sync="#tabular-schema-workspace:replace"
+                    hx-indicator="#tabular-schema-request-indicator">
+              <i class="bi bi-magic me-1"></i>{% trans "Infer columns" %}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-6">
+      <div class="tabular-schema-source h-100">
+        <div class="d-flex gap-3">
+          <span class="tabular-schema-source__icon" aria-hidden="true">
+            <i class="bi bi-braces"></i>
+          </span>
+          <div class="flex-grow-1 min-w-0">
+            <h4 class="h6 mb-1">{% trans "Import Table Schema" %}</h4>
+            <p class="text-muted small">
+              {% trans "Paste a Frictionless Table Schema descriptor to populate the same editor." %}
+            </p>
+            <label class="form-label" for="id_table_schema">{% trans "Descriptor JSON" %}</label>
+            {% if form %}
+              {{ form.table_schema }}
+              {% for error in form.table_schema.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            {% else %}
+              <textarea name="table_schema"
+                        id="id_table_schema"
+                        class="form-control font-monospace"
+                        rows="5"
+                        spellcheck="false"
+                        placeholder='{ "fields": [...] }'>{{ table_schema_value }}</textarea>
+            {% endif %}
+            {% if import_error %}
+              <div class="invalid-feedback d-block" role="alert">{{ import_error }}</div>
+            {% endif %}
+            <div class="mt-3">
+              <label class="form-label" for="id_schema_file">{% trans "Or upload descriptor JSON" %}</label>
+              {% if form %}
+                {{ form.schema_file }}
+                {% for error in form.schema_file.errors %}
+                  <div class="invalid-feedback d-block">{{ error }}</div>
+                {% endfor %}
+              {% else %}
+                <input type="file"
+                       name="schema_file"
+                       id="id_schema_file"
+                       class="form-control"
+                       accept=".json,application/json" />
+              {% endif %}
+            </div>
+            <button type="button"
+                    class="btn btn-outline-primary btn-sm mt-3"
+                    hx-post="{{ tabular_import_url }}"
+                    hx-target="#tabular-schema-workspace"
+                    hx-swap="outerHTML"
+                    hx-include="closest form"
+                    hx-encoding="multipart/form-data"
+                    hx-disabled-elt="this"
+                    hx-sync="#tabular-schema-workspace:replace"
+                    hx-indicator="#tabular-schema-request-indicator">
+              <i class="bi bi-box-arrow-in-down me-1"></i>{% trans "Import schema" %}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div data-tabular-column-editor
+       data-minimum-column-message="{% trans 'A schema needs at least one column.' %}">
+    {{ column_formset.management_form }}
+    {% if column_formset.non_form_errors %}
+      <div class="alert alert-danger" role="alert">
+        {% for error in column_formset.non_form_errors %}
+          <div>{{ error }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <div id="tabular-column-rows" class="d-flex flex-column gap-3">
+      {% for column_form in column_formset %}
+        {% include "workflows/partials/tabular_column_row.html" %}
+      {% endfor %}
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+      <button type="button"
+              class="btn btn-outline-secondary"
+              hx-get="{{ tabular_columns_url }}"
+              hx-target="#tabular-column-rows"
+              hx-swap="beforeend"
+              hx-include="#id_columns-TOTAL_FORMS"
+              hx-disabled-elt="this"
+              hx-sync="#tabular-schema-workspace:queue last"
+              hx-indicator="#tabular-schema-request-indicator">
+        <i class="bi bi-plus-lg me-1"></i>{% trans "Add column" %}
+      </button>
+      <span class="text-muted small">
+        {% trans "Column order must match headerless files. Headered files use the names above." %}
+      </span>
+      {% if tabular_export_url %}
+        <a class="btn btn-link btn-sm ms-lg-auto"
+           href="{{ tabular_export_url }}"
+           download>
+          <i class="bi bi-download me-1" aria-hidden="true"></i>
+          {% trans "Download saved schema" %}
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div id="tabular-schema-request-indicator"
+       class="htmx-indicator tabular-request-indicator"
+       role="status"
+       aria-live="polite">
+    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+    <span>{% trans "Updating schema…" %}</span>
+  </div>
+
+  {% if has_resolved_dialect %}
+    <select name="delimiter"
+            id="id_delimiter"
+            class="form-select"
+            hx-swap-oob="outerHTML">
+      <option value="" {% if not resolved_delimiter %}selected{% endif %}>{% trans "Auto-detect" %}</option>
+      <option value="," {% if resolved_delimiter == "," %}selected{% endif %}>{% trans "Comma" %}</option>
+      <option value="	" {% if resolved_delimiter == "	" %}selected{% endif %}>{% trans "Tab" %}</option>
+      <option value=";" {% if resolved_delimiter == ";" %}selected{% endif %}>{% trans "Semicolon" %}</option>
+      <option value="|" {% if resolved_delimiter == "|" %}selected{% endif %}>{% trans "Pipe" %}</option>
+    </select>
+    <input type="checkbox"
+           name="has_header"
+           id="id_has_header"
+           class="form-check-input"
+           hx-swap-oob="outerHTML"
+           {% if resolved_has_header %}
+             checked
+           {% endif %} />
+  {% endif %}
+</section>

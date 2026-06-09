@@ -94,6 +94,27 @@ class RowEvalBasicsTests(SimpleTestCase):
         self.assertEqual(finding.sample_rows, (2, 3))
         self.assertEqual(finding.assertion_id, 42)
 
+    def test_assertion_specific_example_limit_caps_only_samples(self):
+        """A custom limit keeps the full count while shortening diagnostics."""
+        read_result = read_csv(b"lat\n-1\n-2\n-3\n")
+        schema = parse_table_schema(
+            {"fields": [{"name": "lat", "type": "number"}]},
+        )
+        findings = evaluate_row_assertions(
+            read_result,
+            schema,
+            [
+                RowAssertion(
+                    expression="row.lat >= 0",
+                    report_max_examples=2,
+                ),
+            ],
+        )
+
+        finding = _by_code(findings)[CODE_ROW_ASSERTION_FAILED]
+        self.assertEqual(finding.count, 3)
+        self.assertEqual(finding.sample_rows, (1, 2))
+
     def test_cross_field_comparison(self):
         """A cross-field row assertion (``row.min <= row.max``) flags the row
         where it's violated — the canonical reason CEL exists alongside the

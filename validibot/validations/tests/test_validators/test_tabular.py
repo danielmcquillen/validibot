@@ -190,6 +190,46 @@ class TabularValidatorRuntimeTests(TestCase):
         self.assertEqual(result.assertion_stats.total, 1)
         self.assertEqual(result.assertion_stats.failures, 1)
 
+    def test_column_cel_assertion_runs_after_rows_and_is_not_double_handled(self):
+        """A ``col.*`` assertion uses typed aggregates exactly once.
+
+        The generic lane must skip the assertion because it cannot bind ``col``;
+        assertion statistics therefore remain one total and one failure.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.TABULAR,
+            supports_assertions=True,
+        )
+        ruleset = RulesetFactory(
+            ruleset_type=RulesetType.TABULAR,
+            rules_text=_schema([{"name": "depth", "type": "number"}]),
+        )
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            rhs={"expr": "col.depth.null_ratio < 0.25"},
+            options={"tabular_stage": "column"},
+            severity=Severity.ERROR,
+            message_template="Too many depth values are missing.",
+        )
+        submission = SubmissionFactory(
+            content="depth,marker\n1,a\n,b\n,c\n4,d\n",
+            file_type=SubmissionFileType.TEXT,
+        )
+
+        result = TabularValidator().validate(validator, submission, ruleset)
+
+        self.assertFalse(result.passed)
+        issue = next(
+            item
+            for item in result.issues
+            if item.code == "tabular.column_assertion_failed"
+        )
+        self.assertEqual(issue.message, "Too many depth values are missing.")
+        self.assertEqual(issue.path, "depth")
+        self.assertEqual(result.assertion_stats.total, 1)
+        self.assertEqual(result.assertion_stats.failures, 1)
+
     def test_headerless_uses_declared_names(self):
         """With ``has_header=false`` in metadata, declared field names align by
         position so native checks address the right columns.

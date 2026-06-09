@@ -3,8 +3,8 @@
 Two pieces of the system read a CEL expression's *text* without fully parsing
 it, and they must agree, so the scans live here and both call them:
 
-1. **Row-column references** (``referenced_row_columns``) — which
-   ``row.<column>`` a row assertion uses. The assertion authoring form
+1. **Tabular column references** (``referenced_tabular_columns``) — which
+   ``row.<column>`` or ``col.<column>`` an assertion uses. The assertion form
    (``validations/forms.py``) and the workflow importer (the Tabular step
    serializer) both call it; if they disagreed, a row assertion that saved
    cleanly in the editor could be rejected on import.
@@ -28,12 +28,22 @@ _NUL = "\x00"
 # ``row.<identifier>`` not preceded by a word char or dot (so ``arrow.x`` and
 # ``foo.row.x`` don't match). Scanned on the *masked* expression (literals
 # replaced by sentinels), so a ``row.x`` inside a string literal can't match.
-_ROW_DOT_RE = re.compile(r"(?:^|[^\w.])row\.([A-Za-z_][A-Za-z0-9_]*)")
+_TABULAR_DOT_RE = re.compile(
+    r"(?:^|[^\w.])(?P<namespace>row|col)\.([A-Za-z_][A-Za-z0-9_]*)",
+)
 # A bracket access whose key is a (masked) string literal: ``row[<sentinel>]``.
 # Because only a *real* bracket access leaves the literal sentinel directly
 # inside ``row[...]``, a ``row["x"]`` that itself sits inside an outer literal
 # (the whole thing is one masked literal) never matches.
-_ROW_BRACKET_RE = re.compile(rf"row\s*\[\s*{_NUL}(\d+){_NUL}\s*\]")
+_TABULAR_BRACKET_RE = re.compile(
+    rf"(?P<namespace>row|col)\s*\[\s*{_NUL}(\d+){_NUL}\s*\]",
+)
+_COLUMN_DOT_METRIC_RE = re.compile(
+    r"(?:^|[^\w.])col\.([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)",
+)
+_COLUMN_BRACKET_METRIC_RE = re.compile(
+    rf"col\s*\[\s*{_NUL}(\d+){_NUL}\s*\]\.([A-Za-z_][A-Za-z0-9_]*)",
+)
 
 
 def _mask_string_literals(expression: str) -> tuple[str, list[str]]:
@@ -108,20 +118,53 @@ def strip_cel_string_literals(expression: str) -> str:
     return "".join(output)
 
 
-def referenced_row_columns(expression: str) -> set[str]:
-    """Return the column names a row CEL expression references via ``row.*``.
+def referenced_tabular_columns(expression: str, namespace: str) -> set[str]:
+    """Return columns referenced through the requested tabular namespace.
 
-    Literal-aware for *both* spellings: a column-name-shaped token inside a CEL
-    string literal — whether ``"row.x"`` (dot) or ``'row["x"]'`` (bracket) — is not
-    a reference. A genuine ``row.lat`` / ``row["dwc:eventDate"]`` still is.
+    ``namespace`` must be ``row`` or ``col``. The scan is literal-aware for both
+    dot and bracket access, so text such as ``"col.notAColumn"`` is not mistaken
+    for a real reference.
     """
+    if namespace not in {"row", "col"}:
+        msg = "Tabular CEL namespace must be 'row' or 'col'."
+        raise ValueError(msg)
     masked, literals = _mask_string_literals(expression)
-    columns = {match.group(1) for match in _ROW_DOT_RE.finditer(masked)}
-    for match in _ROW_BRACKET_RE.finditer(masked):
-        index = int(match.group(1))
+    columns = {
+        match.group(2)
+        for match in _TABULAR_DOT_RE.finditer(masked)
+        if match.group("namespace") == namespace
+    }
+    for match in _TABULAR_BRACKET_RE.finditer(masked):
+        if match.group("namespace") != namespace:
+            continue
+        index = int(match.group(2))
         if 0 <= index < len(literals):
             columns.add(literals[index])
     return columns
+
+
+def referenced_row_columns(expression: str) -> set[str]:
+    """Return columns referenced through ``row.*``."""
+    return referenced_tabular_columns(expression, "row")
+
+
+def referenced_column_aggregates(expression: str) -> set[str]:
+    """Return columns referenced through the V2 ``col.*`` namespace."""
+    return referenced_tabular_columns(expression, "col")
+
+
+def referenced_column_metrics(expression: str) -> set[tuple[str, str]]:
+    """Return ``(column, metric)`` pairs selected from ``col.*``."""
+    masked, literals = _mask_string_literals(expression)
+    metrics = {
+        (match.group(1), match.group(2))
+        for match in _COLUMN_DOT_METRIC_RE.finditer(masked)
+    }
+    for match in _COLUMN_BRACKET_METRIC_RE.finditer(masked):
+        index = int(match.group(1))
+        if 0 <= index < len(literals):
+            metrics.add((literals[index], match.group(2)))
+    return metrics
 
 
 # A comprehension macro binds its first argument as a loop variable:

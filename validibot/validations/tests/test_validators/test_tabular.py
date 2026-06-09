@@ -190,6 +190,57 @@ class TabularValidatorRuntimeTests(TestCase):
         self.assertEqual(result.assertion_stats.total, 1)
         self.assertEqual(result.assertion_stats.failures, 1)
 
+    def test_failing_dataset_assertion_short_circuits_native_and_row(self):
+        """A failing dataset (i.*) assertion stops before native/row work (ADR).
+
+        The dataset gate runs first; when it fails with ERROR severity the native
+        and row passes are skipped, so an out-of-range value native validation
+        *would* have flagged never produces a finding, and the result records the
+        short-circuit. This is the ADR's "a failing dataset assertion
+        short-circuits the native + row work" contract.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.TABULAR,
+            supports_assertions=True,
+        )
+        ruleset = RulesetFactory(
+            ruleset_type=RulesetType.TABULAR,
+            rules_text=_schema(
+                [
+                    {
+                        "name": "a",
+                        "type": "integer",
+                        "constraints": {"minimum": 0, "maximum": 10},
+                    },
+                ],
+            ),
+        )
+        # A dataset gate that fails on any file with more than one row.
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            rhs={"expr": "i.num_rows <= 1"},
+            options={"tabular_stage": "dataset"},
+            severity=Severity.ERROR,
+            message_template="Too many rows.",
+        )
+        # ``a=999`` is out of range — native validation WOULD flag it if it ran.
+        submission = SubmissionFactory(
+            content="a\n999\n998\n",
+            file_type=SubmissionFileType.TEXT,
+        )
+
+        result = TabularValidator().validate(validator, submission, ruleset)
+
+        self.assertFalse(result.passed)
+        codes = {issue.code for issue in result.issues}
+        # Native was skipped, so the out-of-range value produced no finding.
+        self.assertNotIn("tabular.out_of_range", codes)
+        self.assertEqual(
+            result.stats.get("short_circuited"),
+            "dataset_assertion_failed",
+        )
+
     def test_column_cel_assertion_runs_after_rows_and_is_not_double_handled(self):
         """A ``col.*`` assertion uses typed aggregates exactly once.
 

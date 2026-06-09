@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 import json
 import logging
-import re
 import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -28,10 +27,15 @@ from django.utils.translation import gettext_lazy as _
 
 from validibot.projects.models import Project
 from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.cel_columns import referenced_column_aggregates
+from validibot.validations.cel_columns import referenced_column_metrics
+from validibot.validations.cel_columns import referenced_row_columns
 from validibot.validations.constants import VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
+from validibot.validations.regex_safety import UnsafeOrInvalidPatternError
+from validibot.validations.regex_safety import compile_user_pattern
 from validibot.validations.validators.shacl.constants import (
     SHACL_RESULT_FAIL_AFTER_ASSERTIONS,
 )
@@ -3318,13 +3322,13 @@ class TabularColumnForm(forms.Form):
                 _("Maximum length must be greater than minimum length."),
             )
         if pattern:
+            # Validate with RE2 (the same engine native validation runs), so an
+            # author learns at save time that a backreference/lookaround pattern
+            # is unsupported — rather than it failing only when a file is checked.
             try:
-                re.compile(pattern)
-            except re.error as exc:
-                self.add_error(
-                    "pattern",
-                    _("Enter a valid regular expression: %(error)s") % {"error": exc},
-                )
+                compile_user_pattern(pattern)
+            except UnsafeOrInvalidPatternError as exc:
+                self.add_error("pattern", str(exc))
 
         if cleaned.get("required") and required_when_present:
             self.add_error(
@@ -3679,6 +3683,78 @@ class TabularStepConfigForm(BaseStepConfigForm):
         return descriptor if isinstance(descriptor, dict) else {}
 
     def clean(self):
+        """Resolve the schema source, then block edits that orphan assertions.
+
+        ``_clean_schema_source`` determines the new descriptor; if the schema is
+        actually changing, ``_block_if_orphans_assertions`` re-checks the step's
+        existing row/column assertions against it and refuses the save when a
+        rename/delete/retype would turn a saved assertion into a run-time error.
+        """
+        cleaned = self._clean_schema_source()
+        descriptor = cleaned.get("descriptor")
+        if descriptor is not None:
+            self._block_if_orphans_assertions(descriptor)
+        return cleaned
+
+    def _block_if_orphans_assertions(self, descriptor: dict) -> None:
+        """Reject a schema change that would invalidate existing assertions.
+
+        Row/column assertions validate their column references *when the
+        assertion is saved*, but the schema editor changes the columns out from
+        under them. We re-check the ruleset's assertions against the new schema
+        so a removed/renamed column (or a ``sum`` on a now-non-numeric column) is
+        caught here with an actionable message instead of failing silently at
+        validation time.
+        """
+        if not (self.step and self.step.ruleset_id):
+            return
+        from validibot.validations.validators.tabular.schema import parse_table_schema
+
+        try:
+            schema = parse_table_schema(descriptor)
+        except (ValueError, TypeError):
+            return  # An unparseable schema is reported by the editor itself.
+        declared = set(schema.field_names())
+        field_types = {field.name: field.type for field in schema.fields}
+        numeric = {"integer", "number"}
+        problems: list[str] = []
+        for assertion in self.step.ruleset.assertions.all():
+            stage = (assertion.options or {}).get("tabular_stage")
+            if stage not in {"row", "column"}:
+                continue
+            expression = (assertion.rhs or {}).get("expr") or assertion.cel_cache or ""
+            label = (assertion.target_display or expression or "").strip()
+            if stage == "row":
+                unknown = sorted(referenced_row_columns(expression) - declared)
+            else:
+                unknown = sorted(referenced_column_aggregates(expression) - declared)
+            if unknown:
+                problems.append(
+                    _(
+                        "“%(label)s” references column(s) no longer in the schema: "
+                        "%(cols)s"
+                    )
+                    % {"label": label, "cols": ", ".join(unknown)},
+                )
+                continue
+            if stage == "column":
+                problems.extend(
+                    _("“%(label)s” uses sum on the now-non-numeric column “%(col)s”.")
+                    % {"label": label, "col": column}
+                    for column, metric in referenced_column_metrics(expression)
+                    if metric == "sum" and field_types.get(column) not in numeric
+                )
+        if problems:
+            self.add_error(
+                None,
+                _(
+                    "These column changes would break existing assertions — update "
+                    "or remove them first: %(problems)s",
+                )
+                % {"problems": "; ".join(problems)},
+            )
+
+    def _clean_schema_source(self):
         cleaned = super().clean()
         pasted = (cleaned.get("table_schema") or "").strip()
         sample = cleaned.get("sample_file")

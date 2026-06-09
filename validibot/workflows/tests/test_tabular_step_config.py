@@ -32,7 +32,11 @@ from django.urls import reverse
 from validibot.submissions.constants import SubmissionFileType
 from validibot.users.constants import RoleCode
 from validibot.users.tests.utils import ensure_all_roles_exist
+from validibot.validations.constants import AssertionType
+from validibot.validations.constants import RulesetType
+from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
+from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.tabular.schema import parse_table_schema
@@ -943,3 +947,75 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertEqual(response.content.decode(), _DESCRIPTOR)
         self.assertEqual(response["Content-Type"], "application/json; charset=utf-8")
         self.assertIn("attachment;", response["Content-Disposition"])
+
+
+class TabularSchemaChangeRevalidationTests(TestCase):
+    """A schema edit must not silently orphan a saved row/column assertion.
+
+    Column references are validated when an *assertion* is saved, but the schema
+    editor changes the columns out from under them. Renaming, deleting, or
+    retyping a referenced column would turn a valid saved assertion into a
+    run-time error — so the form re-checks the ruleset's assertions against the
+    new schema and refuses the save with an actionable message.
+    """
+
+    def _step_with_lat_row_assertion(self):
+        """A tabular step whose ruleset has a row assertion referencing ``lat``."""
+        validator = ValidatorFactory(
+            validation_type=ValidationType.TABULAR,
+            supports_assertions=True,
+        )
+        ruleset = RulesetFactory(
+            ruleset_type=RulesetType.TABULAR,
+            rules_text=json.dumps({"fields": [{"name": "lat", "type": "number"}]}),
+        )
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            rhs={"expr": "row.lat >= -90"},
+            options={"tabular_stage": "row"},
+            severity=Severity.ERROR,
+        )
+        return WorkflowStepFactory(validator=validator, ruleset=ruleset)
+
+    def test_removing_a_referenced_column_blocks_save(self):
+        """Renaming ``lat`` away while a row assertion references it fails save."""
+        step = self._step_with_lat_row_assertion()
+        form = TabularStepConfigForm(
+            data={
+                "name": "Check submission",
+                # New schema drops ``lat`` (renamed to ``latitude``).
+                "table_schema": json.dumps(
+                    {"fields": [{"name": "latitude", "type": "number"}]},
+                ),
+                "encoding": "utf-8",
+                "delimiter": "",
+                "has_header": "on",
+            },
+            step=step,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("would break existing assertions", str(form.errors))
+
+    def test_keeping_the_referenced_column_still_validates(self):
+        """A schema change that preserves ``lat`` does not block the save."""
+        step = self._step_with_lat_row_assertion()
+        form = TabularStepConfigForm(
+            data={
+                "name": "Check submission",
+                # ``lat`` is still present (a sibling column was added).
+                "table_schema": json.dumps(
+                    {
+                        "fields": [
+                            {"name": "lat", "type": "number"},
+                            {"name": "lon", "type": "number"},
+                        ],
+                    },
+                ),
+                "encoding": "utf-8",
+                "delimiter": "",
+                "has_header": "on",
+            },
+            step=step,
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_json())

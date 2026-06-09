@@ -120,6 +120,37 @@ class RulesetAssertionFormTests(TestCase):
         )
         self.assertTrue(form.is_valid())
 
+    def test_cel_syntax_error_is_rejected_on_save(self):
+        """A syntactically invalid CEL expression fails the form, not run time.
+
+        ADR-2026-05-26 requires the assertion form to compile every CEL
+        expression on save. ``p.price >`` passes the identifier and delimiter
+        checks but does not parse, so before this fix it saved cleanly and only
+        failed when a submission was validated. The form must compile it here.
+        """
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        validator.__class__.objects.filter(pk=validator.pk).update(
+            allow_custom_assertion_targets=True,
+        )
+        validator.refresh_from_db()
+        entry = StepIODefinitionFactory(validator=validator, contract_key="price")
+        form = self._form(
+            validator=validator,
+            catalog_entries=[entry],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_data_path": entry.contract_key,
+                "severity": Severity.ERROR,
+                "cel_expression": "p.price >",
+                "when_expression": "",
+            },
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("Not a valid CEL expression", str(form.errors))
+
     def test_cel_description_persisted_into_rhs_payload(self):
         """An optional CEL description is saved alongside the expression in rhs.
 

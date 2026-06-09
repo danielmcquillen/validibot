@@ -567,6 +567,29 @@ def test_tabular_column_assertion_with_unknown_aggregate_is_rejected():
     assert ctx.value.code == "vaf.tabular_unknown_aggregate"
 
 
+def test_tabular_assertion_with_unknown_stage_is_rejected():
+    """An imported assertion with a misspelled stage is rejected, not dropped.
+
+    A stage outside {row, column, dataset} matches neither the stage checks in
+    the serializer nor the runtime collectors (which compare against "row" /
+    "column" exactly), so it would import cleanly and then silently never run.
+    The serializer must refuse it.
+    """
+    org, user = _org_and_user()
+    _tabular_validator()
+    definition = json.loads(
+        (
+            Path(settings.BASE_DIR) / "tests" / "workflows" / "darwin_core.json"
+        ).read_text(),
+    )
+    assertion = definition["steps"][0]["ruleset"]["assertions"][0]
+    assertion["options"] = {"tabular_stage": "rwo"}  # typo of "row"
+
+    with pytest.raises(WorkflowImportError) as ctx:
+        import_definition(definition, files={}, org=org, user=user)
+    assert ctx.value.code == "vaf.tabular_invalid_assertion_stage"
+
+
 def test_tabular_column_assertion_cannot_mix_row_namespace():
     """An archive cannot tag a row expression as a column-stage assertion."""
     org, user = _org_and_user()

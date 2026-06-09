@@ -28,6 +28,7 @@ from validibot.validations.cel_columns import bound_macro_variables
 from validibot.validations.cel_columns import referenced_column_aggregates
 from validibot.validations.cel_columns import referenced_column_metrics
 from validibot.validations.cel_columns import referenced_row_columns
+from validibot.validations.cel_eval import compile_program
 from validibot.validations.constants import RULESET_ASSERTION_NOTES_MAX_LENGTH
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
@@ -1167,6 +1168,12 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             # no longer promotes bare payload keys, so bare identifiers
             # would fail at evaluation time.
             self._validate_cel_identifiers(expression)
+            # The optional `when` guard is CEL too — compile it on save so an
+            # invalid guard is caught here rather than at run time (the tabular
+            # row/column lanes evaluate it directly).
+            when_expression = (self.cleaned_data.get("when_expression") or "").strip()
+            if when_expression:
+                self._compile_cel_or_raise(when_expression, field="when_expression")
             # An optional human-readable label. When set, the assertion card
             # and default success messages show this instead of the raw CEL
             # expression (mirrors the SHACL description; see
@@ -2234,7 +2241,25 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                     },
                 },
             )
+        # Compile on save (ADR-2026-05-26): a syntax error (`row.x >`) or a
+        # pathological shape (macro nesting/count) must be rejected here, not
+        # surface only at run time. The runtime loops assume their programs
+        # already compiled and passed the shape limits.
+        self._compile_cel_or_raise(expression, field="cel_expression")
         return expression
+
+    def _compile_cel_or_raise(self, expression: str, *, field: str) -> None:
+        """Reject an expression that does not compile (syntax or shape limits)."""
+        try:
+            compile_program(expression)
+        except ValidationError:
+            raise
+        except Exception as exc:
+            raise ValidationError(
+                {
+                    field: _("Not a valid CEL expression: %(error)s") % {"error": exc},
+                },
+            ) from exc
 
     def _delimiters_balanced(self, expression: str) -> bool:
         pairs = {"(": ")", "[": "]", "{": "}"}

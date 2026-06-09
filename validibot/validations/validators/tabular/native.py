@@ -26,13 +26,14 @@ Uniqueness semantics (pinned by the ADR):
 
 from __future__ import annotations
 
-import re
 import time
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING
 
 from validibot.validations.constants import Severity
+from validibot.validations.regex_safety import UnsafeOrInvalidPatternError
+from validibot.validations.regex_safety import compile_user_pattern
 from validibot.validations.validators.tabular.coercion import coerce_cell
 
 if TYPE_CHECKING:
@@ -269,23 +270,27 @@ def _validate_pattern(
 ) -> list[NativeFinding]:
     """Full-match each raw value against *pattern*; flag non-matches.
 
-    The scan honours *deadline* (a ``time.monotonic`` timestamp, checked every
-    ``_WALL_CLOCK_CHECK_INTERVAL`` cells): if the native budget is exhausted
-    mid-column it abandons the partial result and returns empty, letting
-    :func:`validate_native` emit one ``tabular.timed_out`` finding rather than a
-    misleading partial mismatch count. A regex run against up to ``max_rows``
-    submitter-controlled cells is the one place native validation can become
-    superlinear, so this is where the budget has to bite.
+    The pattern is compiled with RE2 (see :mod:`validibot.validations.regex_safety`),
+    so matching is linear in the input with no backtracking — an author cannot
+    write a pattern that hangs on a crafted cell. The *deadline* check (a
+    ``time.monotonic`` timestamp, checked every ``_WALL_CLOCK_CHECK_INTERVAL``
+    cells) is now belt-and-suspenders against any other cumulative slowness: if
+    the native budget is exhausted mid-column it abandons the partial result and
+    returns empty, letting :func:`validate_native` emit one ``tabular.timed_out``
+    finding rather than a misleading partial mismatch count.
     """
     try:
-        compiled = re.compile(pattern)
-    except re.error:
-        # An invalid regex is a configuration error, not a data error — surface
-        # it once rather than silently skipping the check.
+        compiled = compile_user_pattern(pattern)
+    except UnsafeOrInvalidPatternError:
+        # An invalid or RE2-unsupported regex is a configuration error, not a
+        # data error — surface it once rather than silently skipping the check.
         return [
             NativeFinding(
                 code=CODE_INVALID_PATTERN,
-                message=f"Column {field.name!r} has an invalid regex pattern.",
+                message=(
+                    f"Column {field.name!r} has an invalid or unsupported regex "
+                    f"pattern."
+                ),
                 column=field.name,
             ),
         ]

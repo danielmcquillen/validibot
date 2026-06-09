@@ -54,6 +54,18 @@ class TabularStepSerializer(StepSerializer):
 
         for assertion in ruleset.assertions.all():
             stage = (assertion.options or {}).get("tabular_stage", "dataset")
+            # Reject an unknown/misspelled stage explicitly. Otherwise it falls
+            # through every check below (and the runtime collectors, which match
+            # exactly "row"/"column"), so the assertion would silently never run.
+            if stage not in {"row", "column", "dataset"}:
+                msg = (
+                    f"Imported tabular assertion has an unknown stage {stage!r}. "
+                    f"Expected one of: row, column, dataset."
+                )
+                raise WorkflowImportError(
+                    msg,
+                    code="vaf.tabular_invalid_assertion_stage",
+                )
             expression = (assertion.rhs or {}).get("expr") or assertion.cel_cache or ""
             row_references = referenced_row_columns(expression)
             column_references = referenced_column_aggregates(expression)

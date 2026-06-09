@@ -7,7 +7,6 @@ methods for each operator type (equality, comparison, membership, string ops, et
 
 from __future__ import annotations
 
-import concurrent.futures
 import logging
 import re
 from typing import TYPE_CHECKING
@@ -17,9 +16,10 @@ from django.utils.html import strip_tags
 from django.utils.translation import gettext as _
 
 from validibot.validations.assertions.evaluators.registry import register_evaluator
-from validibot.validations.constants import REGEX_EVAL_TIMEOUT_MS
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
+from validibot.validations.regex_safety import UnsafeOrInvalidPatternError
+from validibot.validations.regex_safety import compile_user_pattern
 from validibot.validations.validators.base import ValidationIssue
 
 if TYPE_CHECKING:
@@ -375,26 +375,18 @@ class BasicAssertionEvaluator:
         actual_text = self._normalize_string(actual, options)
         if actual_text is None:
             return False, _("Value is not textual.")
-        flags = re.IGNORECASE if options.get("case_insensitive") else 0
+        # Match with RE2 (linear-time, no backtracking) so an author pattern run
+        # against submitter data cannot ReDoS the worker. A thread-based timeout
+        # cannot reliably stop a backtracking ``re`` match — CPython holds the GIL
+        # through the C call — so RE2 replaces that approach rather than guarding it.
         try:
-            passed = self._run_regex_with_timeout(pattern, actual_text, flags)
-        except concurrent.futures.TimeoutError:
-            return False, _("Regex evaluation timed out (possible ReDoS pattern).")
-        except re.error as exc:
+            compiled = compile_user_pattern(
+                pattern,
+                ignore_case=bool(options.get("case_insensitive")),
+            )
+        except UnsafeOrInvalidPatternError as exc:
             return False, _("Invalid regex: %(error)s") % {"error": exc}
-        return passed, _("Regex comparison failed.")
-
-    @staticmethod
-    def _run_regex_with_timeout(
-        pattern: str,
-        text: str,
-        flags: int,
-    ) -> bool:
-        """Run re.search with a timeout to prevent ReDoS attacks."""
-        timeout_secs = REGEX_EVAL_TIMEOUT_MS / 1000.0
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(re.search, pattern, text, flags)
-            return future.result(timeout=timeout_secs) is not None
+        return compiled.search(actual_text) is not None, _("Regex comparison failed.")
 
     def _evaluate_length(
         self,

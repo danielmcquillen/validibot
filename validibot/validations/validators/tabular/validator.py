@@ -122,7 +122,43 @@ class TabularValidator(BaseValidator):
                 stats={"read_error": exc.code},
             )
 
-        # 3. Native structured validation against the schema. The wall-clock
+        # 3. Dataset signals (i.*) — built before the dataset gate so
+        #    `i.num_rows`/`i.column_names`/… resolve, and returned for downstream
+        #    steps. Derived only from the parsed dataframe + submission.
+        self._input_signals = self._build_input_signals(read_result, submission)
+
+        # 4. Dataset (input-stage) CEL assertions run BEFORE the native / row /
+        #    column passes (ADR-2026-05-26): a *failing* dataset assertion
+        #    short-circuits that work, so e.g. `i.num_rows <= 1_000_000` rejects
+        #    an oversized table without validating every row. Only ERROR-severity
+        #    failures gate; a WARNING dataset assertion is carried forward. The
+        #    output stage is deferred to step 8 — it needs the validator's
+        #    outputs, which don't exist yet.
+        dataset_result = self.evaluate_assertions_for_stages(
+            validator=validator,
+            ruleset=ruleset,
+            payload={},
+            stages=("input",),
+        )
+        if any(issue.severity == Severity.ERROR for issue in dataset_result.issues):
+            return ValidationResult(
+                passed=False,
+                issues=list(dataset_result.issues),
+                assertion_stats=AssertionStats(
+                    total=dataset_result.total,
+                    failures=dataset_result.failures,
+                ),
+                signals=self._input_signals,
+                stats={
+                    "num_rows": read_result.num_rows,
+                    "num_columns": read_result.num_columns,
+                    "short_circuited": "dataset_assertion_failed",
+                },
+            )
+        # Carry forward any non-error (WARNING) dataset findings.
+        issues = list(dataset_result.issues)
+
+        # 5. Native structured validation against the schema. The wall-clock
         #    budget bounds the author-supplied regex pattern checks (which run
         #    against every submitter cell) the same way the row lane is bounded.
         native_findings = validate_native(
@@ -131,13 +167,9 @@ class TabularValidator(BaseValidator):
             report_max_examples=report_max_examples,
             wall_clock_budget_s=limits.max_wallclock_s,
         )
-        issues = [self._to_issue(finding) for finding in native_findings]
+        issues.extend(self._to_issue(finding) for finding in native_findings)
 
-        # 4. Dataset signals (i.*) — exposed for input-stage CEL assertions and
-        #    returned for downstream steps.
-        self._input_signals = self._build_input_signals(read_result, submission)
-
-        # 5. Row-stage CEL (the row.* loop). Validator-owned: these assertions
+        # 6. Row-stage CEL (the row.* loop). Validator-owned: these assertions
         #    are skipped by the generic lane (they reference row.*, which it
         #    doesn't bind) and evaluated here against every row, with now()
         #    pinned to the run clock.
@@ -153,7 +185,7 @@ class TabularValidator(BaseValidator):
         )
         issues.extend(self._to_issue(finding) for finding in row_findings)
 
-        # 6. Column-stage CEL runs once against typed per-column aggregates.
+        # 7. Column-stage CEL runs once against typed per-column aggregates.
         column_assertions = self._collect_column_assertions(validator, ruleset)
         column_findings = evaluate_column_assertions(
             read_result,
@@ -162,22 +194,24 @@ class TabularValidator(BaseValidator):
             signals=self._workflow_signals(run_context),
             input_signals=self._input_signals,
             now=self._run_clock(run_context),
+            wall_clock_budget_s=limits.max_wallclock_s,
         )
         issues.extend(self._to_issue(finding) for finding in column_findings)
 
-        # 7. The standard CEL assertion lane (dataset i.* + output). We pass an
-        #    empty payload because i.* is supplied via extract_input_signals();
+        # 8. Output-stage CEL assertions (those that read the validator's
+        #    outputs). Dataset/input-stage assertions already ran in step 4;
         #    row/column assertions are excluded by the lane itself.
-        assertion_result = self.evaluate_assertions_for_stages(
+        output_result = self.evaluate_assertions_for_stages(
             validator=validator,
             ruleset=ruleset,
             payload={},
+            stages=("output",),
         )
-        issues.extend(assertion_result.issues)
+        issues.extend(output_result.issues)
 
         # Assertion stats count *assertions* (not rows): the generic lane's
-        # totals plus the row assertions, with a row assertion counted as a
-        # failure when it produced any finding.
+        # totals plus the row/column assertions, with a row/column assertion
+        # counted as a failure when it produced any finding.
         failed_row_assertion_ids = {
             finding.assertion_id
             for finding in row_findings
@@ -194,12 +228,14 @@ class TabularValidator(BaseValidator):
             issues=issues,
             assertion_stats=AssertionStats(
                 total=(
-                    assertion_result.total
+                    dataset_result.total
+                    + output_result.total
                     + len(row_assertions)
                     + len(column_assertions)
                 ),
                 failures=(
-                    assertion_result.failures
+                    dataset_result.failures
+                    + output_result.failures
                     + len(failed_row_assertion_ids)
                     + len(failed_column_assertion_ids)
                 ),
@@ -334,6 +370,10 @@ class TabularValidator(BaseValidator):
                         severity=Severity(assertion.severity or Severity.ERROR),
                         assertion_id=assertion.pk,
                         report_max_examples=self._assertion_example_limit(assertion),
+                        # The optional `when` guard — the generic lane evaluates
+                        # it for dataset assertions, but it skips row/col
+                        # assertions, so the validator must honour it itself.
+                        when_expression=(assertion.when_expression or "").strip(),
                     ),
                 )
         return specs
@@ -362,6 +402,7 @@ class TabularValidator(BaseValidator):
                         message=assertion.message_template or "",
                         severity=Severity(assertion.severity or Severity.ERROR),
                         assertion_id=assertion.pk,
+                        when_expression=(assertion.when_expression or "").strip(),
                     ),
                 )
         return specs

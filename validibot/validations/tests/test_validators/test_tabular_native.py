@@ -35,6 +35,7 @@ from validibot.validations.validators.tabular.native import (
     CODE_CONDITIONAL_REQUIRED_COLUMN,
 )
 from validibot.validations.validators.tabular.native import CODE_ENUM_VIOLATION
+from validibot.validations.validators.tabular.native import CODE_INVALID_PATTERN
 from validibot.validations.validators.tabular.native import CODE_LENGTH_ERROR
 from validibot.validations.validators.tabular.native import CODE_MISSING_REQUIRED_COLUMN
 from validibot.validations.validators.tabular.native import CODE_OUT_OF_RANGE
@@ -411,6 +412,37 @@ class NativeColumnChecksTests(SimpleTestCase):
         )
         finding = _by_code(validate_native(read_result, schema))[CODE_PATTERN_MISMATCH]
         self.assertEqual(finding.sample_rows, (2,))
+
+    def test_catastrophic_pattern_does_not_hang(self):
+        """A backtracking-bomb pattern is matched in linear time, not forever.
+
+        ``pattern`` is matched with RE2, so even ``(a+)+$`` against a crafted
+        value resolves immediately rather than pinning the worker. The value
+        does not match, so it is reported as a normal mismatch — the point is
+        that we *get here at all* (under :mod:`re` this would never return).
+        """
+        read_result = read_csv(("col\n" + "a" * 80 + "!\n").encode())
+        schema = parse_table_schema(
+            {"fields": [{"name": "col", "constraints": {"pattern": r"(a+)+$"}}]},
+        )
+        finding = _by_code(validate_native(read_result, schema))[CODE_PATTERN_MISMATCH]
+        self.assertEqual(finding.sample_rows, (1,))
+
+    def test_unsupported_pattern_is_reported_as_invalid(self):
+        """A pattern RE2 cannot compile is a config error, not a silent skip.
+
+        RE2 omits lookaround, so a lookahead pattern is rejected. The validator
+        must surface that as one ``tabular.invalid_pattern`` finding rather than
+        falling back to the unsafe :mod:`re` engine or skipping the check (which
+        would let bad data through unnoticed).
+        """
+        read_result = read_csv(b"col\nx\n")
+        schema = parse_table_schema(
+            {"fields": [{"name": "col", "constraints": {"pattern": r"foo(?=bar)"}}]},
+        )
+        codes = _codes(validate_native(read_result, schema))
+        self.assertIn(CODE_INVALID_PATTERN, codes)
+        self.assertNotIn(CODE_PATTERN_MISMATCH, codes)
 
     def test_enum_membership(self):
         """A value outside the enum set is flagged; allowed values pass."""

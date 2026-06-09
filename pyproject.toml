@@ -50,6 +50,12 @@ dependencies = [
   "fmpy==0.3.29",
   "google-cloud-kms==3.13.0",
   "google-cloud-tasks==2.22.0",
+  # RE2 regex engine: linear-time, no catastrophic backtracking. Used by
+  # validibot.validations.regex_safety to run author-supplied patterns (Basic
+  # validator regex, Tabular column `pattern`) against submitter data without a
+  # ReDoS risk. Previously present only transitively; declared here because we
+  # now import it directly.
+  "google-re2==1.1.20251105",
   "gunicorn==26.0.0",
   "httpx==0.28.1",
   "jsonschema==4.26.0",

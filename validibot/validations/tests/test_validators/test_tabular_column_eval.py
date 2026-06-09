@@ -16,6 +16,7 @@ from validibot.validations.validators.tabular.column_eval import CODE_ASSERTION_
 from validibot.validations.validators.tabular.column_eval import (
     CODE_COLUMN_ASSERTION_FAILED,
 )
+from validibot.validations.validators.tabular.column_eval import CODE_TIMED_OUT
 from validibot.validations.validators.tabular.column_eval import ColumnAssertion
 from validibot.validations.validators.tabular.column_eval import build_column_context
 from validibot.validations.validators.tabular.column_eval import (
@@ -160,3 +161,85 @@ class ColumnAssertionEvaluationTests(SimpleTestCase):
             {finding.code for finding in findings},
             {CODE_ASSERTION_NULL, CODE_ASSERTION_ERROR},
         )
+
+
+class ColumnGuardAndBudgetTests(SimpleTestCase):
+    """The ``when`` guard scopes a column assertion, and aggregation is bounded."""
+
+    def setUp(self):
+        """One numeric column shared across the guard/budget tests."""
+        self.read_result = read_csv(b"depth,marker\n1,a\n2,b\n,c\n4,d\n")
+        self.schema = parse_table_schema(
+            {"fields": [{"name": "depth", "type": "number"}]},
+        )
+
+    def test_guard_false_skips_the_assertion(self):
+        """A false ``when`` guard skips the whole column assertion.
+
+        The generic lane skips column assertions, so their guard never applied
+        before. Here a guard that does not hold means the aggregate predicate is
+        not evaluated at all — a would-be failure produces no finding.
+        """
+        findings = evaluate_column_assertions(
+            self.read_result,
+            self.schema,
+            [
+                ColumnAssertion(
+                    expression="col.depth.distinct_count >= 100",  # would fail
+                    when_expression="1 > 2",  # guard false → skip
+                ),
+            ],
+        )
+        self.assertEqual(findings, [])
+
+    def test_guard_error_fails_the_assertion(self):
+        """A guard that cannot evaluate fails the assertion, never a silent skip."""
+        findings = evaluate_column_assertions(
+            self.read_result,
+            self.schema,
+            [
+                ColumnAssertion(
+                    expression="col.depth.max <= 10",
+                    when_expression='"x" > 1',  # string/int compare → error
+                    assertion_id=7,
+                ),
+            ],
+        )
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].code, CODE_ASSERTION_ERROR)
+        self.assertEqual(findings[0].assertion_id, 7)
+
+    def test_aggregation_budget_exhaustion_reports_timeout(self):
+        """Aggregation honours a wall-clock budget and fails closed on timeout.
+
+        With an already-spent budget the per-column scan stops at its first
+        check and the stage reports one ``tabular.timed_out`` finding instead of
+        running unbounded (the column lane previously had no budget at all).
+        """
+        findings = evaluate_column_assertions(
+            self.read_result,
+            self.schema,
+            [ColumnAssertion(expression="col.depth.sum < 1.5")],
+            wall_clock_budget_s=-1.0,
+        )
+        self.assertEqual([f.code for f in findings], [CODE_TIMED_OUT])
+
+    def test_only_referenced_columns_are_aggregated(self):
+        """The ``col`` map binds only the columns an assertion references.
+
+        Aggregating every declared column scales the cost with the schema rather
+        than the rules — a resource-exhaustion path for a wide schema. Passing
+        the referenced set restricts the work to the columns actually used.
+        """
+        read_result = read_csv(b"a,b\n1,2\n3,4\n")
+        schema = parse_table_schema(
+            {
+                "fields": [
+                    {"name": "a", "type": "integer"},
+                    {"name": "b", "type": "integer"},
+                ],
+            },
+        )
+        context = build_column_context(read_result, schema, {"a"})
+        self.assertIn("a", context)
+        self.assertNotIn("b", context)

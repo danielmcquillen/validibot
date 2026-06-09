@@ -46,6 +46,7 @@ from django.test import TestCase
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.tests.factories import SubmissionFactory
+from validibot.validations.assertions.evaluators.basic import BasicAssertionEvaluator
 from validibot.validations.cel import CEL_NAMESPACE_ROOTS
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
@@ -1200,3 +1201,71 @@ class ThermXmlCelIntegrationTests(TestCase):
         self.assertTrue(result.passed)
         self.assertEqual(result.assertion_stats.total, 1)
         self.assertEqual(result.assertion_stats.failures, 0)
+
+
+class BasicRegexOperatorTests(SimpleTestCase):
+    """The ``matches`` (regex) operator runs author patterns safely via RE2.
+
+    The Basic validator's regex operator runs an author-supplied pattern against
+    submitter-supplied text, so it is a ReDoS surface. It is now backed by RE2
+    (linear-time, no backtracking), replacing a thread-timeout guard that could
+    not actually preempt a catastrophic match under CPython's GIL. These tests
+    pin that ordinary matching is unchanged, a catastrophic pattern cannot hang,
+    and an RE2-unsupported pattern is reported rather than silently downgraded.
+    """
+
+    def setUp(self):
+        """A bare evaluator is enough — ``_evaluate_regex`` is self-contained."""
+        self.evaluator = BasicAssertionEvaluator()
+
+    def test_regex_match_and_non_match(self):
+        """``search`` semantics: an unanchored pattern matches where it occurs."""
+        passed, _msg = self.evaluator._evaluate_regex(
+            "order A-1 shipped",
+            {"pattern": r"[A-Z]-\d"},
+            {},
+        )
+        self.assertTrue(passed)
+        failed, _msg = self.evaluator._evaluate_regex(
+            "no code here",
+            {"pattern": r"[A-Z]-\d"},
+            {},
+        )
+        self.assertFalse(failed)
+
+    def test_catastrophic_pattern_does_not_hang(self):
+        """A backtracking-bomb pattern resolves instantly instead of pinning a CPU.
+
+        Under :mod:`re` this input never returns; under RE2 it is linear. The
+        value does not match, so the operator simply reports a failed comparison
+        — the security property is that we *reach* that result at all.
+        """
+        passed, _msg = self.evaluator._evaluate_regex(
+            "a" * 80 + "!",
+            {"pattern": r"(a+)+$"},
+            {},
+        )
+        self.assertFalse(passed)
+
+    def test_unsupported_pattern_reports_invalid_regex(self):
+        """A lookaround pattern (RE2-unsupported) fails with a clear message.
+
+        It must not fall back to :mod:`re` (which would reopen the ReDoS vector)
+        nor silently pass; the author sees an "Invalid regex" result.
+        """
+        passed, message = self.evaluator._evaluate_regex(
+            "anything",
+            {"pattern": r"foo(?=bar)"},
+            {},
+        )
+        self.assertFalse(passed)
+        self.assertIn("Invalid regex", message)
+
+    def test_case_insensitive_option(self):
+        """``case_insensitive`` still folds case through to the RE2 matcher."""
+        passed, _msg = self.evaluator._evaluate_regex(
+            "ABC",
+            {"pattern": "abc"},
+            {"case_insensitive": True},
+        )
+        self.assertTrue(passed)

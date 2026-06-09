@@ -38,11 +38,20 @@ _TABULAR_DOT_RE = re.compile(
 _TABULAR_BRACKET_RE = re.compile(
     rf"(?P<namespace>row|col)\s*\[\s*{_NUL}(\d+){_NUL}\s*\]",
 )
-_COLUMN_DOT_METRIC_RE = re.compile(
-    r"(?:^|[^\w.])col\.([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)",
-)
-_COLUMN_BRACKET_METRIC_RE = re.compile(
-    rf"col\s*\[\s*{_NUL}(\d+){_NUL}\s*\]\.([A-Za-z_][A-Za-z0-9_]*)",
+# A ``col`` aggregate selection is ``col<column-access><metric-access>`` where
+# each access is either ``.name`` or ``[<string literal>]`` (whitespace allowed
+# around the dot/brackets). Matching all four combinations — ``col.x.sum``,
+# ``col.x["sum"]``, ``col["x"].sum``, ``col["x"]["sum"]`` — is what stops an
+# author from evading the aggregate/type validation with an equivalent CEL
+# spelling (the column itself is already caught by ``referenced_tabular_columns``;
+# this is specifically the *metric* half). The leading ``(?:^|[^\w.])`` keeps
+# ``mycol.x.sum`` / ``foo.col.x.sum`` from matching, mirroring the dot scan above.
+_COLUMN_ACCESS = r"(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*%s(\d+)%s\s*\])"
+_COLUMN_METRIC_RE = re.compile(
+    r"(?:^|[^\w.])col\s*"
+    + (_COLUMN_ACCESS % (_NUL, _NUL))  # column access
+    + r"\s*"
+    + (_COLUMN_ACCESS % (_NUL, _NUL)),  # metric access
 )
 
 
@@ -153,17 +162,35 @@ def referenced_column_aggregates(expression: str) -> set[str]:
     return referenced_tabular_columns(expression, "col")
 
 
+def _resolve_access(
+    name: str | None,
+    index: str | None,
+    literals: list[str],
+) -> str | None:
+    """Resolve one access group to its name (dot ``.name`` or bracket literal)."""
+    if name is not None:
+        return name
+    if index is not None:
+        position = int(index)
+        if 0 <= position < len(literals):
+            return literals[position]
+    return None
+
+
 def referenced_column_metrics(expression: str) -> set[tuple[str, str]]:
-    """Return ``(column, metric)`` pairs selected from ``col.*``."""
+    """Return ``(column, metric)`` pairs selected from ``col.*``.
+
+    Handles every dot/bracket spelling of the column and the metric so an
+    equivalent expression (``col["x"]["sum"]``, ``col.x["sum"]``, ``col["x"].sum``)
+    cannot slip past aggregate-name/type validation and only fail at run time.
+    """
     masked, literals = _mask_string_literals(expression)
-    metrics = {
-        (match.group(1), match.group(2))
-        for match in _COLUMN_DOT_METRIC_RE.finditer(masked)
-    }
-    for match in _COLUMN_BRACKET_METRIC_RE.finditer(masked):
-        index = int(match.group(1))
-        if 0 <= index < len(literals):
-            metrics.add((literals[index], match.group(2)))
+    metrics: set[tuple[str, str]] = set()
+    for match in _COLUMN_METRIC_RE.finditer(masked):
+        column = _resolve_access(match.group(1), match.group(2), literals)
+        metric = _resolve_access(match.group(3), match.group(4), literals)
+        if column is not None and metric is not None:
+            metrics.add((column, metric))
     return metrics
 
 

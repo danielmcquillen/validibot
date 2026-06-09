@@ -71,6 +71,23 @@ def test_column_aggregate_references_support_dot_and_bracket_access():
     }
 
 
+def test_column_metrics_detected_across_all_access_spellings():
+    """Every dot/bracket spelling of a metric resolves, closing a validation gap.
+
+    The old dot-only metric scan let ``col["x"]["sum"]``, ``col.x["sum"]``, and a
+    space-padded dot evade the aggregate-name/type validation and fail only at
+    run time. All four column×metric access combinations (and whitespace) must
+    now be recognised so author-time validation sees the metric.
+    """
+    assert referenced_column_metrics("col.x.sum") == {("x", "sum")}
+    assert referenced_column_metrics('col["x"].sum') == {("x", "sum")}
+    assert referenced_column_metrics('col.x["sum"]') == {("x", "sum")}
+    assert referenced_column_metrics('col["x"]["sum"]') == {("x", "sum")}
+    assert referenced_column_metrics('col["x"]  .  sum') == {("x", "sum")}
+    # A literal that merely looks like a reference is still ignored.
+    assert referenced_column_metrics('"col.x.sum"') == set()
+
+
 def test_strip_removes_single_and_double_quoted_literals():
     """The literal-stripper drops quoted content (with escapes), keeps the rest."""
     assert strip_cel_string_literals(r'a + "he\"llo" + b') == "a +  + b"

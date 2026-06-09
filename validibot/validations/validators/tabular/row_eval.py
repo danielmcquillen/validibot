@@ -71,6 +71,11 @@ class RowAssertion:
     severity: Severity = Severity.ERROR
     assertion_id: int | None = None
     report_max_examples: int = DEFAULT_REPORT_MAX_EXAMPLES
+    # Optional ``when`` guard. The generic CEL lane evaluates this for dataset
+    # assertions, but it deliberately skips row/column assertions, so the
+    # validator must honour the guard itself: a row where the guard is false is
+    # skipped (the rule does not apply), and a guard that errors fails that row.
+    when_expression: str = ""
 
 
 def _to_cel(value: Any) -> Any:
@@ -126,10 +131,15 @@ def evaluate_row_assertions(
         return []
 
     findings: list[NativeFinding] = []
-    programs: list[tuple[RowAssertion, celpy.Runner]] = []
+    programs: list[tuple[RowAssertion, celpy.Runner, celpy.Runner | None]] = []
     for assertion in row_assertions:
         try:
             program = compile_program(assertion.expression, now=now)
+            guard = (
+                compile_program(assertion.when_expression, now=now)
+                if assertion.when_expression
+                else None
+            )
         except Exception as exc:
             findings.append(
                 NativeFinding(
@@ -140,7 +150,7 @@ def evaluate_row_assertions(
                 ),
             )
             continue
-        programs.append((assertion, program))
+        programs.append((assertion, program, guard))
 
     if not programs:
         return findings
@@ -185,7 +195,9 @@ def evaluate_row_assertions(
         )
         context = {"row": row_cel, "s": signals_cel, "i": input_cel}
 
-        for index, (_assertion, program) in enumerate(programs):
+        for index, (_assertion, program, guard) in enumerate(programs):
+            if not _guard_allows(guard, context, position, outcomes[index]):
+                continue
             _classify(program, context, position, outcomes[index])
 
     findings.extend(
@@ -204,6 +216,39 @@ def evaluate_row_assertions(
             ),
         )
     return findings
+
+
+def _guard_allows(
+    guard: celpy.Runner | None,
+    context: dict[str, Any],
+    position: int,
+    outcome: _Outcomes,
+) -> bool:
+    """Evaluate the optional ``when`` guard for one row.
+
+    Returns ``True`` when the main predicate should run for this row. Semantics:
+
+    - **no guard** → run.
+    - **guard true** → run; **guard false** → skip (the rule does not apply to
+      this row — a clean skip, recorded nowhere).
+    - **guard null** → skip. A conditional like ``when row.x > 0`` simply does
+      not apply to a row whose trigger value is empty/undetermined.
+    - **guard errors or is non-boolean** → fail the row (``errored``), never a
+      silent skip — an unevaluable guard must not quietly suppress the rule.
+    """
+    if guard is None:
+        return True
+    try:
+        result = guard.evaluate(context)
+    except Exception:
+        outcome.errored.append(position)
+        return False
+    if isinstance(result, ct.BoolType):
+        return bool(result)
+    if result is None:
+        return False
+    outcome.errored.append(position)
+    return False
 
 
 def _classify(
@@ -238,14 +283,14 @@ def _classify(
 
 
 def _build_findings(
-    programs: list[tuple[RowAssertion, celpy.Runner]],
+    programs: list[tuple[RowAssertion, celpy.Runner, celpy.Runner | None]],
     outcomes: list[_Outcomes],
     *,
     report_max_examples: int,
 ) -> list[NativeFinding]:
     """Turn the per-assertion accumulators into findings (one per outcome class)."""
     findings: list[NativeFinding] = []
-    for (assertion, _program), outcome in zip(programs, outcomes, strict=True):
+    for (assertion, _program, _guard), outcome in zip(programs, outcomes, strict=True):
         example_limit = assertion.report_max_examples or report_max_examples
         if outcome.failed:
             findings.append(

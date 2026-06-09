@@ -252,3 +252,61 @@ class RowEvalMultipleTests(SimpleTestCase):
         by_assertion = {f.assertion_id: f.sample_rows for f in failed}
         self.assertEqual(by_assertion[1], (1,))  # lat bad on row 1
         self.assertEqual(by_assertion[2], (2,))  # lon bad on row 2
+
+
+class RowEvalGuardTests(SimpleTestCase):
+    """The optional ``when`` guard scopes a row assertion per row.
+
+    The generic CEL lane evaluates an assertion's ``when`` guard, but it
+    deliberately skips tabular row assertions — so a guarded row assertion used
+    to run on *every* row. The validator must honour the guard itself: a row
+    where the guard is false is out of scope, and a guard that cannot evaluate
+    fails the row rather than silently suppressing the rule.
+    """
+
+    def test_guard_false_skips_the_row(self):
+        """A row whose guard is false is not checked — the rule does not apply."""
+        read_result = read_csv(b"category,value\nA,-1\nB,-1\n")
+        schema = parse_table_schema(
+            {
+                "fields": [
+                    {"name": "category", "type": "string"},
+                    {"name": "value", "type": "integer"},
+                ],
+            },
+        )
+        findings = evaluate_row_assertions(
+            read_result,
+            schema,
+            [
+                RowAssertion(
+                    expression="row.value > 0",
+                    when_expression='row.category == "A"',
+                ),
+            ],
+        )
+        # Only row 1 (category A) is in scope, and it violates; row 2 (B) is
+        # skipped by the guard rather than counted as a failure.
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].code, CODE_ROW_ASSERTION_FAILED)
+        self.assertEqual(findings[0].sample_rows, (1,))
+
+    def test_guard_error_fails_the_row(self):
+        """A guard that cannot evaluate fails the row, never a silent skip."""
+        read_result = read_csv(b"value\n5\n")
+        schema = parse_table_schema(
+            {"fields": [{"name": "value", "type": "integer"}]},
+        )
+        findings = evaluate_row_assertions(
+            read_result,
+            schema,
+            [
+                # `"x" > 1` is a string/int comparison — an unevaluable guard.
+                RowAssertion(
+                    expression="row.value > 0",
+                    when_expression='"x" > 1',
+                ),
+            ],
+        )
+        self.assertEqual([f.code for f in findings], [CODE_ASSERTION_ERROR])
+        self.assertEqual(findings[0].count, 1)

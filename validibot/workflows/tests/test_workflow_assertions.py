@@ -1050,6 +1050,40 @@ class WorkflowStepAssertionsTests(TestCase):
         self.assertEqual(button.getparent().get("data-bs-toggle"), "tooltip")
         self.assertEqual(button.getparent().get("title"), "Add assertion")
 
+        stage_buttons = document.xpath(
+            "//section[@data-tabular-assertion-stage]//button[@aria-label]",
+        )
+        self.assertEqual(len(stage_buttons), 3)
+        for stage_button in stage_buttons:
+            stage = stage_button.xpath(
+                "string(ancestor::section[1]/@data-tabular-assertion-stage)",
+            )
+            expected_label = f"Add {stage} assertion"
+            self.assertEqual(stage_button.get("aria-label"), expected_label)
+            self.assertEqual(stage_button.get("data-bs-toggle"), "modal")
+            self.assertEqual(
+                stage_button.get("data-bs-target"),
+                "#workflowAssertionModal",
+            )
+            self.assertIn(
+                f"tabular_stage={stage}",
+                stage_button.get("hx-get"),
+            )
+            self.assertEqual(
+                stage_button.xpath('string(./span[@aria-hidden="true"])').strip(),
+                "+",
+            )
+            self.assertEqual(
+                stage_button.xpath(
+                    'string(./span[contains(@class, "visually-hidden")])',
+                ).strip(),
+                expected_label,
+            )
+            tooltip = stage_button.getparent()
+            self.assertEqual(tooltip.get("data-bs-toggle"), "tooltip")
+            self.assertEqual(tooltip.get("data-bs-placement"), "top")
+            self.assertEqual(tooltip.get("title"), expected_label)
+
     def test_tabular_step_cards_fall_back_to_cel_expression(self):
         """Stage cards show CEL expressions when authors omit descriptions.
 

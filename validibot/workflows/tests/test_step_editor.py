@@ -1998,6 +1998,8 @@ def test_tabular_step_shows_validation_operation_before_assertions(client):
     assert "assertion-add-button" not in html
     assert "Add dataset assertion" in html
     assert "Add row assertion" in html
+    assert "Add column assertion" in html
+    assert html.count('data-bs-toggle="tooltip"') >= TABULAR_STAGE_CONNECTOR_COUNT
     # The bare placeholder must be gone now that the operation card stands in
     # as the panel's first item.
     assert "No assertions have been added yet." not in html

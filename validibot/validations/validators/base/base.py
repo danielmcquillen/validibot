@@ -522,9 +522,8 @@ class BaseValidator(ABC):
         # (in-row for step-owned definitions OR overlay row for
         # validator-owned ones) are surfaced in the s namespace.
         # Reconstructed from completed upstream step inputs/outputs
-        # in the run summary; the method name retains its legacy
-        # ``_outputs`` suffix for low-churn reasons even though it
-        # handles both directions per ADR-2026-05-22b.
+        # in the run summary; handles both directions per
+        # ADR-2026-05-22b's symmetric promotion.
         if steps_context:
             self._inject_promotions(signals_dict, steps_context)
 
@@ -602,10 +601,9 @@ class BaseValidator(ABC):
           — populated after the producing step's container or
           inline work completes.
 
-        The method name still reads ``_inject_promotions`` for
-        historical reasons (it originally only handled outputs); per
-        ADR-2026-05-22b's symmetric promotion it now handles INPUT
-        and OUTPUT directions uniformly.
+        Per ADR-2026-05-22b's symmetric promotion this handles INPUT
+        and OUTPUT directions uniformly (earlier revisions handled
+        only outputs).
 
         Runs on every step (not just once at run start) because
         promoted values only become available after each producing

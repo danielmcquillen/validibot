@@ -294,7 +294,17 @@ class MemberListView(
             request_user=request.user,
         )
         if form.is_valid():
-            form.save()
+            from validibot.users.seats import SeatQuotaExceededError
+
+            try:
+                form.save()
+            except SeatQuotaExceededError as exc:
+                # Lost the seat-cap race between the clean()-time check and the
+                # locked create (rare: two admins adding the last seat at the
+                # same instant). Surface it as a form error rather than a 500.
+                form.add_error(None, str(exc))
+                context = self.get_context_data(add_form=form)
+                return self.render_to_response(context, status=400)
             messages.success(request, _("Member added."))
             return HttpResponseRedirect(self._success_url())
         context = self.get_context_data(add_form=form)

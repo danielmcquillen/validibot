@@ -407,11 +407,19 @@ class OrganizationMemberForm(forms.Form):
         return list(expanded)
 
     def save(self) -> Membership:
+        # Create the membership under a concurrency-safe seat check. The
+        # ``clean()`` check above is a fast fail-fast for the common case but is
+        # not atomic with the create — two admins adding the last seat at once
+        # could both pass it. ``create_membership_with_seat_check`` re-checks
+        # under a row lock so the cap holds under concurrency. On a lost race it
+        # raises ``SeatQuotaExceededError``, which the view surfaces as a form
+        # error rather than a 500 (see ``MemberListView.post``).
+        from validibot.users.seats import create_membership_with_seat_check
+
         roles = self.cleaned_data.get("roles") or [RoleCode.WORKFLOW_VIEWER]
-        membership = Membership.objects.create(
-            user=self.user,
+        membership, _created = create_membership_with_seat_check(
             org=self.organization,
-            is_active=True,
+            user=self.user,
         )
         membership.set_roles(roles)
         return membership
@@ -493,44 +501,57 @@ class InviteUserForm(forms.Form):
         if not user_id and not email:
             raise forms.ValidationError(_("Select a user or provide an email."))
 
+        # SECURITY: this form must not become an account-existence oracle.
+        # Resolving a raw-typed address (or an arbitrary user PK) to an
+        # existing account and then surfacing identity in the confirmation
+        # dialog would let an org admin probe whether any email belongs to a
+        # Validibot account, and learn who — exactly the cross-tenant
+        # enumeration ``InviteSearchView`` was hardened against. So we resolve
+        # an existing account ONLY for a type-ahead pick that is already scoped
+        # to people this org has a relationship with, and never for a
+        # raw-typed address.
         invitee_user = None
         if user_id:
-            try:
-                invitee_user = User.objects.get(pk=user_id, is_active=True)
-            except User.DoesNotExist as exc:
-                raise forms.ValidationError(_("Selected user does not exist.")) from exc
+            # A type-ahead pick. Restrict resolution to the SAME related-user
+            # set the search view exposes (anyone this org has invited), so a
+            # hand-crafted POST carrying an arbitrary ``invitee_user`` PK can't
+            # surface a stranger's identity in the confirmation. An out-of-scope
+            # PK gets the same generic message as a missing one — no existence
+            # signal either way.
+            related_user_ids = MemberInvite.objects.filter(
+                org=self.organization,
+                invitee_user__isnull=False,
+            ).values_list("invitee_user_id", flat=True)
+            invitee_user = User.objects.filter(
+                pk=user_id,
+                is_active=True,
+                pk__in=related_user_ids,
+            ).first()
+            if invitee_user is None:
+                raise forms.ValidationError(_("Selected user does not exist."))
             cleaned["invitee_user"] = invitee_user
             cleaned["invitee_email"] = invitee_user.email
-        else:
-            # No type-ahead pick: the admin typed a raw address. Resolve
-            # it to an existing account when one owns that email so the
-            # confirmation dialog shows the real person and the invite
-            # routes through the in-app notification path. Only genuinely
-            # unknown addresses fall through to the email-only sign-up
-            # flow (``send_email=invitee_user is None`` in ``save``).
-            invitee_user = (
-                User.objects.filter(email__iexact=email, is_active=True).first()
-                if email
-                else None
-            )
-            cleaned["invitee_user"] = invitee_user
-            cleaned["invitee_email"] = invitee_user.email if invitee_user else email
 
-        # Guard against re-inviting an existing active member — mirrors
-        # the guest-invite create flow. Without it the confirmation could
-        # promise to "make this user a member" when they already are, and
-        # accepting would be a confusing near no-op.
-        if (
-            invitee_user
-            and Membership.objects.filter(
+            # Re-invite guard, meaningful only for a resolved account: mirrors
+            # the guest-invite create flow so the confirmation never promises
+            # to "make this user a member" when they already are.
+            if Membership.objects.filter(
                 user=invitee_user,
                 org=self.organization,
                 is_active=True,
-            ).exists()
-        ):
-            raise forms.ValidationError(
-                _("That user is already a member of this organization."),
-            )
+            ).exists():
+                raise forms.ValidationError(
+                    _("That user is already a member of this organization."),
+                )
+        else:
+            # A raw-typed address. We deliberately do NOT look up whether an
+            # account exists — that lookup is the enumeration oracle. The
+            # address stays opaque here: the confirmation dialog shows only the
+            # typed email, and binding to an existing account (so they get an
+            # in-app notification instead of an email) happens later in
+            # ``save()``, whose result is never surfaced back to the admin.
+            cleaned["invitee_user"] = None
+            cleaned["invitee_email"] = email
 
         return cleaned
 
@@ -538,8 +559,19 @@ class InviteUserForm(forms.Form):
         roles = self.cleaned_data.get("roles") or [RoleCode.WORKFLOW_VIEWER]
         invitee_user = self.cleaned_data.get("invitee_user")
         invitee_email = self.cleaned_data.get("invitee_email")
-        # Email is only sent if invitee is NOT already a registered user
-        # (registered users receive in-app notifications instead)
+        # For a raw-typed address ``clean()`` intentionally leaves
+        # ``invitee_user`` unresolved (so the confirmation dialog can't reveal
+        # whether an account exists). Resolve it now — server-side and
+        # unsurfaced — so a registered invitee still receives an in-app
+        # notification rather than an email, the same outcome the old eager
+        # lookup gave, without the account-enumeration leak.
+        if invitee_user is None and invitee_email:
+            invitee_user = User.objects.filter(
+                email__iexact=invitee_email,
+                is_active=True,
+            ).first()
+        # Email is only sent if the invitee is NOT a registered user
+        # (registered users receive in-app notifications instead).
         invite = MemberInvite.create_with_expiry(
             org=self.organization,
             inviter=self.inviter,

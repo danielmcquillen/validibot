@@ -7,9 +7,12 @@ out *who* is being invited and *which* permissions they'll receive so an
 admin can catch a misclick before org access is granted.
 
 Two flavours, decided by ``invitee_user``:
-  * set   -> existing Validibot account; show their identity card.
-  * unset -> brand-new email; warn no account exists yet (they'll be
-             emailed a sign-up-and-join link).
+  * set   -> a type-ahead pick from people this org already knows; show their
+             identity card so the admin confirms the right person.
+  * unset -> a raw-typed address. We deliberately do NOT reveal whether an
+             account exists for it (that would be an account-enumeration
+             oracle), so the copy stays neutral. ``save()`` binds an existing
+             account server-side, without surfacing the result here.
 
 Expected context: organization, invitee_user (User|None), invitee_email,
 selected_roles (list of {code,label}), search_value, role_codes.
@@ -27,7 +30,7 @@ selected_roles (list of {code,label}), search_value, role_codes.
 </div>
 <div class="modal-body">
   {% if invitee_user %}
-    {# Existing account: surface identity so the admin confirms the right person. #}
+    {% comment %}Existing account: surface identity so the admin confirms the right person.{% endcomment %}
     <div class="d-flex align-items-center gap-3 mb-3">
       {% if invitee_user.avatar %}
         <img src="{{ invitee_user.avatar.url }}"
@@ -59,18 +62,22 @@ selected_roles (list of {code,label}), search_value, role_codes.
       {% endblocktrans %}
     </p>
   {% else %}
-    {# No account yet: confirm an email-to-sign-up invitation. #}
+    {% comment %}
+    Raw-typed address: we intentionally do not look up whether an account
+    exists (that lookup would be an account-enumeration oracle), so the
+    message stays neutral about account existence.
+    {% endcomment %}
     <div class="alert alert-info d-flex align-items-end" role="alert">
       <i class="bi-info-circle mt-1 me-2"></i>
       {% blocktrans with email=invitee_email %}
-          <strong>{{ email }}</strong>&nbsp;does not currently have a Validibot account.
+          An invitation will be sent to <strong>{{ email }}</strong>.
       {% endblocktrans %}
     </div>
     <p class="mb-2">
       {% blocktrans with email=invitee_email org=organization.name %}
         Are you sure you want to invite {{ email }} to become a member of "{{ org }}"
-        with the following permissions? They'll receive an email with a link to sign
-        up and join.
+        with the following permissions? If they don't already have a Validibot
+        account, they'll receive an email with a link to sign up and join.
       {% endblocktrans %}
     </p>
   {% endif %}

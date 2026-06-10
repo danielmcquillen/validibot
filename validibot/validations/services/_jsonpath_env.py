@@ -29,7 +29,6 @@ majority of paths that use plain dot/bracket notation.
 
 from __future__ import annotations
 
-import concurrent.futures
 import logging
 import re
 from typing import Any
@@ -39,6 +38,8 @@ from jsonpath import JSONPathNameError
 from jsonpath import JSONPathSyntaxError
 from jsonpath import JSONPathTypeError
 
+from validibot.validations._bounded_eval import ExpressionEvaluationTimeoutError
+from validibot.validations._bounded_eval import run_with_timeout
 from validibot.validations.constants import MAX_JSONPATH_FILTER_SEGMENTS
 
 logger = logging.getLogger(__name__)
@@ -130,28 +131,27 @@ def resolve_jsonpath(data: Any, path: str) -> tuple[Any, bool]:
     # Normalise: users write dot-notation paths without a leading '$'.
     jsonpath_expr = f"$.{path}" if not path.startswith("$") else path
 
-    # Run the actual resolution under a hard wall-clock timeout.  The
-    # ``=~`` rejection above already removes the known ReDoS vector, but
-    # offloading ``findall`` to a single worker thread and bounding it
-    # with ``JSONPATH_RESOLVE_TIMEOUT_SECONDS`` ensures that *any* future
-    # pathological expression — over an unbounded submission — can never
-    # block this code path indefinitely.  ``max_workers=1`` keeps the
-    # overhead to a single short-lived thread per call.
+    # Run the actual resolution under a hard wall-clock timeout. The ``=~``
+    # rejection above already removes the known ReDoS vector; bounding
+    # ``findall`` with ``JSONPATH_RESOLVE_TIMEOUT_SECONDS`` ensures that *any*
+    # future pathological expression — over an unbounded submission — can never
+    # block this code path indefinitely.
     #
-    # NOTE: a CPython thread cannot be forcibly killed, so a runaway
-    # ``findall`` keeps running after the timeout fires.  We therefore
-    # MUST NOT use the executor as a context manager — its ``__exit__``
-    # calls ``shutdown(wait=True)`` and would re-block on the very thread
-    # we are trying to escape.  Instead we time out the *result* and call
-    # ``shutdown(wait=False)`` so the caller returns immediately; the
-    # orphaned thread is left to finish (or be reaped at process exit) on
-    # its own.  With the ``=~`` operator already rejected, reaching this
-    # timeout requires a genuinely pathological-but-bounded expression.
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    # Evaluation runs on the shared, process-wide bounded pool (``_bounded_eval``)
+    # rather than a fresh per-call executor: that caps the total number of
+    # resolution threads the process can spawn (so repeated slow expressions
+    # cannot accumulate unbounded threads) and avoids per-call pool churn. A
+    # CPython thread cannot be forcibly killed, so a runaway ``findall`` keeps
+    # running after the timeout fires; the helper deliberately does NOT wait on
+    # it (waiting would re-block the caller), and the orphaned worker drains on
+    # a pool thread in the background. With ``=~`` already rejected, reaching
+    # this timeout requires a genuinely pathological-but-bounded expression.
     try:
-        future = executor.submit(_env.findall, jsonpath_expr, data)
-        results = future.result(timeout=JSONPATH_RESOLVE_TIMEOUT_SECONDS)
-    except concurrent.futures.TimeoutError:
+        results = run_with_timeout(
+            lambda: _env.findall(jsonpath_expr, data),
+            timeout_s=JSONPATH_RESOLVE_TIMEOUT_SECONDS,
+        )
+    except ExpressionEvaluationTimeoutError:
         logger.warning(
             "JSONPath resolution timed out after %.1fs (path=%r)",
             JSONPATH_RESOLVE_TIMEOUT_SECONDS,
@@ -168,9 +168,6 @@ def resolve_jsonpath(data: Any, path: str) -> tuple[Any, bool]:
             path,
         )
         return None, False
-    finally:
-        # Do not block on a possibly-runaway worker thread.
-        executor.shutdown(wait=False)
 
     if results:
         return results[0], True

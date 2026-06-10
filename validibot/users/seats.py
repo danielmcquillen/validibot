@@ -42,7 +42,9 @@ from django.utils.translation import gettext_lazy as _
 from validibot.core.license import get_license
 
 if TYPE_CHECKING:
+    from validibot.users.models import Membership
     from validibot.users.models import Organization
+    from validibot.users.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -111,3 +113,66 @@ def check_org_seat_quota(org: Organization) -> None:
             cap,
         )
         raise SeatQuotaExceededError(org=org, current_seats=current, max_seats=cap)
+
+
+def create_membership_with_seat_check(
+    *,
+    org: Organization,
+    user: User,
+) -> tuple[Membership, bool]:
+    """Create or fetch an active membership under a concurrency-safe seat check.
+
+    This is the single chokepoint for *consuming a paid seat*. It closes a
+    time-of-check-to-time-of-use (TOCTOU) race that a plain
+    ``check_org_seat_quota(org)`` followed by ``Membership.objects.create(...)``
+    suffers from: two requests that both observe ``current == cap - 1`` each
+    pass the non-locking count and both INSERT, pushing the org one seat over
+    its cap.
+
+    The fix is to make the check-and-create atomic. We open a transaction and
+    take a row lock on the :class:`~validibot.users.models.Organization`
+    (``select_for_update``). A second concurrent caller blocks on that lock
+    until the first commits, then its re-check below sees the updated count and
+    is refused. The org row is a natural, low-contention serialization point —
+    seat changes for a single org are rare and the lock is held only for the
+    count-plus-insert.
+
+    A user who is *already* an active member consumes no new seat, so the quota
+    check is skipped for them; re-invite and role-update flows must not be
+    refused merely because the org happens to be at capacity.
+
+    Args:
+        org: The organization gaining a member.
+        user: The user to make an active member of ``org``.
+
+    Returns:
+        ``(membership, created)`` where ``created`` is ``True`` when a new row
+        was inserted and ``False`` when an existing membership was returned.
+
+    Raises:
+        SeatQuotaExceededError: If creating a *new* seat would exceed the cap.
+    """
+    # Deferred imports mirror ``check_org_seat_quota`` — they keep this
+    # licensing module free of an import-time dependency on the ORM models.
+    from django.db import transaction
+
+    from validibot.users.models import Membership
+    from validibot.users.models import Organization
+
+    with transaction.atomic():
+        # Lock the org row so concurrent seat-consuming operations serialize.
+        Organization.objects.select_for_update().get(pk=org.pk)
+        already_active = Membership.objects.filter(
+            org=org,
+            user=user,
+            is_active=True,
+        ).exists()
+        if not already_active:
+            # Re-check INSIDE the lock — this is the line that makes the cap
+            # hold under concurrency.
+            check_org_seat_quota(org)
+        return Membership.objects.get_or_create(
+            org=org,
+            user=user,
+            defaults={"is_active": True},
+        )

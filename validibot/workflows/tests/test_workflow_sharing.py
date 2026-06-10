@@ -259,6 +259,68 @@ class TestWorkflowInvite:
         with pytest.raises(ValueError, match="No user provided"):
             invite.accept()
 
+    def test_accept_bound_invite_by_wrong_user_is_rejected(self):
+        """A bound invite must reject acceptance by anyone but the bound user.
+
+        WHY IT MATTERS: this is the cross-account escalation guard. The
+        token-acceptance view only checks email ownership for *unbound* invites,
+        so without a model-level invariant a logged-in User B holding a link to
+        an invite bound to User A could call ``accept(user=B)`` and be granted
+        A's workflow access. The invariant lives in ``accept`` so every
+        acceptance surface (token view, signup adapter, notification view) is
+        covered at the one chokepoint they share. We assert it raises and that
+        nothing is granted to the wrong user.
+        """
+        workflow = WorkflowFactory()
+        inviter = workflow.user
+        bound_invitee = UserFactory(orgs=[])
+        attacker = UserFactory(orgs=[])
+
+        invite = WorkflowInvite.objects.create(
+            workflow=workflow,
+            inviter=inviter,
+            invitee_user=bound_invitee,
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+
+        with pytest.raises(ValueError, match="addressed to a different user"):
+            invite.accept(user=attacker)
+
+        # No access leaked to the wrong user, and the invite stays redeemable.
+        assert not WorkflowAccessGrant.objects.filter(
+            workflow=workflow,
+            user=attacker,
+        ).exists()
+        invite.refresh_from_db()
+        assert invite.status == WorkflowInvite.Status.PENDING
+
+    def test_accept_unbound_invite_by_any_user_still_works(self):
+        """An unbound (email-only) invite must still accept any redeeming user.
+
+        WHY IT MATTERS: the bound-user invariant must not break the legitimate
+        new-collaborator flow, where an email-only invite is correctly gated by
+        email ownership at the view layer rather than by a pre-bound user. This
+        pins the permissive side so the fix cannot be "completed" by rejecting
+        every acceptance.
+        """
+        workflow = WorkflowFactory()
+        inviter = workflow.user
+        redeemer = UserFactory(orgs=[])
+
+        invite = WorkflowInvite.objects.create(
+            workflow=workflow,
+            inviter=inviter,
+            invitee_email="newcollaborator@example.com",
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+
+        grant = invite.accept(user=redeemer)
+
+        assert grant.user == redeemer
+        invite.refresh_from_db()
+        assert invite.status == WorkflowInvite.Status.ACCEPTED
+        assert invite.invitee_user == redeemer
+
     def test_cannot_accept_non_pending_invite(self):
         """Test that only pending invites can be accepted."""
         workflow = WorkflowFactory()
@@ -1496,6 +1558,38 @@ class TestGuestInvite:
 
         assert invite.scope == GuestInvite.Scope.ALL
         assert invite.workflows.count() == 0  # Workflows not stored for ALL scope
+
+    def test_accept_bound_guest_invite_by_wrong_user_is_rejected(self):
+        """A bound guest invite must reject acceptance by anyone but the invitee.
+
+        WHY IT MATTERS: mirrors the ``WorkflowInvite`` guard for org-level guest
+        access — a leaked or forwarded bound guest-invite link must not let
+        whoever opens it claim another person's org guest access. We assert it
+        raises and that no ``OrgGuestAccess`` row is created for the wrong user.
+        """
+        from validibot.workflows.models import OrgGuestAccess
+
+        org = OrganizationFactory()
+        inviter = UserFactory()
+        inviter.memberships.create(org=org, is_active=True)
+        bound_invitee = UserFactory(orgs=[])
+        attacker = UserFactory(orgs=[])
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email=bound_invitee.email,
+            invitee_user=bound_invitee,
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+
+        with pytest.raises(ValueError, match="addressed to a different user"):
+            invite.accept(user=attacker)
+
+        assert not OrgGuestAccess.objects.filter(org=org, user=attacker).exists()
+        invite.refresh_from_db()
+        assert invite.status == GuestInvite.Status.PENDING
 
     def test_get_resolved_workflows_selected_scope(self):
         """Test get_resolved_workflows returns selected workflows."""

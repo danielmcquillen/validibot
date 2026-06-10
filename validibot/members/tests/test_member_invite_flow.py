@@ -13,9 +13,12 @@ half-working feature into a complete one:
 
 2. **Pre-send confirmation dialog.** Before an invite is created the
    admin sees a confirmation interstitial (``InviteConfirmView``) that
-   names the invitee and lists the exact permissions they'll receive,
-   with a different message depending on whether the address already has
-   a Validibot account.
+   names the invitee and lists the exact permissions they'll receive. A
+   *type-ahead pick* (a user the org already knows) shows that account's
+   identity so a wrong-person mistake is caught; a *raw-typed address*
+   stays deliberately opaque — the dialog never reveals whether an
+   arbitrary email belongs to a Validibot account, so the form cannot be
+   used to enumerate accounts (see ``test_invite_no_account_enumeration``).
 
 Each test documents *why* the behaviour matters, because these flows gate
 organization access and a regression would either strand invitees or
@@ -103,16 +106,31 @@ def _attach_messages(request):
 # =============================================================================
 
 
-def test_confirm_existing_user_renders_identity_card(admin_ctx):
-    """An existing invitee is shown by identity, and nothing is created yet.
+def test_confirm_typeahead_pick_of_known_user_renders_identity_card(admin_ctx):
+    """A type-ahead pick of a user the org already knows shows their identity.
 
-    When the target already has a Validibot account the admin needs to
-    see *who* they're about to make a member (email at minimum) to catch
-    a wrong-person mistake. Crucially the confirmation step must not
-    create the ``MemberInvite`` — only the dialog's own Invite button may.
+    When the admin picks a *related* user (one the org has previously invited —
+    the only kind the scoped type-ahead surfaces) the dialog shows *who* they're
+    about to make a member, so a wrong-person mistake is caught. Identity is
+    safe to show here because the org already has a relationship with that
+    account, unlike a raw-typed address which stays opaque
+    (``test_confirm_typed_email_of_existing_user_stays_opaque``). The
+    confirmation step must also never create the ``MemberInvite`` itself.
     """
-    client, org, _admin = admin_ctx
+    client, org, admin = admin_ctx
     target = UserFactory()
+    # Make ``target`` a user the org already knows: a prior invite is exactly
+    # what the scoped type-ahead (``InviteSearchView``) surfaces, so resolving
+    # the picked PK here is legitimate rather than an enumeration probe.
+    MemberInvite.create_with_expiry(
+        org=org,
+        inviter=admin,
+        invitee_user=target,
+        invitee_email=target.email,
+        roles=[RoleCode.WORKFLOW_VIEWER],
+        expires_at=timezone.now() + timedelta(days=7),
+        send_email=False,
+    )
 
     response = client.post(
         reverse("members:invite_confirm"),
@@ -126,20 +144,22 @@ def test_confirm_existing_user_renders_identity_card(admin_ctx):
 
     assert response.status_code == HTTPStatus.OK
     content = response.content.decode()
-    assert target.email in content
-    # The existing-user message, not the brand-new-email warning.
+    # The identity-card branch rendered: the @username line and the
+    # existing-account wording are both specific to ``{% if invitee_user %}``.
+    assert f"@{target.username}" in content
     assert "make this user a member" in content
-    assert "does not currently have a Validibot account" not in content
-    # Confirmation only — no invite persisted at this stage.
-    assert not MemberInvite.objects.filter(org=org).exists()
+    # Confirmation only — the dialog persisted no NEW invite beyond the prior
+    # one we created in setup.
+    assert MemberInvite.objects.filter(org=org, invitee_user=target).count() == 1
 
 
-def test_confirm_unknown_email_renders_signup_notice(admin_ctx):
-    """A brand-new email yields the 'no account yet' warning, no invite yet.
+def test_confirm_raw_email_renders_neutral_send_notice(admin_ctx):
+    """A raw-typed address yields a neutral 'will be sent' notice, no invite yet.
 
-    This is the case the whole fix exists for: the admin must understand
-    that the invitee has no account and will be emailed a sign-up link,
-    not handed in-app access immediately.
+    The dialog must NOT assert whether the address has an account — doing so
+    would be the enumeration oracle the fix removes. It confirms only that an
+    invitation will be sent (and, if there's no account yet, a sign-up link
+    follows). Nothing is persisted at this stage.
     """
     client, org, _admin = admin_ctx
 
@@ -154,19 +174,24 @@ def test_confirm_unknown_email_renders_signup_notice(admin_ctx):
 
     assert response.status_code == HTTPStatus.OK
     content = response.content.decode()
-    assert "does not currently have a Validibot account" in content
+    assert "An invitation will be sent to" in content
     assert "stranger@example.com" in content
+    # No claim about whether the address has an account, in either direction.
+    assert "does not currently have a Validibot account" not in content
     assert not MemberInvite.objects.filter(org=org).exists()
 
 
-def test_confirm_resolves_existing_user_typed_by_email(admin_ctx):
-    """Typing an existing user's email (no type-ahead pick) still resolves them.
+def test_confirm_typed_email_of_existing_user_stays_opaque(admin_ctx):
+    """Typing an existing user's email must NOT reveal that account's identity.
 
-    Without resolution the dialog would wrongly claim the address "does
-    not exist" whenever the admin typed a known email but didn't click
-    the radio — and the invite would take the email-to-sign-up branch for
-    someone who can already accept in-app. Resolving by email keeps the
-    dialog honest and routes the invite correctly.
+    This is the account-enumeration guard at the view layer. If typing a raw
+    address resolved it and the dialog showed the matched account, an admin
+    could probe arbitrary emails to learn whether each has a Validibot account
+    and whose it is. We type a *known* user's exact email (with no type-ahead
+    pick) and assert the dialog shows only the neutral send notice — never that
+    user's @username/identity card. The existing-account binding still happens,
+    but server-side in ``save`` where it is not surfaced (covered by
+    ``test_invite_no_account_enumeration``).
     """
     client, _org, _admin = admin_ctx
     target = UserFactory()
@@ -174,7 +199,7 @@ def test_confirm_resolves_existing_user_typed_by_email(admin_ctx):
     response = client.post(
         reverse("members:invite_confirm"),
         {
-            "search": target.email,  # typed address, no radio selection
+            "search": target.email,  # typed address, no type-ahead pick
             "invitee_email": "",
             "roles": [RoleCode.WORKFLOW_VIEWER],
         },
@@ -182,8 +207,11 @@ def test_confirm_resolves_existing_user_typed_by_email(admin_ctx):
 
     assert response.status_code == HTTPStatus.OK
     content = response.content.decode()
-    assert target.username in content
-    assert "does not currently have a Validibot account" not in content
+    # The account exists, but the dialog must disclose neither its identity card
+    # nor the existing-account wording.
+    assert f"@{target.username}" not in content
+    assert "make this user a member" not in content
+    assert "An invitation will be sent to" in content
 
 
 def test_confirm_blocks_existing_member(admin_ctx):
@@ -191,11 +219,22 @@ def test_confirm_blocks_existing_member(admin_ctx):
 
     The confirmation would otherwise promise to "make this user a member"
     when they already are, and accepting would be a confusing near no-op.
-    Guarding at the form keeps the dialog truthful.
+    Guarding at the form keeps the dialog truthful. We make the member a known
+    (previously-invited) user so the picked PK resolves under the scoped
+    lookup; the active-membership check is then what blocks the re-invite.
     """
-    client, org, _admin = admin_ctx
+    client, org, admin = admin_ctx
     member = UserFactory(orgs=[org])
     grant_role(member, org, RoleCode.EXECUTOR)
+    MemberInvite.create_with_expiry(
+        org=org,
+        inviter=admin,
+        invitee_user=member,
+        invitee_email=member.email,
+        roles=[RoleCode.WORKFLOW_VIEWER],
+        expires_at=timezone.now() + timedelta(days=7),
+        send_email=False,
+    )
 
     response = client.post(
         reverse("members:invite_confirm"),

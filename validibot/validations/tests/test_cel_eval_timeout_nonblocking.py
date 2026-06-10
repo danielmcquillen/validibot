@@ -2,23 +2,24 @@
 
 WHY THIS SUITE EXISTS
 ---------------------
-``evaluate_cel_expression`` arms a per-call ``ThreadPoolExecutor`` timeout so a
-slow CEL evaluation cannot pin a request thread forever. A CPU-bound CEL
+``evaluate_cel_expression`` bounds each CEL evaluation with a wall-clock timeout
+so a slow evaluation cannot pin a request thread forever. A CPU-bound CEL
 evaluation holds the GIL and cannot be interrupted from the outside, so the
-worker thread keeps running after the timeout fires. The bug this suite guards
-against is that the original code wrapped the executor in a ``with`` block,
-whose ``__exit__`` calls ``shutdown(wait=True)`` — which *re-blocks* the
-request thread on the still-running worker, defeating the whole point of the
-timeout. The request thread would only return once the runaway worker finished.
+worker keeps running after the timeout fires. The contract this suite guards is
+that hitting the timeout returns control to the request thread *immediately*
+rather than waiting on the un-killable worker — the regression being any change
+that re-blocks on the worker (for example a ``shutdown(wait=True)`` on the
+timeout path), which would make the request thread return only once the runaway
+worker finished.
 
-The fix is to manage the executor explicitly and, on timeout, call
-``executor.shutdown(wait=False, cancel_futures=True)`` so the request thread
-returns immediately while the orphaned worker drains in the background.
-
-These tests prove the *liveness* contract: a hung evaluation surfaces as a
-timeout result promptly, regardless of how long the worker keeps running. We
-simulate the un-interruptible worker with a ``threading.Event`` the test
-controls, so the assertion does not depend on real wall-clock CEL cost.
+Evaluation runs on a shared, process-wide bounded thread pool
+(``validibot.validations._bounded_eval``): on timeout the helper stops waiting
+on the future and raises ``ExpressionEvaluationTimeoutError``, while the orphaned
+worker drains on a pool thread in the background. These tests prove that
+*liveness* contract — a hung evaluation surfaces as a timeout result promptly,
+regardless of how long the worker keeps running. We simulate the
+un-interruptible worker with a ``threading.Event`` the test controls, so the
+assertion does not depend on real wall-clock CEL cost.
 """
 
 from __future__ import annotations

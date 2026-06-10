@@ -135,9 +135,12 @@ class TestVerifyPaymentReturnsConfirmedFields:
 class TestConfirmOrReject:
     """``_confirm_or_reject`` is the fail-closed assertion gate.
 
-    These tests pin the three branches that matter for the fix: a matching
-    confirmed value is forwarded, a mismatching one is rejected, and an omitted
-    one falls back to config (so we never reject a sparse-but-valid receipt).
+    These tests pin the branches that matter for the fix: a matching confirmed
+    value is forwarded, a mismatching one is rejected, an omitted *non-required*
+    field falls back to config (so we never reject a sparse-but-valid receipt
+    over a missing ``network`` echo), and an omitted *required* field
+    (``pay_to`` / ``amount``) is itself rejected — fail closed on the fields
+    that actually move money.
     """
 
     def test_mismatch_rejects_fail_closed(self):
@@ -172,18 +175,41 @@ class TestConfirmOrReject:
         )
         assert result == EXPECTED_PAY_TO.upper()
 
-    def test_omitted_field_falls_back_to_expected(self):
-        """A ``None`` confirmed value falls back to the configured expectation.
+    def test_omitted_non_required_field_falls_back_to_expected(self):
+        """An omitted *non-required* field falls back to the configured value.
 
-        When the facilitator omits a field we degrade gracefully rather than
-        failing the whole payment — but we return the expected value so the
-        downstream forward is still well-formed (the omission is logged by the
-        production code as a weaker-verification signal).
+        Settlement-critical fields pass ``required=True`` at the call site and
+        are rejected when omitted (see
+        ``test_required_omitted_field_rejects_fail_closed``). For the remaining
+        fields (e.g. ``network``) we degrade gracefully rather than failing the
+        whole payment when the facilitator omits the echo — returning the
+        expected value so the downstream forward stays well-formed (the
+        omission is logged by the production code as a weaker-verification
+        signal).
         """
         result = _confirm_or_reject(
             confirmed=None,
-            expected=EXPECTED_PAY_TO,
-            field="pay_to",
-            case_insensitive=True,
+            expected="eip155:8453",
+            field="network",
         )
-        assert result == EXPECTED_PAY_TO
+        assert result == "eip155:8453"
+
+    def test_required_omitted_field_rejects_fail_closed(self):
+        """An omitted *required* field must raise (fail closed), not fall back.
+
+        ``pay_to`` and ``amount`` are the settlement-critical fields a
+        compromised or misconfigured facilitator could use to divert funds or
+        accept underpayment. When the facilitator returns no confirmation for
+        them, substituting this server's expected value would re-create the
+        tautological comparison the whole fix exists to remove — so we refuse to
+        create the run instead. This pins that ``required=True`` turns an
+        omission into a hard rejection.
+        """
+        with pytest.raises(PaymentInvalidError):
+            _confirm_or_reject(
+                confirmed=None,
+                expected=EXPECTED_PAY_TO,
+                field="pay_to",
+                case_insensitive=True,
+                required=True,
+            )

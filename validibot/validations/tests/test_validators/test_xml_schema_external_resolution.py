@@ -116,3 +116,79 @@ def test_legitimate_self_contained_xsd_still_compiles_and_validates() -> None:
     # compiled schema is real and functional, not a neutered no-op.
     assert schema.validate(etree.fromstring(b"<doc>hello</doc>")) is True
     assert schema.validate(etree.fromstring(b"<other/>")) is False
+
+
+# ---------------------------------------------------------------------------
+# DTD external-subset resolution
+#
+# ``etree.DTD()`` accepts no ``parser`` argument, so the blocking resolver used
+# for XSD/RelaxNG cannot be attached to it directly. A DTD whose text declares
+# an external *parameter entity* and references it would otherwise be
+# dereferenced at compile time (local-file disclosure / SSRF). The fix gates the
+# DTD by parsing it as the internal subset of a throwaway document through the
+# hardened resolver+parser before building the real validator. These tests pin
+# that the gate blocks the external fetch yet leaves self-contained DTDs working.
+# ---------------------------------------------------------------------------
+
+
+def test_malicious_dtd_external_parameter_entity_does_not_disclose_local_file() -> None:
+    """A DTD external parameter entity must not read or leak local file content.
+
+    DTD validation was the one schema type the original hardening left on the
+    bare path: ``etree.DTD(io.BytesIO(raw))`` still dereferenced an external
+    parameter entity. We write a real file containing a secret marker and feed
+    ``_load_schema`` a DTD that pulls it in via ``<!ENTITY % ext SYSTEM
+    "file://...">`` + ``%ext;``. The gate must refuse the fetch (raising) and
+    never expose the file's contents through the error surface — the disclosure
+    channel an attacker would probe the server's filesystem through.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        secret_path = Path(tmp) / "secret.dtd"
+        # A syntactically valid external DTD subset, so the ONLY thing stopping
+        # the fetch is the blocking resolver — proving the block, not an
+        # incidental parse error.
+        secret_path.write_text(
+            f"<!-- {SECRET_MARKER} -->\n<!ELEMENT leaked EMPTY>",
+            encoding="utf-8",
+        )
+
+        malicious_dtd = (
+            f'<!ENTITY % ext SYSTEM "file://{secret_path}">\n'
+            "%ext;\n"
+            "<!ELEMENT doc (#PCDATA)>"
+        )
+
+        # Compilation must NOT succeed: the gate resolves the external
+        # parameter entity through the blocking resolver, which raises rather
+        # than reading the file. (If it ever returns a DTD, the external subset
+        # resolved == leak.)
+        with pytest.raises(Exception) as exc_info:  # noqa: PT011
+            XmlSchemaValidator()._load_schema(
+                schema_type=XMLSchemaType.DTD.name,
+                raw=malicious_dtd,
+            )
+
+        assert SECRET_MARKER not in str(exc_info.value)
+
+
+def test_legitimate_self_contained_dtd_still_compiles_and_validates() -> None:
+    """Hardening must not break normal, self-contained DTDs.
+
+    The DTD gate only blocks *external* references; a DTD with only inline
+    element declarations must still compile and validate instances exactly as
+    before, so the fix cannot become a denial of service for legitimate DTD
+    rulesets.
+    """
+    from lxml import etree
+
+    good_dtd = "<!ELEMENT doc (#PCDATA)>"
+
+    schema = XmlSchemaValidator()._load_schema(
+        schema_type=XMLSchemaType.DTD.name,
+        raw=good_dtd,
+    )
+
+    # A matching instance validates; an undeclared element does not — proving
+    # the compiled DTD is real and functional, not a neutered no-op.
+    assert schema.validate(etree.fromstring(b"<doc>hello</doc>")) is True
+    assert schema.validate(etree.fromstring(b"<other/>")) is False

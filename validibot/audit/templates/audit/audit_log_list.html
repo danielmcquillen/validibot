@@ -35,11 +35,6 @@
 
     <div class="app-content-body flex-grow-1">
 
-      {# ── Filter form ────────────────────────────────────────── #}
-      {# Plain HTML form (not django-crispy) so the rendered markup #}
-      {# stays legible in ``view-source`` and easy for test client   #}
-      {# scraping. All filters are GET-bound; the form posts to the  #}
-      {# same URL with the filter values in the query string.        #}
       <form method="get"
             class="card mb-3"
             aria-label="{% trans 'Audit log filters' %}">
@@ -119,9 +114,6 @@
               {% trans "Clear" %}
             </a>
             <div class="ms-auto d-flex gap-2">
-              {# "Export current view" — the querystring carries the #}
-              {# same filters so the export mirrors the on-screen    #}
-              {# result set.                                          #}
               <a class="btn btn-sm btn-outline-primary"
                  href="{% url 'audit:export' %}?format=csv{% if export_querystring %}&amp;{{ export_querystring }}{% endif %}">
                 <i class="bi bi-filetype-csv me-1"></i>{% trans "Export CSV" %}

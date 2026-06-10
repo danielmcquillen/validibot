@@ -97,11 +97,13 @@ Context:
                 {% if signal.source_data_path %}
                   <code class="small text-muted" style="word-break: break-all;">{{ signal.source_data_path }}</code>
                 {% elif signal.validator_managed %}
-                  {# Parser-extracted facts (and other source_kind=INTERNAL
+                  {% comment %}
+                   Parser-extracted facts (and other source_kind=INTERNAL
                    inputs) don't need an author-supplied source path —
                    the validator provides the value. Show this clearly
                    instead of "Not mapped" (which would imply the author
-                   needs to wire it up). Per ADR-2026-05-22b. #}
+                   needs to wire it up). Per ADR-2026-05-22b.
+                  {% endcomment %}
                   <span class="text-muted small fst-italic">{% trans "Provided by validator" %}</span>
                 {% else %}
                   <span class="text-muted small">{% trans "Not mapped" %}</span>

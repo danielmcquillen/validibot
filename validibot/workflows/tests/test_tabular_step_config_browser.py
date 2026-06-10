@@ -17,6 +17,7 @@ from django.conf import settings
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.urls import reverse
 from selenium import webdriver
+from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as ec
@@ -293,6 +294,71 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
         self.assertTrue(
             self.driver.find_element(By.LINK_TEXT, "Edit Signals"),
         )
+
+    def test_stage_add_buttons_use_plus_labels_and_bootstrap_tooltips(self):
+        """Compact stage actions must remain clear to pointer and screen readers."""
+        edit_path = reverse(
+            "workflows:workflow_step_edit",
+            kwargs={"pk": self.workflow.pk, "step_id": self.step.pk},
+        )
+        self.driver.get(f"{self.live_server_url}{edit_path}")
+
+        stage_labels = {
+            "dataset": "Add dataset assertion",
+            "row": "Add row assertion",
+            "column": "Add column assertion",
+        }
+        wrappers = {}
+        for stage, label in stage_labels.items():
+            button = self.wait.until(
+                ec.presence_of_element_located(
+                    (
+                        By.CSS_SELECTOR,
+                        (
+                            f'[data-tabular-assertion-stage="{stage}"] '
+                            f'button[aria-label="{label}"]'
+                        ),
+                    ),
+                ),
+            )
+            wrapper = button.find_element(By.XPATH, "..")
+            wrappers[stage] = wrapper
+
+            visible_text = self.driver.execute_script(
+                """
+                const button = arguments[0];
+                const plus = button.querySelector('[aria-hidden="true"]');
+                const label = button.querySelector('.visually-hidden');
+                const labelRect = label.getBoundingClientRect();
+                return {
+                  plus: plus.textContent.trim(),
+                  label: label.textContent.trim(),
+                  labelPosition: getComputedStyle(label).position,
+                  labelWidth: labelRect.width,
+                  labelHeight: labelRect.height,
+                };
+                """,
+                button,
+            )
+            self.assertEqual(visible_text["plus"], "+")
+            self.assertEqual(visible_text["label"], label)
+            self.assertEqual(visible_text["labelPosition"], "absolute")
+            self.assertLessEqual(visible_text["labelWidth"], 1)
+            self.assertLessEqual(visible_text["labelHeight"], 1)
+            self.assertEqual(button.get_attribute("data-bs-toggle"), "modal")
+            self.assertEqual(wrapper.get_attribute("data-bs-toggle"), "tooltip")
+            self.assertEqual(
+                wrapper.get_attribute("data-bs-original-title"),
+                label,
+            )
+
+        ActionChains(self.driver).move_to_element(wrappers["dataset"]).perform()
+        tooltip = self.wait.until(
+            ec.visibility_of_element_located(
+                (By.CSS_SELECTOR, ".tooltip.show .tooltip-inner"),
+            ),
+        )
+        self.assertEqual(tooltip.text.strip(), stage_labels["dataset"])
 
     def test_column_controls_update_focus_order_constraints_and_keys(self):
         """Add, reorder, retag, key, and remove a column through the browser.

@@ -2096,6 +2096,21 @@ class WorkflowInvite(TimeStampedModel):
             msg = "No user provided to accept invite"
             raise ValueError(msg)
 
+        # SECURITY INVARIANT: a *bound* invite (``invitee_user`` set) may only
+        # be redeemed by that exact account. The token-acceptance views check
+        # email ownership only for *unbound* (email-only) invites, and the
+        # post-signup adapter does the same — so without this model-level guard
+        # a logged-in User A holding a link to an invite bound to User B could
+        # call ``accept(user=A)`` and be granted B's workflow access
+        # (cross-account escalation). Enforcing it here covers every acceptance
+        # surface — token view, signup adapter, notification view — at the one
+        # chokepoint they all funnel through. Unbound invites
+        # (``invitee_user_id`` falsy) are intentionally exempt: their correct
+        # gate is email ownership, enforced by the callers.
+        if self.invitee_user_id and accepting_user.pk != self.invitee_user_id:
+            msg = "This invite is addressed to a different user."
+            raise ValueError(msg)
+
         # Create the access grant
         grant, _created = WorkflowAccessGrant.objects.get_or_create(
             workflow=self.workflow,
@@ -2379,6 +2394,15 @@ class GuestInvite(TimeStampedModel):
         accepting_user = user or self.invitee_user
         if not accepting_user:
             msg = "No user provided to accept invite"
+            raise ValueError(msg)
+
+        # SECURITY INVARIANT: see ``WorkflowInvite.accept`` — a bound guest
+        # invite (``invitee_user`` set) may only be redeemed by that exact
+        # account, so a leaked/forwarded link cannot grant another person's
+        # org guest access to whoever opens it. Unbound (email-only) invites
+        # are exempt; their gate is email ownership, enforced by the callers.
+        if self.invitee_user_id and accepting_user.pk != self.invitee_user_id:
+            msg = "This invite is addressed to a different user."
             raise ValueError(msg)
 
         if self.scope == GuestInvite.Scope.ALL:

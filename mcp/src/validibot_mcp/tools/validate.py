@@ -54,6 +54,7 @@ def _confirm_or_reject(
     expected: str,
     field: str,
     case_insensitive: bool = False,
+    required: bool = False,
 ) -> str:
     """Assert a facilitator-confirmed field equals this server's expectation.
 
@@ -61,9 +62,13 @@ def _confirm_or_reject(
     (``pay_to`` / ``network`` / ``asset`` / ``amount``) against the value this
     MCP server is configured to expect. On a mismatch it raises
     :class:`PaymentInvalidError` (fail closed). When the facilitator omitted
-    the field (``confirmed is None``) it logs a warning and falls back to the
-    expected value so a sparse-but-valid facilitator response is not rejected
-    outright.
+    the field (``confirmed is None``) the behaviour depends on ``required``:
+    a settlement-critical field (``required=True``, used for ``pay_to`` and
+    ``amount``) is rejected outright — we will not create a paid run whose
+    destination wallet or paid amount cannot be independently confirmed — while
+    a non-critical field falls back to the expected value with a warning so a
+    sparse-but-valid facilitator response is not rejected over, say, a missing
+    ``network`` echo.
 
     WHY: The facilitator is an independent trust boundary. Asserting the
     confirmed value here — before any run is created — closes the gap where a
@@ -80,20 +85,39 @@ def _confirm_or_reject(
         case_insensitive: When ``True``, compare case-insensitively. EVM
             addresses (pay-to, asset contract) are written in EIP-55 mixed
             case but the underlying bytes are equivalent.
+        required: When ``True``, an omitted (``None``) confirmation is treated
+            as a verification failure and rejected (fail closed) rather than
+            substituted with ``expected``. Use for settlement-critical fields
+            where a missing confirmation must not be papered over (``pay_to``,
+            ``amount``).
 
     Returns:
         The value to forward to Django — ``confirmed`` when present, else
-        ``expected``.
+        ``expected`` (only reachable for non-required fields).
 
     Raises:
         PaymentInvalidError: If ``confirmed`` is present but does not equal
-            ``expected`` (fail closed).
+            ``expected``; or if ``confirmed`` is ``None`` and ``required`` is
+            ``True`` (both fail closed).
     """
     if confirmed is None:
+        if required:
+            logger.warning(
+                "x402 facilitator omitted confirmed %s; rejecting payment "
+                "(fail closed) — a paid run will not be created without an "
+                "independently confirmed value for this settlement-critical "
+                "field.",
+                field,
+            )
+            raise PaymentInvalidError(
+                "x402 payment verification failed: the facilitator did not "
+                f"return a confirmed {field}, so settlement to the expected "
+                "destination/amount cannot be independently verified.",
+            )
         logger.warning(
             "x402 facilitator omitted confirmed %s; falling back to "
-            "configured value %r. Downstream pay-to verification is "
-            "weaker for this run.",
+            "configured value %r. Downstream verification is weaker for "
+            "this run.",
             field,
             expected,
         )
@@ -212,6 +236,9 @@ async def _validate_x402(
         expected=settings.x402_pay_to_address,
         field="pay_to",
         case_insensitive=True,
+        # The destination wallet is THE field a compromised/misconfigured
+        # facilitator would alter to divert funds — never accept it unconfirmed.
+        required=True,
     )
     confirmed_network = _confirm_or_reject(
         confirmed=verified.network,
@@ -228,6 +255,8 @@ async def _validate_x402(
         confirmed=verified.amount,
         expected=expected_amount,
         field="amount",
+        # Underpayment must not slip through on a missing amount echo.
+        required=True,
     )
 
     result = await client.create_agent_run(

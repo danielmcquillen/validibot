@@ -329,9 +329,38 @@ class XmlSchemaValidator(BaseValidator):
                 etree.XML(raw.encode("utf-8"), parser=schema_parser),
             )
         if schema_type == XMLSchemaType.DTD.name:
-            # DTDs have no ``schemaLocation`` imports, but reading the bytes via
-            # ``BytesIO`` keeps the no-network/no-entity posture consistent and
-            # avoids lxml's bare DTD external-subset resolution.
+            # ``etree.DTD()`` accepts no ``parser`` argument, so the
+            # ``_BlockExternalResolver`` above cannot be attached to it the way
+            # it is for XSD/RelaxNG. That gap is exploitable: a DTD whose text
+            # declares an external *parameter entity* and then references it —
+            # ``<!ENTITY % x SYSTEM "file:///etc/passwd"> %x;`` — makes lxml
+            # dereference that URL while compiling the DTD (local-file
+            # disclosure / SSRF). Reading the bytes through ``BytesIO`` does
+            # NOT prevent this; the external subset is still fetched.
+            #
+            # So gate the DTD first: parse its text as the *internal subset* of
+            # a throwaway document using a parser that DOES carry the blocking
+            # resolver. ``load_dtd=True`` makes libxml2 actually process the
+            # subset — including any external parameter-entity references — so
+            # an attempt to dereference an external resource fires
+            # ``_BlockExternalResolver`` and raises here (the caller turns that
+            # into a clean validation error rather than a 500). Only once the
+            # gate proves the DTD is self-contained do we build the real
+            # validator the original way: by then there is provably nothing
+            # external left for it to fetch. A malformed DTD also raises at the
+            # gate, which is the desired fail-closed behaviour.
+            dtd_guard_parser = etree.XMLParser(
+                resolve_entities=False,
+                no_network=True,
+                load_dtd=True,
+            )
+            dtd_guard_parser.resolvers.add(_BlockExternalResolver())
+            dtd_probe = (
+                b"<!DOCTYPE _vb_dtd_probe [\n"
+                + raw.encode("utf-8")
+                + b"\n]>\n<_vb_dtd_probe/>"
+            )
+            etree.fromstring(dtd_probe, parser=dtd_guard_parser)
             return etree.DTD(io.BytesIO(raw.encode("utf-8")))
         raise ValueError(_("Unsupported XML schema type: ") + schema_type)
 

@@ -65,6 +65,12 @@ class OrganizationViewSet(ReadOnlyModelViewSet):
         1. They have an active membership in the organization, OR
         2. They have an active WorkflowAccessGrant for any workflow in the org
         """
+        # drf-spectacular introspects the view with no real request; an
+        # empty queryset lets it derive the model and path-parameter
+        # types without touching request.user.
+        if getattr(self, "swagger_fake_view", False):
+            return Organization.objects.none()
+
         user = self.request.user
 
         # Orgs via active membership

@@ -16,6 +16,11 @@ repos:
       - id: check-toml
       - id: check-xml
       - id: check-yaml
+        # mkdocs configs use pymdownx's `!!python/name:` YAML tag (for the
+        # mermaid custom fence), which a safe YAML load can't construct.
+        # `--unsafe` downgrades this hook to a syntax-only check for all
+        # YAML, so scope the exception to the mkdocs configs alone.
+        exclude: '^mkdocs.*\.yml$'
       - id: debug-statements
       - id: check-builtin-literals
       - id: check-case-conflict

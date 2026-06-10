@@ -33,7 +33,7 @@ The names differ a little between validators and actions, but the moving parts a
 | Declarative definition | `ValidatorConfig` | `ActionDescriptor` |
 | Startup entry point | `ValidationsConfig.ready()` | `ActionsConfig.ready()` plus any installed commercial app's `ready()` |
 | Runtime registry purpose | resolve validator classes and metadata | resolve action models, forms, handlers, and metadata |
-| Database sync target | `Validator`, `SignalDefinition`, `Derivation` | `ActionDefinition` |
+| Database sync target | `Validator`, `StepIODefinition`, `Derivation` | `ActionDefinition` |
 | Main sync command | `sync_validators` | `seed_default_actions` or `setup_validibot` |
 
 The main difference is that validators carry more catalog metadata than actions. A validator declaration does not just say "this validator exists." It also says what signals and derivations it exposes, which file types it supports, and which optional editor cards it adds. Action declarations are simpler. They mainly identify the action, its feature gate, and the runtime classes needed to edit and execute it.
@@ -52,7 +52,7 @@ At startup, `ValidationsConfig.ready()` calls `register_validators()`, which dis
 After startup, `sync_validators` turns those Python declarations into database rows:
 
 - `Validator`
-- `SignalDefinition`
+- `StepIODefinition`
 - `Derivation`
 
 That is why a new validator usually requires both halves:

@@ -660,6 +660,10 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "SCHEMA_PATH_PREFIX": "/api/",
+    # Keep service-to-service routes (the /api/v1/mcp/* helper surface) out
+    # of the user-facing reference — they reject user API keys by design.
+    # See config/schema.py for the rationale.
+    "PREPROCESSING_HOOKS": ["config.schema.exclude_internal_paths"],
     # Serve Swagger UI and ReDoc assets locally via sidecar (fixes encoding issues,
     # works offline, avoids CDN dependencies)
     "SWAGGER_UI_DIST": "SIDECAR",

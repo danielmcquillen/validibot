@@ -15,15 +15,16 @@ The category prefix never changes — once a check ID is published, it is a stab
 
 | Range  | Category                      | Examples of what's checked                                |
 | ------ | ----------------------------- | --------------------------------------------------------- |
-| `VB0xx` | Doctor framework / version    | Schema version, environment metadata, target / stage      |
-| `VB1xx` | Core Django configuration     | `DEBUG`, `ALLOWED_HOSTS`, `SECRET_KEY`, time zone         |
-| `VB2xx` | Security headers / transport  | HSTS, CSP, CSRF trusted origins, SSL redirect             |
-| `VB3xx` | Database / migrations         | Connection, applied migrations, postgres version          |
-| `VB4xx` | Backups / restore drills      | Backup rotation, restore-drill recency, archive integrity |
-| `VB5xx` | Auth / OIDC / sessions        | OIDC keys, signing key, session backend                   |
-| `VB6xx` | Storage / media               | `DATA_STORAGE_ROOT`, GCS bucket reachability              |
-| `VB7xx` | Validators                    | Validator-backend image policy, system validators present |
-| `VB8xx` | Provider-specific (e.g. GCP)  | DigitalOcean droplet metadata, GCP project + region       |
+| `VB0xx` | Settings / configuration      | `DEBUG`, `SECRET_KEY`, `ALLOWED_HOSTS`, CSRF origins, admin URL, secure cookies, OS version |
+| `VB1xx` | Database                      | Connection, applied migrations, Postgres version          |
+| `VB2xx` | Storage                       | Media/data storage configuration and reachability         |
+| `VB3xx` | Docker / containers           | Docker reachable, version, installation source            |
+| `VB4xx` | Background tasks / backups    | Celery broker, Beat schedules, restore-test recency       |
+| `VB5xx` | Cache                         | Cache backend configured and reachable                    |
+| `VB6xx` | Email                         | Email backend configuration                               |
+| `VB7xx` | Validators                    | System validators present/enabled, backend image policy   |
+| `VB8xx` | Site / roles / initial data   | Site object + domain, role seeding                        |
+| `VB9xx` | Network / provider            | DNS, volume mounts, monitoring agent (e.g. DigitalOcean)  |
 
 Run `validibot doctor --json | jq '.checks[].id'` against a working install to enumerate the live IDs in your release.
 
@@ -42,14 +43,14 @@ Every check returns one of five severities (plus `skipped`):
 - `ok` — the deployment satisfies this check.
 - `info` — informational, no action recommended.
 - `warn` — a soft issue; passes by default but `--strict` promotes it to a failure.
-- `error` — a real problem; doctor exits with code 1.
-- `critical` — security-relevant problem; doctor exits with code 1 and the message is shown more prominently.
+- `error` — a real problem; doctor exits non-zero.
+- `fatal` — reserved for problems that invalidate the whole run (e.g. a commercial app named in `INSTALLED_APPS` whose package isn't installed); exits non-zero.
 - `skipped` — the check could not run (missing prerequisite, environment-gated, etc.).
 
 The doctor's exit code is:
 
 - `0` — every check is `ok`, `info`, or `skipped` (or `warn` without `--strict`)
-- `1` — at least one `error`/`critical` (or `warn` with `--strict`)
+- non-zero — at least one `error`/`fatal` (or `warn` with `--strict`)
 
 ## Adding a new check ID
 

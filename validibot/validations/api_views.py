@@ -81,6 +81,12 @@ class OrgScopedRunViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         - Own access: only runs created by the user
         - Default: only last 30 days unless ?all=1 or explicit date filter
         """
+        # drf-spectacular introspects the view with no real request or
+        # URL kwargs; an empty queryset lets it derive the model and
+        # path-parameter types without resolving the org.
+        if getattr(self, "swagger_fake_view", False):
+            return ValidationRun.objects.none()
+
         user = self.request.user
         org = self.get_org()
 

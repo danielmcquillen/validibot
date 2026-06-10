@@ -96,10 +96,11 @@ package and run its license-registration hook. Do not patch
 `config/settings/base.py` directly (that makes upgrades messier);
 the dedicated settings module is the supported path.
 
-For Enterprise, use the same pattern with a forthcoming
-`config.settings.local_enterprise` module (or stack two modules via
-`DJANGO_SETTINGS_MODULE=config.settings.local_enterprise` which will
-append both `validibot_pro` and `validibot_enterprise`).
+Enterprise will follow the same pattern when its settings module
+lands (a `config.settings.local_enterprise` that appends both
+`validibot_pro` and `validibot_enterprise`). That module doesn't
+exist yet — today the supported tiers for local development are
+community (`local`) and Pro (`local_pro`).
 
 ## Include the MCP server
 

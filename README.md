@@ -36,6 +36,31 @@ Validibot is composed of several repositories that work together:
 | **[validibot-validator-backends](https://github.com/danielmcquillen/validibot-validator-backends)** | Validator backends for advanced validators (EnergyPlus™, FMU) — run as isolated Docker containers      | MIT      |
 | **[validibot-shared](https://github.com/danielmcquillen/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators                | MIT      |
 
+How they fit together:
+
+```mermaid
+flowchart LR
+    subgraph this["validibot (this repo, AGPL)"]
+        django["Django app<br/>workflows · validators · findings · REST API"]
+        mcpsrv["mcp/ — FastMCP server<br/>for AI agents"]
+    end
+
+    shared["validibot-shared<br/>(PyPI library)"]
+    backends["validibot-validator-backends<br/>(advanced validator containers)"]
+    cli["validibot-cli"]
+    commercial["validibot-pro / -enterprise<br/>(commercial activation layers)"]
+
+    cli -- "REST" --> django
+    mcpsrv -- "REST" --> django
+    django -- "dispatches advanced runs to" --> backends
+    django -- "uses" --> shared
+    backends -- "use" --> shared
+    commercial -. "unlock gated features" .-> django
+```
+
+The full, annotated version of this diagram lives in the
+[developer docs](https://dev.validibot.com/).
+
 ---
 
 ## What is Validibot?
@@ -276,14 +301,14 @@ uv run pytest
 uv run ruff check
 ```
 
-See the [Developer Guide](https://dev.validibot.com/setup) for complete instructions.
+See the [Developer Docs](https://dev.validibot.com/) for complete instructions.
 
 ## Roadmap
 
 Track our progress and upcoming features:
 
 - [GitHub Issues & Milestones](https://github.com/danielmcquillen/validibot/milestones)
-- [Changelog](CHANGELOG.md)
+- [Release Notes](https://github.com/danielmcquillen/validibot/releases)
 
 ## Acknowledgments
 

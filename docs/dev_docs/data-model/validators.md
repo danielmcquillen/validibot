@@ -54,48 +54,69 @@ Older versions stay addressable through hidden manual routes:
 Older version detail pages are read-only. Workflow steps are not rewritten when a newer validator
 version appears; each step remains pinned to the exact `Validator` FK it was configured with.
 
-## Catalog entries (signals, outputs, derivations)
+## Catalog entries (step inputs, step outputs, derivations)
 
-Validators own the canonical catalog describing what the validator can read or emit. Catalog
-rows live in `validator_catalog_entries` and carry:
+Validators own the canonical catalog describing what the validator can read or emit. The catalog
+is stored across two models:
 
-| Field            | Meaning                                                                                                                                  |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `entry_type`     | `signal` or `derivation`.                                                                                                                |
-| `run_stage`      | Whether the entry is available during the **input** phase (before the validator runs) or the **output** phase (after the validator completes). |
-| `slug`           | Stable identifier referenced by rulesets and assertions.                                                                                 |
-| `data_type`      | Scalar/list metadata (number, datetime, bool, series).                                                                                   |
-| `binding_config` | Provider-specific hints (e.g., EnergyPlus meter path).                                                                                   |
-| `metadata`       | Free-form JSON used by the UI and provider tooling.                                                                                      |
+- **`StepIODefinition`** — one row per step input or step output (the values that surface in the
+  `i.*` and `o.*` CEL namespaces). The legacy database table name
+  (`validations_signaldefinition`) is preserved via `Meta.db_table`; only the Python class was
+  renamed.
+- **`Derivation`** — one row per computed value, defined by a CEL expression over signals and
+  other derivations.
 
-Inputs represent values already available before the validator runs (project metadata, uploaded files,
-environment). Outputs represent telemetry the validator emits during execution. Derivations describe
-computed metrics, and their `run_stage` flag indicates whether they enrich inputs or post-process
-validator outputs. By centralising these definitions on the validator we let every ruleset reuse them without duplicating structure inside each default assertion. Workflow step authors can still define as many assertions as necessary by referencing the catalog slugs stored on the validator; see [Ruleset Assertions](assertions.md) for how those references are persisted and executed.
+Key fields on `StepIODefinition`:
+
+| Field                  | Meaning                                                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `contract_key`         | Stable, slug-safe identifier used in CEL expressions, the API, and data path bindings (e.g., `panel_area`).                      |
+| `native_name`          | The provider's original name, preserved verbatim (e.g., an FMU variable name or an EnergyPlus template placeholder).             |
+| `direction`            | Whether the row is a step **input** (available before the validator runs) or a step **output** (produced by the run).            |
+| `data_type`            | Scalar/list metadata (number, datetime, bool, series).                                                                           |
+| `source_kind`          | How the value is obtained: `PAYLOAD_PATH` (read from a path in the submission) or `INTERNAL` (the validator computes it itself). |
+| `is_path_editable`     | Whether workflow authors can edit the source data path on the step's `StepInputBinding`.                                         |
+| `provider_binding`     | Validator-type-specific properties (e.g., FMU `causality`/`value_reference`, EnergyPlus template `min`/`max`/`choices`).         |
+| `promoted_signal_name` | Optional workflow-signal name when a step-owned row is promoted to the `s.*` namespace.                                          |
+| `on_missing`           | What to do when the source value is absent at runtime.                                                                           |
+| `metadata`             | Free-form JSON used by the UI and provider tooling.                                                                              |
+
+Every catalog row is owned by exactly one of a `Validator` (shared by all steps using that
+validator) or a `WorkflowStep` (per-step rows for FMU uploads, template scans, or
+author-customized signals) — an XOR constraint enforced by the model. Centralising these
+definitions lets every ruleset reuse them without duplicating structure inside each assertion;
+see [Signals](signals.md) for the full ownership and promotion story and
+[Ruleset Assertions](assertions.md) for how assertions reference them.
 Basic validators intentionally skip catalog management; every assertion directly references the custom
 target path the author entered.
 
 ## Validator default assertions (vs. workflow assertions)
 
-- **Default assertions**: logic defined on a validator itself (for example, default CEL expressions). Stored on `validator_catalog_rules` and can reference one or more catalog entries via `validator_catalog_rule_entries`. Default assertions are evaluated according to the validator’s ordering; deleting a default assertion cleans up its links.
-- **Step assertions**: logic defined on workflow steps against a ruleset. Stored separately and evaluated in workflow runs. Assertions are the only logic workflow authors manage today.
+- **Default assertions**: logic that ships with a validator itself (for example, default CEL expressions). These are ordinary `RulesetAssertion` rows attached to the validator's `default_ruleset` — a `Ruleset` that `Validator.ensure_default_ruleset()` creates on demand. They run on every step that uses the validator.
+- **Step assertions**: logic defined on workflow steps against the step's own ruleset. Stored separately and evaluated in workflow runs. Assertions are the only logic workflow authors manage today.
 
-Catalog entries cannot be deleted while referenced by default assertions; default assertions can be deleted at any time (links are removed).
+Both kinds use the same `RulesetAssertion` model and the same evaluators — the only difference is which ruleset they hang off. See [Ruleset Assertions](assertions.md) for the field-by-field breakdown.
 
 ## Custom validators
 
-Custom validators give organizations their own catalog on top of a base validation type. They live in
-the `custom_validators` table, linked back to a standard validator row. Authors can select a base type
-(initially Modelica or PyWinCalc) and then define:
+Custom validators let an organization publish its own validators in the validator library on top
+of a base validation type. Each one is a `CustomValidator` row (one-to-one with its `Validator`
+row), and `clean()` enforces that the linked validator's `validation_type` matches the recorded
+`base_validation_type`.
 
-1. Name, description, notes, and `custom_type`.
-2. All catalog entries (signals, derivations, helper metadata) that the validator should expose.
-3. Optional helper settings (instrumentation policy, provider config).
+Two authoring flows exist today:
 
-When saved, the system persists a new `validators` row plus any catalog entries the author provided.
-Rulesets that pick this custom validator automatically see the custom catalog, and the validator
-detail page shows who owns and maintains it. Custom validators stay scoped to the org that created
-them; system validators remain read-only.
+1. **Simple custom validators** — created through the library UI with a name, descriptions,
+   notes, a single supported data format (JSON or YAML), and an "allow custom data paths in
+   assertions" toggle. These are persisted with `custom_type=SIMPLE` and base type
+   `CUSTOM_VALIDATOR`; authors then add assertions against payload paths.
+2. **SHACL library validators** — created through the dedicated SHACL flow, which stores
+   shapes-related settings (inference mode, submission format, bundled standards) in the default
+   ruleset's metadata.
+
+When saved, the system persists a new `Validator` row owned by the org. Rulesets that pick the
+custom validator see its catalog, and the validator detail page shows who owns and maintains it.
+Custom validators stay scoped to the org that created them; system validators remain read-only.
 
 Catalog changes are versioned on the validator row. Editing the current custom-validator row updates
 the catalog for workflows that reference that row. Breaking catalog changes should be represented by a
@@ -190,7 +211,8 @@ validator is declared in one place:
   validator needs when dispatching containers.
 - **Display** — `icon` (Bootstrap Icons class) and `card_image` for the validator library UI.
 - **Catalog entries** — a list of `CatalogEntrySpec` objects describing signals, outputs, and
-  derivations the validator exposes. These map 1:1 to `ValidatorCatalogEntry` rows in the database.
+  derivations the validator exposes. These sync to `StepIODefinition` rows (signals) and
+  `Derivation` rows (computed values) in the database.
 - **Step editor cards** — a list of `StepEditorCardSpec` objects that inject custom UI cards
   into the workflow step detail page (see below).
 
@@ -363,7 +385,8 @@ edit each variable's annotations (label, default, type, constraints) via a per-v
    registry and the validator class registry are populated in a single pass.
 
 2. **DB sync** — the `sync_validators` management command reads from the config registry and
-   creates or updates `Validator` rows and their `ValidatorCatalogEntry` rows in the database.
+   creates or updates `Validator` rows and their `StepIODefinition` and `Derivation` rows in
+   the database.
    This runs at container startup and is idempotent. Custom validators are created separately
    through the Validator Library UI.
 

@@ -19,6 +19,45 @@ New to the codebase? Start here:
 
 ## Architecture
 
+How the pieces fit together — this is the canonical project-shape diagram
+(the README and the cloud repo's docs point here rather than drawing their
+own):
+
+```mermaid
+flowchart LR
+    subgraph community["validibot — community repo (AGPL)"]
+        django["Django app<br/>workflows · validators · findings · REST API"]
+        mcpapi["mcp_api<br/>/api/v1/mcp/* helper API"]
+        mcpsrv["mcp/<br/>FastMCP server (sibling project)"]
+    end
+
+    subgraph commercial["Thin commercial activation layers (private)"]
+        pro["validibot-pro<br/>Pro license + signing/JWKS"]
+        ent["validibot-enterprise<br/>Enterprise license + SSO"]
+    end
+
+    cloud["validibot-cloud (private)<br/>billing · metering · tenancy · x402 agent runs"]
+    shared["validibot-shared<br/>(PyPI library)"]
+    backends["validibot-validator-backends<br/>(advanced validator containers)"]
+    cli["validibot-cli"]
+
+    pro -- "registers license + features" --> django
+    ent -- "registers license + features" --> django
+    cloud -- "imports" --> pro
+    cloud -- "settings overlay on" --> django
+    django -- "uses" --> shared
+    backends -- "use" --> shared
+    django -- "dispatches runs to" --> backends
+    cli -- "REST" --> django
+    mcpsrv -- "REST" --> mcpapi
+    mcpsrv -. "license gate:<br/>mcp_server feature" .-> django
+```
+
+The rule of thumb behind the shape: **business logic lives in community**,
+gated by feature flags; `validibot-pro`/`-enterprise` are thin activation
+layers; `validibot-cloud` adds hosting-only concerns on top. See
+[Commercial Extensions](overview/commercial_extensions.md) for the details.
+
 Understand how the system is built:
 
 - **[Terminology](overview/terminology.md)** — Canonical glossary: validator, simple validator, advanced validator, validator backend, execution backend, validator runner, plus trust and versioning vocabulary

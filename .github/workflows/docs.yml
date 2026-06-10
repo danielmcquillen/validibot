@@ -1,0 +1,58 @@
+name: Docs
+
+# The main CI workflow ignores docs/** entirely (paths-ignore), so docs
+# changes get their own fast guard here instead. Two checks:
+#
+#   1. scripts/check_doc_links.py — every relative markdown link must
+#      resolve to a real file (the June 2026 docs audit found links to
+#      files that had been renamed or never existed).
+#   2. zensical build — the dev-docs site must build cleanly with the
+#      exact pinned version used for publishing, so a bad mkdocs.dev.yml
+#      or nav entry can't land and break the next docs-sync.
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: ['master', 'main']
+    paths:
+      - 'docs/**'
+      - '*.md'
+      - 'mkdocs*.yml'
+      - 'scripts/check_doc_links.py'
+      - '.github/workflows/docs.yml'
+  push:
+    branches: ['master', 'main']
+    paths:
+      - 'docs/**'
+      - '*.md'
+      - 'mkdocs*.yml'
+      - 'scripts/check_doc_links.py'
+      - '.github/workflows/docs.yml'
+
+concurrency:
+  group: docs-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version-file: '.python-version'
+
+      - name: Check relative links in markdown docs
+        run: python scripts/check_doc_links.py
+
+      # Keep this pin in sync with the zensical pin in pyproject.toml —
+      # publishing uses that version, so CI must prove the same one builds.
+      - name: Build dev docs site
+        run: |
+          pip install zensical==0.0.45
+          zensical build -f mkdocs.dev.yml --clean

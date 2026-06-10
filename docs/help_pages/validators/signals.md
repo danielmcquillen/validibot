@@ -7,8 +7,8 @@ assertions.
 
 This page is the user-friendly tour. For the underlying architecture,
 see [Signals (developer reference)](../../dev_docs/data-model/signals.md);
-for the precise vocabulary decision, see
-[ADR-2026-05-22b](../../../../../validibot-project/docs/adr/2026-05-22-signals-vs-step-io-terminology.md).
+the precise vocabulary decision is recorded in ADR-2026-05-22b
+("signals vs step IO terminology") in the project's internal ADRs.
 
 ---
 

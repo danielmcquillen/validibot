@@ -95,8 +95,10 @@ Copied rows include:
 - `WorkflowStep` rows and step config;
 - step-level `Ruleset` rows;
 - `RulesetAssertion` rows attached to cloned rulesets;
-- step-owned `SignalDefinition`, `StepSignalBinding`, and `Derivation`
+- step-owned `StepIODefinition`, `StepInputBinding`, and `Derivation`
   rows;
+- `WorkflowStepIOPromotion` overlay rows (workflow-scoped promotions of
+  validator-owned step inputs/outputs);
 - step-owned `WorkflowStepResource` files;
 - `WorkflowPublicInfo`;
 - `WorkflowRoleAccess`;

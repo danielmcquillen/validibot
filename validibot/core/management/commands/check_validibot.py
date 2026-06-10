@@ -2028,15 +2028,22 @@ class Command(BaseCommand):
 
         self.stdout.write("")
 
+        # Every finding carries a stable VBnnn ID; point operators at the
+        # lookup table both as a repo path (works offline) and as a URL
+        # (clickable from most terminals).
+        lookup_path = "docs/operations/self-hosting/doctor-check-ids.md"
+        lookup_url = (
+            "https://github.com/danielmcquillen/validibot/blob/main/" + lookup_path
+        )
+
         if counts[CheckStatus.ERROR] > 0 or counts[CheckStatus.FATAL] > 0:
             self.stdout.write(
                 self.style.ERROR(
                     "  Some checks failed. Please fix the errors above.",
                 ),
             )
-            self.stdout.write(
-                "  See: docs/operations/self-hosting/doctor-check-ids.md",
-            )
+            self.stdout.write(f"  Look up any check ID in: {lookup_path}")
+            self.stdout.write(f"  ({lookup_url})")
             self.stdout.write("  Or try: python manage.py check_validibot --fix")
         elif counts[CheckStatus.WARN] > 0:
             warn_msg = "  Validibot is working but some warnings were found."
@@ -2046,6 +2053,7 @@ class Command(BaseCommand):
                 )
             else:
                 self.stdout.write(self.style.WARNING(warn_msg))
+            self.stdout.write(f"  Look up any check ID in: {lookup_path}")
         else:
             self.stdout.write(
                 self.style.SUCCESS("  All checks passed! Validibot is healthy."),

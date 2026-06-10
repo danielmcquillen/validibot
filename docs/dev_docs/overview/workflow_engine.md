@@ -238,25 +238,33 @@ is populated from three sources (in priority order):
 
 1. **Workflow-level signals** from `RunContext.workflow_signals` (highest
    priority -- these represent the author's explicit domain vocabulary)
-2. **Promoted validator outputs** injected by `_inject_promoted_outputs()`
-   from `SignalDefinition` rows with non-empty `signal_name`
-3. **Step-bound input signals** resolved from `StepSignalBinding` rows
+2. **Promoted step inputs and outputs** injected by `_inject_promotions()`.
+   Promotions come from two storage paths: the in-row
+   `promoted_signal_name` field on step-owned `StepIODefinition` rows, and
+   `WorkflowStepIOPromotion` overlay rows for validator-owned definitions
+   (which are shared across workflows, so the promotion must live in a
+   workflow-scoped table)
+3. **Step-bound input signals** resolved from `StepInputBinding` rows
    (only during input-stage assertion evaluation)
 
 The `p` / `payload` namespace contains the raw submission data. The `o` /
 `output` namespace contains this step's declared output signals (populated
 from the validator output during output-stage assertion evaluation).
 
-### Phase 3: Promoted outputs reconstructed before each step
+### Phase 3: Promotions reconstructed before each step
 
-`_inject_promoted_outputs()` runs inside `_build_cel_context()` for each step
-(not once per run). It queries `SignalDefinition` rows across all steps in the
-workflow that have a non-empty `signal_name` and `direction=OUTPUT`. For each,
-it looks up the producing step's output values in the run summary.
+`_inject_promotions()` runs inside `_build_cel_context()` for each step
+(not once per run). It gathers promotions across all steps in the workflow
+from both storage paths -- in-row `promoted_signal_name` on step-owned
+`StepIODefinition` rows, and `WorkflowStepIOPromotion` overlay rows on
+validator-owned ones. Promotion is symmetric per ADR-2026-05-22b: both
+INPUT- and OUTPUT-direction definitions can promote, and the direction
+picks whether the value is read from the producing step's `input` or
+`output` entry in the run summary.
 
-This means promoted outputs from step N are available as `s.<signal_name>` in
-step N+1, N+2, and so on -- but not in step N itself (the producing step
-accesses its own output via `o.<contract_key>`).
+This means promoted values from step N are available as
+`s.<promoted_signal_name>` in step N+1, N+2, and so on -- but not in step N
+itself (the producing step accesses its own output via `o.<contract_key>`).
 
 ### Phase 4: Cross-step output access via `steps`
 
@@ -287,7 +295,7 @@ namespace:
 Downstream steps can access any prior step's output via the full path:
 `steps.envelope_check.output.floor_area_m2`. This is available alongside
 promoted outputs -- the `steps` namespace provides the raw access path while
-`s.<signal_name>` provides the author-friendly alias.
+`s.<promoted_signal_name>` provides the author-friendly alias.
 
 ### Signal flow diagram
 
@@ -327,7 +335,7 @@ promoted outputs -- the `steps` namespace provides the raw access path while
 |------|----------------|
 | `validations/services/signal_resolution.py` | `resolve_workflow_signals()` -- pre-step resolution |
 | `validations/services/step_orchestrator.py` | `_resolve_workflow_signals()` and `_extract_downstream_signals()` |
-| `validations/validators/base/base.py` | `_build_cel_context()` and `_inject_promoted_outputs()` |
+| `validations/validators/base/base.py` | `_build_cel_context()` and `_inject_promotions()` |
 | `validations/services/step_processor/base.py` | `store_signals()` -- persist outputs to run summary |
 | `actions/protocols.py` | `RunContext` dataclass with `workflow_signals` and `downstream_signals` |
 

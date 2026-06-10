@@ -310,6 +310,30 @@ default validators.
 **Fix:** Either run `setup_validibot` (seeds enabled defaults) or
 manually enable validators in Django admin.
 
+### `VB711` Validator backend image policy (invalid value)
+**Severity:** error
+**Trigger:** `VALIDATOR_BACKEND_IMAGE_POLICY` is set to something other
+than `tag`, `digest`, or `signed-digest`.
+**Fix:** Set `VALIDATOR_BACKEND_IMAGE_POLICY` to one of `tag`, `digest`,
+or `signed-digest`, or leave it empty for the `tag` default.
+
+### `VB712` Validator backend image policy (status)
+**Severity:** ok for `digest`/`signed-digest`; warn when the policy is
+`tag` on a production target (info on self-hosted quick-start targets)
+**Trigger:** The deployment allows floating image tags for validator
+backend containers, which weakens reproducibility in production.
+**Fix:** Set `VALIDATOR_BACKEND_IMAGE_POLICY=digest` for production
+self-hosted deployments and pin validator backend images via
+`@sha256:<hex>` digests in the deployment config.
+
+### `VB713` Signed-digest policy without cosign verification
+**Severity:** error
+**Trigger:** `VALIDATOR_BACKEND_IMAGE_POLICY=signed-digest` but
+`COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES` is `False` — every validator
+launch will be refused.
+**Fix:** Set `COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES=True` and configure
+`COSIGN_VERIFY_PUBLIC_KEY_PATH`, or relax the policy to `digest`.
+
 ---
 
 ## VB8xx — Site, roles, permissions

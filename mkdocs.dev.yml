@@ -11,6 +11,9 @@ dev_addr: 127.0.0.1:9000
 
 repo_url: https://github.com/danielmcquillen/validibot
 repo_name: danielmcquillen/validibot
+# Dev docs live in the public repo, so every page gets a working
+# "edit this page" pencil (content.action.edit below).
+edit_uri: edit/main/docs/dev_docs/
 
 theme:
   name: material
@@ -21,9 +24,22 @@ theme:
     text: Inter
     code: JetBrains Mono
   palette:
-    - scheme: default
+    # Light mode (default). The toggle pair gives readers a dark mode.
+    # Brand colors for the slate scheme live in stylesheets/extra.css.
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
       primary: custom
       accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
   features:
     - navigation.instant
     - navigation.instant.progress
@@ -34,6 +50,8 @@ theme:
     - search.suggest
     - search.highlight
     - content.code.copy
+    - content.action.edit
+    - content.action.view
     - announce.dismiss
 
 extra_css:
@@ -57,7 +75,11 @@ markdown_extensions:
   - md_in_html
   - pymdownx.highlight:
       anchor_linenums: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
 

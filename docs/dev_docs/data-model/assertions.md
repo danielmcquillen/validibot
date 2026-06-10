@@ -43,6 +43,7 @@ Each `RulesetAssertion` row stores:
   - `upper` / `lower` — coercion to uppercase or lowercase.
   - `default("fallback")` — substitute the provided fallback when the value is blank/`None`.
 - `success_message` — optional message displayed when the assertion **passes**. When set, a SUCCESS severity finding is created for passed assertions. Useful for providing positive feedback to users.
+- `notes` — internal, author-facing notes on the rationale behind the assertion (max 5000 chars). Never shown to data submitters and never affects evaluation — purely documentation for workflow authors.
 
 ### Assertion targeting
 

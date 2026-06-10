@@ -186,7 +186,7 @@ Organization-based isolation ensures secure, scalable multi-tenant operation.
 
 ## Technology Stack
 
-- **Backend**: Django 5.2+ with Django REST Framework
+- **Backend**: Django 6.0+ with Django REST Framework
 - **Database**: PostgreSQL with JSON field support
 - **Task Queue**: Celery + Celery Beat (Docker Compose) / Cloud Tasks + Cloud Scheduler (GCP)
 - **Validators**: Pluggable architecture supporting JSON Schema, XML Schema, and custom validators

@@ -180,3 +180,56 @@
   padding-top: 1rem;
 }
 
+/* ──────────────────────────────────────────────────────────────────
+   Dark mode (slate scheme)
+
+   The palette toggle in mkdocs.dev.yml enables Material's slate
+   scheme. The rules above hardcode light-mode brand colors, so each
+   one needs a slate counterpart here — otherwise dark mode renders
+   light-blue chips behind light text.
+   ────────────────────────────────────────────────────────────────── */
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #066fd1;
+  --md-primary-fg-color--light: #4299e1;
+  --md-primary-fg-color--dark: #0556a8;
+  --md-accent-fg-color: #4299e1;
+  --md-accent-fg-color--transparent: rgba(66, 153, 225, 0.12);
+}
+
+[data-md-color-scheme="slate"] .md-typeset a {
+  color: #5aa7e8;
+}
+
+[data-md-color-scheme="slate"] .md-typeset a:hover {
+  color: #82bff0;
+}
+
+[data-md-color-scheme="slate"] .md-typeset code {
+  background-color: #1e2a3a;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background-color: #1e2a3a;
+}
+
+[data-md-color-scheme="slate"] .md-nav__link--active {
+  color: #5aa7e8 !important;
+}
+
+/* Announcement bar: muted amber on dark instead of pale yellow */
+[data-md-color-scheme="slate"] .md-banner {
+  background-color: #3a3320;
+  color: #e6d9a8;
+  border-bottom-color: #6e5f22;
+}
+
+[data-md-color-scheme="slate"] .md-banner .back-link,
+[data-md-color-scheme="slate"] .md-banner .wip-notice {
+  color: #e6d9a8;
+}
+
+[data-md-color-scheme="slate"] .md-banner .back-link:hover {
+  color: #82bff0;
+}
+

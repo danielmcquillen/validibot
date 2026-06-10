@@ -165,9 +165,19 @@ ADR-2026-05-22.
 ### 4. Promoted signals (the bridge between `i.*`/`o.*` and `s.*`)
 
 Any step-local input/output definition — input or output — can be
-promoted into the workflow vocabulary by setting
-`StepIODefinition.promoted_signal_name` to a workflow-wide name. After
-promotion:
+promoted into the workflow vocabulary under a workflow-wide name. The
+promotion is stored in one of two places depending on who owns the row:
+
+- **Step-owned** `StepIODefinition` rows carry the name in their in-row
+  `promoted_signal_name` field. One owner, no scope ambiguity.
+- **Validator-owned** rows (shared catalog entries like the EnergyPlus
+  outputs) are promoted via a `WorkflowStepIOPromotion` overlay row keyed
+  on `(workflow_step, signal_definition)`. The overlay exists because a
+  single in-row value can't carry a different name per workflow; overlay
+  rows pointing at step-owned definitions are rejected by `clean()` so a
+  value never appears under two `s.*` aliases.
+
+After promotion:
 
 - The original `i.<contract_key>` or `o.<contract_key>` still exists
   (step-local, validator-named)
@@ -176,7 +186,7 @@ promotion:
 
 Promotion is the *explicit ceremony* for "lift this from step-local to
 workflow-wide." Authors trigger it via the "Copy to Signal" control on
-the inputs or outputs table.
+the inputs or outputs table — the storage split is invisible to them.
 
 ### Summary table
 
@@ -185,7 +195,7 @@ the inputs or outputs table.
 | Workflow signals | `s.<name>` | `WorkflowSignalMapping` | All steps | Resolved before any step runs |
 | Step inputs | `i.<contract_key>` | `StepIODefinition` (direction=INPUT) | Current step | Input stage onwards |
 | Step outputs | `o.<contract_key>` | `StepIODefinition` (direction=OUTPUT) | Current step | Output stage only |
-| Promoted signals | `s.<promoted_signal_name>` | `StepIODefinition` (with `promoted_signal_name`, either direction) | Downstream steps only | After producing step completes |
+| Promoted signals | `s.<promoted_signal_name>` | `StepIODefinition.promoted_signal_name` (step-owned) or `WorkflowStepIOPromotion` overlay (validator-owned), either direction | Downstream steps only | After producing step completes |
 | Cross-step access | `steps.<step_key>.input.<name>` / `steps.<step_key>.output.<name>` | Run summary storage | Downstream steps | After producing step completes |
 | Raw payload | `p.<path>` / `payload.<path>` | (none — raw data) | Current step | Always |
 
@@ -227,11 +237,11 @@ sources:
 
 1. **Workflow-level signals** from `RunContext.workflow_signals`
    (resolved from `WorkflowSignalMapping` rows before any step runs)
-2. **Promoted values** from `StepIODefinition` rows with non-empty
-   `promoted_signal_name` (injected by `_inject_promoted_outputs()`
-   after the producing step completes — works for both input and output
-   promotions; the legacy method name reflects the original
-   output-only implementation)
+2. **Promoted values** injected by `_inject_promotions()` after the
+   producing step completes — gathered from step-owned
+   `StepIODefinition` rows with non-empty `promoted_signal_name` and
+   from `WorkflowStepIOPromotion` overlay rows on validator-owned
+   definitions; works for both input and output promotions
 
 Workflow signals take precedence over promoted values if there's a name
 collision (workflow-defined names are the more stable identifier; the
@@ -485,10 +495,12 @@ of:
 
 This is enforced by the `ck_sigdef_one_owner` database constraint.
 
-**Promotion via `promoted_signal_name`**: When a `StepIODefinition` has
-a non-empty `promoted_signal_name`, its resolved value is promoted into
-the `s.*` (workflow vocabulary) namespace, available in all downstream
-steps. This works for **both directions**:
+**Promotion into `s.*`**: When a `StepIODefinition` is promoted — via
+its in-row `promoted_signal_name` (step-owned rows) or a
+`WorkflowStepIOPromotion` overlay row (validator-owned rows) — its
+resolved value is promoted into the `s.*` (workflow vocabulary)
+namespace, available in all downstream steps. This works for **both
+directions**:
 
 - An OUTPUT-direction definition with
   `promoted_signal_name="simulated_eui"` makes its value available as
@@ -551,7 +563,7 @@ promotion lives in a separate `WorkflowStepIOPromotion` overlay table
 keyed on `(workflow_step, signal_definition)` so each workflow gets
 its own promoted name pointing at the same shared catalog row.
 
-The runtime injection in `_inject_promoted_outputs()`, the autocomplete
+The runtime injection in `_inject_promotions()`, the autocomplete
 in `get_catalog_choices()`, the Step Inputs/Outputs tables, the
 Available Data panel, and the workflow versioning clone all consult
 **both** sources — read paths merge them so the overlay is a
@@ -876,25 +888,26 @@ Resolved `i.*` values are persisted to the run summary under
 `run.summary["steps"][step_key]["input"]` so they're available to
 downstream steps via `steps.<key>.input.*`.
 
-## Promoted signals reconstruction: `_inject_promoted_outputs()`
+## Promoted signals reconstruction: `_inject_promotions()`
 
 **File**: `validibot/validations/validators/base/base.py`
 
-When a `StepIODefinition` (any direction) has a non-empty
-`promoted_signal_name`, the resolved value is "promoted" into the `s.*`
-namespace for downstream steps. The method name still reads
-`_inject_promoted_outputs` for historical reasons (it originally only
-handled outputs) — it now handles inputs and outputs uniformly.
+When a `StepIODefinition` (any direction) is promoted — in-row
+`promoted_signal_name` for step-owned rows, `WorkflowStepIOPromotion`
+overlay row for validator-owned rows — the resolved value is "promoted"
+into the `s.*` namespace for downstream steps. The method handles
+inputs and outputs uniformly (it originally handled only outputs).
 
 ### How it works
 
-1. `_inject_promoted_outputs()` runs inside `_build_cel_context()` when
+1. `_inject_promotions()` runs inside `_build_cel_context()` when
    the `steps` context is non-empty (i.e., there are completed upstream
    steps).
-2. It queries `StepIODefinition` rows with non-empty
-   `promoted_signal_name` across all **upstream** steps in the current
+2. It gathers promotions across all **upstream** steps in the current
    workflow (filtered by `workflow_step__order__lt=current_step.order`
-   to enforce the temporal rule — a step cannot see its own promotion).
+   to enforce the temporal rule — a step cannot see its own promotion),
+   merging in-row `promoted_signal_name` rows with
+   `WorkflowStepIOPromotion` overlay rows.
 3. For each promoted definition, it looks up the producing step's
    `step_key` in the `steps` context.
 4. It extracts the value using the definition's `contract_key`:
@@ -907,7 +920,7 @@ handled outputs) — it now handles inputs and outputs uniformly.
 
 Promoted values are only available after the producing step completes.
 Since different steps may complete at different times (especially with
-async validators), `_inject_promoted_outputs()` runs fresh on every
+async validators), `_inject_promotions()` runs fresh on every
 step rather than once at the start of the run.
 
 ### Example
@@ -1000,7 +1013,7 @@ python manage.py sync_validators
        ├─ store input dict to run summary
        ├─ _build_cel_context(stage="input")
        │     p, s, i, steps namespaces populated; o is empty
-       ├─ _inject_promoted_outputs()   Promotions visible from completed upstreams
+       ├─ _inject_promotions()   Promotions visible from completed upstreams
        └─ Evaluate input-stage assertions
 
    3b. EXECUTION
@@ -1011,7 +1024,7 @@ python manage.py sync_validators
        ├─ store output dict to run summary
        ├─ _build_cel_context(stage="output")
        │     all namespaces populated
-       ├─ _inject_promoted_outputs()
+       ├─ _inject_promotions()
        └─ Evaluate output-stage assertions
 
 4. RUN SUMMARY STORAGE
@@ -1094,9 +1107,9 @@ same run:
    steps.preflight.input.zone_count
    ```
 
-4. **Promoted values.** If any upstream step has a `StepIODefinition`
-   with `promoted_signal_name`, `_inject_promoted_outputs()` places the
-   value into the `s.*` namespace:
+4. **Promoted values.** If any upstream step has a promoted
+   `StepIODefinition` (in-row name or overlay row),
+   `_inject_promotions()` places the value into the `s.*` namespace:
 
    ```cel
    s.simulated_eui < s.target_eui     # if upstream output promoted
@@ -1130,7 +1143,7 @@ def _build_cel_context(
 
 1. **Builds the `s` (signals) namespace** from two sources:
    - Workflow-level signals from `RunContext.workflow_signals`
-   - Promoted values from upstream steps via `_inject_promoted_outputs()`
+   - Promoted values from upstream steps via `_inject_promotions()`
 
 2. **Builds the `i` (inputs) namespace** from three sources:
    - Parser-extracted facts via the validator's
@@ -1348,11 +1361,11 @@ churning every workflow link in the codebase.
 |---|---|---|
 | Step IO definition (one row per step input or step output) | `StepIODefinition` | `validations_signaldefinition` (legacy name retained) |
 | Step input binding (binds a step input to a payload path or signal) | `StepInputBinding` | `validations_stepsignalbinding` (legacy name retained) |
-| In-row promotion field (step-owned rows) | `promoted_signal_name` | `signal_name` column on the step IO table |
+| In-row promotion field (step-owned rows) | `promoted_signal_name` | `promoted_signal_name` (column genuinely renamed in migration 0051, unlike the table names) |
 | Overlay promotion for validator-owned rows | `WorkflowStepIOPromotion(workflow_step, signal_definition, promoted_signal_name)` | `validations_workflowstepiopromotion` |
 | Workflow-level signal definition | `WorkflowSignalMapping` | `validations_workflowsignalmapping` |
 
-Method names like `_inject_promoted_outputs` (which now handles both
-in-row and overlay promotions, for inputs and outputs) retain their
-legacy "output"-flavored naming because renaming them for cosmetic
-parity would churn every caller for no behavioural gain.
+The runtime injection method is `_inject_promotions` — it handles both
+in-row and overlay promotions, for inputs and outputs alike. (Earlier
+revisions called it `_inject_promoted_outputs`; if you see that name in
+older ADRs or commit messages, it's the same mechanism.)

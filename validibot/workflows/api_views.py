@@ -118,6 +118,12 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         creator checks, so this only widens the launch path for
         users who could already see the workflow.
         """
+        # drf-spectacular introspects the view with no real request or
+        # URL kwargs; an empty queryset lets it derive the model and
+        # path-parameter types without resolving the org.
+        if getattr(self, "swagger_fake_view", False):
+            return Workflow.objects.none()
+
         org = self.get_org()
         user = self.request.user
         # The launch action needs to see inactive workflows so the
@@ -292,6 +298,12 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         object-level scoping used by the latest-version viewset, so
         version-pinned routes share one access policy.
         """
+        # drf-spectacular introspects the view with no real request or
+        # URL kwargs; an empty queryset lets it derive the model and
+        # path-parameter types without resolving the org.
+        if getattr(self, "swagger_fake_view", False):
+            return Workflow.objects.none()
+
         workflow_slug = self.kwargs.get("workflow_slug")
         org = self.get_org()
         user = self.request.user

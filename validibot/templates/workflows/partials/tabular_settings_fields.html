@@ -53,45 +53,6 @@ only arrange its fields and the nested column formset.
 
 {% include "workflows/partials/tabular_schema_workspace.html" %}
 
-{% if step %}
-  <section class="tabular-settings-section"
-           aria-labelledby="tabular-assertions-heading">
-    <div class="tabular-settings-section__heading">
-      <div>
-        <h3 id="tabular-assertions-heading" class="h5 mb-1">
-          {% trans "Assertions" %}
-        </h3>
-        <p class="text-muted small mb-0">
-          {% trans "Cross-column and conditional rules are authored on the existing assertion surface." %}
-        </p>
-      </div>
-      <a class="btn btn-sm btn-outline-secondary"
-         href="{{ tabular_assertions_url }}">
-        <i class="bi bi-pencil-square me-1"></i>{% trans "Edit assertions" %}
-      </a>
-    </div>
-    <div class="row g-3">
-      {% for group in tabular_assertion_groups %}
-        <div class="col-12 col-lg-4">
-          <div class="tabular-assertion-summary h-100">
-            <div class="d-flex align-items-center justify-content-between gap-2">
-              <span class="fw-semibold">{{ group.label }}</span>
-              <span class="badge text-bg-secondary">{{ group.count }}</span>
-            </div>
-            {% if group.preview %}
-              <code class="d-block small text-truncate mt-2" title="{{ group.preview }}">{{ group.preview }}</code>
-            {% elif group.deferred %}
-              <span class="d-block small text-muted mt-2">{% trans "Available in V2" %}</span>
-            {% else %}
-              <span class="d-block small text-muted mt-2">{% trans "No assertions" %}</span>
-            {% endif %}
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-  </section>
-{% endif %}
-
 <section class="tabular-settings-section"
          aria-labelledby="tabular-publishing-heading">
   <div class="tabular-settings-section__heading">

@@ -29,6 +29,7 @@ from validibot.users.tests.utils import ensure_all_roles_exist
 from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.tabular.metadata import TABULAR_DATASET_INPUTS
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
 from validibot.workflows.tests.test_tabular_step_config import _login_as_author
@@ -285,12 +286,24 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
                 ),
             ),
         )
-        self.assertTrue(
-            self.driver.find_element(By.ID, "signals-input-tab"),
+        input_tab = self.driver.find_element(By.ID, "signals-input-tab")
+        self.assertEqual(
+            input_tab.find_element(By.CSS_SELECTOR, ".badge").text,
+            str(len(TABULAR_DATASET_INPUTS)),
         )
         self.assertTrue(
             self.driver.find_element(By.ID, "signals-output-tab"),
         )
+        input_panel = self.driver.find_element(By.ID, "signals-input-panel")
+        rendered_inputs = {
+            element.text
+            for element in input_panel.find_elements(By.CSS_SELECTOR, "tbody code")
+        }
+        self.assertEqual(
+            rendered_inputs,
+            {f"i.{contract_key}" for contract_key, _label in TABULAR_DATASET_INPUTS},
+        )
+        self.assertNotIn("No step inputs.", input_panel.text)
         self.assertTrue(
             self.driver.find_element(By.LINK_TEXT, "Edit Signals"),
         )

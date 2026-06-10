@@ -599,7 +599,7 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertContains(response, "Expected columns")
         self.assertContains(response, "Infer from a sample")
         self.assertContains(response, "data-tabular-column-editor")
-        self.assertContains(response, "Edit assertions")
+        self.assertNotContains(response, 'id="tabular-assertions-heading"')
         self.assertContains(response, "Required when another column exists")
         self.assertContains(response, f"#workflow-step-{step.pk}")
 

@@ -33,6 +33,7 @@ from validibot.validations.validators.tabular.column_eval import ColumnAssertion
 from validibot.validations.validators.tabular.column_eval import (
     evaluate_column_assertions,
 )
+from validibot.validations.validators.tabular.metadata import TABULAR_DATASET_INPUTS
 from validibot.validations.validators.tabular.native import DEFAULT_REPORT_MAX_EXAMPLES
 from validibot.validations.validators.tabular.native import validate_native
 from validibot.validations.validators.tabular.preflight import TabularDialect
@@ -444,7 +445,7 @@ class TabularValidator(BaseValidator):
             or ""
         )
         preflight = read_result.preflight
-        return {
+        values = {
             "num_rows": read_result.num_rows,
             "num_columns": read_result.num_columns,
             "column_names": list(read_result.column_names),
@@ -453,4 +454,8 @@ class TabularValidator(BaseValidator):
             "has_header": preflight.has_header,
             "size_bytes": preflight.size_bytes,
             "filename": filename,
+        }
+        return {
+            contract_key: values[contract_key]
+            for contract_key, _label in TABULAR_DATASET_INPUTS
         }

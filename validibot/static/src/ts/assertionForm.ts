@@ -470,21 +470,6 @@ class AssertionFormController {
       insert: entry.value,
       detail: entry.label,
     }));
-    const datasetEntries = [
-      'i.num_rows',
-      'i.num_columns',
-      'i.column_names',
-      'i.delimiter',
-      'i.encoding',
-      'i.has_header',
-      'i.size_bytes',
-      'i.filename',
-    ];
-    datasetEntries.forEach((value) => {
-      if (!suggestions.some((suggestion) => suggestion.insert === value)) {
-        suggestions.push({ label: value, insert: value, detail: 'Dataset metadata' });
-      }
-    });
 
     if (data.stage === 'row') {
       data.columns.forEach((column) => {

@@ -110,13 +110,6 @@
   }
 }
 
-.tabular-assertion-summary {
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--bs-border-color);
-  border-radius: 0.55rem;
-  background: var(--bs-tertiary-bg);
-}
-
 @media (min-width: 992px) {
   #workflow-step-form:has(.tabular-settings-section) .app-form-card {
     width: 100%;

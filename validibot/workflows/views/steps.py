@@ -1340,7 +1340,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         return context
 
     def _get_tabular_settings_context(self, form, step) -> dict[str, object]:
-        """Build URLs and the read-only assertion summary for the rich editor."""
+        """Build the schema workspace URLs for the rich editor."""
         workflow = self.get_workflow()
         if step is not None:
             route_suffix = "_existing"
@@ -1359,42 +1359,6 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 kwargs=route_kwargs,
             )
 
-        assertion_groups = []
-        assertions = (
-            list(step.ruleset.assertions.all().order_by("order", "pk"))
-            if step and step.ruleset_id
-            else []
-        )
-        labels = {
-            "dataset": _("Dataset"),
-            "row": _("Row"),
-            "column": _("Column"),
-        }
-        for stage in ("dataset", "row", "column"):
-            stage_assertions = [
-                assertion
-                for assertion in assertions
-                if (assertion.options or {}).get("tabular_stage", "dataset") == stage
-            ]
-            preview = ""
-            if stage_assertions:
-                first = stage_assertions[0]
-                preview = (
-                    (first.rhs or {}).get("expr")
-                    or first.target_data_path
-                    or first.message_template
-                    or ""
-                )
-            assertion_groups.append(
-                {
-                    "stage": stage,
-                    "label": labels[stage],
-                    "count": len(stage_assertions),
-                    "preview": preview,
-                    "deferred": False,
-                },
-            )
-
         return {
             "is_tabular_settings": True,
             "column_formset": getattr(form, "column_formset", None),
@@ -1404,17 +1368,6 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
             "tabular_apply_url": endpoint("workflow_tabular_schema_apply"),
             "tabular_export_url": (
                 endpoint("workflow_tabular_schema_export") if step else ""
-            ),
-            "tabular_assertion_groups": assertion_groups,
-            "tabular_assertions_url": (
-                reverse_with_org(
-                    "workflows:workflow_step_edit",
-                    request=self.request,
-                    kwargs={"pk": workflow.pk, "step_id": step.pk},
-                )
-                + "#workflow-step-assertions"
-                if step
-                else ""
             ),
         }
 

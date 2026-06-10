@@ -1099,6 +1099,7 @@ def build_unified_signals_from_definitions(
         has_outputs: Whether any output signals exist.
     """
     from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import ValidationType
     from validibot.validations.models import StepInputBinding
     from validibot.validations.models import StepIODefinition
     from validibot.validations.models import WorkflowStepIOPromotion
@@ -1223,6 +1224,33 @@ def build_unified_signals_from_definitions(
             continue
         input_signals.append(_build_input_row(sig, prefer_native_label=False))
         seen_input_keys.add(sig.contract_key)
+
+    # Tabular dataset metadata is produced at runtime rather than stored as
+    # StepIODefinition rows. It is still genuine i.* input data, so expose the
+    # canonical inventory in the same card and count as persisted step inputs.
+    if validator and validator.validation_type == ValidationType.TABULAR:
+        from validibot.validations.validators.tabular.metadata import (
+            TABULAR_DATASET_INPUTS,
+        )
+
+        for contract_key, label in TABULAR_DATASET_INPUTS:
+            if contract_key in seen_input_keys:
+                continue
+            input_signals.append(
+                {
+                    "slug": contract_key,
+                    "label": label,
+                    "source": "tabular",
+                    "required": False,
+                    "default_value": "",
+                    "source_data_path": "",
+                    "signal_definition": None,
+                    "binding": None,
+                    "validator_managed": True,
+                    "signal_name": "",
+                },
+            )
+            seen_input_keys.add(contract_key)
 
     # -- Output signals --
     output_signals: list[dict[str, Any]] = []

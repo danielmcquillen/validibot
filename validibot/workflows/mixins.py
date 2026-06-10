@@ -405,6 +405,29 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
                 choices.append((f"i.{sig.contract_key}", base_label))
             signal_defs.append(sig)
 
+        # Tabular dataset metadata is runtime-produced rather than backed by
+        # StepIODefinition rows. Use the same canonical inventory as the
+        # validator and Step Inputs card so autocomplete cannot drift from the
+        # data authors can actually reference through i.*.
+        from validibot.validations.constants import ValidationType
+
+        if (
+            validator
+            and validator.validation_type == ValidationType.TABULAR
+            and include_inputs
+        ):
+            from validibot.validations.validators.tabular.metadata import (
+                TABULAR_DATASET_INPUTS,
+            )
+
+            existing_values = {value for value, _label in choices}
+            for contract_key, _label in TABULAR_DATASET_INPUTS:
+                value = f"i.{contract_key}"
+                if value in existing_values:
+                    continue
+                choices.append((value, _("Dataset metadata")))
+                existing_values.add(value)
+
         # ── Workflow-level signal mappings appear as s.<name> ──
         # Available at both stages.
         workflow = self.step.workflow

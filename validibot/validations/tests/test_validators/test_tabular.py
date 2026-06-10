@@ -27,6 +27,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.tabular.metadata import TABULAR_DATASET_INPUTS
 from validibot.validations.validators.tabular.validator import CODE_INVALID_SCHEMA
 from validibot.validations.validators.tabular.validator import TabularValidator
 
@@ -79,6 +80,10 @@ class TabularValidatorRuntimeTests(TestCase):
         )
         self.assertTrue(result.passed, result.issues)
         self.assertEqual(result.issues, [])
+        self.assertEqual(
+            tuple(result.signals),
+            tuple(contract_key for contract_key, _label in TABULAR_DATASET_INPUTS),
+        )
         self.assertEqual(result.signals["num_rows"], 2)
         self.assertEqual(result.signals["column_names"], ["lat", "lon"])
 

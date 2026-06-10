@@ -27,6 +27,7 @@ from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.tabular.metadata import TABULAR_DATASET_INPUTS
 from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -1193,6 +1194,8 @@ class WorkflowStepAssertionsTests(TestCase):
         self.assertIn("Example rows per finding", body)
         self.assertIn("tabular-cel-assist-data", body)
         self.assertIn('"name": "reading"', body)
+        for contract_key, _label in TABULAR_DATASET_INPUTS:
+            self.assertIn(f'"value": "i.{contract_key}"', body)
 
     def test_tabular_column_add_action_exposes_aggregate_guidance(self):
         """The Column Add action opens a scoped, assisted CEL form.

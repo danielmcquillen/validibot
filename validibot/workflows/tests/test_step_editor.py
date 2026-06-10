@@ -40,6 +40,7 @@ from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.tabular.metadata import TABULAR_DATASET_INPUTS
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -1990,6 +1991,16 @@ def test_tabular_step_shows_validation_operation_before_assertions(client):
     assert "Inputs and Outputs" in html
     assert "Available Data" in html
     assert "Edit Signals" in html
+    input_panel_start = html.index('id="signals-input-panel"')
+    input_panel_end = html.index('id="signals-output-panel"')
+    input_panel_html = html[input_panel_start:input_panel_end]
+    for contract_key, label in TABULAR_DATASET_INPUTS:
+        assert f"i.{contract_key}" in input_panel_html
+        assert str(label) in input_panel_html
+    assert "No step inputs." not in input_panel_html
+    assert input_panel_html.count("Provided by validator") == len(
+        TABULAR_DATASET_INPUTS,
+    )
     assert html.count("assertion-add-connector--stage") == TABULAR_STAGE_CONNECTOR_COUNT
     assert (
         html.count("assertion-add-connector--line-only")

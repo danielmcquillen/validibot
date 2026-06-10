@@ -140,7 +140,6 @@ def get_validator_operation_display(
     if display is None:
         return None
     return {
-        "badge": _("Validation"),
         "label": display["label"],
         "description": display["description"],
     }

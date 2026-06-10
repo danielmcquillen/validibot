@@ -105,7 +105,7 @@ dependencies = [
   # SHACLOutputEnvelope, SHACLInputs/SHACLOutputs, SHACLFinding,
   # SHACLSparqlAssertionSpec) plus ValidatorType.SHACL and RDF MIME types —
   # the contract for running SHACL in the isolated container backend.
-  "validibot-shared==0.9.1",
+  "validibot-shared==0.9.2",
   "django-csp==4.0",
   "django-permissions-policy==4.30.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in

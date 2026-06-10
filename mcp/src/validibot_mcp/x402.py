@@ -25,6 +25,7 @@ import asyncio
 import base64
 import json
 import logging
+from dataclasses import dataclass
 
 import httpx
 
@@ -33,6 +34,43 @@ from validibot_mcp.config import get_settings
 logger = logging.getLogger(__name__)
 _X402_HTTP_CLIENT: httpx.AsyncClient | None = None
 _X402_HTTP_LOCK = asyncio.Lock()
+
+
+@dataclass(frozen=True)
+class VerifiedPayment:
+    """Facilitator-confirmed outcome of an x402 ``/verify`` call.
+
+    WHAT: Carries both the proof identifiers (``txhash``, ``wallet``) and the
+    *facilitator-confirmed* settlement dimensions (``pay_to``, ``network``,
+    ``asset``, ``amount``) extracted from the facilitator's ``/verify``
+    response — NOT the values this server asked for.
+
+    WHY: The downstream Django ``pay_to`` / network / asset comparison is only
+    meaningful if the MCP layer forwards what the *facilitator* confirmed
+    landed on-chain, rather than echoing this server's own local config. If we
+    forwarded local config, Django's comparison against its own (likely
+    identical) config would be tautological and a misconfigured or
+    compromised facilitator could route funds to a different wallet while
+    every downstream check still passed. Capturing the confirmed values here
+    lets the MCP layer assert they equal the server's expectations and fail
+    closed on any drift before a run is ever created.
+
+    Attributes:
+        txhash: On-chain transaction hash of the settled payment.
+        wallet: Sender wallet address (payer), or ``None`` if absent.
+        pay_to: Facilitator-confirmed receiving wallet, or ``None`` if the
+            facilitator omitted it.
+        network: Facilitator-confirmed CAIP-2 network, or ``None`` if omitted.
+        asset: Facilitator-confirmed asset (USDC) contract, or ``None``.
+        amount: Facilitator-confirmed atomic amount as a string, or ``None``.
+    """
+
+    txhash: str
+    wallet: str | None
+    pay_to: str | None
+    network: str | None
+    asset: str | None
+    amount: str | None
 
 
 async def _get_x402_http_client() -> httpx.AsyncClient:
@@ -140,10 +178,53 @@ def encode_requirements_header(requirements: dict) -> str:
 # ── Payment verification ───────────────────────────────────────────
 
 
+# HTTP status the x402 facilitator returns for a successful /verify call.
+# Named to satisfy the no-magic-number rule (PLR2004).
+_FACILITATOR_OK_STATUS = 200
+
+
+def _confirmed_field(data: dict, *keys: str) -> str | None:
+    """Return the first non-empty confirmed value among ``keys`` in ``data``.
+
+    WHAT: Pulls a facilitator-confirmed settlement field out of the ``/verify``
+    response, tolerating the several key spellings different facilitator
+    implementations use (e.g. ``payTo`` vs ``payToAddress``), and also looking
+    inside a nested ``paymentRequirements`` / ``payload`` echo if the top-level
+    field is absent.
+
+    WHY: The facilitator response shape is only loosely standardised across
+    Coinbase CDP and the x402.org testnet facilitator. We must extract the
+    confirmed value when present (so the MCP layer can assert on it) but
+    gracefully report absence as ``None`` so the caller can decide whether to
+    fall back and log rather than crash.
+
+    Args:
+        data: The parsed facilitator ``/verify`` JSON response.
+        *keys: Candidate key spellings, tried in order, at the top level and
+            inside any nested ``paymentRequirements`` / ``payload`` echo.
+
+    Returns:
+        The first non-empty string value found, else ``None``.
+    """
+    nested_sources = [
+        data,
+        data.get("paymentRequirements") or {},
+        data.get("payload") or {},
+    ]
+    for source in nested_sources:
+        if not isinstance(source, dict):
+            continue
+        for key in keys:
+            value = source.get(key)
+            if value:
+                return str(value)
+    return None
+
+
 async def verify_payment(
     payment_signature: str,
     requirements: dict,
-) -> tuple[bool, str | None, str | None]:
+) -> VerifiedPayment | None:
     """Verify an x402 payment signature via the Coinbase CDP facilitator.
 
     Calls the facilitator's ``/verify`` endpoint with the agent's
@@ -160,14 +241,24 @@ async def verify_payment(
     protection is handled by the ``X402Payment.txhash`` unique constraint
     in Django, not here.
 
+    SECURITY: We return the *facilitator-confirmed* ``pay_to`` / ``network`` /
+    ``asset`` / ``amount`` (extracted from the ``/verify`` response), not the
+    values we asked for. The caller must assert these equal this server's
+    configured expectations and forward the confirmed values to Django, so the
+    downstream pay-to comparison is anchored to what the facilitator actually
+    settled rather than to local config (which would make the check
+    tautological). When the facilitator omits a confirmed field, that field is
+    ``None`` and the caller falls back to local config but logs the gap.
+
     Args:
         payment_signature: The raw ``PAYMENT-SIGNATURE`` header value
             from the agent (base64-encoded signed payment payload).
         requirements: The requirements dict from ``build_payment_requirements()``.
 
     Returns:
-        Tuple of ``(is_valid, txhash_or_none, wallet_address_or_none)``.
-        On failure, returns ``(False, None, None)`` — fail closed.
+        A :class:`VerifiedPayment` on success, or ``None`` on any failure —
+        fail closed (invalid receipt, missing txhash, non-200, timeout, or
+        unexpected error).
     """
     settings = get_settings()
 
@@ -181,13 +272,13 @@ async def verify_payment(
             },
         )
 
-        if response.status_code != 200:
+        if response.status_code != _FACILITATOR_OK_STATUS:
             logger.warning(
                 "x402 facilitator returned %d: %s",
                 response.status_code,
                 response.text[:200],
             )
-            return (False, None, None)
+            return None
 
         data = response.json()
         is_valid = data.get("isValid", False)
@@ -196,17 +287,33 @@ async def verify_payment(
 
         if not is_valid:
             logger.info("x402 payment verification failed: %s", data)
-            return (False, None, None)
+            return None
 
         if not txhash:
             logger.warning("x402 facilitator returned isValid=True but no txHash")
-            return (False, None, None)
+            return None
 
-        return (True, txhash, wallet)
+        # Extract the facilitator-CONFIRMED settlement dimensions. These are
+        # what actually settled on-chain per the facilitator, and are the
+        # values the caller must assert against config and forward to Django.
+        return VerifiedPayment(
+            txhash=str(txhash),
+            wallet=wallet,
+            pay_to=_confirmed_field(data, "payTo", "payToAddress", "recipient"),
+            network=_confirmed_field(data, "network", "chain", "caip2"),
+            asset=_confirmed_field(data, "asset", "assetAddress", "tokenAddress"),
+            amount=_confirmed_field(
+                data,
+                "amount",
+                "amountPaid",
+                "value",
+                "maxAmountRequired",
+            ),
+        )
 
     except httpx.TimeoutException:
         logger.warning("x402 facilitator timed out")
-        return (False, None, None)
+        return None
     except Exception:
         logger.exception("x402 facilitator verification failed unexpectedly")
-        return (False, None, None)
+        return None

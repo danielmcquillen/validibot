@@ -24,6 +24,7 @@ from datetime import UTC
 from datetime import datetime
 from typing import Any
 
+from django.conf import settings
 from django.db import DatabaseError
 from django.db import transaction
 from pydantic import ValidationError
@@ -40,9 +41,27 @@ from validibot.validations.models import CallbackReceipt
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.services.cloud_run.gcs_client import download_envelope
+from validibot.validations.services.cloud_run.gcs_client import parse_gcs_uri
 from validibot.validations.services.validation_run import ValidationRunService
 
 logger = logging.getLogger(__name__)
+
+# ── Allowlisted GCS prefix for callback result URIs ───────────────────
+#
+# The worker callback endpoint receives ``result_uri`` as a free-form string
+# from the (OIDC-authenticated) validator container's POST body, then fetches
+# and trusts that object as the run's output envelope. Without an allowlist a
+# compromised or misbehaving container could point ``result_uri`` at ANY object
+# the worker service account can read (cross-org outputs, secrets bundles,
+# unrelated buckets) — an arbitrary GCS read / result-substitution vector.
+#
+# The launcher always writes a run's bundle under a deterministic per-run
+# prefix: ``gs://<GCS_VALIDATION_BUCKET>/runs/<org_id>/<run_id>/…`` (see
+# ``cloud_run/launcher.py``). We rebuild that expected prefix from the run we
+# already resolved and require the incoming ``result_uri`` to live inside it,
+# in the configured validation bucket. Anything else is rejected before we ever
+# touch GCS.
+GCS_RUN_PREFIX_TEMPLATE = "runs/{org_id}/{run_id}/"
 
 
 # ── Exception for early-exit error responses ──────────────────────────
@@ -406,6 +425,75 @@ class ValidationCallbackService:
     # ── Step 2: Download and validate the output envelope ─────────────
 
     @staticmethod
+    def _validate_result_uri_allowlist(
+        result_uri: str,
+        run: ValidationRun,
+    ) -> None:
+        """
+        Reject a callback ``result_uri`` that escapes this run's GCS prefix.
+
+        The callback container controls ``result_uri`` and we download+trust
+        whatever object it names. To stop that string from pointing at an
+        arbitrary object the worker SA can read, we require it to be a
+        ``gs://`` URI in ``settings.GCS_VALIDATION_BUCKET`` and under this
+        run's deterministic prefix ``runs/<org_id>/<run_id>/`` — the exact
+        layout the launcher writes (see ``cloud_run/launcher.py``).
+
+        When ``GCS_VALIDATION_BUCKET`` is unset (local/sync dev, where the
+        container-callback path is not exercised against real GCS and the
+        launcher writes to the local filesystem instead), there is no bucket
+        to pin against, so the allowlist is skipped — production deployments
+        always configure the bucket, which is where the read primitive matters.
+
+        Args:
+            result_uri: The ``gs://`` URI supplied in the callback POST body.
+            run: The already-resolved ValidationRun this callback belongs to,
+                used to derive the expected per-run prefix.
+
+        Raises:
+            _CallbackProcessingError: If ``result_uri`` is not a ``gs://`` URI,
+                targets a different bucket, or falls outside this run's prefix.
+        """
+        expected_bucket = settings.GCS_VALIDATION_BUCKET
+        if not expected_bucket:
+            # No bucket configured → local/sync dev path, nothing to pin to.
+            return
+
+        try:
+            bucket_name, blob_path = parse_gcs_uri(result_uri)
+        except ValueError:
+            # Not a gs:// URI (or malformed) — never legitimate on the GCS
+            # callback path. Reject without echoing the attacker-controlled URI.
+            logger.warning(
+                "Callback result_uri is not a valid gs:// URI for run %s",
+                run.id,
+            )
+            raise _CallbackProcessingError(
+                status.HTTP_400_BAD_REQUEST,
+                "Invalid result_uri",
+            ) from None
+
+        expected_prefix = GCS_RUN_PREFIX_TEMPLATE.format(
+            org_id=run.org_id,
+            run_id=run.id,
+        )
+
+        if bucket_name != expected_bucket or not blob_path.startswith(
+            expected_prefix,
+        ):
+            logger.warning(
+                "Callback result_uri outside allowlist for run %s: "
+                "bucket=%s prefix expected under %s",
+                run.id,
+                bucket_name,
+                expected_prefix,
+            )
+            raise _CallbackProcessingError(
+                status.HTTP_400_BAD_REQUEST,
+                "result_uri is not permitted for this run",
+            )
+
+    @staticmethod
     def _download_and_validate_envelope(
         callback: ValidationCallback,
         run: ValidationRun,
@@ -418,12 +506,23 @@ class ValidationCallbackService:
         ValidatorConfig; these are resolved at startup and stored in the
         validator registry for O(1) lookups.
 
+        Before touching GCS we pin the callback-supplied ``result_uri`` to this
+        run's expected bucket+prefix (see ``_validate_result_uri_allowlist``) so
+        a misbehaving container cannot turn the worker into an arbitrary-object
+        reader.
+
         Raises:
-            _CallbackProcessingError: On download failure, missing envelope
-                class, or validator/run ID mismatch.
+            _CallbackProcessingError: On allowlist violation, download failure,
+                missing envelope class, or validator/run ID mismatch.
         """
         from validibot.validations.validators.base.config import (
             get_output_envelope_class,
+        )
+
+        # Gate the untrusted result_uri BEFORE any GCS access.
+        ValidationCallbackService._validate_result_uri_allowlist(
+            callback.result_uri or "",
+            run,
         )
 
         envelope_class = get_output_envelope_class(

@@ -29,10 +29,16 @@ class ValidatorSignalMixin(CustomValidatorManageMixin):
     validator: Validator
 
     def dispatch(self, request, *args, **kwargs):
+        # SECURITY: scope the validator lookup to the caller's active org.
+        # Without ``org=...`` a tenant could create/edit/delete signal
+        # (StepIODefinition) rows on another org's custom validator by
+        # enumerating its primary key; the permission gate only validates
+        # the attacker's own active org. Mirrors ``get_latest_custom_validator_row``.
         self.validator = get_object_or_404(
             Validator,
             pk=self.kwargs.get("pk"),
             is_system=False,
+            org=self.get_active_org(),
         )
         return super().dispatch(request, *args, **kwargs)
 

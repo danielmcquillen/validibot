@@ -23,7 +23,9 @@ import asyncio
 import base64
 import json
 import logging
+import re
 import time
+import urllib.parse
 from http import HTTPStatus
 from typing import Any
 
@@ -46,6 +48,45 @@ _agent_http: httpx.AsyncClient | None = None
 _http_client_lock = asyncio.Lock()
 _service_identity_lock = asyncio.Lock()
 _service_identity_cache: tuple[str, float] | None = None
+
+
+# Opaque references are always a single token of base64url / UUID characters:
+# workflow_ref/run_ref are ``wf_``/``run_`` + unpadded base64url (see
+# validibot_mcp.refs), and run_id is a UUID. None ever contains a path
+# separator, dot, or whitespace, so we can reject anything outside this set.
+_SAFE_REF_RE = re.compile(r"\A[A-Za-z0-9_-]+\Z")
+
+
+def _encode_ref(value: str) -> str:
+    """Validate and percent-encode an opaque ref before URL-path interpolation.
+
+    WHAT: rejects any ref that is not a single opaque token of base64url /
+    UUID characters (``A-Za-z0-9_-``), then percent-encodes it (belt and
+    suspenders) before it is interpolated into an ``httpx`` request path.
+
+    WHY: ``workflow_ref``, ``run_ref``, and ``run_id`` are caller-supplied
+    (ultimately by AI agents). A crafted value such as ``../../license/features``
+    interpolated into the path could traverse to a *different* Django endpoint
+    over the trusted service-to-service channel (path traversal / request
+    forgery). Percent-encoding ``/`` to ``%2F`` alone is fragile: ``httpx``
+    preserves it on the wire, but WSGI percent-decodes ``PATH_INFO`` and a
+    normalising proxy can then collapse the ``..`` — so the encoding may not
+    survive end to end. Validating the charset up front rejects the attack
+    regardless of any downstream decoding/normalisation; the encoding then just
+    guards against any future ref format that legitimately widens the set.
+
+    Raises:
+        ValueError: if *value* is empty or contains anything other than the
+            opaque-token character set (e.g. ``/``, ``.``, ``..`` or whitespace).
+    """
+
+    if not value or not _SAFE_REF_RE.match(value):
+        msg = (
+            "Invalid reference: only opaque tokens using the characters "
+            "A-Z, a-z, 0-9, '_' and '-' are allowed."
+        )
+        raise ValueError(msg)
+    return urllib.parse.quote(value, safe="")
 
 
 def _build_api_http_client() -> httpx.AsyncClient:
@@ -239,7 +280,7 @@ async def get_authenticated_workflow_detail(
 
     http_client = await _get_http_client()
     r = await http_client.get(
-        f"/api/v1/mcp/workflows/{workflow_ref}/",
+        f"/api/v1/mcp/workflows/{_encode_ref(workflow_ref)}/",
         headers=await _service_headers(
             user_sub=user_sub,
             api_token=api_token,
@@ -265,7 +306,7 @@ async def start_authenticated_validation_run(
 
     http_client = await _get_http_client()
     r = await http_client.post(
-        f"/api/v1/mcp/workflows/{workflow_ref}/runs/",
+        f"/api/v1/mcp/workflows/{_encode_ref(workflow_ref)}/runs/",
         headers=await _service_headers(
             user_sub=user_sub,
             api_token=api_token,
@@ -294,7 +335,7 @@ async def get_authenticated_run(
 
     http_client = await _get_http_client()
     r = await http_client.get(
-        f"/api/v1/mcp/runs/{run_ref}/",
+        f"/api/v1/mcp/runs/{_encode_ref(run_ref)}/",
         headers=await _service_headers(
             user_sub=user_sub,
             api_token=api_token,
@@ -374,7 +415,7 @@ async def get_agent_workflow_detail(workflow_ref: str) -> dict[str, Any]:
     """Fetch full detail for a public x402 workflow."""
 
     http_client = await _get_agent_http()
-    r = await http_client.get(f"/api/v1/agent/workflows/{workflow_ref}/")
+    r = await http_client.get(f"/api/v1/agent/workflows/{_encode_ref(workflow_ref)}/")
     _raise_for_status(r)
     return r.json()
 
@@ -443,7 +484,7 @@ async def get_agent_run_status(
     """
     http_client = await _get_agent_http()
     r = await http_client.get(
-        f"/api/v1/agent/runs/{run_id}/",
+        f"/api/v1/agent/runs/{_encode_ref(run_id)}/",
         params={"wallet_address": wallet_address},
     )
     _raise_for_status(r)

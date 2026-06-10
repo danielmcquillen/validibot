@@ -22,6 +22,14 @@ from validibot.validations.validators.therm.models import ThermModel
 
 logger = logging.getLogger(__name__)
 
+# Maximum uncompressed size we will extract from a single member of a .thmz
+# ZIP archive. THMZ archives are opened and read entirely in-process inside
+# the Django/Celery THERM validator, so a small "zip bomb" with a very high
+# compression ratio could otherwise decompress to many gigabytes and OOM the
+# worker. 50 MiB is comfortably above any legitimate THERM model XML while
+# bounding the memory a malicious archive can force us to allocate.
+MAX_THMZ_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+
 
 def parse_therm_file(
     content: str | bytes,
@@ -82,6 +90,57 @@ def _is_zip(data: bytes) -> bool:
     return data[:4] == b"PK\x03\x04"
 
 
+def _read_member_bounded(zf: zipfile.ZipFile, name: str) -> bytes:
+    """
+    Read a single ZIP member, refusing anything larger than the cap.
+
+    THMZ archives are decompressed entirely in-process, so an attacker can
+    supply a tiny archive whose members declare (or actually decompress to)
+    many gigabytes — a classic "zip bomb" — and exhaust the worker's memory.
+    We defend in two layers:
+
+    1. Reject up front if the member's declared uncompressed size
+       (``ZipInfo.file_size``) already exceeds ``MAX_THMZ_UNCOMPRESSED_BYTES``.
+       This catches honest-but-huge archives cheaply, without decompressing.
+    2. Stream the member and stop as soon as the decompressed bytes exceed the
+       cap. This catches archives that *lie* about ``file_size`` (the value is
+       attacker-controlled metadata), so we never materialise more than roughly
+       the cap in memory regardless of what the header claims.
+
+    Args:
+        zf: The open ZIP archive to read from.
+        name: The member name to extract.
+
+    Returns:
+        The decompressed bytes of the member.
+
+    Raises:
+        ValueError: If the member exceeds ``MAX_THMZ_UNCOMPRESSED_BYTES`` by
+            either its declared size or its actual decompressed length.
+    """
+    info = zf.getinfo(name)
+    if info.file_size > MAX_THMZ_UNCOMPRESSED_BYTES:
+        msg = (
+            "THMZ archive member "
+            f"{name!r} declares an uncompressed size of {info.file_size} bytes, "
+            f"which exceeds the {MAX_THMZ_UNCOMPRESSED_BYTES}-byte limit."
+        )
+        raise ValueError(msg)
+
+    # Read one byte past the cap so we can detect a member that under-reports
+    # its size in the header and actually decompresses to something larger.
+    with zf.open(name) as member:
+        data = member.read(MAX_THMZ_UNCOMPRESSED_BYTES + 1)
+    if len(data) > MAX_THMZ_UNCOMPRESSED_BYTES:
+        msg = (
+            "THMZ archive member "
+            f"{name!r} decompresses to more than the "
+            f"{MAX_THMZ_UNCOMPRESSED_BYTES}-byte limit."
+        )
+        raise ValueError(msg)
+    return data
+
+
 def _extract_xml_from_thmz(data: bytes) -> bytes:
     """
     Extract the primary model XML from a THMZ ZIP archive.
@@ -89,19 +148,23 @@ def _extract_xml_from_thmz(data: bytes) -> bytes:
     THMZ archives contain multiple files. The primary model
     file is identified by extension (.thmx) or as the largest
     XML file in the archive.
+
+    Every member is read through :func:`_read_member_bounded`, which enforces
+    ``MAX_THMZ_UNCOMPRESSED_BYTES`` so a high-compression-ratio archive cannot
+    OOM the in-process validator.
     """
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
             # Look for a .thmx file first
             thmx_files = [n for n in zf.namelist() if n.lower().endswith(".thmx")]
             if thmx_files:
-                return zf.read(thmx_files[0])
+                return _read_member_bounded(zf, thmx_files[0])
 
             # Fall back to any XML file
             xml_files = [n for n in zf.namelist() if n.lower().endswith(".xml")]
             if xml_files:
                 largest = max(xml_files, key=lambda n: zf.getinfo(n).file_size)
-                return zf.read(largest)
+                return _read_member_bounded(zf, largest)
 
             msg = "THMZ archive does not contain a .thmx or .xml file."
             raise ValueError(msg)

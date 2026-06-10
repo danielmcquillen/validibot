@@ -249,19 +249,90 @@ class XmlSchemaValidator(BaseValidator):
 
     def _load_schema(self, schema_type: str, raw: str) -> Any:
         """
-        Parse the XML schema string and return an lxml schema object.
+        Parse an author-supplied XML schema string into an lxml schema object.
+
+        WHY hardened parsing matters here: the schema document is just as
+        untrusted as the instance document — it is author-supplied ruleset text.
+        A malicious XSD/RelaxNG can carry ``xs:import``/``xs:include`` (or DTD
+        external entities) whose ``schemaLocation`` points at ``file://`` (local
+        file disclosure) or ``http://`` (SSRF / outbound socket) URLs, and lxml
+        will dereference those *during schema compilation* unless told not to.
+        The original code compiled the schema with lxml's BARE default parser,
+        so such an import resolved and read the targeted file / opened a socket.
+
+        Two things harden it, and BOTH are required:
+
+        1. The ``etree.XMLParser`` mirrors the instance parser in ``validate``
+           (``recover=False``, ``resolve_entities=False``, ``no_network=True``).
+           ``resolve_entities=False`` blocks external DTD entity expansion in
+           the schema text itself.
+        2. A custom :class:`etree.Resolver` is attached to that parser which
+           REFUSES every external system URL. This is the part that actually
+           stops ``xs:import``/``xs:include``/``xi:include`` dereferencing,
+           because libxml2's schema compiler resolves ``schemaLocation`` through
+           the parser's resolver chain rather than honouring ``no_network``
+           alone for ``file://`` URLs. Refusing in the resolver means a schema
+           pointing at ``file:///etc/passwd`` or ``http://attacker/`` neither
+           reads the file nor opens a socket — compilation simply fails.
+
+        Legitimate self-contained schemas (no external imports) are unaffected
+        and still compile and validate normally.
+
+        Args:
+            schema_type: One of the ``XMLSchemaType`` names ("XSD", "RELAXNG",
+                "DTD"), already validated by ``_resolve_schema_type``.
+            raw: The raw schema document text supplied by the ruleset/validator.
+
+        Returns:
+            An lxml schema validator object (``XMLSchema``, ``RelaxNG``, or
+            ``DTD``) suitable for ``.validate(doc)``.
+
+        Raises:
+            ImportError: If lxml is unavailable.
+            ValueError: If ``schema_type`` is not a supported value.
         """
         try:
             from lxml import etree
         except Exception as e:  # pragma: no cover
             raise ImportError(_("XML validation requires lxml: ") + str(e)) from e
 
+        class _BlockExternalResolver(etree.Resolver):
+            """Refuse every external resource lxml tries to dereference.
+
+            Defined locally because subclassing ``etree.Resolver`` requires
+            lxml, which is an optional dependency imported lazily above. lxml
+            invokes ``resolve`` for each ``schemaLocation``/``xi:include`` target
+            during schema compilation; raising here turns an attempted ``file://``
+            disclosure or ``http://`` SSRF into a clean compilation failure.
+            """
+
+            def resolve(self, system_url, public_id, context):
+                msg = _("External schema resource resolution is not allowed: ")
+                raise OSError(msg + str(system_url))
+
+        # Same hardening as the instance parser in ``validate`` (no network, no
+        # external-entity resolution), PLUS a resolver that blocks the schema
+        # compiler from fetching any ``schemaLocation`` / include target.
+        schema_parser = etree.XMLParser(
+            recover=False,
+            resolve_entities=False,
+            no_network=True,
+        )
+        schema_parser.resolvers.add(_BlockExternalResolver())
+
         if schema_type == XMLSchemaType.XSD.name:
-            return etree.XMLSchema(etree.XML(raw.encode("utf-8")))
+            return etree.XMLSchema(
+                etree.XML(raw.encode("utf-8"), parser=schema_parser),
+            )
         if schema_type == XMLSchemaType.RELAXNG.name:
-            return etree.RelaxNG(etree.XML(raw.encode("utf-8")))
+            return etree.RelaxNG(
+                etree.XML(raw.encode("utf-8"), parser=schema_parser),
+            )
         if schema_type == XMLSchemaType.DTD.name:
-            return etree.DTD(io.StringIO(raw))
+            # DTDs have no ``schemaLocation`` imports, but reading the bytes via
+            # ``BytesIO`` keeps the no-network/no-entity posture consistent and
+            # avoids lxml's bare DTD external-subset resolution.
+            return etree.DTD(io.BytesIO(raw.encode("utf-8")))
         raise ValueError(_("Unsupported XML schema type: ") + schema_type)
 
     # Error types that just restate a parent failure and add no useful info.

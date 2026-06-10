@@ -73,6 +73,55 @@ logger = logging.getLogger(__name__)
 _EXPORT_RATE_LIMIT = 10
 _EXPORT_RATE_WINDOW_SECONDS = 3600
 
+# CSV / formula-injection defence. Spreadsheet apps (Excel, LibreOffice,
+# Google Sheets) interpret any cell whose first character is one of these
+# as a formula, not as text. Because the audit log stores attacker-
+# influenced strings verbatim (e.g. ``actor_email`` from a failed login,
+# or ``target_repr`` snapshotting a user-named object), an export of
+# ``=cmd|'/c calc'!A1`` would execute on open. We neutralise the cell by
+# prefixing a single quote, which every major spreadsheet treats as
+# "this is literal text". Tab and carriage return are included because a
+# leading whitespace control can still smuggle the payload past a naive
+# first-character check in some parsers.
+#
+# This guard lives here (not in ``core.textsafety``) on purpose:
+# ``textsafety`` is the *storage* layer and deliberately strips control
+# characters and trims whitespace, which would corrupt audit data. A CSV
+# cell must round-trip the stored value faithfully and only gain the
+# minimal prefix needed to stop formula evaluation — a pure output-time
+# concern specific to the CSV rendering context.
+_CSV_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+_CSV_FORMULA_ESCAPE_PREFIX = "'"
+
+
+def _csv_safe(value: Any) -> Any:
+    """Neutralise a CSV cell that would otherwise be read as a formula.
+
+    Args:
+        value: The cell value about to be written to the export. Non-string
+            values (ints, ``None``, already-JSON-encoded dict columns) are
+            returned untouched — only attacker-influenced free text can begin
+            with a formula trigger, and coercing everything to ``str`` here
+            would change the on-the-wire shape of numeric columns.
+
+    Returns:
+        The value with a single-quote prefix prepended when it is a string
+        starting with one of :data:`_CSV_FORMULA_TRIGGERS`; otherwise the
+        value unchanged.
+
+    Why:
+        Audit exports contain user-controlled fields stored verbatim
+        (``actor_email``, ``target_repr``, ``target_id``, ``request_id`` …).
+        Without this, a value like ``=cmd()`` becomes an executable formula
+        when the CSV is opened in a spreadsheet (CSV / formula injection,
+        CWE-1236). Prefixing ``'`` forces literal-text interpretation while
+        preserving the original characters for any non-spreadsheet consumer.
+    """
+
+    if isinstance(value, str) and value.startswith(_CSV_FORMULA_TRIGGERS):
+        return f"{_CSV_FORMULA_ESCAPE_PREFIX}{value}"
+    return value
+
 
 class _AuditLogBaseMixin(
     LoginRequiredMixin,
@@ -370,7 +419,14 @@ class AuditLogExportView(_AuditLogBaseMixin, View):
             row = self._row_dict(entry)
             row["changes"] = json.dumps(row["changes"], default=str)
             row["metadata"] = json.dumps(row["metadata"], default=str)
-            writer.writerow(row)
+            # Neutralise every cell against CSV / formula injection before
+            # writing. Applied across the whole row (not just the obviously
+            # user-controlled columns) so a new field added to ``_row_dict``
+            # later can never silently reintroduce the vulnerability. The
+            # JSON-encoded ``changes``/``metadata`` columns always start with
+            # ``{``/``[``/``"`` and so are left unchanged by the guard.
+            safe_row = {key: _csv_safe(cell) for key, cell in row.items()}
+            writer.writerow(safe_row)
             yield buffer.drain()
 
     def _stream_jsonl(

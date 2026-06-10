@@ -435,6 +435,7 @@ class AccountAdapter(DefaultAccountAdapter):
         from django.contrib import messages
         from django.utils.translation import gettext_lazy as _
 
+        from validibot.members.views import user_owns_invited_email
         from validibot.workflows.models import WorkflowInvite
 
         # Clear the session key
@@ -478,6 +479,32 @@ class AccountAdapter(DefaultAccountAdapter):
                         "Guest invites are currently disabled by the "
                         "administrator. Your account was created but the "
                         "invite was not redeemed."
+                    ),
+                )
+                return None
+
+            # Email-only invite: only redeem when the new account owns the
+            # invited address. A leaked workflow-invite link redeemed during
+            # a signup using a *different* email must not grant that account
+            # access to a workflow it was never invited to. The brand-new-
+            # invitee case redeemed here always has ``invitee_user`` None
+            # (existing-account invites are bound by the accept-view), so
+            # this is the relevant guard.
+            if invite.invitee_user_id is None and not user_owns_invited_email(
+                request.user,
+                invite.invitee_email,
+            ):
+                logger.warning(
+                    "Workflow invite %s not redeemed: signup account does "
+                    "not own the invited email",
+                    invite_token,
+                )
+                messages.warning(
+                    request,
+                    _(
+                        "Your account was created, but this workflow "
+                        "invitation is addressed to a different email "
+                        "address, so it was not redeemed.",
                     ),
                 )
                 return None
@@ -543,6 +570,7 @@ class AccountAdapter(DefaultAccountAdapter):
         from django.utils.translation import gettext_lazy as _
 
         from validibot.core.constants import InviteStatus
+        from validibot.members.views import user_owns_invited_email
         from validibot.workflows.models import GuestInvite
 
         del request.session[GUEST_INVITE_SESSION_KEY]
@@ -581,6 +609,33 @@ class AccountAdapter(DefaultAccountAdapter):
                         "Guest invites are currently disabled by the "
                         "administrator. Your account was created but the "
                         "invite was not redeemed."
+                    ),
+                )
+                return None
+
+            # Email-only invite: only redeem when the new account owns the
+            # invited address. Without this, a forwarded/leaked guest-invite
+            # link redeemed during a signup that uses a *different* email
+            # would grant that account guest access to the org it was never
+            # invited to. ``invitee_user`` is set only when the invite was
+            # minted for an existing account, which the accept-view already
+            # binds; the brand-new-invitee case we redeem here always has
+            # ``invitee_user`` None, so this is the relevant guard.
+            if invite.invitee_user_id is None and not user_owns_invited_email(
+                request.user,
+                invite.invitee_email,
+            ):
+                logger.warning(
+                    "Guest invite %s not redeemed: signup account does not "
+                    "own the invited email",
+                    invite_token,
+                )
+                messages.warning(
+                    request,
+                    _(
+                        "Your account was created, but this guest invitation "
+                        "is addressed to a different email address, so it was "
+                        "not redeemed.",
                     ),
                 )
                 return None
@@ -644,6 +699,7 @@ class AccountAdapter(DefaultAccountAdapter):
 
         from validibot.core.constants import InviteStatus
         from validibot.members.views import finalize_member_invite_accept
+        from validibot.members.views import user_owns_invited_email
         from validibot.users.models import MemberInvite
         from validibot.users.seats import SeatQuotaExceededError
 
@@ -675,6 +731,31 @@ class AccountAdapter(DefaultAccountAdapter):
             logger.warning(
                 "Member invite %s addressed to a different user; not redeeming",
                 invite_token,
+            )
+            return None
+
+        # Email-only invite (``invitee_user`` None): only bind it to this
+        # brand-new account if the account provably owns the invited
+        # address. A leaked invite link redeemed by a signup using a
+        # *different* email must not silently grant membership addressed to
+        # someone else. Mirrors the guard in ``MemberInviteAcceptView`` so
+        # the anonymous->signup path is no weaker than the logged-in click.
+        if invite.invitee_user_id is None and not user_owns_invited_email(
+            request.user,
+            invite.invitee_email,
+        ):
+            logger.warning(
+                "Member invite %s not redeemed: signup account does not own "
+                "the invited email",
+                invite_token,
+            )
+            messages.warning(
+                request,
+                _(
+                    "Your account was created, but this invitation is "
+                    "addressed to a different email address, so it was not "
+                    "redeemed.",
+                ),
             )
             return None
 

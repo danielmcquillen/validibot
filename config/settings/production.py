@@ -553,6 +553,29 @@ if DEPLOYMENT_TARGET == "gcp":
                 "broken service-to-service auth."
             )
 
+# Fail-fast boot check for non-GCP targets. On DEPLOYMENT_TARGET in
+# {self_hosted, aws} the worker-only endpoints (execute-validation-run,
+# validation-callbacks, scheduled-task triggers — see
+# config/urls_worker.py) are protected at the application layer ONLY by
+# ``WorkerKeyAuthentication`` (a shared secret), because there is no
+# infrastructure IAM to fall back on as there is on GCP. That class
+# *abstains* (returns None, which DRF treats as "no opinion") when
+# WORKER_API_KEY is empty, and ``WorkerOnlyAPIView`` carries no permission
+# gate, so an empty key leaves those endpoints unauthenticated — anyone who
+# can reach the worker service could forge run completions (mark failing
+# validations PASSED, defeating the attestation guarantee) or trigger runs.
+# Requiring the key at boot turns that latent fail-open into a loud,
+# deploy-time error instead of a silent production exposure.
+if DEPLOYMENT_TARGET in {"self_hosted", "aws"} and not (WORKER_API_KEY or "").strip():  # noqa: F405
+    raise ImproperlyConfigured(
+        f"DEPLOYMENT_TARGET={DEPLOYMENT_TARGET} requires WORKER_API_KEY to "
+        "be set to a strong shared secret. It is the only authentication on "
+        "the worker-only API endpoints (execute-validation-run, "
+        "validation-callbacks, scheduled tasks); leaving it empty would "
+        "expose them unauthenticated. Generate one with: "
+        'python -c "import secrets; print(secrets.token_urlsafe(48))".',
+    )
+
 # EMAIL
 # ------------------------------------------------------------------------------
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)

@@ -25,7 +25,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from validibot_mcp.client import aclose_http_clients
-from validibot_mcp.config import get_settings
+from validibot_mcp.config import Settings, get_settings
 from validibot_mcp.license_check import verify_license_or_die
 from validibot_mcp.token_verifier import ValidibotTokenVerifier
 from validibot_mcp.x402 import aclose_x402_http_client
@@ -121,18 +121,44 @@ _legacy_api_token_verifier = ValidibotTokenVerifier(
     scopes=_settings.effective_oauth_required_scopes,
 )
 
-_auth_provider: OIDCProxy | MultiAuth
 
-if _settings.oauth_client_secret:
-    _auth_provider = OIDCProxy(
-        config_url=f"{_settings.oauth_authorization_server_url.rstrip('/')}/.well-known/openid-configuration",
-        client_id=_settings.oauth_client_id,
-        client_secret=_settings.oauth_client_secret,
-        base_url=_settings.mcp_base_url.rstrip("/"),
-        required_scopes=_settings.effective_oauth_required_scopes,
+def _build_oidc_proxy(settings: Settings) -> OIDCProxy:
+    """Build the OIDCProxy auth provider with RFC 8707 audience binding.
+
+    WHY: The default ``JWTVerifier`` inside ``OIDCProxy`` only validates the
+    access token's ``aud`` claim when an ``audience`` is supplied. Without it,
+    a token minted for *any* resource served by the same authorization server
+    would be accepted here — defeating RFC 8707 resource indicators. We pass
+    ``effective_oauth_resource_audience`` so the verifier rejects tokens whose
+    ``aud`` is not this MCP surface, and ``resource_base_url`` so the advertised
+    RFC 9728 protected-resource metadata names the same audience the verifier
+    enforces.
+
+    Args:
+        settings: The resolved MCP server settings carrying the OAuth client
+            credentials and the effective resource audience.
+
+    Returns:
+        An ``OIDCProxy`` whose JWTVerifier enforces the ``aud`` claim.
+    """
+
+    return OIDCProxy(
+        config_url=f"{settings.oauth_authorization_server_url.rstrip('/')}/.well-known/openid-configuration",
+        client_id=settings.oauth_client_id,
+        client_secret=settings.oauth_client_secret,
+        base_url=settings.mcp_base_url.rstrip("/"),
+        audience=settings.effective_oauth_resource_audience,
+        resource_base_url=settings.effective_oauth_resource_audience,
+        required_scopes=settings.effective_oauth_required_scopes,
         require_authorization_consent=False,
         token_endpoint_auth_method="client_secret_post",  # noqa: S106
     )
+
+
+_auth_provider: OIDCProxy | MultiAuth
+
+if _settings.oauth_client_secret:
+    _auth_provider = _build_oidc_proxy(_settings)
     _logger.info("Auth: OIDCProxy enabled")
 else:
     # Fallback for environments without OAuth configured (local dev).

@@ -369,6 +369,28 @@ class OrganizationMemberForm(forms.Form):
                 raise forms.ValidationError(
                     _("That user is already a member of this organization."),
                 )
+
+            # Enforce the paid-edition seat cap *here* as well as in
+            # ``MemberInvite.accept``. This form creates an active
+            # ``Membership`` directly (admin types an existing user's
+            # email), bypassing the invite-accept path — so without this
+            # check the seat cap could be exceeded by directly adding
+            # members. We only check once we know a *new* seat would be
+            # consumed: ``existing`` is None here, so this user is not
+            # already a member and accepting them genuinely grows the
+            # active-member count. The deferred import mirrors the other
+            # callsites (``models.py``, ``adapters.py``) and keeps this
+            # form decoupled from the licensing layer at import time.
+            from validibot.users.seats import SeatQuotaExceededError
+            from validibot.users.seats import check_org_seat_quota
+
+            try:
+                check_org_seat_quota(self.organization)
+            except SeatQuotaExceededError as exc:
+                # Surface the helper's precise "you're at N of M seats,
+                # free one or upgrade" message as a form error so the
+                # admin sees actionable guidance instead of a 500.
+                raise forms.ValidationError(str(exc)) from exc
         return cleaned
 
     def clean_roles(self):

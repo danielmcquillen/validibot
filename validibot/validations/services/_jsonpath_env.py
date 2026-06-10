@@ -9,13 +9,18 @@ Only a minimal subset of JSONPath is permitted.  The following features
 are explicitly **blocked** before the library ever sees the input:
 
 - Recursive descent (``..``) — could traverse an entire payload tree.
+- Regex-match operator (``=~``) — a parser-level operator that survives
+  clearing ``function_extensions`` and exposes a catastrophic-backtracking
+  ReDoS surface via untimed ``re.fullmatch`` over every submission cell.
 - Wildcards (``[*]``, ``.*``) — produce unbounded result sets.
 - Slice notation (``[n:m]``) — can select large array ranges.
 - Excess filter segments — capped to prevent O(n^k) chaining.
 
 All built-in JSONPath functions (``match()``, ``search()``, ``length()``,
 etc.) are removed from the environment so that filter expressions can
-only perform comparisons, not regex evaluation or other operations.
+only perform comparisons, not regex evaluation or other operations.  The
+``=~`` operator is *not* a function, so it is blocked separately by the
+string-level check in ``_validate_restrictions``.
 
 This module is imported lazily — only when ``resolve_path()`` encounters
 a path containing ``[?``.  It has zero impact on startup time or on the
@@ -24,6 +29,7 @@ majority of paths that use plain dot/bracket notation.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import re
 from typing import Any
@@ -36,6 +42,16 @@ from jsonpath import JSONPathTypeError
 from validibot.validations.constants import MAX_JSONPATH_FILTER_SEGMENTS
 
 logger = logging.getLogger(__name__)
+
+# ── Defense-in-depth wall-clock timeout ───────────────────────────────
+#
+# Even with the ``=~`` regex operator rejected at validation time (see
+# ``_validate_restrictions``), a pathological filter expression evaluated
+# over a very large submission (up to ~1M cells) could still consume an
+# unbounded amount of CPU.  We cap the actual resolution call with a hard
+# wall-clock timeout so a single path can never hang the worker process.
+# This is a safety net, not the primary control — the ``=~`` rejection is.
+JSONPATH_RESOLVE_TIMEOUT_SECONDS = 2.0
 
 # ── Module-level singleton ────────────────────────────────────────────
 #
@@ -57,6 +73,23 @@ def _validate_restrictions(path: str) -> None:
     """
     if ".." in path:
         msg = "Recursive descent ('..') is not permitted in data path expressions."
+        raise ValueError(msg)
+
+    # ── Regex-match operator (ReDoS guard) ────────────────────────────
+    #
+    # ``python-jsonpath`` parses the ``=~`` regex-match operator at the
+    # grammar level, so clearing ``function_extensions`` (which removes
+    # ``match()`` / ``search()``) does NOT disable it.  An author could
+    # smuggle in a catastrophically-backtracking pattern such as
+    # ``items[?@.name =~ /(a+)+$/]``; the library would then run
+    # ``re.fullmatch`` (no timeout) over every cell of the submission,
+    # hanging the worker.  Validibot's documented JSONPath subset is
+    # comparison-only, so we reject ``=~`` outright before parsing.
+    if "=~" in path:
+        msg = (
+            "Regex-match ('=~') is not permitted in data path expressions; "
+            "only comparison operators (==, !=, <, <=, >, >=) are allowed."
+        )
         raise ValueError(msg)
 
     if "[*]" in path or ".*" in path:
@@ -97,8 +130,34 @@ def resolve_jsonpath(data: Any, path: str) -> tuple[Any, bool]:
     # Normalise: users write dot-notation paths without a leading '$'.
     jsonpath_expr = f"$.{path}" if not path.startswith("$") else path
 
+    # Run the actual resolution under a hard wall-clock timeout.  The
+    # ``=~`` rejection above already removes the known ReDoS vector, but
+    # offloading ``findall`` to a single worker thread and bounding it
+    # with ``JSONPATH_RESOLVE_TIMEOUT_SECONDS`` ensures that *any* future
+    # pathological expression — over an unbounded submission — can never
+    # block this code path indefinitely.  ``max_workers=1`` keeps the
+    # overhead to a single short-lived thread per call.
+    #
+    # NOTE: a CPython thread cannot be forcibly killed, so a runaway
+    # ``findall`` keeps running after the timeout fires.  We therefore
+    # MUST NOT use the executor as a context manager — its ``__exit__``
+    # calls ``shutdown(wait=True)`` and would re-block on the very thread
+    # we are trying to escape.  Instead we time out the *result* and call
+    # ``shutdown(wait=False)`` so the caller returns immediately; the
+    # orphaned thread is left to finish (or be reaped at process exit) on
+    # its own.  With the ``=~`` operator already rejected, reaching this
+    # timeout requires a genuinely pathological-but-bounded expression.
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     try:
-        results = _env.findall(jsonpath_expr, data)
+        future = executor.submit(_env.findall, jsonpath_expr, data)
+        results = future.result(timeout=JSONPATH_RESOLVE_TIMEOUT_SECONDS)
+    except concurrent.futures.TimeoutError:
+        logger.warning(
+            "JSONPath resolution timed out after %.1fs (path=%r)",
+            JSONPATH_RESOLVE_TIMEOUT_SECONDS,
+            path,
+        )
+        return None, False
     except (
         JSONPathSyntaxError,
         JSONPathTypeError,
@@ -109,6 +168,9 @@ def resolve_jsonpath(data: Any, path: str) -> tuple[Any, bool]:
             path,
         )
         return None, False
+    finally:
+        # Do not block on a possibly-runaway worker thread.
+        executor.shutdown(wait=False)
 
     if results:
         return results[0], True

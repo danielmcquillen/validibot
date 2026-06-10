@@ -7,6 +7,9 @@ from typing import Any
 from django.utils.translation import gettext as _
 from jsonschema import Draft202012Validator
 from jsonschema import FormatChecker
+from referencing import Registry
+from referencing.exceptions import NoSuchResource
+from referencing.exceptions import Unresolvable
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import Severity
@@ -20,6 +23,41 @@ if TYPE_CHECKING:
     from validibot.validations.models import Ruleset
     from validibot.validations.models import Submission
     from validibot.validations.models import Validator
+
+
+def _reject_external_ref(uri: str) -> None:
+    """
+    Registry ``retrieve`` callback that refuses to fetch any external resource.
+
+    WHAT: ``referencing`` calls this whenever a ``$ref`` points at a URI that is
+    not already present in the in-memory registry (i.e. anything that is not an
+    internal ``#/...`` pointer into the schema being validated). We always raise
+    ``NoSuchResource`` so resolution fails locally instead of triggering a
+    network or filesystem fetch.
+
+    WHY: Ruleset schemas are author-controlled. Without this guard, building a
+    ``Draft202012Validator`` from such a schema lets jsonschema resolve remote
+    ``$ref`` values over the network (an SSRF vector against, e.g., the cloud
+    metadata endpoint ``169.254.169.254``) and read local files via ``file://``
+    refs. By rejecting every external URI here, an offending ``$ref`` surfaces as
+    a handled ``referencing.exceptions.Unresolvable`` (which ``validate`` turns
+    into a controlled ERROR issue) and never opens an outbound socket or touches
+    the local filesystem.
+
+    Args:
+        uri: The external URI that a ``$ref`` attempted to resolve.
+
+    Raises:
+        NoSuchResource: Always, to signal the URI cannot be retrieved.
+    """
+    raise NoSuchResource(ref=uri)
+
+
+# A single shared registry whose ``retrieve`` callback denies every external
+# fetch. It is safe to reuse across validations because it holds no per-request
+# state — internal ``$ref``/``$defs`` resolution still works (those resources are
+# crawled from the schema itself, never retrieved), only http(s)/file refs fail.
+_NO_EXTERNAL_FETCH_REGISTRY = Registry(retrieve=_reject_external_ref)
 
 
 class JsonSchemaValidator(BaseValidator):
@@ -107,9 +145,43 @@ class JsonSchemaValidator(BaseValidator):
                 stats={"exception": type(e).__name__},
             )
 
-        # Validate against JSON Schema
-        v = Draft202012Validator(schema, format_checker=FormatChecker())
-        errors = sorted(v.iter_errors(data), key=lambda e: list(e.path))
+        # Validate against JSON Schema.
+        #
+        # We pass an explicit ``registry`` whose ``retrieve`` callback rejects
+        # every external URI (see ``_reject_external_ref``). This closes an SSRF
+        # / local-file-read hole: an author-controlled schema could otherwise use
+        # a remote ``$ref`` (e.g. ``http://169.254.169.254/...``) or a
+        # ``file://`` ref, and jsonschema would dutifully open a socket or read
+        # the file while resolving it. With the locked-down registry, internal
+        # ``#/$defs`` refs still resolve, but any external ref fails fast as an
+        # ``Unresolvable`` error that we convert into a controlled ERROR issue
+        # below — no network or filesystem access ever happens.
+        v = Draft202012Validator(
+            schema,
+            registry=_NO_EXTERNAL_FETCH_REGISTRY,
+            format_checker=FormatChecker(),
+        )
+        try:
+            errors = sorted(v.iter_errors(data), key=lambda e: list(e.path))
+        except Unresolvable as e:
+            # A ``$ref`` pointed at an external (or otherwise unresolvable)
+            # resource. Surface it as a handled validation error rather than
+            # letting it bubble up as an unhandled exception.
+            return ValidationResult(
+                passed=False,
+                issues=[
+                    ValidationIssue(
+                        path="",
+                        message=_(
+                            "Schema references an external resource, which is "
+                            "not permitted: %(detail)s",
+                        )
+                        % {"detail": str(e)},
+                        severity=Severity.ERROR,
+                    ),
+                ],
+                stats={"exception": type(e).__name__},
+            )
         issues: list[ValidationIssue] = [
             ValidationIssue("/".join(map(str, e.path)), e.message) for e in errors
         ]

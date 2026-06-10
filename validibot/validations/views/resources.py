@@ -39,9 +39,18 @@ class ResourceFileMixin(ValidatorLibraryMixin):
                     request=request,
                 ),
             )
+        # SECURITY: scope the validator lookup to the caller's active org
+        # (and exclude system validators). Without this, an org admin could
+        # attach an attacker-controlled resource file (including
+        # ``is_default=True``) to another org's validator or a system
+        # validator by enumerating its primary key — the permission gate
+        # only checks the attacker's own active org. Mirrors the org-scoped
+        # lookups already used by the update/delete resource-file paths.
         self.validator = get_object_or_404(
             Validator,
             pk=self.kwargs.get("pk"),
+            is_system=False,
+            org=self.get_active_org(),
         )
         return super().dispatch(request, *args, **kwargs)
 

@@ -166,6 +166,26 @@ class WorkflowInviteAcceptView(GuestInvitesEnabledMixin, View):
             return HttpResponseRedirect(reverse("home:home"))
 
         if request.user.is_authenticated:
+            from validibot.members.views import user_owns_invited_email
+
+            # SECURITY: an email-only invite (``invitee_user`` is None) must
+            # only be redeemed by an account that provably owns the invited
+            # email. A leaked or forwarded invite link otherwise lets whoever
+            # opens it claim workflow access addressed to a different person
+            # (cross-account grant). Mirrors the guard in
+            # ``MemberInviteAcceptView`` and the post-signup adapter handlers.
+            if invite.invitee_user_id is None and not user_owns_invited_email(
+                request.user,
+                invite.invitee_email,
+            ):
+                messages.error(
+                    request,
+                    _(
+                        "This invitation is addressed to a different email "
+                        "address, so it was not applied to your account."
+                    ),
+                )
+                return HttpResponseRedirect(reverse("home:home"))
             # Accept immediately for logged-in users
             try:
                 grant = invite.accept(user=request.user)
@@ -255,6 +275,25 @@ class GuestInviteAcceptView(GuestInvitesEnabledMixin, View):
             return HttpResponseRedirect(reverse("home:home"))
 
         if request.user.is_authenticated:
+            from validibot.members.views import user_owns_invited_email
+
+            # SECURITY: see WorkflowInviteAcceptView — an email-only guest
+            # invite (``invitee_user`` is None) may only be redeemed by an
+            # account that provably owns the invited email, so a leaked link
+            # cannot grant another person's org guest access to whoever
+            # opens it.
+            if invite.invitee_user_id is None and not user_owns_invited_email(
+                request.user,
+                invite.invitee_email,
+            ):
+                messages.error(
+                    request,
+                    _(
+                        "This guest invitation is addressed to a different "
+                        "email address, so it was not applied to your account."
+                    ),
+                )
+                return HttpResponseRedirect(reverse("home:home"))
             try:
                 invite.accept(user=request.user)
             except ValueError as exc:

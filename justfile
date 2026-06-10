@@ -202,6 +202,87 @@ default:
     @echo ""
 
 # =============================================================================
+# Testing
+# =============================================================================
+#
+# One venv, three fidelity tiers. Community is the baseline; the pro and cloud
+# tiers activate the commercial packages via their settings module and run
+# those repos' suites. They degrade gracefully (skip, not fail) when the
+# commercial source/packages are absent (e.g. a community-only checkout).
+#
+#   just test                # community suite + open-core isolation guard
+#   just test PATHS...        # scoped community run (paths, -k, -x, ... passed through)
+#   just test-pro             # validibot-pro's own suite
+#   just test-pro PATHS...    # those paths under config.settings.test_pro (Pro active)
+#   just test-cloud           # validibot-cloud's + validibot-pro's suites
+#   just test-cloud PATHS...  # those paths under validibot_cloud.settings.test
+#   just setup-test-env       # make .venv able to run all three tiers
+
+# Community test suite (config.settings.test). Extra pytest args pass through.
+test *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    source ./set-env.sh >/dev/null 2>&1 || true
+    exec .venv/bin/pytest {{args}}
+
+# Community + validibot-pro. No args: run Pro's own suite (its settings). With
+# args: run those paths under config.settings.test_pro (Pro in INSTALLED_APPS).
+test-pro *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    if ! .venv/bin/python -c "import validibot_pro" >/dev/null 2>&1; then
+        echo "skip: validibot_pro is not installed — skipping the Pro tier."
+        echo "      (commercial license required, then: just setup-test-env)"
+        exit 0
+    fi
+    source ./set-env.sh >/dev/null 2>&1 || true
+    if [ -n "{{args}}" ]; then
+        exec .venv/bin/pytest --ds=config.settings.test_pro {{args}}
+    fi
+    ( cd ../validibot-pro && "{{justfile_directory()}}/.venv/bin/pytest" )
+
+# Community + pro + cloud. No args: run Cloud's then Pro's suites under their
+# settings. With args: run those paths under validibot_cloud.settings.test.
+test-cloud *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    if ! .venv/bin/python -c "import validibot_cloud" >/dev/null 2>&1; then
+        echo "skip: validibot_cloud is not installed — skipping the Cloud tier."
+        echo "      (commercial, then: just setup-test-env)"
+        exit 0
+    fi
+    source ./set-env.sh >/dev/null 2>&1 || true
+    if [ -n "{{args}}" ]; then
+        exec .venv/bin/pytest --ds=validibot_cloud.settings.test {{args}}
+    fi
+    .venv/bin/pytest --ds=validibot_cloud.settings.test ../validibot-cloud/validibot_cloud
+    if .venv/bin/python -c "import validibot_pro" >/dev/null 2>&1; then
+        ( cd ../validibot-pro && "{{justfile_directory()}}/.venv/bin/pytest" )
+    fi
+
+# Prepare the single dev venv to run all three tiers (community + pro + cloud).
+# Safe to re-run; reconciles .venv to the lockfile + cloud extra, then editable-
+# installs the commercial packages if their sibling repos are present.
+setup-test-env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    echo "-> Syncing community deps + cloud extra (stripe) into .venv"
+    uv sync --extra cloud
+    echo "-> Editable-installing commercial packages (skipped if absent)"
+    for pkg in ../validibot-pro ../validibot-cloud; do
+        if [ -d "$pkg" ]; then
+            uv pip install --no-deps -e "$pkg"
+        else
+            echo "   (skip: $pkg not present)"
+        fi
+    done
+    echo "OK: just test | just test-pro | just test-cloud"
+
+# =============================================================================
 # Cross-Platform Commands
 # =============================================================================
 #

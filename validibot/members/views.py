@@ -47,6 +47,74 @@ from validibot.users.models import User
 # lockstep, mirroring the guest-invite convention.
 MEMBER_INVITE_SESSION_KEY = "member_invite_token"
 
+# Minimum length before the invite type-ahead runs a user search. Below
+# this, a 1–2 character ``search`` term would match a huge slice of the
+# user table, so we wait until the admin has typed something specific.
+INVITE_SEARCH_MIN_QUERY_LENGTH = 3
+
+
+def user_owns_invited_email(user: User, invited_email: str | None) -> bool:
+    """Return True iff *user* provably owns *invited_email*.
+
+    This is the single ownership predicate every email-only invite
+    redemption path consults before binding an invite to an account.
+    Without it, a *leaked* invite link (forwarded email, shared device,
+    guessed token) lets whoever clicks it claim an invitation addressed
+    to a different person's email — a cross-account privilege grant.
+
+    Ownership is satisfied when the invited address matches, case-
+    insensitively, either:
+
+    * a **verified** allauth :class:`~allauth.account.models.EmailAddress`
+      row belonging to ``user`` (the authoritative record of which
+      addresses the account has proven control of), or
+    * ``user.email`` itself, but only when the account has *no*
+      ``EmailAddress`` rows at all. Some accounts (legacy users, fixtures,
+      programmatically created members) carry an email on the ``User``
+      row without a corresponding verified ``EmailAddress``; treating the
+      primary ``User.email`` as owned in that case avoids stranding
+      otherwise-legitimate redemptions while never *widening* ownership
+      for accounts that do have verified-email records to compare against.
+
+    Args:
+        user: The authenticated account attempting to redeem an invite.
+        invited_email: The ``invitee_email`` recorded on the invite.
+
+    Returns:
+        True when the account owns the invited address; False otherwise
+        (including when either side is blank — a blank invite email has no
+        owner and must never auto-bind).
+    """
+    from allauth.account.models import EmailAddress
+
+    if not invited_email:
+        return False
+
+    target = invited_email.strip().lower()
+    if not target:
+        return False
+
+    verified_emails = {
+        addr.lower()
+        for addr in EmailAddress.objects.filter(
+            user=user,
+            verified=True,
+        ).values_list("email", flat=True)
+    }
+    if verified_emails:
+        return target in verified_emails
+
+    # No verified EmailAddress rows exist for this account — fall back to
+    # the primary ``User.email``. This is deliberately the *only* branch
+    # that trusts ``User.email`` unaccompanied, so an account that has
+    # verified-email records can never bypass them via a stale primary.
+    if EmailAddress.objects.filter(user=user).exists():
+        # The account has EmailAddress rows but none are verified — it has
+        # proven control of nothing, so it owns no invited address.
+        return False
+
+    return target == (user.email or "").strip().lower()
+
 
 def finalize_member_invite_accept(invite: MemberInvite, user: User) -> Membership:
     """Bind, accept, and run the side effects of accepting a member invite.
@@ -276,14 +344,37 @@ class InviteSearchView(
         context = super().get_context_data(**kwargs)
         query = self.request.GET.get("search", "").strip()
         matches: list[User] = []
-        if len(query) >= 3:  # noqa: PLR2004
+        if len(query) >= INVITE_SEARCH_MIN_QUERY_LENGTH:
+            # SECURITY: scope the searchable population to users the admin's
+            # org already has a relationship with, never the global user
+            # table. The previous query ran an un-org-scoped
+            # ``username/email/name`` ``icontains`` across *every* User —
+            # an org admin could type fragments and enumerate accounts in
+            # unrelated tenants (cross-tenant user enumeration), harvesting
+            # emails and usernames that should be invisible to them. We
+            # restrict the base queryset to people the org already knows
+            # about — anyone the org has invited (so type-ahead still helps
+            # re-invite or correct a pending invite) — and exclude current
+            # active members (who can't be re-invited). Inviting a truly new
+            # outside email goes through the raw-email path in
+            # ``InviteCreateView``, which never reveals whether the address
+            # belongs to an existing account.
+            related_user_ids = MemberInvite.objects.filter(
+                org=self.organization,
+                invitee_user__isnull=False,
+            ).values_list("invitee_user_id", flat=True)
+
             matches = (
-                User.objects.filter(
+                User.objects.filter(pk__in=related_user_ids)
+                .filter(
                     models.Q(username__icontains=query)
                     | models.Q(email__icontains=query)
-                    | models.Q(name__icontains=query)
+                    | models.Q(name__icontains=query),
                 )
-                .exclude(memberships__org=self.organization)
+                .exclude(
+                    memberships__org=self.organization,
+                    memberships__is_active=True,
+                )
                 .distinct()[:5]
             )
         context.update(
@@ -513,15 +604,15 @@ class MemberInviteAcceptView(View):
             )
             return HttpResponseRedirect(reverse("home:home"))
         if invite.invitee_user_id is None:
-            # Email-only invite: bind only if the logged-in account owns
-            # the invited email (case-insensitive), mirroring the
-            # notification accept view's guard. Without this, anyone with
-            # the link could redeem an invite addressed to someone else.
-            owns_email = (
-                invite.invitee_email
-                and invite.invitee_email.lower() == (request.user.email or "").lower()
-            )
-            if not owns_email:
+            # Email-only invite: bind only if the logged-in account
+            # provably owns the invited email (case-insensitive match
+            # against a verified allauth EmailAddress, or the primary
+            # User.email when no EmailAddress records exist). Without this,
+            # anyone with the leaked link could redeem an invite addressed
+            # to someone else's inbox. Shared with the adapter signup
+            # paths via ``user_owns_invited_email`` so every redemption
+            # surface enforces the same predicate.
+            if not user_owns_invited_email(request.user, invite.invitee_email):
                 messages.error(
                     request,
                     _("This invitation is not addressed to your account."),

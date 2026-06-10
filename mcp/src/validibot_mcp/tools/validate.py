@@ -20,6 +20,7 @@ Two-path dispatch:
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from validibot_mcp import auth, client
@@ -41,8 +42,80 @@ from validibot_mcp.x402 import (
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
+logger = logging.getLogger(__name__)
+
 # 10 MB encoded — matches the existing REST API upload limit.
 _MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+
+
+def _confirm_or_reject(
+    *,
+    confirmed: str | None,
+    expected: str,
+    field: str,
+    case_insensitive: bool = False,
+) -> str:
+    """Assert a facilitator-confirmed field equals this server's expectation.
+
+    WHAT: Compares a single facilitator-confirmed settlement field
+    (``pay_to`` / ``network`` / ``asset`` / ``amount``) against the value this
+    MCP server is configured to expect. On a mismatch it raises
+    :class:`PaymentInvalidError` (fail closed). When the facilitator omitted
+    the field (``confirmed is None``) it logs a warning and falls back to the
+    expected value so a sparse-but-valid facilitator response is not rejected
+    outright.
+
+    WHY: The facilitator is an independent trust boundary. Asserting the
+    confirmed value here — before any run is created — closes the gap where a
+    misconfigured or compromised facilitator settles a payment to a different
+    wallet, chain, or asset, or for a smaller amount, while every downstream
+    Django check (which previously received an echo of local config) still
+    passes. We return the value that will be forwarded to Django: the
+    confirmed value when present, else the expected fallback.
+
+    Args:
+        confirmed: The facilitator-confirmed value, or ``None`` if omitted.
+        expected: This server's configured expectation for the field.
+        field: Human-readable field name, used only in log/error messages.
+        case_insensitive: When ``True``, compare case-insensitively. EVM
+            addresses (pay-to, asset contract) are written in EIP-55 mixed
+            case but the underlying bytes are equivalent.
+
+    Returns:
+        The value to forward to Django — ``confirmed`` when present, else
+        ``expected``.
+
+    Raises:
+        PaymentInvalidError: If ``confirmed`` is present but does not equal
+            ``expected`` (fail closed).
+    """
+    if confirmed is None:
+        logger.warning(
+            "x402 facilitator omitted confirmed %s; falling back to "
+            "configured value %r. Downstream pay-to verification is "
+            "weaker for this run.",
+            field,
+            expected,
+        )
+        return expected
+
+    left = confirmed.strip()
+    right = expected.strip()
+    matches = left.lower() == right.lower() if case_insensitive else left == right
+    if not matches:
+        logger.warning(
+            "x402 confirmed %s mismatch: facilitator confirmed %r but this "
+            "server expects %r. Rejecting payment (fail closed).",
+            field,
+            confirmed,
+            expected,
+        )
+        raise PaymentInvalidError(
+            "x402 payment verification failed: the facilitator-confirmed "
+            f"{field} does not match this server's configured value.",
+        )
+    return confirmed
+
 
 _VALIDATE_TOOL_ANNOTATIONS = {
     "readOnlyHint": False,
@@ -116,34 +189,66 @@ async def _validate_x402(
             },
         }
 
-    is_valid, txhash, wallet = await verify_payment(
+    verified = await verify_payment(
         payment_sig,
         requirements,
     )
-    if not is_valid:
+    if verified is None:
         raise PaymentInvalidError(
             "x402 payment verification failed. The payment signature "
             "is invalid, insufficient, or for the wrong network/asset.",
         )
 
+    # Anchor the downstream comparison to what the facilitator CONFIRMED.
+    # ``verify_payment`` returns the facilitator-confirmed settlement
+    # dimensions (pay_to / network / asset / amount). We assert each equals
+    # this server's configured expectation and fail closed on any mismatch,
+    # then forward the CONFIRMED values to Django. Forwarding local config
+    # instead would make Django's pay-to check tautological — a facilitator
+    # that settled to a different wallet/chain/asset would slip through.
+    expected_amount = str(cents_to_usdc_atomic(price_cents))
+    confirmed_pay_to = _confirm_or_reject(
+        confirmed=verified.pay_to,
+        expected=settings.x402_pay_to_address,
+        field="pay_to",
+        case_insensitive=True,
+    )
+    confirmed_network = _confirm_or_reject(
+        confirmed=verified.network,
+        expected=settings.x402_network,
+        field="network",
+    )
+    confirmed_asset = _confirm_or_reject(
+        confirmed=verified.asset,
+        expected=settings.x402_asset,
+        field="asset",
+        case_insensitive=True,
+    )
+    confirmed_amount = _confirm_or_reject(
+        confirmed=verified.amount,
+        expected=expected_amount,
+        field="amount",
+    )
+
     result = await client.create_agent_run(
-        txhash=txhash,
-        wallet=wallet or "unknown",
-        amount=str(cents_to_usdc_atomic(price_cents)),
-        network=settings.x402_network,
-        asset=settings.x402_asset,
-        # Forward the receiving wallet so Django can compare it to
-        # its own ``X402_PAY_TO_ADDRESS`` and refuse runs whose
-        # receipts paid a different address — closes the
-        # config-drift gap between MCP / facilitator / Django.
-        pay_to=settings.x402_pay_to_address,
+        txhash=verified.txhash,
+        wallet=verified.wallet or "unknown",
+        # Forward the facilitator-CONFIRMED settlement dimensions, not local
+        # config, so Django compares its own settings against what actually
+        # settled on-chain rather than against an echo of this server's config.
+        amount=confirmed_amount,
+        network=confirmed_network,
+        asset=confirmed_asset,
+        pay_to=confirmed_pay_to,
         workflow_slug=resolved_workflow_slug,
         org_slug=resolved_org,
         file_name=file_name,
         file_content_b64=file_content,
     )
     run_id = str(result.get("run_id") or result.get("id") or "").strip()
-    wallet_address = str(result.get("wallet_address") or wallet or "").strip()
+    wallet_address = str(
+        result.get("wallet_address") or verified.wallet or "",
+    ).strip()
     if run_id and wallet_address:
         result = {
             **result,

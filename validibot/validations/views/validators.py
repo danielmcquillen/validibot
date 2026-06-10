@@ -129,7 +129,15 @@ class FMUProbeStartView(CustomValidatorManageMixin, View):
     """HTMX endpoint to kick off an FMU probe inline."""
 
     def post(self, request, *args, **kwargs):
-        validator = get_object_or_404(Validator, pk=kwargs["pk"])
+        # SECURITY: scope the validator lookup to the caller's active org so
+        # an FMU probe cannot be started against (or its status read from)
+        # another org's validator by enumerating its primary key.
+        validator = get_object_or_404(
+            Validator,
+            pk=kwargs["pk"],
+            is_system=False,
+            org=self.get_active_org(),
+        )
         fmu = getattr(validator, "fmu_model", None)
         if not fmu:
             return JsonResponse(
@@ -157,7 +165,15 @@ class FMUProbeStatusView(CustomValidatorManageMixin, View):
     """Return the latest probe status for polling."""
 
     def get(self, request, *args, **kwargs):
-        validator = get_object_or_404(Validator, pk=kwargs["pk"])
+        # SECURITY: scope the validator lookup to the caller's active org so
+        # an FMU probe cannot be started against (or its status read from)
+        # another org's validator by enumerating its primary key.
+        validator = get_object_or_404(
+            Validator,
+            pk=kwargs["pk"],
+            is_system=False,
+            org=self.get_active_org(),
+        )
         fmu = getattr(validator, "fmu_model", None)
         probe = getattr(fmu, "probe_result", None) if fmu else None
         if not probe:

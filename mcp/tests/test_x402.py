@@ -21,6 +21,7 @@ import pytest
 import respx
 
 from validibot_mcp.x402 import (
+    VerifiedPayment,
     build_payment_requirements,
     cents_to_usdc_atomic,
     encode_requirements_header,
@@ -174,9 +175,16 @@ class TestVerifyPayment:
         get_settings.cache_clear()
 
     @respx.mock
-    async def test_valid_receipt_returns_true(self):
-        """A valid receipt verified by the facilitator should return
-        (True, txhash, wallet_address)."""
+    async def test_valid_receipt_returns_verified_payment(self):
+        """A facilitator-verified receipt yields a populated ``VerifiedPayment``.
+
+        ``verify_payment`` now returns a ``VerifiedPayment`` on success (and
+        ``None`` on any failure) rather than the old
+        ``(is_valid, txhash, wallet)`` tuple. This is the happy path: a valid
+        receipt must come back as a ``VerifiedPayment`` carrying the on-chain
+        txhash and payer wallet, because the caller forwards those to Django to
+        create the replay-protected run.
+        """
         respx.post(f"{FACILITATOR_URL}/verify").mock(
             return_value=httpx.Response(
                 200,
@@ -191,18 +199,23 @@ class TestVerifyPayment:
             price_cents=10,
             workflow_slug="test",
         )
-        is_valid, txhash, wallet = await verify_payment(
+        result = await verify_payment(
             "base64-payment-sig",
             requirements,
         )
-        assert is_valid is True
-        assert txhash == SAMPLE_TXHASH
-        assert wallet == SAMPLE_WALLET
+        assert isinstance(result, VerifiedPayment)
+        assert result.txhash == SAMPLE_TXHASH
+        assert result.wallet == SAMPLE_WALLET
 
     @respx.mock
-    async def test_invalid_receipt_returns_false(self):
-        """An invalid receipt should return (False, None, None).
-        This is the normal case for bad/expired/insufficient payments."""
+    async def test_invalid_receipt_returns_none(self):
+        """An invalid receipt yields ``None`` (fail closed).
+
+        This is the normal case for bad/expired/insufficient payments. Under
+        the new contract a non-valid receipt is signalled by returning ``None``
+        (no ``VerifiedPayment`` is produced), so the caller never creates a run
+        for an unverified payment.
+        """
         respx.post(f"{FACILITATOR_URL}/verify").mock(
             return_value=httpx.Response(
                 200,
@@ -213,18 +226,19 @@ class TestVerifyPayment:
             price_cents=10,
             workflow_slug="test",
         )
-        is_valid, txhash, wallet = await verify_payment(
+        result = await verify_payment(
             "bad-sig",
             requirements,
         )
-        assert is_valid is False
-        assert txhash is None
-        assert wallet is None
+        assert result is None
 
     @respx.mock
     async def test_facilitator_timeout_fails_closed(self):
-        """If the facilitator times out, verification should fail closed
-        (return False). We never assume a payment is valid on timeout."""
+        """If the facilitator times out, verification fails closed (``None``).
+
+        We never assume a payment is valid on timeout — an exception from the
+        facilitator call must produce ``None`` so no run is created.
+        """
         respx.post(f"{FACILITATOR_URL}/verify").mock(
             side_effect=httpx.TimeoutException("Connection timed out"),
         )
@@ -232,15 +246,19 @@ class TestVerifyPayment:
             price_cents=10,
             workflow_slug="test",
         )
-        is_valid, _txhash, _wallet = await verify_payment(
+        result = await verify_payment(
             "any-sig",
             requirements,
         )
-        assert is_valid is False
+        assert result is None
 
     @respx.mock
     async def test_facilitator_500_fails_closed(self):
-        """If the facilitator returns a server error, fail closed."""
+        """If the facilitator returns a server error, fail closed (``None``).
+
+        A non-200 facilitator response must never be treated as a valid
+        payment, so verification returns ``None``.
+        """
         respx.post(f"{FACILITATOR_URL}/verify").mock(
             return_value=httpx.Response(500, text="Internal Server Error"),
         )
@@ -248,17 +266,20 @@ class TestVerifyPayment:
             price_cents=10,
             workflow_slug="test",
         )
-        is_valid, _txhash, _wallet = await verify_payment(
+        result = await verify_payment(
             "any-sig",
             requirements,
         )
-        assert is_valid is False
+        assert result is None
 
     @respx.mock
     async def test_valid_but_no_txhash_fails_closed(self):
-        """If the facilitator says isValid=True but doesn't return a txHash,
-        we can't record the payment — fail closed rather than proceeding
-        without an audit trail."""
+        """``isValid=True`` but no ``txHash`` fails closed (``None``).
+
+        Without a transaction hash there is no audit trail / replay key to
+        record, so even a "valid" facilitator response must return ``None``
+        rather than letting the run proceed.
+        """
         respx.post(f"{FACILITATOR_URL}/verify").mock(
             return_value=httpx.Response(
                 200,
@@ -269,8 +290,8 @@ class TestVerifyPayment:
             price_cents=10,
             workflow_slug="test",
         )
-        is_valid, _txhash, _wallet = await verify_payment(
+        result = await verify_payment(
             "any-sig",
             requirements,
         )
-        assert is_valid is False
+        assert result is None

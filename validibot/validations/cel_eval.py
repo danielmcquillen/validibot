@@ -408,20 +408,46 @@ def evaluate_cel_expression(
         return program.evaluate(cel_context)
 
     eval_timeout = (timeout_ms or CEL_MAX_EVAL_TIMEOUT_MS) / 1000.0
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_evaluate)
-        try:
-            value = future.result(timeout=eval_timeout)
-            return CelEvaluationResult(success=True, value=value)
-        except concurrent.futures.TimeoutError:
-            return CelEvaluationResult(
-                success=False,
-                value=None,
-                error="CEL evaluation timed out.",
-            )
-        except Exception as exc:
-            return CelEvaluationResult(
-                success=False,
-                value=None,
-                error=str(exc),
-            )
+    # NOTE: This thread-based timeout is a *liveness* signal for the request
+    # thread, not a true kill switch. A CPU-bound CEL evaluation holds the GIL
+    # and cannot be interrupted from outside, so on timeout we deliberately do
+    # NOT block on the worker — see the ``shutdown(wait=False, ...)`` path
+    # below. The real bound on runaway work is the macro/expression/context
+    # shape-cap suite enforced above (``_compile_ast`` +
+    # ``_validate_context_shape``); the timeout only stops the *request* from
+    # waiting on a slow-but-legal evaluation. Truly interrupting CPU-bound CEL
+    # would require running it in a separate process we can kill — a documented
+    # follow-up (process isolation), not solvable with threads.
+    #
+    # The executor is managed explicitly (no ``with`` block) precisely because
+    # ``ThreadPoolExecutor.__exit__`` calls ``shutdown(wait=True)``, which would
+    # re-block the request thread on the runaway worker on the timeout path —
+    # defeating the timeout. We shut down without waiting and cancel any not-yet
+    # -started work so the request thread returns promptly.
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(_evaluate)
+    try:
+        value = future.result(timeout=eval_timeout)
+    except concurrent.futures.TimeoutError:
+        # Do NOT wait on the GIL-holding worker; cancel pending futures and
+        # return immediately so the request thread is freed promptly. The
+        # orphaned worker thread runs to completion in the background and is
+        # then reaped — its result is discarded.
+        executor.shutdown(wait=False, cancel_futures=True)
+        return CelEvaluationResult(
+            success=False,
+            value=None,
+            error="CEL evaluation timed out.",
+        )
+    except Exception as exc:
+        executor.shutdown(wait=False, cancel_futures=True)
+        return CelEvaluationResult(
+            success=False,
+            value=None,
+            error=str(exc),
+        )
+    else:
+        # Evaluation completed within budget; the worker is idle, so a normal
+        # (non-blocking in practice) shutdown reclaims the thread cleanly.
+        executor.shutdown(wait=False)
+        return CelEvaluationResult(success=True, value=value)

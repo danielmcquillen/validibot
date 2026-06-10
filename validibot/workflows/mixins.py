@@ -127,10 +127,43 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
     def get_queryset(self):
         return self.get_workflow_queryset()
 
-    def user_can_manage_workflow(self, *, user: User | None = None) -> bool:
+    def user_can_manage_workflow(
+        self,
+        *,
+        user: User | None = None,
+        workflow: Workflow | None = None,
+    ) -> bool:
+        """Return whether *user* may manage (edit) the in-context workflow.
+
+        SECURITY — object-scoped authorization. The ``WORKFLOW_EDIT``
+        permission MUST be evaluated against the *resolved workflow's*
+        organization, never the caller's currently-active org.
+        ``WorkflowObjectMixin.get_workflow()`` resolves workflows
+        cross-org (public workflows and guest-granted workflows are
+        reachable), so the previous implementation — which checked the
+        permission against ``membership_for_current_org()`` — let any
+        authenticated user manage another org's public or guest-shared
+        workflow. Every user is OWNER of their auto-provisioned personal
+        workspace, so that current-org check effectively always passed.
+
+        Delegating to ``Workflow.can_edit`` routes the check through
+        ``OrgPermissionBackend``, which derives the org from the workflow
+        object itself. This mirrors the already-correct object-scoped
+        pattern used by ``user_can_manage_sharing`` and
+        ``_can_manage_workflow_actions``.
+
+        The legacy current-org behavior is retained only as a fallback for
+        callers that have no resolvable workflow object (e.g. "can I manage
+        workflows in my own org?" gates that are not tied to a specific
+        row).
+        """
         user = user or self.request.user
         if not getattr(user, "is_authenticated", False):
             return False
+        if workflow is None and hasattr(self, "get_workflow"):
+            workflow = self.get_workflow()
+        if workflow is not None:
+            return workflow.can_edit(user=user)
         membership = user.membership_for_current_org()
         if membership is None or not membership.is_active:
             return False

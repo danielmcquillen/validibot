@@ -236,6 +236,18 @@ class ValidationRunService:
                 output_expires_at=output_expires_at,
                 **(extra or {}),
             )
+
+            # Run-created hooks fire INSIDE this transaction, under any row
+            # locks they take, so a commercial package (cloud) can reserve
+            # resources (e.g. a compute-credit hold) atomically with the run and
+            # abort the launch by raising — rolling back the run. Community
+            # registers no hooks, so this is a no-op there. A raise here (e.g.
+            # PermissionError for insufficient credits) propagates like the
+            # earlier check_org_policies denial above.
+            from validibot.core.run_hooks import run_created_hooks
+
+            run_created_hooks(validation_run, workflow_type=workflow_type)
+
             try:
                 if hasattr(submission, "latest_run_id"):
                     submission.latest_run = validation_run
@@ -285,6 +297,17 @@ class ValidationRunService:
             validation_run.status = ValidationRunStatus.FAILED
             validation_run.error = GENERIC_EXECUTION_ERROR
             validation_run.save(update_fields=["status", "error"])
+
+            # This is a terminal transition that bypasses the normal finalize
+            # paths, so emit the finalized signal here too — otherwise a launch
+            # that reserved a compute-credit hold (cloud) would not release it
+            # until the reaper runs. Idempotent with the reaper.
+            from validibot.validations.signals import validation_run_finalized
+
+            validation_run_finalized.send_robust(
+                sender=self.__class__,
+                validation_run=validation_run,
+            )
 
         # Refresh from DB to get any updates made during execution
         # This is primarily for test mode where execute_workflow_steps() runs

@@ -468,6 +468,17 @@ class StepOrchestrator:
             ],
         )
 
+        # Notify listeners that the run reached a terminal status (e.g. cloud
+        # metering releases the compute-credit reservation). send_robust so a
+        # failing receiver can't break finalization. Sibling emission lives in
+        # the async path (validation_callback._finalize_run).
+        from validibot.validations.signals import validation_run_finalized
+
+        validation_run_finalized.send_robust(
+            sender=self.__class__,
+            validation_run=validation_run,
+        )
+
         summary_record = build_run_summary_record(
             validation_run=validation_run,
             step_metrics=step_metrics,

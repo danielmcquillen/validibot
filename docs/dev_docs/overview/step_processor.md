@@ -581,6 +581,34 @@ def complete_from_callback(self, output_envelope) -> StepProcessingResult:
     return self._complete_with_envelope(engine, output_envelope, append_findings=True)
 ```
 
+## Verdict trust model: `SUCCESS` envelopes with ERROR findings
+
+An advanced (container) validator is authoritative about pass/fail via its
+envelope `status`. A finding's `severity` is normally *display metadata*, not a
+pass/fail signal — a shipped validator may legitimately report `status=SUCCESS`
+while emitting ERROR-severity findings. **EnergyPlus, for example, exits 0
+(`SUCCESS`) while writing `** Severe **` ERROR-severity lines it considers
+non-fatal.** A blanket "any ERROR fails" rule would wrongly fail those runs.
+
+That trust is safe only for validators we ship. A **user-added custom
+container** (`Validator.is_system=False`) is not trusted to honour the
+contract — a naive or buggy one can set `status=SUCCESS` ("my container ran")
+while emitting ERROR findings ("the data is invalid"). Because a passing run can
+lead to a signed credential, `AdvancedValidationProcessor._complete_with_envelope`
+applies a trust gate:
+
+| Validator | `SUCCESS` envelope + container ERROR findings | Result |
+|---|---|---|
+| Shipped (`is_system=True`) | trusted | **PASSED**, with a WARNING finding |
+| Custom (`is_system=False`) | not trusted | **FAILED**, with an ERROR finding |
+
+This lives in the step processor (the single completion chokepoint for both sync
+and async paths), not in the validator's `_determine_passed`/`post_execute_validate`
+— those are severity-agnostic by design and their `passed` is *not* the persisted
+verdict. Output-stage assertion failures always fail the step regardless of
+validator trust. Do not "simplify" this gate away: dropping it either re-creates
+the custom-container credential gap or breaks shipped validators like EnergyPlus.
+
 ## Error Handling
 
 Each processor handles errors gracefully:

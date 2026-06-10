@@ -756,6 +756,17 @@ class ValidationCallbackService:
 
         run.save()
 
+        # Notify listeners that the run reached a terminal status (e.g. cloud
+        # metering releases the compute-credit reservation). send_robust so a
+        # failing receiver can't break finalization. Sibling emission lives in
+        # the sync path (step_orchestrator.execute_workflow_steps).
+        from validibot.validations.signals import validation_run_finalized
+
+        validation_run_finalized.send_robust(
+            sender=self.__class__,
+            validation_run=run,
+        )
+
         ValidationRunService().rebuild_run_summary_record(
             validation_run=run,
         )

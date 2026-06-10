@@ -26,3 +26,14 @@ validation_run_created = Signal()
 #       had errors"); False for runtime failures / cancellation. Metering uses
 #       this to charge compute only for runs that ran to completion.
 validation_step_completed = Signal()
+
+# Fired after a validation run reaches a terminal status (SUCCEEDED, FAILED,
+# CANCELED, TIMED_OUT) on either the sync (orchestrator) or async (callback)
+# finalization path. Cloud metering uses this to RELEASE any compute-credit
+# reservation held for the run at launch. A periodic reaper is the backstop for
+# runs that reach a terminal state without passing one of those two finalize
+# sites (e.g. a lost callback, or the launch-time enqueue failure path), so a
+# missed emission only delays release by one reaper cycle — it never leaks a
+# hold.
+# Provides: validation_run (ValidationRun)
+validation_run_finalized = Signal()

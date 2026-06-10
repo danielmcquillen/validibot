@@ -6,6 +6,7 @@
   display: flex;
   flex-direction: row;
   gap: 0;
+  min-width: 0;
 
   // On small screens, stack vertically and hide the handle.
   @media (max-width: 991.98px) {
@@ -14,6 +15,7 @@
     .resizable-panel {
       flex-basis: auto !important;
       min-width: 0 !important;
+      width: 100%;
     }
 
     .resizable-handle {
@@ -23,40 +25,49 @@
 }
 
 .resizable-panel {
+  min-width: 0;
   overflow: auto;
 }
 
 // ── Drag handle ─────────────────────────────────────────────────
-// Visible: a 1px border-colored line.
-// Hit area: 9px wide (4px padding each side + 1px line) so it's
-// easy to grab without being visually heavy.
+// The visible grip stays distinct from adjacent card borders while the wider
+// transparent hit area keeps it easy to grab.
 
 .resizable-handle {
-  flex-shrink: 0;
-  width: 9px;
-  cursor: col-resize;
-  position: relative;
-  // Keep the gap between panels clean
-  margin: 0;
   align-self: stretch;
+  background: transparent;
+  border-radius: 0.25rem;
+  cursor: col-resize;
+  flex-shrink: 0;
+  margin: 0 0.125rem;
+  position: relative;
+  transition: background-color 0.15s;
+  width: 0.75rem;
 
-  // The visible line (1px, centered)
   &::after {
+    background: var(--bs-gray-500, #adb5bd);
+    border-radius: 999px;
     content: "";
+    left: 50%;
     position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 4px;
-    width: 1px;
-    background: var(--bs-border-color, #dee2e6);
-    transition: background 0.15s, width 0.15s;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    transition: background-color 0.15s, height 0.15s, width 0.15s;
+    height: 3rem;
+    width: 0.2rem;
   }
 
-  &:hover::after {
+  &:hover,
+  &:focus-visible {
+    background: rgba(var(--bs-primary-rgb), 0.08);
+    outline: none;
+  }
+
+  &:hover::after,
+  &:focus-visible::after {
     background: var(--bs-primary, #0d6efd);
-    width: 3px;
-    left: 3px;
-    border-radius: 2px;
+    height: 4rem;
+    width: 0.25rem;
   }
 }
 
@@ -71,10 +82,13 @@
     cursor: col-resize !important;
   }
 
+  .resizable-handle {
+    background: rgba(var(--bs-primary-rgb), 0.08);
+  }
+
   .resizable-handle::after {
     background: var(--bs-primary, #0d6efd);
-    width: 3px;
-    left: 3px;
-    border-radius: 2px;
+    height: 4rem;
+    width: 0.25rem;
   }
 }

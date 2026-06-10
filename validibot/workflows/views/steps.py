@@ -1474,6 +1474,10 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
 
     def get_breadcrumbs(self):
         workflow = self.get_workflow()
+        is_tabular_settings = (
+            not self.is_action_step()
+            and self.get_validator().validation_type == ValidationType.TABULAR
+        )
         breadcrumbs = super().get_breadcrumbs()
         breadcrumbs.append(
             {
@@ -1495,7 +1499,14 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                     ),
                 ),
             )
-            breadcrumbs.append({"name": _("Add step"), "url": ""})
+            breadcrumbs.append(
+                {
+                    "name": (
+                        _("Tabular settings") if is_tabular_settings else _("Add step")
+                    ),
+                    "url": "",
+                },
+            )
         else:
             step = self.get_step()
             breadcrumbs.append(
@@ -1520,7 +1531,16 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                         "url": step_url,
                     },
                 )
-                breadcrumbs.append({"name": _("Edit Step Detail"), "url": ""})
+                breadcrumbs.append(
+                    {
+                        "name": (
+                            _("Tabular settings")
+                            if is_tabular_settings
+                            else _("Edit Step Detail")
+                        ),
+                        "url": "",
+                    },
+                )
             else:
                 breadcrumbs.append(
                     {

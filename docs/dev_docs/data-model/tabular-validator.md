@@ -297,6 +297,10 @@ Add action, and the column group provides the same scoped flow for `col.*`.
 A global Add action first asks which execution stage the rule belongs to.
 The CEL editor provides stage-aware namespace hints and schema-derived
 completions; row assertions also expose a per-assertion example-row limit.
+Assertion cards prefer the optional human-readable description and otherwise
+show the CEL expression itself. This fallback reads the authoritative
+`rhs["expr"]` payload, so legacy or imported assertions remain identifiable
+even when their compatibility `target_data_path` field is blank.
 Canceling Tabular settings returns to the workflow editor and focuses the
 originating step card.
 

@@ -1,6 +1,6 @@
 {% load i18n core_tags %}
 
-<section class="assertion-group mb-4"
+<section class="assertion-group assertion-group--tabular"
          data-tabular-assertion-stage="{{ stage }}"
          aria-labelledby="tabular-assertion-{{ stage }}-heading">
   <div class="assertion-group-panel">
@@ -26,9 +26,12 @@
       {% endif %}
     </div>
     {% if assertions %}
-      <div class="d-flex flex-column gap-2">
+      <div class="tabular-assertion-list d-flex flex-column">
         {% for assertion in assertions %}
           {% include 'workflows/partials/components/assertion_step.html' with assertion=assertion run_stage=stage %}
+          {% if not forloop.last %}
+            {% include 'workflows/partials/components/assertion_add_connector.html' with line_only=True %}
+          {% endif %}
         {% endfor %}
       </div>
     {% else %}

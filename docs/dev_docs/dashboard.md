@@ -48,15 +48,22 @@ avoid cross-tenant leaks.
 
 1. `my_dashboard.html` renders lightweight placeholders for each registered
    widget. Every placeholder carries `hx-get` attributes pointing to the widget
-   detail endpoint and triggers both on `load` and the custom
-   `dashboard:refresh` event.
-2. The inline script rewrites the `hx-get` URL when a new time range is
-   selected and dispatches `dashboard:refresh` so every widget reloads without a
+   detail endpoint and listens for the custom `dashboard:refresh` event.
+2. After the window `load` event, the inline controller dispatches the first
+   `dashboard:refresh`. Waiting until `load` ensures HTMx has processed the
+   document before the custom event is sent. The controller also refreshes a
+   page restored from the browser back-forward cache.
+3. When a new time range is selected, the controller rewrites each `hx-get`
+   URL and dispatches `dashboard:refresh` so every widget reloads without a
    full-page refresh. The history state updates to keep URLs shareable.
-3. `WidgetDetailView` sends back the fully styled widget markup. Because the
-   outer wrapper retains the HTMX attributes (minus the initial `load` trigger)
+4. Failed requests replace the indefinite loading state with an accessible
+   error card and a per-widget retry action. If the HTMx bundle itself is not
+   available, the same card tells the user to refresh rather than leaving the
+   dashboard silently stuck.
+5. `WidgetDetailView` sends back the fully styled widget markup. Because the
+   outer wrapper retains the HTMX attributes,
    subsequent refreshes work transparently.
-4. If a widget has no data, the template shows an empty-state panel instead of
+6. If a widget has no data, the template shows an empty-state panel instead of
    an empty chart.
 
 ## Front-end Integration
@@ -92,9 +99,14 @@ To add new time ranges, edit `dashboard.time_ranges` and the select element in
 ## Testing
 
 `validibot/dashboard/tests/test_views.py` exercises the HTMX endpoint
-behaviour, org scoping, and aggregation logic. Use the existing factories and
-helpers when writing additional cases so test flows mirror production data
-relationships.
+behaviour, loading contract, org scoping, and aggregation logic.
+`test_dashboard_browser.py` is an opt-in Selenium regression test that verifies
+all placeholders are replaced and both chart types initialize in a real
+browser. Run it with:
+
+```bash
+RUN_BROWSER_TESTS=1 pytest validibot/dashboard/tests/test_dashboard_browser.py
+```
 
 ## Seeding Demo Data
 

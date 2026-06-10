@@ -19,14 +19,29 @@
 
 const STORAGE_PREFIX = 'validibot:resizable:';
 const MIN_PANEL_PX = 280;
-const DEFAULT_LEFT_PCT = 58;
+const FALLBACK_DEFAULT_LEFT_PCT = 58;
+const MIN_RATIO = 10;
+const MAX_RATIO = 90;
+
+function createHandle(): HTMLElement {
+  const handle = document.createElement('div');
+  handle.className = 'resizable-handle';
+  handle.setAttribute('role', 'separator');
+  handle.setAttribute('aria-label', 'Resize columns');
+  handle.setAttribute('aria-orientation', 'vertical');
+  handle.setAttribute('aria-valuemin', '10');
+  handle.setAttribute('aria-valuemax', '90');
+  handle.setAttribute('tabindex', '0');
+  handle.title = 'Drag to resize';
+  return handle;
+}
 
 function getStoredRatio(key: string): number | null {
   try {
     const raw = localStorage.getItem(STORAGE_PREFIX + key);
     if (raw) {
       const val = parseFloat(raw);
-      if (val > 10 && val < 90) {
+      if (val > MIN_RATIO && val < MAX_RATIO) {
         return val;
       }
     }
@@ -34,6 +49,21 @@ function getStoredRatio(key: string): number | null {
     // localStorage unavailable
   }
   return null;
+}
+
+function getDefaultRatio(container: HTMLElement): number {
+  const configured = parseFloat(container.dataset.resizableDefault ?? '');
+  if (configured > MIN_RATIO && configured < MAX_RATIO) {
+    return configured;
+  }
+  return FALLBACK_DEFAULT_LEFT_PCT;
+}
+
+function getHandleOuterWidth(handle: HTMLElement): number {
+  const style = window.getComputedStyle(handle);
+  const marginLeft = parseFloat(style.marginLeft) || 0;
+  const marginRight = parseFloat(style.marginRight) || 0;
+  return handle.getBoundingClientRect().width + marginLeft + marginRight;
 }
 
 function storeRatio(key: string, pct: number): void {
@@ -48,7 +78,6 @@ function initResizable(container: HTMLElement): void {
   if (container.dataset.resizableInit === 'true') {
     return;
   }
-  container.dataset.resizableInit = 'true';
 
   const panels = Array.from(
     container.querySelectorAll<HTMLElement>(':scope > .resizable-panel'),
@@ -58,23 +87,35 @@ function initResizable(container: HTMLElement): void {
   }
   const [left, right] = panels;
   const key = container.dataset.resizableKey || 'default';
+  const defaultRatio = getDefaultRatio(container);
 
-  // Insert drag handle between the two panels
-  const handle = document.createElement('div');
-  handle.className = 'resizable-handle';
-  handle.setAttribute('role', 'separator');
-  handle.setAttribute('aria-orientation', 'vertical');
-  handle.setAttribute('tabindex', '0');
-  handle.title = 'Drag to resize';
-  container.insertBefore(handle, right);
+  // Templates render the handle so the affordance is visible immediately.
+  // Keep dynamic creation as a fallback for other resizable layouts.
+  const existingHandle = container.querySelector<HTMLElement>(
+    ':scope > .resizable-handle',
+  );
+  const handle = existingHandle ?? createHandle();
+  if (!existingHandle) {
+    container.insertBefore(handle, right);
+  }
+  container.dataset.resizableInit = 'true';
 
-  // Apply initial ratio
-  const initial = getStoredRatio(key) ?? DEFAULT_LEFT_PCT;
-  applyRatio(initial);
+  let currentRatio = getStoredRatio(key) ?? defaultRatio;
+  applyRatio(currentRatio);
 
   function applyRatio(pct: number): void {
-    left.style.flexBasis = `${pct}%`;
-    right.style.flexBasis = `${100 - pct}%`;
+    const containerWidth = container.getBoundingClientRect().width;
+    const availableWidth = Math.max(
+      0,
+      containerWidth - getHandleOuterWidth(handle),
+    );
+    const minRatio = Math.min(50, (MIN_PANEL_PX / availableWidth) * 100);
+    currentRatio = Math.max(minRatio, Math.min(100 - minRatio, pct));
+    const leftWidth = availableWidth * (currentRatio / 100);
+    const rightWidth = availableWidth - leftWidth;
+
+    left.style.flexBasis = `${leftWidth}px`;
+    right.style.flexBasis = `${rightWidth}px`;
     left.style.flexGrow = '0';
     right.style.flexGrow = '0';
     left.style.flexShrink = '0';
@@ -82,19 +123,15 @@ function initResizable(container: HTMLElement): void {
     // Ensure min widths are respected
     left.style.minWidth = `${MIN_PANEL_PX}px`;
     right.style.minWidth = `${MIN_PANEL_PX}px`;
+    handle.setAttribute('aria-valuenow', currentRatio.toFixed(1));
   }
 
   function onDrag(clientX: number): void {
     const rect = container.getBoundingClientRect();
-    const offsetX = clientX - rect.left;
-    const totalWidth = rect.width;
-    let pct = (offsetX / totalWidth) * 100;
-
-    // Enforce min widths as percentage
-    const minPct = (MIN_PANEL_PX / totalWidth) * 100;
-    pct = Math.max(minPct, Math.min(100 - minPct, pct));
-
-    applyRatio(pct);
+    const handleWidth = getHandleOuterWidth(handle);
+    const availableWidth = rect.width - handleWidth;
+    const leftWidth = clientX - rect.left - handleWidth / 2;
+    applyRatio((leftWidth / availableWidth) * 100);
   }
 
   // ── Mouse drag ──────────────────────────────────────────────────
@@ -111,10 +148,7 @@ function initResizable(container: HTMLElement): void {
       container.classList.remove('resizable-dragging');
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      // Persist final ratio
-      const rect = container.getBoundingClientRect();
-      const leftWidth = left.getBoundingClientRect().width;
-      storeRatio(key, (leftWidth / rect.width) * 100);
+      storeRatio(key, currentRatio);
     };
 
     document.addEventListener('mousemove', onMouseMove);
@@ -137,9 +171,7 @@ function initResizable(container: HTMLElement): void {
       container.classList.remove('resizable-dragging');
       document.removeEventListener('touchmove', onTouchMove);
       document.removeEventListener('touchend', onTouchEnd);
-      const rect = container.getBoundingClientRect();
-      const leftWidth = left.getBoundingClientRect().width;
-      storeRatio(key, (leftWidth / rect.width) * 100);
+      storeRatio(key, currentRatio);
     };
 
     document.addEventListener('touchmove', onTouchMove);
@@ -149,40 +181,52 @@ function initResizable(container: HTMLElement): void {
   // ── Double-click to reset ───────────────────────────────────────
 
   handle.addEventListener('dblclick', () => {
-    applyRatio(DEFAULT_LEFT_PCT);
-    storeRatio(key, DEFAULT_LEFT_PCT);
+    applyRatio(defaultRatio);
+    storeRatio(key, currentRatio);
   });
 
   // ── Keyboard (arrow keys for accessibility) ─────────────────────
 
   handle.addEventListener('keydown', (e: KeyboardEvent) => {
     const rect = container.getBoundingClientRect();
-    const leftWidth = left.getBoundingClientRect().width;
-    const currentPct = (leftWidth / rect.width) * 100;
+    const availableWidth = rect.width - getHandleOuterWidth(handle);
+    const minRatio = Math.min(50, (MIN_PANEL_PX / availableWidth) * 100);
     const step = 2;
 
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      const newPct = Math.max(
-        (MIN_PANEL_PX / rect.width) * 100,
-        currentPct - step,
-      );
-      applyRatio(newPct);
-      storeRatio(key, newPct);
+      applyRatio(Math.max(minRatio, currentRatio - step));
+      storeRatio(key, currentRatio);
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
-      const maxPct = 100 - (MIN_PANEL_PX / rect.width) * 100;
-      const newPct = Math.min(maxPct, currentPct + step);
-      applyRatio(newPct);
-      storeRatio(key, newPct);
+      applyRatio(Math.min(100 - minRatio, currentRatio + step));
+      storeRatio(key, currentRatio);
     }
   });
+
+  if ('ResizeObserver' in window) {
+    const observer = new ResizeObserver(() => {
+      if (!container.isConnected) {
+        observer.disconnect();
+        return;
+      }
+      applyRatio(currentRatio);
+    });
+    observer.observe(container);
+  }
 }
 
 export function initResizableColumns(
   root: ParentNode | Document = document,
 ): void {
-  root
-    .querySelectorAll<HTMLElement>('[data-resizable-columns]')
-    .forEach(initResizable);
+  const containers = new Set<HTMLElement>();
+  if (root instanceof HTMLElement && root.matches('[data-resizable-columns]')) {
+    containers.add(root);
+  }
+  root.querySelectorAll<HTMLElement>('[data-resizable-columns]').forEach(
+    (container) => {
+      containers.add(container);
+    },
+  );
+  containers.forEach(initResizable);
 }

@@ -21,16 +21,15 @@ Context:
 {% endcomment %}
 
 {# -- Step Inputs / Outputs card -- #}
-{# Always show the tabbed card when the validator has a processor    #}
-{# (input -> process -> output), even if one side is currently empty #}
-{# so the user sees the structural slots. For non-processor          #}
-{# validators, only show if there is actual data.                    #}
-{% with has_inputs=unified_signals.has_inputs has_outputs=unified_signals.has_outputs show_both_tabs=uses_signal_stages %}
-  {% if show_both_tabs or has_inputs or has_outputs %}
+{# Always show the tabbed card for processor and Tabular validators, #}
+{# even if one side is currently empty, so authors see the standard  #}
+{# IO and signal surfaces. Other validators only show actual data.   #}
+{% with has_inputs=unified_signals.has_inputs has_outputs=unified_signals.has_outputs %}
+  {% if uses_signal_stages or uses_tabular_stages or has_inputs or has_outputs %}
     <div class="card app-card flex-grow-1 mb-3" data-sv-catalog>
       <div class="card-header">
         <div class="card-title">
-          {% if show_both_tabs %}
+          {% if uses_signal_stages or uses_tabular_stages %}
             {% trans "Inputs and Outputs" %}
           {% elif has_inputs and has_outputs %}
             {% trans "Inputs and Outputs" %}
@@ -41,8 +40,8 @@ Context:
           {% endif %}
         </div>
       </div>
-      {% if show_both_tabs %}
-        {# -- Two-tab layout (always for processors) -- #}
+      {% if uses_signal_stages or uses_tabular_stages %}
+        {# -- Two-tab layout (always for processors and Tabular steps) -- #}
         <div class="card-body p-0 d-flex flex-column flex-grow-1">
           <div class="nav nav-tabs px-3 pt-2" role="tablist">
             <button class="nav-link active"
@@ -99,7 +98,7 @@ Context:
 {% endwith %}
 
 {# -- Available Signals card (workflow-level signals) -- #}
-{% if available_signals or upstream_outputs %}
+{% if uses_tabular_stages or available_signals or upstream_outputs %}
   <div class="card app-card">
     <div class="card-header">
       <div class="d-flex justify-content-between align-items-center w-100">

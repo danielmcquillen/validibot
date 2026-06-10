@@ -39,6 +39,8 @@ from validibot.workflows.tests.factories import WorkflowFactory
 
 pytestmark = pytest.mark.django_db
 
+RESIZABLE_PANEL_COUNT = 2
+
 
 @pytest.fixture
 def api_client():
@@ -273,6 +275,25 @@ def test_workflow_detail_uses_history_card_for_version_navigation(client):
     assert "latest" in body
     assert "workflow-version-badge--previous" in body
     assert "Previous version" in body
+
+
+def test_workflow_detail_uses_shared_resizable_editor_layout(client):
+    """Workflow and step editors must use the same two-column layout contract."""
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    workflow = WorkflowFactory(org=org, user=user)
+
+    response = client.get(
+        reverse("workflows:workflow_detail", kwargs={"pk": workflow.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert 'data-resizable-key="workflow-detail-v2"' in body
+    assert 'data-resizable-default="66.6667"' in body
+    assert body.count('class="resizable-panel') == RESIZABLE_PANEL_COUNT
+    assert 'class="resizable-handle"' in body
 
 
 def test_workflow_detail_toolbar_orders_launch_actions_and_delete(client):

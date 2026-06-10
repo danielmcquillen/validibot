@@ -60,8 +60,11 @@
         </div>
       </div>
     {% endif %}
-    <div class="row workflow-detail-layout flex-grow-1 align-items-stretch">
-      <div class="col-12 col-lg-6 col-xxl-8 d-flex flex-column">
+    <div class="workflow-detail-layout flex-grow-1 align-items-stretch"
+         data-resizable-columns
+         data-resizable-key="workflow-detail-v2"
+         data-resizable-default="66.6667">
+      <div class="resizable-panel d-flex flex-column">
         <div class="card app-card" id="workflow-step-editor-card">
           <div class="card-header">
             <div class="card-title">
@@ -99,8 +102,8 @@
           </div>
         </div>
       </div>
-      <div id="workflow-steps-col"
-           class="col-12 col-lg-6 col-xxl-4 d-flex flex-column">
+      {% include "workflows/partials/resizable_columns_handle.html" %}
+      <div id="workflow-steps-col" class="resizable-panel d-flex flex-column">
         <div class="card app-card mb-3">
           <div class="card-header">
             <div class="card-title">

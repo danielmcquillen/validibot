@@ -15,29 +15,21 @@
 {% block app_content %}
   <div id="workflow-step-form" class="container-fluid">
     <div class="app-content-header-bar row">
-      <div class="app-content-header col-12 col-lg-8 d-flex flex-column gap-2">
-        {% if is_tabular_settings %}
-          <nav aria-label="{% trans 'Breadcrumb' %}">
-            <ol class="breadcrumb small mb-0">
-              <li class="breadcrumb-item">
-                <a href="{% org_url 'workflows:workflow_list' %}">{% trans "Workflows" %}</a>
-              </li>
-              <li class="breadcrumb-item">
-                <a href="{% org_url 'workflows:workflow_detail' workflow.pk %}">{{ workflow.name }}</a>
-              </li>
-              {% if step %}
-                <li class="breadcrumb-item">
-                  <a href="{% org_url 'workflows:workflow_step_edit' workflow.pk step.pk %}">{{ step.name }}</a>
-                </li>
-              {% endif %}
-              <li class="breadcrumb-item active" aria-current="page">
-                {% trans "Tabular settings" %}
-              </li>
-            </ol>
-          </nav>
-        {% endif %}
+      <div class="app-content-header col-12 d-flex flex-column gap-2">
         <div class="d-flex align-items-center gap-2">
-          <i class="bi {{ subject_details.icon|default_if_none:'bi-gear-wide-connected' }} text-primary fs-4"></i>
+          {% if is_tabular_settings and step %}
+            <div class="btn btn-primary bg-blue-lt border-0">
+              <a href="{% org_url 'workflows:workflow_step_edit' workflow.pk step.pk %}"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="top"
+                 title="{% trans 'Back to workflow step' %}"
+                 aria-label="{% trans 'Back to workflow step' %}">
+                <i class="bi bi-chevron-double-left"></i>
+              </a>
+            </div>
+          {% else %}
+            <i class="bi {{ subject_details.icon|default_if_none:'bi-gear-wide-connected' }} text-primary fs-4"></i>
+          {% endif %}
           <h1 class="app-page-title mb-0">
             {% if is_tabular_settings %}
               {% trans "Tabular settings" %}
@@ -63,7 +55,9 @@
               </div>
             {% endif %}
           </div>
-          <span class="badge text-bg-primary">{{ subject_details.type_label }}</span>
+          {% if not is_tabular_settings %}
+            <span class="badge text-bg-primary">{{ subject_details.type_label }}</span>
+          {% endif %}
         </div>
         {% include "core/partial/_form_errors_summary.html" %}
         {% if form.has_weather_files is False %}

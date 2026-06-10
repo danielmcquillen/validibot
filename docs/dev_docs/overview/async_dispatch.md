@@ -115,6 +115,11 @@ Current Cloud Tasks targets:
 | `POST /api/v1/tasks/tracking/log-event/` | `CloudTasksTrackingDispatcher` | `LogTrackingEventView` |
 | `POST /api/v1/scheduled/*` | Cloud Scheduler (not a dispatcher, but same auth pattern) | `SendPeriodicEmailsView`, etc. |
 
+Persisted tracking events are available to authorized operators at
+`/admin/tracking/trackingevent/`. The admin is deliberately read-only:
+events can be searched and filtered for dispatch or dashboard diagnostics, but
+they cannot be added, changed, or deleted outside the tracking service.
+
 **URL path as module constant.** The tracking dispatcher exports
 `WORKER_ENDPOINT_PATH = "/api/v1/tasks/tracking/log-event/"` at
 module level. The router imports the same constant. If the path

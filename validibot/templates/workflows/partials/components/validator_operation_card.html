@@ -1,24 +1,63 @@
-{% load i18n %}
+{% load i18n core_tags %}
 
 <div class="assertion-step-wrapper validator-operation-card-wrapper">
   <div class="assertion-card validator-operation-card card shadow-sm">
     <div class="card-body">
-      <div class="d-flex align-items-start gap-3">
-        <div class="validator-operation-icon flex-shrink-0" aria-hidden="true">
-          <i class="bi bi-check2-circle"></i>
-        </div>
-        <div class="min-w-0">
-          <div class="d-flex align-items-center gap-2 mb-1">
-            <span class="badge text-bg-light text-uppercase">{{ operation.badge }}</span>
+      <div class="d-flex align-items-start justify-content-between gap-3">
+        <div class="d-flex align-items-start gap-3 min-w-0">
+          <div class="validator-operation-icon flex-shrink-0" aria-hidden="true">
+            <i class="bi bi-check2-circle"></i>
           </div>
-          <h2 class="h6 mb-1">
-            {{ operation.label }}
-          </h2>
-          <p class="text-muted small mb-0">
-            {{ operation.description }}
-          </p>
+          <div class="min-w-0">
+            {% if not show_tabular_settings %}
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge text-bg-light text-uppercase">{{ operation.badge }}</span>
+              </div>
+            {% endif %}
+            <h2 class="h6 mb-1">
+              {{ operation.label }}
+            </h2>
+            <p class="text-muted small mb-0">
+              {{ operation.description }}
+            </p>
+          </div>
         </div>
+        {% if show_tabular_settings %}
+          <a class="btn btn-sm btn-outline-secondary flex-shrink-0"
+             href="{% org_url 'workflows:workflow_step_settings' workflow.pk step.pk %}">
+            {% trans "Edit settings" %}
+          </a>
+        {% endif %}
       </div>
+      {% if show_tabular_settings %}
+        <div class="d-flex flex-wrap gap-3 border-top mt-3 pt-2 small"
+             data-tabular-operation-summary>
+          <span>
+            <span class="text-muted">{% trans "Reader" %}:</span>
+            {% trans "CSV" %}
+          </span>
+          <span>
+            <span class="text-muted">{% trans "Delimiter" %}:</span>
+            {{ tabular_config.delimiter_label|default:_("Auto-detect") }}
+          </span>
+          <span>
+            <span class="text-muted">{% trans "Header row" %}:</span>
+            {% if tabular_config.has_header %}
+              {% trans "Yes" %}
+            {% else %}
+              {% trans "No" %}
+            {% endif %}
+          </span>
+          <span>
+            <span class="text-muted">{% trans "Columns" %}:</span>
+            {{ tabular_config.column_count|default:0 }}
+          </span>
+          <span>
+            <span class="text-muted">{% trans "Required columns" %}:</span>
+            {{ tabular_config.required_column_count|default:0 }}
+          </span>
+        </div>
+      {% endif %}
     </div>
   </div>
 </div>

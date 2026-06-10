@@ -50,11 +50,14 @@
 {% block inline_javascript %}
   {{ block.super }}
   <script nonce="{{ CSP_NONCE }}">
-    window.addEventListener('DOMContentLoaded', () => {
+    const initializeDashboard = () => {
+      const dashboardRoot = document.querySelector('#dashboard-root');
       const timeSelect = document.querySelector('[data-dashboard-time-range]');
-      if (!timeSelect) {
+      if (!dashboardRoot || !timeSelect || dashboardRoot.dataset.initialized === 'true') {
         return;
       }
+      dashboardRoot.dataset.initialized = 'true';
+
       const updateWidgetUrl = (element, timeRange) => {
         const baseUrl = element.getAttribute('data-base-hx-get');
         if (!baseUrl) {
@@ -63,12 +66,83 @@
         const newUrl = `${baseUrl}?time_range=${timeRange}`;
         element.setAttribute('hx-get', newUrl);
       };
+
+      const renderWidgetError = (widgetEl, message) => {
+        widgetEl.removeAttribute('aria-busy');
+        widgetEl.innerHTML = `
+          <div class="card shadow-sm border-0 h-100">
+            <div class="card-body d-flex flex-column justify-content-center align-items-center text-center py-5" role="alert">
+              <i class="bi bi-exclamation-triangle text-warning display-6 mb-3" aria-hidden="true"></i>
+              <p class="fw-semibold mb-1">Insights unavailable</p>
+              <p class="text-muted small mb-3" data-dashboard-error-message></p>
+              <button type="button" class="btn btn-sm btn-outline-primary" data-dashboard-retry>
+                Try again
+              </button>
+            </div>
+          </div>
+        `;
+        widgetEl.querySelector('[data-dashboard-error-message]').textContent = message;
+      };
+
+      const refreshWidget = (widgetEl, timeRange) => {
+        updateWidgetUrl(widgetEl, timeRange);
+        widgetEl.setAttribute('aria-busy', 'true');
+        if (!window.htmx) {
+          renderWidgetError(
+            widgetEl,
+            'Dashboard scripts did not load. Refresh the page to try again.',
+          );
+          return;
+        }
+        window.htmx.trigger(widgetEl, 'dashboard:refresh');
+      };
+
       const refreshWidgets = (timeRange) => {
-        document.querySelectorAll('[data-dashboard-widget]').forEach((widgetEl) => {
-          updateWidgetUrl(widgetEl, timeRange);
-          htmx.trigger(widgetEl, 'dashboard:refresh');
+        dashboardRoot.querySelectorAll('[data-dashboard-widget]').forEach((widgetEl) => {
+          refreshWidget(widgetEl, timeRange);
         });
       };
+
+      const widgetFromEvent = (event) => {
+        const requestElement = event.detail?.elt || event.target;
+        return requestElement instanceof Element ?
+          requestElement.closest('[data-dashboard-widget]') :
+          null;
+      };
+
+      ['htmx:responseError', 'htmx:sendError', 'htmx:timeout'].forEach((eventName) => {
+        document.body.addEventListener(eventName, (event) => {
+          const widgetEl = widgetFromEvent(event);
+          if (widgetEl && dashboardRoot.contains(widgetEl)) {
+            renderWidgetError(
+              widgetEl,
+              'We could not retrieve this insight. Check your connection and try again.',
+            );
+          }
+        });
+      });
+
+      document.body.addEventListener('htmx:afterRequest', (event) => {
+        const widgetEl = widgetFromEvent(event);
+        if (widgetEl && dashboardRoot.contains(widgetEl)) {
+          widgetEl.removeAttribute('aria-busy');
+        }
+      });
+
+      dashboardRoot.addEventListener('click', (event) => {
+        if (!(event.target instanceof Element)) {
+          return;
+        }
+        const retryButton = event.target.closest('[data-dashboard-retry]');
+        if (!retryButton) {
+          return;
+        }
+        const widgetEl = retryButton.closest('[data-dashboard-widget]');
+        if (widgetEl) {
+          refreshWidget(widgetEl, timeSelect.value);
+        }
+      });
+
       timeSelect.addEventListener('change', (event) => {
         const selectedTimeRange = event.target.value;
         refreshWidgets(selectedTimeRange);
@@ -76,6 +150,21 @@
         url.searchParams.set('time_range', selectedTimeRange);
         window.history.replaceState({}, '', url);
       });
-    });
+
+      refreshWidgets(timeSelect.value);
+      window.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+          refreshWidgets(timeSelect.value);
+        }
+      });
+    };
+
+    if (document.readyState === 'complete') {
+      initializeDashboard();
+    } else {
+      window.addEventListener('load', initializeDashboard, {
+        once: true
+      });
+    }
   </script>
 {% endblock inline_javascript %}

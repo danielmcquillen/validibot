@@ -158,17 +158,56 @@ class WorkflowStepAssertionsTests(TestCase):
         step.save(update_fields=["config"])
         return step
 
-    def test_assertions_page_renders(self):
+    def test_assertions_page_renders_icon_only_direct_add_action(self):
+        """Non-Tabular steps retain the direct HTMx assertion modal flow.
+
+        The compact header control must remain understandable to assistive
+        technology while preserving every attribute that loads the assertion
+        form directly into its modal.
+        """
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         step = self._make_energyplus_step(workflow)
+        create_url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
         url = reverse(
             "workflows:workflow_step_edit",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
+
         response = self.client.get(url)
+
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Add assertion", response.content.decode())
+        document = lxml_html.fromstring(response.content)
+        buttons = document.xpath(
+            '//div[@id="assertions-editor-card"]'
+            '//div[contains(concat(" ", normalize-space(@class), " "), '
+            '" card-header-buttons ")]//button[@aria-label="Add assertion"]',
+        )
+        self.assertEqual(len(buttons), 1)
+        button = buttons[0]
+        self.assertEqual(button.get("data-bs-toggle"), "modal")
+        self.assertEqual(button.get("data-bs-target"), "#workflowAssertionModal")
+        self.assertEqual(button.get("hx-get"), create_url)
+        self.assertEqual(button.get("hx-target"), "#workflow-assertion-modal-content")
+        self.assertEqual(button.get("hx-swap"), "innerHTML")
+        self.assertEqual(button.get("hx-trigger"), "click")
+        self.assertEqual("".join(button.xpath("./text()")).strip(), "")
+        self.assertEqual(
+            len(button.xpath('./i[contains(@class, "bi-plus-lg")]')),
+            1,
+        )
+        self.assertEqual(
+            button.xpath(
+                'string(./span[contains(@class, "visually-hidden")])',
+            ).strip(),
+            "Add assertion",
+        )
+        tooltip = button.getparent()
+        self.assertEqual(tooltip.get("data-bs-toggle"), "tooltip")
+        self.assertEqual(tooltip.get("title"), "Add assertion")
 
     def test_create_assertion(self):
         workflow = WorkflowFactory()
@@ -952,7 +991,8 @@ class WorkflowStepAssertionsTests(TestCase):
         """Tabular assertion authoring exposes all three execution stages.
 
         The settings editor links here, so this surface must make the execution
-        distinction visible and give every stage its own Add action.
+        distinction visible, connect the flow, and give every stage its own Add
+        action.
         """
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
@@ -960,6 +1000,10 @@ class WorkflowStepAssertionsTests(TestCase):
         RulesetAssertionFactory(
             ruleset=step.ruleset,
             options={"tabular_stage": "dataset"},
+        )
+        RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            options={"tabular_stage": "row"},
         )
         RulesetAssertionFactory(
             ruleset=step.ruleset,
@@ -982,6 +1026,109 @@ class WorkflowStepAssertionsTests(TestCase):
         self.assertIn("tabular_stage=column", body)
         self.assertIn("Add column assertion", body)
         self.assertIn("Which kind of assertion?", body)
+        self.assertEqual(body.count("assertion-add-connector--stage"), 3)
+        self.assertEqual(body.count("assertion-add-connector--line-only"), 4)
+        document = lxml_html.fromstring(response.content)
+        buttons = document.xpath(
+            '//div[@id="assertions-editor-card"]'
+            '//div[contains(concat(" ", normalize-space(@class), " "), '
+            '" card-header-buttons ")]//button[@aria-label="Add assertion"]',
+        )
+        self.assertEqual(len(buttons), 1)
+        button = buttons[0]
+        self.assertEqual(button.get("data-bs-toggle"), "modal")
+        self.assertEqual(
+            button.get("data-bs-target"),
+            "#tabularAssertionStageModal",
+        )
+        self.assertIsNone(button.get("hx-get"))
+        self.assertEqual("".join(button.xpath("./text()")).strip(), "")
+        self.assertEqual(
+            len(button.xpath('./i[contains(@class, "bi-plus-lg")]')),
+            1,
+        )
+        self.assertEqual(button.getparent().get("data-bs-toggle"), "tooltip")
+        self.assertEqual(button.getparent().get("title"), "Add assertion")
+
+    def test_tabular_step_cards_fall_back_to_cel_expression(self):
+        """Stage cards show CEL expressions when authors omit descriptions.
+
+        Descriptions are optional, and legacy/imported assertions may store the
+        expression only in ``rhs``. Every Tabular stage must therefore remain
+        scannable instead of showing an otherwise empty card beside its badges.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_tabular_step(workflow)
+        assertions = (
+            ("dataset", "i.num_rows > 0"),
+            ("row", "row.reading >= 0"),
+            ("column", "col.reading.null_ratio <= 0.05"),
+        )
+        for order, (stage, expression) in enumerate(assertions, start=1):
+            RulesetAssertionFactory(
+                ruleset=step.ruleset,
+                order=order * 10,
+                assertion_type=AssertionType.CEL_EXPRESSION,
+                operator=AssertionOperator.CEL_EXPR,
+                target_data_path="",
+                rhs={"expr": expression, "description": ""},
+                options={"tabular_stage": stage},
+            )
+
+        url = reverse(
+            "workflows:workflow_step_edit",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.get(url)
+        document = lxml_html.fromstring(response.content)
+        card_labels = [
+            " ".join(element.text_content().split())
+            for element in document.xpath(
+                '//div[contains(concat(" ", normalize-space(@class), " "), '
+                '" assertion-card ")]//h2',
+            )
+        ]
+
+        self.assertEqual(response.status_code, 200)
+        for _, expression in assertions:
+            self.assertIn(expression, card_labels)
+
+    def test_tabular_step_card_prefers_description_over_expression(self):
+        """A supplied description remains the primary assertion-card label."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_tabular_step(workflow)
+        RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            target_data_path="row.reading >= 0",
+            rhs={
+                "expr": "row.reading >= 0",
+                "description": "Reading is non-negative",
+            },
+            options={"tabular_stage": "row"},
+        )
+        url = reverse(
+            "workflows:workflow_step_edit",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.get(url)
+        document = lxml_html.fromstring(response.content)
+        card_labels = [
+            " ".join(element.text_content().split())
+            for element in document.xpath(
+                '//div[contains(concat(" ", normalize-space(@class), " "), '
+                '" assertion-card ")]//h2',
+            )
+        ]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Reading is non-negative", card_labels)
+        self.assertNotIn("row.reading >= 0", card_labels)
 
     def test_tabular_row_add_action_constrains_the_modal_to_row_cel(self):
         """The Row Add button opens a stage-aware CEL form.
@@ -1191,8 +1338,13 @@ class WorkflowStepAssertionsTests(TestCase):
         )
         self.assertEqual(ordered, [dataset.pk, row_two.pk, row_one.pk])
 
-    def test_tabular_configuration_card_shows_richer_counts(self):
-        """The step summary exposes required columns and per-stage rule counts."""
+    def test_tabular_operation_card_shows_configuration_summary(self):
+        """The operation card carries the useful Tabular configuration facts.
+
+        Assertion counts are already visible in their staged authoring groups,
+        while the reader, dialect, and schema shape belong with the validation
+        operation. The old right-column configuration card should be absent.
+        """
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         step = self._make_tabular_step(workflow)
@@ -1212,10 +1364,14 @@ class WorkflowStepAssertionsTests(TestCase):
         response = self.client.get(url)
         body = response.content.decode()
 
+        self.assertIn("data-tabular-operation-summary", body)
+        self.assertIn("Reader", body)
+        self.assertIn("CSV", body)
+        self.assertIn("Delimiter", body)
+        self.assertIn("Comma", body)
+        self.assertIn("Header row", body)
         self.assertIn("Required columns", body)
-        self.assertIn("Dataset assertions", body)
-        self.assertIn("Row assertions", body)
-        self.assertIn("Column assertions", body)
+        self.assertNotIn("Tabular configuration", body)
 
     def test_tabular_configuration_card_derives_legacy_ruleset_counts(self):
         """A saved descriptor remains visible when newer config counts are absent.

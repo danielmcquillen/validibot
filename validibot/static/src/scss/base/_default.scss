@@ -29,6 +29,13 @@ h4 {
   color: #fff;
 }
 
+.btn-light {
+  // Bootstrap uses the light background colour for the border by default,
+  // which makes adjacent buttons in a group visually merge.
+  --bs-btn-border-color: #d5d5d5;
+  --bs-btn-disabled-border-color: #d5d5d5;
+}
+
 // Bootstrap 5's modal-dialog-scrollable expects .modal-header / .modal-body /
 // .modal-footer to be direct flex children of .modal-content.  Our HTMx
 // two-template pattern wraps them in a <form> (the content partial injects

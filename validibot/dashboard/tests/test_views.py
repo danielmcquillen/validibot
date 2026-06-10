@@ -1,3 +1,9 @@
+"""Request-level tests for the organization-scoped dashboard.
+
+The suite verifies access control, widget aggregation, tenant isolation, and
+the HTML contract used by the browser-side HTMx loading controller.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -21,7 +27,10 @@ logger = logging.getLogger(__name__)
 
 
 class DashboardViewTests(TestCase):
+    """Verify the dashboard page and widget endpoints as an authorized user."""
+
     def setUp(self):
+        """Create an admin scoped to one active organization."""
         self.user = UserFactory()
         self.org = self.user.orgs.first()
         self.user.set_current_org(self.org)
@@ -33,13 +42,20 @@ class DashboardViewTests(TestCase):
         self.client.force_login(self.user)
 
     def test_dashboard_page_renders_with_widgets(self):
+        """The page must expose widgets for the explicit refresh controller."""
         response = self.client.get(reverse("dashboard:my_dashboard"))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "dashboard/my_dashboard.html")
         widget_definitions = response.context["widget_definitions"]
         self.assertGreater(len(list(widget_definitions)), 0)
+        content = response.content.decode()
+        self.assertIn('hx-trigger="dashboard:refresh"', content)
+        self.assertNotIn('hx-trigger="load, dashboard:refresh"', content)
+        self.assertIn('aria-live="polite"', content)
+        self.assertIn("window.addEventListener('load', initializeDashboard", content)
 
     def test_dashboard_requires_author_admin_owner(self):
+        """Users without analytics access must be redirected from the dashboard."""
         viewer_membership = MembershipFactory()
         viewer_membership.set_roles({RoleCode.WORKFLOW_VIEWER})
         viewer = viewer_membership.user
@@ -54,6 +70,7 @@ class DashboardViewTests(TestCase):
         self.assertIn("workflows", response["Location"])
 
     def test_widget_detail_requires_author_admin_owner(self):
+        """Direct widget requests must enforce the same dashboard permission."""
         viewer_membership = MembershipFactory()
         viewer_membership.set_roles({RoleCode.EXECUTOR})
         viewer = viewer_membership.user
@@ -73,6 +90,7 @@ class DashboardViewTests(TestCase):
         self.assertIn("workflows", response["Location"])
 
     def _create_run_for_org(self, *, hours_ago: int = 1):
+        """Create a validation run in the active org and requested time window."""
         submission = SubmissionFactory(
             org=self.org,
             user=self.user,
@@ -84,6 +102,7 @@ class DashboardViewTests(TestCase):
         return run
 
     def test_total_validations_widget_counts_scoped_runs(self):
+        """Validation totals must exclude runs belonging to another organization."""
         run = self._create_run_for_org(hours_ago=2)
         logger.info(f"Created run {run.pk} for org {self.org.name}")
         other_org = OrganizationFactory()
@@ -99,6 +118,7 @@ class DashboardViewTests(TestCase):
         self.assertNotIn(str(other_run.pk), response.content.decode())
 
     def test_total_errors_widget_counts_error_findings(self):
+        """The error metric must count error findings in the selected window."""
         run = self._create_run_for_org(hours_ago=3)
         step_run = ValidationStepRunFactory(validation_run=run)
         finding = ValidationFindingFactory(
@@ -117,6 +137,7 @@ class DashboardViewTests(TestCase):
         self.assertEqual(response.context_data["total_count"], 1)
 
     def test_events_widget_returns_chart_payload(self):
+        """Event activity must produce a line-chart configuration with data."""
         event = TrackingEventFactory(
             project__org=self.org,
             org=self.org,
@@ -135,6 +156,7 @@ class DashboardViewTests(TestCase):
         self.assertTrue(config["data"]["datasets"][0]["data"])
 
     def test_users_widget_counts_distinct_users(self):
+        """The users chart must count distinct active users per time bucket."""
         other_user = UserFactory(orgs=[self.org])
         first_event = TrackingEventFactory(
             project__org=self.org,

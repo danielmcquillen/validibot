@@ -9,6 +9,9 @@
               assertion-add-connector--line-only
             {% else %}
               assertion-add-connector--terminal
+            {% endif %}
+            {% if stage_line %}
+              assertion-add-connector--stage
             {% endif %}"
      {% if line_only %}
        aria-hidden="true"

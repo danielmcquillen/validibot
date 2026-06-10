@@ -14,8 +14,8 @@
              tabindex="-1">
           <div class="workflow-step-card card shadow-sm">
             <div class="card-body">
-              <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
-                <div>
+              <div class="d-flex justify-content-between align-items-start gap-3">
+                <div class="min-w-0 flex-grow-1">
                   {% with validator=step.validator action=step.action meta=step.action_meta %}
                     <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
                       <span class="badge text-bg-primary">{% trans 'Step' %} {{ step.step_number }}</span>
@@ -143,7 +143,7 @@
                   {% endwith %}
                 </div>
                 {% if can_manage_workflow %}
-                  <div class="btn-group btn-group-sm"
+                  <div class="btn-group btn-group-sm flex-shrink-0"
                        role="group"
                        aria-label="{% trans 'Step actions' %}">
                     <a class="btn btn-light"

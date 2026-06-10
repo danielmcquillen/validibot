@@ -874,11 +874,14 @@ class RulesetAssertion(TimeStampedModel):
             return description or _("SPARQL ASK")
         if self.assertion_type == AssertionType.CEL_EXPRESSION:
             # When the author gave the expression a description, show that on
-            # the assertion card instead of the raw CEL (the expression itself
-            # is stored in ``target_data_path`` and falls through below as the
-            # default). Mirrors the SHACL description above.
-            description = (self.rhs or {}).get("description") or ""
-            return description or self.target_data_path
+            # the assertion card instead of the raw CEL. ``rhs["expr"]`` is
+            # authoritative; ``target_data_path`` remains a compatibility
+            # fallback for older rows created before the expression payload
+            # was normalized.
+            rhs = self.rhs or {}
+            description = (rhs.get("description") or "").strip()
+            expression = (rhs.get("expr") or "").strip()
+            return description or expression or self.target_data_path
         if self.target_signal_definition_id and self.target_signal_definition:
             sig = self.target_signal_definition
             # Per ADR-2026-05-22: INPUT-direction targets live in i.*,

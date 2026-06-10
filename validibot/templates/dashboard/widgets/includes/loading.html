@@ -5,8 +5,10 @@
      data-dashboard-widget
      data-widget-slug="{{ definition.slug }}"
      data-base-hx-get="{{ widget_refresh_url }}"
+     aria-busy="true"
+     aria-live="polite"
      hx-get="{{ widget_refresh_url }}?time_range={{ time_range.slug }}"
-     hx-trigger="load, dashboard:refresh"
+     hx-trigger="dashboard:refresh"
      hx-target="this"
      hx-swap="outerHTML">
   <div class="card shadow-sm border-0 h-100">

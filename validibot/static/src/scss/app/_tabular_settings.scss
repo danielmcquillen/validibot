@@ -119,6 +119,7 @@
 
 @media (min-width: 992px) {
   #workflow-step-form:has(.tabular-settings-section) .app-form-card {
-    max-width: 92rem;
+    width: 100%;
+    max-width: none;
   }
 }

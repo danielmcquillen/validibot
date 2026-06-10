@@ -1,9 +1,9 @@
 """Browser regression tests for the Tabular settings editor.
 
 These opt-in Selenium tests exercise the client behavior that Django response
-tests cannot observe: HTMx swaps, focus placement, DOM reordering, type-aware
-constraint visibility, primary-key coupling, and preview/apply replacement.
-They are skipped during the normal fast suite and run when
+tests cannot observe: rendered header consistency, HTMx swaps, focus placement,
+DOM reordering, type-aware constraint visibility, primary-key coupling, and
+preview/apply replacement. They are skipped during the normal fast suite and run when
 ``RUN_BROWSER_TESTS=1`` is set in an environment with Chrome available.
 """
 
@@ -149,6 +149,150 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
             ),
         )
         element.click()
+
+    def test_layout_uses_full_width_and_back_link_returns_to_step(self):
+        """The wide settings workspace should return directly to the step editor.
+
+        Tabular schemas can contain many columns, so the main card must use the
+        available desktop width. The header should also reuse the step editor's
+        compact back control without repeating its validator icon or type badge.
+        """
+        self.driver.set_window_size(2200, 1200)
+        try:
+            container = self.driver.find_element(By.ID, "workflow-step-form")
+            card = self.driver.find_element(By.CSS_SELECTOR, ".app-form-card")
+            self.assertGreater(card.rect["width"], container.rect["width"] * 0.95)
+            self.assertFalse(
+                self.driver.find_elements(
+                    By.CSS_SELECTOR,
+                    ".app-form-card .badge.text-bg-primary",
+                ),
+            )
+
+            back_link = self.driver.find_element(
+                By.CSS_SELECTOR,
+                '.app-content-header a[aria-label="Back to workflow step"]',
+            )
+            back_button = back_link.find_element(By.XPATH, "..")
+            settings_metrics = self.driver.execute_script(
+                """
+                const button = arguments[0];
+                const rect = button.getBoundingClientRect();
+                const style = getComputedStyle(button);
+                return {
+                  className: button.className,
+                  width: rect.width,
+                  height: rect.height,
+                  borderRadius: style.borderRadius,
+                  backgroundColor: style.backgroundColor,
+                };
+                """,
+                back_button,
+            )
+            self.assertFalse(
+                self.driver.find_elements(
+                    By.CSS_SELECTOR,
+                    ".app-content-header .text-primary.fs-4",
+                ),
+            )
+            expected_path = reverse(
+                "workflows:workflow_step_edit",
+                kwargs={"pk": self.workflow.pk, "step_id": self.step.pk},
+            )
+            self.assertEqual(
+                back_link.get_attribute("href"),
+                f"{self.live_server_url}{expected_path}",
+            )
+
+            self._click(back_link)
+            self.wait.until(
+                ec.url_to_be(f"{self.live_server_url}{expected_path}"),
+            )
+            step_link = self.wait.until(
+                ec.presence_of_element_located(
+                    (
+                        By.CSS_SELECTOR,
+                        ".app-content-header .title-wrapper > .btn > a",
+                    ),
+                ),
+            )
+            step_button = step_link.find_element(By.XPATH, "..")
+            step_metrics = self.driver.execute_script(
+                """
+                const button = arguments[0];
+                const rect = button.getBoundingClientRect();
+                const style = getComputedStyle(button);
+                return {
+                  className: button.className,
+                  width: rect.width,
+                  height: rect.height,
+                  borderRadius: style.borderRadius,
+                  backgroundColor: style.backgroundColor,
+                };
+                """,
+                step_button,
+            )
+            self.assertEqual(settings_metrics, step_metrics)
+        finally:
+            self.driver.set_window_size(1440, 1200)
+
+    def test_step_editor_places_settings_action_on_validation_card(self):
+        """The Tabular operation should own its settings action at the right edge.
+
+        The operation card also carries the compact configuration summary. The
+        right column should use the standard IO and signal cards instead of a
+        Tabular-specific configuration card.
+        """
+        edit_path = reverse(
+            "workflows:workflow_step_edit",
+            kwargs={"pk": self.workflow.pk, "step_id": self.step.pk},
+        )
+        self.driver.get(f"{self.live_server_url}{edit_path}")
+        operation_card = self.wait.until(
+            ec.presence_of_element_located(
+                (By.CSS_SELECTOR, ".validator-operation-card"),
+            ),
+        )
+        settings_button = operation_card.find_element(
+            By.LINK_TEXT,
+            "Edit settings",
+        )
+        card_right = operation_card.rect["x"] + operation_card.rect["width"]
+        button_right = settings_button.rect["x"] + settings_button.rect["width"]
+
+        self.assertLess(card_right - button_right, 30)
+        self.assertFalse(
+            operation_card.find_elements(
+                By.CSS_SELECTOR,
+                ".badge.text-bg-light",
+            ),
+        )
+        self.assertTrue(
+            operation_card.find_element(
+                By.CSS_SELECTOR,
+                "[data-tabular-operation-summary]",
+            ),
+        )
+
+        self.assertFalse(
+            self.driver.find_elements(
+                By.XPATH,
+                (
+                    "//div[contains(@class, 'card')]["
+                    ".//div[contains(@class, 'card-title') "
+                    "and normalize-space()='Tabular configuration']]"
+                ),
+            ),
+        )
+        self.assertTrue(
+            self.driver.find_element(By.ID, "signals-input-tab"),
+        )
+        self.assertTrue(
+            self.driver.find_element(By.ID, "signals-output-tab"),
+        )
+        self.assertTrue(
+            self.driver.find_element(By.LINK_TEXT, "Edit Signals"),
+        )
 
     def test_column_controls_update_focus_order_constraints_and_keys(self):
         """Add, reorder, retag, key, and remove a column through the browser.

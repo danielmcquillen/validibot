@@ -161,3 +161,24 @@ def test_cel_target_display_falls_back_to_expression(db):
     )
 
     assert assertion.target_display == "o.eui <= 50.0"
+
+
+def test_cel_target_display_uses_rhs_expression_for_legacy_blank_target(db):
+    """A CEL card remains readable when only the JSON payload has the expression.
+
+    Why it matters: older and imported Tabular assertions can have a blank
+    ``target_data_path`` while retaining the executable expression in
+    ``rhs["expr"]``. The step editor must display that authoritative expression
+    instead of rendering an empty assertion card.
+    """
+    assertion = RulesetAssertion(
+        ruleset=RulesetFactory(),
+        order=10,
+        assertion_type=AssertionType.CEL_EXPRESSION,
+        operator=AssertionOperator.CEL_EXPR,
+        target_data_path="",
+        rhs={"expr": "row.reading >= 0", "description": ""},
+        severity=Severity.ERROR,
+    )
+
+    assert assertion.target_display == "row.reading >= 0"

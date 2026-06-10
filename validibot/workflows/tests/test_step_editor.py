@@ -47,6 +47,8 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 pytestmark = pytest.mark.django_db
 
 SHACL_STEP_SETTINGS_SECTION_COUNT = 4
+RESIZABLE_PANEL_COUNT = 2
+TABULAR_STAGE_CONNECTOR_COUNT = 3
 
 
 @pytest.fixture(autouse=True)
@@ -1196,6 +1198,25 @@ def test_step_editor_hides_default_assertions_when_none(client):
     assert "default-assertions-card" not in html
 
 
+def test_step_editor_renders_resizable_column_separator(client):
+    """The step editor must preserve the DOM contract used by its resizer."""
+    workflow, step = _make_processor_step(client)
+    edit_url = reverse(
+        "workflows:workflow_step_edit",
+        args=[workflow.pk, step.pk],
+    )
+
+    response = client.get(edit_url)
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert 'data-resizable-key="step-detail-v2"' in html
+    assert 'data-resizable-default="66.6667"' in html
+    assert html.count('class="resizable-panel') == RESIZABLE_PANEL_COUNT
+    assert 'class="resizable-handle"' in html
+    assert 'aria-label="Resize columns"' in html
+
+
 def test_move_and_delete_step(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
@@ -1399,6 +1420,34 @@ def test_step_list_places_type_badge_before_step_name(client):
     assert action_card.index(
         definition.get_action_category_display(),
     ) < action_card.index("Notify Slack")
+
+
+def test_step_list_keeps_actions_in_right_column(client):
+    """Long step summaries must not wrap the action buttons below the content.
+
+    Workflow cards should follow the assertion-card layout: the content column
+    may shrink while the action group remains fixed at the right edge.
+    """
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    WorkflowStepFactory(
+        workflow=workflow,
+        description=(
+            "A deliberately long description that should yield space to the "
+            "workflow step action buttons."
+        ),
+    )
+
+    response = client.get(
+        reverse("workflows:workflow_step_list", args=[workflow.pk]),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert 'class="d-flex justify-content-between align-items-start gap-3"' in html
+    assert 'class="min-w-0 flex-grow-1"' in html
+    assert 'class="btn-group btn-group-sm flex-shrink-0"' in html
 
 
 def test_step_list_renders_signed_credential_summary(client):
@@ -1888,12 +1937,13 @@ def test_shacl_step_shows_validation_operation_before_assertions(client):
 
 
 def test_tabular_step_shows_validation_operation_before_assertions(client):
-    """Tabular steps show validation before their stage-scoped assertion groups.
+    """Tabular validation owns its settings action without a redundant pill.
 
     The Tabular Validator runs its column-schema + row-rule validation before
-    any step-level assertions, so the display-only operation card must remain
-    first. Unlike JSON/XML, Tabular assertions are added from their dataset or
-    row group; retaining the old global connector would erase that stage choice.
+    any step-level assertions, so the operation card must remain first and is
+    the clearest place to edit that operation's settings. The side summary is
+    read-only, and the generic "Validation" pill adds no information beside the
+    explicit "Tabular Validation" title.
     """
     validator = ValidatorFactory(
         validation_type=ValidationType.TABULAR,
@@ -1913,17 +1963,84 @@ def test_tabular_step_shows_validation_operation_before_assertions(client):
     assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     # The operation card appears before the staged assertion authoring surface.
+    operation_card_index = html.index("validator-operation-card-wrapper")
     operation_index = html.index("Tabular Validation")
+    edit_settings_index = html.index("Edit settings")
     dataset_index = html.index("Dataset assertions")
     assert "validator-operation-card" in html
     assert "Validates the submitted CSV" in html
-    assert operation_index < dataset_index
-    assert "assertion-add-connector" not in html
+    assert operation_index < edit_settings_index < dataset_index
+    settings_url = reverse(
+        "workflows:workflow_step_settings",
+        args=[workflow.pk, step.pk],
+    )
+    operation_html = html[operation_card_index:dataset_index]
+    assert settings_url in operation_html
+    assert html.count("Edit settings") == 1
+    assert "text-bg-light text-uppercase" not in operation_html
+    assert "data-tabular-operation-summary" in operation_html
+    assert "Reader" in operation_html
+    assert "Delimiter" in operation_html
+    assert "Header row" in operation_html
+    assert "Columns" in operation_html
+    assert "Required columns" in operation_html
+    assert "Tabular configuration" not in html
+    assert "signals-input-tab" in html
+    assert "signals-output-tab" in html
+    assert "Inputs and Outputs" in html
+    assert "Available Data" in html
+    assert "Edit Signals" in html
+    assert html.count("assertion-add-connector--stage") == TABULAR_STAGE_CONNECTOR_COUNT
+    assert (
+        html.count("assertion-add-connector--line-only")
+        == TABULAR_STAGE_CONNECTOR_COUNT
+    )
+    assert "assertion-add-button" not in html
     assert "Add dataset assertion" in html
     assert "Add row assertion" in html
     # The bare placeholder must be gone now that the operation card stands in
     # as the panel's first item.
     assert "No assertions have been added yet." not in html
+
+
+def test_tabular_assertions_partial_keeps_operation_summary(client):
+    """HTMx assertion refreshes must retain the Tabular settings summary.
+
+    The operation card lives inside the refreshed editor content, so its compact
+    reader/schema facts must be rebuilt by the partial endpoint rather than
+    disappearing after an assertion is added, edited, or reordered.
+    """
+    validator = ValidatorFactory(
+        validation_type=ValidationType.TABULAR,
+        supports_assertions=True,
+    )
+    workflow = WorkflowFactory()
+    step = WorkflowStepFactory(
+        workflow=workflow,
+        validator=validator,
+        config={
+            "delimiter_label": "Comma",
+            "has_header": True,
+            "column_count": 3,
+            "required_column_count": 2,
+        },
+    )
+    _login_for_workflow(client, workflow)
+
+    response = client.get(
+        reverse(
+            "workflows:workflow_step_assertions_partial",
+            args=[workflow.pk, step.pk],
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert "data-tabular-operation-summary" in html
+    assert "Comma" in html
+    assert "Header row" in html
+    assert re.search(r"Columns:</span>\s*3", html)
+    assert re.search(r"Required columns:</span>\s*2", html)
 
 
 def test_step_delete_with_runs_returns_warning(client):

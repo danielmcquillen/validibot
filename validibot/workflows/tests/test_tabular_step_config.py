@@ -603,6 +603,82 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertContains(response, "Required when another column exists")
         self.assertContains(response, f"#workflow-step-{step.pk}")
 
+    def test_settings_page_uses_only_the_shared_breadcrumb(self):
+        """Tabular settings should extend the top trail without duplicating it.
+
+        The shared application breadcrumb preserves workflow and step context,
+        so rendering a second trail inside the page header adds redundant
+        navigation and gives the current page two competing labels.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+
+        response = self.client.get(self._settings_url(workflow, step))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [str(crumb["name"]) for crumb in response.context["breadcrumbs"]],
+            [
+                "Workflows",
+                workflow.name,
+                step.step_number_display,
+                "Tabular settings",
+            ],
+        )
+        html = response.content.decode()
+        self.assertEqual(html.count('<ol class="breadcrumb'), 1)
+
+    def test_settings_page_uses_full_width_header_and_step_back_link(self):
+        """The specialized editor should match the step page navigation pattern.
+
+        Authors need an obvious route back to assertions, while the wide column
+        editor should use the available workspace and avoid a redundant type
+        badge beside the validator description.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+
+        response = self.client.get(self._settings_url(workflow, step))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        step_url = reverse(
+            "workflows:workflow_step_edit",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        self.assertContains(response, f'href="{step_url}"')
+        self.assertContains(response, "bi-chevron-double-left")
+        self.assertContains(
+            response,
+            '<div class="btn btn-primary bg-blue-lt border-0">',
+        )
+        subject_icon = response.context["subject_details"]["icon"]
+        self.assertNotContains(response, f"bi {subject_icon} text-primary fs-4")
+        self.assertContains(response, 'class="app-content-header col-12')
+        self.assertNotContains(response, '<span class="badge text-bg-primary">')
+        self.assertIn('class="card shadow-sm app-form-card', html)
+
+    def test_create_page_ends_the_breadcrumb_with_tabular_settings(self):
+        """New Tabular steps should use the editor's real page label.
+
+        The create route renders the same specialized settings surface, so its
+        breadcrumb should not fall back to the generic "Add step" label.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        create_url = reverse(
+            "workflows:workflow_step_create",
+            kwargs={"pk": workflow.pk, "validator_id": step.validator_id},
+        )
+
+        response = self.client.get(create_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [str(crumb["name"]) for crumb in response.context["breadcrumbs"]],
+            ["Workflows", workflow.name, "Tabular settings"],
+        )
+
     def test_settings_post_saves_descriptor_to_ruleset(self):
         """POSTing a valid tabular config persists the descriptor to the
         step's ruleset — the full author flow, through the view dispatch.

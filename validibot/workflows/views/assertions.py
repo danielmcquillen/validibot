@@ -505,6 +505,7 @@ class WorkflowStepAssertionsPartialView(WorkflowObjectMixin, TemplateView):
             grouped_assertions[key].append(assertion)
 
         from validibot.workflows.views.steps import _step_has_signal_stages
+        from validibot.workflows.views.steps import _tabular_summary_config
 
         uses_signal_stages = bool(
             validator and _step_has_signal_stages(self.step) and allow_assertions,
@@ -543,6 +544,9 @@ class WorkflowStepAssertionsPartialView(WorkflowObjectMixin, TemplateView):
                 "uses_signal_stages": uses_signal_stages,
                 "uses_tabular_stages": uses_tabular_stages,
                 "tabular_assertion_groups": tabular_assertion_groups,
+                "tabular_config": (
+                    _tabular_summary_config(self.step) if uses_tabular_stages else {}
+                ),
                 "validator_operation": validator_operation,
                 "can_manage_assertions": self.user_can_manage_workflow()
                 and allow_assertions,

@@ -114,6 +114,13 @@
         pointer-events: none;
       }
 
+      &.assertion-add-connector--stage {
+        .assertion-add-dotted-line {
+          border-left-color: #4b7e46;
+          height: 1.5rem;
+        }
+      }
+
       .assertion-add-button {
         align-items: center;
         background-color: var(--bs-white);
@@ -186,6 +193,9 @@
         height: 100%;
         margin: 2rem 0;
       }
+    }
+    .assertion-group--tabular {
+      margin: 0;
     }
     .editor-workspace.has-validator-flow {
       .validator-process-divider::before {

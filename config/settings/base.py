@@ -663,7 +663,7 @@ SPECTACULAR_SETTINGS = {
     # Keep service-to-service routes (the /api/v1/mcp/* helper surface) out
     # of the user-facing reference — they reject user API keys by design.
     # See config/schema.py for the rationale.
-    "PREPROCESSING_HOOKS": ["config.schema.exclude_internal_paths"],
+    "PREPROCESSING_HOOKS": ["rest_framework.permissions.IsAuthenticated"],
     # Serve Swagger UI and ReDoc assets locally via sidecar (fixes encoding issues,
     # works offline, avoids CDN dependencies)
     "SWAGGER_UI_DIST": "SIDECAR",

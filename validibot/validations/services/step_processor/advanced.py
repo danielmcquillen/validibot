@@ -51,11 +51,22 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
     ## Status Semantics
 
-    - `ValidationStatus.SUCCESS` from the container is treated as a pass even if
-      the container reported ERROR messages. We surface a warning in the step
-      output and logs when that happens.
+    - `ValidationStatus.SUCCESS` from a **shipped** validator (`is_system=True`)
+      is treated as a pass even if the container reported ERROR messages. This
+      is deliberate: EnergyPlus, for example, legitimately exits 0 (SUCCESS)
+      while emitting `** Severe **` ERROR-severity lines it considers non-fatal.
+      Shipped validators are trusted to use their envelope status as the
+      authoritative pass/fail signal; we surface a warning when SUCCESS coincides
+      with ERROR findings, but keep the step PASSED.
+    - `ValidationStatus.SUCCESS` from a **custom** validator (`is_system=False`,
+      i.e. a user-added container) with ERROR findings **fails** the step. Custom
+      containers are not trusted to honour the status contract — a buggy or
+      naive one may set SUCCESS ("my container ran") while emitting ERROR
+      findings ("the data is invalid"). For a validation + attestation product
+      we must not PASS the step, and let a signed credential be issued, over data
+      the validator itself flagged as an ERROR.
     - Output-stage assertion failures always fail the step, regardless of
-      container status.
+      container status or validator trust.
     """
 
     def execute(self) -> StepProcessingResult:
@@ -211,31 +222,64 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
         from validibot_shared.validations.envelopes import ValidationStatus
 
+        # ── Container-reported ERROR findings on a SUCCESS envelope ──
+        #
+        # ``container_error_issues`` are ERROR-severity findings the container
+        # emitted itself. The ``assertion_id is None`` filter excludes
+        # output-stage assertion findings, which are handled separately by the
+        # ``has_assertion_errors`` branch below — do not broaden it.
+        #
+        # A validator can report status SUCCESS while still emitting such
+        # findings. How we treat that depends on whether the validator is
+        # trusted (see the class docstring's Status Semantics):
+        #
+        # * SHIPPED (``is_system=True``): trusted. EnergyPlus exits 0 (SUCCESS)
+        #   while writing ``** Severe **`` ERROR lines it considers non-fatal,
+        #   so we keep the step PASSED and surface a WARNING.
+        # * CUSTOM (``is_system=False``): untrusted. We must not PASS — and let
+        #   a credential be issued — over data the validator flagged as ERROR,
+        #   so the findings win and the step FAILS (see status block below).
         container_error_issues = [
             issue
             for issue in post_result.issues
             if issue.severity == Severity.ERROR and issue.assertion_id is None
         ]
-        if (
+        success_with_container_errors = (
             output_envelope.status == ValidationStatus.SUCCESS
-            and container_error_issues
-        ):
-            warning_msg = (
-                "Note: the advanced validation indicated it passed, "
-                "but there were errors reported."
-            )
+            and bool(container_error_issues)
+        )
+        custom_container_failure = (
+            success_with_container_errors and not self.validator.is_system
+        )
+        if success_with_container_errors:
             logger.warning(
                 "Advanced validator reported SUCCESS with ERROR findings: "
-                "step_run_id=%s error_count=%s",
+                "step_run_id=%s error_count=%s is_system=%s",
                 self.step_run.id,
                 len(container_error_issues),
+                self.validator.is_system,
             )
+            if custom_container_failure:
+                note_msg = (
+                    "The custom validator reported success but emitted "
+                    "error-level findings. The step is failed because custom "
+                    "validators are not trusted to override their own errors."
+                )
+                note_severity = Severity.ERROR
+                note_code = "advanced_validation_custom_success_with_errors"
+            else:
+                note_msg = (
+                    "Note: the advanced validation indicated it passed, "
+                    "but there were errors reported."
+                )
+                note_severity = Severity.WARNING
+                note_code = "advanced_validation_success_with_errors"
             post_result.issues.append(
                 ValidationIssue(
                     path="",
-                    message=warning_msg,
-                    severity=Severity.WARNING,
-                    code="advanced_validation_success_with_errors",
+                    message=note_msg,
+                    severity=note_severity,
+                    code=note_code,
                 )
             )
 
@@ -259,26 +303,29 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         # Store final assertion counts
         self.store_assertion_counts(assertion_failures, assertion_total)
 
-        # Determine final status
+        # Determine final status.
+        #
+        # ``custom_container_failure`` (computed above) forces FAILED when a
+        # NON-system container reports SUCCESS yet emitted ERROR findings.
+        # Output-stage assertion failures always fail the step regardless of
+        # validator trust.
         status = self._map_envelope_status(output_envelope.status)
         has_assertion_errors = post_result.assertion_stats.failures > 0
-        if has_assertion_errors:
+        if has_assertion_errors or custom_container_failure:
             status = StepStatus.FAILED
         error = self._extract_error(output_envelope)
+        if custom_container_failure and not error:
+            # A SUCCESS envelope yields no envelope-level error string, so give
+            # the failed step a meaningful reason for the run record.
+            error = note_msg
 
         # Include full envelope in step output (JSON-safe serialization)
         stats = self._serialize_envelope(output_envelope)
         if isinstance(stats, dict):
             stats["signals"] = post_result.signals or {}
-        if (
-            output_envelope.status == ValidationStatus.SUCCESS
-            and container_error_issues
-        ):
+        if success_with_container_errors:
             warnings = stats.get("warnings", []) if isinstance(stats, dict) else []
-            warnings.append(
-                "Note: the advanced validation indicated it passed, "
-                "but there were errors reported."
-            )
+            warnings.append(note_msg)
             stats["warnings"] = warnings
         self.finalize_step(status, stats, error)
 

@@ -617,10 +617,28 @@ class ValidationCallbackService:
         # break the callback flow.
         from validibot.validations.signals import validation_step_completed
 
+        # ``ran_to_completion`` tells metering receivers whether the validator
+        # container actually executed and produced a result, so they can charge
+        # compute for runs that "finished but had errors" while NOT charging
+        # runs that failed at runtime. It is derived from the ENVELOPE status,
+        # not step_run.status, on purpose:
+        #   * SUCCESS / FAILED_VALIDATION  -> the container ran to completion
+        #     ("finished but had errors") -> ran_to_completion=True (charge)
+        #   * FAILED_RUNTIME / CANCELLED   -> no usable result -> False (skip)
+        # step_run.status cannot be used here: it collapses FAILED_VALIDATION and
+        # FAILED_RUNTIME both to FAILED, and a SUCCESS-but-custom-container-error
+        # step is now FAILED too (still ran to completion, so still billable).
+        ran_to_completion = output_envelope.status in {
+            ValidationStatus.SUCCESS,
+            ValidationStatus.FAILED_VALIDATION,
+        }
+
         validation_step_completed.send_robust(
             sender=self.__class__,
             step_run=step_run,
             validation_run=run,
+            envelope_status=output_envelope.status.value,
+            ran_to_completion=ran_to_completion,
         )
 
         return _StepCompletionResult(

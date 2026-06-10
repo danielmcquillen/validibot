@@ -511,8 +511,19 @@ class AdvancedValidatorPostExecuteTests(TestCase):
     def test_success_envelope_with_error_messages_still_passes(self):
         """SUCCESS status passes even if envelope contains ERROR messages.
 
-        Container error messages do not override SUCCESS status. Only
-        assertion failures cause a SUCCESS envelope to fail.
+        Container error messages do not override SUCCESS status at the
+        *validator* level. Only assertion failures cause a SUCCESS envelope to
+        fail here.
+
+        IMPORTANT — layer boundary: ``post_execute_validate().passed`` /
+        ``_determine_passed`` are severity-agnostic by design and are NOT the
+        authoritative persisted step verdict. The trust-based override that
+        FAILS a *custom* (``is_system=False``) container when it reports SUCCESS
+        with ERROR findings lives in the step processor
+        (``AdvancedValidationProcessor._complete_with_envelope``), not here, and
+        is covered by the callback-level tests in
+        ``test_api/test_callback_assertions.py``. So this validator-level test
+        remaining True is correct and does not contradict that behavior.
         """
         messages = [
             _make_envelope_message(

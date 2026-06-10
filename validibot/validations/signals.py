@@ -16,5 +16,13 @@ from django.dispatch import Signal
 validation_run_created = Signal()
 
 # Fired after a validation step completes via callback (advanced validators).
-# Provides: step_run (ValidationStepRun), validation_run (ValidationRun)
+# Provides:
+#   step_run (ValidationStepRun)
+#   validation_run (ValidationRun)
+#   envelope_status (str): the container envelope's ValidationStatus value
+#       ("success" | "failed_validation" | "failed_runtime" | "cancelled").
+#   ran_to_completion (bool): True when the container actually executed and
+#       produced a result (envelope SUCCESS or FAILED_VALIDATION — "finished but
+#       had errors"); False for runtime failures / cancellation. Metering uses
+#       this to charge compute only for runs that ran to completion.
 validation_step_completed = Signal()

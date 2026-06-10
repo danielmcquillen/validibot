@@ -8,9 +8,11 @@ Mirrors the existing JSON Schema + XSD use-case test patterns:
 4. Assert the run status and the issues list.
 
 The tests exercise the full local self-hosted path — API → validation run
-launch → Docker runner → isolated SHACL backend → findings. They require a
-Docker daemon and the ``validibot-validator-backend-shacl:latest`` image.
-CI builds the image from the pinned compatible backend release before pytest.
+launch → Docker runner → isolated SHACL backend → findings. They run when the
+Docker SDK, daemon, and ``validibot-validator-backend-shacl:latest`` image are
+available, and skip as a group otherwise. CI installs the SDK and builds the
+pinned compatible image before pytest, while ordinary contributors can run the
+rest of the suite without installing the optional Docker runner.
 
 These tests live alongside the other use-case tests for parity. The
 finer-grained Django-side tests for SHACL (launch envelope construction,
@@ -49,6 +51,39 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 
 logger = logging.getLogger(__name__)
 pytestmark = pytest.mark.django_db
+SHACL_BACKEND_IMAGE = "validibot-validator-backend-shacl:latest"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def require_shacl_backend():
+    """Skip real-container tests unless their complete runtime is available.
+
+    A missing optional Docker SDK, stopped daemon, or absent SHACL image is an
+    environment precondition, not a product failure. Checking all three before
+    any workflow runs also prevents a backend-unavailable finding from making a
+    negative validation test pass for the wrong reason. CI satisfies these
+    prerequisites and therefore continues to exercise the complete container
+    path.
+    """
+    docker = pytest.importorskip(
+        "docker",
+        reason=(
+            "SHACL container tests require the docker-runner extra; "
+            "run `uv sync --extra docker-runner`."
+        ),
+    )
+    client = None
+    try:
+        client = docker.from_env()
+        client.ping()
+        client.images.get(SHACL_BACKEND_IMAGE)
+    except Exception as exc:
+        pytest.skip(
+            f"SHACL container tests require Docker and {SHACL_BACKEND_IMAGE}: {exc}",
+        )
+    finally:
+        if client is not None:
+            client.close()
 
 
 @pytest.fixture

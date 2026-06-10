@@ -22,6 +22,19 @@ Django's test database. They're fast and isolated but don't exercise the real
 HTTP/Celery/Redis pipeline. They run automatically as part of the normal
 `pytest` suite.
 
+The SHACL use-case module also exercises its isolated validator container. It
+skips when the optional Docker SDK, daemon, or backend image is unavailable.
+CI always installs and builds those prerequisites. To run that module locally:
+
+```bash
+uv sync --group dev --extra docker-runner
+docker build \
+  -f ../validibot-validator-backends/validator_backends/shacl/Dockerfile \
+  -t validibot-validator-backend-shacl:latest \
+  ../validibot-validator-backends
+pytest tests/tests_use_cases/test_shacl_validation.py
+```
+
 **Integration tests** run against real infrastructure - a local Postgres
 instance, GCS buckets, Cloud Run Jobs. They verify that Validibot's cloud
 integrations work correctly but don't test the full request lifecycle. They

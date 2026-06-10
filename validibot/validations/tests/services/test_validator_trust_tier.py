@@ -288,12 +288,9 @@ class TestDockerRunnerAppliesTier2:
             container.attrs = {"Image": "sha256:" + "0" * 64}
             return container
 
-        with patch("docker.from_env") as mock_from_env:
-            mock_client = MagicMock()
-            mock_client.containers.run.side_effect = fake_run
-            mock_client.ping.return_value = True
-            mock_from_env.return_value = mock_client
-
+        mock_client = MagicMock()
+        mock_client.containers.run.side_effect = fake_run
+        with patch.object(runner, "_get_client", return_value=mock_client):
             runner.run(
                 container_image="example:tag",
                 input_uri="file:///tmp/in.json",
@@ -338,12 +335,9 @@ class TestDockerRunnerAppliesTier2:
             container.attrs = {"Image": "sha256:" + "0" * 64}
             return container
 
-        with patch("docker.from_env") as mock_from_env:
-            mock_client = MagicMock()
-            mock_client.containers.run.side_effect = fake_run
-            mock_client.ping.return_value = True
-            mock_from_env.return_value = mock_client
-
+        mock_client = MagicMock()
+        mock_client.containers.run.side_effect = fake_run
+        with patch.object(runner, "_get_client", return_value=mock_client):
             runner.run(
                 container_image="example:tag",
                 input_uri="file:///tmp/in.json",

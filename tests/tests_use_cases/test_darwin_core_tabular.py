@@ -60,6 +60,7 @@ from validibot.validations.validators.tabular.native import CODE_PATTERN_MISMATC
 from validibot.validations.validators.tabular.native import CODE_REQUIRED_VALUE_MISSING
 from validibot.validations.validators.tabular.native import CODE_TYPE_ERROR
 from validibot.validations.validators.tabular.native import CODE_UNIQUE_VIOLATION
+from validibot.validations.validators.tabular.native import DEFAULT_REPORT_MAX_EXAMPLES
 from validibot.validations.validators.tabular.row_eval import CODE_ROW_ASSERTION_FAILED
 from validibot.validations.validators.tabular.schema import parse_table_schema
 from validibot.validations.validators.tabular.validator import TabularValidator
@@ -358,20 +359,19 @@ def test_schema_valid_rows_can_still_fail_manual_assertions():
     assert with_rules.assertion_stats.failures == 2  # noqa: PLR2004
 
 
-# ── At scale: a failing assertion lists up to 100 rows, then says "and more"
+# ── At scale: a failing assertion caps examples, then says "and more"
 # A single row assertion that fails on thousands of rows must stay one readable
-# finding: the true total in ``count``, the first 100 row numbers as examples,
+# finding: the true total in ``count``, a bounded set of example row numbers,
 # and an explicit truncation marker so the reader knows the list is partial.
-def test_row_assertion_reports_up_to_100_failing_rows_then_truncates():
-    """A bulk row-assertion failure caps its row list at 100 and flags the rest.
+def test_row_assertion_reports_default_failing_rows_then_truncates():
+    """A bulk row-assertion failure uses the shared example cap.
 
     This is the headline behaviour behind "report which rows failed": with 150
     rows all violating the positive-uncertainty rule, the finding carries the
-    full ``count`` (150) but only the first 100 example rows, and the shared
-    display helper renders "showing first 100 of 150" — never one finding per
-    failing row, and never a silent truncation. 100 is the shipped default
-    (``DEFAULT_REPORT_MAX_EXAMPLES``); making it per-step configurable later only
-    needs the ruleset metadata, not a change here.
+    full ``count`` (150) but only the first configured-default example rows,
+    and the shared display helper makes that truncation explicit. Importing the
+    production constant keeps this use-case contract aligned with the native
+    and row-assertion validators rather than duplicating a stale literal.
     """
     failing_rows = 150
     header = ",".join(DARWIN_CORE_COLUMNS)
@@ -397,16 +397,18 @@ def test_row_assertion_reports_up_to_100_failing_rows_then_truncates():
 
     assert not result.passed
     issue = next(i for i in result.issues if i.code == CODE_ROW_ASSERTION_FAILED)
-    # Every row failed (the true total), but only the first 100 are listed.
+    # Every row failed (the true total), but only the default examples are listed.
     assert issue.meta["count"] == failing_rows
-    assert len(issue.meta["sample_rows"]) == 100  # noqa: PLR2004
+    assert len(issue.meta["sample_rows"]) == DEFAULT_REPORT_MAX_EXAMPLES
     assert issue.meta["sample_rows"][0] == 1
-    assert issue.meta["sample_rows"][-1] == 100  # noqa: PLR2004
+    assert issue.meta["sample_rows"][-1] == DEFAULT_REPORT_MAX_EXAMPLES
     # The shared display helper turns that meta into the user-facing line, with
     # the truncation made explicit rather than hidden.
     rendered = format_failed_rows(issue.meta)
     assert rendered.startswith("row numbers: 1, 2, 3,")
-    assert rendered.endswith("(showing first 100 of 150)")
+    assert rendered.endswith(
+        f"(showing first {DEFAULT_REPORT_MAX_EXAMPLES} of {failing_rows})",
+    )
 
 
 # ── The eventDate nuance: Darwin Core dates are not strict ISO datetimes ─────

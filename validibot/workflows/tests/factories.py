@@ -6,6 +6,7 @@ from factory.django import DjangoModelFactory
 
 from validibot.projects.tests.factories import ProjectFactory
 from validibot.submissions.constants import SubmissionFileType
+from validibot.users.constants import RoleCode
 from validibot.users.models import Membership
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
@@ -19,9 +20,6 @@ class WorkflowFactory(DjangoModelFactory):
     class Meta:
         model = Workflow
         skip_postgeneration_save = True
-
-    class Params:
-        with_owner = False  # opt-in helper for tests that need owner permissions
 
     org = factory.SubFactory(OrganizationFactory)
     user = factory.SubFactory(UserFactory)
@@ -50,10 +48,21 @@ class WorkflowFactory(DjangoModelFactory):
             org=self.org,
             defaults={"is_active": True},
         )
-        if getattr(self, "with_owner", False):
-            with contextlib.suppress(ValueError):
-                # Tests may override membership manually; skip when access not allowed.
-                self.user.set_current_org(self.org)
+
+    @factory.post_generation
+    def with_owner(self, create, extracted, **kwargs):
+        """Optionally grant the workflow user owner access to its organization."""
+        if not create or not extracted:
+            return
+        membership, _created = Membership.objects.get_or_create(
+            user=self.user,
+            org=self.org,
+            defaults={"is_active": True},
+        )
+        membership.add_role(RoleCode.OWNER)
+        with contextlib.suppress(ValueError):
+            # Make current-org permission helpers agree with object-scoped checks.
+            self.user.set_current_org(self.org)
 
 
 class WorkflowStepFactory(DjangoModelFactory):

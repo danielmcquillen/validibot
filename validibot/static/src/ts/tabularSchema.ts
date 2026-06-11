@@ -43,6 +43,17 @@ function syncPrimaryKeyRequirement(row: HTMLElement): void {
     required.checked = true;
   }
   required.disabled = primaryKey.checked;
+
+  // Explain the lock: when Required is forced on by a primary key, swap the
+  // wrapper's tooltip to say so; otherwise restore the field's help text.
+  const wrapper = required.closest<HTMLElement>(
+    '.tabular-column-card__required',
+  );
+  if (wrapper) {
+    wrapper.title = primaryKey.checked
+      ? wrapper.dataset.requiredLockedTitle ?? ''
+      : wrapper.dataset.requiredDefaultTitle ?? '';
+  }
 }
 
 function syncRequiredWhenOptions(editor: HTMLElement): void {

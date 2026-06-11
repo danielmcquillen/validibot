@@ -1058,6 +1058,26 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
             return HttpResponseRedirect(detail_url)
         return super().dispatch(request, *args, **kwargs)
 
+    def _is_tabular_settings(self) -> bool:
+        """Whether this request edits the rich Tabular Validator settings page.
+
+        The Tabular Validator has a bespoke full-screen editor (Columns /
+        Settings tabs with a sticky action footer) and its own template,
+        distinct from the generic step form used by every other validator and
+        by action steps.
+        """
+        return (
+            not self.is_action_step()
+            and self.get_validator().validation_type == ValidationType.TABULAR
+        )
+
+    def get_template_names(self):
+        # Route the Tabular Validator to its dedicated two-tab editor; every
+        # other validator and all action steps keep the shared step form.
+        if self._is_tabular_settings():
+            return ["workflows/tabular_step_settings.html"]
+        return [self.template_name]
+
     def get_step(self) -> WorkflowStep | None:
         if self.mode != "update":
             return None
@@ -1332,10 +1352,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 "credential_step_guidance": self._get_credential_step_guidance(),
             },
         )
-        if (
-            not self.is_action_step()
-            and self.get_validator().validation_type == ValidationType.TABULAR
-        ):
+        if self._is_tabular_settings():
             context.update(self._get_tabular_settings_context(form, step))
         return context
 
@@ -1359,8 +1376,14 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 kwargs=route_kwargs,
             )
 
+        active_tab = self._tabular_active_tab(form)
         return {
             "is_tabular_settings": True,
+            "tabular_active_tab": active_tab,
+            # Single boolean lets the template pick tab state with `yesno`
+            # filters (one-line attributes) instead of inline `{% if %}` blocks,
+            # which djLint reflows into whitespace-padded class/aria values.
+            "tabular_settings_tab_active": active_tab == "settings",
             "column_formset": getattr(form, "column_formset", None),
             "tabular_columns_url": endpoint("workflow_tabular_columns"),
             "tabular_import_url": endpoint("workflow_tabular_schema_import"),
@@ -1370,6 +1393,19 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 endpoint("workflow_tabular_schema_export") if step else ""
             ),
         }
+
+    def _tabular_active_tab(self, form) -> str:
+        """Pick which editor tab opens first.
+
+        Columns lead by default (that is where authors spend their time). After
+        an invalid submit we surface the tab that holds the errors so they are
+        not hidden behind the other tab: Settings-field errors win (they are
+        easy to miss), otherwise we stay on Columns, which also covers column
+        formset errors.
+        """
+        if form is not None and getattr(form, "is_bound", False) and form.errors:
+            return "settings"
+        return "columns"
 
     def _get_credential_step_guidance(self) -> dict[str, str] | None:
         """Return UI guidance for signed credential action steps."""
@@ -1427,10 +1463,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
 
     def get_breadcrumbs(self):
         workflow = self.get_workflow()
-        is_tabular_settings = (
-            not self.is_action_step()
-            and self.get_validator().validation_type == ValidationType.TABULAR
-        )
+        is_tabular_settings = self._is_tabular_settings()
         breadcrumbs = super().get_breadcrumbs()
         breadcrumbs.append(
             {

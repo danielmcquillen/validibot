@@ -1,0 +1,170 @@
+{% extends "app_base.html" %}
+
+{% load i18n crispy_forms_tags core_tags %}
+
+{% comment %}
+Tabular Validator settings — a dedicated full-screen editor.
+
+Two tabs (Columns / Settings) share one POST form, with an always-visible
+Cancel / Save action footer (the "Sticky Action Footer" pattern — see
+ui-design.md). The schema source tools live in the header modals. The page uses
+the standard application navigation and top bar.
+{% endcomment %}
+
+{% block title %}
+  {% if is_create %}
+    {% blocktrans with name=workflow.name %}Add tabular step · {{ name }} · Validibot{% endblocktrans %}
+  {% else %}
+    {% blocktrans with name=workflow.name step_id=step.pk %}Tabular settings · Step {{ step_id }} · {{ name }} · Validibot{% endblocktrans %}
+  {% endif %}
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% comment %}Lock the page to the viewport so the form body scrolls under a pinned footer.{% endcomment %}
+{% block bodyclass %}
+  d-flex flex-column min-vh-100 flex-grow-1 navbar-fixed-offset app-viewport-locked
+{% endblock bodyclass %}
+
+{% block app_content %}
+  <div id="tabular-step-settings" class="container-fluid editor-shell">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 d-flex align-items-start mb-2 mb-lg-0">
+        <div class="d-flex flex-nowrap align-items-center gap-2 min-w-0 me-auto">
+          {% if step %}
+            <div class="btn btn-primary bg-blue-lt border-0">
+              <a href="{% org_url 'workflows:workflow_step_edit' workflow.pk step.pk %}"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="top"
+                 title="{% trans 'Back to workflow step' %}"
+                 aria-label="{% trans 'Back to workflow step' %}">
+                <i class="bi bi-chevron-double-left"></i>
+              </a>
+            </div>
+          {% endif %}
+          <h1 class="app-page-title mb-0 text-truncate">
+            {% trans "Tabular settings" %}
+            {% if step.name %}
+              · {{ step.name }}
+            {% endif %}
+          </h1>
+        </div>
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+          <button type="button"
+                  class="btn btn-secondary btn-sm"
+                  data-bs-toggle="modal"
+                  data-bs-target="#tabularInferModal">
+            <i class="bi bi-magic me-1" aria-hidden="true"></i>{% trans "Infer from Sample" %}
+          </button>
+          <button type="button"
+                  class="btn btn-secondary btn-sm"
+                  data-bs-toggle="modal"
+                  data-bs-target="#tabularImportModal">
+            <i class="bi bi-braces me-1" aria-hidden="true"></i>{% trans "Import Table Schema" %}
+          </button>
+          {% if tabular_export_url %}
+            <a class="btn btn-light btn-sm" href="{{ tabular_export_url }}" download>
+              <i class="bi bi-download me-1" aria-hidden="true"></i>{% trans "Download schema" %}
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% include "core/partial/_form_errors_summary.html" %}
+
+    <form id="tabular-step-settings-form"
+          method="post"
+          enctype="multipart/form-data"
+          class="card app-card editor-card"
+          data-unsaved-guard>
+      {% csrf_token %}
+      {{ form.media }}
+      <div class="card-body p-0 editor-card__panes">
+        <ul class="nav nav-tabs tabular-editor-tabs px-3 pt-2" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link {{ tabular_settings_tab_active|yesno:',active' }}"
+                    id="tabular-tab-columns"
+                    data-bs-toggle="tab"
+                    data-bs-target="#tabular-pane-columns"
+                    type="button"
+                    role="tab"
+                    aria-controls="tabular-pane-columns"
+                    aria-selected="{{ tabular_settings_tab_active|yesno:'false,true' }}">
+              {% trans "Columns" %}
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link {{ tabular_settings_tab_active|yesno:'active,' }}"
+                    id="tabular-tab-settings"
+                    data-bs-toggle="tab"
+                    data-bs-target="#tabular-pane-settings"
+                    type="button"
+                    role="tab"
+                    aria-controls="tabular-pane-settings"
+                    aria-selected="{{ tabular_settings_tab_active|yesno:'true,false' }}">
+              {% trans "Settings" %}
+            </button>
+          </li>
+        </ul>
+        <div class="tab-content editor-card__scroll">
+          <div class="tab-pane fade {{ tabular_settings_tab_active|yesno:',show active' }} p-3 p-lg-4"
+               id="tabular-pane-columns"
+               role="tabpanel"
+               aria-labelledby="tabular-tab-columns">
+            {% include "workflows/partials/tabular_schema_workspace.html" %}
+          </div>
+          <div class="tab-pane fade {{ tabular_settings_tab_active|yesno:'show active,' }} p-3 p-lg-4"
+               id="tabular-pane-settings"
+               role="tabpanel"
+               aria-labelledby="tabular-tab-settings">
+            {% include "workflows/partials/tabular_settings_fields.html" %}
+          </div>
+        </div>
+      </div>
+      <div class="card-footer d-flex flex-wrap justify-content-end align-items-center gap-2">
+        <a class="btn btn-light"
+           data-unsaved-cancel
+           href="{% if step %}{% org_url 'workflows:workflow_detail' workflow.pk %}#workflow-step-{{ step.pk }}{% else %}{% org_url 'workflows:workflow_detail' workflow.pk %}#workflow-steps-col{% endif %}">
+          {% trans "Cancel" %}
+        </a>
+        <button type="submit" class="btn btn-primary">
+          {% if is_create %}
+            {% trans "Create step" %}
+          {% else %}
+            {% trans "Save changes" %}
+          {% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <script nonce="{{ CSP_NONCE }}">
+    // After an Infer / Import request settles, close the launching modal and
+    // bring the Columns tab forward so the proposal (or any error alert) is
+    // visible. Soft validation errors return 200, so we close regardless and
+    // let the workspace alerts carry the message.
+    document.body.addEventListener('htmx:afterRequest', function(event) {
+      const trigger = event.detail && event.detail.elt;
+      if (!trigger || !trigger.matches || !trigger.matches('[data-tabular-modal-submit]')) {
+        return;
+      }
+      const modalEl = trigger.closest('.modal');
+      if (modalEl) {
+        window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+      }
+      const columnsTab = document.getElementById('tabular-tab-columns');
+      if (columnsTab) {
+        window.bootstrap.Tab.getOrCreateInstance(columnsTab).show();
+      }
+    });
+  </script>
+{% endblock app_content %}
+
+{% block modal %}
+  {% include "workflows/partials/tabular_infer_modal.html" %}
+  {% include "workflows/partials/tabular_import_modal.html" %}
+  {% include "core/partial/_unsaved_changes_modal.html" %}
+{% endblock modal %}

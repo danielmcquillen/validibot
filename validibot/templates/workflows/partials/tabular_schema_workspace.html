@@ -1,8 +1,17 @@
 {% load i18n %}
 
-<section id="tabular-schema-workspace"
-         class="tabular-settings-section"
-         aria-labelledby="tabular-columns-heading">
+{% comment %}
+Columns workspace — the body of the Columns tab and the HTMx swap target for
+infer / import / apply / add-column.
+
+The schema *source* tools (infer from a CSV, import a descriptor) now live in
+page-header modals; this partial owns only the editable column list plus the
+proposal preview those tools produce. Infer / import surface any errors as the
+alerts below, then close their modal, so the outcome always lands here in the
+Columns tab.
+{% endcomment %}
+
+<section id="tabular-schema-workspace" class="tabular-schema-workspace">
   {% if form %}
     {{ form.schema_base }}
   {% else %}
@@ -16,8 +25,25 @@
     <div class="alert alert-success d-flex align-items-start gap-2"
          role="status"
          aria-live="polite">
-      <i class="bi bi-check-circle-fill mt-1"></i>
+      <i class="bi bi-check-circle-fill mt-1" aria-hidden="true"></i>
       <div>{{ schema_success_message }}</div>
+    </div>
+  {% endif %}
+
+  {% if sample_error %}
+    <div class="alert alert-danger d-flex align-items-start gap-2"
+         role="alert"
+         aria-live="assertive">
+      <i class="bi bi-exclamation-triangle-fill mt-1" aria-hidden="true"></i>
+      <div>{{ sample_error }}</div>
+    </div>
+  {% endif %}
+  {% if import_error %}
+    <div class="alert alert-danger d-flex align-items-start gap-2"
+         role="alert"
+         aria-live="assertive">
+      <i class="bi bi-exclamation-triangle-fill mt-1" aria-hidden="true"></i>
+      <div>{{ import_error }}</div>
     </div>
   {% endif %}
 
@@ -41,7 +67,7 @@
   {% endif %}
 
   {% if pending_schema %}
-    <div class="tabular-schema-preview mb-4"
+    <div class="tabular-schema-preview mb-3"
          role="region"
          aria-labelledby="tabular-schema-preview-heading">
       <input type="hidden" name="pending_schema" value="{{ pending_schema }}" />
@@ -76,124 +102,19 @@
     </div>
   {% endif %}
 
-  <div class="tabular-settings-section__heading">
+  <div class="tabular-schema-workspace__heading mb-2">
     <div>
-      <h3 id="tabular-columns-heading" class="h5 mb-1">
-        {% trans "Expected columns" %}
-      </h3>
       <p class="text-muted small mb-0">
-        {% trans "Define the ordered columns, their data types, and the shape each value must have." %}
+        {% trans "Define expected columns, their data types, and the shape each value must have." %}
       </p>
     </div>
-    <span class="tabular-column-count"
-          data-tabular-column-count
-          data-singular-label="{% trans 'column' %}"
-          data-plural-label="{% trans 'columns' %}"
-          aria-live="polite"></span>
-  </div>
-
-  <div class="row g-3 mb-4">
-    <div class="col-12 col-xl-6">
-      <div class="tabular-schema-source h-100">
-        <div class="d-flex gap-3">
-          <span class="tabular-schema-source__icon" aria-hidden="true">
-            <i class="bi bi-file-earmark-spreadsheet"></i>
-          </span>
-          <div class="flex-grow-1">
-            <h4 class="h6 mb-1">{% trans "Infer from a sample" %}</h4>
-            <p class="text-muted small">
-              {% trans "Upload a representative CSV. Validibot reads the header and proposes a type for each column." %}
-            </p>
-            <label class="form-label" for="id_sample_file">{% trans "Sample CSV" %}</label>
-            {% if form %}
-              {{ form.sample_file }}
-              {% for error in form.sample_file.errors %}
-                <div class="invalid-feedback d-block">{{ error }}</div>
-              {% endfor %}
-            {% else %}
-              <input type="file"
-                     name="sample_file"
-                     id="id_sample_file"
-                     class="form-control"
-                     accept=".csv,.tsv,text/csv,text/tab-separated-values" />
-            {% endif %}
-            {% if sample_error %}
-              <div class="invalid-feedback d-block" role="alert" aria-live="assertive">{{ sample_error }}</div>
-            {% endif %}
-            <button type="button"
-                    class="btn btn-outline-primary btn-sm mt-3"
-                    hx-post="{{ tabular_infer_url }}"
-                    hx-target="#tabular-schema-workspace"
-                    hx-swap="outerHTML"
-                    hx-encoding="multipart/form-data"
-                    hx-include="closest form"
-                    hx-disabled-elt="this"
-                    hx-sync="#tabular-schema-workspace:replace"
-                    hx-indicator="#tabular-schema-request-indicator">
-              <i class="bi bi-magic me-1"></i>{% trans "Infer columns" %}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="col-12 col-xl-6">
-      <div class="tabular-schema-source h-100">
-        <div class="d-flex gap-3">
-          <span class="tabular-schema-source__icon" aria-hidden="true">
-            <i class="bi bi-braces"></i>
-          </span>
-          <div class="flex-grow-1 min-w-0">
-            <h4 class="h6 mb-1">{% trans "Import Table Schema" %}</h4>
-            <p class="text-muted small">
-              {% trans "Paste a Frictionless Table Schema descriptor to populate the same editor." %}
-            </p>
-            <label class="form-label" for="id_table_schema">{% trans "Descriptor JSON" %}</label>
-            {% if form %}
-              {{ form.table_schema }}
-              {% for error in form.table_schema.errors %}
-                <div class="invalid-feedback d-block">{{ error }}</div>
-              {% endfor %}
-            {% else %}
-              <textarea name="table_schema"
-                        id="id_table_schema"
-                        class="form-control font-monospace"
-                        rows="5"
-                        spellcheck="false"
-                        placeholder='{ "fields": [...] }'>{{ table_schema_value }}</textarea>
-            {% endif %}
-            {% if import_error %}
-              <div class="invalid-feedback d-block" role="alert">{{ import_error }}</div>
-            {% endif %}
-            <div class="mt-3">
-              <label class="form-label" for="id_schema_file">{% trans "Or upload descriptor JSON" %}</label>
-              {% if form %}
-                {{ form.schema_file }}
-                {% for error in form.schema_file.errors %}
-                  <div class="invalid-feedback d-block">{{ error }}</div>
-                {% endfor %}
-              {% else %}
-                <input type="file"
-                       name="schema_file"
-                       id="id_schema_file"
-                       class="form-control"
-                       accept=".json,application/json" />
-              {% endif %}
-            </div>
-            <button type="button"
-                    class="btn btn-outline-primary btn-sm mt-3"
-                    hx-post="{{ tabular_import_url }}"
-                    hx-target="#tabular-schema-workspace"
-                    hx-swap="outerHTML"
-                    hx-include="closest form"
-                    hx-encoding="multipart/form-data"
-                    hx-disabled-elt="this"
-                    hx-sync="#tabular-schema-workspace:replace"
-                    hx-indicator="#tabular-schema-request-indicator">
-              <i class="bi bi-box-arrow-in-down me-1"></i>{% trans "Import schema" %}
-            </button>
-          </div>
-        </div>
-      </div>
+    <div class="tabular-schema-workspace__heading-actions">
+      <span class="tabular-column-count"
+            data-tabular-column-count
+            data-singular-label="{% trans 'column' %}"
+            data-plural-label="{% trans 'columns' %}"
+            aria-live="polite"></span>
+      {% include "workflows/partials/tabular_add_column_button.html" with swap="afterbegin" %}
     </div>
   </div>
 
@@ -207,34 +128,18 @@
         {% endfor %}
       </div>
     {% endif %}
+
     <div id="tabular-column-rows" class="d-flex flex-column gap-3">
       {% for column_form in column_formset %}
         {% include "workflows/partials/tabular_column_row.html" %}
       {% endfor %}
     </div>
-    <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
-      <button type="button"
-              class="btn btn-outline-secondary"
-              hx-get="{{ tabular_columns_url }}"
-              hx-target="#tabular-column-rows"
-              hx-swap="beforeend"
-              hx-include="#id_columns-TOTAL_FORMS"
-              hx-disabled-elt="this"
-              hx-sync="#tabular-schema-workspace:queue last"
-              hx-indicator="#tabular-schema-request-indicator">
-        <i class="bi bi-plus-lg me-1"></i>{% trans "Add column" %}
-      </button>
+
+    <div class="tabular-add-column-bar tabular-add-column-bar--bottom">
+      {% include "workflows/partials/tabular_add_column_button.html" with swap="beforeend" %}
       <span class="text-muted small">
         {% trans "Column order must match headerless files. Headered files use the names above." %}
       </span>
-      {% if tabular_export_url %}
-        <a class="btn btn-link btn-sm ms-lg-auto"
-           href="{{ tabular_export_url }}"
-           download>
-          <i class="bi bi-download me-1" aria-hidden="true"></i>
-          {% trans "Download saved schema" %}
-        </a>
-      {% endif %}
     </div>
   </div>
 

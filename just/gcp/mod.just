@@ -82,6 +82,10 @@ gcp_image := gcp_region + "-docker.pkg.dev/" + gcp_project + "/" + app_name + "/
 # Long timeout needed for validator jobs that process large files
 gcp_cloud_run_request_timeout := env_var_or_default("GCP_CLOUD_RUN_TIMEOUT", "3600s")
 
+# Migration Cloud Run Job task timeout. Default 5 min; override for a long
+# prod data migration, e.g. GCP_MIGRATE_TIMEOUT=1800s just gcp deploy-all prod
+gcp_migrate_task_timeout := env_var_or_default("GCP_MIGRATE_TIMEOUT", "300s")
+
 # Cloud Scheduler timezone for cron jobs
 gcp_scheduler_timezone := env_var_or_default("GCP_SCHEDULER_TIMEZONE", "UTC")
 
@@ -469,8 +473,35 @@ push:
 #   - max-instances: prod=4, dev/staging=2
 #   - memory: 1Gi (sufficient for Django + gunicorn)
 #   - allow-unauthenticated: public web access
+
+# _confirm-deploy: interactive guard before a PROD traffic cutover.
+# Every ``gcloud run deploy`` shifts 100% of traffic to the new revision
+# immediately, so for prod we require the operator to confirm by typing the
+# stage name. Non-prod stages skip it; set GCP_YES=1 to skip for automation.
+[private]
 [arg('stage', pattern='dev|staging|prod')]
-deploy stage: _require-gcp-config (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-web stage)
+_confirm-deploy stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{stage}}" != "prod" ]; then
+        exit 0
+    fi
+    if [ "${GCP_YES:-}" = "1" ] || [ "${GCP_YES:-}" = "true" ]; then
+        echo "GCP_YES set — skipping prod deploy confirmation."
+        exit 0
+    fi
+    echo ""
+    echo "⚠  About to deploy to PROD and shift 100% of traffic to the new revision."
+    echo "   Roll back afterwards with:  just gcp rollback prod"
+    echo "   Type the stage name 'prod' to confirm, or anything else to abort:"
+    read -r CONFIRM
+    if [ "$CONFIRM" != "prod" ]; then
+        echo "Aborted."
+        exit 1
+    fi
+
+[arg('stage', pattern='dev|staging|prod')]
+deploy stage: _require-gcp-config (_confirm-deploy stage) (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-web stage)
 
 # Deploy worker service to a specific stage.
 # The worker handles background tasks triggered by Cloud Tasks.
@@ -485,7 +516,7 @@ deploy stage: _require-gcp-config (_require-not-maintenance stage) build push (_
 #
 # Usage: just gcp deploy-worker dev | just gcp deploy-worker prod
 [arg('stage', pattern='dev|staging|prod')]
-deploy-worker stage: _require-gcp-config (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-worker stage)
+deploy-worker stage: _require-gcp-config (_confirm-deploy stage) (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-worker stage)
 
 # Deploy every service to a stage (single build+push for Django, plus
 # an MCP build+deploy when ENABLE_MCP_SERVER is set).
@@ -517,7 +548,7 @@ deploy-worker stage: _require-gcp-config (_require-not-maintenance stage) build 
 # Usage (with MCP, ad-hoc): ENABLE_MCP_SERVER=true just gcp deploy-all prod
 # Usage (with MCP, persisted via .build file): just gcp deploy-all prod
 [arg('stage', pattern='dev|staging|prod')]
-deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-web stage) (_deploy-worker stage) (scheduler-setup stage) (_maybe-deploy-mcp stage)
+deploy-all stage: _require-gcp-config (_confirm-deploy stage) (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-web stage) (_deploy-worker stage) (scheduler-setup stage) (_maybe-deploy-mcp stage)
     @echo ""
     @echo "All services deployed to {{stage}}"
     @echo ""
@@ -528,6 +559,74 @@ deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build pus
     @echo ""
     @echo "``just gcp secrets`` uploads .django always; it also uploads"
     @echo ".mcp when ENABLE_MCP_SERVER is set (in .build or inline)."
+
+# Roll the web service back to a previously-deployed revision by shifting
+# 100% of traffic to it — the recovery path for a bad deploy. With no
+# ``revision`` argument it targets the previous revision (the one created
+# just before the newest). Pass an explicit revision name to pin a known-good
+# one. This only moves traffic: it does NOT rebuild or re-migrate, so it is
+# fast and safe to run. Skip the confirmation with GCP_YES=1.
+#
+# CAVEAT: rolling code back does not roll a database migration back. Keep
+# migrations expand-only (additive) — see ADR-2026-06-10c — so the older
+# revision is always compatible with the newer schema.
+#
+# Usage: just gcp rollback prod  |  just gcp rollback prod <revision-name>
+[arg('stage', pattern='dev|staging|prod')]
+rollback stage revision="": _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        SERVICE="${APP_NAME}-web"
+    else
+        SERVICE="${APP_NAME}-web-{{stage}}"
+    fi
+
+    echo "Recent revisions for $SERVICE (newest first):"
+    gcloud run revisions list \
+        --service="$SERVICE" \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --sort-by="~metadata.creationTimestamp" \
+        --format="table(metadata.name, metadata.creationTimestamp, status.conditions[0].type)" \
+        --limit=5 2>/dev/null || true
+    echo ""
+
+    TARGET="{{revision}}"
+    if [ -z "$TARGET" ]; then
+        # No revision given: pick the previous revision (2nd newest by creation).
+        TARGET=$(gcloud run revisions list \
+            --service="$SERVICE" \
+            --region={{gcp_region}} \
+            --project={{gcp_project}} \
+            --sort-by="~metadata.creationTimestamp" \
+            --format="value(metadata.name)" 2>/dev/null | sed -n '2p')
+        if [ -z "$TARGET" ]; then
+            echo "Error: could not determine a previous revision for $SERVICE." >&2
+            echo "  Pass one explicitly:  just gcp rollback {{stage}} <revision-name>" >&2
+            exit 1
+        fi
+    fi
+
+    echo "⚠  Roll back $SERVICE ({{stage}}) — shift 100% of traffic to:"
+    echo "     $TARGET"
+    if [ "${GCP_YES:-}" != "1" ] && [ "${GCP_YES:-}" != "true" ]; then
+        echo "   Type 'yes' to confirm, or anything else to abort:"
+        read -r CONFIRM
+        if [ "$CONFIRM" != "yes" ]; then
+            echo "Aborted."
+            exit 1
+        fi
+    fi
+
+    gcloud run services update-traffic "$SERVICE" \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --to-revisions="$TARGET=100"
+
+    echo ""
+    echo "✓ Rolled $SERVICE back to $TARGET (100% traffic)."
 
 # =============================================================================
 # Versioned Upgrade (Phase 4 of ADR-2026-04-27)
@@ -1383,7 +1482,7 @@ _run-migrate-job stage image:
             --region {{gcp_region}} \
             --set-secrets=/secrets/.env="$SECRET":latest \
             --memory 1Gi \
-            --task-timeout 300s \
+            --task-timeout {{gcp_migrate_task_timeout}} \
             --execution-environment gen2 \
             --command "/bin/bash" \
             --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && python manage.py createcachetable && python manage.py ensure_oidc_clients && echo Migrations, cache table, and OIDC client bootstrap complete" \
@@ -1398,7 +1497,7 @@ _run-migrate-job stage image:
             --set-cloudsql-instances "$DB" \
             --set-secrets=/secrets/.env="$SECRET":latest \
             --memory 1Gi \
-            --task-timeout 300s \
+            --task-timeout {{gcp_migrate_task_timeout}} \
             --execution-environment gen2 \
             --command "/bin/bash" \
             --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && python manage.py createcachetable && python manage.py ensure_oidc_clients && echo Migrations, cache table, and OIDC client bootstrap complete" \
@@ -2503,6 +2602,51 @@ init-stage stage: _require-gcp-config
     fi
     SA_EMAIL="$SA_NAME@{{gcp_project}}.iam.gserviceaccount.com"
 
+    # Step 0: Enable the GCP APIs every stage needs. Without these, later
+    # steps fail with opaque "API [x] not enabled" errors. Idempotent —
+    # enabling an already-enabled API is a no-op.
+    echo "0. Enabling required APIs"
+    gcloud services enable \
+        run.googleapis.com \
+        sqladmin.googleapis.com \
+        cloudtasks.googleapis.com \
+        cloudscheduler.googleapis.com \
+        secretmanager.googleapis.com \
+        artifactregistry.googleapis.com \
+        cloudkms.googleapis.com \
+        iam.googleapis.com \
+        compute.googleapis.com \
+        servicenetworking.googleapis.com \
+        cloudresourcemanager.googleapis.com \
+        --project={{gcp_project}}
+    echo "   APIs enabled"
+    echo ""
+
+    # Step 0b: Create the custom job-runner role the Cloud Run SA needs to
+    # trigger validator Cloud Run Jobs. It is GRANTED in Step 2 (and on each
+    # validator job in ``validator-deploy``); creating it here — rather than
+    # out of band — means a fresh project is never left green-but-broken with
+    # a binding to a role that does not exist. Create-or-reconcile, idempotent.
+    JOB_RUNNER_ROLE_ID="${APP_NAME//-/_}_job_runner"
+    echo "0b. Ensuring custom IAM role: $JOB_RUNNER_ROLE_ID"
+    if gcloud iam roles describe "$JOB_RUNNER_ROLE_ID" --project={{gcp_project}} &>/dev/null; then
+        gcloud iam roles update "$JOB_RUNNER_ROLE_ID" \
+            --project={{gcp_project}} \
+            --permissions="run.jobs.run,run.jobs.runWithOverrides" \
+            --quiet >/dev/null
+        echo "   Role exists (permissions reconciled)"
+    else
+        gcloud iam roles create "$JOB_RUNNER_ROLE_ID" \
+            --project={{gcp_project}} \
+            --title="Validibot Job Runner" \
+            --description="Trigger Validibot validator Cloud Run Jobs" \
+            --permissions="run.jobs.run,run.jobs.runWithOverrides" \
+            --stage=GA \
+            --quiet >/dev/null
+        echo "   Created"
+    fi
+    echo ""
+
     # Step 1: Create service account
     echo "1. Creating service account: $SA_NAME"
     if gcloud iam service-accounts describe "$SA_EMAIL" --project={{gcp_project}} &>/dev/null; then
@@ -2537,7 +2681,7 @@ init-stage stage: _require-gcp-config
                 --member="serviceAccount:$SA_EMAIL" \
                 --role="$role" \
                 --condition=None \
-                --quiet &>/dev/null || true
+                --quiet >/dev/null
             echo "   $role (added)"
         fi
     done
@@ -2561,7 +2705,7 @@ init-stage stage: _require-gcp-config
                 --member="serviceAccount:$SA_EMAIL" \
                 --role="$sa_role" \
                 --project={{gcp_project}} \
-                --quiet &>/dev/null || true
+                --quiet >/dev/null
             echo "   $role_short (added)"
         fi
     done
@@ -2795,35 +2939,49 @@ init-stage stage: _require-gcp-config
     echo "   Granted objectAdmin on $STORAGE_BUCKET to validator SA"
     echo ""
 
-    # Step 7: Grant KMS permissions for credential signing
-    echo "7. Granting KMS permissions"
+    # Step 7: Ensure the credential-signing key exists, then grant access.
+    echo "7. Ensuring KMS signing key + permissions"
     KMS_KEYRING="${APP_NAME}-keys"
     if [ "{{stage}}" = "prod" ]; then
         KMS_KEY="credential-signing"
     else
         KMS_KEY="credential-signing-{{stage}}"
     fi
-    # Check if the key exists
-    if gcloud kms keys describe "$KMS_KEY" --location={{gcp_region}} --keyring="$KMS_KEYRING" --project={{gcp_project}} &>/dev/null; then
-        gcloud kms keys add-iam-policy-binding "$KMS_KEY" \
-            --location={{gcp_region}} \
-            --keyring="$KMS_KEYRING" \
-            --project={{gcp_project}} \
-            --member="serviceAccount:$SA_EMAIL" \
-            --role=roles/cloudkms.viewer \
-            --quiet &>/dev/null || true
-        gcloud kms keys add-iam-policy-binding "$KMS_KEY" \
-            --location={{gcp_region}} \
-            --keyring="$KMS_KEYRING" \
-            --project={{gcp_project}} \
-            --member="serviceAccount:$SA_EMAIL" \
-            --role=roles/cloudkms.signerVerifier \
-            --quiet &>/dev/null || true
-        echo "   KMS permissions granted for $KMS_KEY"
-    else
-        echo "   KMS key '$KMS_KEY' not found"
-        echo "      Run 'just gcp kms-setup {{stage}}' first to create the signing key"
+    # Ensure the keyring exists (region-scoped; creation is idempotent-guarded).
+    if ! gcloud kms keyrings describe "$KMS_KEYRING" --location={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
+        gcloud kms keyrings create "$KMS_KEYRING" --location={{gcp_region}} --project={{gcp_project}}
+        echo "   Created keyring $KMS_KEYRING"
     fi
+    # Ensure the signing key exists. ES256 (ECDSA P-256 / SHA-256) is what the
+    # Pro signing backend expects (it matches the local PEM key + SIGNING_ALGORITHM
+    # ES256), so create it as an asymmetric-signing key with that algorithm.
+    # Creating it here means GCP_KMS_SIGNING_KEY resolves to a real key after
+    # init-stage instead of failing at first credential signing.
+    if ! gcloud kms keys describe "$KMS_KEY" --location={{gcp_region}} --keyring="$KMS_KEYRING" --project={{gcp_project}} &>/dev/null; then
+        gcloud kms keys create "$KMS_KEY" \
+            --location={{gcp_region}} \
+            --keyring="$KMS_KEYRING" \
+            --purpose=asymmetric-signing \
+            --default-algorithm=ec-sign-p256-sha256 \
+            --project={{gcp_project}}
+        echo "   Created signing key $KMS_KEY (ec-sign-p256-sha256 / ES256)"
+    fi
+    # Grant the runtime SA viewer + signerVerifier on the key (fail loud).
+    gcloud kms keys add-iam-policy-binding "$KMS_KEY" \
+        --location={{gcp_region}} \
+        --keyring="$KMS_KEYRING" \
+        --project={{gcp_project}} \
+        --member="serviceAccount:$SA_EMAIL" \
+        --role=roles/cloudkms.viewer \
+        --quiet >/dev/null
+    gcloud kms keys add-iam-policy-binding "$KMS_KEY" \
+        --location={{gcp_region}} \
+        --keyring="$KMS_KEYRING" \
+        --project={{gcp_project}} \
+        --member="serviceAccount:$SA_EMAIL" \
+        --role=roles/cloudkms.signerVerifier \
+        --quiet >/dev/null
+    echo "   KMS permissions granted for $KMS_KEY"
     echo ""
 
     # Step 8: Create secret placeholder
@@ -2847,9 +3005,11 @@ init-stage stage: _require-gcp-config
     echo ""
     echo "Resources created:"
     echo "  Service account: $SA_EMAIL"
+    echo "  Custom role: $JOB_RUNNER_ROLE_ID (run.jobs.run + runWithOverrides)"
     echo "  Cloud SQL: $DB_INSTANCE (database: $DB_NAME)"
     echo "  Cloud Tasks queue: $QUEUE_NAME"
     echo "  GCS bucket: $STORAGE_BUCKET (public/ and private/ prefixes)"
+    echo "  KMS signing key: $KMS_KEY (keyring $KMS_KEYRING; ES256)"
     echo "  KMS permissions: cloudkms.viewer, cloudkms.signerVerifier"
     echo "  Secret: $SECRET_NAME"
     echo ""
@@ -2876,6 +3036,52 @@ init-stage stage: _require-gcp-config
     echo "  backend), run its own provisioning recipe now. See the add-on's"
     echo "  deployment docs for the exact command."
     echo ""
+
+# Set the Artifact Registry image cleanup policy (or preview it).
+#
+# Cleanup policies are evaluated SERVER-SIDE by Artifact Registry on a recurring
+# schedule (~daily) once set — you do NOT re-run this and there is no cron to
+# maintain. Set it once and pruning happens automatically forever; re-run only
+# to change the policy. The repo is shared across stages, so this is not
+# stage-scoped.
+#
+# Policy (conservative):
+#   - keep the 10 most-recent versions of every image (Keep wins over Delete, so
+#     the live image — always one of the recent ones — is never removed),
+#   - delete UNTAGGED blobs older than 7 days (orphaned layers),
+#   - delete anything older than 30 days that isn't in the kept set.
+#
+# Default mode is "dry-run": the policy is set but Artifact Registry only LOGS
+# what it would delete (deletes nothing). Review it in Cloud Logging, then run
+# with mode=apply to enable real pruning.
+#
+# Usage: just gcp registry-cleanup            # dry-run (safe preview)
+#        just gcp registry-cleanup apply       # enable live pruning
+registry-cleanup mode="dry-run": _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    REPO="{{app_name}}"
+    POLICY="$(mktemp)"
+    trap 'rm -f "$POLICY"' EXIT
+    printf '%s' '[{"name":"keep-recent","action":{"type":"Keep"},"mostRecentVersions":{"keepCount":10}},{"name":"delete-untagged","action":{"type":"Delete"},"condition":{"tagState":"UNTAGGED","olderThan":"604800s"}},{"name":"delete-old","action":{"type":"Delete"},"condition":{"tagState":"ANY","olderThan":"2592000s"}}]' > "$POLICY"
+
+    if [ "{{mode}}" = "apply" ]; then
+        echo "Enabling LIVE cleanup policy on repo '$REPO' — Artifact Registry will prune automatically from now on."
+        gcloud artifacts repositories set-cleanup-policies "$REPO" \
+            --location={{gcp_region}} \
+            --project={{gcp_project}} \
+            --policy="$POLICY" \
+            --no-dry-run
+        echo "✓ Live. Keeps 10 newest per image; prunes untagged >7d and anything >30d beyond that."
+    else
+        echo "Setting cleanup policy in DRY-RUN on repo '$REPO' — nothing is deleted; AR only logs what it WOULD delete."
+        gcloud artifacts repositories set-cleanup-policies "$REPO" \
+            --location={{gcp_region}} \
+            --project={{gcp_project}} \
+            --policy="$POLICY" \
+            --dry-run
+        echo "✓ Dry-run set. Review in Cloud Logging, then enable:  just gcp registry-cleanup apply"
+    fi
 
 # List all resources for a stage (useful for verification)
 [arg('stage', pattern='dev|staging|prod')]

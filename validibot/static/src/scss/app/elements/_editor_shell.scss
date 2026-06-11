@@ -1,0 +1,117 @@
+// =============================================================================
+// Editor shell — "sticky action footer" pattern
+// =============================================================================
+//
+// A reusable layout for full-page editors where the Cancel / Save action bar
+// must stay visible at the bottom of the screen while the form body scrolls
+// underneath it. Inspired by the PureLMS course-builder action bar.
+//
+// The mechanism is pure flexbox — no `position: fixed`, no magic-number
+// heights. One ancestor establishes a viewport bound, every level in between
+// is a `min-height: 0` flex column, and exactly one inner region owns the
+// scroll. The footer is simply the last non-growing flex child, so it rests
+// at the bottom edge with nothing to "stick" to.
+//
+// Compose it like this:
+//
+//   <body class="… app-viewport-locked">        // 1. lock the page to the viewport
+//     …app shell ( #main-content > #app-content )…
+//       <div class="editor-shell">              // 2. fill column: header + card
+//         <div class="app-content-header-bar">…</div>
+//         <form class="card app-card editor-card">   // 3. the card fills the rest
+//           <div class="card-header …">…tabs / title…</div>      // pinned
+//           <div class="card-body editor-card__scroll">…</div>   // 4. scrolls
+//           <div class="card-footer">…Cancel / Save…</div>       // pinned
+//         </form>
+//       </div>
+//
+// For a tabbed editor, swap the plain scroll body for a `__panes` body that
+// pins the tab strip and scrolls only the active pane:
+//
+//   <div class="card-body p-0 editor-card__panes">
+//     <ul class="nav nav-tabs">…</ul>                       // pinned
+//     <div class="tab-content editor-card__scroll">…</div>  // scrolls
+//   </div>
+//
+// See validibot-project/docs/claude_context/ui-design.md → "Sticky Action
+// Footer" for usage guidance.
+
+// -----------------------------------------------------------------------------
+// 1. The viewport bound (opt-in, per page)
+// -----------------------------------------------------------------------------
+// `core/base.html` ships the body as `min-vh-100` (it grows with content and
+// the whole page scrolls). Adding this class instead locks the body to exactly
+// the viewport height and hands the scroll to one inner region. It is opt-in so
+// only editor pages are affected — every other page keeps natural page scroll.
+body.app-viewport-locked {
+  height: 100vh;
+  overflow: hidden;
+
+  // The app shell sets `min-height: 100vh` on #main-content; under the bound we
+  // need it (and #app-content) to be able to shrink so the inner scroll region
+  // — not the page — absorbs overflow. `min-height: 0` is the load-bearing bit:
+  // flex items default to `min-height: auto` and refuse to shrink below their
+  // content, which is exactly what pushes a footer off-screen on a tall form.
+  #main-content {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #app-content {
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 2. Fill column — wraps the page header and the editor card
+// -----------------------------------------------------------------------------
+.editor-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+// -----------------------------------------------------------------------------
+// 3. The card — fills the shell, pins its header and footer
+// -----------------------------------------------------------------------------
+// Bootstrap's `.card` is already `display: flex; flex-direction: column`, so we
+// only need to let it grow and shrink. The header and footer are explicitly
+// non-growing so they stay put; the body (or `__panes`) consumes the slack.
+.editor-card {
+  flex: 1 1 auto;
+  min-height: 0;
+
+  > .card-header,
+  > .card-footer {
+    flex: 0 0 auto;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 4. The scroll region — the one element that scrolls
+// -----------------------------------------------------------------------------
+.editor-card__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+// -----------------------------------------------------------------------------
+// 5. Tabbed body — pin a tab strip above the scroll region
+// -----------------------------------------------------------------------------
+// Use on the `.card-body` when the card is tabbed: the body becomes its own
+// flex column so the `.nav-tabs` stay pinned while only the active
+// `.tab-content` (marked `editor-card__scroll`) scrolls.
+.editor-card__panes {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  > .nav-tabs {
+    flex: 0 0 auto;
+  }
+}

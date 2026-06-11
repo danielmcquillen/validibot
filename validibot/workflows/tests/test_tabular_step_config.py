@@ -596,12 +596,20 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Table Schema")
         self.assertContains(response, "Delimiter")
-        self.assertContains(response, "Expected columns")
-        self.assertContains(response, "Infer from a sample")
+        self.assertContains(response, "Define expected columns")
+        # The schema source tools are now header-launched modals rather than
+        # inline cards, so assert their launch buttons are present.
+        self.assertContains(response, "Infer from Sample")
+        self.assertContains(response, "Import Table Schema")
         self.assertContains(response, "data-tabular-column-editor")
         self.assertNotContains(response, 'id="tabular-assertions-heading"')
         self.assertContains(response, "Required when another column exists")
         self.assertContains(response, f"#workflow-step-{step.pk}")
+        # Every column loads collapsed: the details accordion is present with a
+        # chevron toggle, and no column is auto-expanded (no "show" class) on a
+        # clean GET. A failed submit is the only case that opens one.
+        self.assertContains(response, "data-tabular-details-toggle")
+        self.assertNotContains(response, "tabular-column-card__details show")
 
     def test_settings_page_uses_only_the_shared_breadcrumb(self):
         """Tabular settings should extend the top trail without duplicating it.
@@ -631,9 +639,9 @@ class TabularStepSettingsViewTests(TestCase):
     def test_settings_page_uses_full_width_header_and_step_back_link(self):
         """The specialized editor should match the step page navigation pattern.
 
-        Authors need an obvious route back to assertions, while the wide column
-        editor should use the available workspace and avoid a redundant type
-        badge beside the validator description.
+        Authors need an obvious route back to the workflow step, while the
+        full-screen editor uses the whole width (no left sidebar) and renders
+        the reusable editor-card shell instead of the generic form card.
         """
         workflow, step = self._tabular_workflow_and_step()
         _login_as_author(self.client, workflow)
@@ -654,9 +662,22 @@ class TabularStepSettingsViewTests(TestCase):
         )
         subject_icon = response.context["subject_details"]["icon"]
         self.assertNotContains(response, f"bi {subject_icon} text-primary fs-4")
-        self.assertContains(response, 'class="app-content-header col-12')
+        # The viewport-locked editor keeps the standard collapsible app
+        # navigation and uses the reusable sticky-footer editor card.
+        self.assertContains(response, "app-viewport-locked")
+        self.assertContains(response, 'id="tabular-step-settings"')
+        self.assertContains(response, 'id="app-left-nav"')
+        self.assertContains(response, 'id="app-left-nav-toggle"')
+        self.assertIn("editor-shell", html)
+        self.assertIn('class="card app-card editor-card"', html)
+        self.assertIn(
+            'class="card-footer d-flex flex-wrap justify-content-end '
+            'align-items-center gap-2"',
+            html,
+        )
+        self.assertContains(response, '<a class="btn btn-light"')
+        self.assertNotContains(response, "bi-x-lg")
         self.assertNotContains(response, '<span class="badge text-bg-primary">')
-        self.assertIn('class="card shadow-sm app-form-card', html)
 
     def test_create_page_ends_the_breadcrumb_with_tabular_settings(self):
         """New Tabular steps should use the editor's real page label.

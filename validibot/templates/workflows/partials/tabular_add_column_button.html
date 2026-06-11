@@ -1,0 +1,22 @@
+{% load i18n %}
+
+{% comment %}
+Add-column button, used at both the top and bottom of the column list.
+
+`swap` controls where the new row lands: "afterbegin" (top button) or
+"beforeend" (bottom button). The server returns one prefixed row plus an
+out-of-band TOTAL_FORMS bump; tabularSchema.ts then renumbers ORDER from DOM
+position, so inserting at the top simply makes the new column first.
+{% endcomment %}
+
+<button type="button"
+        class="btn btn-outline-secondary btn-sm tabular-add-column"
+        hx-get="{{ tabular_columns_url }}"
+        hx-target="#tabular-column-rows"
+        hx-swap="{{ swap|default:'beforeend' }}"
+        hx-include="#id_columns-TOTAL_FORMS"
+        hx-disabled-elt="this"
+        hx-sync="#tabular-schema-workspace:queue last"
+        hx-indicator="#tabular-schema-request-indicator">
+  <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>{% trans "Add column" %}
+</button>

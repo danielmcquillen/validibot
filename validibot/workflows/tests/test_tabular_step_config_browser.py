@@ -152,28 +152,50 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
         )
         element.click()
 
-    def test_layout_uses_full_width_and_back_link_returns_to_step(self):
-        """The wide settings workspace should return directly to the step editor.
+    def test_layout_uses_standard_nav_and_back_link_returns_to_step(self):
+        """The settings workspace should use normal app navigation.
 
-        Tabular schemas can contain many columns, so the main card must use the
-        available desktop width. The header should also reuse the step editor's
-        compact back control without repeating its validator icon or type badge.
+        The left navigation must collapse and expand exactly as it does on
+        other app pages. Within the remaining content area, the main card uses
+        the available width and the header reuses the step editor's compact
+        back control without repeating its validator icon or type badge.
         """
         self.driver.set_window_size(2200, 1200)
         try:
-            container = self.driver.find_element(By.ID, "workflow-step-form")
-            card = self.driver.find_element(By.CSS_SELECTOR, ".app-form-card")
+            left_nav = self.driver.find_element(By.ID, "app-left-nav")
+            nav_toggle = self.driver.find_element(By.ID, "app-left-nav-toggle")
+            self.assertTrue(left_nav.is_displayed())
+            self.assertEqual(nav_toggle.get_attribute("aria-expanded"), "true")
+
+            self._click(nav_toggle)
+            self.wait.until(
+                lambda _driver: (
+                    "is-collapsed" in left_nav.get_attribute("class").split()
+                ),
+            )
+            self.assertEqual(nav_toggle.get_attribute("aria-expanded"), "false")
+
+            self._click(nav_toggle)
+            self.wait.until(
+                lambda _driver: (
+                    "is-collapsed" not in left_nav.get_attribute("class").split()
+                ),
+            )
+            self.assertEqual(nav_toggle.get_attribute("aria-expanded"), "true")
+
+            container = self.driver.find_element(By.ID, "tabular-step-settings")
+            card = self.driver.find_element(By.CSS_SELECTOR, ".editor-card")
             self.assertGreater(card.rect["width"], container.rect["width"] * 0.95)
             self.assertFalse(
                 self.driver.find_elements(
                     By.CSS_SELECTOR,
-                    ".app-form-card .badge.text-bg-primary",
+                    ".editor-card .badge.text-bg-primary",
                 ),
             )
 
             back_link = self.driver.find_element(
                 By.CSS_SELECTOR,
-                '.app-content-header a[aria-label="Back to workflow step"]',
+                '.app-content-header-bar a[aria-label="Back to workflow step"]',
             )
             back_button = back_link.find_element(By.XPATH, "..")
             settings_metrics = self.driver.execute_script(
@@ -194,7 +216,7 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
             self.assertFalse(
                 self.driver.find_elements(
                     By.CSS_SELECTOR,
-                    ".app-content-header .text-primary.fs-4",
+                    ".app-content-header-bar .text-primary.fs-4",
                 ),
             )
             expected_path = reverse(
@@ -255,9 +277,11 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
                 (By.CSS_SELECTOR, ".validator-operation-card"),
             ),
         )
+        # The settings action is now an icon-only button, so it has no
+        # visible link text to match — locate it by its accessible label.
         settings_button = operation_card.find_element(
-            By.LINK_TEXT,
-            "Edit settings",
+            By.CSS_SELECTOR,
+            "a[aria-label='Edit settings']",
         )
         card_right = operation_card.rect["x"] + operation_card.rect["width"]
         button_right = settings_button.rect["x"] + settings_button.rect["width"]
@@ -373,6 +397,37 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
         )
         self.assertEqual(tooltip.text.strip(), stage_labels["dataset"])
 
+    def test_columns_start_collapsed_and_chevron_reveals_details(self):
+        """Columns load collapsed; the chevron toggle reveals each column's body.
+
+        A schema can have many columns, so showing every field at once is
+        overwhelming. The page must open with each column's details accordion
+        closed, and the chevron must expand it on demand.
+        """
+        panels = self.driver.find_elements(
+            By.CSS_SELECTOR,
+            ".tabular-column-card__details",
+        )
+        self.assertTrue(panels)
+        for panel in panels:
+            self.assertFalse(
+                panel.is_displayed(),
+                "column details should start collapsed",
+            )
+
+        first_row = self._rows()[0]
+        panel = first_row.find_element(
+            By.CSS_SELECTOR,
+            ".tabular-column-card__details",
+        )
+        self._click(
+            first_row.find_element(
+                By.CSS_SELECTOR,
+                "[data-tabular-details-toggle]",
+            ),
+        )
+        self.wait.until(lambda _driver: panel.is_displayed())
+
     def test_column_controls_update_focus_order_constraints_and_keys(self):
         """Add, reorder, retag, key, and remove a column through the browser.
 
@@ -381,10 +436,12 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
         changes toggle applicable constraints, and primary keys imply Required.
         """
         initial_count = len(self._rows())
+        # Use the bottom Add-column button so the new row appends to the end
+        # (the top button inserts at the start).
         self._click(
             self.driver.find_element(
-                By.XPATH,
-                "//button[contains(., 'Add column')]",
+                By.CSS_SELECTOR,
+                ".tabular-add-column-bar--bottom .tabular-add-column",
             ),
         )
         self.wait.until(lambda _driver: len(self._rows()) == initial_count + 1)
@@ -408,10 +465,25 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
             "status",
         )
 
+        # Name and type live on the always-visible row; everything else is in
+        # the per-column "more options" accordion, so expand it before reaching
+        # the flags and value constraints.
+        details = new_row.find_element(
+            By.CSS_SELECTOR,
+            ".tabular-column-card__details",
+        )
         self._click(
             new_row.find_element(
                 By.CSS_SELECTOR,
-                ".tabular-column-card__constraints summary",
+                "[data-tabular-details-toggle]",
+            ),
+        )
+        # Wait for the Bootstrap collapse to finish opening — mid-animation the
+        # panel is clipped to ~0 height, which would read as "not displayed".
+        self.wait.until(
+            lambda _driver: (
+                "show" in details.get_attribute("class")
+                and "collapsing" not in details.get_attribute("class")
             ),
         )
         type_select = Select(
@@ -426,7 +498,7 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
             By.CSS_SELECTOR,
             '[data-tabular-constraint="string"]',
         )
-        self.assertTrue(numeric_group.is_displayed())
+        self.wait.until(lambda _driver: numeric_group.is_displayed())
         self.assertFalse(string_group.is_displayed())
 
         primary_key = new_row.find_element(
@@ -440,8 +512,19 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
         self._click(primary_key)
         self.assertTrue(required.is_selected())
         self.assertFalse(required.is_enabled())
+        # While locked by the primary key, the wrapper tooltip explains why.
+        required_wrapper = required.find_element(By.XPATH, "./..")
+        self.assertIn(
+            "Primary-key columns are always required",
+            required_wrapper.get_attribute("title"),
+        )
         self._click(primary_key)
         self.assertTrue(required.is_enabled())
+        # Unlocked again, the tooltip reverts to the field's normal help text.
+        self.assertNotIn(
+            "Primary-key columns are always required",
+            required_wrapper.get_attribute("title"),
+        )
         self._click(required)
         self.assertFalse(required.is_selected())
 
@@ -475,6 +558,17 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
 
     def test_import_requires_preview_before_replacing_current_columns(self):
         """Import preserves current rows until the author applies the preview."""
+        # The import tool is a header-launched modal; open it, then paste the
+        # descriptor and submit.
+        self._click(
+            self.driver.find_element(
+                By.XPATH,
+                "//button[contains(., 'Import Table Schema')]",
+            ),
+        )
+        self.wait.until(
+            ec.visibility_of_element_located((By.ID, "tabularImportModal")),
+        )
         textarea = self.driver.find_element(By.ID, "id_table_schema")
         textarea.send_keys(
             json.dumps(

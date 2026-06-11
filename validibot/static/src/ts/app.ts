@@ -7,6 +7,7 @@ import { initSignalMapping } from './signalMapping';
 import { initTabularSchemas } from './tabularSchema';
 import { initRecaptcha } from './recaptcha';
 import { initResizableColumns } from './resizableColumns';
+import { initUnsavedChanges } from './unsavedChanges';
 
 export function initAppFeatures(root: ParentNode | Document = document): void {
   initCatalogFilters(root);
@@ -17,5 +18,6 @@ export function initAppFeatures(root: ParentNode | Document = document): void {
   initSignalMapping(root);
   initTabularSchemas(root);
   initResizableColumns(root);
+  initUnsavedChanges(root);
   initRecaptcha();
 }

@@ -26,6 +26,7 @@ from validibot.workflows.forms import WorkflowPublicInfoForm
 from validibot.workflows.mixins import WorkflowObjectMixin
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
+from validibot.workflows.public_tabular import build_tabular_public_details
 from validibot.workflows.version_utils import get_latest_workflow_ids
 from validibot.workflows.views_helpers import public_info_card_context
 
@@ -158,11 +159,31 @@ class PublicWorkflowInfoView(DetailView):
     slug_url_kwarg = "workflow_uuid"
 
     def get_queryset(self):
-        return (
-            Workflow.objects.filter(
-                make_info_page_public=True,
-                is_tombstoned=False,
-            )
+        """Limit the info page to workflows the requester may see.
+
+        The visibility contract mirrors :class:`PublicWorkflowListView`:
+
+        * **Anonymous visitors** see a workflow's info page only once its
+          author has published it (``make_info_page_public=True``).
+        * **Authenticated users** *also* see the info page of any workflow
+          they can access via :meth:`WorkflowQuerySet.for_user` — org
+          membership granting ``WORKFLOW_VIEW``, the workflow's creator, a
+          per-workflow guest grant, or org-wide guest access — even while
+          the page is still marked private.
+
+        Without that second branch a teammate with access would hit a 404
+        here while the public directory lists the workflow for them and the
+        workflow's own "Workflow Public Info Page" status card promises
+        "Only teammates with access can currently view the workflow info
+        page." The launch control and recent-runs block stay separately
+        gated by ``can_execute`` in :meth:`get_context_data`, so a
+        view-only teammate sees the page without gaining execute access.
+
+        ``is_tombstoned`` rows are excluded on every path: a deleted
+        workflow's info page must 404 for everyone regardless of access.
+        """
+        queryset = (
+            Workflow.objects.filter(is_tombstoned=False)
             .select_related("org", "project", "user")
             .prefetch_related(
                 "steps",
@@ -172,6 +193,16 @@ class PublicWorkflowInfoView(DetailView):
                 "steps__action__definition",
             )
         )
+        user = self.request.user
+        if user.is_authenticated:
+            accessible_ids = Workflow.objects.for_user(user).values_list(
+                "pk",
+                flat=True,
+            )
+            return queryset.filter(
+                models.Q(make_info_page_public=True) | models.Q(pk__in=accessible_ids),
+            )
+        return queryset.filter(make_info_page_public=True)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -222,6 +253,7 @@ class PublicWorkflowInfoView(DetailView):
             step.public_schema = None
             step.public_action_meta = None
             step.public_action_summary = {}
+            step.public_tabular = None
 
             if step.validator is None:
                 if step.action:
@@ -229,6 +261,12 @@ class PublicWorkflowInfoView(DetailView):
                 continue
 
             vtype = step.validator.validation_type
+            # Tabular steps get a submitter-facing "what your CSV must look
+            # like" breakdown instead of a raw schema dump — see
+            # _populate_public_tabular and the public_tabular_details partial.
+            if vtype == ValidationType.TABULAR:
+                self._populate_public_tabular(step)
+                continue
             if vtype not in {ValidationType.JSON_SCHEMA, ValidationType.XML_SCHEMA}:
                 continue
 
@@ -268,6 +306,35 @@ class PublicWorkflowInfoView(DetailView):
             "definition_name": definition.name,
         }
         step.public_action_summary = summary
+
+    def _populate_public_tabular(self, step: WorkflowStep) -> None:
+        """Attach the submitter-facing Tabular detail model to ``step``.
+
+        Reads the step's Table Schema descriptor (``ruleset.rules``) and stored
+        dialect (step ``config`` plus ruleset ``metadata``) and builds the
+        structure the ``public_tabular_details`` partial renders. Leaves
+        ``public_tabular`` as ``None`` when schema display is disabled or the
+        step has no usable schema, so private authoring details are not exposed
+        and a half-configured step cannot break the public page.
+        """
+        if not step.display_schema:
+            return
+
+        ruleset = step.ruleset
+        schema_text = ""
+        if ruleset is not None:
+            try:
+                schema_text = ruleset.rules or ""
+            except Exception:
+                logger.exception(
+                    "Failed to load tabular rules for step",
+                    extra={"step_id": step.pk},
+                )
+        step.public_tabular = build_tabular_public_details(
+            schema_text=schema_text,
+            config=step.config or {},
+            metadata=(ruleset.metadata if ruleset else {}) or {},
+        )
 
     def _load_schema_content(
         self,

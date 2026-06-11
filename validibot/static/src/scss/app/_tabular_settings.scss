@@ -1,29 +1,78 @@
-.tabular-settings-section {
-  padding: 1.25rem 0;
-  border-top: 1px solid var(--bs-border-color);
+// =============================================================================
+// Tabular Validator settings page
+// =============================================================================
+//
+// A two-tab editor (Columns / Settings) built on the reusable editor shell
+// (see app/elements/_editor_shell.scss): the page locks to the viewport, the
+// active tab pane scrolls, and the Cancel / Save footer stays pinned. Styles
+// here are page-specific; the bound + sticky-footer mechanics are shared.
 
-  &:first-child {
-    padding-top: 0;
-    border-top: 0;
+#tabular-step-settings {
+  // `.editor-shell` (markup) supplies the fill column; add a little breathing
+  // room below the pinned footer so it isn't flush with the viewport edge.
+  padding-bottom: 1rem;
+}
+
+// Tab strip pinned at the top of the editor card body.
+.tabular-editor-tabs {
+  border-bottom: 1px solid var(--bs-border-color);
+
+  .nav-link {
+    font-weight: 500;
   }
 }
 
-.tabular-settings-section__heading {
+// -----------------------------------------------------------------------------
+// Settings tab — a simple, vertical form
+// -----------------------------------------------------------------------------
+// One field per row. Capped width keeps a long single column readable rather
+// than stretching inputs across the full editor width.
+.tabular-settings {
+  max-width: 640px;
+}
+
+.tabular-settings__group + .tabular-settings__group {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+// -----------------------------------------------------------------------------
+// Columns tab — workspace
+// -----------------------------------------------------------------------------
+.tabular-schema-workspace__heading {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: 0.5rem 1rem;
+  margin: 0.25rem 0 1rem;
 }
 
-.tabular-schema-source {
-  padding: 1rem;
-  border: 1px solid var(--bs-border-color);
-  border-radius: 0.65rem;
-  background: var(--bs-tertiary-bg);
+// Column counter + the top "Add column" button, grouped at the heading's right.
+.tabular-schema-workspace__heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
+.tabular-column-count {
+  color: var(--bs-secondary-color);
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+// The bottom "Add column" sits below the list, beside the ordering hint.
+.tabular-add-column-bar--bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+// Proposal preview shown after an infer / import before it is applied.
 .tabular-schema-preview {
   display: flex;
   flex-wrap: wrap;
@@ -44,33 +93,17 @@
   margin-top: 1rem;
   color: var(--bs-secondary-color);
   font-size: 0.875rem;
+
+  &:not(.htmx-request) {
+    visibility: hidden;
+  }
 }
 
-.tabular-request-indicator:not(.htmx-request) {
-  visibility: hidden;
-}
-
-.tabular-schema-source__icon {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  color: var(--bs-primary);
-  font-size: 1.15rem;
-  background: rgba(var(--bs-primary-rgb), 0.1);
-  border-radius: 0.6rem;
-}
-
-.tabular-column-count {
-  color: var(--bs-secondary-color);
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
+// -----------------------------------------------------------------------------
+// Columns tab — one column as a compact, single-line card
+// -----------------------------------------------------------------------------
 .tabular-column-card {
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   border: 1px solid var(--bs-border-color);
   border-left: 0.25rem solid rgba(var(--bs-primary-rgb), 0.55);
   border-radius: 0.65rem;
@@ -80,8 +113,78 @@
   &[hidden] {
     display: none;
   }
+}
 
-  .mb-3 {
+// The always-visible row: Column Name + Data Type inline, controls at the end.
+.tabular-column-card__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.tabular-column-card__field {
+  flex: 1 1 16rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.tabular-column-card__field--type {
+  flex: 0 1 13rem;
+}
+
+// "Required" sits inline on the header row, after Data Type. It keeps the
+// Bootstrap `.form-check` layout and is bottom-aligned with the field inputs
+// (with a little lift so the box lines up with the input's centre).
+.tabular-column-card__required {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  margin-bottom: 0;
+  padding-bottom: 0.5rem;
+  white-space: nowrap;
+}
+
+// Row actions + the accordion chevron, pushed to the trailing edge.
+.tabular-column-card__controls {
+  flex: 0 0 auto;
+  margin-left: auto;
+  align-self: flex-end;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+// The chevron toggle that opens a column's details accordion.
+.tabular-column-card__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+
+  .bi-chevron-down {
+    transition: transform 0.2s ease;
+  }
+
+  // Bootstrap removes `.collapsed` from the trigger while the panel is open,
+  // so this flips the chevron up when expanded.
+  &:not(.collapsed) .bi-chevron-down {
+    transform: rotate(180deg);
+  }
+}
+
+// The accordion body — every field beyond name and type. Padding lives on this
+// inner element, never the `.collapse` wrapper, so the height animation stays
+// smooth (padding on a collapsing element makes it jump).
+.tabular-column-card__details-body {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--bs-border-color);
+
+  // The grid gutter already spaces fields; drop crispy's extra bottom margin
+  // so rows of constraints stay tight.
+  .row .mb-3 {
     margin-bottom: 0 !important;
   }
 }
@@ -89,30 +192,10 @@
 .tabular-column-card__flags {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem 1.5rem;
-  padding: 0.75rem 0;
+  gap: 0.5rem 1.5rem;
+  margin-bottom: 0.85rem;
 
   .form-check {
     margin-bottom: 0;
-  }
-}
-
-.tabular-column-card__constraints {
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--bs-border-color);
-
-  summary {
-    width: fit-content;
-    color: var(--bs-secondary-color);
-    font-size: 0.875rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-}
-
-@media (min-width: 992px) {
-  #workflow-step-form:has(.tabular-settings-section) .app-form-card {
-    width: 100%;
-    max-width: none;
   }
 }

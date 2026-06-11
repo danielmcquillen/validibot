@@ -1,0 +1,163 @@
+{% load i18n %}
+
+{% comment %}
+"View details" accordion for a Tabular Validator step on the public workflow
+info page. Renders the submitter-facing CSV contract built by
+validibot.workflows.public_tabular.build_tabular_public_details and attached to
+the step as ``public_tabular`` by PublicWorkflowInfoView.
+
+The goal is to tell a prospective submitter exactly how to structure their CSV:
+the file-level dialect (delimiter / encoding / header) and, per column, the
+data type, whether it is required, and the allowed values and bounds.
+
+Context:
+  step -- the WorkflowStep, carrying ``public_tabular`` and ``id``.
+{% endcomment %}
+
+{% with details=step.public_tabular %}
+  <div class="accordion public-tabular-accordion mt-3"
+       id="tabular-details-{{ step.id }}">
+    <div class="accordion-item">
+      <h4 class="accordion-header" id="tabular-details-heading-{{ step.id }}">
+        <button class="accordion-button collapsed"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#tabular-details-body-{{ step.id }}"
+                aria-expanded="false"
+                aria-controls="tabular-details-body-{{ step.id }}">
+          <i class="bi bi-table me-2" aria-hidden="true"></i>
+          {% trans "View details" %}
+        </button>
+      </h4>
+      <div id="tabular-details-body-{{ step.id }}"
+           class="accordion-collapse collapse"
+           aria-labelledby="tabular-details-heading-{{ step.id }}"
+           data-bs-parent="#tabular-details-{{ step.id }}">
+        <div class="accordion-body">
+          <p class="text-muted small mb-3">
+            {% blocktrans %}Upload a delimited text file (CSV). Each row is one record, and its columns must match the definitions below.{% endblocktrans %}
+          </p>
+
+          {% comment %}File-level dialect the uploaded file must match.{% endcomment %}
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis">
+              {% trans "Delimiter" %}: {{ details.dialect.delimiter_label }}
+            </span>
+            <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis">
+              {% trans "Encoding" %}: {{ details.dialect.encoding|upper }}
+            </span>
+            {% if details.dialect.has_header %}
+              <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis">
+                {% trans "Header row required" %}
+              </span>
+            {% else %}
+              <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis">
+                {% trans "No header row" %}
+              </span>
+            {% endif %}
+            <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis">
+              {{ details.column_count }} {% trans "columns" %} · {{ details.required_column_count }} {% trans "required" %}
+            </span>
+          </div>
+
+          {% comment %}Per-column contract: name, type, requirement, rules.{% endcomment %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0 public-tabular-table">
+              <thead>
+                <tr>
+                  <th scope="col">
+                    {% trans "Column" %}
+                  </th>
+                  <th scope="col">
+                    {% trans "Type" %}
+                  </th>
+                  <th scope="col">
+                    {% trans "Requirement" %}
+                  </th>
+                  <th scope="col">
+                    {% trans "Allowed values & rules" %}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for col in details.columns %}
+                  <tr>
+                    <td>
+                      <span class="fw-semibold">{{ col.name }}</span>
+                      {% if col.is_primary_key %}
+                        <span class="badge bg-warning-subtle text-warning-emphasis ms-1"
+                              title="{% trans 'Primary key — uniquely identifies each row' %}">
+                          <i class="bi bi-key" aria-hidden="true"></i> {% trans "Key" %}
+                        </span>
+                      {% endif %}
+                      {% if col.title and col.title != col.name %}
+                        <div class="text-muted small">
+                          {{ col.title }}
+                        </div>
+                      {% endif %}
+                      {% if col.description %}
+                        <div class="text-muted small">
+                          {{ col.description }}
+                        </div>
+                      {% endif %}
+                    </td>
+                    <td>
+                      <span class="badge bg-secondary-subtle text-secondary-emphasis">{{ col.type_label }}</span>
+                    </td>
+                    <td>
+                      {% if col.required %}
+                        <span class="badge bg-danger-subtle text-danger-emphasis">{% trans "Required" %}</span>
+                      {% elif col.required_when %}
+                        <span class="badge bg-warning-subtle text-warning-emphasis">
+                          {% blocktrans with field=col.required_when %}Required if {{ field }} present{% endblocktrans %}
+                        </span>
+                      {% else %}
+                        <span class="badge bg-secondary-subtle text-secondary-emphasis">{% trans "Optional" %}</span>
+                      {% endif %}
+                      {% if col.unique %}
+                        <span class="badge bg-info-subtle text-info-emphasis ms-1">{% trans "Unique" %}</span>
+                      {% endif %}
+                    </td>
+                    <td class="small">
+                      {% if col.enum_values %}
+                        <div class="mb-1">
+                          <span class="text-muted">{% trans "One of:" %}</span>
+                          {% for value in col.enum_values %}
+                            <code class="public-tabular-enum">{{ value }}</code>
+                            {% if not forloop.last %}
+                              <span class="text-muted">,</span>
+                            {% endif %}
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                      {% if col.constraints %}
+                        <div class="text-muted">
+                          {{ col.constraints }}
+                        </div>
+                      {% endif %}
+                      {% if col.pattern %}
+                        <div class="text-muted">
+                          {% trans "Must match:" %} <code>{{ col.pattern }}</code>
+                        </div>
+                      {% endif %}
+                      {% if not col.enum_values and not col.constraints and not col.pattern %}
+                        <span class="text-muted">—</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          {% if details.primary_key %}
+            <p class="text-muted small mt-3 mb-0">
+              <i class="bi bi-key me-1" aria-hidden="true"></i>
+              {% blocktrans with keys=details.primary_key|join:", " %}Each row is uniquely identified by {{ keys }}. Those values must be present and must not repeat.{% endblocktrans %}
+            </p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endwith %}

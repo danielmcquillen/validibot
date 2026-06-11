@@ -5,6 +5,20 @@
 USE_DOCKER=yes
 IPYTHONDIR=/app/.ipython
 
+# Django Secret Key
+# ------------------------------------------------------------------------------
+# REQUIRED. Used by Django for cryptographic signing (sessions, password
+# reset tokens, CSRF, signed cookies). The app will refuse to start if this
+# is not set, even in local development.
+#
+# Generate a fresh one with:
+#
+#     python -c "import secrets; print(secrets.token_urlsafe(50))"
+#
+# NEVER reuse a secret key across deployments (dev / staging / prod should
+# each have their own) and NEVER commit a real key to version control.
+DJANGO_SECRET_KEY=!!!SET DJANGO_SECRET_KEY!!!
+
 # Redis
 # ------------------------------------------------------------------------------
 # Redis URL for Celery task queue. In Docker Compose, "redis" is the container hostname.
@@ -58,7 +72,7 @@ MFA_TOTP_ISSUER=your-mfa-issuer-name
 # The output is a 44-character URL-safe base64 string ending in `=`.
 # NEVER reuse a key across deployments (dev / staging / prod should each
 # have their own). See docs/dev_docs/how-to/configure-mfa.md for rotation.
-DJANGO_MFA_ENCRYPTION_KEY=replace-with-generated-fernet-key
+DJANGO_MFA_ENCRYPTION_KEY=!!!SET DJANGO_MFA_ENCRYPTION_KEY!!!
 #
 # DJANGO_ADMIN_FORCE_ALLAUTH routes Django's /admin/login/ through
 # allauth so admin inherits allauth's MFA enforcement and rate

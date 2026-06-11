@@ -1,0 +1,45 @@
+{% load i18n %}
+
+{% comment %}
+Reusable "discard changes?" confirmation, driven by unsavedChanges.ts.
+
+Include it on any page that has a form marked `data-unsaved-guard`. When the
+user clicks a `data-unsaved-cancel` link while the form is dirty, the guard
+shows this modal instead of navigating; the `data-unsaved-confirm` button then
+leaves. Hard navigations and tab-close are caught separately by the native
+beforeunload prompt.
+{% endcomment %}
+
+<div class="modal fade"
+     id="unsavedChangesModal"
+     tabindex="-1"
+     aria-hidden="true"
+     aria-labelledby="unsavedChangesModalLabel">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5 mb-0" id="unsavedChangesModalLabel">
+          {% trans "Discard changes?" %}
+        </h2>
+        <button type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="{% trans 'Close' %}">
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0">
+          {% trans "You have unsaved changes. If you leave now, they will be lost." %}
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          {% trans "Keep editing" %}
+        </button>
+        <button type="button" class="btn btn-danger" data-unsaved-confirm>
+          {% trans "Discard changes" %}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

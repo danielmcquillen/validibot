@@ -1871,6 +1871,20 @@ def test_schema_steps_show_operation_card_and_first_assertion_connector(
     assert "This validator does not support assertions" not in html
     assert "assertion-add-connector--terminal" in html
     assert html.count("assertion-add-button") == 1
+    # Every validation operation card now carries a right-edge edit icon
+    # linking to the step settings page.  This affordance used to be
+    # Tabular-only, so JSON and XML schema steps must show it too.  Scope
+    # the check to the card so it can't be satisfied by the page header's
+    # own edit pencil, which sits above the assertion lane.
+    card_start = html.index("validator-operation-card-wrapper")
+    card_end = html.index("assertion-add-connector", card_start)
+    operation_html = html[card_start:card_end]
+    settings_url = reverse(
+        "workflows:workflow_step_settings",
+        args=[workflow.pk, step.pk],
+    )
+    assert settings_url in operation_html
+    assert "bi-pencil-square" in operation_html
 
 
 def test_assertions_partial_keeps_schema_operation_card_after_refresh(client):
@@ -1900,6 +1914,16 @@ def test_assertions_partial_keeps_schema_operation_card_after_refresh(client):
     assert "JSON Schema Validation" in html
     assert "This validator does not support assertions" not in html
     assert "assertion-add-connector--terminal" in html
+    # The edit icon must survive the HTMx refresh, since the card is
+    # re-rendered by this partial after every assertion change.  The
+    # partial response carries no page header, so any edit pencil here
+    # belongs to the operation card itself.
+    settings_url = reverse(
+        "workflows:workflow_step_settings",
+        args=[workflow.pk, step.pk],
+    )
+    assert settings_url in html
+    assert "bi-pencil-square" in html
 
 
 def test_shacl_step_shows_validation_operation_before_assertions(client):
@@ -1935,6 +1959,18 @@ def test_shacl_step_shows_validation_operation_before_assertions(client):
     assert html.count("assertion-add-button") == 1
     assert "insert_at_start=1" not in html
     assert "No assertions have been added yet." not in html
+    # SHACL's card carries the same right-edge edit icon as the other
+    # schema validators — the affordance is no longer Tabular-only.  Scope
+    # the check to the card (up to the first assertion connector) so it
+    # can't be satisfied by the page header's edit pencil.
+    card_start = html.index("validator-operation-card-wrapper")
+    operation_html = html[card_start:connector_index]
+    settings_url = reverse(
+        "workflows:workflow_step_settings",
+        args=[workflow.pk, step.pk],
+    )
+    assert settings_url in operation_html
+    assert "bi-pencil-square" in operation_html
 
 
 def test_tabular_step_shows_validation_operation_before_assertions(client):
@@ -1977,7 +2013,13 @@ def test_tabular_step_shows_validation_operation_before_assertions(client):
     )
     operation_html = html[operation_card_index:dataset_index]
     assert settings_url in operation_html
-    assert html.count("Edit settings") == 1
+    # The card exposes exactly one edit affordance: the pencil icon that
+    # links to the step settings page.  Assert on the link target, not the
+    # "Edit settings" label — that text now lives in both the title and
+    # aria-label attributes of the icon-only button, so a string count of
+    # the label would be a brittle "2" rather than the one button we mean.
+    assert operation_html.count(settings_url) == 1
+    assert "bi-pencil-square" in operation_html
     assert "text-bg-light text-uppercase" not in operation_html
     assert "data-tabular-operation-summary" in operation_html
     assert "Reader" in operation_html

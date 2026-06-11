@@ -1,0 +1,74 @@
+{% load i18n %}
+
+{% comment %}
+"Import Table Schema" modal, launched from the page header.
+
+Paste a Frictionless Table Schema descriptor or upload one as JSON. The submit
+posts to the import endpoint, includes the main settings form plus this modal's
+descriptor/file inputs, and swaps the validated proposal into the Columns tab
+workspace. The page script then closes the modal and shows the Columns tab.
+{% endcomment %}
+
+<div class="modal fade"
+     id="tabularImportModal"
+     tabindex="-1"
+     aria-hidden="true"
+     aria-labelledby="tabularImportModalLabel">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 mb-0" id="tabularImportModalLabel">
+            {% trans "Import Table Schema" %}
+          </h2>
+          <p class="text-muted small mb-0">
+            {% trans "Paste a Frictionless Table Schema descriptor, or upload one as JSON." %}
+          </p>
+        </div>
+        <button type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="{% trans 'Close' %}">
+        </button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label" for="id_table_schema">{% trans "Descriptor JSON" %}</label>
+        <textarea name="table_schema"
+                  id="id_table_schema"
+                  class="form-control font-monospace"
+                  rows="6"
+                  spellcheck="false"
+                  placeholder='{ "fields": [...] }'></textarea>
+        <div class="mt-3">
+          <label class="form-label" for="id_schema_file">{% trans "Or upload descriptor JSON" %}</label>
+          <input type="file"
+                 name="schema_file"
+                 id="id_schema_file"
+                 class="form-control"
+                 accept=".json,application/json" />
+        </div>
+        <p class="form-text">
+          {% trans "Your current unsaved columns are kept until you apply the proposal." %}
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          {% trans "Cancel" %}
+        </button>
+        <button type="button"
+                class="btn btn-primary"
+                data-tabular-modal-submit
+                hx-post="{{ tabular_import_url }}"
+                hx-target="#tabular-schema-workspace"
+                hx-swap="outerHTML"
+                hx-include="#tabular-step-settings-form, #id_table_schema, #id_schema_file"
+                hx-encoding="multipart/form-data"
+                hx-disabled-elt="this"
+                hx-sync="#tabular-schema-workspace:replace"
+                hx-indicator="#tabular-schema-request-indicator">
+          <i class="bi bi-box-arrow-in-down me-1" aria-hidden="true"></i>{% trans "Import schema" %}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

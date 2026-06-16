@@ -164,7 +164,13 @@ def evaluate_row_assertions(
     frame = read_result.dataframe
     typed_columns: dict[str, list[Any]] = {
         name: [
-            _to_cel(coerce_cell(raw, type_by_name.get(name, "string")).value)
+            _to_cel(
+                coerce_cell(
+                    raw,
+                    type_by_name.get(name, "string"),
+                    schema.missing_values,
+                ).value,
+            )
             for raw in frame[name].tolist()
         ]
         for name in relevant_columns

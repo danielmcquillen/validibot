@@ -24,31 +24,24 @@
       </div>
       <!-- Search -->
       <div class="app-content-header-search col-12 col-lg-5 d-flex flex-row align-items-center mb-2 mb-lg-0">
-        <form method="get" class="row w-100">
-          <div class="col">
-            <label class="visually-hidden" for="workflow-search">
-              {% trans "Search workflows" %}
-            </label>
-            <div class="input-group">
-              <span class="input-group-text"><i class="bi-search"></i></span>
-              <input id="workflow-search"
-                     type="search"
-                     name="q"
-                     value="{{ search_query }}"
-                     class="form-control 0"
-                     placeholder="{% trans "Search workflows" %}" />
-            </div>
-          </div>
-          <div class="col-auto ">
-            <button type="submit" class="btn btn-secondary">
+        <form method="get" class="d-flex align-items-center gap-2 w-100">
+          <label class="visually-hidden" for="workflow-search">
+            {% trans "Search workflows" %}
+          </label>
+          <div class="input-group">
+            <input id="workflow-search"
+                   type="search"
+                   name="q"
+                   value="{{ search_query }}"
+                   class="form-control"
+                   placeholder="{% trans 'Search workflows' %}" />
+            <button type="submit" class="btn btn-light">
               {% trans "Search" %}
             </button>
           </div>
           {% if search_query %}
-            <div class="col">
-              <a class="btn btn-link text-decoration-none"
-                 href="{% org_url 'workflows:workflow_list' %}">{% trans "Clear" %}</a>
-            </div>
+            <a class="btn btn-link text-decoration-none flex-shrink-0"
+               href="{% org_url 'workflows:workflow_list' %}">{% trans "Clear" %}</a>
           {% endif %}
         </form>
       </div>

@@ -112,6 +112,7 @@ def _validate_field(
     report_max_examples: int,
     *,
     deadline: float | None = None,
+    missing_values: tuple[str, ...] = ("",),
 ) -> list[NativeFinding]:
     """Validate one present column's cells against its field spec."""
     findings: list[NativeFinding] = []
@@ -122,7 +123,7 @@ def _validate_field(
     valid: list[tuple[int, Any, str]] = []  # (position, coerced value, raw)
 
     for position, raw in enumerate(values):
-        coerced = coerce_cell(raw, field.type)
+        coerced = coerce_cell(raw, field.type, missing_values)
         if coerced.is_null:
             null_rows.append(position)
         elif not coerced.ok:
@@ -317,13 +318,18 @@ def _validate_pattern(
     ]
 
 
-def _coerced_key(raw: str, field_type: str) -> object | None:
+def _coerced_key(
+    raw: str,
+    field_type: str,
+    missing_values: tuple[str, ...] = ("",),
+) -> object | None:
     """Return the hashable canonical key for a cell, or None if null/invalid.
 
     A null or type-errored cell yields ``None`` so uniqueness can treat it as
-    "no key" (exempt for ``unique``; a violation for ``primaryKey``).
+    "no key" (exempt for ``unique``; a violation for ``primaryKey``). A declared
+    missing value (e.g. ``NA``) is null, so it is "no key" too.
     """
-    coerced = coerce_cell(raw, field_type)
+    coerced = coerce_cell(raw, field_type, missing_values)
     if coerced.is_null or not coerced.ok:
         return None
     return coerced.value
@@ -333,6 +339,8 @@ def _validate_single_unique(
     field: FieldSpec,
     values: list[str],
     report_max_examples: int,
+    *,
+    missing_values: tuple[str, ...] = ("",),
 ) -> list[NativeFinding]:
     """Single-column ``unique``: repeated non-null typed values are violations.
 
@@ -341,7 +349,7 @@ def _validate_single_unique(
     """
     positions_by_key: dict[object, list[int]] = {}
     for position, raw in enumerate(values):
-        key = _coerced_key(raw, field.type)
+        key = _coerced_key(raw, field.type, missing_values)
         if key is None:
             continue
         positions_by_key.setdefault(key, []).append(position)
@@ -389,7 +397,11 @@ def _validate_primary_key(
 
     for position, raw_values in enumerate(zip(*columns, strict=True)):
         keys = [
-            _coerced_key(raw, type_by_name.get(column, "string"))
+            _coerced_key(
+                raw,
+                type_by_name.get(column, "string"),
+                schema.missing_values,
+            )
             for raw, column in zip(raw_values, pk, strict=True)
         ]
         if any(key is None for key in keys):
@@ -500,11 +512,22 @@ def validate_native(
             break
         values = frame[field.name].tolist()
         findings.extend(
-            _validate_field(field, values, report_max_examples, deadline=deadline),
+            _validate_field(
+                field,
+                values,
+                report_max_examples,
+                deadline=deadline,
+                missing_values=schema.missing_values,
+            ),
         )
         if field.constraints.unique:
             findings.extend(
-                _validate_single_unique(field, values, report_max_examples),
+                _validate_single_unique(
+                    field,
+                    values,
+                    report_max_examples,
+                    missing_values=schema.missing_values,
+                ),
             )
 
     # Re-check after the loop so the *last* column's pattern scan (which never

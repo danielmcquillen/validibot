@@ -1,0 +1,14 @@
+{% load i18n %}
+
+{% comment %}
+One-line error shown on a modal's input screen when an import/infer submission
+is rejected. The endpoint HX-Retargets this onto the input screen's error slot
+so the author stays put and can fix the input.
+{% endcomment %}
+
+<div class="alert alert-danger d-flex align-items-start gap-2 mb-0"
+     role="alert"
+     aria-live="assertive">
+  <i class="bi bi-exclamation-triangle-fill mt-1" aria-hidden="true"></i>
+  <div>{{ error }}</div>
+</div>

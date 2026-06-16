@@ -567,21 +567,48 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
         )
         self.assertEqual(len(self._rows()), initial_count)
 
-    def test_import_requires_preview_before_replacing_current_columns(self):
-        """Import preserves current rows until the author applies the preview."""
-        # The import tool is a header-launched modal; open it, then paste the
-        # descriptor and submit.
+    def test_import_modal_reviews_then_applies_replacing_columns(self):
+        """Import is a two-screen modal: input -> review -> apply.
+
+        The submit is disabled until there is input; importing switches the modal
+        to a review screen while the current columns stay untouched; applying from
+        that screen replaces the columns and closes the modal.
+        """
+
+        def names():
+            return [
+                row.find_element(
+                    By.CSS_SELECTOR,
+                    'input[name$="-name"]',
+                ).get_attribute("value")
+                for row in self._rows()
+            ]
+
+        # Open the import modal from its header launcher.
         self._click(
             self.driver.find_element(
-                By.XPATH,
-                "//button[contains(., 'Import Table Schema')]",
+                By.CSS_SELECTOR,
+                '[data-bs-target="#tabularImportModal"]',
             ),
         )
+        modal = self.driver.find_element(By.ID, "tabularImportModal")
         self.wait.until(
             ec.visibility_of_element_located((By.ID, "tabularImportModal")),
         )
-        textarea = self.driver.find_element(By.ID, "id_table_schema")
-        textarea.send_keys(
+        input_screen = modal.find_element(
+            By.CSS_SELECTOR,
+            '[data-modal-screen="input"]',
+        )
+        review_screen = modal.find_element(
+            By.CSS_SELECTOR,
+            '[data-modal-screen="review"]',
+        )
+        submit = modal.find_element(By.CSS_SELECTOR, "[data-tabular-modal-submit]")
+
+        # The submit is disabled until the descriptor has input.
+        self.assertFalse(submit.is_enabled())
+
+        modal.find_element(By.ID, "id_table_schema").send_keys(
             json.dumps(
                 {
                     "fields": [
@@ -591,43 +618,22 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
                 },
             ),
         )
-        self._click(
-            self.driver.find_element(
-                By.XPATH,
-                "//button[contains(., 'Import schema')]",
-            ),
-        )
-        self.wait.until(
-            ec.presence_of_element_located(
-                (By.XPATH, "//button[contains(., 'Apply proposed schema')]"),
-            ),
-        )
-        current_names = [
-            row.find_element(
-                By.CSS_SELECTOR,
-                'input[name$="-name"]',
-            ).get_attribute("value")
-            for row in self._rows()
-        ]
-        self.assertEqual(current_names, ["site_id", "reading"])
+        self.wait.until(lambda _driver: submit.is_enabled())
+        self._click(submit)
 
-        self._click(
-            self.driver.find_element(
-                By.XPATH,
-                "//button[contains(., 'Apply proposed schema')]",
-            ),
-        )
+        # The modal flips to its review screen; current columns are untouched.
         self.wait.until(
             lambda _driver: (
-                [
-                    row.find_element(
-                        By.CSS_SELECTOR,
-                        'input[name$="-name"]',
-                    ).get_attribute("value")
-                    for row in self._rows()
-                ]
-                == ["meter_id", "value"]
+                review_screen.is_displayed() and not input_screen.is_displayed()
             ),
+        )
+        self.assertEqual(names(), ["site_id", "reading"])
+
+        # Apply replaces the columns and closes the modal.
+        self._click(modal.find_element(By.CSS_SELECTOR, "[data-tabular-apply-submit]"))
+        self.wait.until(lambda _driver: names() == ["meter_id", "value"])
+        self.wait.until_not(
+            ec.visibility_of_element_located((By.ID, "tabularImportModal")),
         )
 
     def test_global_stage_chooser_opens_column_cel_assistance(self):

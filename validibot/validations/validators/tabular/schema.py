@@ -19,6 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 
+from django.utils.html import format_html
+from django.utils.html import format_html_join
 from django.utils.translation import gettext_lazy as _
 
 # The field types V1 understands. Anything else is treated as ``string``.
@@ -43,11 +45,95 @@ _IGNORED_LOCALE_KEYS = frozenset({"decimalChar", "groupChar", "bareNumber"})
 
 
 @dataclass(frozen=True)
+class CompatibilityItem:
+    """One schema-derived token named in a compatibility notice.
+
+    ``name`` is the literal field name or constraint keyword copied from the
+    descriptor; the HTML headline renders it inside a ``<code>`` span so authors
+    can see exactly which schema entries a notice refers to. ``note`` is an
+    optional plain qualifier shown *after* the code span — e.g. the unsupported
+    type in "order_year (year)" — and is not itself code-styled.
+    """
+
+    name: str
+    note: str = ""
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.note})" if self.note else self.name
+
+
+@dataclass(frozen=True)
 class SchemaCompatibilityNotice:
-    """One author-facing warning about a descriptor feature V1 cannot enforce."""
+    """One author-facing warning about a descriptor feature V1 cannot enforce.
+
+    ``message`` is the plain-text headline (names the feature and the fields it
+    came from) used by non-HTML consumers — post-save toasts, logs, and tests.
+    ``detail`` explains *why* it is shown — what the keyword does, why V1 cannot
+    act on it, and what that means for validation — so an author who did not
+    write the schema can understand each item.
+
+    ``lead`` and ``items`` are the structured form of the headline: ``lead`` is
+    the text before the list (no colon), and ``items`` are the schema tokens it
+    names. They let :meth:`headline_html` rewrap each token in ``<code>`` for
+    the review screen, while ``message`` keeps a flat string for everywhere else.
+    """
 
     code: str
     message: str
+    detail: str = ""
+    lead: str = ""
+    items: tuple[CompatibilityItem, ...] = ()
+
+    def headline_html(self) -> str:
+        """Return the headline with each schema token wrapped in ``<code>``.
+
+        The result is HTML-safe: every field name / keyword copied from the
+        descriptor is escaped by ``format_html`` before it is wrapped, so a
+        hostile name (``<script>``) renders inert. Notices without items (e.g.
+        foreign keys) fall back to the plain ``message``.
+        """
+        if not self.items:
+            return format_html("{}", self.message)
+        rendered_items = format_html_join(
+            ", ",
+            "<code>{}</code>{}",
+            (
+                (
+                    item.name,
+                    format_html(" ({})", item.note) if item.note else "",
+                )
+                for item in self.items
+            ),
+        )
+        return format_html("{}: {}.", self.lead, rendered_items)
+
+
+def _compat_notice(
+    *,
+    code: str,
+    lead: str,
+    detail: str,
+    items: tuple[CompatibilityItem, ...] = (),
+) -> SchemaCompatibilityNotice:
+    """Build a notice, deriving the flat ``message`` from ``lead`` + ``items``.
+
+    Keeping the derivation in one place means the plain-text ``message`` (toasts,
+    tests) and the structured ``lead``/``items`` (the ``<code>`` headline) can
+    never drift apart. A notice with items reads "<lead>: a, b." and one without
+    is just "<lead>.".
+    """
+    if items:
+        joined = ", ".join(str(item) for item in items)
+        message = f"{lead}: {joined}."
+    else:
+        message = f"{lead}."
+    return SchemaCompatibilityNotice(
+        code=code,
+        message=message,
+        detail=detail,
+        lead=lead,
+        items=items,
+    )
 
 
 def table_schema_compatibility_notices(
@@ -65,36 +151,31 @@ def table_schema_compatibility_notices(
     notices: list[SchemaCompatibilityNotice] = []
     if descriptor.get("foreignKeys"):
         notices.append(
-            SchemaCompatibilityNotice(
+            _compat_notice(
                 code="foreign_keys",
-                message=str(
+                lead=str(_("Foreign keys are not enforced")),
+                detail=str(
                     _(
-                        "Foreign keys are preserved but are not validated in V1, "
-                        "because a Tabular step validates one file at a time.",
+                        "Your schema declares a foreignKeys relationship. A foreign "
+                        "key asserts that a column's values exist in another table, "
+                        "but a Tabular step validates one uploaded file on its own "
+                        "and cannot see other tables — so it cannot be checked. The "
+                        "keys are kept in your saved schema for portability.",
                     ),
                 ),
             ),
         )
-    if descriptor.get("missingValues"):
-        notices.append(
-            SchemaCompatibilityNotice(
-                code="missing_values",
-                message=str(
-                    _(
-                        "Custom missingValues are preserved but are not interpreted "
-                        "in V1; empty cells are treated as missing.",
-                    ),
-                ),
-            ),
-        )
+    # NOTE: ``missingValues`` is *not* listed here — V1 now interprets it (the
+    # declared tokens are coerced to null, the same as an empty cell). See
+    # ``parse_table_schema`` / ``coerce_cell``.
 
     raw_fields = descriptor.get("fields")
     if not isinstance(raw_fields, (list, tuple)):
         return notices
 
-    unsupported_types: list[str] = []
-    locale_fields: list[str] = []
-    format_fields: list[str] = []
+    unsupported_types: list[CompatibilityItem] = []
+    locale_fields: list[CompatibilityItem] = []
+    format_fields: list[CompatibilityItem] = []
     unsupported_constraints: set[str] = set()
     for raw_field in raw_fields:
         if not isinstance(raw_field, dict):
@@ -102,11 +183,11 @@ def table_schema_compatibility_notices(
         name = str(raw_field.get("name") or _("Unnamed field"))
         declared_type = raw_field.get("type", _DEFAULT_TYPE)
         if isinstance(declared_type, str) and declared_type not in SUPPORTED_TYPES:
-            unsupported_types.append(f"{name} ({declared_type})")
+            unsupported_types.append(CompatibilityItem(name=name, note=declared_type))
         if any(key in raw_field for key in _IGNORED_LOCALE_KEYS):
-            locale_fields.append(name)
+            locale_fields.append(CompatibilityItem(name=name))
         if raw_field.get("format") not in (None, ""):
-            format_fields.append(name)
+            format_fields.append(CompatibilityItem(name=name))
         constraints = raw_field.get("constraints")
         if isinstance(constraints, dict):
             unsupported_constraints.update(
@@ -117,53 +198,75 @@ def table_schema_compatibility_notices(
 
     if unsupported_types:
         notices.append(
-            SchemaCompatibilityNotice(
+            _compat_notice(
                 code="unsupported_types",
-                message=str(
+                lead=str(_("Unsupported field types become Text")),
+                items=tuple(unsupported_types),
+                detail=str(
                     _(
-                        "Unsupported field types will be edited and validated as "
-                        "Text: %(fields)s.",
-                    )
-                    % {"fields": ", ".join(unsupported_types)},
+                        "V1 supports Text, Integer, Number, Boolean, Date, and "
+                        "Date-time. These fields declare a Frictionless type outside "
+                        "that set, so they import as Text: their values are still "
+                        "checked as text (required, length, pattern, enum), but not "
+                        "as the original type — e.g. a 'year' is not range-checked as "
+                        "a year.",
+                    ),
                 ),
             ),
         )
     if locale_fields:
         notices.append(
-            SchemaCompatibilityNotice(
+            _compat_notice(
                 code="locale_options",
-                message=str(
+                lead=str(_("Locale number options are ignored")),
+                items=tuple(locale_fields),
+                detail=str(
                     _(
-                        "Locale-specific number options are preserved but ignored "
-                        "for deterministic parsing: %(fields)s.",
-                    )
-                    % {"fields": ", ".join(locale_fields)},
+                        "These number fields set locale options (decimalChar, "
+                        "groupChar, or bareNumber). V1 parses numbers one fixed, "
+                        "locale-free way — '.' as the decimal point and no thousands "
+                        "separators — so a file validates identically on every "
+                        "machine. The options are kept but not applied, so a value "
+                        "like '1.234,56' will not parse as a number.",
+                    ),
                 ),
             ),
         )
     if format_fields:
         notices.append(
-            SchemaCompatibilityNotice(
+            _compat_notice(
                 code="field_formats",
-                message=str(
+                lead=str(_("Field formats are not enforced")),
+                items=tuple(format_fields),
+                detail=str(
                     _(
-                        "Field format keywords are preserved but are not enforced "
-                        "by the V1 editor: %(fields)s.",
-                    )
-                    % {"fields": ", ".join(format_fields)},
+                        "These fields declare a Frictionless 'format' (such as "
+                        "email, uuid, or a date pattern). The V1 editor does not "
+                        "enforce format refinements — to require a shape, add a "
+                        "regex Pattern on a Text column. Dates and date-times are "
+                        "parsed as ISO-8601 regardless of any declared format. The "
+                        "keyword is kept in your saved schema.",
+                    ),
                 ),
             ),
         )
     if unsupported_constraints:
         notices.append(
-            SchemaCompatibilityNotice(
+            _compat_notice(
                 code="unsupported_constraints",
-                message=str(
+                lead=str(_("Unknown constraints are not enforced")),
+                items=tuple(
+                    CompatibilityItem(name=keyword)
+                    for keyword in sorted(unsupported_constraints)
+                ),
+                detail=str(
                     _(
-                        "These constraint keywords are preserved but are not "
-                        "enforced in V1: %(constraints)s.",
-                    )
-                    % {"constraints": ", ".join(sorted(unsupported_constraints))},
+                        "V1 enforces these constraints: required, unique, "
+                        "minimum/maximum, minLength/maxLength, pattern, and enum. "
+                        "The listed keys are something else (a non-standard or newer "
+                        "keyword), so they are kept in your saved schema but have no "
+                        "effect on validation.",
+                    ),
                 ),
             ),
         )
@@ -208,10 +311,17 @@ class TabularSchema:
     simple key, several for a composite key). It is validated for uniqueness
     *and* non-nullness natively; ``unique`` field constraints are checked
     separately (and exempt nulls).
+
+    ``missing_values`` are the raw cell strings coercion treats as null, from
+    Table Schema's ``missingValues`` (default ``("",)``). The empty string is
+    always included — a blank cell is always missing — so authors can *add*
+    sentinels like ``NA`` without the footgun of accidentally making empty
+    cells count as present.
     """
 
     fields: tuple[FieldSpec, ...]
     primary_key: tuple[str, ...] = ()
+    missing_values: tuple[str, ...] = ("",)
 
     def field_names(self) -> list[str]:
         """Return the declared column names in declaration order."""
@@ -287,6 +397,28 @@ def _parse_primary_key(raw: object) -> tuple[str, ...]:
     if isinstance(raw, (list, tuple)):
         return tuple(str(name) for name in raw)
     return ()
+
+
+def _parse_missing_values(descriptor: dict) -> tuple[str, ...]:
+    """Parse Table Schema ``missingValues`` into the null-token set.
+
+    Defaults to ``("",)`` — Frictionless's default, where only a blank cell is
+    missing. When the descriptor lists tokens they are normalised to strings and
+    the empty string is *always* kept in the set: V1 treats a blank cell as
+    missing regardless, so declaring ``NA``/``NULL`` extends the set rather than
+    replacing it (avoiding the spec footgun where omitting ``""`` would make
+    empty cells count as present). Order is preserved and duplicates dropped so
+    the set is stable and deterministic.
+    """
+    raw = descriptor.get("missingValues")
+    if not isinstance(raw, (list, tuple)):
+        return ("",)
+    tokens: list[str] = [""]
+    for value in raw:
+        token = str(value)
+        if token not in tokens:
+            tokens.append(token)
+    return tuple(tokens)
 
 
 def _validate_field_names(names: list[str]) -> None:
@@ -410,4 +542,5 @@ def parse_table_schema(descriptor: dict) -> TabularSchema:
     return TabularSchema(
         fields=tuple(fields),
         primary_key=_parse_primary_key(descriptor.get("primaryKey")),
+        missing_values=_parse_missing_values(descriptor),
     )

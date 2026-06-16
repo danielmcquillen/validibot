@@ -102,6 +102,7 @@ def _aggregate_column(
     field: FieldSpec,
     *,
     deadline: float | None = None,
+    missing_values: tuple[str, ...] = ("",),
 ) -> dict[str, Any]:
     """Return deterministic aggregates for one declared column."""
     row_count = read_result.num_rows
@@ -118,7 +119,7 @@ def _aggregate_column(
             and time.monotonic() > deadline
         ):
             raise _ColumnEvalTimeout
-        coerced = coerce_cell(raw, field.type)
+        coerced = coerce_cell(raw, field.type, missing_values)
         if coerced.is_null or not coerced.ok:
             null_count += 1
         else:
@@ -171,6 +172,7 @@ def build_column_context(
                         read_result,
                         field,
                         deadline=deadline,
+                        missing_values=schema.missing_values,
                     ).items()
                 },
             )

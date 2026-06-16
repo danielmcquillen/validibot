@@ -1,13 +1,17 @@
 {% load i18n %}
 
 {% comment %}
-"Infer from Sample" modal, launched from the page header.
+"Infer from Sample" modal — a two-screen wizard launched from the page header.
 
-Upload a representative CSV; the server reads the header and proposes a typed
-column for each. The submit posts to the infer endpoint, includes the main
-settings form (for the current schema_base, dialect, and unsaved columns) plus
-this modal's file input, and swaps the result into the Columns tab workspace.
-The page script then closes the modal and shows the Columns tab.
+Screen 1 (input): upload a representative CSV. The "Infer columns" submit posts
+to the infer endpoint; on success the endpoint returns the review body + an
+HX-Trigger flipping the modal to screen 2 (and out-of-band swaps for the
+detected dialect), and on failure it HX-Retargets the error onto this screen.
+
+Screen 2 (review): the compatibility report + column-count summary, with Apply
+(replace the columns and close), Back (return to input), and Cancel.
+
+Screen switching, Back, and Apply-close are wired in tabular_step_settings.html.
 {% endcomment %}
 
 <div class="modal fade"
@@ -15,52 +19,95 @@ The page script then closes the modal and shows the Columns tab.
      tabindex="-1"
      aria-hidden="true"
      aria-labelledby="tabularInferModalLabel">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content">
-      <div class="modal-header">
-        <div>
-          <h2 class="modal-title h5 mb-0" id="tabularInferModalLabel">
-            {% trans "Infer columns from a sample" %}
-          </h2>
-          <p class="text-muted small mb-0">
-            {% trans "Validibot reads the header and proposes a type for each column." %}
-          </p>
+
+      {% comment %}── Screen 1: input ──{% endcomment %}
+      <div data-modal-screen="input">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title h5 mb-0" id="tabularInferModalLabel">
+              {% trans "Infer columns from a sample" %}
+            </h2>
+            <p class="text-muted small mb-0">
+              {% trans "Validibot reads the header and proposes a type for each column." %}
+            </p>
+          </div>
+          <button type="button"
+                  class="btn-close"
+                  data-bs-dismiss="modal"
+                  aria-label="{% trans 'Close' %}">
+          </button>
         </div>
-        <button type="button"
-                class="btn-close"
-                data-bs-dismiss="modal"
-                aria-label="{% trans 'Close' %}">
-        </button>
+        <div class="modal-body">
+          <label class="form-label" for="id_sample_file">{% trans "Sample CSV" %}</label>
+          <input type="file"
+                 name="sample_file"
+                 id="id_sample_file"
+                 class="form-control"
+                 accept=".csv,.tsv,text/csv,text/tab-separated-values" />
+          <p class="form-text">
+            {% trans "Your current columns are kept until you apply the proposal." %}
+          </p>
+          <div id="tabular-infer-input-error">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            {% trans "Cancel" %}
+          </button>
+          <button type="button"
+                  class="btn btn-primary"
+                  data-tabular-modal-submit
+                  data-requires-input="#id_sample_file"
+                  disabled
+                  hx-post="{{ tabular_infer_url }}"
+                  hx-target="#tabular-infer-review-body"
+                  hx-swap="innerHTML"
+                  hx-include="#tabular-step-settings-form, #id_sample_file"
+                  hx-encoding="multipart/form-data"
+                  hx-disabled-elt="this"
+                  hx-indicator="#tabular-infer-indicator">
+            <i class="bi bi-magic me-1" aria-hidden="true"></i>{% trans "Infer columns" %}
+          </button>
+        </div>
       </div>
-      <div class="modal-body">
-        <label class="form-label" for="id_sample_file">{% trans "Sample CSV" %}</label>
-        <input type="file"
-               name="sample_file"
-               id="id_sample_file"
-               class="form-control"
-               accept=".csv,.tsv,text/csv,text/tab-separated-values" />
-        <p class="form-text">
-          {% trans "Your current unsaved columns are kept until you apply the proposal." %}
-        </p>
+
+      {% comment %}── Screen 2: review ──{% endcomment %}
+      <div data-modal-screen="review" class="d-none">
+        <div class="modal-header">
+          <h2 class="modal-title h5 mb-0">{% trans "Review inferred schema" %}</h2>
+          <button type="button"
+                  class="btn-close"
+                  data-bs-dismiss="modal"
+                  aria-label="{% trans 'Close' %}">
+          </button>
+        </div>
+        <div class="modal-body" id="tabular-infer-review-body">
+          {% comment %}Populated by the infer endpoint.{% endcomment %}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            {% trans "Cancel" %}
+          </button>
+          <button type="button" class="btn btn-secondary" data-tabular-modal-back>
+            <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>{% trans "Back" %}
+          </button>
+          <button type="button"
+                  class="btn btn-primary"
+                  data-tabular-apply-submit
+                  hx-post="{{ tabular_apply_url }}"
+                  hx-target="#tabular-schema-workspace"
+                  hx-swap="outerHTML"
+                  hx-include="#tabular-step-settings-form, #tabular-infer-review-body"
+                  hx-disabled-elt="this"
+                  hx-sync="#tabular-schema-workspace:replace"
+                  hx-indicator="#tabular-schema-request-indicator">
+            <i class="bi bi-check2 me-1" aria-hidden="true"></i>{% trans "Apply" %}
+          </button>
+        </div>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-          {% trans "Cancel" %}
-        </button>
-        <button type="button"
-                class="btn btn-primary"
-                data-tabular-modal-submit
-                hx-post="{{ tabular_infer_url }}"
-                hx-target="#tabular-schema-workspace"
-                hx-swap="outerHTML"
-                hx-include="#tabular-step-settings-form, #id_sample_file"
-                hx-encoding="multipart/form-data"
-                hx-disabled-elt="this"
-                hx-sync="#tabular-schema-workspace:replace"
-                hx-indicator="#tabular-schema-request-indicator">
-          <i class="bi bi-magic me-1" aria-hidden="true"></i>{% trans "Infer columns" %}
-        </button>
-      </div>
+
     </div>
   </div>
 </div>

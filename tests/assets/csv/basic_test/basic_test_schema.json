@@ -1,0 +1,26 @@
+{
+  "$schema": "https://frictionlessdata.io/schemas/table-schema.json",
+  "fields": [
+    { "name": "order_id", "type": "string", "title": "Order ID", "format": "uuid", "constraints": { "required": true } },
+    { "name": "sku", "type": "string", "title": "SKU", "constraints": { "required": true, "pattern": "^[A-Z]{3}-[0-9]{4}$" } },
+    { "name": "product_name", "type": "string", "constraints": { "required": true, "minLength": 1, "maxLength": 200 } },
+    { "name": "category", "type": "string", "constraints": { "enum": ["electronics", "books", "clothing", "home", "toys", "other"] } },
+    { "name": "quantity", "type": "integer", "constraints": { "required": true, "minimum": 1, "maximum": 1000 } },
+    { "name": "unit_price", "type": "number", "decimalChar": ".", "groupChar": ",", "bareNumber": true, "constraints": { "minimum": 0 } },
+    { "name": "discount_pct", "type": "number", "constraints": { "minimum": 0, "maximum": 100 } },
+    { "name": "currency", "type": "string", "constraints": { "enum": ["USD", "EUR", "GBP", "AUD", "JPY"] } },
+    { "name": "customer_email", "type": "string", "format": "email" },
+    { "name": "ordered_at", "type": "datetime" },
+    { "name": "ship_date", "type": "date", "format": "%Y-%m-%d" },
+    { "name": "is_gift", "type": "boolean" },
+    { "name": "gift_message", "type": "string", "description": "Required only when is_gift is present (Validibot extension).", "constraints": { "x-validibot-requiredWhenPresent": "is_gift" } },
+    { "name": "order_year", "type": "year" },
+    { "name": "pickup_time", "type": "time" },
+    { "name": "warehouse_id", "type": "string", "constraints": { "minLength": 1, "deprecated": true } }
+  ],
+  "missingValues": ["", "NA", "NULL", "—"],
+  "primaryKey": ["order_id", "sku"],
+  "foreignKeys": [
+    { "fields": "warehouse_id", "reference": { "resource": "warehouses", "fields": "id" } }
+  ]
+}

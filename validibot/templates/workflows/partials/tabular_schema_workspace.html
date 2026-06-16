@@ -2,13 +2,12 @@
 
 {% comment %}
 Columns workspace — the body of the Columns tab and the HTMx swap target for
-infer / import / apply / add-column.
+apply / add-column.
 
-The schema *source* tools (infer from a CSV, import a descriptor) now live in
-page-header modals; this partial owns only the editable column list plus the
-proposal preview those tools produce. Infer / import surface any errors as the
-alerts below, then close their modal, so the outcome always lands here in the
-Columns tab.
+The schema source tools (infer, import) live in page-header modals, and their
+proposal review (compatibility report + Apply) happens inside those modals. This
+partial owns only the editable column list. Applying a proposal swaps this
+section with the new columns and shows a brief confirmation.
 {% endcomment %}
 
 <section id="tabular-schema-workspace" class="tabular-schema-workspace">
@@ -22,82 +21,20 @@ Columns tab.
   {% endif %}
 
   {% if schema_success_message %}
-    <div class="alert alert-success d-flex align-items-start gap-2"
+    {% comment %}
+      Dismissible: applying a proposal is a transient confirmation, so the author
+      can clear it once read. Bootstrap's dismiss is delegated on the document,
+      so the close button works even though this markup arrives via an HTMx swap.
+    {% endcomment %}
+    <div class="alert alert-success alert-dismissible fade show d-flex align-items-start gap-2"
          role="status"
          aria-live="polite">
       <i class="bi bi-check-circle-fill mt-1" aria-hidden="true"></i>
       <div>{{ schema_success_message }}</div>
-    </div>
-  {% endif %}
-
-  {% if sample_error %}
-    <div class="alert alert-danger d-flex align-items-start gap-2"
-         role="alert"
-         aria-live="assertive">
-      <i class="bi bi-exclamation-triangle-fill mt-1" aria-hidden="true"></i>
-      <div>{{ sample_error }}</div>
-    </div>
-  {% endif %}
-  {% if import_error %}
-    <div class="alert alert-danger d-flex align-items-start gap-2"
-         role="alert"
-         aria-live="assertive">
-      <i class="bi bi-exclamation-triangle-fill mt-1" aria-hidden="true"></i>
-      <div>{{ import_error }}</div>
-    </div>
-  {% endif %}
-
-  {% if schema_compatibility_warnings %}
-    <div class="alert alert-warning"
-         role="status"
-         aria-live="polite"
-         data-tabular-compatibility-report>
-      <div class="d-flex gap-2">
-        <i class="bi bi-exclamation-triangle-fill mt-1" aria-hidden="true"></i>
-        <div>
-          <h4 class="h6 mb-2">{% trans "Compatibility report" %}</h4>
-          <ul class="mb-0 ps-3">
-            {% for warning in schema_compatibility_warnings %}
-              <li>{{ warning }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-      </div>
-    </div>
-  {% endif %}
-
-  {% if pending_schema %}
-    <div class="tabular-schema-preview mb-3"
-         role="region"
-         aria-labelledby="tabular-schema-preview-heading">
-      <input type="hidden" name="pending_schema" value="{{ pending_schema }}" />
-      <div>
-        <h4 id="tabular-schema-preview-heading" class="h6 mb-1">
-          {% if pending_schema_source == "infer" %}
-            {% trans "Review inferred schema" %}
-          {% else %}
-            {% trans "Review imported schema" %}
-          {% endif %}
-        </h4>
-        <p class="small text-muted mb-0">
-          {% blocktrans count count=pending_schema_column_count trimmed %}
-            This proposal contains {{ count }} column. Your current unsaved columns remain unchanged until you apply it.
-          {% plural %}
-            This proposal contains {{ count }} columns. Your current unsaved columns remain unchanged until you apply it.
-          {% endblocktrans %}
-        </p>
-      </div>
       <button type="button"
-              class="btn btn-primary btn-sm"
-              hx-post="{{ tabular_apply_url }}"
-              hx-target="#tabular-schema-workspace"
-              hx-swap="outerHTML"
-              hx-include="closest form"
-              hx-disabled-elt="this"
-              hx-sync="#tabular-schema-workspace:replace"
-              hx-indicator="#tabular-schema-request-indicator">
-        <i class="bi bi-check2 me-1" aria-hidden="true"></i>
-        {% trans "Apply proposed schema" %}
+              class="btn-close"
+              data-bs-dismiss="alert"
+              aria-label="{% trans 'Close' %}">
       </button>
     </div>
   {% endif %}
@@ -150,25 +87,4 @@ Columns tab.
     <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
     <span>{% trans "Updating schema…" %}</span>
   </div>
-
-  {% if has_resolved_dialect %}
-    <select name="delimiter"
-            id="id_delimiter"
-            class="form-select"
-            hx-swap-oob="outerHTML">
-      <option value="" {% if not resolved_delimiter %}selected{% endif %}>{% trans "Auto-detect" %}</option>
-      <option value="," {% if resolved_delimiter == "," %}selected{% endif %}>{% trans "Comma" %}</option>
-      <option value="	" {% if resolved_delimiter == "	" %}selected{% endif %}>{% trans "Tab" %}</option>
-      <option value=";" {% if resolved_delimiter == ";" %}selected{% endif %}>{% trans "Semicolon" %}</option>
-      <option value="|" {% if resolved_delimiter == "|" %}selected{% endif %}>{% trans "Pipe" %}</option>
-    </select>
-    <input type="checkbox"
-           name="has_header"
-           id="id_has_header"
-           class="form-check-input"
-           hx-swap-oob="outerHTML"
-           {% if resolved_has_header %}
-             checked
-           {% endif %} />
-  {% endif %}
 </section>

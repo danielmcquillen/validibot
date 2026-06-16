@@ -696,7 +696,6 @@ class TabularSettingsEndpointMixin(WorkflowObjectMixin):
         import_error: str = "",
         sample_error: str = "",
         success_message: str = "",
-        compatibility_warnings: list[str] | None = None,
         pending_descriptor: dict | None = None,
         pending_source: str = "",
         resolved_delimiter: str | None = None,
@@ -715,7 +714,6 @@ class TabularSettingsEndpointMixin(WorkflowObjectMixin):
             "import_error": import_error,
             "sample_error": sample_error,
             "schema_success_message": success_message,
-            "schema_compatibility_warnings": compatibility_warnings or [],
             "pending_schema": (
                 json.dumps(pending_descriptor) if pending_descriptor else ""
             ),
@@ -775,6 +773,67 @@ class TabularSettingsEndpointMixin(WorkflowObjectMixin):
             context,
         )
 
+    def _render_input_error(self, message: str, target: str) -> HttpResponse:
+        """Render a one-line error onto a modal's *input* screen.
+
+        Used by import/infer when the submitted descriptor/sample is bad. The
+        HTMx response is retargeted to the input screen's error slot (instead of
+        the review body the button normally targets) so the author stays on the
+        input screen and sees what to fix, rather than advancing to review.
+        """
+        response = render(
+            self.request,
+            "workflows/partials/tabular_modal_error.html",
+            {"error": str(message)},
+        )
+        response["HX-Retarget"] = target
+        response["HX-Reswap"] = "innerHTML"
+        return response
+
+    def _render_review(
+        self,
+        *,
+        pending_descriptor: dict,
+        source: str,
+        modal_id: str,
+        resolved_delimiter: str | None = None,
+        resolved_has_header: bool | None = None,
+    ) -> HttpResponse:
+        """Render the modal's *review* screen for a validated proposal.
+
+        Returns the review body (compatibility report + column-count summary +
+        the hidden ``pending_schema`` the Apply button submits) and fires an
+        ``HX-Trigger`` so the page script flips the modal from input to review.
+        For inference, the resolved dialect rides along as out-of-band swaps so
+        the Settings-tab delimiter/header reflect what was detected.
+        """
+        from validibot.validations.validators.tabular.schema import (
+            table_schema_compatibility_notices,
+        )
+
+        context = {
+            "pending_schema": json.dumps(pending_descriptor),
+            "pending_schema_source": source,
+            "pending_schema_column_count": len(
+                pending_descriptor.get("fields", []),
+            ),
+            "schema_compatibility_notices": list(
+                table_schema_compatibility_notices(pending_descriptor),
+            ),
+            "resolved_delimiter": resolved_delimiter,
+            "resolved_has_header": resolved_has_header,
+            "has_resolved_dialect": resolved_delimiter is not None,
+        }
+        response = render(
+            self.request,
+            "workflows/partials/tabular_schema_review.html",
+            context,
+        )
+        response["HX-Trigger"] = json.dumps(
+            {"tabular-review-ready": {"modalId": modal_id}},
+        )
+        return response
+
 
 class TabularColumnCreateView(TabularSettingsEndpointMixin, View):
     """Return one correctly-prefixed column row for HTMx insertion."""
@@ -815,118 +874,73 @@ class TabularColumnCreateView(TabularSettingsEndpointMixin, View):
 class TabularSchemaImportView(TabularSettingsEndpointMixin, View):
     """Validate an imported descriptor and preview it before replacement."""
 
+    #: Input-screen error slot for this modal (HX-Retarget target on failure).
+    ERROR_TARGET = "#tabular-import-input-error"
+
     def post(self, request, *args, **kwargs):
         from validibot.validations.validators.tabular.schema import parse_table_schema
-        from validibot.validations.validators.tabular.schema import (
-            table_schema_compatibility_notices,
-        )
 
         raw = (request.POST.get("table_schema") or "").strip()
         uploaded = request.FILES.get("schema_file")
-        descriptor = self._current_descriptor()
         if raw and uploaded:
-            return self._render_workspace(
-                self._workspace_context(
-                    descriptor=descriptor,
-                    column_formset=self._posted_column_formset(),
-                    table_schema_value=raw,
-                    import_error=str(
-                        _("Paste a descriptor or upload one, not both."),
-                    ),
-                ),
+            return self._render_input_error(
+                _("Paste a descriptor or upload one, not both."),
+                self.ERROR_TARGET,
             )
         if uploaded:
             if uploaded.size > TABULAR_SCHEMA_MAX_BYTES:
-                return self._render_workspace(
-                    self._workspace_context(
-                        descriptor=descriptor,
-                        column_formset=self._posted_column_formset(),
-                        import_error=str(
-                            _("Descriptor files must be 2 MB or smaller."),
-                        ),
-                    ),
+                return self._render_input_error(
+                    _("Descriptor files must be 2 MB or smaller."),
+                    self.ERROR_TARGET,
                 )
             try:
                 raw = uploaded.read().decode("utf-8-sig")
             except UnicodeDecodeError:
-                return self._render_workspace(
-                    self._workspace_context(
-                        descriptor=descriptor,
-                        column_formset=self._posted_column_formset(),
-                        import_error=str(
-                            _("Descriptor files must be UTF-8 JSON."),
-                        ),
-                    ),
+                return self._render_input_error(
+                    _("Descriptor files must be UTF-8 JSON."),
+                    self.ERROR_TARGET,
                 )
         if not raw:
-            return self._render_workspace(
-                self._workspace_context(
-                    descriptor=descriptor,
-                    column_formset=self._posted_column_formset(),
-                    import_error=str(_("Paste a Table Schema descriptor first.")),
-                ),
+            return self._render_input_error(
+                _("Paste a Table Schema descriptor first."),
+                self.ERROR_TARGET,
             )
         try:
             imported = json.loads(raw)
             parse_table_schema(imported)
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            return self._render_workspace(
-                self._workspace_context(
-                    descriptor=descriptor,
-                    column_formset=self._posted_column_formset(),
-                    table_schema_value=raw,
-                    import_error=str(
-                        _("Could not import the descriptor: %(error)s")
-                        % {"error": exc},
-                    ),
-                ),
+            return self._render_input_error(
+                _("Could not import the descriptor: %(error)s") % {"error": exc},
+                self.ERROR_TARGET,
             )
-        return self._render_workspace(
-            self._workspace_context(
-                descriptor=descriptor,
-                column_formset=self._posted_column_formset(),
-                table_schema_value=raw,
-                pending_descriptor=imported,
-                pending_source="import",
-                compatibility_warnings=[
-                    notice.message
-                    for notice in table_schema_compatibility_notices(imported)
-                ],
-                success_message=str(
-                    _(
-                        "Import ready. Review the compatibility report, then "
-                        "apply it to replace the current columns.",
-                    ),
-                ),
-            ),
+        return self._render_review(
+            pending_descriptor=imported,
+            source="import",
+            modal_id="tabularImportModal",
         )
 
 
 class TabularSchemaInferView(TabularSettingsEndpointMixin, View):
     """Infer a starting descriptor and preview it before replacement."""
 
+    #: Input-screen error slot for this modal (HX-Retarget target on failure).
+    ERROR_TARGET = "#tabular-infer-input-error"
+
     def post(self, request, *args, **kwargs):
         from validibot.validations.validators.tabular.infer import infer_table_schema
         from validibot.validations.validators.tabular.preflight import TabularDialect
         from validibot.validations.validators.tabular.preflight import TabularReadError
 
-        descriptor = self._current_descriptor()
         sample = request.FILES.get("sample_file")
         if sample is None:
-            return self._render_workspace(
-                self._workspace_context(
-                    descriptor=descriptor,
-                    column_formset=self._posted_column_formset(),
-                    sample_error=str(_("Choose a sample CSV first.")),
-                ),
+            return self._render_input_error(
+                _("Choose a sample CSV first."),
+                self.ERROR_TARGET,
             )
         if sample.size > TABULAR_SAMPLE_MAX_BYTES:
-            return self._render_workspace(
-                self._workspace_context(
-                    descriptor=descriptor,
-                    column_formset=self._posted_column_formset(),
-                    sample_error=str(_("Sample files must be 5 MB or smaller.")),
-                ),
+            return self._render_input_error(
+                _("Sample files must be 5 MB or smaller."),
+                self.ERROR_TARGET,
             )
 
         raw_content = sample.read()
@@ -939,31 +953,17 @@ class TabularSchemaInferView(TabularSettingsEndpointMixin, View):
         try:
             inferred = infer_table_schema(raw_content, dialect=dialect)
         except TabularReadError as exc:
-            return self._render_workspace(
-                self._workspace_context(
-                    descriptor=descriptor,
-                    column_formset=self._posted_column_formset(),
-                    sample_error=str(
-                        _("Could not read the sample: %(error)s") % {"error": exc},
-                    ),
-                ),
+            return self._render_input_error(
+                _("Could not read the sample: %(error)s") % {"error": exc},
+                self.ERROR_TARGET,
             )
 
-        return self._render_workspace(
-            self._workspace_context(
-                descriptor=descriptor,
-                column_formset=self._posted_column_formset(),
-                pending_descriptor=inferred.descriptor,
-                pending_source="infer",
-                success_message=str(
-                    _(
-                        "Inference ready. Review the proposed columns, then "
-                        "apply them to replace the current columns.",
-                    ),
-                ),
-                resolved_delimiter=inferred.dialect.delimiter,
-                resolved_has_header=inferred.dialect.has_header,
-            ),
+        return self._render_review(
+            pending_descriptor=inferred.descriptor,
+            source="infer",
+            modal_id="tabularInferModal",
+            resolved_delimiter=inferred.dialect.delimiter,
+            resolved_has_header=inferred.dialect.has_header,
         )
 
 
@@ -972,9 +972,6 @@ class TabularSchemaApplyView(TabularSettingsEndpointMixin, View):
 
     def post(self, request, *args, **kwargs):
         from validibot.validations.validators.tabular.schema import parse_table_schema
-        from validibot.validations.validators.tabular.schema import (
-            table_schema_compatibility_notices,
-        )
 
         raw = (request.POST.get("pending_schema") or "").strip()
         current = self._current_descriptor()
@@ -992,13 +989,11 @@ class TabularSchemaApplyView(TabularSettingsEndpointMixin, View):
                     ),
                 ),
             )
+        # The compatibility report is shown on the modal's review screen before
+        # the author applies, so the post-apply workspace does not repeat it.
         return self._render_workspace(
             self._workspace_context(
                 descriptor=descriptor,
-                compatibility_warnings=[
-                    notice.message
-                    for notice in table_schema_compatibility_notices(descriptor)
-                ],
                 success_message=str(
                     _("Proposed columns applied. Save changes to persist them."),
                 ),
@@ -1242,8 +1237,14 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         else:
             message = _("Workflow step updated.")
         messages.success(self.request, message)
-        for warning in form.cleaned_data.get("schema_warnings", []):
-            messages.warning(self.request, warning)
+        # Surface schema compatibility warnings only when the schema was just
+        # *imported* (paste/upload/infer), never on an ordinary editor save.
+        # Otherwise every unrelated edit (e.g. changing the description) would
+        # re-toast the whole compatibility report, which is shown at import time
+        # in the review step. See the Tabular import flow.
+        if form.cleaned_data.get("schema_source") in {"text", "upload", "infer"}:
+            for warning in form.cleaned_data.get("schema_warnings", []):
+                messages.warning(self.request, warning)
         return HttpResponseRedirect(self.get_success_url())
 
     def form_invalid(self, form):
@@ -1397,13 +1398,29 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
     def _tabular_active_tab(self, form) -> str:
         """Pick which editor tab opens first.
 
-        Columns lead by default (that is where authors spend their time). After
-        an invalid submit we surface the tab that holds the errors so they are
-        not hidden behind the other tab: Settings-field errors win (they are
-        easy to miss), otherwise we stay on Columns, which also covers column
-        formset errors.
+        Columns lead by default — that is where authors spend their time, and
+        where column/schema problems surface (an invalid column, or a schema
+        change that orphans assertions). We open Settings first *only* when a
+        Settings-tab field actually errored, so those field errors are not
+        hidden behind the Columns tab. Crucially, non-field errors
+        (``form.errors['__all__']``, added by ``clean()`` for column/schema
+        issues) and column-formset errors must NOT pull the author onto
+        Settings — they belong on Columns, next to the inputs at fault.
         """
-        if form is not None and getattr(form, "is_bound", False) and form.errors:
+        settings_tab_fields = {
+            "name",
+            "description",
+            "delimiter",
+            "has_header",
+            "display_schema",
+            "show_success_messages",
+            "notes",
+        }
+        if (
+            form is not None
+            and getattr(form, "is_bound", False)
+            and settings_tab_fields & set(form.errors)
+        ):
             return "settings"
         return "columns"
 

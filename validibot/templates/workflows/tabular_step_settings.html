@@ -53,20 +53,27 @@ the standard application navigation and top bar.
         </div>
         <div class="d-flex flex-wrap gap-2 justify-content-end">
           <button type="button"
-                  class="btn btn-secondary btn-sm"
+                  class="btn btn-light btn-sm"
                   data-bs-toggle="modal"
                   data-bs-target="#tabularInferModal">
-            <i class="bi bi-magic me-1" aria-hidden="true"></i>{% trans "Infer from Sample" %}
+            <i class="bi bi-magic me-1" aria-hidden="true"></i>{% trans "Infer Schema" %}
           </button>
           <button type="button"
-                  class="btn btn-secondary btn-sm"
+                  class="btn btn-light btn-sm"
+                  title=""
                   data-bs-toggle="modal"
                   data-bs-target="#tabularImportModal">
-            <i class="bi bi-braces me-1" aria-hidden="true"></i>{% trans "Import Table Schema" %}
+            <i class="bi bi-braces me-1" aria-hidden="true"></i>{% trans "Import Schema" %}
           </button>
           {% if tabular_export_url %}
-            <a class="btn btn-light btn-sm" href="{{ tabular_export_url }}" download>
-              <i class="bi bi-download me-1" aria-hidden="true"></i>{% trans "Download schema" %}
+            <a class="btn btn-light btn-sm"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               aria-label="{% trans 'Download schema' %}"
+               title="{% trans "Download schema" %}"
+               href="{{ tabular_export_url }}"
+               download>
+              <i class="bi bi-download me-1" aria-hidden="true"></i>
             </a>
           {% endif %}
         </div>
@@ -74,6 +81,19 @@ the standard application navigation and top bar.
     </div>
 
     {% include "core/partial/_form_errors_summary.html" %}
+    {% comment %}
+      Surface form-level (non-field) errors. clean() raises these for schema
+      problems — an invalid column set, or a schema change that would orphan
+      existing assertions — and the field-by-field tab rendering would otherwise
+      never show them, leaving only the generic "highlighted fields" banner.
+    {% endcomment %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger" role="alert" aria-live="assertive">
+        {% for error in form.non_field_errors %}
+          <div>{{ error }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
 
     <form id="tabular-step-settings-form"
           method="post"
@@ -142,23 +162,87 @@ the standard application navigation and top bar.
   </div>
 
   <script nonce="{{ CSP_NONCE }}">
-    // After an Infer / Import request settles, close the launching modal and
-    // bring the Columns tab forward so the proposal (or any error alert) is
-    // visible. Soft validation errors return 200, so we close regardless and
-    // let the workspace alerts carry the message.
-    document.body.addEventListener('htmx:afterRequest', function(event) {
-      const trigger = event.detail && event.detail.elt;
-      if (!trigger || !trigger.matches || !trigger.matches('[data-tabular-modal-submit]')) {
-        return;
-      }
-      const modalEl = trigger.closest('.modal');
-      if (modalEl) {
-        window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
-      }
-      const columnsTab = document.getElementById('tabular-tab-columns');
-      if (columnsTab) {
-        window.bootstrap.Tab.getOrCreateInstance(columnsTab).show();
-      }
+    // This script lives in the content block, but the schema modals render in
+    // the later {% templatetag openblock %} block modal {% templatetag closeblock %}
+    // — so defer all direct DOM wiring until the whole page is parsed.
+    window.addEventListener('DOMContentLoaded', function() {
+      const showScreen = (modalEl, screen) => {
+        if (!modalEl) {
+          return;
+        }
+        modalEl.querySelectorAll('[data-modal-screen]').forEach((pane) => {
+          pane.classList.toggle('d-none', pane.dataset.modalScreen !== screen);
+        });
+      };
+
+      // Import / Infer succeeded: the endpoint fires this with the modal id, so
+      // flip that modal from its input screen to its review screen.
+      document.body.addEventListener('tabular-review-ready', function(event) {
+        const modalId = event.detail && event.detail.modalId;
+        showScreen(document.getElementById(modalId), 'review');
+      });
+
+      // "Back" on the review screen returns to the input screen to load again.
+      document.body.addEventListener('click', function(event) {
+        const back = event.target.closest('[data-tabular-modal-back]');
+        if (back) {
+          showScreen(back.closest('.modal'), 'input');
+        }
+      });
+
+      // Apply succeeded: the new columns are now in the workspace, so close the
+      // modal and bring the Columns tab forward. The hidden.bs.modal handler
+      // below resets the modal to its input screen.
+      document.body.addEventListener('htmx:afterRequest', function(event) {
+        const trigger = event.detail && event.detail.elt;
+        if (!trigger || !trigger.matches ||
+          !trigger.matches('[data-tabular-apply-submit]')) {
+          return;
+        }
+        if (!event.detail.successful) {
+          return;
+        }
+        const modalEl = trigger.closest('.modal');
+        if (modalEl) {
+          window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+        const columnsTab = document.getElementById('tabular-tab-columns');
+        if (columnsTab) {
+          window.bootstrap.Tab.getOrCreateInstance(columnsTab).show();
+        }
+      });
+
+      // Reset each schema modal to its input screen whenever it closes, so a
+      // re-open never starts on a stale review screen.
+      document
+        .querySelectorAll('#tabularImportModal, #tabularInferModal')
+        .forEach((modalEl) => {
+          modalEl.addEventListener('hidden.bs.modal', () => {
+            showScreen(modalEl, 'input');
+          });
+        });
+
+      // Keep each modal's submit disabled until it has input: a typed/pasted
+      // descriptor or a chosen file. `data-requires-input` lists the inputs that
+      // count (comma-separated selectors); the button enables when any has one.
+      const hasValue = (el) =>
+        el && (el.type === 'file' ? el.files.length > 0 : el.value.trim() !== '');
+      document
+        .querySelectorAll('[data-tabular-modal-submit][data-requires-input]')
+        .forEach((button) => {
+          const inputs = button.dataset.requiresInput
+            .split(',')
+            .map((selector) => document.querySelector(selector.trim()))
+            .filter(Boolean);
+          const refresh = () => {
+            button.disabled = !inputs.some(hasValue);
+          };
+          inputs.forEach((input) => {
+            input.addEventListener('input', refresh);
+            input.addEventListener('change', refresh);
+          });
+          refresh();
+        });
     });
   </script>
 {% endblock app_content %}

@@ -1,0 +1,86 @@
+{% load i18n %}
+
+{% comment %}
+Review screen body for the Import / Infer modals (rendered by the import/infer
+endpoints into the modal's review pane). Shows the compatibility report and a
+column-count summary, and carries the hidden ``pending_schema`` the Apply button
+submits. For inference, the resolved dialect rides along as out-of-band swaps so
+the Settings-tab delimiter/header reflect what was detected.
+{% endcomment %}
+
+<input type="hidden" name="pending_schema" value="{{ pending_schema }}" />
+
+<p class="mb-3">
+  {% blocktrans count count=pending_schema_column_count trimmed %}
+    This proposal contains {{ count }} column. Your current columns remain unchanged until you apply it.
+  {% plural %}
+    This proposal contains {{ count }} columns. Your current columns remain unchanged until you apply it.
+  {% endblocktrans %}
+</p>
+
+{% if schema_compatibility_notices %}
+  <div class="alert alert-warning mb-0"
+       role="status"
+       aria-live="polite"
+       data-tabular-compatibility-report>
+    <div class="d-flex gap-2">
+      <i class="bi bi-exclamation-triangle-fill mt-1" aria-hidden="true"></i>
+      <div>
+        <h3 class="h6 mb-1">{% trans "Compatibility report" %}</h3>
+        <p class="small mb-3">
+          {% trans "Validibot adopts the Frictionless Table Schema vocabulary but does not enforce every keyword. Each item below is something in this schema the editor cannot act on — it is kept in your saved schema for portability, but it will not affect how files are validated." %}
+        </p>
+        {% comment %}
+          Each notice carries a short ``message`` headline (names the feature and
+          the fields it came from) and a longer ``detail`` explaining what the
+          keyword does, why V1 cannot act on it, and what that means — so an
+          author who did not write the schema understands why each item appears.
+        {% endcomment %}
+        <dl class="mb-0">
+          {% comment %}
+            ``headline_html`` wraps each schema field name / keyword in <code>
+            (HTML-safe — the names are escaped) so authors can see exactly which
+            schema entries the notice names. Notices without items fall back to
+            the plain message.
+          {% endcomment %}
+          {% for notice in schema_compatibility_notices %}
+            <dt class="fw-semibold">{{ notice.headline_html }}</dt>
+            {% if notice.detail %}
+              <dd class="small mb-2">
+                {{ notice.detail }}
+              </dd>
+            {% endif %}
+          {% endfor %}
+        </dl>
+      </div>
+    </div>
+  </div>
+{% else %}
+  <div class="alert alert-success mb-0 d-flex align-items-start gap-2"
+       role="status"
+       aria-live="polite">
+    <i class="bi bi-check-circle-fill mt-1" aria-hidden="true"></i>
+    <div>{% trans "Every feature in this schema is fully supported." %}</div>
+  </div>
+{% endif %}
+
+{% if has_resolved_dialect %}
+  <select name="delimiter"
+          id="id_delimiter"
+          class="form-select"
+          hx-swap-oob="outerHTML">
+    <option value="" {% if not resolved_delimiter %}selected{% endif %}>{% trans "Auto-detect" %}</option>
+    <option value="," {% if resolved_delimiter == "," %}selected{% endif %}>{% trans "Comma" %}</option>
+    <option value="	" {% if resolved_delimiter == "	" %}selected{% endif %}>{% trans "Tab" %}</option>
+    <option value=";" {% if resolved_delimiter == ";" %}selected{% endif %}>{% trans "Semicolon" %}</option>
+    <option value="|" {% if resolved_delimiter == "|" %}selected{% endif %}>{% trans "Pipe" %}</option>
+  </select>
+  <input type="checkbox"
+         name="has_header"
+         id="id_has_header"
+         class="form-check-input"
+         hx-swap-oob="outerHTML"
+         {% if resolved_has_header %}
+           checked
+         {% endif %} />
+{% endif %}

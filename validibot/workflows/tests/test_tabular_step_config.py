@@ -469,7 +469,7 @@ class TabularStepConfigFormTests(SimpleTestCase):
         warnings = " ".join(form.cleaned_data["schema_warnings"])
         self.assertIn("Foreign keys", warnings)
         self.assertIn("Unsupported field types", warnings)
-        self.assertIn("Locale-specific", warnings)
+        self.assertIn("Locale number options", warnings)
 
 
 class BuildTabularConfigTests(TestCase):
@@ -598,9 +598,10 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertContains(response, "Delimiter")
         self.assertContains(response, "Define expected columns")
         # The schema source tools are now header-launched modals rather than
-        # inline cards, so assert their launch buttons are present.
-        self.assertContains(response, "Infer from Sample")
-        self.assertContains(response, "Import Table Schema")
+        # inline cards, so assert their launch triggers are present (by modal
+        # target, which is stable even if the button labels change).
+        self.assertContains(response, 'data-bs-target="#tabularInferModal"')
+        self.assertContains(response, 'data-bs-target="#tabularImportModal"')
         self.assertContains(response, "data-tabular-column-editor")
         self.assertNotContains(response, 'id="tabular-assertions-heading"')
         self.assertContains(response, "Required when another column exists")
@@ -679,6 +680,74 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertContains(response, '<a class="btn btn-light"')
         self.assertNotContains(response, "bi-x-lg")
         self.assertNotContains(response, '<span class="badge text-bg-primary">')
+
+    def test_invalid_column_save_shows_message_and_opens_columns_tab(self):
+        """A column/schema error must be visible and open the Columns tab.
+
+        Regression: ``clean()`` reports column/schema problems as *non-field*
+        errors (``add_error(None, …)`` — e.g. an invalid column set, or a schema
+        change that orphans assertions). The tabbed editor rendered fields one by
+        one and never output ``form.non_field_errors``, so the page showed only
+        the generic "highlighted fields" banner with nothing highlighted — and,
+        worse, opened the Settings tab because any ``form.errors`` forced it
+        there. The author must see the actual message and land on Columns, where
+        the offending inputs are.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        data = {
+            "name": "Check submission",
+            "delimiter": "",
+            "has_header": "on",
+            # A blank column name makes the column formset invalid, which clean()
+            # reports as the non-field error "Review the highlighted column
+            # settings."
+            **_column_formset_data(
+                [{"name": "", "type": "string"}],
+                base_descriptor={"fields": [{"name": "site_id", "type": "string"}]},
+            ),
+        }
+
+        response = self.client.post(self._settings_url(workflow, step), data)
+
+        # The shared step form re-renders an invalid POST with 400 (the same
+        # convention the generic step editor uses); the fix is that the message
+        # is now visible and the right tab opens, not the status code.
+        self.assertEqual(response.status_code, 400)
+        # The non-field message is now rendered, not swallowed.
+        self.assertContains(
+            response,
+            "Review the highlighted column settings",
+            status_code=400,
+        )
+        # ...and the editor opens on Columns, where the bad column lives.
+        self.assertEqual(response.context["tabular_active_tab"], "columns")
+
+    def test_settings_field_error_opens_settings_tab(self):
+        """A Settings-tab *field* error still opens the Settings tab.
+
+        The routing fix must not over-correct: an error on a field that lives on
+        the Settings tab (here, the required step name) should bring that tab
+        forward so the highlighted field is visible.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        data = {
+            "name": "",  # required -> field error on a Settings-tab field
+            "delimiter": "",
+            "has_header": "on",
+            **_column_formset_data(
+                [{"name": "site_id", "type": "string"}],
+                base_descriptor={"fields": [{"name": "site_id", "type": "string"}]},
+            ),
+        }
+
+        response = self.client.post(self._settings_url(workflow, step), data)
+
+        # 400 is the shared step form's invalid-POST convention (see the
+        # column-error regression test); what matters here is the tab routing.
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.context["tabular_active_tab"], "settings")
 
     def test_create_page_ends_the_breadcrumb_with_tabular_settings(self):
         """New Tabular steps should use the editor's real page label.
@@ -789,6 +858,46 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertEqual(step.ruleset.metadata["delimiter"], ";")
         self.assertEqual(step.typed_config.schema_source, "keep")
 
+    def test_editor_save_does_not_toast_compatibility_warnings(self):
+        """Regression: an ordinary save must not re-toast schema warnings.
+
+        The compatibility report is shown once, at import time. Re-emitting it
+        as warning toasts on every editor save (e.g. tweaking the description)
+        buried the page in repeated, irrelevant warnings. Only an actual import
+        (paste / upload / infer) surfaces them; a plain editor save does not —
+        even when the saved descriptor still carries an unenforceable feature.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        # Foreign keys are preserved-but-unenforced, so this descriptor *would*
+        # produce a compatibility warning if an editor save toasted them.
+        base = {
+            "fields": [{"name": "site_id", "type": "string"}],
+            "foreignKeys": [
+                {"fields": "site_id", "reference": {"resource": "x", "fields": "id"}},
+            ],
+        }
+        data = {
+            "name": "Edited name",
+            "delimiter": "",
+            "has_header": "on",
+            **_column_formset_data(
+                [{"name": "site_id", "type": "string"}],
+                base_descriptor=base,
+            ),
+        }
+
+        response = self.client.post(
+            self._settings_url(workflow, step),
+            data=data,
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        levels = [message.level_tag for message in response.context["messages"]]
+        self.assertIn("success", levels)
+        self.assertNotIn("warning", levels)
+
     def test_settings_post_saves_column_editor_descriptor(self):
         """The full settings request persists formset-authored columns.
 
@@ -876,9 +985,15 @@ class TabularStepSettingsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Review imported schema")
-        self.assertContains(response, "Apply proposed schema")
+        # The endpoint returns the modal's review-screen body and fires an
+        # HX-Trigger telling the page to switch that modal to review. The
+        # proposal rides in pending_schema; the current columns are untouched
+        # (not present in this response).
+        self.assertContains(response, "This proposal contains")
         self.assertContains(response, 'name="pending_schema"')
+        trigger = response.headers.get("HX-Trigger", "")
+        self.assertIn("tabular-review-ready", trigger)
+        self.assertIn("tabularImportModal", trigger)
         self.assertNotContains(response, 'value="lat"')
 
         apply_url = reverse(
@@ -903,11 +1018,11 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertContains(applied, 'value="lon"')
 
     def test_invalid_import_keeps_current_columns_and_shows_error(self):
-        """A failed import does not destroy unsaved column-editor work.
+        """A failed import does not destroy current column-editor work.
 
-        HTMx posts the surrounding form; the error response binds those rows
-        back into the replacement workspace so authors can fix the JSON without
-        re-entering their existing columns.
+        The error is retargeted onto the modal's input screen (the author stays
+        there to fix the JSON). The workspace is never swapped, so the current
+        columns are preserved by virtue of not being touched.
         """
         workflow, step = self._tabular_workflow_and_step()
         _login_as_author(self.client, workflow)
@@ -924,7 +1039,13 @@ class TabularStepSettingsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Could not import the descriptor")
-        self.assertContains(response, 'value="unsaved_column"')
+        # Retargeted to the input screen's error slot, and it is *only* the
+        # error — the column rows are not re-rendered (and so not disturbed).
+        self.assertEqual(
+            response.headers.get("HX-Retarget"),
+            "#tabular-import-input-error",
+        )
+        self.assertNotContains(response, 'value="unsaved_column"')
 
     def test_infer_endpoint_previews_columns_and_resolves_dialect(self):
         """Inference previews typed rows and updates dialect controls.
@@ -958,9 +1079,12 @@ class TabularStepSettingsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Review inferred schema")
-        self.assertContains(response, "Apply proposed schema")
-        self.assertContains(response, "site_id")
+        # Returns the review body (proposal + dialect OOB) and triggers the
+        # modal to switch to its review screen.
+        trigger = response.headers.get("HX-Trigger", "")
+        self.assertIn("tabular-review-ready", trigger)
+        self.assertIn("tabularInferModal", trigger)
+        self.assertContains(response, "site_id")  # carried in pending_schema
         self.assertNotContains(response, 'value="site_id"')
         self.assertContains(response, 'hx-swap-oob="outerHTML"')
 
@@ -997,7 +1121,10 @@ class TabularStepSettingsViewTests(TestCase):
 
         Preserving unsupported keys is not enough: authors must know that
         foreign keys and exotic types will not be enforced before they choose
-        to apply the proposal.
+        to apply the proposal. Each item also carries an explanation of *why*
+        it appears, so an author who did not write the schema can understand
+        it — the headline alone ("Foreign keys are not enforced") does not say
+        what a foreign key is or why a single-file step cannot check one.
         """
         workflow, step = self._tabular_workflow_and_step()
         _login_as_author(self.client, workflow)
@@ -1021,6 +1148,16 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertContains(response, "Compatibility report")
         self.assertContains(response, "Foreign keys")
         self.assertContains(response, "Unsupported field types")
+        # The schema's own field name is <code>-wrapped so the author can see
+        # which entry the notice names (the descriptor's only field is "id").
+        self.assertContains(response, "<code>id</code>")
+        # The report frames itself: every item is kept for portability but does
+        # not affect validation.
+        self.assertContains(response, "kept in your saved schema for portability")
+        # Each item explains *why* it is shown, not just that it exists. These
+        # phrases come from the per-notice ``detail`` prose.
+        self.assertContains(response, "cannot see other tables")
+        self.assertContains(response, "import as Text")
 
     def test_saved_descriptor_can_be_downloaded(self):
         """A saved schema is exportable as portable JSON.

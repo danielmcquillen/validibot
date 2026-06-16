@@ -1,12 +1,18 @@
 {% load i18n %}
 
 {% comment %}
-"Import Table Schema" modal, launched from the page header.
+"Import Table Schema" modal — a two-screen wizard launched from the page header.
 
-Paste a Frictionless Table Schema descriptor or upload one as JSON. The submit
-posts to the import endpoint, includes the main settings form plus this modal's
-descriptor/file inputs, and swaps the validated proposal into the Columns tab
-workspace. The page script then closes the modal and shows the Columns tab.
+Screen 1 (input): paste a Frictionless Table Schema descriptor or upload one.
+The "Import schema" submit posts to the import endpoint; on success the endpoint
+returns the review body + an HX-Trigger that flips the modal to screen 2, and on
+failure it HX-Retargets the error onto this screen's error slot.
+
+Screen 2 (review): the compatibility report + column-count summary, with Apply
+(replace the columns and close), Back (return to input), and Cancel. The
+endpoint-rendered body carries the hidden ``pending_schema`` that Apply submits.
+
+Screen switching, Back, and Apply-close are wired in tabular_step_settings.html.
 {% endcomment %}
 
 <div class="modal fade"
@@ -14,61 +20,104 @@ workspace. The page script then closes the modal and shows the Columns tab.
      tabindex="-1"
      aria-hidden="true"
      aria-labelledby="tabularImportModalLabel">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content">
-      <div class="modal-header">
-        <div>
-          <h2 class="modal-title h5 mb-0" id="tabularImportModalLabel">
-            {% trans "Import Table Schema" %}
-          </h2>
-          <p class="text-muted small mb-0">
-            {% trans "Paste a Frictionless Table Schema descriptor, or upload one as JSON." %}
+
+      {% comment %}── Screen 1: input ──{% endcomment %}
+      <div data-modal-screen="input">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title h5 mb-0" id="tabularImportModalLabel">
+              {% trans "Import Table Schema" %}
+            </h2>
+            <p class="text-muted small mb-0">
+              {% trans "Paste a Frictionless Table Schema descriptor, or upload one as JSON." %}
+            </p>
+          </div>
+          <button type="button"
+                  class="btn-close"
+                  data-bs-dismiss="modal"
+                  aria-label="{% trans 'Close' %}">
+          </button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label" for="id_table_schema">{% trans "Descriptor JSON" %}</label>
+          <textarea name="table_schema"
+                    id="id_table_schema"
+                    class="form-control font-monospace"
+                    rows="6"
+                    spellcheck="false"
+                    placeholder='{ "fields": [...] }'></textarea>
+          <div class="mt-3">
+            <label class="form-label" for="id_schema_file">{% trans "Or upload descriptor JSON" %}</label>
+            <input type="file"
+                   name="schema_file"
+                   id="id_schema_file"
+                   class="form-control"
+                   accept=".json,application/json" />
+          </div>
+          <p class="form-text">
+            {% trans "Your current columns are kept until you apply the proposal." %}
           </p>
+          <div id="tabular-import-input-error">
+          </div>
         </div>
-        <button type="button"
-                class="btn-close"
-                data-bs-dismiss="modal"
-                aria-label="{% trans 'Close' %}">
-        </button>
-      </div>
-      <div class="modal-body">
-        <label class="form-label" for="id_table_schema">{% trans "Descriptor JSON" %}</label>
-        <textarea name="table_schema"
-                  id="id_table_schema"
-                  class="form-control font-monospace"
-                  rows="6"
-                  spellcheck="false"
-                  placeholder='{ "fields": [...] }'></textarea>
-        <div class="mt-3">
-          <label class="form-label" for="id_schema_file">{% trans "Or upload descriptor JSON" %}</label>
-          <input type="file"
-                 name="schema_file"
-                 id="id_schema_file"
-                 class="form-control"
-                 accept=".json,application/json" />
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            {% trans "Cancel" %}
+          </button>
+          <button type="button"
+                  class="btn btn-primary"
+                  data-tabular-modal-submit
+                  data-requires-input="#id_table_schema, #id_schema_file"
+                  disabled
+                  hx-post="{{ tabular_import_url }}"
+                  hx-target="#tabular-import-review-body"
+                  hx-swap="innerHTML"
+                  hx-include="#tabular-step-settings-form, #id_table_schema, #id_schema_file"
+                  hx-encoding="multipart/form-data"
+                  hx-disabled-elt="this"
+                  hx-indicator="#tabular-import-indicator">
+            <i class="bi bi-box-arrow-in-down me-1" aria-hidden="true"></i>{% trans "Import schema" %}
+          </button>
         </div>
-        <p class="form-text">
-          {% trans "Your current unsaved columns are kept until you apply the proposal." %}
-        </p>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-          {% trans "Cancel" %}
-        </button>
-        <button type="button"
-                class="btn btn-primary"
-                data-tabular-modal-submit
-                hx-post="{{ tabular_import_url }}"
-                hx-target="#tabular-schema-workspace"
-                hx-swap="outerHTML"
-                hx-include="#tabular-step-settings-form, #id_table_schema, #id_schema_file"
-                hx-encoding="multipart/form-data"
-                hx-disabled-elt="this"
-                hx-sync="#tabular-schema-workspace:replace"
-                hx-indicator="#tabular-schema-request-indicator">
-          <i class="bi bi-box-arrow-in-down me-1" aria-hidden="true"></i>{% trans "Import schema" %}
-        </button>
+
+      {% comment %}── Screen 2: review ──{% endcomment %}
+      <div data-modal-screen="review" class="d-none">
+        <div class="modal-header">
+          <h2 class="modal-title h5 mb-0">{% trans "Review imported schema" %}</h2>
+          <button type="button"
+                  class="btn-close"
+                  data-bs-dismiss="modal"
+                  aria-label="{% trans 'Close' %}">
+          </button>
+        </div>
+        <div class="modal-body" id="tabular-import-review-body">
+          {% comment %}Populated by the import endpoint.{% endcomment %}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            {% trans "Cancel" %}
+          </button>
+          <button type="button" class="btn btn-secondary" data-tabular-modal-back>
+            <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>{% trans "Back" %}
+          </button>
+          <button type="button"
+                  class="btn btn-primary"
+                  data-tabular-apply-submit
+                  hx-post="{{ tabular_apply_url }}"
+                  hx-target="#tabular-schema-workspace"
+                  hx-swap="outerHTML"
+                  hx-include="#tabular-step-settings-form, #tabular-import-review-body"
+                  hx-disabled-elt="this"
+                  hx-sync="#tabular-schema-workspace:replace"
+                  hx-indicator="#tabular-schema-request-indicator">
+            <i class="bi bi-check2 me-1" aria-hidden="true"></i>{% trans "Apply" %}
+          </button>
+        </div>
       </div>
+
     </div>
   </div>
 </div>

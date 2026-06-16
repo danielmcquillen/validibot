@@ -87,17 +87,23 @@ def _coerce_temporal(raw: str) -> Coerced:
     return Coerced(ok=True, is_null=False, value=parsed)
 
 
-def coerce_cell(raw: str, field_type: str) -> Coerced:
+def coerce_cell(
+    raw: str,
+    field_type: str,
+    missing_values: tuple[str, ...] = ("",),
+) -> Coerced:
     """Coerce a raw cell string to ``field_type``.
 
-    An empty string is *null* regardless of type (nullability is decided by the
-    ``required`` constraint, not here). ``string`` always succeeds. ``number``
-    and ``integer`` parse locale-free; ``boolean`` accepts a fixed set of
-    spellings; ``date``/``datetime`` accept ISO 8601 only. Anything that fails
-    is a type error (``ok=False``), which native validation reports as
-    ``tabular.type_error``.
+    A cell whose raw text is one of *missing_values* is *null* regardless of
+    type (nullability is decided by the ``required`` constraint, not here). The
+    default ``("",)`` makes only an empty cell null; a schema's declared
+    ``missingValues`` (e.g. ``NA``/``NULL``) widen that set. ``string`` always
+    succeeds. ``number`` and ``integer`` parse locale-free; ``boolean`` accepts
+    a fixed set of spellings; ``date``/``datetime`` accept ISO 8601 only.
+    Anything that fails is a type error (``ok=False``), which native validation
+    reports as ``tabular.type_error``.
     """
-    if raw == "":
+    if raw in missing_values:
         return _NULL
     if field_type == "string":
         return Coerced(ok=True, is_null=False, value=raw)

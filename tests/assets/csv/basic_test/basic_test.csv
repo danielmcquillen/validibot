@@ -1,0 +1,4 @@
+order_id,sku,product_name,category,quantity,unit_price,discount_pct,currency,customer_email,ordered_at,ship_date,is_gift,gift_message,order_year,pickup_time,warehouse_id
+o-1001,ABC-0001,USB-C Cable,electronics,2,9.99,0,USD,buyer@example.com,2026-05-01T14:30:00,2026-05-03,false,,2026,09:00,WH1
+o-1001,ABC-0002,Paperback Novel,books,1,14.50,10,USD,buyer@example.com,2026-05-01T14:30:00,2026-05-03,true,Happy birthday!,2026,09:00,WH1
+o-1001,ABC-0002,,widgets,0,-3.00,150,XYZ,not-an-email,nope,2026-13-40,maybe,,2026,99:99,WH9

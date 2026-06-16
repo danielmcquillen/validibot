@@ -1203,6 +1203,29 @@ class GuestRevokeAllView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, V
         )
         revoked_count = grants.update(is_active=False)
 
+        # Audit the revocation. The bulk ``update()`` bypasses
+        # ``post_save``, so the GUEST_REVOKED entry is recorded explicitly,
+        # identifying the guest by id (never email).
+        if revoked_count:
+            from validibot.audit.constants import AuditAction
+            from validibot.audit.context import get_current_context
+            from validibot.audit.services import AuditLogService
+
+            _audit_ctx = get_current_context()
+            AuditLogService.record(
+                action=AuditAction.GUEST_REVOKED,
+                actor=_audit_ctx.actor,
+                org=self.organization,
+                target_type="users.User",
+                target_id=str(target_user.pk),
+                target_repr=f"Guest #{target_user.pk}",
+                metadata={
+                    "scope": "all_workflows",
+                    "grants_revoked": revoked_count,
+                },
+                request_id=_audit_ctx.request_id,
+            )
+
         # Notify the user
         if revoked_count > 0:
             Notification.objects.create(

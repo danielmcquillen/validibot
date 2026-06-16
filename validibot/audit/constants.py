@@ -8,6 +8,18 @@ recognises. Each action maps onto a category with a retention policy
 snapshot into the ``changes`` JSON blob. Anything not in the whitelist
 is recorded as ``{"<field>": "<redacted>"}`` so operators see the *fact*
 of a change without leaking secrets — field-level data sanitisation.
+
+Naming convention — **flat ``snake_case``** values (``workflow_created``,
+``login_succeeded``, ``api_key_created``). This is deliberately *different*
+from the analytics vocabulary ``validibot.events.constants.AppEventType``,
+whose values are dotted (``workflow.created``). The value shape tells you
+which system a string belongs to; never import one enum when you mean the
+other. Some member *names* (``WORKFLOW_CREATED`` …) appear in both because
+the event is both audit- and analytics-worthy — but the values, retention,
+and readers differ. These audit values are also stored on every historical
+row and mirrored into archived JSONL, so renaming one is a data migration,
+not a refactor — keep them stable. See AGENTS.md → "Observability — which
+log do I write to?".
 """
 
 from __future__ import annotations
@@ -22,6 +34,10 @@ class AuditAction(TextChoices):
     Start narrow. Every action has a per-capture-path hook and a
     retention commitment; adding one is not free. The three categories
     here match the initial-rollout scope.
+
+    Values are flat ``snake_case`` (``workflow_created``) — distinct from
+    the dotted analytics vocabulary ``AppEventType``
+    (``workflow.created``). See the module docstring; don't cross the two.
     """
 
     # ── Configuration changes (table stakes) ───────────────────────
@@ -34,6 +50,14 @@ class AuditAction(TextChoices):
     VALIDATOR_ADDED = "validator_added", _("Validator Added")
     VALIDATOR_UPDATED = "validator_updated", _("Validator Updated")
     VALIDATOR_REMOVED = "validator_removed", _("Validator Removed")
+    # Organization lifecycle. We audit *changes* and deletion, not
+    # creation: a new org is usually an auto-provisioned personal
+    # workspace (noise), and auditing creation would also mean an org's
+    # own audit view is never empty. The registry files these under the
+    # org itself (``org_resolver=lambda o: o``) so they surface in that
+    # org's view rather than as global (org=NULL) events.
+    ORG_UPDATED = "org_updated", _("Organization Updated")
+    ORG_DELETED = "org_deleted", _("Organization Deleted")
     MEMBER_INVITED = "member_invited", _("Member Invited")
     MEMBER_ROLE_CHANGED = "member_role_changed", _("Member Role Changed")
     MEMBER_REMOVED = "member_removed", _("Member Removed")
@@ -54,6 +78,15 @@ class AuditAction(TextChoices):
         _("Password Reset Requested"),
     )
     SESSION_REVOKED = "session_revoked", _("Session Revoked")
+
+    # Email-address lifecycle. We record the *fact* of each change for
+    # account-takeover forensics, never the address value (PII): the
+    # before/after addresses stay out of ``changes`` and ``metadata``,
+    # and ``target_repr`` is a PII-free ``User #<pk>`` label.
+    EMAIL_ADDED = "email_added", _("Email Address Added")
+    EMAIL_CHANGED = "email_changed", _("Email Address Changed")
+    EMAIL_VERIFIED = "email_verified", _("Email Address Verified")
+    EMAIL_REMOVED = "email_removed", _("Email Address Removed")
 
     # ── Admin actions (insider-threat investigation) ───────────────
     ADMIN_OBJECT_CHANGED = "admin_object_changed", _("Admin Object Changed")
@@ -128,6 +161,19 @@ AUDITABLE_FIELDS: dict[str, tuple[str, ...]] = {
     # API_KEY_CREATED / API_KEY_REVOKED actions and only records
     # metadata like the associated user (via ``target_repr``).
     "authtoken.Token": (),
+    # Organization — name / slug / personal flag. The cloud-set trial
+    # fields are low audit value and stay out of the diff.
+    "users.Organization": ("name", "slug", "is_personal"),
+    # WorkflowStep — the composition of a workflow. Scalar fields only:
+    # ``config`` may hold templated text / secrets and the ``validator``
+    # FK is not a JSON scalar, so both stay out of the diff.
+    "workflows.WorkflowStep": (
+        "name",
+        "order",
+        "step_key",
+        "display_schema",
+        "show_success_messages",
+    ),
     # User — administrative status toggles only. Email / name changes
     # are recorded as the *fact* of a change, never the value (GDPR
     # considerations).

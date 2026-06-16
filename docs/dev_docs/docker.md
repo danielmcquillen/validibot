@@ -1,169 +1,245 @@
 # Running Validibot with Docker
 
-This project uses Docker Compose for local development. All services run in containers,
-matching the Cookiecutter Django patterns with Celery + Redis for background task processing.
+Validibot runs entirely in Docker containers for local development — Django, a
+Celery worker, a scheduler, Postgres, Redis, and a local mail catcher. You don't
+need Python, Postgres, or Node installed on your machine; Docker handles
+everything.
 
-## Compose Files
+This page gets you from a fresh machine to a running app in about ten minutes.
 
-Validibot has separate compose files for different environments. If you call Docker Compose directly, **you must specify which file to use**. For day-to-day use, prefer the `just` commands shown below.
+## Before you start
 
-| File                            | Purpose                                    | Command                                              |
-| ------------------------------- | ------------------------------------------ | ---------------------------------------------------- |
-| `docker-compose.local.yml`      | Local development (hot reload, runserver)  | `just local up`                                      |
-| `docker-compose.production.yml` | Production-style (gunicorn, no code mount) | `just self-hosted bootstrap`                      |
+You need three things installed:
 
-There is no default `docker-compose.yml` — running `docker compose up` without `-f` will fail.
+| Tool | What it's for | Get it |
+| ---- | ------------- | ------ |
+| **Docker Desktop** (Mac/Windows) or **Docker Engine** / **Podman** (Linux) | Runs all the containers. Make sure it's actually started before you continue. | <https://docs.docker.com/get-docker/> |
+| **just** | The command runner. Every shortcut below (`just local up`) comes from it. | <https://just.systems/> |
+| **git** | To clone the repository. | <https://git-scm.com/downloads> |
 
-## Quick start (local development)
+You'll also want **4 GB of RAM free for Docker (8 GB recommended)** and these
+ports available: **8000** (web), **8025** (mail). `just local up` checks these
+two for you and stops with a friendly message if something else is using them.
 
-1. Create your local env files from the templates:
+> **What is `just`?** It's a small command runner (think "Make, but friendlier").
+> Validibot's commands live in a `justfile` at the repo root, so you run short,
+> memorable commands like `just local up` instead of long `docker compose`
+> invocations. Install it once (`brew install just`, or see
+> <https://just.systems/>); the [How the `just` commands work](#how-the-just-commands-work)
+> section below explains what they do under the hood.
 
-   ```bash
-   mkdir -p .envs/.local
-   cp .envs.example/.local/.django .envs/.local/.django
-   cp .envs.example/.local/.postgres .envs/.local/.postgres
-   # Optional for Pro/Enterprise
-   cp .envs.example/.local/.build .envs/.local/.build
-   ```
-
-2. Edit the files and replace `!!!SET...!!!` placeholders with your values.
-
-   > ⚠️ **Important**: The `.envs/` folder contains your actual secrets and is gitignored. Never commit it to version control, especially public repositories. See [Environment Configuration](deployment/environment-configuration.md) for details.
-
-3. Build and start:
-
-   ```bash
-   docker compose -f docker-compose.local.yml up --build
-   ```
-
-   Or use the just command:
-
-   ```bash
-   just local up
-   ```
-
-   On first run, the web container automatically:
-   - Applies database migrations
-   - Runs `setup_validibot` to configure site settings, roles, validators, etc.
-
-4. (Optional) Verify setup is correct:
-
-   ```bash
-   docker compose -f docker-compose.local.yml exec web python manage.py check_validibot
-   ```
-
-5. (Optional) Create a superuser if you didn't set `SUPERUSER_USERNAME` in `.envs/.local/.django`:
-
-   ```bash
-   docker compose -f docker-compose.local.yml exec web python manage.py createsuperuser
-   ```
-
-6. Visit http://localhost:8000
-
-## `local-cloud` troubleshooting note
-
-Most community users only need the standard `just local up` stack described above.
-If you see `just local-cloud ...` elsewhere in the repo, that belongs to the
-separate `validibot-cloud` development workflow rather than the normal
-self-hosted community path.
-
-If that `local-cloud` stack fails during startup with a `psycopg_c` error, the
-most common cause is a stale shared virtualenv volume. `validibot-cloud` keeps
-one `.venv` volume shared across containers, and `psycopg[c]` includes a
-compiled extension. After dependency changes or base-image changes, that
-compiled package can drift out of sync with the rest of the persisted
-environment.
-
-Reset the shared virtualenv volume and rebuild the stack:
+## Step 1 — Get the code
 
 ```bash
-docker compose -f ../validibot-cloud/docker-compose.cloud.yml down --remove-orphans
-docker volume rm validibot_validibot_local_venv
-just local-cloud up --build
+git clone https://github.com/danielmcquillen/validibot.git
+cd validibot
 ```
+
+Run every command below from inside this `validibot` folder.
+
+## Step 2 — Create your env files
+
+These hold your local settings and secrets. Copy them from the examples:
+
+```bash
+mkdir -p .envs/.local
+cp .envs.example/.local/.django   .envs/.local/.django
+cp .envs.example/.local/.postgres .envs/.local/.postgres
+```
+
+> ⚠️ The `.envs/` folder holds real secrets and is gitignored. Never commit it.
+> See [Environment Configuration](deployment/environment-configuration.md) for
+> details. (Pro/Enterprise users also copy `.build` — see [Going further](#going-further).)
+
+## Step 3 — Set the three required values
+
+Open `.envs/.local/.django` and replace the three `!!!SET...!!!` placeholders.
+**The app will not start in local development without all three** — the local
+settings raise an error if the secret key or MFA key is missing.
+
+| Variable | What it is | Generate it with |
+| -------- | ---------- | ---------------- |
+| `DJANGO_SECRET_KEY` | Django signing key | `python -c "import secrets; print(secrets.token_urlsafe(50))"` |
+| `DJANGO_MFA_ENCRYPTION_KEY` | Fernet key that encrypts MFA secrets. Must be a valid Fernet key, not just any random string. | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `SUPERUSER_PASSWORD` | Your admin login password | Pick a strong one — this is how you'll sign in |
+
+> No local Python with `cryptography`? Generate the Fernet key with Docker, which
+> you already have:
+>
+> ```bash
+> docker run --rm python:3.13-slim sh -c "pip install -q cryptography && \
+>   python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+> ```
+
+**`.envs/.local/.postgres` needs no edits** — its defaults
+(`validibot` / `validibot`) work as-is for local development.
+
+## Step 4 — Build and start
+
+```bash
+just local up
+```
+
+…which runs:
+
+```bash
+docker compose -f docker-compose.local.yml up -d
+```
+
+**The first run builds the images and downloads base layers — expect a few
+minutes.** Later starts are fast. (Need to rebuild after changing dependencies or
+a Dockerfile? Use `just local build`.)
+
+On first start the web container automatically applies database migrations and
+runs `setup_validibot`, which configures site settings, roles, the built-in
+validators, **and creates your admin user** from the `SUPERUSER_*` values. You
+don't need to run anything else.
+
+## Step 5 — Open the app
+
+Go to **http://localhost:8000** and sign in:
+
+- **Username:** `admin` (the `SUPERUSER_USERNAME` default)
+- **Password:** the `SUPERUSER_PASSWORD` you set in step 3
+
+That's it — you're running Validibot. 🎉
+
+## Did it work?
+
+Quick checks once the stack is up:
+
+```bash
+just local ps                          # all services should be "Up"
+curl http://localhost:8000/health/     # should return OK
+just local manage "check_validibot"    # confirms setup is correct
+```
+
+- **App:** http://localhost:8000
+- **Captured emails:** http://localhost:8025 (Mailpit — every email the app
+  "sends" locally lands here instead of a real inbox)
+
+## How the `just` commands work
+
+You don't need this to get running, but it helps to know what `just` is doing.
+
+The repo root has a `justfile` that acts as an orchestrator. It pulls in
+shared helpers (`import 'just/common.just'`) and wires up each command group as a
+module — `mod local 'just/local'` is what gives you `just local <command>`.
+There are sibling groups for the other workflows: `just local-pro`,
+`just local-cloud`, `just self-hosted`, `just gcp`. Run plain `just` to see the
+menu, or `just --list` for everything.
+
+For local development, the recipes in `just/local/mod.just` are thin wrappers
+around Docker Compose, always run from the repo root so relative paths resolve:
+
+| Command | What it actually runs |
+| ------- | --------------------- |
+| `just local up` | Pre-checks ports 8000/8025, then `docker compose -f docker-compose.local.yml up -d` (builds automatically on first run). |
+| `just local build` | `docker compose … up -d --build` — rebuild after dependency or Dockerfile changes. |
+| `just local rebuild` | Same, but also wipes and repopulates the venv volume (use after dependency upgrades). |
+| `just local down` | Stop containers; data is kept. |
+| `just local logs` | Follow logs from all services. |
+| `just local ps` | Container status. |
+| `just local migrate` | Run `manage.py migrate` in the web container. |
+| `just local manage "<cmd>"` | Run any `manage.py` command (e.g. `createsuperuser`). |
+| `just local clean` | Stop and **delete all data** (volumes removed). |
+
+One nicety: if `.envs/.local/.build` exists, the recipes automatically pass it as
+`--env-file`; if it doesn't, they skip it. So community users never have to think
+about that file. Full reference: [Justfile Guide](deployment/justfile-guide.md).
 
 ## What's running
 
-- `web`: Django app from `compose/local/django/Dockerfile`, mounted with your local code for hot reload (`runserver` on 8000). Runs migrations and initial setup on startup.
-- `worker`: Celery worker processing background tasks from Redis queue. Spawns validator containers via Docker socket.
-- `scheduler`: Celery Beat scheduler triggering periodic tasks (purge expired data, cleanup sessions, etc.).
-- `postgres`: Postgres built from `compose/production/postgres/Dockerfile`, env vars from `.envs/.local/.postgres`.
-- `redis`: Redis broker for Celery task queue.
-- `mailpit`: Local SMTP capture at http://localhost:8025.
+| Service | What it does |
+| ------- | ------------ |
+| `web` | The Django app (dev server on 8000, your code hot-reloads). |
+| `worker` | Celery worker for background jobs; also launches advanced validator containers via the Docker socket. |
+| `scheduler` | Celery Beat — periodic jobs like cleanup and data expiry. |
+| `postgres` | The database. |
+| `redis` | Task queue for Celery. |
+| `mailpit` | Captures local email at http://localhost:8025. |
 
-Entrypoint and start scripts live in `compose/local/django/` and wait for Postgres before launching.
+Entrypoint and start scripts live in `compose/local/django/` and wait for
+Postgres before launching.
 
-## Production-style compose (for parity/testing)
+## Troubleshooting first-run issues
 
-Use `docker-compose.production.yml` to test production-like behavior locally. This runs Gunicorn instead of the Django dev server and doesn't mount your local code.
+**"Cannot connect to the Docker daemon"** — Docker Desktop isn't running. Start
+it, wait for it to settle, then retry.
 
-1. Create production env files from the templates:
+**"Port 8000 / 8025 is in use"** — `just local up` detected a leftover process
+and stopped. Kill the process it names, then re-run `just local up`.
 
-   ```bash
-   mkdir -p .envs/.production/.docker-compose
-   cp .envs.example/.production/.self-hosted/.django .envs/.production/.self-hosted/.django
-   cp .envs.example/.production/.self-hosted/.postgres .envs/.production/.self-hosted/.postgres
-   # Optional for Pro/Enterprise
-   cp .envs.example/.production/.self-hosted/.build .envs/.production/.self-hosted/.build
-   ```
+**The web container exits right after starting** — almost always a missing or
+invalid value from step 3. Check `just local logs web`; a missing
+`DJANGO_SECRET_KEY` or `DJANGO_MFA_ENCRYPTION_KEY` (or an MFA key that isn't a
+valid Fernet key) raises a clear error at startup.
 
-2. Edit the files with production-appropriate values:
-   - Generate a proper `DJANGO_SECRET_KEY`
-   - Set a strong `POSTGRES_PASSWORD`
-   - Set `SUPERUSER_PASSWORD` and `SUPERUSER_EMAIL`
+**First build is very slow** — normal the first time; it's cached afterward.
+Watch progress with `just local logs`.
 
-3. Validate the env files and bootstrap the stack:
+**The page loads but looks unstyled** — prebuilt CSS/JS ships in the repo, so this
+is rare. You only need Node if you're *editing* SCSS/TypeScript: run
+`npm install && npm run build` on the host to regenerate the assets.
 
-   ```bash
-   just self-hosted check-env
-   just self-hosted bootstrap
-   ```
+**Start completely clean** — `just local clean` removes containers *and data*,
+then `just local up` rebuilds from scratch. See also
+[Reset an Environment](how-to/reset-an-environment.md).
 
-   `bootstrap` builds and starts the production-style stack, applies migrations,
-   runs `setup_validibot`, and finishes with `check_validibot`.
+## Advanced validators (optional — skip for your first run)
 
-   The production `/start` script intentionally does **not** apply migrations on
-   startup. That keeps the web process from racing schema changes and matches the
-   expected self-host flow for customer deployments.
+**You don't need these to get started.** The built-in validators (JSON Schema,
+XML Schema, Tabular, etc.) run inside the Django process and work the moment the
+stack is up.
 
-4. Visit http://localhost:8000
+Heavyweight validators — **EnergyPlus**, **FMU**, and **SHACL** — run as separate
+sibling containers that the `worker` launches on demand. The matching image must
+already exist on your Docker host. They live in a separate repo and build with one
+command — no registry, login, or push needed for local use:
 
-Production-style "web" serves user traffic via Gunicorn on port 8000. The "worker" processes background tasks via Celery. The "scheduler" runs Celery Beat for periodic tasks. This is the same stack used for [DigitalOcean deployments](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/providers/digitalocean.md).
+```bash
+git clone https://github.com/danielmcquillen/validibot-validator-backends.git
+cd validibot-validator-backends
+just build-all          # or build one: just build energyplus
+```
 
-## VS Code: pytest "Run" button
+This produces images named `validibot-validator-backend-<slug>:latest` (slugs:
+`energyplus`, `fmu`, `shacl`). The worker finds each one **by that name
+automatically** — there's nothing to configure. By default these containers run
+with **no network access** for safety (they exchange files through a shared
+storage volume); uncomment `VALIDATOR_NETWORK` in the compose file only if a
+validator genuinely needs the internet.
 
-VS Code's test runner needs environment variables. This repo includes a minimal env file at `.vscode/.env` that points tests at the Docker Postgres (using a `DATABASE_URL` with the local credentials from `docker-compose.local.yml`).
+> ⚠️ Only run validator backend images you build and control yourself — they
+> execute with access to your validation data.
 
-If the **Testing** panel hangs, double-check:
+For registry-based deployment (build-and-push to GCP Artifact Registry, etc.) and
+per-backend details, see the `validibot-validator-backends` README and
+[Execution Backends](overview/execution_backends.md).
 
-- VS Code is using the repo interpreter: `.venv/bin/python` (see `.vscode/settings.json`)
-- Docker Compose is running: `docker compose -f docker-compose.local.yml up -d postgres`
+## Going further
 
-## Advanced validators
+- **Pro / Enterprise, the MCP server, signed credentials:** these are opt-in and
+  documented in [Run Validibot Locally](deployment/deploy-local.md) (copy
+  `.envs.example/.local/.build`, set `VALIDIBOT_COMMERCIAL_PACKAGE`, and use
+  `just local-pro up`).
+- **Production-style stack** (Gunicorn, no code mount, for parity testing):
+  `docker-compose.production.yml` via `just self-hosted bootstrap`. See
+  [Deploy with Docker Compose](deployment/deploy-docker-compose.md).
+- **VS Code test runner:** the repo ships `.vscode/.env` pointing pytest at the
+  Docker Postgres. If the Testing panel hangs, confirm the interpreter is
+  `.venv/bin/python` and that Postgres is up (`just local up`).
 
-The worker container spawns advanced validator containers (EnergyPlus, FMU, etc.) via the Docker socket. This requires:
-
-1. **Docker socket mounted in the worker service** — Already configured in the production compose file
-2. **Correct volume names** — The compose files assume `COMPOSE_PROJECT_NAME=validibot`
-3. **Validator images available** — Must be pre-pulled or accessible from your registry
-
-**Network isolation:** By default, advanced validator containers run with no network access (`network_mode='none'`). This is the most secure configuration — containers read/write via the shared storage volume and cannot reach other services or the internet. To enable network access (if validators need to download external files), uncomment `VALIDATOR_NETWORK` in the compose files.
-
-For private registries, configure Docker credentials on the host before running validations. See [Execution Backends](overview/execution_backends.md) for details on registry authentication, network isolation, and naming requirements.
-
-## Notes and deviations from full Cookiecutter setup
-
-- **Celery + Redis** handles background tasks and scheduled jobs for Docker Compose deployments. For GCP, Cloud Tasks/Scheduler are used instead.
-- Static/media: Whitenoise still works in-container. Production GCP deployments can move static/media to GCS + CDN.
-- Settings: the project already uses `django-environ`; `DATABASE_URL` is honored from the env files.
-- Secrets: keep real secrets out of the repo; the examples are for local/dev only.
-- Frontend assets: the Docker images do not run `npm install`/`npm run build`. If you change CSS/JS that relies on npm, build it locally (`npm install`, then `npm run build`) and ensure the generated assets are available to Django/Whitenoise (or your chosen static pipeline).
+> **Note on `local-cloud`:** if you see `just local-cloud ...` recipes, those drive
+> the separate hosted-Cloud workflow, not the self-hosted path — you can ignore
+> them.
 
 ## Where things live
 
 - `compose/local/django/Dockerfile`: base image for local dev (includes dev extras).
 - `compose/production/django/Dockerfile`: base image for production (no dev extras).
-- `docker-compose.local.yml`: local dev (runserver, code mounted) with web + worker + postgres + mailpit.
-- `docker-compose.production.yml`: production-like (gunicorn, no code mount) with web + worker + postgres.
+- `docker-compose.local.yml`: local dev (runserver, code mounted) with web + worker + scheduler + postgres + redis + mailpit.
+- `docker-compose.production.yml`: production-like (gunicorn, no code mount).
+- `just/local/mod.just`: the local development recipes (`up`, `down`, `build`, `logs`, …).
 - `compose/local/django/entrypoint.sh` and `start.sh`: wait for DB, fix Docker socket permissions, run migrations, first-run setup, start dev server on 8000.
 - `compose/production/django/entrypoint.sh` and `start.sh`: wait for DB, fix Docker socket permissions if mounted, collectstatic, skip setup until migrations exist, then start Gunicorn on 8000.

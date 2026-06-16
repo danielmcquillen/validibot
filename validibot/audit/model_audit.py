@@ -58,6 +58,8 @@ from validibot.audit.context import get_current_context
 from validibot.audit.services import AuditLogService
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from django.db.models import Model
 
 logger = logging.getLogger(__name__)
@@ -75,11 +77,19 @@ class AuditActionTriplet:
     Any field can be ``None`` — a model that should only audit updates
     (e.g. we track role changes but not initial creation) leaves
     ``create`` and ``delete`` unset and only fills ``update``.
+
+    ``org_resolver`` overrides how the owning ``Organization`` is found
+    for this model. The default (``_resolve_org``) reads ``instance.org``,
+    which is right for most models — but ``Organization`` *is* the org (it
+    resolves to itself) and ``WorkflowStep`` reaches it via
+    ``instance.workflow.org``. Without this, those entries would land with
+    ``org=NULL`` and be invisible in the org-scoped audit UI.
     """
 
     create: AuditAction | None = None
     update: AuditAction | None = None
     delete: AuditAction | None = None
+    org_resolver: Callable[[Model], Model | None] | None = None
 
 
 class ModelAuditRegistry:
@@ -100,6 +110,7 @@ class ModelAuditRegistry:
         create: AuditAction | None = None,
         update: AuditAction | None = None,
         delete: AuditAction | None = None,
+        org_resolver: Callable[[Model], Model | None] | None = None,
     ) -> None:
         """Record which actions to use for ``model`` lifecycle events."""
 
@@ -107,6 +118,7 @@ class ModelAuditRegistry:
             create=create,
             update=update,
             delete=delete,
+            org_resolver=org_resolver,
         )
 
     def unregister(self, model: type[Model]) -> None:
@@ -191,6 +203,18 @@ def _resolve_org(instance: Model) -> Model | None:
     return getattr(instance, "org", None)
 
 
+def _org_for(triplet: AuditActionTriplet, instance: Model) -> Model | None:
+    """Resolve the owning org, honouring a per-model ``org_resolver``.
+
+    Falls back to the default ``instance.org`` lookup when a model
+    registered no custom resolver.
+    """
+
+    if triplet.org_resolver is not None:
+        return triplet.org_resolver(instance)
+    return _resolve_org(instance)
+
+
 # ── signal receivers ────────────────────────────────────────────────
 
 
@@ -236,7 +260,7 @@ def _on_post_save(
     context = get_current_context()
     common_kwargs = {
         "actor": context.actor,
-        "org": _resolve_org(instance),
+        "org": _org_for(triplet, instance),
         "target": instance,
         "request_id": context.request_id,
     }
@@ -304,7 +328,7 @@ def _on_pre_delete(sender: type[Model], instance: Model, **kwargs: Any) -> None:
     AuditLogService.record(
         action=triplet.delete,
         actor=context.actor,
-        org=_resolve_org(instance),
+        org=_org_for(triplet, instance),
         target=instance,
         request_id=context.request_id,
         # On delete the "before" values are the ``final_state``; the
@@ -353,8 +377,10 @@ def register_builtin_model_audits() -> None:
     # Local imports keep this module importable at app-config time
     # without forcing the order of app loading.
     from validibot.users.models import Membership
+    from validibot.users.models import Organization
     from validibot.validations.models import Ruleset
     from validibot.workflows.models import Workflow
+    from validibot.workflows.models import WorkflowStep
 
     model_audit_registry.register(
         Workflow,
@@ -368,13 +394,38 @@ def register_builtin_model_audits() -> None:
         update=AuditAction.RULESET_UPDATED,
         delete=AuditAction.RULESET_DELETED,
     )
-    # Memberships: only update events are audited here — join/leave
-    # will be captured by dedicated invitation and removal hooks in a
-    # later session. ``is_active`` changes produce a
-    # MEMBER_ROLE_CHANGED entry today because that's the closest
-    # existing action code; a dedicated MEMBER_SUSPENDED / REINSTATED
-    # split can come later without touching the capture layer.
+    # Memberships: ``update`` captures role / suspension changes (an
+    # ``is_active`` flip lands as MEMBER_ROLE_CHANGED — the closest
+    # existing code); ``delete`` captures a member being removed. The two
+    # ``membership.delete()`` call sites (members + users views) both fire
+    # pre_delete, so removal is covered without touching those views.
     model_audit_registry.register(
         Membership,
         update=AuditAction.MEMBER_ROLE_CHANGED,
+        delete=AuditAction.MEMBER_REMOVED,
+    )
+    # Organization is its own org — ``org_resolver`` returns the instance
+    # so update/delete entries surface in that org's audit view. Creation
+    # is intentionally not audited: most orgs are auto-provisioned personal
+    # workspaces (noise), and auditing create would mean an org's own audit
+    # view is never empty.
+    model_audit_registry.register(
+        Organization,
+        update=AuditAction.ORG_UPDATED,
+        delete=AuditAction.ORG_DELETED,
+        org_resolver=lambda org: org,
+    )
+    # WorkflowStep composition changes read as "validator added / updated
+    # / removed" to an operator. The owning org is reached through the
+    # parent workflow.
+    model_audit_registry.register(
+        WorkflowStep,
+        create=AuditAction.VALIDATOR_ADDED,
+        update=AuditAction.VALIDATOR_UPDATED,
+        delete=AuditAction.VALIDATOR_REMOVED,
+        org_resolver=lambda step: getattr(
+            getattr(step, "workflow", None),
+            "org",
+            None,
+        ),
     )

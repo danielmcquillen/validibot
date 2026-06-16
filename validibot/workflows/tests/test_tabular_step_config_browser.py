@@ -34,6 +34,10 @@ from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
 from validibot.workflows.tests.test_tabular_step_config import _login_as_author
 
+# The left nav expands to 200px (flex: 0 0 200px). Anything at least this wide
+# counts as "settled" after the width transition, with a px of sub-pixel slack.
+_LEFT_NAV_SETTLED_WIDTH = 199
+
 
 @skipUnless(
     os.environ.get("RUN_BROWSER_TESTS") == "1",
@@ -182,6 +186,13 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
                 ),
             )
             self.assertEqual(nav_toggle.get_attribute("aria-expanded"), "true")
+            # The `is-collapsed` class drops immediately, but the nav width
+            # animates back to 200px over ~0.28s. Wait for it to settle before
+            # touching the header, or the still-sliding nav can intercept a
+            # click at a now-stale coordinate.
+            self.wait.until(
+                lambda _driver: left_nav.rect["width"] >= _LEFT_NAV_SETTLED_WIDTH,
+            )
 
             container = self.driver.find_element(By.ID, "tabular-step-settings")
             card = self.driver.find_element(By.CSS_SELECTOR, ".editor-card")

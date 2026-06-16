@@ -32,7 +32,16 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from allauth.account.signals import email_added
+from allauth.account.signals import email_changed
+from allauth.account.signals import email_confirmed
+from allauth.account.signals import email_removed
 from allauth.account.signals import password_changed
+from allauth.account.signals import password_reset
+from allauth.account.signals import user_logged_out
+from allauth.mfa.signals import authentication_failed
+from allauth.mfa.signals import authenticator_added
+from allauth.mfa.signals import authenticator_removed
 from django.contrib.auth.signals import user_logged_in
 from django.contrib.auth.signals import user_login_failed
 from django.db.models.signals import post_delete
@@ -166,6 +175,146 @@ def on_password_changed(sender, request, user, **kwargs) -> None:
     )
 
 
+# ── session / MFA / email identity events ───────────────────────────
+
+
+def on_user_logged_out(sender, request, user, **kwargs) -> None:
+    """Record a ``SESSION_REVOKED`` entry when a user logs out.
+
+    The inverse of ``on_user_logged_in`` — a sign-out should be as
+    visible in the audit trail as a sign-in. ``user`` may be ``None``
+    if the session was already anonymous; the service tolerates a
+    user-less actor.
+    """
+
+    context = get_current_context()
+    AuditLogService.record(
+        action=AuditAction.SESSION_REVOKED,
+        actor=_actor_for_signal(user, request),
+        request_id=context.request_id,
+        target=user,
+        metadata=_login_metadata(request),
+    )
+
+
+def on_password_reset(sender, request, user, **kwargs) -> None:
+    """Record ``PASSWORD_RESET_REQUESTED`` for a reset via the email link.
+
+    allauth fires ``password_reset`` once the reset *completes*. We file
+    it under the closest existing action and tag ``metadata.phase`` so a
+    reader can tell it apart from an interactive ``PASSWORD_CHANGED``.
+    """
+
+    context = get_current_context()
+    AuditLogService.record(
+        action=AuditAction.PASSWORD_RESET_REQUESTED,
+        actor=_actor_for_signal(user, request),
+        request_id=context.request_id,
+        target=user,
+        metadata={"phase": "completed"},
+    )
+
+
+def on_mfa_authenticator_added(
+    sender,
+    request,
+    user,
+    authenticator,
+    **kwargs,
+) -> None:
+    """Record ``MFA_ENABLED`` when an authenticator is added.
+
+    Captures only the factor *type* (totp / recovery_codes / webauthn)
+    for incident triage — never the secret material on the authenticator.
+    """
+
+    context = get_current_context()
+    AuditLogService.record(
+        action=AuditAction.MFA_ENABLED,
+        actor=_actor_for_signal(user, request),
+        request_id=context.request_id,
+        target=user,
+        metadata=_mfa_metadata(authenticator),
+    )
+
+
+def on_mfa_authenticator_removed(
+    sender,
+    request,
+    user,
+    authenticator,
+    **kwargs,
+) -> None:
+    """Record ``MFA_DISABLED`` when an authenticator is removed."""
+
+    context = get_current_context()
+    AuditLogService.record(
+        action=AuditAction.MFA_DISABLED,
+        actor=_actor_for_signal(user, request),
+        request_id=context.request_id,
+        target=user,
+        metadata=_mfa_metadata(authenticator),
+    )
+
+
+def on_mfa_authentication_failed(sender, request, user, **kwargs) -> None:
+    """Record ``MFA_CHALLENGE_FAILED`` on a failed second-factor check.
+
+    A burst of these is a brute-force / phishing signal, so it gets its
+    own action for log-based alerting.
+    """
+
+    context = get_current_context()
+    AuditLogService.record(
+        action=AuditAction.MFA_CHALLENGE_FAILED,
+        actor=_actor_for_signal(user, request),
+        request_id=context.request_id,
+        target=user,
+        metadata=_mfa_metadata(kwargs.get("authenticator")),
+    )
+
+
+def on_email_added(sender, request, user, email_address, **kwargs) -> None:
+    """Record ``EMAIL_ADDED`` — the *fact* only, never the address value."""
+
+    _record_email_event(AuditAction.EMAIL_ADDED, user, request)
+
+
+def on_email_changed(
+    sender,
+    request,
+    user,
+    from_email_address,
+    to_email_address,
+    **kwargs,
+) -> None:
+    """Record ``EMAIL_CHANGED`` — the fact only, not the before/after values.
+
+    The changed addresses are PII; recording that a change happened (and
+    by whom, when, from where) is what matters for account-takeover
+    forensics, per the audit design doc's email special-case.
+    """
+
+    _record_email_event(AuditAction.EMAIL_CHANGED, user, request)
+
+
+def on_email_confirmed(sender, request, email_address, **kwargs) -> None:
+    """Record ``EMAIL_VERIFIED``.
+
+    Unlike the other email signals, ``email_confirmed`` carries no
+    ``user`` argument — we resolve the owner from ``email_address.user``.
+    """
+
+    user = getattr(email_address, "user", None)
+    _record_email_event(AuditAction.EMAIL_VERIFIED, user, request)
+
+
+def on_email_removed(sender, request, user, email_address, **kwargs) -> None:
+    """Record ``EMAIL_REMOVED`` — the fact only."""
+
+    _record_email_event(AuditAction.EMAIL_REMOVED, user, request)
+
+
 # ── DRF auth tokens (Validibot "API keys") ──────────────────────────
 
 
@@ -212,6 +361,63 @@ def on_token_deleted(sender, instance, **kwargs) -> None:
     )
 
 
+# ── membership / guest lifecycle ─────────────────────────────────────
+
+
+def on_member_invite_created(sender, instance, created, **kwargs) -> None:
+    """Record ``MEMBER_INVITED`` when a ``MemberInvite`` row is created.
+
+    The invitee's email is third-party PII and is deliberately *not*
+    captured. We record the inviting org, the proposed roles and the
+    status with a PII-free ``target_repr`` — enough to answer "who was
+    invited to what, by whom" without writing an unrelated party's
+    address into the immutable layer.
+    """
+
+    if not created:
+        return
+
+    context = get_current_context()
+    AuditLogService.record(
+        action=AuditAction.MEMBER_INVITED,
+        actor=context.actor,
+        org=getattr(instance, "org", None),
+        target_type="users.MemberInvite",
+        target_id=str(instance.pk),
+        target_repr=f"Member invite #{instance.pk}",
+        metadata={
+            "roles": list(instance.roles) if instance.roles else [],
+            "status": instance.status,
+        },
+        request_id=context.request_id,
+    )
+
+
+def on_org_guest_access_created(sender, instance, created, **kwargs) -> None:
+    """Record ``GUEST_GRANTED`` when org-wide guest access is created.
+
+    Covers the org-wide ALL-scope grant (``OrgGuestAccess``). Per-workflow
+    grants and the bulk-``update()`` revocations live in the sharing /
+    members views and are audited there — a QuerySet ``.update()`` does
+    not fire ``post_save``. The guest's *id* is recorded, never an email.
+    """
+
+    if not created:
+        return
+
+    context = get_current_context()
+    AuditLogService.record(
+        action=AuditAction.GUEST_GRANTED,
+        actor=context.actor,
+        org=getattr(instance, "org", None),
+        target_type="workflows.OrgGuestAccess",
+        target_id=str(instance.pk),
+        target_repr=f"Org guest access #{instance.pk}",
+        metadata={"guest_user_id": getattr(instance, "user_id", None)},
+        request_id=context.request_id,
+    )
+
+
 # ── wiring ──────────────────────────────────────────────────────────
 
 
@@ -236,6 +442,42 @@ def connect_signal_receivers() -> None:
         on_password_changed,
         dispatch_uid="validibot_audit.on_password_changed",
     )
+    user_logged_out.connect(
+        on_user_logged_out,
+        dispatch_uid="validibot_audit.on_user_logged_out",
+    )
+    password_reset.connect(
+        on_password_reset,
+        dispatch_uid="validibot_audit.on_password_reset",
+    )
+    authenticator_added.connect(
+        on_mfa_authenticator_added,
+        dispatch_uid="validibot_audit.on_mfa_authenticator_added",
+    )
+    authenticator_removed.connect(
+        on_mfa_authenticator_removed,
+        dispatch_uid="validibot_audit.on_mfa_authenticator_removed",
+    )
+    authentication_failed.connect(
+        on_mfa_authentication_failed,
+        dispatch_uid="validibot_audit.on_mfa_authentication_failed",
+    )
+    email_added.connect(
+        on_email_added,
+        dispatch_uid="validibot_audit.on_email_added",
+    )
+    email_changed.connect(
+        on_email_changed,
+        dispatch_uid="validibot_audit.on_email_changed",
+    )
+    email_confirmed.connect(
+        on_email_confirmed,
+        dispatch_uid="validibot_audit.on_email_confirmed",
+    )
+    email_removed.connect(
+        on_email_removed,
+        dispatch_uid="validibot_audit.on_email_removed",
+    )
     post_save.connect(
         on_token_created_or_updated,
         sender=Token,
@@ -245,6 +487,22 @@ def connect_signal_receivers() -> None:
         on_token_deleted,
         sender=Token,
         dispatch_uid="validibot_audit.on_token_deleted",
+    )
+
+    # Membership / guest lifecycle. Local imports keep the audit app from
+    # importing other apps' models at module-load time.
+    from validibot.users.models import MemberInvite
+    from validibot.workflows.models import OrgGuestAccess
+
+    post_save.connect(
+        on_member_invite_created,
+        sender=MemberInvite,
+        dispatch_uid="validibot_audit.on_member_invite_created",
+    )
+    post_save.connect(
+        on_org_guest_access_created,
+        sender=OrgGuestAccess,
+        dispatch_uid="validibot_audit.on_org_guest_access_created",
     )
 
 
@@ -284,3 +542,36 @@ def _login_metadata(request: Any) -> dict[str, str] | None:
         "path": path,
         "channel": "api" if path.startswith("/api/") else "web",
     }
+
+
+def _mfa_metadata(authenticator: Any) -> dict[str, str] | None:
+    """Return ``{"authenticator_type": ...}`` for an MFA event.
+
+    Only the *kind* of factor (totp / recovery_codes / webauthn) is
+    recorded — the secret / credential material on the authenticator is
+    never read.
+    """
+
+    auth_type = getattr(authenticator, "type", None)
+    return {"authenticator_type": str(auth_type)} if auth_type else None
+
+
+def _record_email_event(action: AuditAction, user: Any, request: Any) -> None:
+    """Write an email-lifecycle entry that records the fact, not the value.
+
+    ``target_repr`` is forced to a PII-free ``User #<pk>`` label rather
+    than letting the service derive it from ``str(user)`` (which could be
+    an email-shaped username). The address itself is never passed in, so
+    there is nowhere on the entry for it to land.
+    """
+
+    context = get_current_context()
+    user_pk = getattr(user, "pk", None)
+    AuditLogService.record(
+        action=action,
+        actor=_actor_for_signal(user, request),
+        request_id=context.request_id,
+        target_type="users.User",
+        target_id=str(user_pk) if user_pk is not None else "",
+        target_repr=f"User #{user_pk}" if user_pk is not None else "",
+    )

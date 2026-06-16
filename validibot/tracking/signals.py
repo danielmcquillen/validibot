@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import logging
 
+from allauth.account.signals import email_confirmed
+from allauth.account.signals import user_signed_up
 from django.contrib.auth.signals import user_logged_in
 from django.contrib.auth.signals import user_logged_out
 from django.db import transaction
@@ -179,4 +181,157 @@ def log_user_logged_out(sender, request, user, **kwargs):
         org_id=getattr(org, "pk", None) if org else None,
         extra_data=extra_data,
         channel=channel,
+    )
+
+
+# ── activation funnel (signup / email verification) ──────────────────
+
+
+def _enqueue_auth_funnel_event(app_event_type, user, request) -> None:
+    """Shared body for the signup / email-verified funnel receivers.
+
+    Same async, on-commit dispatch as login/logout: capture request
+    primitives synchronously, hand off to the dispatcher on commit.
+    """
+    org = _extract_org(user)
+    metadata = _build_request_metadata(request)
+    channel = _derive_channel(metadata)
+    _enqueue_tracking_event(
+        app_event_type=app_event_type,
+        user_id=getattr(user, "pk", None),
+        org_id=getattr(org, "pk", None) if org else None,
+        extra_data={k: v for k, v in metadata.items() if v},
+        channel=channel,
+    )
+
+
+@receiver(user_signed_up)
+def log_user_signed_up(sender, request, user, **kwargs):
+    """Dispatch a USER_REGISTERED event — the top of the activation funnel.
+
+    Fired by allauth right after account creation (before email
+    verification, which lands its own USER_EMAIL_VERIFIED event).
+    """
+    _enqueue_auth_funnel_event(AppEventType.USER_REGISTERED, user, request)
+
+
+@receiver(email_confirmed)
+def log_email_confirmed(sender, request, email_address, **kwargs):
+    """Dispatch a USER_EMAIL_VERIFIED event — an activation checkpoint.
+
+    ``email_confirmed`` carries no ``user`` argument, so the owner is
+    resolved from ``email_address.user``. The address value itself is
+    never recorded — analytics is org / user-keyed, not PII.
+    """
+    user = getattr(email_address, "user", None)
+    _enqueue_auth_funnel_event(AppEventType.USER_EMAIL_VERIFIED, user, request)
+
+
+# ── model-lifecycle tracking (submission + config analytics) ─────────
+
+
+def _track_model_event(app_event_type, instance) -> None:
+    """Record a model-lifecycle tracking event via the direct service.
+
+    Resolves project / org / user defensively from the instance —
+    analytics cares most about the org dimension; project and user are
+    best-effort (``getattr`` so a model without one records ``None``).
+
+    Uses the synchronous service (not the async dispatcher) for
+    consistency with the validation-run tracking, and because these fire
+    inside the same transaction as the model change: a rolled-back save
+    rolls back the event too (no ghost event), and
+    ``TrackingEventService`` swallows errors so a tracking failure never
+    breaks the write.
+    """
+    from validibot.tracking.services import TrackingEventService
+
+    TrackingEventService().log_tracking_event(
+        event_type=TrackingEventType.APP_EVENT,
+        app_event_type=app_event_type,
+        project=getattr(instance, "project", None),
+        org=getattr(instance, "org", None),
+        user=getattr(instance, "user", None),
+    )
+
+
+def on_submission_created(sender, instance, created, **kwargs) -> None:
+    """SUBMISSION_CREATED — data submitted, a core funnel action."""
+    if not created:
+        return
+    _track_model_event(AppEventType.SUBMISSION_CREATED, instance)
+
+
+def on_workflow_created(sender, instance, created, **kwargs) -> None:
+    """WORKFLOW_CREATED — an activation milestone.
+
+    Only creation is tracked, not every save: a workflow is saved often
+    for internal reasons (counters, status) that would drown the
+    analytics signal. Meaningful config *changes* are covered by the
+    audit log instead (WORKFLOW_UPDATED there carries the field diff).
+    """
+    if not created:
+        return
+    _track_model_event(AppEventType.WORKFLOW_CREATED, instance)
+
+
+def on_workflow_deleted(sender, instance, **kwargs) -> None:
+    """WORKFLOW_DELETED — a feature-abandonment signal."""
+    _track_model_event(AppEventType.WORKFLOW_DELETED, instance)
+
+
+def on_ruleset_created(sender, instance, created, **kwargs) -> None:
+    """RULESET_CREATED — an author configured a rule set."""
+    if not created:
+        return
+    _track_model_event(AppEventType.RULESET_CREATED, instance)
+
+
+def on_validator_created(sender, instance, created, **kwargs) -> None:
+    """VALIDATOR_CREATED — an author added a custom validator."""
+    if not created:
+        return
+    _track_model_event(AppEventType.VALIDATOR_CREATED, instance)
+
+
+def connect_model_tracking_receivers() -> None:
+    """Connect the model-lifecycle tracking receivers.
+
+    Wired explicitly here (rather than ``@receiver`` at module import)
+    so other apps' models aren't imported until the registry is ready —
+    mirrors the audit app's wiring. The auth-signal receivers above stay
+    on ``@receiver`` because they import no models.
+    """
+    from django.db.models.signals import post_delete
+    from django.db.models.signals import post_save
+
+    from validibot.submissions.models import Submission
+    from validibot.validations.models import Ruleset
+    from validibot.validations.models import Validator
+    from validibot.workflows.models import Workflow
+
+    post_save.connect(
+        on_submission_created,
+        sender=Submission,
+        dispatch_uid="validibot_tracking.on_submission_created",
+    )
+    post_save.connect(
+        on_workflow_created,
+        sender=Workflow,
+        dispatch_uid="validibot_tracking.on_workflow_created",
+    )
+    post_delete.connect(
+        on_workflow_deleted,
+        sender=Workflow,
+        dispatch_uid="validibot_tracking.on_workflow_deleted",
+    )
+    post_save.connect(
+        on_ruleset_created,
+        sender=Ruleset,
+        dispatch_uid="validibot_tracking.on_ruleset_created",
+    )
+    post_save.connect(
+        on_validator_created,
+        sender=Validator,
+        dispatch_uid="validibot_tracking.on_validator_created",
     )

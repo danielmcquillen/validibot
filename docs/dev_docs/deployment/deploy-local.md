@@ -32,8 +32,9 @@ On first start, the local web container applies migrations and runs `setup_valid
 Before you start, make sure you have:
 
 - Docker Desktop or Docker Engine installed
+- [git](https://git-scm.com/downloads) installed
 - [just](https://just.systems/) installed
-- At least 4 GB of RAM available to Docker
+- At least 4 GB of RAM available to Docker (8 GB recommended)
 
 ## Quick start
 
@@ -51,9 +52,27 @@ cp .envs.example/.local/.postgres .envs/.local/.postgres
 # community-only use — every variable has a sensible default.
 cp .envs.example/.local/.build .envs/.local/.build
 
-# Edit .envs/.local/.django and set SUPERUSER_PASSWORD
+# Now set the three required values in .envs/.local/.django (see below),
+# then start the stack:
 just local up
 ```
+
+### Set the required values
+
+Open `.envs/.local/.django` and replace the three `!!!SET...!!!` placeholders.
+**Local settings raise an error and the app will not start** if the secret key or
+MFA key is missing:
+
+| Variable | What it is | Generate it with |
+| -------- | ---------- | ---------------- |
+| `DJANGO_SECRET_KEY` | Django signing key | `python -c "import secrets; print(secrets.token_urlsafe(50))"` |
+| `DJANGO_MFA_ENCRYPTION_KEY` | Fernet key that encrypts MFA secrets — must be a valid Fernet key | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `SUPERUSER_PASSWORD` | Your admin login password | choose a strong value |
+
+`.envs/.local/.postgres` works as-is — no changes needed for local development.
+
+> No local Python with `cryptography`? Generate the Fernet key with Docker:
+> `docker run --rm python:3.13-slim sh -c "pip install -q cryptography && python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"`
 
 Once the containers are up:
 

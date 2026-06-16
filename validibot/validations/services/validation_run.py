@@ -262,6 +262,16 @@ class ValidationRunService:
             created_extra: dict[str, Any] = {}
             if metadata:
                 created_extra["metadata_keys"] = sorted(metadata.keys())
+            # Flag the org's very first run so the activation funnel can be
+            # segmented on first-run conversion (a key activation metric).
+            run_org = getattr(validation_run, "org", None)
+            if run_org is not None:
+                created_extra["is_first_run"] = not (
+                    type(validation_run)
+                    .objects.filter(org=run_org)
+                    .exclude(pk=validation_run.pk)
+                    .exists()
+                )
             tracking_service.log_validation_run_created(
                 run=validation_run,
                 user=run_user,

@@ -639,9 +639,10 @@ class TabularStepSettingsViewTests(TestCase):
     def test_settings_page_uses_full_width_header_and_step_back_link(self):
         """The specialized editor should match the step page navigation pattern.
 
-        Authors need an obvious route back to the workflow step, while the
-        full-screen editor uses the whole width (no left sidebar) and renders
-        the reusable editor-card shell instead of the generic form card.
+        Authors need an obvious route back to the workflow step. The editor
+        keeps the standard collapsible left navigation, fills the available
+        content width, and renders the reusable editor-card shell instead of
+        the generic form card.
         """
         workflow, step = self._tabular_workflow_and_step()
         _login_as_author(self.client, workflow)

@@ -19,7 +19,6 @@ from validibot.audit.model_audit import AuditActionTriplet
 from validibot.audit.model_audit import ModelAuditRegistry
 from validibot.audit.model_audit import _diff_snapshots
 from validibot.audit.model_audit import _snapshot_auditable_fields
-from validibot.users.tests.factories import OrganizationFactory
 from validibot.workflows.tests.factories import WorkflowFactory
 
 
@@ -59,14 +58,16 @@ class SnapshotTests(TestCase):
         snap_normal = _snapshot_auditable_fields(workflow)
         self.assertIn("name", snap_normal)  # sanity
 
-        # If we mutate the model to a label with no whitelist entry,
-        # the snapshot is empty — graceful-fail path.
-        workflow._meta = workflow._meta
-        # Cleaner: directly call the helper with a fake label by
-        # temporarily overwriting. The helper uses ``instance._meta.label``
-        # so we test by passing an org instance (no whitelist entry).
-        org = OrganizationFactory()
-        self.assertEqual(_snapshot_auditable_fields(org), {})
+        # A model with no whitelist entry yields an empty snapshot — the
+        # graceful-fail path. ``ContentType`` is infrastructure we will
+        # never audit, so it stays a stable stand-in even as the
+        # AUDITABLE_FIELDS whitelist grows. (Using an audited model here is
+        # exactly what broke when ``Organization`` joined the whitelist.)
+        from django.contrib.contenttypes.models import ContentType
+
+        unaudited = ContentType.objects.first()
+        self.assertIsNotNone(unaudited)
+        self.assertEqual(_snapshot_auditable_fields(unaudited), {})
 
 
 class DiffTests(TestCase):

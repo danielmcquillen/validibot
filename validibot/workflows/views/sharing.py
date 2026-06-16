@@ -670,6 +670,25 @@ class WorkflowGuestRevokeView(WorkflowObjectMixin, View):
                 is_active=True,
             ).update(is_active=False, modified=timezone.now())
 
+        # Audit the revocation. The bulk ``update()`` above bypasses
+        # ``post_save``, so the GUEST_REVOKED entry is written explicitly
+        # here — the guest is identified by id, never by email.
+        from validibot.audit.constants import AuditAction
+        from validibot.audit.context import get_current_context
+        from validibot.audit.services import AuditLogService
+
+        _audit_ctx = get_current_context()
+        AuditLogService.record(
+            action=AuditAction.GUEST_REVOKED,
+            actor=_audit_ctx.actor,
+            org=workflow.org,
+            target_type="users.User",
+            target_id=str(display_grant.user_id),
+            target_repr=f"Guest #{display_grant.user_id}",
+            metadata={"scope": "workflow_family", "workflow_slug": workflow.slug},
+            request_id=_audit_ctx.request_id,
+        )
+
         # Notify the guest
         Notification.objects.create(
             user=display_grant.user,

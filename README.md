@@ -140,7 +140,7 @@ The server is a thin protocol-translation layer: it forwards REST calls to Valid
 ### Prerequisites
 
 - Docker and Docker Compose (or [Podman](https://podman.io/) for rootless containers)
-- [just](https://just.systems/) command runner
+- [git](https://git-scm.com/downloads) and the [just](https://just.systems/) command runner
 - 4GB RAM minimum (8GB recommended)
 
 ### Local Evaluation
@@ -155,13 +155,18 @@ mkdir -p .envs/.local
 cp .envs.example/.local/.django .envs/.local/.django
 cp .envs.example/.local/.postgres .envs/.local/.postgres
 
-# Edit .envs/.local/.django and set SUPERUSER_PASSWORD
+# Edit .envs/.local/.django and set the three required values:
+#   DJANGO_SECRET_KEY          python -c "import secrets; print(secrets.token_urlsafe(50))"
+#   DJANGO_MFA_ENCRYPTION_KEY  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+#   SUPERUSER_PASSWORD         your admin login password
+# The app will not start locally without the secret key and MFA key.
+# .envs/.local/.postgres works as-is — no changes needed.
 
 # Start the local stack
 just local up
 ```
 
-Open http://localhost:8000 and sign in with the admin credentials from `.envs/.local/.django`.
+Open http://localhost:8000 and sign in as `admin` with the `SUPERUSER_PASSWORD` you set in `.envs/.local/.django`.
 
 If you purchased Pro or Enterprise, copy `.envs.example/.local/.build` to `.envs/.local/.build`, set `VALIDIBOT_COMMERCIAL_PACKAGE` to an exact version like `validibot-pro==0.1.0` or to a quoted exact wheel URL on `pypi.validibot.com` that includes `#sha256=...`, set `VALIDIBOT_PRIVATE_INDEX_URL` when you use the package-name form, add the matching Django app to `config/settings/base.py`, then run `just local build` before `just local up`. For Enterprise, add both `validibot_pro` and `validibot_enterprise`.
 

@@ -65,6 +65,10 @@
 
   .breadcrumb-item + .breadcrumb-item::before {
     content: "»";
-    padding-right: 0 0.5rem;
+    // Space the separator on BOTH sides. `padding` shorthand (vertical
+    // horizontal), not `padding-right` — the longhand takes a single value, so
+    // `padding-right: 0 0.5rem` was invalid and silently dropped, leaving the
+    // `»` flush against a truncated (ellipsised) workflow name.
+    padding: 0 0.5rem;
   }
 }

@@ -1,4 +1,4 @@
-/* Validibot Developer Docs - Custom Styling
+/* Validibot Dev Docs - Custom Styling
    Matches validibot.com branding
 */
 
@@ -40,6 +40,15 @@
 /* Hide the default site title since we're showing it in the logo */
 .md-header__topic:first-child {
   display: none;
+}
+
+/* Current page title shown in the header (Material's second header
+   topic, e.g. "Running Validibot with Docker"). It has no explicit
+   color, so it falls back to near-black, which reads poorly on the
+   blue header. Tint it a very light blue — the header stays blue in
+   slate too, so one rule covers both light and dark mode. */
+.md-header__title {
+  color: #cfe5fb;
 }
 
 /* Combined announcement bar - back link + WIP notice */

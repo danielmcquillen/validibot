@@ -17,9 +17,11 @@ from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import XMLSchemaType
 from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.forms import JsonSchemaStepConfigForm
+from validibot.workflows.forms import RuleParseError
 from validibot.workflows.forms import WorkflowForm
 from validibot.workflows.forms import WorkflowLaunchForm
 from validibot.workflows.forms import XmlSchemaStepConfigForm
+from validibot.workflows.forms import parse_policy_rules
 from validibot.workflows.tests.factories import WorkflowFactory
 
 pytestmark = pytest.mark.django_db
@@ -1261,3 +1263,60 @@ def test_workflow_form_blocks_allowed_file_types_set_change_on_locked():
     )
     assert not form_real_change.is_valid()
     assert "allowed_file_types" in form_real_change.errors
+
+
+# ── parse_policy_rules: error-path interpolation (ADR 04-23 #11) ───────
+# parse_policy_rules() turns author-written policy-rule text into
+# ParsedPolicyRule objects. Its error branches build human-readable
+# messages with %-interpolation. One branch applied the ``%`` to the
+# *exception object* instead of the message string —
+# ``raise RuleParseError(_(...)) % {...}`` parses as
+# ``raise (RuleParseError(...) % {...})`` because ``%`` binds tighter than
+# ``raise`` — so a malformed custom-operator rule raised an opaque
+# TypeError instead of the intended RuleParseError. These tests pin that
+# the fallback-operator branch now interpolates onto the string.
+
+
+class TestParsePolicyRules:
+    """Error and happy paths for parse_policy_rules() (ADR 04-23 #11).
+
+    This function is the parser behind the workflow "policy rules"
+    authoring field. The #11 regression is the unknown-operator branch: a
+    rule naming a custom operator but omitting the comparison value must
+    surface a clean RuleParseError naming the operator — not a TypeError
+    from a misplaced ``%`` operator.
+    """
+
+    def test_unknown_operator_missing_value_raises_rule_parse_error(self):
+        """A custom operator with no value -> RuleParseError, not TypeError.
+
+        This is the #11 regression. Before the fix the ``%`` bound to the
+        RuleParseError instance, so evaluating the raise expression blew up
+        with ``TypeError: unsupported operand type(s) for %`` before the
+        exception was ever raised. ``pytest.raises(RuleParseError)`` would
+        not catch that TypeError, so this test fails loudly against the bug.
+        """
+        with pytest.raises(RuleParseError) as exc_info:
+            parse_policy_rules("temperature gt")
+
+        # The operator name must be interpolated into the message — proof
+        # the ``%`` now lands on the lazy string, not the exception object.
+        message = str(exc_info.value)
+        assert "gt" in message
+        assert "comparison value" in message
+        assert "%(op)s" not in message  # token was actually substituted
+
+    def test_unknown_operator_with_value_parses(self):
+        """The happy path of the same branch still builds a rule.
+
+        Guards that the fix didn't disturb the success case: a custom
+        operator *with* a comparison value parses into a ParsedPolicyRule
+        carrying the lowercased operator and the value.
+        """
+        rules = parse_policy_rules("temperature gt 21")
+
+        assert len(rules) == 1
+        rule = rules[0]
+        assert rule.path == "temperature"
+        assert rule.operator == "gt"
+        assert rule.value == "21"

@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from django.core.exceptions import ValidationError
+from django.db import DatabaseError
 from django.utils.translation import gettext as _
 
 from validibot.validations.constants import Severity
@@ -721,11 +722,18 @@ class AdvancedValidator(BaseValidator):
                 .order_by("-created")
                 .first()
             )
-        except Exception:
-            logger.debug(
-                "Could not look up step_run for resolved_inputs (run=%s, step=%s)",
+        except DatabaseError:
+            # Narrow to database errors only. A transient DB problem here is
+            # survivable — the caller falls back to raw submission JSON. A
+            # broad ``except Exception`` would also swallow programming errors
+            # (FieldError, TypeError, AttributeError), which must surface, not
+            # silently degrade. Log at WARNING with a traceback so this is
+            # visible in production, where DEBUG logging is suppressed.
+            logger.warning(
+                "DB error looking up step_run for resolved_inputs (run=%s, step=%s)",
                 getattr(run_context.validation_run, "id", "?"),
                 getattr(run_context.step, "id", "?"),
+                exc_info=True,
             )
             return None
 

@@ -279,7 +279,18 @@ def launch_energyplus_validation(
         # 4. Build typed input envelope
         step_config = step.config or {}
         timestep_per_hour = step_config.get("timestep_per_hour", 4)
-        resource_files = resolve_step_resources(step, role="WEATHER_FILE")
+
+        # Use the WorkflowStepResource.WEATHER_FILE constant rather than a bare
+        # "WEATHER_FILE" string so the launcher stays in sync with the envelope
+        # builder (which consumes the same constant) if the role value ever
+        # changes. Imported locally to match envelope_builder's
+        # cycle-avoidance pattern for workflows.models.
+        from validibot.workflows.models import WorkflowStepResource
+
+        resource_files = resolve_step_resources(
+            step,
+            role=WorkflowStepResource.WEATHER_FILE,
+        )
 
         envelope = build_energyplus_input_envelope(
             run_id=run_id,

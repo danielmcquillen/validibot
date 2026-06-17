@@ -11,6 +11,8 @@ from http import HTTPStatus
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
@@ -456,6 +458,11 @@ class WorkflowVisibilityUpdateView(WorkflowObjectMixin, View):
         return HttpResponse(html)
 
 
+# RFC 5321 caps an email address at 254 characters; reject anything longer
+# before it is stored or rendered.
+MAX_INVITE_EMAIL_LENGTH = 254
+
+
 class WorkflowGuestInviteView(GuestInvitesEnabledMixin, WorkflowObjectMixin, View):
     """
     Invite a guest to access this specific workflow.
@@ -499,6 +506,19 @@ class WorkflowGuestInviteView(GuestInvitesEnabledMixin, WorkflowObjectMixin, Vie
 
         if not email:
             messages.error(request, _("Email address is required."))
+            return self._render_form_response(request, workflow, email)
+
+        # SECURITY: validate format and cap length before the address is stored
+        # on WorkflowInvite.invitee_email and later rendered in notification
+        # templates. The previous non-empty-only check accepted payloads like
+        # ``<script>...`` (a stored-XSS vector) and unbounded strings.
+        if len(email) > MAX_INVITE_EMAIL_LENGTH:
+            messages.error(request, _("Email address is too long."))
+            return self._render_form_response(request, workflow, email)
+        try:
+            validate_email(email)
+        except ValidationError:
+            messages.error(request, _("Enter a valid email address."))
             return self._render_form_response(request, workflow, email)
 
         # Check if user is already a member of the org.  ``Membership.org``

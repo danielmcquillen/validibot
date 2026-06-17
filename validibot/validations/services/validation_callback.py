@@ -546,9 +546,13 @@ class ValidationCallbackService:
             )
         except Exception as exc:
             logger.exception("Failed to download output envelope")
+            # Return a static message — the raw exception (which can carry the
+            # signed result URI, storage paths, or internal state) is captured
+            # server-side by logger.exception above and must not reach the
+            # caller's response body.
             raise _CallbackProcessingError(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                f"Failed to download output envelope: {exc}",
+                "Failed to download output envelope.",
             ) from exc
 
         # Verify the envelope belongs to the expected validator and run.
@@ -754,7 +758,19 @@ class ValidationCallbackService:
             delta = run.ended_at - run.started_at
             run.duration_ms = int(delta.total_seconds() * 1000)
 
-        run.save()
+        # Save only the fields this finalization path actually mutates. Every
+        # other ValidationRun.save() uses update_fields (see receipt.save()
+        # below); a bare save() here writes the whole in-memory row and can
+        # clobber a concurrent write (e.g. a parallel cancel toggling status).
+        run.save(
+            update_fields=[
+                "status",
+                "error_category",
+                "ended_at",
+                "error",
+                "duration_ms",
+            ],
+        )
 
         # Notify listeners that the run reached a terminal status (e.g. cloud
         # metering releases the compute-credit reservation). send_robust so a

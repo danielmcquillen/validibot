@@ -123,14 +123,19 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
             "filtered_ids=%s"
         )
 
-        logger.debug(
-            msg,
-            user.id,
-            active_org_id,
-            membership.role_codes,
-            has_full_access,
-            list(scoped.values_list("id", flat=True)),
-        )
+        # Guard the debug call: its last argument materialises a queryset
+        # (a DB round-trip). Without the guard, Python evaluates every
+        # argument before logging checks the level, so this query would run
+        # on every request even in production where DEBUG logging is off.
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                msg,
+                user.id,
+                active_org_id,
+                membership.role_codes,
+                has_full_access,
+                list(scoped.values_list("id", flat=True)),
+            )
         return super().filter_queryset(scoped)
 
     def get_queryset(self):

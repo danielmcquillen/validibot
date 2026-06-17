@@ -261,8 +261,9 @@ def parse_policy_rules(raw_text: str) -> list[ParsedPolicyRule]:
             case _:
                 if len(segments) < 3:  # noqa: PLR2004
                     raise RuleParseError(
-                        _("Operator '%(op)s' requires a comparison value."),
-                    ) % {"op": operator}
+                        _("Operator '%(op)s' requires a comparison value.")
+                        % {"op": operator},
+                    )
                 value = segments[2]
 
         identifier = f"rule-{uuid.uuid4().hex[:8]}"

@@ -335,3 +335,30 @@ def test_tombstoned_workflow_rejects_new_step_creation(
         HTTPStatus.FORBIDDEN,
     )
     assert workflow.steps.count() == 0
+
+
+def test_delete_forbidden_for_view_only_member(client):
+    """A VIEW-only member must get 403 on delete, not silently delete it.
+
+    Regression for ADR 04-23 review-ep-#4. ``WorkflowDeleteView``'s access
+    mixin scopes only to *viewable* workflows, so before the manage-permission
+    gate any ``WORKFLOW_VIEWER`` (who can read the workflow) could delete it.
+    The viewer can reach the view (they have access) but must be refused with
+    403 because deletion requires MANAGE/edit permission, which their role
+    lacks. The workflow must survive the attempt.
+    """
+    owner = UserFactory()
+    workflow = WorkflowFactory(user=owner)
+    grant_role(owner, workflow.org, RoleCode.OWNER)
+
+    viewer = UserFactory()
+    grant_role(viewer, workflow.org, RoleCode.WORKFLOW_VIEWER)
+    _login_with_org(client, viewer, workflow)
+
+    response = client.post(
+        reverse("workflows:workflow_delete", args=[workflow.pk]),
+    )
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
+    # Would raise Workflow.DoesNotExist if the delete had gone through.
+    workflow.refresh_from_db()

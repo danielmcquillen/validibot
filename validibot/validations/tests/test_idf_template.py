@@ -1519,6 +1519,122 @@ class TestMergeRequiredMissing:
         assert "SHGC" in names_in_errors
 
 
+# ── Falsy author defaults (ADR 04-23 #12 regression) ──────────────────
+# A template default is only "absent" when it is the empty string or
+# None.  The original code used a bare ``elif var.default:`` truthiness
+# test, which silently dropped any *falsy* default and reported the
+# variable as a missing required parameter.  The real-world trigger is a
+# **numeric** default of ``0`` / ``0.0`` (defaults can arrive numeric
+# from JSON — ``template_signals.py`` types them ``str | float | None``):
+# ``bool(0)`` is ``False``, so such a default was treated as missing.
+# (A *string* ``"0"`` was always truthy, so the ADR's string-"0" example
+# was imprecise.)  These tests pin both directions of the corrected
+# sentinel check, ``var.default not in (None, "")``.
+
+
+class TestMergeFalsyDefaults:
+    """Regression tests for ADR 04-23 #12 — falsy author defaults.
+
+    The merge step is the trust boundary that decides whether a variable
+    the submitter omitted can be satisfied by the template author's
+    default.  The canonical failure case is a numeric ``0`` / ``0.0``:
+    although ``TemplateVariableLike`` types ``default`` as ``str``,
+    defaults can arrive numeric (``template_signals.py`` admits
+    ``str | float | None``) and a numeric zero is falsy, so the buggy
+    truthiness check treated such variables as required-and-missing and
+    raised a spurious ``ValidationError``.  These tests guard that the fix
+    uses an explicit ``None``/``""`` sentinel check instead — matching
+    ``template_signals.py`` and migration 0029.
+    """
+
+    def test_numeric_zero_default_is_used(self):
+        """A numeric ``0`` default must fill an omitted variable, not error.
+
+        This is the true bug: a default arriving as the integer ``0`` is
+        falsy, so the old truthiness check treated the variable as missing
+        and raised a spurious ``ValidationError``.  The merge function
+        coerces to string, so the merged value is ``"0"``.
+        """
+        variables = [
+            _make_var("U_FACTOR", variable_type="number"),
+            _make_var("OFFSET", variable_type="number", default=0),  # type: ignore[arg-type]
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"U_FACTOR": "2.0"},
+            template_variables=variables,
+        )
+        assert result.parameters == {"U_FACTOR": "2.0", "OFFSET": "0"}
+
+    def test_float_zero_default_is_used(self):
+        """A numeric ``0.0`` default is equally valid and must be used.
+
+        Floats are the common JSON shape (``{"default": 0.0}``) and
+        ``0.0`` is falsy too, so it shared the bug.  ``str(0.0)`` → ``"0.0"``.
+        """
+        variables = [
+            _make_var("OFFSET", variable_type="number", default=0.0),  # type: ignore[arg-type]
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={},
+            template_variables=variables,
+        )
+        assert result.parameters == {"OFFSET": "0.0"}
+
+    def test_negative_numeric_default_is_used(self):
+        """A negative numeric default flows through unchanged.
+
+        Negatives are non-zero (truthy), so they never triggered the bug —
+        but covering one locks in that the sentinel keys on emptiness, not
+        sign or magnitude.
+        """
+        variables = [
+            _make_var("DELTA", variable_type="number", default=-5),  # type: ignore[arg-type]
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={},
+            template_variables=variables,
+        )
+        assert result.parameters == {"DELTA": "-5"}
+
+    def test_empty_string_default_still_treated_as_missing(self):
+        """An empty-string default is the "no default" sentinel.
+
+        The fix must not over-correct: ``""`` still means the author
+        provided no default, so an omitted variable remains a required-
+        missing error.  This is the inverse invariant that keeps the
+        sentinel semantics aligned with ``template_signals.py`` and
+        migration 0029.
+        """
+        variables = [
+            _make_var("U_FACTOR", description="Window U-Factor", default=""),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={},
+                template_variables=variables,
+            )
+        assert "U_FACTOR" in exc_info.value.messages[0]
+
+    def test_none_default_still_treated_as_missing(self):
+        """A ``None`` default is also the "no default" sentinel.
+
+        ``TemplateVariableLike`` types ``default`` as ``str``, but the
+        relational source (``StepIODefinition`` → ``template_signals.py``)
+        can surface ``None`` for an unset default.  The sentinel check
+        spells out ``None`` explicitly so that path stays a required-
+        missing error rather than crashing or being mis-classified.
+        """
+        variables = [
+            _make_var("U_FACTOR", description="Window U-Factor", default=None),  # type: ignore[arg-type]
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={},
+                template_variables=variables,
+            )
+        assert "U_FACTOR" in exc_info.value.messages[0]
+
+
 class TestMergeNumberValidation:
     """Test number type validation — float parsing, min/max bounds,
     exclusive flags, and Autosize/Autocalculate keywords.

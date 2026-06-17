@@ -12,6 +12,8 @@ from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import pytest
+from django.db import DatabaseError
 from django.test import TestCase
 
 from validibot.actions.protocols import RunContext
@@ -943,3 +945,56 @@ class GetResolvedInputsTests(TestCase):
         run_context = RunContext(validation_run=None, step=self.step)
         result = _StubAdvancedValidator._get_resolved_inputs(run_context)
         self.assertIsNone(result)
+
+    # ── Exception handling: narrow, don't swallow (ADR 04-23 §bug.silent_swallow)
+    # The step_run lookup must tolerate a *survivable* database hiccup (degrade
+    # to raw submission JSON) but must NOT swallow programming errors, which the
+    # original bare ``except Exception`` hid at DEBUG level — invisible in
+    # production. These two tests pin both halves of that contract.
+
+    def test_database_error_during_lookup_returns_none(self):
+        """A transient ``DatabaseError`` degrades gracefully to None.
+
+        A survivable DB problem (connection reset, statement timeout) during
+        the step_run lookup should let the caller fall back to raw submission
+        JSON rather than failing the whole validation run.
+        """
+        from validibot.validations.models import ValidationStepRun
+        from validibot.validations.tests.factories import ValidationRunFactory
+
+        run = ValidationRunFactory(workflow=self.step.workflow, org=self.org)
+        run_context = RunContext(validation_run=run, step=self.step)
+
+        with patch.object(
+            ValidationStepRun.objects,
+            "filter",
+            side_effect=DatabaseError("connection reset"),
+        ):
+            result = _StubAdvancedValidator._get_resolved_inputs(run_context)
+
+        self.assertIsNone(result)
+
+    def test_non_database_error_propagates(self):
+        """A non-database error must propagate, not be silently swallowed.
+
+        The fixed bug was a bare ``except Exception`` that logged at DEBUG and
+        returned None, hiding programming errors (``FieldError``, ``TypeError``,
+        ``AttributeError``) in production where DEBUG is suppressed. After
+        narrowing to ``except DatabaseError``, an unexpected error surfaces so
+        the bug is visible instead of silently corrupting the fallback path.
+        """
+        from validibot.validations.models import ValidationStepRun
+        from validibot.validations.tests.factories import ValidationRunFactory
+
+        run = ValidationRunFactory(workflow=self.step.workflow, org=self.org)
+        run_context = RunContext(validation_run=run, step=self.step)
+
+        with (
+            patch.object(
+                ValidationStepRun.objects,
+                "filter",
+                side_effect=TypeError("unexpected programming error"),
+            ),
+            pytest.raises(TypeError),
+        ):
+            _StubAdvancedValidator._get_resolved_inputs(run_context)

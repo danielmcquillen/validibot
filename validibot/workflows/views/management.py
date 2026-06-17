@@ -20,6 +20,7 @@ from django.db import transaction
 from django.db.models import Count
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
+from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
 from django.utils.translation import gettext_lazy as _
 from django.views import View
@@ -658,13 +659,18 @@ class WorkflowJsonView(WorkflowObjectMixin, TemplateView):
     template_name = "workflows/workflow_json.html"
 
     def get_object(self) -> Workflow:
-        return (
-            Workflow.objects.filter(pk=self.kwargs["pk"])
-            .prefetch_related(
+        # Use get_object_or_404 (not a bare .get()) so a missing pk yields a
+        # clean 404 rather than an unhandled Workflow.DoesNotExist → 500.
+        # Access is already gated upstream: get_context_data() calls
+        # super().get_context_data() (WorkflowObjectMixin.get_workflow,
+        # access-scoped) before this runs, so this deep-prefetch lookup is a
+        # defensive re-fetch, not the authorization boundary.
+        return get_object_or_404(
+            Workflow.objects.prefetch_related(
                 "steps__validator",
                 "steps__ruleset__assertions__target_signal_definition",
-            )
-            .get()
+            ),
+            pk=self.kwargs["pk"],
         )
 
     def get_breadcrumbs(self):
@@ -943,6 +949,19 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
 
 class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
     template_name = "workflows/partials/workflow_confirm_delete.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        # Deleting requires MANAGE (edit) permission, not just VIEW.
+        # WorkflowAccessMixin's queryset scopes only to *viewable* workflows,
+        # so without this gate any member, guest, or public viewer who can see
+        # a workflow could delete it. Mirror WorkflowUpdateView's check — but
+        # pass the resolved workflow so user_can_manage_workflow evaluates
+        # WORKFLOW_EDIT against the workflow's own org (object-scoped). This
+        # view has no get_workflow(), so without an explicit workflow the check
+        # would fall back to the insecure current-org path (see mixins.py).
+        if not self.user_can_manage_workflow(workflow=self.get_object()):
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
 
     def _has_issued_credentials(self, workflow: Workflow) -> bool:
         """Return True when the workflow has any durable issued credentials."""

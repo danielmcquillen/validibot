@@ -21,6 +21,7 @@ from django.views.generic.edit import FormView
 
 from validibot.core.utils import reverse_with_org
 from validibot.core.view_helpers import hx_trigger_response
+from validibot.users.permissions import PermissionCode
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import ValidationType
@@ -53,11 +54,24 @@ class WorkflowValidationListView(WorkflowAccessMixin, ListView):
 
     def get_queryset(self):
         workflow = self.get_workflow()
-        return (
+        base_qs = (
             ValidationRun.objects.filter(workflow=workflow)
             .select_related("workflow", "submission", "org")
             .order_by("-created")
         )
+        # SECURITY: scope runs to what the user is allowed to see. Without this
+        # gate, any member who could VIEW the workflow saw *every* run for it —
+        # including other users' submissions and results (a privacy leak).
+        # This mirrors WorkflowLaunchContextMixin.get_displayable_run_queryset;
+        # the two must stay in sync (consolidating them is a tracked follow-up).
+        # WorkflowAccessMixin requires login, so the user is authenticated here.
+        user = self.request.user
+        if user.has_perm(
+            PermissionCode.VALIDATION_RESULTS_VIEW_ALL.value,
+            workflow.org,
+        ):
+            return base_qs
+        return base_qs.filter(user=user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

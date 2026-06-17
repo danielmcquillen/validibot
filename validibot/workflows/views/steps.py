@@ -568,7 +568,12 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             if fmt not in validator.supported_data_formats:
                 validator.supported_data_formats.append(fmt)
                 changed = True
-        if changed:
+        # Only persist on a mutating request. A GET that renders the step
+        # wizard (plus crawlers, link-preview bots, and browser prefetch) must
+        # be side-effect-free per HTTP semantics. The in-memory backfill above
+        # already makes the rendered validator show the right types; the row
+        # is persisted the next time a POST actually touches this validator.
+        if changed and self.request.method == "POST":
             validator.save(
                 update_fields=["supported_file_types", "supported_data_formats"],
             )

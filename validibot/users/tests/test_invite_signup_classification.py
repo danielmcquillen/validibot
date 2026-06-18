@@ -165,7 +165,8 @@ class TestGuestInviteAcceptViewLoggedIn:
         )
 
         client.force_login(invitee)
-        response = client.get(
+        # Acceptance is a POST now — GET shows a confirmation page (ADR 04-23 #8).
+        response = client.post(
             reverse("guest_invite_accept", kwargs={"token": invite.token}),
         )
 
@@ -201,7 +202,8 @@ class TestGuestInviteAcceptViewLoggedIn:
         )
 
         client.force_login(invitee)
-        response = client.get(
+        # Acceptance is a POST now — GET shows a confirmation page (ADR 04-23 #8).
+        response = client.post(
             reverse("guest_invite_accept", kwargs={"token": invite.token}),
         )
 
@@ -211,6 +213,40 @@ class TestGuestInviteAcceptViewLoggedIn:
             workflow=wf,
             is_active=True,
         ).exists()
+
+    def test_get_shows_confirmation_and_does_not_accept(self, client):
+        """GET renders a confirmation page; it must NOT grant access.
+
+        ADR 04-23 #8 (sibling view): accepting on GET was a CSRF-class hole —
+        an ``<img src="…invite…">`` would silently grant org guest access. GET
+        is now side-effect-free: no OrgGuestAccess is created and the invite
+        stays PENDING until the user POSTs the confirm form.
+        """
+        set_license(_pro_license_with_guest_management())
+        org = OrganizationFactory()
+        inviter = UserFactory(orgs=[org])
+        grant_role(inviter, org, RoleCode.AUTHOR)
+        invitee = UserFactory(orgs=[])
+        Membership.objects.filter(user=invitee).delete()
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email=invitee.email,
+            invitee_user=invitee,
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+
+        client.force_login(invitee)
+        response = client.get(
+            reverse("guest_invite_accept", kwargs={"token": invite.token}),
+        )
+
+        assert response.status_code == HTTPStatus.OK
+        assert not OrgGuestAccess.objects.filter(user=invitee, org=org).exists()
+        invite.refresh_from_db()
+        assert invite.status == GuestInvite.Status.PENDING
 
     def test_anonymous_user_redirects_to_signup_with_token_in_session(
         self,

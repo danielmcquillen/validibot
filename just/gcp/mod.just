@@ -2930,13 +2930,27 @@ init-stage stage: _require-gcp-config
         --quiet >/dev/null 2>&1 || echo "   (public prefix IAM already configured)"
     echo "   Public prefix configured (public/ is publicly readable, private/ is protected)"
 
-    # Grant validator SA storage access on the bucket (read inputs, write outputs)
+    # Grant validator SA storage access on the bucket, SCOPED to the run-bundle
+    # prefix via an IAM Condition. Validators only ever read inputs from and
+    # write outputs to gs://$STORAGE_BUCKET/runs/<org>/<run>/ (the launcher's
+    # execution-bundle layout), so we restrict objectAdmin to objects under
+    # runs/ instead of the whole bucket. Without the condition a compromised
+    # validator container (which processes attacker-controlled models) could
+    # read/write/delete unrelated public/ and private/ objects across every
+    # org. This mirrors the public/ IAM Condition above.
+    #
+    # NOTE: the condition gates object-level get/create/delete; it does NOT
+    # grant bucket-level storage.objects.list, which validators don't need
+    # (they operate on exact URIs from the input envelope). Operators upgrading
+    # from a previous unconditional grant should remove the old binding — it
+    # keeps granting bucket-wide access until explicitly deleted.
     gcloud storage buckets add-iam-policy-binding "gs://$STORAGE_BUCKET" \
         --member="serviceAccount:$VALIDATOR_SA_EMAIL" \
         --role="roles/storage.objectAdmin" \
+        --condition="expression=resource.name.startsWith(\"projects/_/buckets/$STORAGE_BUCKET/objects/runs/\"),title=validator-runs-prefix-only" \
         --project={{gcp_project}} \
         --quiet >/dev/null
-    echo "   Granted objectAdmin on $STORAGE_BUCKET to validator SA"
+    echo "   Granted objectAdmin on $STORAGE_BUCKET/runs/ to validator SA (prefix-scoped)"
     echo ""
 
     # Step 7: Ensure the credential-signing key exists, then grant access.

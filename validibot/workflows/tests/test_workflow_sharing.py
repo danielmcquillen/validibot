@@ -13,6 +13,7 @@ from http import HTTPStatus
 from unittest.mock import patch
 
 import pytest
+from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
@@ -915,49 +916,106 @@ class TestWorkflowPermissionExtensions:
 class TestWorkflowInviteAcceptView:
     """Tests for the WorkflowInviteAcceptView."""
 
-    def test_logged_in_user_accepts_invite_immediately(self, client):
-        """Test that logged in user can accept invite immediately."""
+    def test_logged_in_user_get_shows_confirmation_not_accept(self, client):
+        """GET renders a confirmation page and does NOT accept the invite.
+
+        This is the ADR 04-23 #8 fix: accepting on GET was a CSRF-class hole
+        (an ``<img src="…invite…">`` on any page a logged-in invitee visits
+        would silently accept). GET is now side-effect-free — it shows a
+        confirm page and leaves the invite PENDING until the user POSTs.
+        """
         workflow = WorkflowFactory(is_active=True)
-        inviter = workflow.user
         guest = UserFactory(orgs=[])
         Membership.objects.filter(user=guest).delete()
-
         invite = WorkflowInvite.objects.create(
             workflow=workflow,
-            inviter=inviter,
+            inviter=workflow.user,
             invitee_email=guest.email,
             expires_at=timezone.now() + timedelta(days=7),
         )
+        client.force_login(guest)
 
+        with patch(
+            "validibot.workflows.emails.send_workflow_invite_accepted_email",
+        ) as mock_send:
+            response = client.get(
+                reverse("workflow_invite_accept", kwargs={"token": invite.token}),
+            )
+
+        # Confirmation page renders — no redirect, no acceptance.
+        assert response.status_code == HTTPStatus.OK
+        assert not WorkflowAccessGrant.objects.filter(
+            workflow=workflow,
+            user=guest,
+        ).exists()
+        invite.refresh_from_db()
+        assert invite.status == WorkflowInvite.Status.PENDING
+        mock_send.assert_not_called()
+
+    def test_logged_in_user_post_accepts_invite(self, client):
+        """POST accepts the invite — the state change now lives on POST only.
+
+        Mirrors the old GET behaviour, moved behind a CSRF-protected POST: a
+        grant is created, the invite is marked ACCEPTED, the inviter is
+        notified, and the user is redirected to the workflow launch page.
+        """
+        workflow = WorkflowFactory(is_active=True)
+        guest = UserFactory(orgs=[])
+        Membership.objects.filter(user=guest).delete()
+        invite = WorkflowInvite.objects.create(
+            workflow=workflow,
+            inviter=workflow.user,
+            invitee_email=guest.email,
+            expires_at=timezone.now() + timedelta(days=7),
+        )
         client.force_login(guest)
 
         with patch(
             "validibot.workflows.emails.send_workflow_invite_accepted_email",
         ) as mock_send:
             mock_send.return_value = True
-            url = reverse(
-                "workflow_invite_accept",
-                kwargs={"token": invite.token},
+            response = client.post(
+                reverse("workflow_invite_accept", kwargs={"token": invite.token}),
             )
-            response = client.get(url)
 
-        # Should redirect to workflow launch page
         assert response.status_code == HTTPStatus.FOUND
         assert f"/workflows/{workflow.pk}/launch/" in response.url
-
-        # Grant should be created
         assert WorkflowAccessGrant.objects.filter(
             workflow=workflow,
             user=guest,
             is_active=True,
         ).exists()
-
-        # Invite should be accepted
         invite.refresh_from_db()
         assert invite.status == WorkflowInvite.Status.ACCEPTED
-
-        # Email should be sent
         mock_send.assert_called_once()
+
+    def test_post_without_csrf_token_is_rejected(self):
+        """A POST with no valid CSRF token is rejected (403).
+
+        The acceptance is a genuine state change, so it must be CSRF-protected
+        — that protection is what makes the GET→POST split meaningful. A
+        CSRF-enforcing client proves the middleware blocks a tokenless POST and
+        the invite stays PENDING.
+        """
+        workflow = WorkflowFactory(is_active=True)
+        guest = UserFactory(orgs=[])
+        Membership.objects.filter(user=guest).delete()
+        invite = WorkflowInvite.objects.create(
+            workflow=workflow,
+            inviter=workflow.user,
+            invitee_email=guest.email,
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(guest)
+
+        response = csrf_client.post(
+            reverse("workflow_invite_accept", kwargs={"token": invite.token}),
+        )
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        invite.refresh_from_db()
+        assert invite.status == WorkflowInvite.Status.PENDING
 
     def test_anonymous_user_redirected_to_signup(self, client):
         """Test that anonymous user is redirected to signup."""

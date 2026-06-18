@@ -636,6 +636,14 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     def clean(self):
         if not self.name or not self.name.strip():
             raise ValidationError({"name": _("Name is required.")})
+        # Every workflow must belong to a project. The column stays nullable for
+        # historical rows and for SET_NULL on project deletion, but creating or
+        # saving a workflow with no project is not allowed: runs default to the
+        # workflow's project and project-scoped surfaces assume it is present.
+        if not self.project_id:
+            raise ValidationError(
+                {"project": _("A workflow must belong to a project.")},
+            )
         if self.project_id and self.org_id and self.project.org_id != self.org_id:
             raise ValidationError(
                 {"project": _("Project must belong to the workflow's organization.")},

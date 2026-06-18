@@ -894,7 +894,11 @@ class WorkflowForm(forms.ModelForm):
     def clean_project(self):
         project = self.cleaned_data.get("project")
         if project is None:
-            return None
+            # ``required=True`` already raises for an empty selection, but guard
+            # explicitly so any caller that bypasses field-level validation
+            # still gets a clear, field-scoped error rather than a later
+            # model-level failure.
+            raise ValidationError(_("A workflow must belong to a project."))
 
         expected_org_id = None
         if self.instance and getattr(self.instance, "org_id", None):
@@ -1216,7 +1220,13 @@ class WorkflowForm(forms.ModelForm):
         if project_field is None:
             return
 
-        project_field.required = False
+        # A workflow must always belong to a project: runs started from it
+        # default to that project, and several downstream surfaces (analytics,
+        # quotas, project-scoped views) assume a non-null project. Requiring it
+        # here gives a friendly inline error instead of letting a project-less
+        # workflow slip through; ``Workflow.clean()`` enforces the same rule at
+        # the model layer for non-form paths.
+        project_field.required = True
         project_field.widget = forms.Select(
             attrs={
                 "class": "form-select",

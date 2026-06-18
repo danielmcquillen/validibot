@@ -106,6 +106,37 @@ def test_workflow_form_saves_selected_project():
     assert workflow.project == default_project
 
 
+def test_workflow_form_requires_a_project():
+    """A workflow cannot be created without selecting a project.
+
+    Runs started from a workflow default to its project, and project-scoped
+    surfaces (analytics, quotas, project views) assume a non-null project.
+    Omitting the project must fail validation with a field-scoped error rather
+    than silently creating a project-less workflow.
+    """
+    from validibot.submissions.constants import DataRetention
+
+    user, org = create_user_in_org()
+    ensure_default_project(org)
+
+    form = WorkflowForm(
+        data={
+            "name": "No project workflow",
+            "slug": "no-project-workflow",
+            # "project" intentionally omitted.
+            "allowed_file_types": [SubmissionFileType.JSON],
+            "input_retention": DataRetention.DO_NOT_STORE,
+            "output_retention": "STORE_30_DAYS",
+            "version": "1",
+            "is_active": "on",
+        },
+        user=user,
+    )
+
+    assert not form.is_valid()
+    assert "project" in form.errors
+
+
 def test_workflow_form_allows_switching_projects_within_org():
     from validibot.submissions.constants import DataRetention
 
@@ -722,6 +753,9 @@ def _post_payload_for(workflow, **overrides):
     payload = {
         "name": workflow.name,
         "slug": workflow.slug,
+        # Project is required on the form; default to the workflow's current
+        # project so edit-payload tests don't trip the requirement.
+        "project": str(workflow.project_id) if workflow.project_id else "",
         "allowed_file_types": list(
             workflow.allowed_file_types or [SubmissionFileType.JSON]
         ),

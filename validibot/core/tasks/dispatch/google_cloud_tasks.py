@@ -94,7 +94,14 @@ class GoogleCloudTasksDispatcher(TaskDispatcher):
             queue_path,
         )
 
-        # Task name for logging (not for deduplication - Cloud Tasks auto-generates ID)
+        # Human-readable identifier for logging only. We deliberately do NOT
+        # set this as the Cloud Tasks ``Task.name``: a deterministic task name
+        # would make Cloud Tasks de-duplicate by name, but it would also block
+        # legitimate re-dispatch of the same run (e.g. a retry after a transient
+        # failure) for as long as the completed-task tombstone lives. Launch
+        # idempotency is already handled upstream — the launcher checks
+        # ``step_run.output`` for an existing job before relaunching — so
+        # name-based dedup here would add risk without benefit.
         if request.resume_from_step is not None:
             task_name = (
                 f"validation-run-{request.validation_run_id}"
@@ -153,19 +160,6 @@ class GoogleCloudTasksDispatcher(TaskDispatcher):
             )
 
         except Exception as exc:
-            # Check if it's a duplicate task (already exists)
-            if "ALREADY_EXISTS" in str(exc):
-                logger.info(
-                    "Cloud Task already exists (dedupe): task_name=%s "
-                    "validation_run_id=%s",
-                    task_name,
-                    request.validation_run_id,
-                )
-                return TaskDispatchResponse(
-                    task_id=task_name,
-                    is_sync=False,
-                )
-
             logger.exception(
                 "Cloud Tasks dispatcher: failed to create task for "
                 "validation_run_id=%s",

@@ -51,6 +51,15 @@ management links.
   original workflow.
 - Deleting a project detaches submissions, validation runs, and tracking events
   from the project so historical data remains intact.
+- **Every workflow must belong to a project.** The project field is required on
+  the workflow form, and `Workflow.clean()` rejects a save with no project, so
+  the rule holds for every write path — the form, the `.vaf` importer (which
+  binds imports to the importing org's default project), and version cloning
+  (which copies the project from the source). The database column stays nullable
+  so that deleting a project detaches workflows via `SET_NULL` rather than
+  cascading, and so historical rows created before this rule remain readable;
+  the application simply won't let you create or save a new project-less
+  workflow.
 
 ## Navigation Changes
 

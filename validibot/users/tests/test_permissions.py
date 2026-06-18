@@ -1,5 +1,6 @@
 from django.test import TestCase
 
+from validibot.projects.tests.factories import ProjectFactory
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.constants import PermissionCode
 from validibot.users.constants import RoleCode
@@ -25,6 +26,7 @@ class OrgPermissionBackendTests(TestCase):
         workflow = Workflow.objects.create(
             org=org,
             user=executor,
+            project=ProjectFactory(org=org),
             name="Launchable Workflow",
         )
 
@@ -103,6 +105,7 @@ class OrgPermissionBackendTests(TestCase):
         workflow = Workflow.objects.create(
             org=org,
             user=owner,
+            project=ProjectFactory(org=org),
             name="Shared Workflow",
         )
 
@@ -136,6 +139,7 @@ class OrgPermissionBackendTests(TestCase):
         workflow = Workflow.objects.create(
             org=org,
             user=owner,
+            project=ProjectFactory(org=org),
             name="Shared Workflow",
         )
 
@@ -160,6 +164,7 @@ class OrgPermissionBackendTests(TestCase):
         workflow = Workflow.objects.create(
             org=org,
             user=owner,
+            project=ProjectFactory(org=org),
             name="Public Workflow",
             is_public=True,
         )
@@ -180,6 +185,7 @@ class OrgPermissionBackendTests(TestCase):
         workflow = Workflow.objects.create(
             org=org,
             user=owner,
+            project=ProjectFactory(org=org),
             name="Private Workflow",
             is_public=False,
         )

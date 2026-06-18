@@ -237,11 +237,21 @@ class CallbackReceiptStatus(models.TextChoices):
     Status of a callback receipt for validator callbacks.
 
     Used for validator callback deduplication. Callbacks are marked PROCESSING
-    on receipt, then updated to COMPLETED when processing finishes.
+    on receipt, then move to a terminal state:
+
+    - COMPLETED: processing finished successfully.
+    - REJECTED: processing hit a PERMANENT, non-retryable error (e.g. the
+      ``result_uri`` failed the per-run allowlist, no output envelope class is
+      registered, or the envelope's validator/run IDs didn't match). Marking it
+      terminal stops Cloud Tasks from retrying a callback that can never
+      succeed and records the outcome honestly in the audit trail. Transient
+      failures (e.g. a storage blip while downloading the envelope) deliberately
+      leave the receipt PROCESSING so a retry can re-attempt.
     """
 
     PROCESSING = "PROCESSING", _("Processing")
     COMPLETED = "COMPLETED", _("Completed")
+    REJECTED = "REJECTED", _("Rejected")
 
 
 class IdempotencyKey(TimeStampedModel):

@@ -41,17 +41,25 @@ def test_parse_gcs_uri():
 
 
 def test_parse_gcs_uri_invalid():
-    """Non-GCS URIs and bucket-only URIs should raise ``ValueError``.
+    """Non-GCS, bucket-only, and empty-component URIs should raise ``ValueError``.
 
     The ``s3://`` check catches accidental AWS URIs in GCP deployments.
-    The bucket-only check catches truncated URIs that would cause a
-    confusing empty-blob error downstream.
+    The bucket-only check catches truncated URIs. The empty-component checks
+    catch ``gs:///path`` (no bucket) and ``gs://bucket/`` (no object) — both
+    would otherwise slip past parsing and fail later inside the GCS client
+    with an opaque error, or slip past the callback allowlist's parse step.
     """
     with pytest.raises(ValueError, match="must start with gs://"):
         parse_gcs_uri("s3://bucket/file.json")
 
     with pytest.raises(ValueError, match="must be gs://bucket/path"):
         parse_gcs_uri("gs://bucket-only")
+
+    with pytest.raises(ValueError, match="empty bucket or path"):
+        parse_gcs_uri("gs:///runs/org/run/input.json")  # empty bucket
+
+    with pytest.raises(ValueError, match="empty bucket or path"):
+        parse_gcs_uri("gs://bucket/")  # empty object path
 
 
 @patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
@@ -165,3 +173,67 @@ def test_download_envelope_not_found(mock_storage_client):
     # Should raise ValueError
     with pytest.raises(ValueError, match="File does not exist"):
         download_envelope("gs://test-bucket/missing.json", TestModel)
+
+
+@patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
+def test_download_envelope_rejects_oversized(mock_storage_client):
+    """An object larger than ``max_bytes`` must be refused BEFORE download.
+
+    The worker passes ``settings.VALIDATION_RESULT_MAX_BYTES`` so a compromised
+    or buggy validator can't make it buffer an arbitrarily large ``output.json``
+    into memory. We verify the size is checked via metadata and that
+    ``download_as_text()`` is never called once the cap is exceeded.
+    """
+
+    class TestModel(BaseModel):
+        test_field: str
+
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+    mock_storage_client.return_value = mock_client
+    mock_client.bucket.return_value = mock_bucket
+    mock_bucket.blob.return_value = mock_blob
+
+    mock_blob.exists.return_value = True
+    mock_blob.size = 50  # bytes, reported after reload()
+
+    with pytest.raises(ValueError, match="exceeds the configured limit"):
+        download_envelope(
+            "gs://test-bucket/huge.json",
+            TestModel,
+            max_bytes=10,
+        )
+
+    # The oversized object must never be downloaded.
+    mock_blob.download_as_text.assert_not_called()
+
+
+@patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
+def test_delete_prefix_deletes_all_blobs(mock_storage_client):
+    """``delete_prefix`` must list and delete every object under the prefix.
+
+    This is the run-bundle purge primitive. It deletes from the raw
+    ``gs://<bucket>/runs/...`` location the launcher writes to (NOT the
+    DataStorage ``private/`` prefix), so it must enumerate and delete each blob
+    and return the count. We also verify a trailing slash is enforced so
+    ``runs/<run>`` can't accidentally match ``runs/<run>-2``.
+    """
+    from validibot.validations.services.cloud_run.gcs_client import delete_prefix
+
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    blob_a = MagicMock()
+    blob_b = MagicMock()
+    mock_storage_client.return_value = mock_client
+    mock_client.bucket.return_value = mock_bucket
+    mock_bucket.list_blobs.return_value = [blob_a, blob_b]
+
+    count = delete_prefix("gs://test-bucket/runs/org/run")
+
+    assert count == 2  # noqa: PLR2004
+    mock_client.bucket.assert_called_once_with("test-bucket")
+    # Trailing slash enforced on the listing prefix.
+    mock_bucket.list_blobs.assert_called_once_with(prefix="runs/org/run/")
+    blob_a.delete.assert_called_once()
+    blob_b.delete.assert_called_once()

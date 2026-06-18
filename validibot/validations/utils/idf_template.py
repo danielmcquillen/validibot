@@ -23,6 +23,7 @@ References:
 from __future__ import annotations
 
 import logging
+import math
 import re
 from dataclasses import dataclass
 from dataclasses import field
@@ -888,6 +889,13 @@ def _validate_number(
             f"Parameter '{name}' must be a number (or "
             f"'Autosize'/'Autocalculate'), got '{value}'."
         )
+        return
+
+    # Reject NaN/Inf. ``float("nan")`` / ``float("inf")`` parse successfully
+    # but are not valid EnergyPlus values — they propagate into the IDF and
+    # blow up inside the simulation container. (ADR 04-23 §hyg.nan_inf)
+    if not math.isfinite(num):
+        errors.append(f"Parameter '{name}' must be a finite number, got '{value}'.")
         return
 
     if var.min_value is not None:

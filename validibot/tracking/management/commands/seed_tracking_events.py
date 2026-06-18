@@ -9,6 +9,7 @@ from validibot.projects.models import Project
 from validibot.tracking.sample_data import seed_sample_tracking_data
 from validibot.users.models import Organization
 from validibot.users.models import User
+from validibot.users.models import ensure_default_project
 from validibot.workflows.models import Workflow
 
 
@@ -164,6 +165,8 @@ class Command(BaseCommand):
         workflow = Workflow.objects.create(
             org=org,
             user=user,
+            # Every workflow must belong to a project; use the org's default.
+            project=ensure_default_project(org),
             name=f"Dashboard Sample Workflow {suffix}",
             slug=f"dashboard-sample-{suffix}",
             version=1,

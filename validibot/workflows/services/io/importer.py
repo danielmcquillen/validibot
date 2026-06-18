@@ -154,16 +154,21 @@ def _create_workflow(
     user: User,
 ) -> Workflow:
     """Create the new Workflow row, rebinding ownership and minting a slug."""
+    from validibot.users.models import ensure_default_project
     from validibot.workflows.models import Workflow
 
     fields = {
         field_name: data.get(field_name) for field_name in schema.WORKFLOW_SCALAR_FIELDS
     }
     name = fields.get("name") or "Imported workflow"
+    # Imports don't carry a project reference, but every workflow must belong to
+    # one. Bind the imported workflow to the importing org's default project
+    # (created on demand if the org somehow lacks one). The owner can reassign it
+    # afterwards. Without this, save() -> full_clean() would reject the import.
     workflow = Workflow(
         org=org,
         user=user,
-        project=None,
+        project=ensure_default_project(org),
         version=1,
         is_locked=False,
         # Imported workflows are ACTIVE (runnable) immediately. The original

@@ -26,6 +26,7 @@ cross-org public catalog visibility.
 import pytest
 from django.core.exceptions import ValidationError
 
+from validibot.projects.tests.factories import ProjectFactory
 from validibot.submissions.constants import SubmissionFileType
 from validibot.workflows.constants import AgentBillingMode
 from validibot.workflows.models import Workflow
@@ -99,6 +100,7 @@ class TestAgentAccessBillingDecoupled:
             agent_access_enabled=True,
             agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         wf.clean()  # should not raise
 
     def test_enabled_with_x402_and_price_is_valid(self):
@@ -109,6 +111,7 @@ class TestAgentAccessBillingDecoupled:
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=10,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         wf.clean()  # should not raise
 
     def test_disabled_with_author_pays_is_valid(self):
@@ -118,6 +121,7 @@ class TestAgentAccessBillingDecoupled:
             agent_access_enabled=False,
             agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         wf.clean()  # should not raise
 
     def test_disabled_with_x402_configured_is_valid(self):
@@ -128,6 +132,7 @@ class TestAgentAccessBillingDecoupled:
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=25,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         wf.clean()  # should not raise
 
 
@@ -147,6 +152,7 @@ class TestX402RequiresPrice:
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=None,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         with pytest.raises(ValidationError) as exc_info:
             wf.clean()
         assert "agent_price_cents" in exc_info.value.message_dict
@@ -159,6 +165,7 @@ class TestX402RequiresPrice:
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=0,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         with pytest.raises(ValidationError) as exc_info:
             wf.clean()
         assert "agent_price_cents" in exc_info.value.message_dict
@@ -189,6 +196,7 @@ class TestX402RequiresDoNotStore:
             agent_price_cents=10,
             input_retention=SubmissionRetention.STORE_7_DAYS,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         with pytest.raises(ValidationError) as exc_info:
             wf.clean()
         assert "input_retention" in exc_info.value.message_dict
@@ -203,6 +211,7 @@ class TestX402RequiresDoNotStore:
             agent_price_cents=10,
             input_retention=SubmissionRetention.STORE_PERMANENTLY,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         with pytest.raises(ValidationError) as exc_info:
             wf.clean()
         assert "input_retention" in exc_info.value.message_dict
@@ -217,6 +226,7 @@ class TestX402RequiresDoNotStore:
             agent_price_cents=10,
             input_retention=SubmissionRetention.DO_NOT_STORE,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         wf.clean()  # should not raise
 
     def test_author_pays_with_any_retention_is_valid(self):
@@ -228,6 +238,7 @@ class TestX402RequiresDoNotStore:
             agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
             input_retention=SubmissionRetention.STORE_PERMANENTLY,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         wf.clean()  # should not raise
 
 
@@ -487,6 +498,7 @@ class TestAgentPublicDiscoveryConstraints:
             agent_public_discovery=True,
             agent_price_cents=10,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         wf.clean()
         assert wf.agent_public_discovery is False
 
@@ -503,6 +515,7 @@ class TestAgentPublicDiscoveryConstraints:
             agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
             agent_price_cents=10,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         wf.clean()
         assert wf.agent_billing_mode == AgentBillingMode.AGENT_PAYS_X402
 
@@ -521,6 +534,7 @@ class TestAgentPublicDiscoveryConstraints:
             agent_price_cents=10,
             input_retention=SubmissionRetention.DO_NOT_STORE,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         wf.clean()
         assert wf.agent_public_discovery is False
 
@@ -537,6 +551,7 @@ class TestAgentPublicDiscoveryConstraints:
             agent_price_cents=50,
             input_retention=SubmissionRetention.DO_NOT_STORE,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         wf.clean()  # should not raise
         assert wf.agent_public_discovery is True
         assert wf.agent_billing_mode == AgentBillingMode.AGENT_PAYS_X402
@@ -550,6 +565,7 @@ class TestAgentPublicDiscoveryConstraints:
             agent_public_discovery=False,
             agent_billing_mode=AgentBillingMode.AUTHOR_PAYS,
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         wf.clean()  # should not raise
         assert wf.agent_billing_mode == AgentBillingMode.AUTHOR_PAYS
 

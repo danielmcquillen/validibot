@@ -21,6 +21,7 @@ import pytest
 from django.core.exceptions import ValidationError
 from pydantic import ValidationError as PydanticValidationError
 
+from validibot.projects.tests.factories import ProjectFactory
 from validibot.submissions.constants import SubmissionFileType
 from validibot.workflows.form_builder import schema_to_django_form
 from validibot.workflows.form_builder import schema_to_requirement_rows
@@ -1156,6 +1157,7 @@ class TestWorkflowModelSchemaValidation:
                 "required": ["value"],
             },
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         # Should not raise
         wf.clean()
 
@@ -1171,6 +1173,7 @@ class TestWorkflowModelSchemaValidation:
                 },
             },
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         with pytest.raises(ValidationError) as exc_info:
             wf.clean()
         assert "input_schema" in exc_info.value.message_dict
@@ -1187,6 +1190,7 @@ class TestWorkflowModelSchemaValidation:
                 },
             },
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         with pytest.raises(ValidationError) as exc_info:
             wf.clean()
         assert "input_schema" in exc_info.value.message_dict
@@ -1196,6 +1200,7 @@ class TestWorkflowModelSchemaValidation:
         from validibot.workflows.tests.factories import WorkflowFactory
 
         wf = WorkflowFactory.build(input_schema=None)
+        wf.project = ProjectFactory()  # project is required on Workflow now
         # Should not raise
         wf.clean()
 
@@ -1208,6 +1213,7 @@ class TestWorkflowModelSchemaValidation:
         wf = WorkflowFactory.build(
             input_schema={"type": "object", "properties": {}},
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         # Should not raise — empty properties is valid
         wf.clean()
 
@@ -1231,6 +1237,7 @@ class TestWorkflowModelSchemaValidation:
                 "properties": {"name": {"type": "string"}},
             },
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         with pytest.raises(ValidationError) as exc_info:
             wf.clean()
         assert "input_schema" in exc_info.value.message_dict
@@ -1247,5 +1254,6 @@ class TestWorkflowModelSchemaValidation:
                 "required": ["name"],
             },
         )
+        wf.project = ProjectFactory()  # project is required on Workflow now
         # Should not raise
         wf.clean()

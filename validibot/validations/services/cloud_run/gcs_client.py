@@ -47,6 +47,13 @@ def parse_gcs_uri(uri: str) -> tuple[str, str]:
         raise ValueError(msg)
 
     bucket_name, blob_path = parts
+    # Reject empty components: ``gs:///path`` (no bucket) and ``gs://bucket/``
+    # (no object) both pass the split above but fail later inside the GCS client
+    # with an opaque error. Fail here with a clear message instead — and so a
+    # malformed URI can't slip past the callback allowlist's parse step.
+    if not bucket_name or not blob_path:
+        msg = f"Invalid GCS URI (empty bucket or path): {uri}"
+        raise ValueError(msg)
     return bucket_name, blob_path
 
 
@@ -102,6 +109,8 @@ def upload_envelope_local(envelope: BaseModel, path: Path) -> None:
 def download_envelope(
     uri: str,
     envelope_class: type[BaseModel],
+    *,
+    max_bytes: int | None = None,
 ) -> BaseModel:
     """
     Download and deserialize a Pydantic envelope from GCS.
@@ -109,12 +118,19 @@ def download_envelope(
     Args:
         uri: GCS URI to the envelope JSON
         envelope_class: Pydantic model class to deserialize to
+        max_bytes: Optional hard cap on the object size. When set, the blob's
+            size is read from metadata and checked BEFORE download; an object
+            larger than the limit raises ValueError without being fetched. The
+            worker uses this to protect itself from a compromised or buggy
+            validator writing an oversized ``output.json`` that
+            ``download_as_text()`` would otherwise buffer fully into memory.
 
     Returns:
         Deserialized envelope instance
 
     Raises:
-        ValueError: If URI is invalid or file doesn't exist
+        ValueError: If URI is invalid, file doesn't exist, or the object
+            exceeds ``max_bytes``
         ValidationError: If JSON doesn't match envelope schema
         google.cloud.exceptions.GoogleCloudError: If download fails
 
@@ -137,12 +153,57 @@ def download_envelope(
         msg = f"File does not exist: {uri}"
         raise ValueError(msg)
 
+    # Enforce the size cap BEFORE downloading. ``blob.exists()`` doesn't
+    # populate metadata, so ``reload()`` to learn ``blob.size``, then refuse
+    # anything over the limit — we never want ``download_as_text()`` to pull an
+    # unbounded object into worker memory.
+    if max_bytes is not None:
+        blob.reload()
+        if blob.size is not None and blob.size > max_bytes:
+            msg = (
+                f"Refusing to download {uri}: object size {blob.size} bytes "
+                f"exceeds the configured limit of {max_bytes} bytes."
+            )
+            raise ValueError(msg)
+
     # Download JSON
     json_data = blob.download_as_text()
 
     # Deserialize to Pydantic model
     envelope = envelope_class.model_validate_json(json_data)
     return envelope
+
+
+def delete_prefix(uri_prefix: str) -> int:
+    """
+    Delete every object under a ``gs://`` prefix and return the count deleted.
+
+    Validation run bundles are written here directly by the launcher to
+    ``gs://<GCS_VALIDATION_BUCKET>/runs/<org_id>/<run_id>/…`` — NOT through the
+    ``DataStorage`` abstraction (which prepends the ``private/`` prefix). So
+    purging a run's files has to delete from this same raw location, or the
+    objects leak in GCS while the run is marked purged.
+
+    Args:
+        uri_prefix: A ``gs://bucket/prefix/`` URI. A trailing slash is appended
+            if missing so ``runs/<run>`` can't also match ``runs/<run>-2``.
+
+    Returns:
+        Number of objects deleted (0 if the prefix held nothing).
+
+    Raises:
+        ValueError: If ``uri_prefix`` is not a valid ``gs://`` URI.
+    """
+    bucket_name, blob_prefix = parse_gcs_uri(uri_prefix)
+    if not blob_prefix.endswith("/"):
+        blob_prefix += "/"
+
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blobs = list(bucket.list_blobs(prefix=blob_prefix))
+    for blob in blobs:
+        blob.delete()
+    return len(blobs)
 
 
 def upload_file_from_path(

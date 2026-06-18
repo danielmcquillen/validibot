@@ -129,7 +129,9 @@ WSGI_APPLICATION = "config.wsgi.application"
 # ASGI_APPLICATION = "config.asgi.application"
 
 GITHUB_APP_ENABLED = env.bool("GITHUB_APP_ENABLED", False)
-ENABLE_DERIVED_SIGNALS = env.bool("ENABLE_DERIVED_SIGNALS", False)
+# NOTE: ENABLE_DERIVED_SIGNALS is defined once, under the "# FEATURES"
+# section below — it was previously declared twice (ADR 04-23
+# §hyg.duplicate_setting).
 
 # APPS
 # ------------------------------------------------------------------------------
@@ -415,6 +417,10 @@ FIXTURE_DIRS = (str(APPS_DIR / "fixtures"),)
 # https://docs.djangoproject.com/en/dev/ref/settings/#session-cookie-httponly
 SESSION_COOKIE_HTTPONLY = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#csrf-cookie-httponly
+# Safe: no frontend JS reads the CSRF cookie via document.cookie — HTMx
+# sends csrfmiddlewaretoken in form bodies, so HttpOnly does not break AJAX.
+# Verified 2026-06-17 (ADR 04-23 §hyg.csrf_cookie_httponly). Keep new fetch/
+# axios code on the form-token pattern, not cookie-reading.
 CSRF_COOKIE_HTTPONLY = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#x-frame-options
 X_FRAME_OPTIONS = "DENY"
@@ -708,6 +714,18 @@ if GITHUB_APP_ENABLED:
 VALIDATION_START_ATTEMPTS = 4  # 4 attempts
 VALIDATION_START_ATTEMPT_TIMEOUT = 5  # 5 seconds per attempt
 JOB_STATUS_RETRY_AFTER = VALIDATION_START_ATTEMPT_TIMEOUT
+
+# Maximum size (bytes) of a validator's output envelope (output.json) that the
+# worker will download from storage when a callback arrives. Advanced validator
+# containers process attacker-influenced models, so a compromised or buggy
+# container could write an arbitrarily large result object; the worker checks
+# the object's size against this cap and refuses to download anything larger,
+# rather than buffering an unbounded payload into memory. The default is
+# generous — real envelopes are findings + metrics, far smaller.
+VALIDATION_RESULT_MAX_BYTES = env.int(
+    "VALIDATION_RESULT_MAX_BYTES",
+    default=25 * 1024 * 1024,  # 25 MB
+)
 
 # Submission settings
 SUBMISSION_INLINE_MAX_BYTES = 10_000_000  # 10MB

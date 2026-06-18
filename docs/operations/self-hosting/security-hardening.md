@@ -63,7 +63,7 @@ Production docs recommend exact-version tags or digest pins, not `latest`.
 ```bash
 # .envs/.production/.self-hosted/.build
 VALIDIBOT_IMAGE_TAG=0.8.0          # exact version
-VALIDATOR_IMAGE_POLICY=digest       # or 'signed-digest' once Phase 5 ships
+VALIDATOR_BACKEND_IMAGE_POLICY=digest   # or 'signed-digest' once Phase 5 ships
 ```
 
 The doctor command warns if `latest` is used in a `self-hosted` or `self-hosted-hardened` profile.
@@ -126,7 +126,7 @@ The doctor command on self-hosted reports which outbound calls are enabled, so o
 
 For risk-averse customers, the `self-hosted-hardened` profile applies stricter defaults:
 
-- `VALIDATOR_IMAGE_POLICY=signed-digest` when signed validator images are available;
+- `VALIDATOR_BACKEND_IMAGE_POLICY=signed-digest` when signed validator images are available;
 - all telemetry off;
 - no runtime license phone-home;
 - local signing/JWKS checks;

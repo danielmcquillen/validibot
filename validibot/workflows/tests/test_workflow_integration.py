@@ -559,9 +559,11 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
     api_client.force_authenticate(user=user)
 
     # Create workflow using factory since API is read-only
+    project = ProjectFactory(org=org)  # project is required on Workflow now
     workflow = Workflow.objects.create(
         org=org,
         user=user,
+        project=project,
         name="Price check",
         slug="price-check",
         version=1,

@@ -484,7 +484,14 @@ else:  # self_hosted (DeploymentTarget.SELF_HOSTED — single-VM Docker Compose)
 
 # Site URL for callbacks
 SITE_URL = env("SITE_URL", default="http://localhost:8000")
-WORKER_URL = env("WORKER_URL", default=SITE_URL)
+# WORKER_URL is the worker service's URL origin. In multi-service deployments
+# (GCP) the worker is a SEPARATE, internal Cloud Run service with its own
+# *.run.app URL, distinct from the public web service (SITE_URL). We keep the
+# SITE_URL fallback for single-service / dev convenience, but capture whether
+# WORKER_URL was set explicitly so the GCP boot check below can reject the
+# silent fallback (which would mis-route callbacks/tasks to the public service).
+_worker_url_explicit = env("WORKER_URL", default="").strip()
+WORKER_URL = _worker_url_explicit or SITE_URL
 
 # WORKER-ENDPOINT OIDC VERIFICATION (GCP only)
 # ------------------------------------------------------------------------------
@@ -503,6 +510,24 @@ WORKER_URL = env("WORKER_URL", default=SITE_URL)
 # time surfaces the misconfig in the Cloud Run deploy log instead of in
 # production traffic.
 if DEPLOYMENT_TARGET == "gcp":
+    # On GCP the worker is a SEPARATE, internal Cloud Run service with its own
+    # *.run.app URL — distinct from the public web service (SITE_URL, often a
+    # custom domain like app.validibot.com). WORKER_URL is BOTH the callback
+    # target the validator jobs POST to AND the OIDC audience the dispatcher
+    # mints for worker-bound tasks. If it silently fell back to SITE_URL,
+    # callbacks and Cloud Tasks would route to the public web service instead
+    # of the worker, with only a log warning. Requiring it to be set explicitly
+    # turns that latent mis-route into a loud, deploy-time error.
+    if not _worker_url_explicit:
+        raise ImproperlyConfigured(
+            "DEPLOYMENT_TARGET=gcp requires WORKER_URL to be set explicitly to "
+            "the worker service's URL origin (scheme + host, no path), e.g. "
+            "https://validibot-worker-xxxx.a.run.app. Without it, validator "
+            "callbacks and Cloud Tasks would silently route to the public web "
+            "service (SITE_URL). See "
+            "docs/dev_docs/deployment/environment-configuration.md."
+        )
+
     _oidc_audience = (TASK_OIDC_AUDIENCE or WORKER_URL or "").strip()  # noqa: F405
     if not _oidc_audience:
         raise ImproperlyConfigured(

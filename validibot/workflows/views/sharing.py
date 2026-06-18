@@ -150,73 +150,62 @@ class WorkflowInviteAcceptView(GuestInvitesEnabledMixin, View):
     """
 
     WORKFLOW_INVITE_SESSION_KEY = "workflow_invite_token"
+    template_name = "workflows/workflow_invite_confirm.html"
 
-    def get(self, request, token):
+    def _resolve_pending_invite(self, request, token):
+        """Resolve the invite and ensure it is still redeemable.
+
+        Returns ``(invite, None)`` for a pending invite, or
+        ``(None, response)`` when the caller should bail out (invalid or
+        expired invite → redirect home). Read-only, so it is safe to run on
+        both GET and POST.
+        """
         from validibot.workflows.models import WorkflowInvite
 
         invite = get_object_or_404(
             WorkflowInvite.objects.select_related("workflow", "inviter"),
             token=token,
         )
-
         if not invite.is_pending:
             messages.error(
                 request,
                 _("This invite is no longer valid (status: %(status)s).")
                 % {"status": invite.get_status_display()},
             )
+            return None, HttpResponseRedirect(reverse("home:home"))
+        return invite, None
+
+    def _wrong_email_redirect(self, request, invite):
+        """Guard against cross-account redemption of an email-only invite.
+
+        An email-only invite (``invitee_user`` is None) must only be redeemed
+        by an account that provably owns the invited email — otherwise a leaked
+        or forwarded link lets whoever opens it claim access addressed to a
+        different person. Returns a redirect response on mismatch, else None.
+        Read-only; mirrors ``MemberInviteAcceptView``.
+        """
+        from validibot.members.views import user_owns_invited_email
+
+        if invite.invitee_user_id is None and not user_owns_invited_email(
+            request.user,
+            invite.invitee_email,
+        ):
+            messages.error(
+                request,
+                _(
+                    "This invitation is addressed to a different email "
+                    "address, so it was not applied to your account."
+                ),
+            )
             return HttpResponseRedirect(reverse("home:home"))
+        return None
 
-        if request.user.is_authenticated:
-            from validibot.members.views import user_owns_invited_email
+    def _redirect_anonymous_to_signup(self, request, token, invite):
+        """Stash the token and send an anonymous visitor to signup.
 
-            # SECURITY: an email-only invite (``invitee_user`` is None) must
-            # only be redeemed by an account that provably owns the invited
-            # email. A leaked or forwarded invite link otherwise lets whoever
-            # opens it claim workflow access addressed to a different person
-            # (cross-account grant). Mirrors the guard in
-            # ``MemberInviteAcceptView`` and the post-signup adapter handlers.
-            if invite.invitee_user_id is None and not user_owns_invited_email(
-                request.user,
-                invite.invitee_email,
-            ):
-                messages.error(
-                    request,
-                    _(
-                        "This invitation is addressed to a different email "
-                        "address, so it was not applied to your account."
-                    ),
-                )
-                return HttpResponseRedirect(reverse("home:home"))
-            # Accept immediately for logged-in users
-            try:
-                grant = invite.accept(user=request.user)
-                # Send acceptance notification to the inviter
-                from validibot.workflows.emails import (
-                    send_workflow_invite_accepted_email,
-                )
-
-                send_workflow_invite_accepted_email(grant)
-                messages.success(
-                    request,
-                    _(
-                        "You now have access to the workflow '%(name)s'. "
-                        "You can run validations on this workflow."
-                    )
-                    % {"name": invite.workflow.name},
-                )
-                # Redirect to the workflow launch page
-                return HttpResponseRedirect(
-                    reverse(
-                        "workflows:workflow_launch",
-                        kwargs={"pk": invite.workflow.pk},
-                    ),
-                )
-            except ValueError as e:
-                messages.error(request, str(e))
-                return HttpResponseRedirect(reverse("home:home"))
-
-        # For anonymous users, store token in session and redirect to signup
+        The post-signup adapter consumes the stashed token and applies the
+        invite once the account exists.
+        """
         request.session[self.WORKFLOW_INVITE_SESSION_KEY] = str(token)
         messages.info(
             request,
@@ -228,6 +217,68 @@ class WorkflowInviteAcceptView(GuestInvitesEnabledMixin, View):
         )
         return HttpResponseRedirect(reverse("account_signup"))
 
+    def get(self, request, token):
+        """Show a confirmation page — never accept on GET.
+
+        Accepting on GET is a CSRF-class hole: an ``<img src="…invite…">`` on
+        any page a logged-in invitee visits would silently accept the invite.
+        GET is therefore side-effect-free — it resolves the invite and renders
+        a confirm page whose button POSTs back here. (ADR 04-23 #8.)
+        """
+        invite, bail = self._resolve_pending_invite(request, token)
+        if bail is not None:
+            return bail
+
+        if not request.user.is_authenticated:
+            return self._redirect_anonymous_to_signup(request, token, invite)
+
+        wrong_email = self._wrong_email_redirect(request, invite)
+        if wrong_email is not None:
+            return wrong_email
+
+        return render(
+            request,
+            self.template_name,
+            {"invite": invite, "workflow": invite.workflow},
+        )
+
+    def post(self, request, token):
+        """Accept the invite — the state change lives only here (CSRF-protected)."""
+        invite, bail = self._resolve_pending_invite(request, token)
+        if bail is not None:
+            return bail
+
+        if not request.user.is_authenticated:
+            return self._redirect_anonymous_to_signup(request, token, invite)
+
+        wrong_email = self._wrong_email_redirect(request, invite)
+        if wrong_email is not None:
+            return wrong_email
+
+        try:
+            grant = invite.accept(user=request.user)
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return HttpResponseRedirect(reverse("home:home"))
+
+        from validibot.workflows.emails import send_workflow_invite_accepted_email
+
+        send_workflow_invite_accepted_email(grant)
+        messages.success(
+            request,
+            _(
+                "You now have access to the workflow '%(name)s'. "
+                "You can run validations on this workflow."
+            )
+            % {"name": invite.workflow.name},
+        )
+        return HttpResponseRedirect(
+            reverse(
+                "workflows:workflow_launch",
+                kwargs={"pk": invite.workflow.pk},
+            ),
+        )
+
 
 class GuestInviteAcceptView(GuestInvitesEnabledMixin, View):
     """Handle org-level guest invite acceptance via tokenized URL.
@@ -235,10 +286,10 @@ class GuestInviteAcceptView(GuestInvitesEnabledMixin, View):
     Mirrors :class:`WorkflowInviteAcceptView` for the org-level
     ``GuestInvite`` flow:
 
-    1. **Logged-in users** — accept the invite immediately. Returns
-       a single ``OrgGuestAccess`` row for ALL scope or per-workflow
-       grants for SELECTED scope. Either way, redirect to the
-       guest-workflows listing.
+    1. **Logged-in users** — GET shows a confirmation page; acceptance is a
+       POST (CSRF-protected). Accepting returns a single ``OrgGuestAccess``
+       row for ALL scope or per-workflow grants for SELECTED scope, then
+       redirects to the guest-workflows listing.
     2. **Anonymous users** — stash the token in the session and
        redirect to signup. After signup, the
        :class:`~validibot.users.adapters.AccountAdapter` consumes the
@@ -259,64 +310,60 @@ class GuestInviteAcceptView(GuestInvitesEnabledMixin, View):
     """
 
     GUEST_INVITE_SESSION_KEY = "guest_invite_token"
+    template_name = "workflows/guest_invite_confirm.html"
 
-    def get(self, request, token):
+    def _resolve_pending_invite(self, request, token):
+        """Resolve the guest invite and ensure it is still redeemable.
+
+        Returns ``(invite, None)`` for a pending invite, or
+        ``(None, response)`` when the caller should bail out (invalid or
+        expired invite → redirect home). Read-only; safe on GET and POST.
+        """
         from validibot.workflows.models import GuestInvite
 
         invite = get_object_or_404(
             GuestInvite.objects.select_related("org", "inviter"),
             token=token,
         )
-
         if not invite.is_pending:
             messages.error(
                 request,
                 _("This guest invite is no longer valid (status: %(status)s).")
                 % {"status": invite.get_status_display()},
             )
-            return HttpResponseRedirect(reverse("home:home"))
+            return None, HttpResponseRedirect(reverse("home:home"))
+        return invite, None
 
-        if request.user.is_authenticated:
-            from validibot.members.views import user_owns_invited_email
+    def _wrong_email_redirect(self, request, invite):
+        """Guard against cross-account redemption of an email-only invite.
 
-            # SECURITY: see WorkflowInviteAcceptView — an email-only guest
-            # invite (``invitee_user`` is None) may only be redeemed by an
-            # account that provably owns the invited email, so a leaked link
-            # cannot grant another person's org guest access to whoever
-            # opens it.
-            if invite.invitee_user_id is None and not user_owns_invited_email(
-                request.user,
-                invite.invitee_email,
-            ):
-                messages.error(
-                    request,
-                    _(
-                        "This guest invitation is addressed to a different "
-                        "email address, so it was not applied to your account."
-                    ),
-                )
-                return HttpResponseRedirect(reverse("home:home"))
-            try:
-                invite.accept(user=request.user)
-            except ValueError as exc:
-                messages.error(request, str(exc))
-                return HttpResponseRedirect(reverse("home:home"))
+        SECURITY: see WorkflowInviteAcceptView — an email-only guest invite
+        (``invitee_user`` is None) may only be redeemed by an account that
+        provably owns the invited email, so a leaked link cannot grant another
+        person's org guest access to whoever opens it. Read-only.
+        """
+        from validibot.members.views import user_owns_invited_email
 
-            messages.success(
+        if invite.invitee_user_id is None and not user_owns_invited_email(
+            request.user,
+            invite.invitee_email,
+        ):
+            messages.error(
                 request,
-                _("You now have guest access to %(org)s.") % {"org": invite.org.name},
+                _(
+                    "This guest invitation is addressed to a different "
+                    "email address, so it was not applied to your account."
+                ),
             )
-            # Guest-workflow listing is the dedicated guest-friendly
-            # surface; sending the user there avoids landing them on
-            # views that require active memberships.
-            return HttpResponseRedirect(
-                reverse("workflows:guest_workflow_list"),
-            )
+            return HttpResponseRedirect(reverse("home:home"))
+        return None
 
-        # Anonymous user: stash the token and route through signup. The
-        # AccountAdapter consumes the session key after signup completes,
-        # calls ``invite.accept()`` on the new user, and classifies them
-        # as GUEST.
+    def _redirect_anonymous_to_signup(self, request, token, invite):
+        """Stash the token and route an anonymous visitor through signup.
+
+        The AccountAdapter consumes the session key after signup completes,
+        calls ``invite.accept()`` on the new user, and classifies them as GUEST.
+        """
         request.session[self.GUEST_INVITE_SESSION_KEY] = str(token)
         messages.info(
             request,
@@ -324,6 +371,62 @@ class GuestInviteAcceptView(GuestInvitesEnabledMixin, View):
             % {"org": invite.org.name},
         )
         return HttpResponseRedirect(reverse("account_signup"))
+
+    def get(self, request, token):
+        """Show a confirmation page — never accept on GET.
+
+        Same CSRF-class reasoning as ``WorkflowInviteAcceptView``: accepting on
+        GET would let an ``<img src="…invite…">`` silently grant org guest
+        access to a logged-in invitee. GET is side-effect-free; the confirm
+        page's button POSTs back here. (ADR 04-23 #8, sibling view.)
+        """
+        invite, bail = self._resolve_pending_invite(request, token)
+        if bail is not None:
+            return bail
+
+        if not request.user.is_authenticated:
+            return self._redirect_anonymous_to_signup(request, token, invite)
+
+        wrong_email = self._wrong_email_redirect(request, invite)
+        if wrong_email is not None:
+            return wrong_email
+
+        return render(
+            request,
+            self.template_name,
+            {"invite": invite, "org": invite.org},
+        )
+
+    def post(self, request, token):
+        """Accept the guest invite.
+
+        The state change lives only here (CSRF-protected).
+        """
+        invite, bail = self._resolve_pending_invite(request, token)
+        if bail is not None:
+            return bail
+
+        if not request.user.is_authenticated:
+            return self._redirect_anonymous_to_signup(request, token, invite)
+
+        wrong_email = self._wrong_email_redirect(request, invite)
+        if wrong_email is not None:
+            return wrong_email
+
+        try:
+            invite.accept(user=request.user)
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return HttpResponseRedirect(reverse("home:home"))
+
+        messages.success(
+            request,
+            _("You now have guest access to %(org)s.") % {"org": invite.org.name},
+        )
+        # Guest-workflow listing is the dedicated guest-friendly surface;
+        # sending the user there avoids landing them on views that require
+        # active memberships.
+        return HttpResponseRedirect(reverse("workflows:guest_workflow_list"))
 
 
 # Guest Workflow Views

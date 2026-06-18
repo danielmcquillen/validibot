@@ -154,6 +154,32 @@ def test_export_then_import_rebuilds_the_workflow_in_a_new_org():
     assert all(a.options.get("tabular_stage") == "row" for a in assertions)
 
 
+def test_import_binds_workflow_to_importing_orgs_default_project():
+    """Imported workflows must belong to the importing org's default project.
+
+    Imports don't carry a project reference, but every workflow must have one
+    (``Workflow.clean()`` enforces a non-null project). The importer therefore
+    binds the new workflow to the destination org's default project rather than
+    leaving it project-less, which would otherwise make the import fail at save.
+    """
+    from validibot.users.models import ensure_default_project
+
+    src_org, src_user = _org_and_user()
+    validator = _tabular_validator()
+    workflow = _darwin_core_workflow(src_org, src_user, validator)
+
+    definition, files = export_definition(workflow)
+
+    dst_org, dst_user = _org_and_user()
+    dst_default = ensure_default_project(dst_org)
+
+    result = import_definition(definition, files=files, org=dst_org, user=dst_user)
+
+    new = result.workflow
+    assert new.project_id == dst_default.pk
+    assert new.project.org_id == dst_org.pk
+
+
 # ── Author notes survive the export -> import round-trip ────────────────────
 def test_assertion_notes_survive_export_import():
     """An assertion's author ``notes`` field round-trips through .vaf import.

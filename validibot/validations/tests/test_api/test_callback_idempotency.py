@@ -130,6 +130,80 @@ class CallbackIdempotencyTestCase(TestCase):
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.services.validation_callback.download_envelope")
+    def test_permanent_error_marks_receipt_rejected(self, mock_download):
+        """A permanent (4xx) callback error must move the receipt to the
+        terminal REJECTED state.
+
+        Why this matters: before a terminal state existed, a callback that
+        could never succeed (here, an output envelope whose ``validator.id``
+        doesn't match the run's validator) left the receipt in PROCESSING — so
+        every Cloud Tasks redelivery re-ran the doomed processing. Marking it
+        REJECTED lets the idempotency guard short-circuit retries and records
+        the outcome honestly. We assert the response is the 4xx error AND the
+        receipt ends REJECTED.
+        """
+        # The envelope downloads fine (mocked) but its validator.id mismatches
+        # the run's validator → a permanent 400 in _download_and_validate_envelope.
+        mock_envelope = self._make_mock_envelope()
+        mock_envelope.validator.id = str(uuid.uuid4())
+        mock_download.return_value = mock_envelope
+
+        callback_id = str(uuid.uuid4())
+        payload = {
+            "run_id": str(self.run.id),
+            "callback_id": callback_id,
+            "status": "success",
+            "result_uri": "gs://bucket/output.json",
+        }
+
+        response = self.client.post(self.callback_url, data=payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        receipt = CallbackReceipt.objects.filter(callback_id=callback_id).first()
+        self.assertIsNotNone(receipt)
+        self.assertEqual(receipt.status, CallbackReceiptStatus.REJECTED)
+
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
+    @patch("validibot.validations.services.validation_callback.download_envelope")
+    def test_rejected_callback_retry_short_circuits(self, mock_download):
+        """A redelivery of a permanently REJECTED callback must NOT reprocess.
+
+        Once a callback is REJECTED (terminal), a Cloud Tasks redelivery should
+        hit the idempotency guard and return a cached 200 ("already rejected")
+        WITHOUT re-running processing — stopping the retry storm on a callback
+        that can never succeed. We prove no reprocessing by asserting
+        download_envelope is not called a second time.
+        """
+        mock_envelope = self._make_mock_envelope()
+        mock_envelope.validator.id = str(uuid.uuid4())
+        mock_download.return_value = mock_envelope
+
+        callback_id = str(uuid.uuid4())
+        payload = {
+            "run_id": str(self.run.id),
+            "callback_id": callback_id,
+            "status": "success",
+            "result_uri": "gs://bucket/output.json",
+        }
+
+        # First delivery → permanent rejection.
+        first = self.client.post(self.callback_url, data=payload, format="json")
+        self.assertEqual(first.status_code, status.HTTP_400_BAD_REQUEST)
+        calls_after_first = mock_download.call_count
+
+        # Redelivery → short-circuit to a cached 200, no reprocessing.
+        second = self.client.post(self.callback_url, data=payload, format="json")
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertTrue(second.data.get("idempotent_replayed"))
+        self.assertEqual(second.data["message"], "Callback already rejected")
+        # download_envelope must NOT have been called again for the redelivery.
+        self.assertEqual(mock_download.call_count, calls_after_first)
+
+        receipt = CallbackReceipt.objects.filter(callback_id=callback_id).first()
+        self.assertEqual(receipt.status, CallbackReceiptStatus.REJECTED)
+
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
+    @patch("validibot.validations.services.validation_callback.download_envelope")
     def test_duplicate_callback_returns_early(self, mock_download):
         """Test that duplicate callbacks with same callback_id are not reprocessed."""
         mock_download.return_value = self._make_mock_envelope()

@@ -230,9 +230,10 @@ class ValidationCallbackService:
         2. New callback_id → create a PROCESSING receipt, process under a
            row-level lock so no concurrent request can duplicate the work.
         3. Existing receipt still PROCESSING → previous attempt crashed
-           mid-flight, so retry.
-        4. Existing receipt in a terminal state → true duplicate, return
-           the cached "already processed" response.
+           mid-flight (or hit a transient error), so retry.
+        4. Existing receipt in a terminal state (COMPLETED or REJECTED) →
+           already handled, return a cached 200 so Cloud Tasks stops retrying.
+           A permanently REJECTED callback must not be retried forever.
         5. Lock contention (another request holds the row lock) → return
            409 so Cloud Tasks retries later.
         """
@@ -252,16 +253,26 @@ class ValidationCallbackService:
 
                 if not receipt_created:
                     if receipt.status != CallbackReceiptStatus.PROCESSING:
+                        was_rejected = receipt.status == CallbackReceiptStatus.REJECTED
                         logger.info(
-                            "Callback %s already processed at %s",
+                            "Callback %s already in terminal state %s "
+                            "(received at %s), returning cached response",
                             callback.callback_id,
+                            receipt.status,
                             receipt.received_at,
                         )
-                        # Return inside the atomic block isn't needed for
-                        # processing, but exiting cleanly releases the lock.
+                        # Return a 200 even for a REJECTED receipt: the callback
+                        # was permanently rejected on the first attempt, so we
+                        # must stop Cloud Tasks from retrying it. Returning
+                        # inside the atomic block also exits cleanly, releasing
+                        # the row lock.
                         return Response(
                             {
-                                "message": "Callback already processed",
+                                "message": (
+                                    "Callback already rejected"
+                                    if was_rejected
+                                    else "Callback already processed"
+                                ),
                                 "idempotent_replayed": True,
                                 "original_received_at": (
                                     receipt.received_at.isoformat()
@@ -357,6 +368,16 @@ class ValidationCallbackService:
             result = self._complete_step(run, step_run, output_envelope)
             self._finalize_or_resume(run, result)
         except _CallbackProcessingError as exc:
+            # A client-error (4xx) status means the callback is permanently
+            # bad — the allowlist rejected its result_uri, no output envelope
+            # class is registered, or the envelope's validator/run IDs don't
+            # match. Nothing a retry could fix, so mark the receipt REJECTED
+            # (terminal); the idempotency guard then short-circuits any Cloud
+            # Tasks retry to a cached 200 instead of re-running doomed work.
+            # Server errors (5xx, e.g. a transient envelope-download failure)
+            # are left PROCESSING so the retry can re-attempt.
+            if status.is_client_error(exc.status_code):
+                self._mark_receipt_rejected(callback, receipt, run)
             return Response(
                 {"error": exc.detail},
                 status=exc.status_code,
@@ -543,6 +564,7 @@ class ValidationCallbackService:
             output_envelope = download_envelope(
                 callback.result_uri,
                 envelope_class,
+                max_bytes=getattr(settings, "VALIDATION_RESULT_MAX_BYTES", None),
             )
         except Exception as exc:
             logger.exception("Failed to download output envelope")
@@ -834,6 +856,39 @@ class ValidationCallbackService:
                 "Updated callback receipt %s to status %s",
                 callback.callback_id,
                 receipt.status,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to update callback receipt for %s",
+                callback.callback_id,
+                exc_info=True,
+            )
+
+    @staticmethod
+    def _mark_receipt_rejected(
+        callback: ValidationCallback,
+        receipt: CallbackReceipt | None,
+        run: ValidationRun,
+    ) -> None:
+        """
+        Move a receipt to the terminal REJECTED state after a permanent error.
+
+        Mirrors :meth:`_mark_receipt_completed`, but records that the callback
+        was permanently rejected (a non-retryable 4xx error) so a Cloud Tasks
+        retry short-circuits in the idempotency guard instead of re-running the
+        doomed processing. A failure to update the receipt is logged but does
+        not change the response — the error status is already being returned.
+        """
+        if not callback.callback_id or not receipt:
+            return
+
+        try:
+            receipt.status = CallbackReceiptStatus.REJECTED
+            receipt.validation_run = run
+            receipt.save(update_fields=["status", "validation_run"])
+            logger.info(
+                "Marked callback receipt %s as REJECTED (permanent error)",
+                callback.callback_id,
             )
         except Exception:
             logger.warning(

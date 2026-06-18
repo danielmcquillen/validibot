@@ -628,47 +628,79 @@ class Submission(TimeStampedModel):
 
 def _delete_run_files(run) -> None:
     """
-    Delete all files associated with a validation run.
+    Delete all files associated with a validation run from storage.
 
-    Uses the storage abstraction to remove all files under the run's directory
-    (runs/{org_id}/{run_id}/). This works for both local filesystem and cloud
-    storage.
+    The Cloud Run launcher writes a run's bundle (``input.json``, ``model.*``,
+    ``submission.rdf``, ``output.json``, …) DIRECTLY to its execution-bundle
+    location:
 
-    This function is called during submission content purge to remove
-    all associated files from storage.
+        * GCS   — ``gs://<GCS_VALIDATION_BUCKET>/runs/<org_id>/<run_id>/``
+        * local — ``<MEDIA_ROOT>/files/runs/<org_id>/<run_id>/``
+
+    Crucially it does NOT go through the ``DataStorage`` abstraction, which
+    prepends a ``private/`` prefix (``<bucket>/private/runs/…``). An earlier
+    implementation deleted via ``get_data_storage().delete_prefix("runs/…")``,
+    which therefore scanned ``private/runs/…`` — a prefix the run bundle is
+    never written to — so the real objects survived in GCS even though the run
+    was marked purged (a silent retention/privacy failure). This function
+    deletes from the SAME raw location the launcher writes to, mirroring its
+    GCS-vs-local branch.
+
+    Called during submission content purge (DO_NOT_STORE) and output-retention
+    purge.
 
     Args:
         run: ValidationRun instance
 
     Note:
-        - Safe to call if run directory doesn't exist (no-op)
-        - Uses the configured data storage backend (local, GCS, etc.)
+        - Safe to call if the run directory doesn't exist (no-op, count 0).
+        - On a real deletion failure it logs and re-raises, so callers can
+          avoid marking the run/submission purged while objects may remain.
     """
-    from validibot.core.storage import get_data_storage
-
     org_id = str(run.org_id)
     run_id = str(run.id)
     run_path = f"runs/{org_id}/{run_id}/"
 
-    try:
-        storage = get_data_storage()
-        count = storage.delete_prefix(run_path)
+    bucket = getattr(settings, "GCS_VALIDATION_BUCKET", "")
 
-        if count > 0:
-            logger.info(
-                "Deleted run files",
-                extra={
-                    "run_id": run_id,
-                    "run_path": run_path,
-                    "files_deleted": count,
-                },
+    try:
+        if bucket:
+            # GCS: delete the run bundle from the validation bucket directly,
+            # using the same raw client the launcher writes with (NOT the
+            # private/-prefixed DataStorage abstraction).
+            from validibot.validations.services.cloud_run.gcs_client import (
+                delete_prefix,
             )
+
+            count = delete_prefix(f"gs://{bucket}/{run_path}")
+        else:
+            # Local dev / self-hosted filesystem: mirror the launcher's local
+            # layout under MEDIA_ROOT/files/runs/<org>/<run>/.
+            import shutil
+            from pathlib import Path
+
+            base_dir = Path(settings.MEDIA_ROOT) / "files" / "runs" / org_id / run_id
+            if base_dir.exists():
+                shutil.rmtree(base_dir)
+                count = 1
+            else:
+                count = 0
     except Exception:
         logger.exception(
             "Failed to delete run files",
             extra={"run_id": run_id, "run_path": run_path},
         )
         raise
+
+    if count > 0:
+        logger.info(
+            "Deleted run files",
+            extra={
+                "run_id": run_id,
+                "run_path": run_path,
+                "files_deleted": count,
+            },
+        )
 
 
 def detect_file_type(

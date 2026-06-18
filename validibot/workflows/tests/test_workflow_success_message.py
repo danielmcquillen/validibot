@@ -39,6 +39,7 @@ class WorkflowSuccessMessageTests(TestCase):
         workflow = Workflow.objects.create(
             org=self.org,
             user=self.user,
+            project=self.project,
             name="Test Workflow",
             success_message="Your model passed all validation checks!",
         )
@@ -58,6 +59,7 @@ class WorkflowSuccessMessageTests(TestCase):
         workflow = Workflow.objects.create(
             org=self.org,
             user=self.user,
+            project=self.project,
             name="Test Workflow",
         )
 
@@ -73,6 +75,7 @@ class WorkflowSuccessMessageTests(TestCase):
         workflow = Workflow.objects.create(
             org=self.org,
             user=self.user,
+            project=self.project,
             name="Test Workflow",
         )
         self.assertEqual(workflow.success_message, "")
@@ -97,6 +100,7 @@ You may now proceed to submit for certification."""
         workflow = Workflow.objects.create(
             org=self.org,
             user=self.user,
+            project=self.project,
             name="Test Workflow",
             success_message=multiline_message,
         )

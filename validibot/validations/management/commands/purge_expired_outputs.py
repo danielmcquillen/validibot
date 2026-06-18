@@ -169,7 +169,7 @@ class Command(BaseCommand):
 
         The run record and summary are preserved for audit trail.
         """
-        from validibot.core.storage import get_data_storage
+        from validibot.submissions.models import _delete_run_files
         from validibot.validations.models import ValidationFinding
 
         run_id = str(run.id)
@@ -202,23 +202,14 @@ class Command(BaseCommand):
                 extra={"run_id": run_id, "artifacts_count": len(artifacts)},
             )
 
-        # Delete run files from data storage
-        try:
-            storage = get_data_storage()
-            org_id = str(run.org_id)
-            run_path = f"runs/{org_id}/{run_id}/"
-            files_deleted = storage.delete_prefix(run_path)
-            if files_deleted > 0:
-                logger.info(
-                    "Deleted run files from storage",
-                    extra={"run_id": run_id, "files_deleted": files_deleted},
-                )
-        except Exception:
-            logger.exception(
-                "Failed to delete run files from storage",
-                extra={"run_id": run_id},
-            )
-            raise
+        # Delete run files from the launcher's execution-bundle location.
+        # _delete_run_files targets the SAME raw path the launcher writes to
+        # (the validation bucket's runs/ prefix in GCS, or MEDIA_ROOT/files/runs/
+        # locally) — NOT the DataStorage abstraction's private/ prefix, which the
+        # run bundle is never written to. It logs and re-raises on failure, so
+        # the transaction.atomic() in handle() rolls back and the run is not
+        # marked purged while objects may remain in storage.
+        _delete_run_files(run)
 
         # Mark run as purged
         run.output_purged_at = timezone.now()

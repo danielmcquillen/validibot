@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
+from django.test import override_settings
 from django.utils import timezone
 
 from validibot.submissions.constants import SubmissionRetention
@@ -108,18 +109,54 @@ class TestSubmissionPurgeContent:
         # Should have been called for the related run
         mock_delete.assert_called_once_with(run)
 
-    @patch("validibot.core.storage.get_data_storage")
-    def test_delete_run_files_uses_org_prefixed_path(self, mock_get_storage):
-        """Run file deletion should use runs/{org_id}/{run_id}/ path."""
+    @override_settings(GCS_VALIDATION_BUCKET="test-validation-bucket")
+    @patch("validibot.validations.services.cloud_run.gcs_client.delete_prefix")
+    def test_delete_run_files_targets_validation_bucket_runs_prefix(
+        self,
+        mock_delete_prefix,
+    ):
+        """GCS run-file deletion must hit the validation bucket's ``runs/``
+        prefix — NOT the DataStorage ``private/`` prefix.
+
+        This is the regression test for the silent-purge bug. The Cloud Run
+        launcher writes a run's bundle to
+        ``gs://<GCS_VALIDATION_BUCKET>/runs/<org>/<run>/``, but the old purge
+        deleted through the DataStorage abstraction, which prepends
+        ``private/`` — so it scanned ``private/runs/…`` (a prefix nothing is
+        written to) and the real objects survived in GCS even though the run
+        was marked purged. We assert the delete now targets the exact ``gs://``
+        prefix the launcher actually writes to.
+        """
+        mock_delete_prefix.return_value = 0
         submission = SubmissionFactory(content='{"test": "data"}')
         run = ValidationRunFactory(submission=submission)
-        mock_storage = mock_get_storage.return_value
-        mock_storage.delete_prefix.return_value = 0
 
         submission.purge_content()
 
-        expected_path = f"runs/{run.org_id}/{run.id}/"
-        mock_storage.delete_prefix.assert_called_once_with(expected_path)
+        expected_uri = f"gs://test-validation-bucket/runs/{run.org_id}/{run.id}/"
+        mock_delete_prefix.assert_called_once_with(expected_uri)
+
+    def test_delete_run_files_local_removes_run_directory(self, tmp_path):
+        """Local/self-hosted run-file deletion must remove the run directory
+        under ``MEDIA_ROOT/files/runs/<org>/<run>/``.
+
+        Without a validation bucket the launcher stores bundles on the local
+        filesystem, so purge has to delete from there. We seed a fake bundle
+        and assert the whole run directory is gone after purge — the local
+        mirror of the GCS regression above.
+        """
+        submission = SubmissionFactory(content='{"test": "data"}')
+        run = ValidationRunFactory(submission=submission)
+
+        run_dir = tmp_path / "files" / "runs" / str(run.org_id) / str(run.id)
+        run_dir.mkdir(parents=True)
+        (run_dir / "input.json").write_text("{}")
+        (run_dir / "output.json").write_text("{}")
+
+        with override_settings(GCS_VALIDATION_BUCKET="", MEDIA_ROOT=str(tmp_path)):
+            submission.purge_content()
+
+        assert not run_dir.exists()
 
 
 @pytest.mark.django_db

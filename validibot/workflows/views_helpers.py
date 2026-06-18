@@ -328,13 +328,21 @@ def unique_ruleset_name(
 ) -> str:
     name = base_name
     suffix = 2
+    # Cap the numeric-suffix probing so a pathological set of colliding names
+    # (e.g. malicious input seeding many collisions) can't spin this
+    # per-iteration DB query indefinitely. Past the cap, fall back to a UUID
+    # suffix, which is collision-proof in a single shot. (ADR 04-23
+    # §hyg.unbounded_while)
+    max_numeric_suffix = 100
     while Ruleset.objects.filter(
         org=org,
         ruleset_type=ruleset_type,
         name=name,
         version=version,
     ).exists():
-        truncated_base = base_name[: max(0, 240)]
+        truncated_base = base_name[:240]
+        if suffix > max_numeric_suffix:
+            return f"{truncated_base}-{uuid4().hex[:8]}"
         name = f"{truncated_base}-{suffix}"
         suffix += 1
     return name

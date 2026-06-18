@@ -1757,6 +1757,39 @@ class TestMergeNumberValidation:
         assert result.parameters["AREA"] == "autocalculate"
 
 
+# ── NaN/Inf rejection (ADR 04-23 §hyg.nan_inf) ────────────────────────
+# float("nan") / float("inf") parse successfully but are not valid
+# EnergyPlus values — submitted unchecked they propagate into the IDF and
+# crash inside the simulation container. The number validator must reject
+# any non-finite value.
+
+
+class TestMergeRejectsNonFiniteNumbers:
+    """Number variables must reject NaN/Inf (ADR 04-23 §hyg.nan_inf)."""
+
+    @pytest.mark.parametrize("bad", ["nan", "inf", "-inf", "Infinity", "NaN"])
+    def test_non_finite_rejected(self, bad):
+        """Each non-finite literal is rejected with a 'finite number' error,
+        rather than silently flowing through to the IDF.
+        """
+        variables = [_make_var("U_FACTOR", variable_type="number")]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={"U_FACTOR": bad},
+                template_variables=variables,
+            )
+        assert "finite number" in exc_info.value.messages[0]
+
+    def test_finite_number_still_accepted(self):
+        """A normal finite value still passes — guard against over-rejection."""
+        variables = [_make_var("U_FACTOR", variable_type="number")]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"U_FACTOR": "2.0"},
+            template_variables=variables,
+        )
+        assert result.parameters == {"U_FACTOR": "2.0"}
+
+
 class TestMergeChoiceValidation:
     """Test choice type validation — allowlist enforcement."""
 

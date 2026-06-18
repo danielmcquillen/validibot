@@ -84,10 +84,11 @@ A future `validators smoke-test` recipe could automate this; for the MVP, the op
 
 Production self-hosted docs recommend pinning validator images by exact version, not `latest`. The Compose stack reads validator images from the `validibot-pro` package metadata — when you upgrade Pro, you get the validator image versions Pro was tested against.
 
-For risk-averse customers who want stricter pinning:
+For risk-averse customers who want stricter pinning, set the
+`VALIDATOR_BACKEND_IMAGE_POLICY` env var:
 
 ```bash
-VALIDATOR_IMAGE_POLICY=digest just self-hosted deploy
+VALIDATOR_BACKEND_IMAGE_POLICY=digest just self-hosted deploy
 ```
 
 Policy values:
@@ -99,6 +100,18 @@ Policy values:
 | `signed-digest` | Future enterprise/high-trust. Requires cosign-verified digests. |
 
 `signed-digest` support and optional cosign verification are planned future hardening work.
+
+!!! warning "Enable `digest` only once your images are digest-pinned"
+    The policy is **enforced at launch**. When it is `digest` (or
+    `signed-digest`), the runner **refuses to start** any validator backend
+    whose image is referenced by a floating tag instead of a `@sha256:…`
+    digest — that is the point (it stops a swapped tag from running), but it
+    means you must pin your validator images by digest *before* turning the
+    policy up, or every validation will fail to launch. The default stays `tag`
+    so the community quick-start works out of the box. On the hosted/GCP path
+    the validator Cloud Run Jobs are currently deployed by git-SHA tag, so
+    enabling `digest` there is a deliberate step: pin the job images by digest
+    first, then set `VALIDATOR_BACKEND_IMAGE_POLICY=digest`.
 
 ## Run-scoped isolation
 

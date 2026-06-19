@@ -40,7 +40,7 @@ dependencies = [
   "django-anymail[postmark]==15.0",
   "django-cors-headers==4.9.0",
   "django-crispy-forms==2.6",
-  "django-environ==0.13.0",
+  "django-environ==0.14.0",
   "django-filter==25.2",
   "django-markdownify==0.9.7",
   "django-model-utils==5.0.0",
@@ -67,7 +67,7 @@ dependencies = [
   "pydantic==2.13.4",
   "python-jsonpath==2.0.2",
   "python-slugify==8.0.4",
-  "sentry-sdk==2.62.0",
+  "sentry-sdk==2.63.0",
   # Task queue: Celery with Redis broker and periodic scheduling.
   # celery[redis] pulls in kombu's redis extra, which caps the redis version.
   # As of kombu 5.6.2 the cap is redis<6.5; kombu main has bumped to <7.1
@@ -88,7 +88,7 @@ dependencies = [
   # guerrillamail, tempmail, etc). Used by UserSignupForm when
   # REJECT_DISPOSABLE_EMAILS is enabled — off by default for community/
   # self-hosted deployments, on in cloud to deter free-trial abuse.
-  "disposable-email-domains==0.0.199",
+  "disposable-email-domains==0.0.205",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # 0.7.0 adds ``StepValidatorRecord.validator_backend_image_digest``;
   # 0.7.1–0.7.3 shipped publish-workflow fixes;
@@ -108,7 +108,7 @@ dependencies = [
   # the contract for running SHACL in the isolated container backend.
   "validibot-shared==0.9.2",
   "django-csp==4.0",
-  "django-permissions-policy==4.30.0",
+  "django-permissions-policy==4.31.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in
   # INSTALLED_APPS (community's `validibot.idp` app extends the allauth
   # adapter for the MCP helper API's JWT access tokens), so these are
@@ -130,7 +130,7 @@ dependencies = [
 
 [project.optional-dependencies]
 cloud = [
-  "stripe==15.2.0",
+  "stripe==15.2.1",
 ]
 # Docker SDK for the Docker-based validator runner (VALIDATOR_RUNNER=docker).
 # Not needed for Cloud Run deployments. Reduces attack surface when omitted.
@@ -331,14 +331,14 @@ dev = [
   "coverage==7.14.1",
   "django-coverage-plugin==3.2.2",
   "factory-boy==3.3.3",
-  "pytest==9.0.3",
+  "pytest==9.1.0",
   "pytest-django==4.12.0",
   "pytest-sugar==1.1.1",
-  "selenium==4.44.0",
+  "selenium==4.45.0",
   # Linting and formatting
-  "djlint==1.39.0",
+  "djlint==1.39.2",
   "pre-commit==4.6.0",
-  "ruff==0.15.16",
+  "ruff==0.15.18",
   # Type checking
   "django-stubs[compatible-mypy]==6.0.5",
   "djangorestframework-stubs==3.17.0",

@@ -19,10 +19,13 @@ Usage in core enforcement points::
     from validibot.core.policies import check_org_policies
 
     allowed, reason = check_org_policies(
-        org, "launch_validation_run", workflow_type="BASIC",
+        org, "launch_validation_run", user=request.user, workflow_type="BASIC",
     )
     if not allowed:
         raise PermissionError(reason)
+
+Passing ``user`` lets the registry bypass all policies for a superuser
+(operator). Omit it for system/background actions with no acting user.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from validibot.users.models import Organization
+    from validibot.users.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +76,8 @@ def register_org_policy(policy_fn: OrgPolicyFn) -> None:
 def check_org_policies(
     org: Organization,
     action: str,
+    *,
+    user: User | None = None,
     **context,
 ) -> tuple[bool, str]:
     """
@@ -83,9 +89,25 @@ def check_org_policies(
     If no policies are registered (community edition), the action is
     always allowed.
 
+    Superuser bypass: a Django superuser is an operator of the deployment,
+    not a tenant subject to its commercial rules. Org policies exist to
+    enforce per-organization business rules — trial expiry, usage quotas,
+    billing status, rate limits — that commercial packages register here.
+    None of those should ever block an operator acting through a superuser
+    account, so we short-circuit before running any policy. This is a
+    generic operator concern (true for self-hosted Pro too), which is why
+    it lives in the community registry rather than inside any one cloud
+    policy: keeping it here means a superuser bypasses *every* registered
+    policy uniformly, present and future, instead of each policy needing
+    its own ``is_superuser`` check that a new policy could forget.
+
     Args:
         org: The organization attempting the action.
         action: A string identifying the action (e.g., "launch_validation_run").
+        user: The user on whose behalf the action is performed, if known.
+            When this is a superuser, all policies are bypassed. Callers
+            that don't have a user (e.g. system/background actions) may
+            omit it, in which case policies run normally.
         **context: Additional keyword context passed through to each policy
             function. For example, ``workflow_type="BASIC"`` lets cloud
             metering policies distinguish workflow types without needing
@@ -95,6 +117,15 @@ def check_org_policies(
         A tuple of (allowed, reason). If allowed is True, reason is empty.
         If allowed is False, reason explains why.
     """
+    if user is not None and getattr(user, "is_superuser", False):
+        logger.info(
+            "Org policy bypass: superuser=%s action=%s org=%s",
+            getattr(user, "pk", None),
+            action,
+            org,
+        )
+        return (True, "")
+
     for policy_fn in _org_policies:
         allowed, reason = policy_fn(org, action, **context)
         if not allowed:

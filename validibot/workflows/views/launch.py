@@ -27,6 +27,7 @@ from validibot.core.utils import reverse_with_org
 from validibot.submissions.constants import SubmissionFileType
 from validibot.users.mixins import SuperuserRequiredMixin
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.exceptions import OrgPolicyDeniedError
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.workflows.form_builder import schema_to_django_form
 from validibot.workflows.form_builder import schema_to_requirement_rows
@@ -296,6 +297,19 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
                 workflow.pk,
                 (time.perf_counter() - start_time) * 1000,
             )
+        except OrgPolicyDeniedError as exc:
+            # The user IS permitted to run this workflow, but an org policy
+            # (billing not set up, quota/credits/rate limit) blocked the
+            # launch. Surface the policy's own reason — which tells the user
+            # how to fix it — instead of the misleading generic permission
+            # message. These reasons are developer-authored gettext strings,
+            # never user input, so they're safe to display verbatim.
+            message = str(exc) or _(
+                "This action isn't available for your organization right now.",
+            )
+            form.add_error(None, message)
+            context = self.get_context_data(launch_form=form)
+            return self.render_to_response(context, status=HTTPStatus.FORBIDDEN)
         except PermissionError:
             form.add_error(None, _("You do not have permission to run this workflow."))
             context = self.get_context_data(launch_form=form)

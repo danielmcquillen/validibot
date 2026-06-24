@@ -1,10 +1,14 @@
 import logging
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as pkg_version
+from pathlib import Path
 
 from django import template
 from django.conf import settings
 from django.contrib.sites.shortcuts import get_current_site
+from django.contrib.staticfiles import finders
+from django.contrib.staticfiles.storage import staticfiles_storage
+from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
@@ -437,3 +441,77 @@ def cloud_tos_dropdown_link():
     app_top_bar.html so templates stay clean.
     """
     return {"tos_url": _cloud_tos_url()}
+
+
+# Compiled head-init snippet. Authored as TypeScript (static/src/ts/headInit.ts)
+# and built to static/js/headInit.js by esbuild, then inlined synchronously in
+# <head> by ``head_init_script`` below. Cached after first read because the file
+# only changes at build time, never per request.
+_HEAD_INIT_STATIC_PATH = "js/headInit.js"
+_head_init_cache: dict[str, str] = {}
+
+
+def _read_head_init_source() -> str:
+    """Read the compiled head-init snippet from disk, cached after first read.
+
+    Resolves the file the same way Django serves static assets: via the
+    staticfiles finders in development (source tree) and via the collected
+    ``STATIC_ROOT`` in production. The result is cached in-process — the file
+    is a build artifact that never changes between deploys, so re-reading it on
+    every request would be pure waste. Returns an empty string (and logs) if the
+    file is missing, so a missing build degrades to "no FOUC priming" rather
+    than a server error.
+    """
+    cached = _head_init_cache.get(_HEAD_INIT_STATIC_PATH)
+    if cached is not None:
+        return cached
+
+    located: str | None = finders.find(_HEAD_INIT_STATIC_PATH)
+    if not located:
+        # Production serves from collected STATIC_ROOT, where finders may be
+        # disabled; fall back to the storage path.
+        try:
+            located = staticfiles_storage.path(_HEAD_INIT_STATIC_PATH)
+        except (NotImplementedError, ValueError):
+            located = None
+
+    source = ""
+    if located and Path(located).is_file():
+        source = Path(located).read_text(encoding="utf-8")
+    else:
+        logger.warning(
+            "head_init_script: compiled %s not found; "
+            "left-nav state will not be primed before paint. "
+            "Did you run `npm run build:js`?",
+            _HEAD_INIT_STATIC_PATH,
+        )
+
+    _head_init_cache[_HEAD_INIT_STATIC_PATH] = source
+    return source
+
+
+@register.simple_tag(takes_context=True)
+def head_init_script(context):
+    """Inline the compiled, TypeScript-authored head-init snippet in <head>.
+
+    This must run synchronously before first paint to prime visual state (the
+    collapsed-nav preference) without a flash of the wrong UI. The main bundle
+    (project.js) is deferred and therefore runs too late, so this small snippet
+    is built separately and inlined here.
+
+    The snippet is a build artifact (no user input), inlined inside a nonce'd
+    ``<script>`` so it satisfies the Content-Security-Policy. We don't escape
+    the JS body — escaping would corrupt it — which is safe precisely because
+    the content is our own compiled code, never request data.
+    """
+    source = _read_head_init_source()
+    if not source:
+        return ""
+    nonce = context.get("CSP_NONCE", "")
+    # format_html escapes the nonce (an attribute value) but we deliberately
+    # mark the script body as safe: it's our compiled, trusted JS.
+    return format_html(
+        '<script nonce="{}">{}</script>',
+        nonce,
+        mark_safe(source),  # noqa: S308 - trusted build artifact, never user input
+    )

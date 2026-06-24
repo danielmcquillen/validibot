@@ -67,6 +67,34 @@ The editor and runtime then use the same declaration for several different jobs:
 - the runtime can instantiate the validator class
 - optional step-editor cards can be injected without hard-coding template logic in the core app
 
+## Validator hook contract
+
+`ValidatorConfig` answers "what plugin exists?" The validator subclass answers "where does this plugin attach to the validation lifecycle?"
+
+Most validators should subclass either `SimpleValidator` or `AdvancedValidator`. These base classes own the orchestration. A validator plugin supplies domain behavior by overriding the documented hooks, not by reimplementing the whole lifecycle.
+
+For simple, in-process validators:
+
+| Hook | Required | Purpose |
+| --- | --- | --- |
+| `validate_file_type(submission)` | Yes | Reject incompatible uploads before parsing. Return a `ValidationIssue` or `None`. |
+| `parse_content(submission)` | Yes | Convert the submission into the domain object the validator understands. Raise on parse failure; the base class turns that into a validation issue. |
+| `run_domain_checks(parsed)` | Yes | Return structural or semantic findings from the parsed domain object. |
+| `extract_signals(parsed)` | No | Return output signals used by assertions and downstream steps. The default is an empty dict. |
+
+For advanced validators that delegate to an isolated validator backend:
+
+| Hook | Required | Purpose |
+| --- | --- | --- |
+| `validator_display_name` | Yes | Human-readable name used in operational error messages. |
+| `preprocess_submission(step, submission)` | No | Resolve templates or normalize inputs before dispatch. The default is a no-op. |
+| `extract_input_signals(payload)` | No | Expose parsed input-stage facts for `i.*` assertions before the backend runs. The default returns `None`. |
+| `extract_output_signals(output_envelope)` | Yes | Expose output-stage facts for `o.*` assertions after the backend returns. |
+
+All validators can also override `get_cel_helpers()` when they need a narrower or wider CEL helper allowlist. Treat it as a security-sensitive hook: only expose helpers the validator really needs.
+
+Avoid overriding `validate()` or `post_execute_validate()` in normal validators. Those methods are the framework-owned lifecycle: they set run context, evaluate assertions, persist signal semantics, handle sync vs async execution, and assemble `ValidationResult`. Override them only when the validator has a lifecycle shape the base class cannot express, and document that decision in the validator package.
+
 ## Action plugin mechanism
 
 Actions now follow the same broad model, but with an `ActionDescriptor` instead of `ValidatorConfig`. The shared action registry lives in `validibot/actions/registry.py`.

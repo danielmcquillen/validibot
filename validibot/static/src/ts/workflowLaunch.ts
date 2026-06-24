@@ -203,6 +203,18 @@ export function initWorkflowLaunch(root: ParentNode | Document = document): void
     root.querySelectorAll<HTMLElement>('[data-workflow-launch-form="true"]'),
   );
   forms.forEach((form) => {
+    // Init-once guard. initWorkflowLaunch runs on initial load AND on every
+    // HTMx swap (via initAppFeatures -> htmx.onLoad). Without this guard, a
+    // swap that touches the launch region re-binds every click/drop/change
+    // listener, so one user action fires its handler N times — duplicate
+    // preflight POSTs, the file picker reopening. Matches the dataset-flag
+    // guard the sibling init functions (tableSorting, tabularSchema,
+    // resizableColumns) use.
+    if (form.dataset.workflowLaunchInitialized === 'true') {
+      return;
+    }
+    form.dataset.workflowLaunchInitialized = 'true';
+
     const controller = new WorkflowLaunchController(form);
     const rawMode = form.getAttribute('data-default-mode') as Mode | null;
     let defaultMode: Mode = 'upload';

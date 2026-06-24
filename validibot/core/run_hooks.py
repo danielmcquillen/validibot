@@ -92,7 +92,9 @@ def run_created_hooks(validation_run: ValidationRun, **context) -> None:
     Args:
         validation_run: The just-created run (already persisted, same txn).
         **context: Keyword context passed through to each hook (e.g.
-            ``workflow_type="ADVANCED"``).
+            ``workflow_type="ADVANCED"``, ``launching_user=<User>``). Hooks
+            may use ``launching_user`` to waive enforcement for an operator
+            (superuser), consistent with the bypass in ``check_org_policies``.
     """
     for hook_fn in _run_created_hooks:
         hook_fn(validation_run, **context)

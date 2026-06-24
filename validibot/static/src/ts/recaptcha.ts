@@ -64,7 +64,7 @@ export function initRecaptcha(): void {
       const siteKey = element.getAttribute('data-sitekey') || '';
       const action = element.getAttribute('data-action') || 'submit';
 
-      form.addEventListener('submit', (event) => {
+      const onSubmit = (event: Event): void => {
         // If we already have a token, let the form submit normally.
         if (element.value) {
           return;
@@ -76,8 +76,23 @@ export function initRecaptcha(): void {
           .then((token) => {
             element.value = token;
             form.submit();
+          })
+          .catch((error: unknown) => {
+            // The challenge failed (network error, expired site key, quota).
+            // We already called preventDefault(), so without recovering here
+            // the user would click Submit and nothing would happen — a silent
+            // dead form. We leave this submit listener INSTALLED so the next
+            // click re-enters onSubmit, finds the token field still empty, and
+            // retries grecaptcha.execute(). We deliberately do NOT remove the
+            // listener or auto-submit without a token: removing it would let the
+            // next submit post an empty token (UX regression — the form looks
+            // submittable but silently fails the backend check), and a tight
+            // auto-retry loop is worse than letting the user click again.
+            console.error('reCAPTCHA challenge failed; please retry.', error);
           });
-      });
+      };
+
+      form.addEventListener('submit', onSubmit);
     });
   });
 }

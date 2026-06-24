@@ -65,6 +65,10 @@ class WorkflowStartErrorCode(models.TextChoices):
         "PERMISSION_DENIED",
         _("You do not have permission to run this workflow"),
     )
+    ORG_POLICY_DENIED = (
+        "ORG_POLICY_DENIED",
+        _("Your organization can't run this workflow right now"),
+    )
 
 
 SUPPORTED_CONTENT_TYPES = {

@@ -466,6 +466,58 @@ def test_launch_start_requires_executor_role(client):
     )
 
 
+def test_launch_org_policy_denial_surfaces_real_reason(client):
+    """A metering/org-policy denial must show the policy's own reason.
+
+    This is the regression test for the misleading-message bug: when a cloud
+    org policy blocks a launch (billing not set up, out of credits, quota,
+    rate limit), the user IS permitted to run the workflow, so the generic
+    "You do not have permission" string was actively wrong and hid the fix
+    ("finish onboarding", "add credits"). The launch service now raises
+    OrgPolicyDeniedError carrying the policy reason, and the view must render that
+    reason verbatim with a 403 — not the permission boilerplate.
+
+    We register a denying policy through the community policy registry (the
+    same hook cloud's metering uses) so the test needs no cloud install.
+    """
+    from validibot.core.policies import register_org_policy
+    from validibot.core.policies import reset_org_policies
+
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+
+    # Avoid HTML-special characters (apostrophes, angle brackets) in the
+    # reason so the assertion compares against the literal string; Django
+    # auto-escapes those in the rendered template, which would otherwise mask
+    # a correct fix behind an escaping mismatch.
+    reason = "Finish billing onboarding before running validations"
+
+    def deny_for_billing(org, action, **context):
+        return (False, reason)
+
+    register_org_policy(deny_for_billing)
+    try:
+        response = client.post(
+            reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
+            data={
+                "file_type": SubmissionFileType.JSON,
+                "payload": "{}",
+            },
+        )
+    finally:
+        # Policies are process-global; never leak into other tests.
+        reset_org_policies()
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
+    body = response.content.decode()
+    # The real, actionable reason is shown ...
+    assert reason in body
+    # ... and the misleading generic permission message is NOT.
+    assert "You do not have permission to run this workflow." not in body
+
+
 def test_launch_toggle_sections_follow_session_preference(client):
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)

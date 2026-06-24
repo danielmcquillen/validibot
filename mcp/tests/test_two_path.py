@@ -123,6 +123,50 @@ class TestValidateFileDispatch:
             run_id="run-123",
         )
 
+    async def test_authenticated_public_x402_only_uses_payment_path(
+        self,
+        authenticated,
+        mock_api,
+        monkeypatch,
+    ):
+        """An authenticated caller selecting a public-x402-ONLY workflow must
+        take the payment path, not the member path.
+
+        This is the third dispatch branch: a bearer token is present, but the
+        chosen workflow is not member-accessible to this user (access_modes is
+        ``["public_x402"]`` with no ``member_access``). The server must fall
+        through to ``_validate_x402`` — so with no PAYMENT-SIGNATURE the caller
+        gets PAYMENT_REQUIRED rather than a free member launch. The workflow
+        detail is fetched from the AUTHENTICATED helper endpoint (only that
+        route is mocked), proving an authenticated user can reach a public
+        x402 workflow without a membership.
+        """
+
+        workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="energy-check")
+        mock_api.get(f"/api/v1/mcp/workflows/{workflow_ref}/").respond(
+            json={
+                **SAMPLE_WORKFLOW_FULL,
+                "workflow_ref": workflow_ref,
+                "org_slug": ORG,
+                "agent_access_enabled": True,
+                "agent_billing_mode": "AGENT_PAYS_X402",
+                "agent_price_cents": 25,
+                # Crucially: no "member_access" — this user is not a member.
+                "access_modes": ["public_x402"],
+            },
+        )
+        monkeypatch.setattr("validibot_mcp.auth.get_payment_signature", lambda: None)
+
+        b64 = base64.b64encode(b"test content").decode()
+        result = await validate_file(
+            workflow_ref=workflow_ref,
+            file_content=b64,
+            file_name="test.json",
+        )
+
+        assert result["error"]["code"] == "PAYMENT_REQUIRED"
+        assert "x402Version" in result["error"]["data"]
+
     async def test_anonymous_no_payment_returns_payment_required(
         self,
         anonymous,

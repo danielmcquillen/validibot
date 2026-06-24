@@ -119,6 +119,75 @@ class OrgPolicyRegistryTests(SimpleTestCase):
         self.assertTrue(allowed)
         self.assertEqual(reason, "")
 
+    def test_superuser_bypasses_all_policies(self):
+        """A superuser is an operator, not a tenant, and must bypass every
+        registered policy.
+
+        This matters because commercial packages register denying policies
+        (trial expiry, quota, billing status). An operator acting through a
+        superuser account should never be blocked by a tenant's commercial
+        state — so the registry short-circuits before any policy runs, even
+        a policy that would otherwise deny.
+        """
+
+        def deny_policy(org, action, **context):
+            return (False, "Trial expired")
+
+        register_org_policy(deny_policy)
+
+        org = MagicMock()
+        superuser = MagicMock(is_superuser=True)
+        allowed, reason = check_org_policies(
+            org,
+            "launch_validation_run",
+            user=superuser,
+        )
+
+        self.assertTrue(allowed)
+        self.assertEqual(reason, "")
+
+    def test_non_superuser_does_not_bypass(self):
+        """A non-superuser must still be subject to denying policies.
+
+        Guards against the bypass being too broad: only ``is_superuser``
+        waives policies. An ordinary authenticated user passing through the
+        same ``user`` kwarg is still bound by the registered rules.
+        """
+
+        def deny_policy(org, action, **context):
+            return (False, "Trial expired")
+
+        register_org_policy(deny_policy)
+
+        org = MagicMock()
+        normal_user = MagicMock(is_superuser=False)
+        allowed, reason = check_org_policies(
+            org,
+            "launch_validation_run",
+            user=normal_user,
+        )
+
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "Trial expired")
+
+    def test_no_user_runs_policies_normally(self):
+        """Omitting ``user`` (system/background action) runs policies as before.
+
+        Background actions without an acting user must not accidentally gain
+        the superuser bypass; absence of a user means "no operator override".
+        """
+
+        def deny_policy(org, action, **context):
+            return (False, "Quota exceeded")
+
+        register_org_policy(deny_policy)
+
+        org = MagicMock()
+        allowed, reason = check_org_policies(org, "launch_validation_run")
+
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "Quota exceeded")
+
     def test_policy_receives_correct_arguments(self):
         """Policies should receive the org and action arguments."""
         received_args = {}

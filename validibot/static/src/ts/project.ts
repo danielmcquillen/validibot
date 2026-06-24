@@ -5,6 +5,7 @@ import * as bootstrap from 'bootstrap';
 import { Chart, registerables } from 'chart.js';
 import htmx from 'htmx.org';
 import { initAppFeatures } from './app';
+import { initAppLeftNavToggle } from './leftNav';
 import { initTableSorting } from './tableSorting';
 
 type RoleCode = 'OWNER' | 'ADMIN' | 'AUTHOR' | 'EXECUTOR' | 'ANALYTICS_VIEWER' | 'VALIDATION_RESULTS_VIEWER' | 'WORKFLOW_VIEWER';
@@ -61,8 +62,6 @@ function initializeCharts(root: ParentNode | Document = document): void {
     });
 }
 
-const LEFT_NAV_STORAGE_KEY = 'validibot:leftNavCollapsed'; // Persist the user's collapse preference across pages.
-const LEFT_NAV_PREF_ATTRIBUTE = 'data-left-nav-prefers-collapsed';
 
 const ROLE_IMPLICATIONS: Record<RoleCode, RoleCode[]> = {
     OWNER: ['OWNER', 'ADMIN', 'AUTHOR', 'EXECUTOR', 'ANALYTICS_VIEWER', 'VALIDATION_RESULTS_VIEWER', 'WORKFLOW_VIEWER'],
@@ -187,49 +186,6 @@ function initRolePickers(root: ParentNode | Document = document): void {
     containers.forEach((container) => {
         console.debug('role-picker: init container', { id: container.id || null });
         initRolePicker(container);
-    });
-}
-
-function initAppLeftNavToggle(): void {
-    const nav = document.getElementById('app-left-nav');
-    const toggle = document.getElementById('app-left-nav-toggle') as HTMLButtonElement | null;
-
-    if (!nav || !toggle) {
-        return;
-    }
-
-    const collapsedClass = 'is-collapsed';
-    const collapsedLabel = toggle.dataset.collapsedLabel ?? 'Show navigation';
-    const expandedLabel = toggle.dataset.expandedLabel ?? 'Hide navigation';
-
-    const applyState = (collapsed: boolean) => {
-        nav.classList.toggle(collapsedClass, collapsed);
-        nav.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
-        toggle.setAttribute('aria-expanded', (!collapsed).toString());
-        toggle.setAttribute('aria-label', collapsed ? collapsedLabel : expandedLabel);
-        if (collapsed) {
-            document.documentElement?.setAttribute(LEFT_NAV_PREF_ATTRIBUTE, 'true');
-        } else {
-            document.documentElement?.removeAttribute(LEFT_NAV_PREF_ATTRIBUTE);
-        }
-    };
-
-    let startCollapsed = false;
-    try {
-        startCollapsed = window.localStorage.getItem(LEFT_NAV_STORAGE_KEY) === '1';
-    } catch (error) {
-        console.debug('Unable to read left nav toggle preference', error);
-    }
-    applyState(startCollapsed);
-
-    toggle.addEventListener('click', () => {
-        const collapsed = !nav.classList.contains(collapsedClass);
-        applyState(collapsed);
-        try {
-            window.localStorage.setItem(LEFT_NAV_STORAGE_KEY, collapsed ? '1' : '0');
-        } catch (error) {
-            console.debug('Unable to persist left nav toggle preference', error);
-        }
     });
 }
 

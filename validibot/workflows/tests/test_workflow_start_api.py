@@ -234,6 +234,56 @@ def mock_validation_service_success(monkeypatch):
 
 @pytest.mark.django_db
 class TestWorkflowStartAPI:
+    def test_start_org_policy_denial_returns_403_with_reason_and_code(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+        monkeypatch,
+    ):
+        """An org-policy denial returns 403 with the policy's reason and code.
+
+        Distinct from a true permission failure, which returns 404 to hide the
+        workflow's existence. Here the caller IS permitted (so 404 would be
+        wrong and confusing) but an org policy — billing not set up, out of
+        credits, quota, rate limit — blocked the launch. The API must surface
+        the policy's own actionable reason and the machine-readable
+        ORG_POLICY_DENIED code so clients can react, not the generic permission
+        message.
+
+        We make the (already-stubbed) service raise OrgPolicyDeniedError to exercise
+        the helper's translation layer, which is what this fix changed.
+        """
+        from validibot.validations.exceptions import OrgPolicyDeniedError
+
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        reason = "Finish billing onboarding before running validations"
+
+        def deny_launch(*_, **__):
+            raise OrgPolicyDeniedError(reason)
+
+        # Override the autouse success stub for this test only.
+        monkeypatch.setattr(
+            launch_helpers_mod,
+            "ValidationRunService",
+            lambda: SimpleNamespace(launch=deny_launch),
+            raising=True,
+        )
+
+        resp = api_client.post(
+            start_url(workflow),
+            data=json.dumps({"hello": "world"}),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == status.HTTP_403_FORBIDDEN, resp.data
+        body = resp.json()
+        assert body["detail"] == reason
+        assert body["code"] == WorkflowStartErrorCode.ORG_POLICY_DENIED.value
+
     def test_start_with_raw_body_json_returns_201(
         self,
         api_client: APIClient,

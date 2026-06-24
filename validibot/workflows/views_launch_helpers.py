@@ -24,6 +24,7 @@ from validibot.submissions.models import Submission
 from validibot.users.models import User
 from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import ValidationRunSource
+from validibot.validations.exceptions import OrgPolicyDeniedError
 from validibot.validations.serializers import ValidationRunSerializer
 from validibot.validations.services.validation_run import ValidationRunLaunchResults
 from validibot.validations.services.validation_run import ValidationRunService
@@ -201,6 +202,21 @@ def launch_api_validation_run(
             user_id=getattr(request.user, "id", None),
             source=source,
         )
+    except OrgPolicyDeniedError as exc:
+        # The caller IS permitted to run this workflow (so we don't hide it
+        # behind a 404 like a true permission failure), but an org policy
+        # blocked the launch — billing not set up, quota/credits exhausted,
+        # rate limited. Return 403 with the policy's own reason and a
+        # machine-readable code so API clients can react. The reason is a
+        # developer-authored gettext string, never user input.
+        detail = str(exc) or gettext_lazy(
+            "Your organization can't run this workflow right now.",
+        )
+        payload = {
+            "detail": detail,
+            "code": WorkflowStartErrorCode.ORG_POLICY_DENIED.value,
+        }
+        return APIResponse(payload, status=HTTPStatus.FORBIDDEN)
     except PermissionError:
         payload = {
             "detail": gettext_lazy("You do not have permission to run this workflow."),

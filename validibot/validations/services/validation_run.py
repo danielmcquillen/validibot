@@ -52,6 +52,7 @@ from validibot.tracking.services import TrackingEventService
 from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.exceptions import OrgPolicyDeniedError
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationRunSummary
 from validibot.validations.services.step_orchestrator import StepOrchestrator
@@ -197,13 +198,23 @@ class ValidationRunService:
         from validibot.core.policies import check_org_policies
 
         workflow_type = getattr(workflow, "workflow_type", "BASIC")
+        # Pass the launching user so the registry can bypass all org
+        # policies for a superuser (operator), who is not a tenant subject
+        # to commercial quotas/billing/rate limits.
         allowed, reason = check_org_policies(
             org,
             "launch_validation_run",
+            user=request.user,
             workflow_type=workflow_type,
         )
         if not allowed:
-            raise PermissionError(reason)
+            # Distinct from the can_execute() PermissionError above: here the
+            # user IS permitted but an org policy (billing/quota/credits/rate
+            # limit) blocked the launch. Raise OrgPolicyDeniedError so the views can
+            # surface ``reason`` verbatim instead of the generic permission
+            # message. OrgPolicyDeniedError subclasses PermissionError, so callers
+            # that only catch PermissionError still treat it as a refusal.
+            raise OrgPolicyDeniedError(reason)
 
         run_user = None
         if getattr(submission, "user_id", None):
@@ -246,7 +257,28 @@ class ValidationRunService:
             # earlier check_org_policies denial above.
             from validibot.core.run_hooks import run_created_hooks
 
-            run_created_hooks(validation_run, workflow_type=workflow_type)
+            # Thread the launching user so a commercial reservation hook can
+            # waive its hold for a superuser (operator), mirroring the
+            # superuser bypass in check_org_policies above.
+            #
+            # A reservation hook (e.g. cloud's compute-credit hold) signals an
+            # unfundable launch by raising PermissionError with a specific,
+            # user-facing reason ("Insufficient compute credits ..."). Re-raise
+            # it as OrgPolicyDeniedError so the views surface that reason verbatim
+            # rather than the generic permission message — the raise still
+            # propagates out of this atomic block and rolls the run back. We
+            # leave a genuine OrgPolicyDeniedError untouched (it's already the right
+            # type) and don't disturb non-permission errors.
+            try:
+                run_created_hooks(
+                    validation_run,
+                    workflow_type=workflow_type,
+                    launching_user=request.user,
+                )
+            except OrgPolicyDeniedError:
+                raise
+            except PermissionError as exc:
+                raise OrgPolicyDeniedError(str(exc)) from exc
 
             try:
                 if hasattr(submission, "latest_run_id"):

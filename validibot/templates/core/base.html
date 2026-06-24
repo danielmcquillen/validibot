@@ -4,21 +4,13 @@
 {% get_current_language as LANGUAGE_CODE %}
 <html lang="{{ LANGUAGE_CODE }}">
   <head>
-    <script nonce="{{ CSP_NONCE }}">
-      (function applyInitialLeftNavState() {
-        const storageKey = 'validibot:leftNavCollapsed';
-        try {
-          if (window.localStorage.getItem(storageKey) === '1') {
-            document.documentElement.setAttribute(
-              'data-left-nav-prefers-collapsed',
-              'true',
-            );
-          }
-        } catch (error) {
-          console.debug('Unable to prime left-nav preference', error);
-        }
-      })();
-    </script>
+    {% comment %}
+      Synchronous, before-paint head init (currently: prime the collapsed-nav
+      preference so it doesn't flash open then collapse). Authored in
+      static/src/ts/headInit.ts, compiled by esbuild, and inlined here by the
+      tag — no hand-written script, no duplicated constants.
+    {% endcomment %}
+    {% head_init_script %}
     <title>
       {% block title %}
         Validibot

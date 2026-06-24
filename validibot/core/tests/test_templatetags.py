@@ -114,3 +114,84 @@ def test_finding_failed_rows_is_usable_from_a_template():
     rendered = template.render(Context({"finding": finding}))
 
     assert rendered == "row numbers: 2"
+
+
+# head_init_script
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# The tag inlines the compiled, TypeScript-authored head-init snippet into
+# <head> inside a nonce'd <script>. These tests pin three behaviours: it wraps
+# the real compiled source with the CSP nonce, it degrades to empty output when
+# the build artifact is missing (rather than erroring), and it caches the file
+# read so it isn't hit on every request.
+
+
+def _reset_head_init_cache():
+    core_tags._head_init_cache.clear()
+
+
+def test_head_init_script_inlines_compiled_source_with_nonce():
+    """The tag wraps the compiled snippet in a nonce'd <script>.
+
+    This is the whole point of the FOUC fix: the snippet must run synchronously
+    in <head>, and to satisfy CSP it must carry the per-request nonce. We assert
+    the nonce attribute is present and that a known token from the compiled
+    source (the storage key) made it into the output verbatim — proving we
+    inlined the real artifact, not an escaped or empty placeholder.
+    """
+    _reset_head_init_cache()
+    try:
+        rendered = core_tags.head_init_script({"CSP_NONCE": "test-nonce-123"})
+    finally:
+        _reset_head_init_cache()
+
+    assert 'nonce="test-nonce-123"' in rendered
+    assert "<script" in rendered
+    assert "</script>" in rendered
+    # The storage key lives in the compiled JS; its presence proves the real
+    # build artifact was inlined (requires `npm run build:js` to have run).
+    assert "validibot:leftNavCollapsed" in rendered
+
+
+def test_head_init_script_is_empty_when_source_missing(monkeypatch):
+    """A missing build artifact degrades to empty output, not an error.
+
+    If `npm run build:js` hasn't run, the page must still render — just without
+    before-paint nav priming. We simulate the missing file and assert the tag
+    returns an empty string rather than raising.
+    """
+    _reset_head_init_cache()
+    monkeypatch.setattr(core_tags, "_read_head_init_source", lambda: "")
+    try:
+        rendered = core_tags.head_init_script({"CSP_NONCE": "n"})
+    finally:
+        _reset_head_init_cache()
+
+    assert rendered == ""
+
+
+def test_head_init_source_is_cached_after_first_read(monkeypatch):
+    """The file is read once and cached; later calls don't touch disk.
+
+    The snippet is a build artifact that never changes between deploys, so
+    re-reading it per request is wasted I/O. We count finder calls across two
+    invocations and assert the second is served from cache.
+    """
+    _reset_head_init_cache()
+    calls = {"n": 0}
+    real_find = core_tags.finders.find
+
+    def counting_find(path):
+        calls["n"] += 1
+        return real_find(path)
+
+    monkeypatch.setattr(core_tags.finders, "find", counting_find)
+    try:
+        first = core_tags._read_head_init_source()
+        second = core_tags._read_head_init_source()
+    finally:
+        _reset_head_init_cache()
+
+    assert first == second
+    # finders.find is called at most once (zero if served from STATIC_ROOT,
+    # but never twice — the second call must hit the in-process cache).
+    assert calls["n"] <= 1

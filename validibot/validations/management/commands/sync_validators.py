@@ -29,6 +29,7 @@ from django.core.management.base import CommandError
 from django.db import transaction
 
 from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.models import Derivation
 from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
@@ -37,6 +38,7 @@ from validibot.validations.services.catalog_entry_normalization import (
 )
 from validibot.validations.services.validator_digest import compute_semantic_digest
 from validibot.validations.validators.base.config import get_all_configs
+from validibot.workflows.models import WorkflowStep
 
 
 class Command(BaseCommand):
@@ -56,13 +58,25 @@ class Command(BaseCommand):
                 "version — bump the config's ``version`` instead."
             ),
         )
+        parser.add_argument(
+            "--strict-missing",
+            action="store_true",
+            default=False,
+            help=(
+                "Fail if any active workflow references a config-managed "
+                "validator whose plugin config is no longer registered."
+            ),
+        )
 
     def handle(self, *args, **options):
         configs = get_all_configs()
         allow_drift = options["allow_drift"]
+        strict_missing = options["strict_missing"]
+        active_config_keys = {(cfg.slug, cfg.version) for cfg in configs}
 
         total_validators_created = 0
         total_validators_updated = 0
+        total_validators_missing = 0
         total_signals_synced = 0
         total_derivations_synced = 0
 
@@ -92,6 +106,11 @@ class Command(BaseCommand):
                         "validator_class",
                     },
                 )
+                validator_data["availability_state"] = (
+                    ValidatorAvailabilityState.AVAILABLE
+                )
+                validator_data["availability_message"] = ""
+                validator_data["config_provider"] = cfg.provider
 
                 # Compute the semantic digest from the FULL config dump
                 # (not the trimmed one above). The digest function picks
@@ -269,12 +288,54 @@ class Command(BaseCommand):
                 # creation at step creation/update time (in save_workflow_step).
                 # For backfilling existing steps, use a one-off data migration.
 
+        missing_messages: list[str] = []
+        config_managed_validators = Validator.objects.exclude(config_provider="")
+        for validator in config_managed_validators:
+            if (validator.slug, validator.version) in active_config_keys:
+                continue
+            total_validators_missing += 1
+            message = (
+                f"No registered ValidatorConfig for {validator.slug} "
+                f"v{validator.version} from provider {validator.config_provider}."
+            )
+            if (
+                validator.availability_state
+                != ValidatorAvailabilityState.MISSING_CONFIG
+                or validator.availability_message != message
+            ):
+                validator.availability_state = ValidatorAvailabilityState.MISSING_CONFIG
+                validator.availability_message = message
+                validator.save(
+                    update_fields=[
+                        "availability_state",
+                        "availability_message",
+                        "modified",
+                    ],
+                )
+            self.stdout.write(self.style.WARNING(f"  Missing config: {validator}"))
+            if WorkflowStep.objects.filter(
+                workflow__is_active=True,
+                validator=validator,
+            ).exists():
+                missing_messages.append(
+                    f"{validator.slug} v{validator.version} "
+                    f"({validator.validation_type})",
+                )
+
+        if strict_missing and missing_messages:
+            formatted = ", ".join(sorted(missing_messages))
+            raise CommandError(
+                "Active workflows reference validator configs that are not "
+                f"registered in this deployment: {formatted}",
+            )
+
         self.stdout.write("")
         self.stdout.write(
             self.style.SUCCESS(
                 f"Sync complete: "
                 f"{total_validators_created} validators created, "
-                f"{total_validators_updated} updated. "
+                f"{total_validators_updated} updated, "
+                f"{total_validators_missing} missing. "
                 f"{total_signals_synced} signals synced, "
                 f"{total_derivations_synced} derivations synced."
             ),

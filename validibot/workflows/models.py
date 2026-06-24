@@ -974,6 +974,23 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                     return step
         return None
 
+    def first_unavailable_validator_step(self):
+        """Return the first step whose validator cannot run in this process."""
+        from validibot.validations.validators.base.config import get_validator_class
+
+        steps = self.steps.select_related("validator").all()
+        for step in steps:
+            validator = step.validator
+            if validator is None:
+                continue
+            if not validator.is_runtime_available:
+                return step
+            try:
+                get_validator_class(validator.validation_type)
+            except KeyError:
+                return step
+        return None
+
     def has_runs(self) -> bool:
         """Return True if any validation run targets this workflow.
 

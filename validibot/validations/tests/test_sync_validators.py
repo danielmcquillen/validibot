@@ -15,6 +15,7 @@ from django.test import override_settings
 
 from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import ValidationType
+from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.models import Derivation
 from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
@@ -65,6 +66,11 @@ class SyncValidatorsCommandTests(TestCase):
         self.assertTrue(validator.has_processor)
         self.assertTrue(validator.supports_assertions)
         self.assertEqual(validator.processor_name, "EnergyPlus™ Simulation")
+        self.assertEqual(
+            validator.availability_state,
+            ValidatorAvailabilityState.AVAILABLE,
+        )
+        self.assertTrue(validator.config_provider)
 
     def test_command_creates_signal_definitions(self):
         """Test that signal definitions are created for validators."""
@@ -197,6 +203,37 @@ class SyncValidatorsCommandTests(TestCase):
                 1,
                 f"Should have exactly 1 validator with slug {cfg.slug}, found {count}",
             )
+
+    def test_command_marks_missing_config_managed_validator_unavailable(self):
+        """Rows synced from a removed plugin are retained but made unavailable.
+
+        Dynamic validation types mean a DB can contain a plugin validator row
+        after the package that registered it has been removed. The sync command
+        should preserve the row for history while preventing future launches.
+        """
+        stale = Validator.objects.create(
+            slug="cloud-only-validator",
+            version=1,
+            name="Cloud-only Validator",
+            validation_type="CLOUD_ONLY",
+            is_system=True,
+            config_provider="validibot_cloud.validators.cloud_only",
+            availability_state=ValidatorAvailabilityState.AVAILABLE,
+        )
+
+        out, _ = self.call_command()
+
+        stale.refresh_from_db()
+        self.assertIn("Missing config", out)
+        self.assertEqual(
+            stale.availability_state,
+            ValidatorAvailabilityState.MISSING_CONFIG,
+        )
+        self.assertIn(
+            "validibot_cloud.validators.cloud_only",
+            stale.availability_message,
+        )
+        self.assertTrue(Validator.objects.filter(pk=stale.pk).exists())
 
     def test_command_updates_existing_validator(self):
         """Test that command updates existing validator fields.
@@ -633,10 +670,14 @@ class ConfigRegistryTests(TestCase):
                     f"Config {cfg.slug} should declare supports_assertions=True",
                 )
 
-    def test_registry_count(self):
-        """Registry has exactly 8 configs (one per ValidationType)."""
+    def test_registry_count_covers_builtin_types(self):
+        """Registry has at least one config per built-in ValidationType.
+
+        External validator packages may register additional types, so the enum
+        is no longer the exact registry boundary.
+        """
         configs = get_all_configs()
-        self.assertEqual(len(configs), len(ValidationType))
+        self.assertGreaterEqual(len(configs), len(ValidationType))
 
     def test_registry_configs_include_provider_metadata(self):
         """Registry entries should keep the resolved provider module."""

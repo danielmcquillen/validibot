@@ -506,7 +506,9 @@ def get_validator_class(vtype: str) -> type[Any]:
     key = getattr(vtype, "value", None) or str(vtype)
     cfg = _CONFIG_REGISTRY.get(str(key))
     if cfg is None or cfg.resolved_class is None:
-        raise KeyError(key)
+        raise KeyError(
+            f"No registered validator runtime class for validation_type={key!r}",
+        )
     return cfg.resolved_class
 
 

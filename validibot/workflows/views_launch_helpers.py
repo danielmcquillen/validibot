@@ -849,6 +849,22 @@ def ensure_workflow_ready_for_launch(workflow: Workflow) -> None:
             code=WorkflowStartErrorCode.NO_WORKFLOW_STEPS,
             status_code=HTTPStatus.BAD_REQUEST,
         )
+    unavailable_step = workflow.first_unavailable_validator_step()
+    if unavailable_step is not None:
+        validator = unavailable_step.validator
+        detail = gettext_lazy(
+            "Step %(step)s (%(validator)s) uses a validator that is not "
+            "available in this deployment. %(reason)s"
+        ) % {
+            "step": unavailable_step.step_number_display,
+            "validator": validator.name,
+            "reason": validator.runtime_unavailable_reason(),
+        }
+        raise LaunchValidationError(
+            detail=detail,
+            code=WorkflowStartErrorCode.VALIDATOR_UNAVAILABLE,
+            status_code=HTTPStatus.CONFLICT,
+        )
 
 
 def ensure_user_can_launch_workflow(*, workflow: Workflow, user: User) -> None:

@@ -138,16 +138,17 @@ class TestDiscoverConfigs:
     ``discover_configs()`` should find all of them via directory walking.
     """
 
-    def test_discovers_all_validator_types(self):
-        """discover_configs() returns a config for every ValidationType.
+    def test_discovers_all_builtin_validator_types(self):
+        """discover_configs() returns a config for every built-in ValidationType.
 
-        This ensures every validator has a proper ``config.py`` in its
-        sub-package and nothing is missed by auto-discovery.
+        ``ValidationType`` remains a convenience enum for validators that ship
+        in the community repo. It is no longer the closed universe of all
+        validator types, so plugin validators may register additional strings.
         """
         configs = discover_configs()
         discovered_types = {c.validation_type for c in configs}
         expected_types = {v.value for v in ValidationType}
-        assert discovered_types == expected_types
+        assert expected_types.issubset(discovered_types)
 
     def test_each_config_has_valid_validator_class(self):
         """Every discovered config has a non-empty validator_class path.
@@ -177,16 +178,16 @@ class TestDiscoverConfigs:
 class TestConfigRegistry:
     """Verify config registry metadata lookups."""
 
-    def test_get_all_configs_returns_all_types(self):
-        """``get_all_configs()`` returns a config for every ValidationType.
+    def test_get_all_configs_returns_all_builtin_types(self):
+        """``get_all_configs()`` returns a config for every built-in type.
 
-        This is a sanity check that nothing was lost during the registry
-        unification — every type we define should have a config entry.
+        Built-in constants remain useful for application code, but external
+        packages can register additional validation_type strings at runtime.
         """
         all_configs = get_all_configs()
         registered_types = {c.validation_type for c in all_configs}
         expected_types = {v.value for v in ValidationType}
-        assert registered_types == expected_types
+        assert expected_types.issubset(registered_types)
 
     def test_get_config_returns_none_for_unknown(self):
         """``get_config()`` returns None for an unregistered type.

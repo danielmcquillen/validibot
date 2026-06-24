@@ -24,6 +24,7 @@ from validibot.validations.constants import VALIDATION_LIBRARY_LAYOUT_SESSION_KE
 from validibot.validations.constants import VALIDATION_LIBRARY_TAB_SESSION_KEY
 from validibot.validations.constants import LibraryLayout
 from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.constants import ValidatorReleaseState
 from validibot.validations.forms import StepIODefinitionForm
 from validibot.validations.forms import ValidatorResourceFileForm
@@ -145,7 +146,10 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
         """
         org = self.get_active_org()
         queryset = (
-            Validator.objects.filter(is_enabled=True)
+            Validator.objects.filter(
+                availability_state=ValidatorAvailabilityState.AVAILABLE,
+                is_enabled=True,
+            )
             .select_related("custom_validator", "org")
             .prefetch_related(
                 "signal_definitions",
@@ -361,6 +365,7 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                 "validator_create_options": create_options,
                 "validator_create_selected": default_selection,
                 "system_validators": Validator.objects.filter(
+                    availability_state=ValidatorAvailabilityState.AVAILABLE,
                     is_system=True,
                     is_enabled=True,
                 )

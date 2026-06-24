@@ -37,6 +37,14 @@ def _enable_team_management():
 
 @pytest.mark.django_db
 def test_invite_notification_shows_for_invitee(client):
+    """Raw-email invites bind existing users server-side and notify them.
+
+    The invite form intentionally rejects arbitrary ``invitee_user`` IDs unless
+    they came from the scoped typeahead flow; otherwise a crafted POST could
+    become an account-enumeration oracle. A raw email remains the supported
+    direct POST path, and ``InviteUserForm.save()`` still binds it to an
+    existing account without surfacing that identity to the inviter.
+    """
     inviter = UserFactory()
     org = inviter.orgs.first()
     inviter.memberships.get(org=org).set_roles({RoleCode.ADMIN})
@@ -51,8 +59,7 @@ def test_invite_notification_shows_for_invitee(client):
     response = client.post(
         reverse("members:invite_create"),
         {
-            "search": invitee.username,
-            "invitee_user": invitee.id,
+            "search": invitee.email,
             "invitee_email": invitee.email,
             "roles": [RoleCode.WORKFLOW_VIEWER],
         },

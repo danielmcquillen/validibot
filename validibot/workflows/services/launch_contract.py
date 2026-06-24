@@ -99,6 +99,7 @@ class ViolationCode(StrEnum):
 
     WORKFLOW_INACTIVE = "workflow_inactive"
     NO_STEPS = "no_steps"
+    VALIDATOR_UNAVAILABLE = "validator_unavailable"
     UNSUPPORTED_FILE_TYPE = "unsupported_file_type"
     INCOMPATIBLE_STEP = "incompatible_step"
     PAYLOAD_TOO_LARGE = "payload_too_large"
@@ -175,10 +176,11 @@ class LaunchContract:
 
         1. Workflow is active
         2. Workflow has at least one step
-        3. (If ``file_type`` provided) workflow accepts the file type
-        4. (If ``file_type`` provided) every step accepts the file type
-        5. (If ``payload_size_bytes`` provided) payload is non-empty
-        6. (If ``payload_size_bytes`` provided) payload is within max
+        3. Every validator step has an available runtime config/class
+        4. (If ``file_type`` provided) workflow accepts the file type
+        5. (If ``file_type`` provided) every step accepts the file type
+        6. (If ``payload_size_bytes`` provided) payload is non-empty
+        7. (If ``payload_size_bytes`` provided) payload is within max
 
         We return on the *first* violation rather than aggregating.
         That matches operator expectation ("tell me the first thing
@@ -231,7 +233,26 @@ class LaunchContract:
                 ),
             )
 
-        # 3. and 4. — file-type and step-compatibility checks.
+        unavailable_step = workflow.first_unavailable_validator_step()
+        if unavailable_step is not None:
+            validator = unavailable_step.validator
+            reason = validator.runtime_unavailable_reason()
+            return LaunchContractViolation(
+                code=ViolationCode.VALIDATOR_UNAVAILABLE,
+                message=str(
+                    _(
+                        "Step %(step)s (%(validator)s) uses a validator that "
+                        "is not available in this deployment."
+                    )
+                    % {
+                        "step": unavailable_step.step_number_display,
+                        "validator": validator.name,
+                    },
+                ),
+                detail=reason,
+            )
+
+        # 4. and 5. — file-type and step-compatibility checks.
         if file_type is not None:
             file_type_violation = LaunchContract._check_file_type(
                 workflow=workflow,
@@ -240,7 +261,7 @@ class LaunchContract:
             if file_type_violation is not None:
                 return file_type_violation
 
-        # 5. and 6. — payload size checks.
+        # 6. and 7. — payload size checks.
         if payload_size_bytes is not None:
             payload_violation = LaunchContract._check_payload_size(
                 payload_size_bytes=payload_size_bytes,

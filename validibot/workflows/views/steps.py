@@ -40,6 +40,7 @@ from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ValidationType
+from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.constants import ValidatorReleaseState
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.models import StepInputBinding
@@ -98,7 +99,11 @@ def workflow_step_validator_queryset(
         | models.Q(org=workflow.org)
         | models.Q(custom_validator__org=workflow.org)
     )
-    queryset = Validator.objects.filter(accessible_to_workflow, is_enabled=True)
+    queryset = Validator.objects.filter(
+        accessible_to_workflow,
+        availability_state=ValidatorAvailabilityState.AVAILABLE,
+        is_enabled=True,
+    )
     if include_coming_soon:
         queryset = queryset.exclude(release_state=ValidatorReleaseState.DRAFT)
     else:

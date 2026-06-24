@@ -71,6 +71,8 @@ class ValidationStepProcessor(ABC):
         """Get the validator instance from the registry."""
         from validibot.validations.validators.base.config import get_validator_class
 
+        if not self.validator.is_runtime_available:
+            raise KeyError(self.validator.runtime_unavailable_reason())
         validator_cls = get_validator_class(self.validator.validation_type)
         return validator_cls()
 

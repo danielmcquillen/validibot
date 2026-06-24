@@ -141,11 +141,17 @@ A self-host operator can widen either allowlist intentionally, but an unexpected
 
 Adding a validator usually means:
 
-1. Add or update the `ValidationType` constant.
+1. Choose a stable `validation_type` string.
 2. Implement the validator class.
 3. Declare a `ValidatorConfig`.
 4. Add any catalog entries or step-editor cards the validator needs.
-5. Run `sync_validators`.
+5. Register the config at startup.
+6. Run `sync_validators`.
+
+`ValidationType` remains a convenience enum for validators that ship in the
+community app, such as `ValidationType.BASIC`. It is not the complete list of
+valid validator types. External packages can register their own strings through
+`ValidatorConfig` without editing the enum.
 
 If the validator is a community feature, place it under `validibot.validations.validators`. If it is a future commercial-only validator, keep the same declarative pattern and make sure the loading story stays explicit rather than import-by-side-effect. If it lives outside the official package namespaces, add that provider prefix to `VALIDIBOT_ALLOWED_VALIDATOR_PLUGIN_PREFIXES`.
 

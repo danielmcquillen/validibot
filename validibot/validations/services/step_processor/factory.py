@@ -13,6 +13,7 @@ from validibot.validations.services.step_processor.advanced import (
 from validibot.validations.services.step_processor.simple import (
     SimpleValidationProcessor,
 )
+from validibot.validations.validators.base.config import get_config
 
 if TYPE_CHECKING:
     from validibot.validations.models import ValidationRun
@@ -30,7 +31,7 @@ def get_step_processor(
     Get the appropriate processor for a validation step.
 
     Routes to SimpleValidationProcessor or AdvancedValidationProcessor
-    based on the validator type.
+    based on registered validator capabilities.
 
     Args:
         validation_run: The ValidationRun model instance
@@ -40,7 +41,12 @@ def get_step_processor(
         The appropriate processor instance for this step
     """
     validator = step_run.workflow_step.validator
+    config = get_config(validator.validation_type)
 
+    if config is not None and (
+        config.output_envelope_class or config.resolved_envelope_class
+    ):
+        return AdvancedValidationProcessor(validation_run, step_run)
     if validator.validation_type in ADVANCED_VALIDATION_TYPES:
         return AdvancedValidationProcessor(validation_run, step_run)
     return SimpleValidationProcessor(validation_run, step_run)

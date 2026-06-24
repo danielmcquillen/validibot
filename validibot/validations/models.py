@@ -48,6 +48,7 @@ from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
+from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.constants import ValidatorReleaseState
 from validibot.validations.constants import ValidatorTrustTier
 from validibot.validations.constants import ValidatorWeight
@@ -1152,6 +1153,10 @@ class Validator(TimeStampedModel):
                     "slug",
                 ],
             ),
+            models.Index(
+                fields=["availability_state", "validation_type"],
+                name="val_validator_avail_type_idx",
+            ),
         ]
         ordering = ["order", "name"]
 
@@ -1197,10 +1202,14 @@ class Validator(TimeStampedModel):
     )
 
     validation_type = models.CharField(
-        max_length=40,
-        choices=ValidationType.choices,
+        max_length=80,
         null=False,
         blank=False,
+        help_text=_(
+            "Runtime validator type string. Built-in validators use "
+            "ValidationType constants, but plugin validators may register "
+            "additional strings at startup."
+        ),
     )
 
     version = models.PositiveIntegerField(
@@ -1280,6 +1289,34 @@ class Validator(TimeStampedModel):
         help_text=_(
             "Release state for system validators. DRAFT hides the validator, "
             "COMING_SOON shows it disabled, PUBLISHED makes it fully available."
+        ),
+    )
+
+    availability_state = models.CharField(
+        max_length=24,
+        choices=ValidatorAvailabilityState.choices,
+        default=ValidatorAvailabilityState.AVAILABLE,
+        help_text=_(
+            "Whether this validator's runtime config/class is available in "
+            "the current deployment. Missing validators remain in the DB for "
+            "history but cannot launch."
+        ),
+    )
+    availability_message = models.TextField(
+        blank=True,
+        default="",
+        help_text=_(
+            "Operator-facing reason this validator is unavailable, if any.",
+        ),
+    )
+    config_provider = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=_(
+            "Python provider module that last synced this validator from a "
+            "ValidatorConfig. Empty means the row is not managed by plugin "
+            "config reconciliation."
         ),
     )
 
@@ -1427,6 +1464,41 @@ class Validator(TimeStampedModel):
     def is_draft(self) -> bool:
         """Return True if validator is in draft state (hidden)."""
         return self.release_state == ValidatorReleaseState.DRAFT
+
+    @property
+    def is_runtime_available(self) -> bool:
+        """Return True when this validator can be executed in this process."""
+        return self.availability_state == ValidatorAvailabilityState.AVAILABLE
+
+    def runtime_unavailable_reason(self) -> str:
+        """Return an operator-readable reason this validator cannot run."""
+        if self.is_runtime_available:
+            return ""
+        if self.availability_message:
+            return self.availability_message
+        if self.availability_state == ValidatorAvailabilityState.MISSING_CONFIG:
+            return _(
+                "The validator plugin that registered this validator is not "
+                "available in the current deployment."
+            )
+        if self.availability_state == ValidatorAvailabilityState.RETIRED:
+            return _("This validator has been retired.")
+        return _("This validator is not available in the current deployment.")
+
+    def get_validation_type_display(self) -> str:
+        """Return a label for dynamic validation type strings.
+
+        Django only generates ``get_FOO_display()`` automatically when a field
+        has static ``choices``. ``validation_type`` is intentionally dynamic, so
+        keep the display API templates already use and source the label from the
+        registered config when possible.
+        """
+        from validibot.validations.validators.base.config import get_config
+
+        cfg = get_config(self.validation_type)
+        if cfg:
+            return cfg.name
+        return self.name or self.validation_type
 
     @property
     def supports_resource_files(self) -> bool:
@@ -2471,8 +2543,7 @@ class CustomValidator(TimeStampedModel):
         choices=CustomValidatorType.choices,
     )
     base_validation_type = models.CharField(
-        max_length=40,
-        choices=ValidationType.choices,
+        max_length=80,
     )
     notes = models.TextField(
         blank=True,

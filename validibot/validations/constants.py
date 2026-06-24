@@ -233,6 +233,20 @@ class ValidatorReleaseState(TextChoices):
     PUBLISHED = "PUBLISHED", _("Published")
 
 
+class ValidatorAvailabilityState(TextChoices):
+    """
+    Runtime availability for config-managed validators.
+
+    This is intentionally separate from release state. A validator can be
+    published as a product/catalog item but unavailable in a particular process
+    because its plugin package was removed or failed to register.
+    """
+
+    AVAILABLE = "AVAILABLE", _("Available")
+    MISSING_CONFIG = "MISSING_CONFIG", _("Missing config")
+    RETIRED = "RETIRED", _("Retired")
+
+
 # 'advanced' validation types that require dedicated compute resources —
 # either container-based (EnergyPlus, FMU, custom Docker containers) or
 # compute-intensive services (AI via external API calls). These are

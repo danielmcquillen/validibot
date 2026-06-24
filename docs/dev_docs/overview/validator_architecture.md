@@ -428,9 +428,12 @@ config = ValidatorConfig(
 )
 ```
 
-Then add your `ValidationType` to the enum and run `python manage.py sync_validators`
+For community validators, `ValidationType` constants are still useful when
+application code needs to branch on a built-in type. For plugin validators,
+the `validation_type` string belongs to the plugin and does not need an enum
+entry. Register the config at startup, then run `python manage.py sync_validators`
 to sync to the database. The validator class is automatically resolved at startup by
-`register_validators()`.
+`register_validators()` or by the external package's `AppConfig.ready()` hook.
 
 ## Django-Side Orchestration (`AdvancedValidator`)
 

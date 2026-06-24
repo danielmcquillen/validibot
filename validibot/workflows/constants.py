@@ -61,6 +61,10 @@ class WorkflowStartErrorCode(models.TextChoices):
         "FILE_TYPE_UNSUPPORTED",
         _("Workflow cannot accept the submitted file type"),
     )
+    VALIDATOR_UNAVAILABLE = (
+        "VALIDATOR_UNAVAILABLE",
+        _("A workflow validator is unavailable"),
+    )
     PERMISSION_DENIED = (
         "PERMISSION_DENIED",
         _("You do not have permission to run this workflow"),

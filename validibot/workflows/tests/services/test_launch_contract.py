@@ -48,6 +48,7 @@ def _make_workflow_mock(
     *,
     is_active: bool = True,
     has_steps: bool = True,
+    first_unavailable_step: object | None = None,
     supports_file_type: bool = True,
     first_incompatible_step: object | None = None,
     allowed_file_type_labels: list[str] | None = None,
@@ -67,6 +68,7 @@ def _make_workflow_mock(
     workflow.is_active = is_active
     # ``workflow.steps.exists()`` is what the contract calls.
     workflow.steps.exists.return_value = has_steps
+    workflow.first_unavailable_validator_step.return_value = first_unavailable_step
     workflow.supports_file_type.return_value = supports_file_type
     workflow.first_incompatible_step.return_value = first_incompatible_step
     workflow.allowed_file_type_labels.return_value = allowed_file_type_labels or [
@@ -100,6 +102,27 @@ class LaunchContractAlwaysAllowedTests(TestCase):
         workflow = _make_workflow_mock()
         result = LaunchContract.validate(workflow=workflow, file_type="JSON")
         self.assertIsNone(result)
+
+    def test_unavailable_validator_blocks_launch(self):
+        """A workflow step whose validator code is missing is not launchable.
+
+        Dynamic validator types mean the DB can contain rows for plugins that
+        are not installed in this process. The launch contract must catch that
+        before a run is created.
+        """
+        validator = MagicMock()
+        validator.name = "Cloud-only Validator"
+        validator.runtime_unavailable_reason.return_value = "plugin missing"
+        step = MagicMock()
+        step.validator = validator
+        step.step_number_display = "2"
+
+        workflow = _make_workflow_mock(first_unavailable_step=step)
+        result = LaunchContract.validate(workflow=workflow)
+
+        self.assertIsInstance(result, LaunchContractViolation)
+        self.assertEqual(result.code, ViolationCode.VALIDATOR_UNAVAILABLE)
+        self.assertEqual(result.detail, "plugin missing")
 
     def test_active_workflow_with_reasonable_payload_passes(self):
         """A 1 MiB payload (well under the 10 MiB default) passes."""

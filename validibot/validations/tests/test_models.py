@@ -76,6 +76,22 @@ def test_validator_supports_assertions_true_for_schema_types(db):
         assert validator.supports_assertions is True, f"{vtype} should be True"
 
 
+def test_validator_accepts_plugin_validation_type_string(db):
+    """Plugin validators can persist validation_type values outside the enum.
+
+    ``ValidationType`` remains useful for built-ins, but it is no longer the
+    closed persistence vocabulary. A cloud/plugin package must be able to sync
+    its own string without a core enum patch.
+    """
+    validator = ValidatorFactory(
+        name="Cloud-only Validator",
+        validation_type="CLOUD_ONLY",
+    )
+
+    assert validator.validation_type == "CLOUD_ONLY"
+    assert validator.get_validation_type_display() == "Cloud-only Validator"
+
+
 def test_cel_assertion_with_long_expression_passes_full_clean(db):
     """A CEL assertion over 255 chars saves — ``target_data_path`` is a TextField.
 

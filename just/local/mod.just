@@ -291,13 +291,15 @@ test-e2e-energyplus *args:
 # =============================================================================
 
 # Build developer documentation with Zensical
+# Zensical lives in the opt-in `docs` group (not installed by default), so we
+# pull it on demand here with `--group docs`.
 [no-cd]
 docs-build:
-    uv run zensical build -f mkdocs.dev.yml --clean
+    uv run --group docs zensical build -f mkdocs.dev.yml --clean
 
 # Serve developer documentation locally with Zensical (port 9000)
-# For contributors and maintainers
+# For contributors and maintainers. `--group docs` pulls the opt-in docs group.
 [no-cd]
 docs-dev:
     -lsof -ti :9000 | xargs kill 2>/dev/null
-    uv run zensical serve -f mkdocs.dev.yml -a localhost:9000
+    uv run --group docs zensical serve -f mkdocs.dev.yml -a localhost:9000

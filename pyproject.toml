@@ -349,6 +349,15 @@ dev = [
   "ipdb==0.13.13",
   "watchfiles==1.2.0",
   "werkzeug[watchdog]==3.1.8",
-  # Documentation
+]
+
+# Documentation tooling — intentionally NOT in `dev` and NOT a default group.
+# Zensical is a host-only static-site generator for building/previewing the
+# developer docs (`just local docs-build` / `docs-dev`). Its own opt-in group
+# keeps it out of the default dev environment AND out of the local Docker image
+# (which syncs `--group dev`). Install on demand with `uv sync --group docs`, or
+# just run a docs recipe (it pulls the group). CI builds docs from the
+# hash-pinned requirements/docs.txt, independent of this group.
+docs = [
   "zensical==0.0.45",
 ]

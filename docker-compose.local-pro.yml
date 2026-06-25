@@ -101,9 +101,8 @@ services:
       - validibot
     env_file:
       - .envs/.local/.mcp
-      # .build is loaded after .mcp so shared x402 values authored there win
-      # without erasing older .mcp-only local setups that have not migrated yet.
-      - .envs/.local/.build
+      # No .build here: the MCP server no longer handles x402, so it needs none
+      # of .build's payment config (x402 now lives in Django's .django only).
     ports:
       - "8001:8080"
     healthcheck:

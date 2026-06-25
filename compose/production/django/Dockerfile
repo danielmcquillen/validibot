@@ -143,7 +143,7 @@ RUN set -e; \
 # =============================================================================
 # Runtime base pinned by digest (OSSF Scorecard Pinned-Dependencies); kept fresh
 # by Dependabot's docker ecosystem updates.
-FROM python:3.13-slim-bookworm@sha256:fcbd8dfc2605ba7c2eca646846c5e892b2931e41f6227985154a596f26ab8ed7
+FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

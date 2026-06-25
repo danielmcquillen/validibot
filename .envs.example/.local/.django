@@ -170,3 +170,41 @@ SIGNING_ALGORITHM=ES256
 # ENABLE_MCP_SERVER=true. Plain `just local` has no MCP container, so it can
 # stay commented there.
 #VALIDIBOT_MCP_SERVICE_KEY=
+
+# X402 AGENT PAYMENTS (cloud-only — local-cloud stack)
+# ==============================================================================
+# x402 is a cloud-only feature — read ONLY under
+# DJANGO_SETTINGS_MODULE=validibot_cloud.settings.local (the community and
+# local_pro settings do not verify x402). The MCP server no longer touches
+# payments, so ALL x402 config lives here with its single consuming service —
+# not in .build, which is no longer mounted into any app container. Used only
+# when VALIDIBOT_X402_ENABLED=true, which in practice means `just local-cloud
+# up` (plain `local-pro` has no cloud agent endpoint to receive paid launches).
+#
+# Enable + test/live switch.
+#   VALIDIBOT_X402_ENABLED=true → anonymous paid validation is live.
+#   VALIDIBOT_X402_TEST_MODE    → true = testnet (Base Sepolia), false = mainnet (Base).
+VALIDIBOT_X402_ENABLED=false
+VALIDIBOT_X402_TEST_MODE=true
+
+# Testnet set (used when TEST_MODE=true) — Base Sepolia. The open x402.org
+# facilitator needs no CDP auth, so a Sepolia rehearsal needs no CDP key below.
+VALIDIBOT_TEST_X402_NETWORK=eip155:84532
+VALIDIBOT_TEST_X402_ASSET=0x036cbd53842c5426634e7929541ec2318f3dcf7e
+VALIDIBOT_TEST_X402_PAY_TO_ADDRESS=0xYOUR_BASE_SEPOLIA_WALLET
+VALIDIBOT_TEST_X402_FACILITATOR_URL=https://x402.org/facilitator
+
+# Mainnet set (used when TEST_MODE=false) — Base. The pay-to address is public
+# (quoted in payment requirements); the private key never goes in any env file.
+# Set the facilitator URL explicitly before enabling live x402 — the agent
+# endpoint refuses to settle without it.
+VALIDIBOT_X402_NETWORK=eip155:8453
+VALIDIBOT_X402_ASSET=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+VALIDIBOT_X402_PAY_TO_ADDRESS=0xYOUR_BASE_MAINNET_WALLET
+VALIDIBOT_X402_FACILITATOR_URL=
+
+# Coinbase CDP facilitator credentials (SECRET, mainnet only). The cloud
+# agent-validate endpoint signs a short-lived bearer JWT with this CDP key on
+# every /verify and /settle call. Leave blank for a Base Sepolia rehearsal.
+#VALIDIBOT_X402_CDP_API_KEY_ID=
+#VALIDIBOT_X402_CDP_API_KEY_SECRET=

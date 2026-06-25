@@ -33,8 +33,9 @@ cp .envs.example/.local/.mcp .envs/.local/.mcp
 # For local-pro / local-cloud, flip ENABLE_MCP_SERVER=true in .build.
 # For local-pro / local-cloud, generate one local MCP service key and put that
 # paired secret in .local/.mcp and .local/.django. x402 is a cloud-only feature;
-# if you exercise it (local-cloud only), keep its shared values in .local/.build
-# rather than repeating them in .django or .mcp.
+# if you exercise it (local-cloud only), its config lives in .local/.django —
+# the cloud Django service is the only consumer now that the MCP server no
+# longer handles payments.
 # Then start the local stack:
 just local up
 ```
@@ -88,8 +89,8 @@ cp .envs.example/.production/.google-cloud/.mcp .envs/.production/.google-cloud/
 
 # Edit .django with your GCP project values (uploaded to Secret Manager)
 # Edit .just with your GCP project ID and region (used locally by just commands)
-# Edit .build with deploy-time knobs like ENABLE_MCP_SERVER, public MCP URLs,
-# and shared non-secret x402 config
+# Edit .build with deploy-time knobs like ENABLE_MCP_SERVER and public MCP URLs
+# (x402 payment config lives in .django, not .build)
 # Edit .mcp with MCP-only secrets before uploading mcp-env
 
 # Source the just config before running deployment commands
@@ -106,7 +107,7 @@ just gcp deploy-all prod          # build + push + migrate + web/worker/schedule
 
 - `.django` - Django runtime settings, uploaded to Secret Manager
 - `.just` - Host-side GCP command context (project ID, region), sourced locally
-- `.build` - Build/deploy knobs read by just recipes; shared non-secret MCP URL and x402 values are stamped into Cloud Run env vars
+- `.build` - Build/deploy knobs read by just recipes; the shared non-secret MCP URLs are stamped into Cloud Run env vars (x402 config lives in `.django`)
 - `.mcp` - MCP server secrets, uploaded to the separate `mcp-env` Secret Manager secret
 
 ### AWS (Future)
@@ -180,24 +181,22 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
 
 ### Docker Build + Recipe Variables (`.build`)
 
-The `.build` file plays three roles — all loaded from the same file:
+The `.build` file plays two roles — both loaded from the same file:
 
 1. **Docker build-time vars** — passed to `docker compose --env-file` for
    YAML interpolation of `${FOO}` references in the compose files
    (primarily build args that bake commercial packages into the image).
 2. **Recipe-level knobs** — the `just local up` / `just local-pro up` /
-   `just local-cloud up` recipes (and the production
-   `just docker-compose` recipes) source this file at the top so
-   shell-level variables like `ENABLE_MCP_SERVER` drive which Compose
-   profiles get activated.
+   `just local-cloud up` recipes (and the production `just gcp` recipes)
+   source this file at the top so shell-level variables like
+   `ENABLE_MCP_SERVER` drive which Compose profiles get activated, and so the
+   GCP deploy recipe can stamp a few public values (e.g. the MCP public URLs)
+   onto Cloud Run via `--set-env-vars`.
 
-3. **Shared non-secret runtime values** — MCP/cloud stacks load this file into
-   the relevant services so public values needed by both Django and MCP, such
-   as MCP public URLs and x402 mode, wallet, and network/asset pair, are
-   authored once.
-
-All are optional — if the file is absent the recipes no-op cleanly where the
-stack does not need it.
+`.build` is no longer mounted into any running container via `env_file`. Runtime
+payment config (x402) moved to `.django` when the MCP server stopped handling
+payments. All `.build` values are optional — if the file is absent the recipes
+no-op cleanly where the stack does not need it.
 
 | Variable | Role | Description | Example |
 | --- | --- | --- | --- |
@@ -206,15 +205,14 @@ stack does not need it.
 | `ENABLE_MCP_SERVER` | Recipe | Activate the `mcp` Compose profile so the FastMCP container is built and started alongside the stack. Set to `true` for `just local-pro up` / `just local-cloud up`; ignored by `just local up` (community compose has no mcp service). | `true` / `false` |
 | `VALIDIBOT_MCP_API_BASE_URL` | Recipe | GCP-only API URL stamped into MCP as `VALIDIBOT_API_BASE_URL` and Django web as `MCP_OIDC_AUDIENCE`. Required when `ENABLE_MCP_SERVER=true` on GCP. | `https://app.your-domain.example` |
 | `VALIDIBOT_MCP_BASE_URL` | Recipe/runtime | GCP-only public MCP URL stamped into both Django and MCP as `VALIDIBOT_MCP_BASE_URL`, so OAuth audience/redirect metadata comes from one value. | `https://mcp.your-domain.example` |
-| `VALIDIBOT_X402_ENABLED`, `VALIDIBOT_X402_TEST_MODE`, `VALIDIBOT_X402_NETWORK`, `VALIDIBOT_X402_ASSET`, `VALIDIBOT_X402_PAY_TO_ADDRESS`, `VALIDIBOT_X402_FACILITATOR_URL`, and the `VALIDIBOT_TEST_X402_*` family | Recipe/runtime | **Hosted cloud only — skip on community / self-hosted.** x402 agent payments run only in the hosted deployment (`local-cloud` for dev, GCP for production); the community `mcp/` server ships the payment code dormant and never charges unless these are set. Local-cloud injects these from `.local/.build`; GCP stamps the relevant values from `.production/.google-cloud/.build` into Cloud Run. The receiving wallet is public by protocol; private wallet keys and MCP-only CDP API credentials do not go here. | Base mainnet / Base Sepolia USDC |
 
-> **Per-family note:** `VALIDIBOT_MCP_API_BASE_URL` is GCP-only and stays in
-> `.production/.google-cloud/.build`. Shared non-secret x402 values live in
-> `.build` for local-cloud and GCP because both Django and MCP need the active
-> mode, wallet, and payment pair. The facilitator URL is kept with those values
-> so the hosted x402 surface has one authoring file, but only MCP consumes it.
-> Self-hosted has no public x402 path today, so its `.build` remains limited to
-> build args and MCP activation.
+> **Per-family note:** `VALIDIBOT_MCP_API_BASE_URL` and `VALIDIBOT_MCP_BASE_URL`
+> are GCP-only and stay in `.production/.google-cloud/.build`; the deploy recipe
+> stamps them onto Cloud Run via `--set-env-vars`. **x402 payment config is not
+> here** — it lives in `.django` (read only by `validibot_cloud.settings`),
+> because the cloud Django service is its sole consumer now that the MCP server
+> no longer handles payments. See the X402 sections of the `.local/.django` and
+> `.production/.google-cloud/.django` files.
 
 ### Django Variables (`.django`)
 

@@ -5,8 +5,9 @@
 # Copy this file to ``.envs/.production/.google-cloud/.build`` before
 # your first ``just gcp deploy-all prod``. The ``just gcp`` module
 # sources this file at the top of any recipe that needs deploy-time
-# knobs — currently MCP activation, shared MCP public URLs, and shared
-# x402 payment settings stamped onto web and/or MCP Cloud Run services.
+# knobs — currently MCP activation and the shared MCP public URLs stamped
+# onto the Cloud Run services. (x402 payment config is no longer here; it
+# moved to ``.django`` when the MCP server stopped handling payments.)
 #
 # Unlike the other files in this directory (``.django``, ``.mcp``,
 # ``.just``), this file is NOT uploaded to GCP Secret Manager — it

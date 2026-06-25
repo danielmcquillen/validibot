@@ -11,9 +11,9 @@
 # `mcp_server` feature.
 #
 # Non-secret config (VALIDIBOT_API_BASE_URL, VALIDIBOT_MCP_BASE_URL,
-# VALIDIBOT_MCP_ENABLED, and shared VALIDIBOT_X402_* payment knobs) is set
-# from `.build` via `--set-env-vars` in the deploy recipe instead of going
-# here.
+# VALIDIBOT_MCP_ENABLED) is set from `.build` via `--set-env-vars` in the
+# deploy recipe instead of going here. x402 is no longer an MCP concern — the
+# cloud Django service owns all payment config in `.django`.
 
 
 # ── Logging ────────────────────────────────────────────────────────────

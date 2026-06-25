@@ -639,6 +639,19 @@ REST_FRAMEWORK = {
         # Anonymous rate (only used if DRF_ALLOW_ANONYMOUS=True)
         "anon": env("DRF_THROTTLE_RATE_ANON", default="100/hour"),
     },
+    # Trusted-proxy depth for client-IP resolution in throttles. DRF's
+    # BaseThrottle.get_ident() reads this to pick the real client IP out of
+    # X-Forwarded-For: it trusts the Nth address FROM THE RIGHT — the value the
+    # Nth trusted proxy appended. With the default (None) DRF trusts the ENTIRE
+    # client-supplied XFF, so an attacker could vary the header and mint a fresh
+    # throttle bucket per request (defeating IP-keyed throttles like
+    # AgentValidateThrottle's pre-payment abuse guard). Our hosted ingress
+    # (Cloud Run) appends the real client IP as the last XFF hop, so 1 = "trust
+    # only the immediate upstream proxy" is correct and NOT client-spoofable.
+    # Operators with extra proxies in front (an external LB ahead of Cloud Run,
+    # nginx → gunicorn, etc.) must raise DRF_NUM_PROXIES to match; set 0 to
+    # ignore XFF entirely (app exposed directly, no proxy).
+    "NUM_PROXIES": env.int("DRF_NUM_PROXIES", default=1),
 }
 
 # Toggle for anonymous API access. When False (default), all API endpoints require

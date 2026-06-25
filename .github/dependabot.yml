@@ -45,3 +45,17 @@ updates:
       docker:
         patterns:
           - '*'
+    # The base image's Python (and Postgres) major/minor version is governed by
+    # the project (.python-version / pyproject / a deliberate DB upgrade), NOT by
+    # Dependabot. Block tag minor+major bumps for the python image (e.g. the
+    # 3.13 -> 3.14 jump in closed PR #233) and major bumps for everything else
+    # (e.g. postgres 17 -> 18). Digest refreshes still deliver security patches
+    # for the pinned line.
+    ignore:
+      - dependency-name: 'python'
+        update-types:
+          - 'version-update:semver-major'
+          - 'version-update:semver-minor'
+      - dependency-name: '*'
+        update-types:
+          - 'version-update:semver-major'

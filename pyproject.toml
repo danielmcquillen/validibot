@@ -48,8 +48,8 @@ dependencies = [
   "djangorestframework==3.17.1",
   "drf-spectacular[sidecar]==0.29.0",
   "fmpy==0.3.29",
-  "google-cloud-kms==3.13.0",
-  "google-cloud-tasks==2.22.0",
+  "google-cloud-kms==3.14.0",
+  "google-cloud-tasks==2.23.0",
   # RE2 regex engine: linear-time, no catastrophic backtracking. Used by
   # validibot.validations.regex_safety to run author-supplied patterns (Basic
   # validator regex, Tabular column `pattern`) against submitter data without a
@@ -61,7 +61,7 @@ dependencies = [
   "jsonschema==4.26.0",
   "lxml==6.1.1",
   "markdown2==2.5.5",
-  "nh3==0.3.5",
+  "nh3==0.3.6",
   "pillow==12.2.0",
   "psycopg[c]==3.3.4",
   "pydantic==2.13.4",
@@ -81,14 +81,14 @@ dependencies = [
   "uvicorn-worker==0.4.0",
   "uvicorn[standard]==0.49.0",
   "whitenoise==6.12.0",
-  "google-cloud-run==0.16.0",
+  "google-cloud-run==0.16.1",
   "python-json-logger==4.1.0",
   "django-recaptcha==4.1.0",
   # Maintained blocklist of ~2800 throwaway email domains (mailinator,
   # guerrillamail, tempmail, etc). Used by UserSignupForm when
   # REJECT_DISPOSABLE_EMAILS is enabled — off by default for community/
   # self-hosted deployments, on in cloud to deter free-trial abuse.
-  "disposable-email-domains==0.0.205",
+  "disposable-email-domains==0.0.209",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # 0.7.0 adds ``StepValidatorRecord.validator_backend_image_digest``;
   # 0.7.1–0.7.3 shipped publish-workflow fixes;
@@ -130,7 +130,7 @@ dependencies = [
 
 [project.optional-dependencies]
 cloud = [
-  "stripe==15.2.1",
+  "stripe==15.3.0",
 ]
 # Docker SDK for the Docker-based validator runner (VALIDATOR_RUNNER=docker).
 # Not needed for Cloud Run deployments. Reduces attack surface when omitted.
@@ -328,19 +328,19 @@ force-single-line = true
 [dependency-groups]
 dev = [
   # Testing
-  "coverage==7.14.1",
+  "coverage==7.14.3",
   "django-coverage-plugin==3.2.2",
   "factory-boy==3.3.3",
-  "pytest==9.0.3",
+  "pytest==9.1.1",
   "pytest-django==4.12.0",
   "pytest-sugar==1.1.1",
-  "selenium==4.44.0",
+  "selenium==4.45.0",
   # Linting and formatting
-  "djlint==1.39.0",
+  "djlint==1.39.4",
   "pre-commit==4.6.0",
-  "ruff==0.15.16",
+  "ruff==0.15.20",
   # Type checking
-  "django-stubs[compatible-mypy]==6.0.5",
+  "django-stubs[compatible-mypy]==6.0.6",
   "djangorestframework-stubs==3.17.0",
   "mypy==1.20.2",
   # Debugging and development utilities
@@ -349,6 +349,7 @@ dev = [
   "ipdb==0.13.13",
   "watchfiles==1.2.0",
   "werkzeug[watchdog]==3.1.8",
+
 ]
 
 # Documentation tooling — intentionally NOT in `dev` and NOT a default group.
@@ -359,5 +360,6 @@ dev = [
 # just run a docs recipe (it pulls the group). CI builds docs from the
 # hash-pinned requirements/docs.txt, independent of this group.
 docs = [
-  "zensical==0.0.45",
+  # Documentation
+  "zensical==0.0.46",
 ]

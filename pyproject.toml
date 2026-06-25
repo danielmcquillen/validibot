@@ -342,9 +342,9 @@ dev = [
   # Type checking
   "django-stubs[compatible-mypy]==6.0.6",
   "djangorestframework-stubs==3.17.0",
-  "mypy==1.20.2",
+  "mypy==2.1.0",
   # Debugging and development utilities
-  "django-debug-toolbar==6.3.0",
+  "django-debug-toolbar==7.0.0",
   "django-extensions==4.1",
   "ipdb==0.13.13",
   "watchfiles==1.2.0",

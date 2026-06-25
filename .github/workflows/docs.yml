@@ -50,9 +50,13 @@ jobs:
       - name: Check relative links in markdown docs
         run: python scripts/check_doc_links.py
 
-      # Keep this pin in sync with the zensical pin in pyproject.toml —
-      # publishing uses that version, so CI must prove the same one builds.
+      # Install zensical from a fully hash-pinned requirements file so the
+      # docs build is reproducible and tamper-evident (OSSF Scorecard
+      # Pinned-Dependencies). The version must stay in sync with the zensical
+      # pin in pyproject.toml — publishing uses that version, so CI proves the
+      # same one builds. To bump: edit requirements/docs.in and regenerate
+      # requirements/docs.txt (command in that file's header).
       - name: Build dev docs site
         run: |
-          pip install zensical==0.0.45
+          pip install --require-hashes -r requirements/docs.txt
           zensical build -f mkdocs.dev.yml --clean

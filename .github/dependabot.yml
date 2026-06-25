@@ -26,3 +26,22 @@ updates:
         update-types:
           - 'minor'
           - 'patch'
+
+  # Keep Docker base images fresh. The Dockerfiles pin their base images by
+  # digest for reproducible, tamper-evident builds (OSSF Scorecard
+  # Pinned-Dependencies). A pinned digest never receives upstream security
+  # patches on its own, so Dependabot bumps the digest (and its tag) together —
+  # that is what keeps us BOTH pinned AND patched, the same arrangement we use
+  # for the SHA-pinned GitHub Actions above.
+  - package-ecosystem: 'docker'
+    directories:
+      - '/compose/local/django'
+      - '/compose/production/django'
+      - '/compose/production/mcp'
+      - '/compose/production/postgres'
+    schedule:
+      interval: 'daily'
+    groups:
+      docker:
+        patterns:
+          - '*'

@@ -41,7 +41,9 @@ FROM scratch AS extras
 # cryptography, pillow, grpcio, argon2-cffi, etc.). The resulting .venv
 # is copied to the runtime stage; everything else is discarded.
 # =============================================================================
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
+# Base image pinned by digest (OSSF Scorecard Pinned-Dependencies); Dependabot's
+# docker ecosystem bumps the digest+tag together so patches still flow.
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_COMPILE_BYTECODE=1 \
@@ -139,7 +141,9 @@ RUN set -e; \
 # no dev headers, no git — just the Python runtime, compiled extensions
 # (from the builder), and the application code.
 # =============================================================================
-FROM python:3.13-slim-bookworm
+# Runtime base pinned by digest (OSSF Scorecard Pinned-Dependencies); kept fresh
+# by Dependabot's docker ecosystem updates.
+FROM python:3.13-slim-bookworm@sha256:fcbd8dfc2605ba7c2eca646846c5e892b2931e41f6227985154a596f26ab8ed7
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

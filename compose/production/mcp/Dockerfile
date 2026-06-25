@@ -17,7 +17,9 @@
 #   VALIDIBOT_MCP_SERVICE_KEY — shared secret for MCP→Django service auth
 #     (only used in local dev; Cloud Run uses OIDC identity tokens)
 
-FROM python:3.13-slim AS base
+# Base image pinned by digest (OSSF Scorecard Pinned-Dependencies); Dependabot's
+# docker ecosystem bumps the digest+tag together so patches still flow.
+FROM python:3.13-slim@sha256:2b7445fb71ca9cb15e9aab053fe8cb3162796f8e1d92ada12a49c766a811bc1e AS base
 
 WORKDIR /app
 

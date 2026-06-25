@@ -1,0 +1,16 @@
+# Source pin for the documentation build's hash-locked requirements.
+#
+# WHY THIS EXISTS
+# ---------------
+# The docs CI job (.github/workflows/docs.yml) installs zensical with
+# `pip install --require-hashes`, which demands a fully hash-pinned requirement
+# set. OSSF Scorecard's Pinned-Dependencies check flags any unpinned `pip
+# install`; hash-pinning closes that and makes the docs build tamper-evident.
+#
+# KEEP IN SYNC: this version must match the `zensical==` pin in pyproject.toml,
+# so CI proves the exact version the published docs build uses.
+#
+# REGENERATE requirements/docs.txt after changing this file:
+#   uv pip compile requirements/docs.in --universal --generate-hashes \
+#       --python-version 3.13 -o requirements/docs.txt
+zensical==0.0.45

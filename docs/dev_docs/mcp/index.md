@@ -129,9 +129,9 @@ source .envs/.production/.google-cloud/.just
 just gcp mcp setup prod
 
 # Per-deploy — builds the image, pushes to Artifact Registry, deploys
-# to Cloud Run. Driven by ENABLE_MCP_SERVER, VALIDIBOT_MCP_API_BASE_URL,
-# and hosted-only VALIDIBOT_X402_* public config in
-# .envs/.production/.google-cloud/.build.
+# to Cloud Run. Driven by ENABLE_MCP_SERVER and VALIDIBOT_MCP_API_BASE_URL
+# in .envs/.production/.google-cloud/.build. (The MCP server no longer
+# handles x402; payment config lives in cloud Django's .django.)
 just gcp deploy-all prod    # web + worker + scheduler + MCP
 
 # Or surgically:

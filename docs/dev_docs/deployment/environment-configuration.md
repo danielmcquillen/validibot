@@ -133,9 +133,10 @@ The `.build` file plays three roles, all loaded from the same file:
    variables drive recipe logic **before** `docker compose` or `gcloud`
    is invoked. The canonical example is `ENABLE_MCP_SERVER`, which
    decides whether to activate the `mcp` Compose profile or MCP Cloud Run
-   deploy path. The shared MCP URLs live here too: local-cloud injects
-   them into the Django and MCP containers, and GCP stamps the relevant
-   values onto Cloud Run services.
+   deploy path. The shared **GCP** MCP URLs live here too: the deploy
+   recipe stamps them onto the web and MCP Cloud Run services via
+   `--set-env-vars`. (Local stacks don't need them — the MCP URL defaults
+   to `http://localhost:8001`.)
 
     - `ENABLE_MCP_SERVER=true` — include the FastMCP container in the
       stack. Flip to `true` for `local-pro` and `local-cloud`, where
@@ -143,17 +144,19 @@ The `.build` file plays three roles, all loaded from the same file:
       gate. Ignored by `just local up` because the community compose
       file defines no `mcp` service.
 
-3. **Shared non-secret runtime values.** MCP/cloud stacks load this file into
-   the relevant services so public values needed by both Django and MCP can be
-   authored once. The MCP URLs are the concrete example: `.build` holds
-   `VALIDIBOT_MCP_BASE_URL` and `VALIDIBOT_MCP_API_BASE_URL`; local-cloud injects
-   them into the Django and MCP containers, and GCP stamps them onto both the
-   web and MCP Cloud Run revisions so each side agrees on where the MCP server
-   lives.
+3. **Shared non-secret values stamped onto GCP services.** On GCP the deploy
+   recipe stamps a few public values from this file onto the relevant Cloud Run
+   services via `--set-env-vars`, so the web and MCP revisions agree on them.
+   The MCP URLs are the concrete example: `.build` holds `VALIDIBOT_MCP_BASE_URL`
+   and `VALIDIBOT_MCP_API_BASE_URL`, stamped onto both revisions so each side
+   agrees on where the MCP server lives. (x402 payment config is **not** among
+   these — it moved to `.django` when the MCP server stopped handling payments.
+   And `.build` is no longer mounted into any container via `env_file`; local
+   stacks read it only at the recipe level.)
 
 These categories are optional — if `.build` is absent, recipes that do not
 need it no-op cleanly. For MCP or cloud-local work, the file is worth copying
-because it activates MCP and carries the shared MCP URLs.
+because it activates MCP and (on GCP) carries the shared MCP URLs.
 
 Pro / Enterprise reminder: installing the wheel via category (1)
 gets the package into the image, but Django still needs the app in

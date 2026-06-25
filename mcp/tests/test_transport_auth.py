@@ -31,7 +31,6 @@ from .conftest import (
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 MCP_ENDPOINT = "/mcp"
-PUBLIC_MCP_ENDPOINT = "/public-mcp"
 CONTENT_TYPE = "application/json"
 ACCEPT = "application/json, text/event-stream"
 TEST_OAUTH_ISSUER = "https://app.validibot.com"
@@ -211,17 +210,6 @@ async def session_id(client):
     return await _initialize_session(client, TEST_OAUTH_TOKEN)
 
 
-@pytest_asyncio.fixture(scope="module", loop_scope="module")
-async def public_session_id(client):
-    """Reusable initialized MCP session for the anonymous public surface."""
-
-    return await _initialize_session(
-        client,
-        None,
-        endpoint=PUBLIC_MCP_ENDPOINT,
-    )
-
-
 async def _call_tool(
     client: httpx.AsyncClient,
     session_id: str,
@@ -293,25 +281,6 @@ class TestTransportAuth:
         )
 
         assert response.status_code == 401
-
-    async def test_public_surface_allows_initialize_without_auth(self, client):
-        """The anonymous public surface should initialize without a bearer token."""
-
-        response = await client.post(
-            PUBLIC_MCP_ENDPOINT,
-            json=_jsonrpc(
-                "initialize",
-                {
-                    "protocolVersion": "2025-03-26",
-                    "capabilities": {},
-                    "clientInfo": {"name": "test", "version": "1.0"},
-                },
-            ),
-            headers={"Content-Type": CONTENT_TYPE, "Accept": ACCEPT},
-        )
-
-        assert response.status_code == 200
-        assert response.headers.get("mcp-session-id")
 
     async def test_oauth_token_missing_required_scope_is_rejected(self, client):
         """JWTs without the MCP scope must fail transport auth."""
@@ -507,57 +476,3 @@ class TestToolIntegration:
         result = _extract_tool_result(response)
         assert result["state"] == "COMPLETED"
         assert result["result"] == "PASS"
-
-
-class TestPublicToolIntegration:
-    """Verify the anonymous `/public-mcp` transport surface."""
-
-    async def test_public_list_workflows_uses_agent_catalog(self, client, public_session_id):
-        """Anonymous discovery should route through the public agent catalog."""
-
-        with respx.mock(assert_all_called=False) as router:
-            route = router.get(f"{API_BASE}/api/v1/agent/workflows/").respond(
-                json=[{**SAMPLE_WORKFLOW_SLIM, "workflow_ref": "wf_public"}],
-            )
-
-            response = await _call_tool(
-                client,
-                public_session_id,
-                "list_workflows",
-                {},
-                token=None,
-                endpoint=PUBLIC_MCP_ENDPOINT,
-            )
-
-            assert route.called
-
-        result = _extract_tool_result(response)
-        workflows = result if isinstance(result, list) else result["result"]
-        assert workflows[0]["workflow_ref"] == "wf_public"
-
-    async def test_public_surface_ignores_bearer_and_stays_anonymous(
-        self,
-        client,
-        public_session_id,
-    ):
-        """Supplying a bearer header to the public surface should not switch auth mode."""
-
-        with respx.mock(assert_all_called=False) as router:
-            agent_route = router.get(f"{API_BASE}/api/v1/agent/workflows/").respond(
-                json=[{**SAMPLE_WORKFLOW_SLIM, "workflow_ref": "wf_public"}],
-            )
-            helper_route = router.get(f"{API_BASE}/api/v1/mcp/workflows/").respond(
-                json=[],
-            )
-
-            await _call_tool(
-                client,
-                public_session_id,
-                "list_workflows",
-                {},
-                token=TEST_OAUTH_TOKEN,
-                endpoint=PUBLIC_MCP_ENDPOINT,
-            )
-
-            assert agent_route.called
-            assert not helper_route.called

@@ -248,14 +248,13 @@ CREDENTIAL_ISSUER_URL=
 # algorithm.
 SIGNING_ALGORITHM=ES256
 
-# MCP helper API service-to-service auth. Required if the MCP server
-# is enabled (ENABLE_MCP_SERVER=true in .build). Generate with:
+# MCP helper API service-to-service auth. Required if the MCP server is enabled
+# (ENABLE_MCP_SERVER=true in .build). Generate one paired secret and place it
+# here and in .envs/.production/.self-hosted/.mcp:
 #
 #   python -c "import secrets; print(secrets.token_urlsafe(32))"
 #
-# MUST match VALIDIBOT_MCP_SERVICE_KEY in
-# .envs/.production/.self-hosted/.mcp on the MCP side. Without this,
-# every MCP tool call 401s at the Django helper API.
+# Without this, every MCP tool call 401s at the Django helper API.
 VALIDIBOT_MCP_SERVICE_KEY=replace-with-a-long-random-string
 
 # MCP OAuth (required for Claude Desktop support). Leave commented to

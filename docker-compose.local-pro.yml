@@ -101,6 +101,9 @@ services:
       - validibot
     env_file:
       - .envs/.local/.mcp
+      # .build is loaded after .mcp so shared x402 values authored there win
+      # without erasing older .mcp-only local setups that have not migrated yet.
+      - .envs/.local/.build
     ports:
       - "8001:8080"
     healthcheck:

@@ -1,14 +1,15 @@
-"""Tests for MCP dispatch between authenticated helpers and x402 routes.
+"""Tests for MCP dispatch through the authenticated helper endpoints.
 
-These tests verify the current contract after the org-first compatibility
-paths were removed from the MCP tool surface:
+The MCP server is authenticated-only: every tool acts on behalf of a bearer
+credential and routes through the ``/api/v1/mcp/*`` helper API. These tests pin
+that contract:
 
-1. ``list_workflows()`` dispatches to the authenticated helper catalog when a
-   bearer credential is present, otherwise to the public x402 catalog.
-2. ``validate_file(workflow_ref=...)`` dispatches to the authenticated helper
-   run launcher for member-access workflows and to the x402 path otherwise.
-3. ``get_run_status(run_ref=...)`` dispatches by decoding the opaque run
-   reference rather than by requiring org or wallet inputs from the caller.
+1. ``list_workflows()`` dispatches to the authenticated helper catalog.
+2. ``validate_file(workflow_ref=...)`` launches a member-access run through the
+   authenticated helper run launcher.
+3. ``get_run_status(run_ref=...)`` decodes the opaque member run reference and
+   polls the authenticated helper endpoint rather than requiring the caller to
+   pass org inputs directly.
 """
 
 from __future__ import annotations
@@ -17,12 +18,12 @@ import base64
 
 import pytest
 
-from validibot_mcp.refs import build_member_run_ref, build_workflow_ref, build_x402_run_ref
+from validibot_mcp.refs import build_member_run_ref, build_workflow_ref
 from validibot_mcp.tools.runs import get_run_status
 from validibot_mcp.tools.validate import validate_file
 from validibot_mcp.tools.workflows import list_workflows
 
-from .conftest import SAMPLE_API_KEY, SAMPLE_WORKFLOW_FULL, SAMPLE_WORKFLOW_SLIM
+from .conftest import SAMPLE_API_KEY, SAMPLE_WORKFLOW_SLIM
 
 ORG = "acme-corp"
 
@@ -31,6 +32,7 @@ ORG = "acme-corp"
 def authenticated(monkeypatch):
     """Simulate an authenticated MCP request with a manual bearer token."""
 
+    monkeypatch.setattr("validibot_mcp.auth.get_api_key", lambda: SAMPLE_API_KEY)
     monkeypatch.setattr("validibot_mcp.auth.get_api_key_or_none", lambda: SAMPLE_API_KEY)
     monkeypatch.setattr(
         "validibot_mcp.auth.get_authenticated_user_sub_or_none",
@@ -38,19 +40,8 @@ def authenticated(monkeypatch):
     )
 
 
-@pytest.fixture()
-def anonymous(monkeypatch):
-    """Simulate an anonymous MCP request without a bearer credential."""
-
-    monkeypatch.setattr("validibot_mcp.auth.get_api_key_or_none", lambda: None)
-    monkeypatch.setattr(
-        "validibot_mcp.auth.get_authenticated_user_sub_or_none",
-        lambda: None,
-    )
-
-
 class TestListWorkflowsDispatch:
-    """Verify workflow discovery uses the correct backing endpoint."""
+    """Verify workflow discovery uses the authenticated helper catalog."""
 
     async def test_authenticated_hits_mcp_catalog_endpoint(
         self,
@@ -58,7 +49,12 @@ class TestListWorkflowsDispatch:
         mock_api,
         monkeypatch,
     ):
-        """Authenticated discovery should use the MCP helper catalog."""
+        """Authenticated discovery should use the MCP helper catalog.
+
+        WHY: the only supported surface is authenticated, so discovery must
+        forward the user's identity to ``/api/v1/mcp/workflows/`` — never to
+        any anonymous catalog.
+        """
 
         monkeypatch.setattr(
             "validibot_mcp.auth.get_authenticated_user_sub_or_none",
@@ -71,37 +67,25 @@ class TestListWorkflowsDispatch:
         assert isinstance(result, list)
         assert len(result) == 1
 
-    async def test_anonymous_hits_agent_endpoint(self, anonymous, mock_api):
-        """Anonymous discovery should use the public x402 workflow catalog."""
-
-        mock_api.get("/api/v1/agent/workflows/").respond(json=[SAMPLE_WORKFLOW_SLIM])
-
-        result = await list_workflows()
-
-        assert isinstance(result, list)
-
 
 class TestValidateFileDispatch:
-    """Verify validation dispatch uses helper runs or x402 as appropriate."""
+    """Verify validation dispatch uses the authenticated helper run launcher."""
 
     async def test_authenticated_member_access_uses_mcp_helper_run_launcher(
         self,
         authenticated,
         mock_api,
     ):
-        """Member-access workflows should launch through the helper endpoint."""
+        """Member-access workflows should launch through the helper endpoint.
+
+        WHY: ``validate_file`` must POST to the authenticated MCP helper
+        run-launch route and return the opaque member ``run_ref`` the contract
+        promises — proving the run is billed to the user's quota.
+        """
 
         workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="energy-check")
         b64 = base64.b64encode(b"test content").decode()
 
-        mock_api.get(f"/api/v1/mcp/workflows/{workflow_ref}/").respond(
-            json={
-                **SAMPLE_WORKFLOW_FULL,
-                "workflow_ref": workflow_ref,
-                "org_slug": ORG,
-                "access_modes": ["member_access"],
-            },
-        )
         mock_api.post(f"/api/v1/mcp/workflows/{workflow_ref}/runs/").respond(
             json={
                 "id": "run-123",
@@ -123,87 +107,17 @@ class TestValidateFileDispatch:
             run_id="run-123",
         )
 
-    async def test_authenticated_public_x402_only_uses_payment_path(
-        self,
-        authenticated,
-        mock_api,
-        monkeypatch,
-    ):
-        """An authenticated caller selecting a public-x402-ONLY workflow must
-        take the payment path, not the member path.
-
-        This is the third dispatch branch: a bearer token is present, but the
-        chosen workflow is not member-accessible to this user (access_modes is
-        ``["public_x402"]`` with no ``member_access``). The server must fall
-        through to ``_validate_x402`` — so with no PAYMENT-SIGNATURE the caller
-        gets PAYMENT_REQUIRED rather than a free member launch. The workflow
-        detail is fetched from the AUTHENTICATED helper endpoint (only that
-        route is mocked), proving an authenticated user can reach a public
-        x402 workflow without a membership.
-        """
-
-        workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="energy-check")
-        mock_api.get(f"/api/v1/mcp/workflows/{workflow_ref}/").respond(
-            json={
-                **SAMPLE_WORKFLOW_FULL,
-                "workflow_ref": workflow_ref,
-                "org_slug": ORG,
-                "agent_access_enabled": True,
-                "agent_billing_mode": "AGENT_PAYS_X402",
-                "agent_price_cents": 25,
-                # Crucially: no "member_access" — this user is not a member.
-                "access_modes": ["public_x402"],
-            },
-        )
-        monkeypatch.setattr("validibot_mcp.auth.get_payment_signature", lambda: None)
-
-        b64 = base64.b64encode(b"test content").decode()
-        result = await validate_file(
-            workflow_ref=workflow_ref,
-            file_content=b64,
-            file_name="test.json",
-        )
-
-        assert result["error"]["code"] == "PAYMENT_REQUIRED"
-        assert "x402Version" in result["error"]["data"]
-
-    async def test_anonymous_no_payment_returns_payment_required(
-        self,
-        anonymous,
-        mock_api,
-        monkeypatch,
-    ):
-        """Public x402 workflows should challenge when no payment is supplied."""
-
-        workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="energy-check")
-        mock_api.get(f"/api/v1/agent/workflows/{workflow_ref}/").respond(
-            json={
-                **SAMPLE_WORKFLOW_SLIM,
-                "workflow_ref": workflow_ref,
-                "org_slug": ORG,
-                "agent_price_cents": 10,
-                "description": "Test workflow",
-                "agent_billing_mode": "AGENT_PAYS_X402",
-            },
-        )
-        monkeypatch.setattr("validibot_mcp.auth.get_payment_signature", lambda: None)
-
-        b64 = base64.b64encode(b"test content").decode()
-        result = await validate_file(
-            workflow_ref=workflow_ref,
-            file_content=b64,
-            file_name="test.json",
-        )
-
-        assert result["error"]["code"] == "PAYMENT_REQUIRED"
-        assert "x402Version" in result["error"]["data"]
-
 
 class TestGetRunStatusDispatch:
-    """Verify run polling dispatches by run_ref kind."""
+    """Verify run polling dispatches by member run_ref."""
 
     async def test_authenticated_member_run_hits_mcp_helper(self, authenticated, mock_api):
-        """Member run refs should use the authenticated helper endpoint."""
+        """Member run refs should use the authenticated helper endpoint.
+
+        WHY: ``get_run_status`` decodes the opaque member ref and polls the
+        authenticated ``/api/v1/mcp/runs/`` route — the caller never supplies an
+        org slug or a polling URL directly.
+        """
 
         run_ref = build_member_run_ref(
             org_slug=ORG,
@@ -217,27 +131,12 @@ class TestGetRunStatusDispatch:
 
         assert result["state"] == "PENDING"
 
-    async def test_anonymous_x402_run_hits_agent_endpoint(
-        self,
-        anonymous,
-        mock_api,
-    ):
-        """x402 run refs should continue using the agent polling endpoint."""
+    async def test_missing_run_ref_returns_error(self, authenticated):
+        """Run polling should require the opaque run_ref contract.
 
-        run_id = "550e8400-e29b-41d4-a716-446655440000"
-        wallet = "0xMYWALLET"
-        mock_api.get(f"/api/v1/agent/runs/{run_id}/").respond(
-            json={"run_id": run_id, "wallet_address": wallet, "state": "PENDING"},
-        )
-
-        result = await get_run_status(
-            run_ref=build_x402_run_ref(run_id=run_id, wallet_address=wallet),
-        )
-
-        assert result["state"] == "PENDING"
-
-    async def test_missing_run_ref_returns_error(self, anonymous):
-        """Run polling should require the opaque run_ref contract."""
+        WHY: without a ref there is nothing to decode or route, so the tool must
+        return a structured ``INVALID_PARAMS`` error rather than guessing.
+        """
 
         result = await get_run_status()
 

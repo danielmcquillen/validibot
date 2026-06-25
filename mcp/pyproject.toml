@@ -8,9 +8,6 @@ dependencies = [
     "fastmcp==3.2.4",
     "httpx==0.28.1",
     "pydantic-settings==2.14.2",
-    # stripe is NOT needed here — all Stripe billing (ACP PaymentIntents,
-    # subscriptions, webhooks) lives in the Django cloud layer, not the
-    # MCP server. The MCP server just forwards the X-Stripe-SPT header.
 ]
 
 [project.optional-dependencies]

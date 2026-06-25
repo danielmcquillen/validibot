@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from validibot_mcp.errors import MCPToolError, PaymentInvalidError, PaymentRequiredError
+from validibot_mcp.errors import MCPToolError
 
 
 def format_error(exc: Exception) -> dict[str, Any]:
@@ -23,7 +23,5 @@ def format_error(exc: Exception) -> dict[str, Any]:
 
 __all__ = [
     "MCPToolError",
-    "PaymentInvalidError",
-    "PaymentRequiredError",
     "format_error",
 ]

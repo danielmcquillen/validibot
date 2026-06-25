@@ -81,8 +81,9 @@ cp .envs.example/.production/.google-cloud/.mcp     .envs/.production/.google-cl
 Then edit the new files. The `.just` file holds deployment-time
 configuration (GCP project, region, app name) and is sourced into your
 shell — it never leaves your machine. The `.django` file holds runtime
-configuration and is uploaded to Secret Manager. The `.build` file
-holds build-time knobs (commercial-package selection, `ENABLE_MCP_SERVER`).
+configuration and is uploaded to Secret Manager. The `.build` file holds
+build/deploy knobs, including `ENABLE_MCP_SERVER`, public MCP URLs, and hosted
+x402 values that the recipes stamp onto the services that need them.
 
 ## Typical first-time flow
 
@@ -212,14 +213,13 @@ ENABLE_MCP_SERVER=true
 # accidentally proxy your users' traffic to another operator's API.
 VALIDIBOT_MCP_API_BASE_URL=https://app.your-domain.example
 
-# Optional anonymous x402 public config. Leave disabled unless the
-# Django side also has matching X402_PAY_TO_ADDRESS and
-# X402_ALLOWED_NETWORK_ASSET_PAIRS values.
+# Public URL of YOUR MCP service. The deploy recipe stamps this onto both
+# Django and MCP; do not repeat it in .django or .mcp.
+VALIDIBOT_MCP_BASE_URL=https://mcp.your-domain.example
+
+# Hosted x402 is cloud-only and disabled by default. Keep any x402 values in
+# this .build file, not in .django or .mcp; see the project operations runbook.
 VALIDIBOT_X402_ENABLED=false
-VALIDIBOT_X402_TEST_MODE=false
-VALIDIBOT_X402_NETWORK=eip155:8453
-VALIDIBOT_X402_ASSET=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
-VALIDIBOT_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402
 ```
 
 See `.envs.example/.production/.google-cloud/.build` for the full
@@ -240,13 +240,17 @@ to Django's OIDC provider. Required settings:
 # once and back up securely — rotating invalidates every live session.
 IDP_OIDC_PRIVATE_KEY_B64=<base64 of a fresh openssl genrsa 2048 -out key.pem>
 
-# Shared secret for the confidential OAuth client the MCP server
-# registers as. Must equal VALIDIBOT_OAUTH_CLIENT_SECRET in the
-# .mcp file (openssl rand -hex 32).
+# Paired secret for the confidential OAuth client the MCP server registers as.
+# Use the same generated value in .mcp as VALIDIBOT_OAUTH_CLIENT_SECRET
+# (openssl rand -hex 32), then rotate both secret files together.
 IDP_OIDC_MCP_SERVER_CLIENT_SECRET=<hex random secret>
+```
 
-# Public URL of your MCP server. Drives both Django's OIDC audience
-# claim and the confidential client's registered redirect URI.
+In `.envs/.production/.google-cloud/.build`:
+```bash
+# Public URL of your MCP server. The deploy recipe stamps this onto both
+# Django and MCP so the OIDC audience, redirect URI, and MCP metadata come
+# from one value.
 VALIDIBOT_MCP_BASE_URL=https://mcp.your-domain.example
 ```
 
@@ -256,19 +260,15 @@ signed identity token minted by the MCP service account. Required
 settings:
 
 ```bash
-# Audience that Cloud Run stamps on identity tokens. Convention is
-# the public URL of the service being called.
-MCP_OIDC_AUDIENCE=https://app.your-domain.example
-
-# Allowlist of service-account emails permitted to mint tokens for
-# the audience above. Must include the SA provisioned by
-# ``just gcp mcp setup prod``.
+# The deploy recipe stamps MCP_OIDC_AUDIENCE onto Django from
+# VALIDIBOT_MCP_API_BASE_URL in .build. Keep only the service-account
+# allowlist in .django.
 MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS=validibot-mcp-prod@your-project.iam.gserviceaccount.com
 ```
 
-Django refuses to boot if `MCP_OIDC_AUDIENCE` is set but the
-allowlist is empty — a safety guard against accepting tokens from
-any Google SA that can mint to the audience.
+Django refuses to boot if `MCP_OIDC_AUDIENCE` is stamped but the allowlist is
+empty — a safety guard against accepting tokens from any Google service account
+that can mint to the audience.
 
 See `.envs.example/.production/.google-cloud/.django` for the fully
 commented template.

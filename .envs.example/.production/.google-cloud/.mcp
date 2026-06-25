@@ -1,14 +1,20 @@
 # Validibot MCP server — GCP Cloud Run production (example).
 #
-# Copy to .envs/.production/.google-cloud/.mcp and fill in. Your
-# deployment tooling uploads this file to GCP Secret Manager (default
-# name: `mcp-env`) and Cloud Run mounts it at /secrets/.env, where
-# pydantic-settings reads it at container start. The MCP server boots
-# only if the deployment's license advertises the `mcp_server` feature.
+# Copy to .envs/.production/.google-cloud/.mcp and fill in.
+
 #
-# Non-secret config (VALIDIBOT_API_BASE_URL, VALIDIBOT_MCP_ENABLED, and
-# VALIDIBOT_X402_* public payment knobs) is set from `.build` via
-# `--set-env-vars` in the deploy recipe instead of going here.
+# `just gcp secrets prod` (umbrella — also pushes `.django`) or
+# `just gcp mcp secrets prod` (surgical — only `.mcp`) uploads this file
+# to GCP Secret Manager (default name: `mcp-env`); Cloud Run mounts it
+# at /secrets/.env, where pydantic-settings reads it at container start.
+# The MCP server boots only if the deployment's license advertises the
+# `mcp_server` feature.
+#
+# Non-secret config (VALIDIBOT_API_BASE_URL, VALIDIBOT_MCP_BASE_URL,
+# VALIDIBOT_MCP_ENABLED, and shared VALIDIBOT_X402_* payment knobs) is set
+# from `.build` via `--set-env-vars` in the deploy recipe instead of going
+# here.
+
 
 # ── Logging ────────────────────────────────────────────────────────────
 
@@ -23,22 +29,41 @@ VALIDIBOT_LOG_LEVEL=INFO
 # Omitting oauth_client_secret disables the OAuth path and falls back to
 # the legacy API-token flow only. Production needs OAuth for Claude
 # Desktop's Dynamic Client Registration to work.
+#
+# Paired secret: this value and IDP_OIDC_MCP_SERVER_CLIENT_SECRET in
+# `.django` are the two Secret Manager-backed copies of the same confidential
+# OIDC client secret. Django stores it *hashed* (set_secret()), so you cannot
+# read it back from the DB; if it's lost, rotate both secret files from one
+# newly generated value rather than trying to recover it. Generate one:
+#   openssl rand -hex 32
+# After rotating, update `.django`, run `just gcp secrets prod`, then
+# redeploy web + mcp so `ensure_oidc_clients` reconciles the hash.
 VALIDIBOT_OAUTH_CLIENT_ID=validibot-mcp-server
 VALIDIBOT_OAUTH_CLIENT_SECRET=replace-with-generated-client-secret
 
+# ── Service-to-service auth ────────────────────────────────────────────
+
+# In production the MCP server authenticates to the Django API with a
+# Cloud Run OIDC identity token automatically (audience = the API base
+# URL), so the shared-secret fallback stays unset here. Set this only
+# for a local/dev path that bypasses OIDC.
+# VALIDIBOT_MCP_SERVICE_KEY=
+
 # ── Public service URLs ────────────────────────────────────────────────
 
-# Override these if you serve MCP from a domain other than the defaults
-# baked into config.py. For mcp.validibot.com + app.validibot.com the
-# defaults apply and these lines can be omitted.
-# VALIDIBOT_MCP_BASE_URL=https://mcp.validibot.com
-# VALIDIBOT_OAUTH_AUTHORIZATION_SERVER_URL=https://app.validibot.com
+# VALIDIBOT_MCP_BASE_URL is required by MCP, but it is authored once in
+# `.build` and stamped onto this Cloud Run service. Do not repeat it here.
 
-# ── x402 payments ──────────────────────────────────────────────────────
+# VALIDIBOT_OAUTH_AUTHORIZATION_SERVER_URL — the upstream Django instance
+# that issues JWT access tokens for the authenticated MCP surface. The
+# FastMCP OIDCProxy fetches <this-url>/.well-known/openid-configuration at
+# startup to learn the authorize / token / JWKS endpoints.
+VALIDIBOT_OAUTH_AUTHORIZATION_SERVER_URL=replace-with-oauth-server-url
 
-# The live enable/network/asset/facilitator knobs live in .build.
-# This file only stores receiving-wallet secrets.
-VALIDIBOT_X402_PAY_TO_ADDRESS=0xYOUR_PRODUCTION_BASE_MAINNET_WALLET
 
-# Testnet receiver. Used when VALIDIBOT_X402_TEST_MODE=true in .build.
-VALIDIBOT_TEST_X402_PAY_TO_ADDRESS=0xYOUR_BASE_SEPOLIA_WALLET
+# ── Optional overrides ─────────────────────────────────────────────────
+
+# Everything else has a working default in config.py. Set any of these
+# only to override the default: VALIDIBOT_OAUTH_JWKS_URL,
+# VALIDIBOT_OAUTH_RESOURCE_AUDIENCE, VALIDIBOT_OAUTH_REQUIRED_SCOPE,
+# VALIDIBOT_AGENT_API_BASE_URL, VALIDIBOT_MCP_SERVICE_AUDIENCE.

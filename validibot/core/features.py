@@ -67,6 +67,12 @@ class CommercialFeature(TextChoices):
     # mcp/ and refuses to start unless this feature is advertised by the
     # deployment's license (i.e. validibot-pro is installed).
     MCP_SERVER = "mcp_server", _("MCP Server")
+    # Anonymous, x402-paid agent validation. The x402 facilitator client
+    # (verify/settle against Coinbase CDP) lives in ``validibot_pro/x402/``
+    # — installing Pro grants this feature and ships the code. The cloud
+    # ``/api/v1/agent/validate/<org>/<workflow>`` resource gates on it; a
+    # deployment without Pro cannot settle agent payments.
+    X402_AGENT_PAYMENTS = "x402_agent_payments", _("x402 Agent Payments")
 
     # Enterprise features (requires validibot-enterprise)
     MULTI_ORG = "multi_org", _("Multiple Organizations")

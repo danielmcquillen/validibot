@@ -78,13 +78,16 @@ a Commercial License.
 | -------------------------- | --- | ---------- |
 | AGPL obligations removed   | Yes | Yes        |
 | Priority support           | Yes | Yes        |
-| Multi-organization support | Yes | Yes        |
+| Multi-organization support | No  | Yes        |
 | Advanced analytics         | Yes | Yes        |
+| Guest user management      | Yes | Yes        |
+| Team management (RBAC)     | Yes | Yes        |
 | SSO (LDAP, SAML, OAuth)    | No  | Yes        |
-| Guest user management      | No  | Yes        |
-| Team management (RBAC)     | No  | Yes        |
 | Dedicated support channel  | No  | Yes        |
 | Source code escrow option  | No  | Yes        |
+
+Pro includes team and guest collaboration, capped at 3 members per
+organization. Larger teams or multiple organizations need Enterprise.
 
 ### How are commercial licenses priced?
 
@@ -93,13 +96,13 @@ pricing. Licenses are annual subscriptions.
 
 ### Can I try before I buy?
 
-Yes. You can evaluate the Community edition for free. All features work
-identically - commercial tiers add team/organization features and remove AGPL
+Yes. You can evaluate the Community edition for free. Most features work
+identically - commercial tiers add a few extra features and remove AGPL
 requirements.
 
 ### What happens if I don't renew?
 
-Commercial features (multi-org, SSO, etc.) are disabled, but your installation
+Commercial features (verifiable credentials, multi-org, SSO, etc.) are disabled, but your installation
 continues to work with Community features. Your data remains intact. Enterprise
 customers get a 60-day transition period.
 
@@ -119,8 +122,9 @@ configurations for easy deployment.
 
 ### What about Kubernetes?
 
-Validibot can run on Kubernetes. Documentation and Helm charts are available
-in the repository.
+Validibot is not configured yet for Kubernetes, but it might not
+be too difficult to configure for a basic setup. If you do please
+share with the community!
 
 ### Who is responsible for security and backups?
 
@@ -211,9 +215,11 @@ transfer to the new owner and remain valid.
 
 ### What jurisdiction governs the license?
 
-Victoria, Australia. For Pro licenses, disputes are resolved through the courts
-of Victoria. For Enterprise licenses, disputes are resolved through ACICA
-arbitration in Melbourne.
+Victoria, Australia. For both Pro and Enterprise licenses, disputes are first
+subject to 30 days of good-faith negotiation, and if unresolved, are decided by
+the courts of Victoria. Enterprise customers negotiating a custom agreement may
+request alternative dispute resolution (such as arbitration) as part of those
+terms.
 
 ### Is there a liability cap?
 
@@ -227,7 +233,7 @@ Yes. For both Pro and Enterprise: fees paid in the 12 months preceding the claim
 
 - **Unmodified, internal only**: Community edition (AGPL) is fine
 - **Modified or external users**: Commercial license recommended
-- **Need multi-org or SSO**: Pro or Enterprise required
+- **Need multi-org or SSO**: Enterprise required
 
 ### "I'm building a product that integrates with Validibot"
 

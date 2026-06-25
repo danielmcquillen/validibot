@@ -564,8 +564,9 @@ USE_SIGNUP_HONEYPOT = env.bool("USE_SIGNUP_HONEYPOT", default=False)
 MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
 # Name that appears in authenticator apps next to the account email.
 # Without this, apps show the bare email, which is confusing when users
-# have multiple TOTP entries for different services.
-MFA_TOTP_ISSUER = "Validibot"
+# have multiple TOTP entries for different services. Env-configurable so a
+# self-hosted deployment can brand it (the MFA_TOTP_ISSUER line in .django).
+MFA_TOTP_ISSUER = env("MFA_TOTP_ISSUER", default="Validibot")
 # Allauth's default is 10, but we state it explicitly so future maintainers
 # don't have to chase the upstream default if we ever need to audit it.
 MFA_RECOVERY_CODE_COUNT = 10

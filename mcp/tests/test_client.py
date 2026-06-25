@@ -1,9 +1,9 @@
 """Tests for the async HTTP clients that back the MCP service.
 
-The MCP server communicates with Validibot exclusively through HTTP helper
-endpoints. These tests use ``respx`` to mock ``httpx`` requests and verify the
-authenticated helper path, the anonymous agent path, and the shared error
-handling around non-2xx responses.
+The MCP server communicates with Validibot exclusively through the authenticated
+``/api/v1/mcp/*`` helper endpoints. These tests use ``respx`` to mock ``httpx``
+requests and verify the authenticated helper path and the shared error handling
+around non-2xx responses.
 """
 
 from __future__ import annotations
@@ -17,8 +17,6 @@ import pytest
 from validibot_mcp.client import (
     APIError,
     _raise_for_status,
-    build_agent_headers,
-    get_agent_workflow_detail,
     get_authenticated_run,
     get_authenticated_workflow_detail,
     list_authenticated_workflows,
@@ -169,54 +167,6 @@ class TestAuthenticatedHelperRuns:
 
         request = route.calls[0].request
         assert request.headers["X-Validibot-Api-Token"] == SAMPLE_API_KEY
-
-
-class TestBuildAgentHeaders:
-    """Verify anonymous agent requests still use the same service auth layer."""
-
-    async def test_includes_service_identity_and_x402_headers(self, monkeypatch):
-        """The agent path should share service auth with authenticated helpers."""
-
-        monkeypatch.setattr("validibot_mcp.client.settings.mcp_service_key", "")
-        monkeypatch.setattr(
-            "validibot_mcp.client._fetch_service_identity_token",
-            lambda audience: _async_return("service-identity-token"),
-        )
-
-        headers = await build_agent_headers(
-            txhash="0xdeadbeef",
-            wallet="0xwallet",
-            amount="123",
-            network="eip155:8453",
-            asset="0xasset",
-            pay_to="0xreceiver",
-            workflow_slug="energy-check",
-            org_slug=ORG,
-            file_name="test.json",
-        )
-
-        assert headers["Authorization"] == "Bearer service-identity-token"
-        assert headers["X-X402-Workflow-Slug"] == "energy-check"
-        assert headers["X-X402-Org-Slug"] == ORG
-        assert headers["X-X402-File-Name"] == "test.json"
-        # Pay-to is required by the Django auth layer (without it the
-        # request 401s).  Pinning it here prevents a regression where
-        # someone removes the kwarg from the MCP client and silently
-        # breaks every real x402 launch.
-        assert headers["X-X402-Pay-To"] == "0xreceiver"
-
-
-class TestAgentWorkflowDetail:
-    """Verify public x402 workflow detail lookup."""
-
-    async def test_fetches_public_workflow_detail(self, mock_api):
-        """Anonymous detail should use the public workflow-detail endpoint."""
-
-        mock_api.get("/api/v1/agent/workflows/wf_demo/").respond(json=SAMPLE_WORKFLOW_FULL)
-
-        result = await get_agent_workflow_detail("wf_demo")
-
-        assert result["slug"] == SAMPLE_WORKFLOW_FULL["slug"]
 
 
 async def _async_return(value: str) -> str:

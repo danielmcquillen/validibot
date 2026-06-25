@@ -1,19 +1,20 @@
 """Tests for the MCP tool layer.
 
 These tests cover the tool contract the model sees, not just the lower-level
-HTTP client helpers. The current contract is:
+HTTP client helpers. The MCP server is authenticated-only, so the contract is:
 
+- a Bearer credential is required for every tool (no anonymous fallback)
 - discovery returns ``workflow_ref`` plus display metadata like ``org_slug``
 - workflow detail, validation, and polling all route through opaque refs
-- authenticated member access goes through MCP helper endpoints
-- public x402 access keeps using the anonymous payment-backed endpoints
+- member access goes through the authenticated ``/api/v1/mcp/*`` helper
+  endpoints
 """
 
 from __future__ import annotations
 
 import base64
 
-from validibot_mcp.refs import build_member_run_ref, build_workflow_ref, build_x402_run_ref
+from validibot_mcp.refs import build_member_run_ref, build_workflow_ref
 from validibot_mcp.tools.runs import get_run_status, wait_for_run
 from validibot_mcp.tools.validate import _MAX_FILE_SIZE_BYTES, validate_file
 from validibot_mcp.tools.workflows import get_workflow_details, list_workflows
@@ -21,7 +22,6 @@ from validibot_mcp.tools.workflows import get_workflow_details, list_workflows
 from .conftest import (
     SAMPLE_RUN_COMPLETED,
     SAMPLE_RUN_PENDING,
-    SAMPLE_WORKFLOW_AGENT_PAYS,
     SAMPLE_WORKFLOW_FULL,
     SAMPLE_WORKFLOW_SLIM,
 )
@@ -33,7 +33,12 @@ class TestListWorkflowsTool:
     """Verify the workflow discovery tool."""
 
     async def test_returns_authenticated_catalog(self, mock_auth, mock_api, monkeypatch):
-        """Authenticated discovery should use the MCP helper catalog."""
+        """Authenticated discovery should use the MCP helper catalog.
+
+        WHY: discovery is the entry point agents call first; it must forward the
+        user's identity to the authenticated helper catalog and surface the
+        opaque ``workflow_ref`` handles the rest of the contract depends on.
+        """
 
         monkeypatch.setattr(
             "validibot_mcp.auth.get_authenticated_user_sub_or_none",
@@ -48,18 +53,26 @@ class TestListWorkflowsTool:
         assert isinstance(result, list)
         assert result[0]["workflow_ref"] == "wf_demo"
 
-    async def test_no_auth_falls_to_anonymous_catalog(self, monkeypatch, mock_api):
-        """Without a bearer token the tool should use the public agent catalog."""
+    async def test_no_auth_returns_unauthorized(self, mock_access_token):
+        """Discovery without a bearer token must return an UNAUTHORIZED error.
 
-        monkeypatch.setattr("validibot_mcp.auth.get_api_key_or_none", lambda: None)
-        mock_api.get("/api/v1/agent/workflows/").respond(json=[])
+        WHY: there is no anonymous surface anymore, so a missing credential is a
+        hard stop — the tool must surface ``UNAUTHORIZED`` rather than silently
+        falling back to a public catalog.
+        """
+
+        mock_access_token(None)
 
         result = await list_workflows()
 
-        assert isinstance(result, list)
+        assert result["error"]["code"] == "UNAUTHORIZED"
 
     async def test_gating_error_returns_structured_dict(self, mock_auth, monkeypatch):
-        """The global kill switch should produce a structured error response."""
+        """The global kill switch should produce a structured error response.
+
+        WHY: the ``MCP_ENABLED`` operator kill switch must short-circuit before
+        any auth or API work and return a stable ``SERVICE_UNAVAILABLE`` payload.
+        """
 
         monkeypatch.setenv("VALIDIBOT_MCP_ENABLED", "false")
 
@@ -77,7 +90,12 @@ class TestGetWorkflowDetailsTool:
         mock_api,
         monkeypatch,
     ):
-        """Authenticated detail should come from the MCP helper endpoint."""
+        """Authenticated detail should come from the MCP helper endpoint.
+
+        WHY: detail is what agents use to decide what file to submit, so it must
+        route through the authenticated helper and attach the computed
+        enrichment fields (extensions, pricing, summary).
+        """
 
         workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="energy-check")
         monkeypatch.setattr(
@@ -100,7 +118,12 @@ class TestGetWorkflowDetailsTool:
         mock_auth,
         mock_api,
     ):
-        """Authenticated member workflows should stay visible when not public."""
+        """Authenticated member workflows should stay visible when not public.
+
+        WHY: ``agent_access_enabled`` gates the anonymous/public surface, which
+        no longer exists here. An authenticated member must still see their own
+        workflow even with that flag off, so detail must not gate on it.
+        """
 
         workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="private-member")
         mock_api.get(f"/api/v1/mcp/workflows/{workflow_ref}/").respond(
@@ -118,58 +141,37 @@ class TestGetWorkflowDetailsTool:
         assert result["workflow_ref"] == workflow_ref
         assert result["pricing"]["payment_required"] is False
 
-    async def test_returns_full_anonymous_workflow_detail(self, monkeypatch, mock_api):
-        """Anonymous detail should use the public detail endpoint, not the slim list."""
+    async def test_no_auth_returns_unauthorized(self, mock_access_token):
+        """Detail without a bearer token must return an UNAUTHORIZED error.
 
-        monkeypatch.setattr("validibot_mcp.auth.get_api_key_or_none", lambda: None)
-        workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="premium-check")
-        mock_api.get(f"/api/v1/agent/workflows/{workflow_ref}/").respond(
-            json={**SAMPLE_WORKFLOW_AGENT_PAYS, "workflow_ref": workflow_ref, "org_slug": ORG},
-        )
+        WHY: like discovery, workflow detail has no anonymous path; an absent
+        credential must fail closed with ``UNAUTHORIZED``.
+        """
 
-        result = await get_workflow_details(workflow_ref=workflow_ref)
-
-        assert "2 validation steps" in result["validation_summary"]
-        assert result["pricing"]["payment_required"] is True
-
-    async def test_public_x402_detail_requires_agent_publication(self, mock_auth, mock_api):
-        """Public-only workflows should still require agent publication."""
-
-        workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="private-workflow")
-        mock_api.get(f"/api/v1/mcp/workflows/{workflow_ref}/").respond(
-            json={
-                **SAMPLE_WORKFLOW_FULL,
-                "workflow_ref": workflow_ref,
-                "org_slug": ORG,
-                "agent_access_enabled": False,
-                "access_modes": ["public_x402"],
-            },
-        )
+        mock_access_token(None)
+        workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="energy-check")
 
         result = await get_workflow_details(workflow_ref=workflow_ref)
 
-        assert result["error"]["code"] == "FORBIDDEN"
+        assert result["error"]["code"] == "UNAUTHORIZED"
 
 
 class TestValidateFileTool:
     """Verify the validation-launch tool."""
 
     async def test_submits_member_access_file_successfully(self, mock_auth, mock_api):
-        """Member-access launches should go through the helper run endpoint."""
+        """Member-access launches should go through the helper run endpoint.
+
+        WHY: this is the primary tool; it must POST to the authenticated helper
+        run-launch route and return the run identity plus the opaque member
+        ``run_ref`` callers poll with.
+        """
 
         slug = "energy-check"
         workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug=slug)
         run_ref = build_member_run_ref(org_slug=ORG, run_id=SAMPLE_RUN_PENDING["id"])
         b64 = base64.b64encode(b"test content").decode()
 
-        mock_api.get(f"/api/v1/mcp/workflows/{workflow_ref}/").respond(
-            json={
-                **SAMPLE_WORKFLOW_FULL,
-                "workflow_ref": workflow_ref,
-                "org_slug": ORG,
-                "access_modes": ["member_access"],
-            },
-        )
         mock_api.post(f"/api/v1/mcp/workflows/{workflow_ref}/runs/").respond(
             json={**SAMPLE_RUN_PENDING, "run_ref": run_ref},
         )
@@ -183,40 +185,13 @@ class TestValidateFileTool:
         assert result["id"] == SAMPLE_RUN_PENDING["id"]
         assert result["run_ref"] == run_ref
 
-    async def test_member_access_launch_ignores_agent_publication_flag(
-        self,
-        mock_auth,
-        mock_api,
-    ):
-        """Authenticated member launches should work for non-public workflows."""
-
-        workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="private-member")
-        run_ref = build_member_run_ref(org_slug=ORG, run_id=SAMPLE_RUN_PENDING["id"])
-        b64 = base64.b64encode(b"test content").decode()
-
-        mock_api.get(f"/api/v1/mcp/workflows/{workflow_ref}/").respond(
-            json={
-                **SAMPLE_WORKFLOW_FULL,
-                "workflow_ref": workflow_ref,
-                "org_slug": ORG,
-                "agent_access_enabled": False,
-                "access_modes": ["member_access"],
-            },
-        )
-        mock_api.post(f"/api/v1/mcp/workflows/{workflow_ref}/runs/").respond(
-            json={**SAMPLE_RUN_PENDING, "run_ref": run_ref},
-        )
-
-        result = await validate_file(
-            file_content=b64,
-            file_name="test.json",
-            workflow_ref=workflow_ref,
-        )
-
-        assert result["run_ref"] == run_ref
-
     async def test_oversized_file_returns_error(self, mock_auth):
-        """Files over the encoded size limit should fail fast."""
+        """Files over the encoded size limit should fail fast.
+
+        WHY: the size guard runs before any network call so a too-large upload
+        is rejected locally with ``INVALID_PARAMS`` rather than wasting a
+        round-trip.
+        """
 
         huge_content = "A" * (_MAX_FILE_SIZE_BYTES + 1)
 
@@ -228,19 +203,53 @@ class TestValidateFileTool:
 
         assert result["error"]["code"] == "INVALID_PARAMS"
 
+    async def test_missing_workflow_ref_returns_error(self, mock_auth):
+        """A blank workflow_ref should fail fast with INVALID_PARAMS.
+
+        WHY: there is nothing to launch without a target workflow, so the tool
+        must reject the call locally before authenticating or calling the API.
+        """
+
+        b64 = base64.b64encode(b"test content").decode()
+
+        result = await validate_file(
+            file_content=b64,
+            file_name="test.json",
+            workflow_ref="",
+        )
+
+        assert result["error"]["code"] == "INVALID_PARAMS"
+
+    async def test_no_auth_returns_unauthorized(self, mock_access_token):
+        """Validation without a bearer token must return UNAUTHORIZED.
+
+        WHY: MCP agents always act on behalf of an authenticated user, so a
+        launch with no credential must fail closed — never an anonymous or
+        payment-backed launch.
+        """
+
+        mock_access_token(None)
+        workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="energy-check")
+        b64 = base64.b64encode(b"test content").decode()
+
+        result = await validate_file(
+            file_content=b64,
+            file_name="test.json",
+            workflow_ref=workflow_ref,
+        )
+
+        assert result["error"]["code"] == "UNAUTHORIZED"
+
     async def test_member_helper_api_error_returns_structured_error(self, mock_auth, mock_api):
-        """Helper endpoint errors should be surfaced in the standard MCP format."""
+        """Helper endpoint errors should be surfaced in the standard MCP format.
+
+        WHY: a downstream 4xx from the helper must be translated into the stable
+        ``API_ERROR`` envelope rather than leaking an httpx exception to the
+        model.
+        """
 
         workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="energy-check")
         b64 = base64.b64encode(b"test content").decode()
-        mock_api.get(f"/api/v1/mcp/workflows/{workflow_ref}/").respond(
-            json={
-                **SAMPLE_WORKFLOW_FULL,
-                "workflow_ref": workflow_ref,
-                "org_slug": ORG,
-                "access_modes": ["member_access"],
-            },
-        )
         mock_api.post(f"/api/v1/mcp/workflows/{workflow_ref}/runs/").respond(
             status_code=403,
             json={"detail": "Forbidden"},
@@ -254,44 +263,16 @@ class TestValidateFileTool:
 
         assert result["error"]["code"] == "API_ERROR"
 
-    async def test_authenticated_public_x402_workflow_uses_payment_path(
-        self,
-        mock_auth,
-        mock_api,
-        monkeypatch,
-    ):
-        """Authenticated callers should still pay for public-only x402 workflows."""
-
-        workflow_ref = build_workflow_ref(org_slug=ORG, workflow_slug="premium-check")
-        monkeypatch.setattr(
-            "validibot_mcp.auth.get_authenticated_user_sub_or_none",
-            lambda: "user-sub-123",
-        )
-        monkeypatch.setattr("validibot_mcp.auth.get_payment_signature", lambda: None)
-        mock_api.get(f"/api/v1/mcp/workflows/{workflow_ref}/").respond(
-            json={
-                **SAMPLE_WORKFLOW_AGENT_PAYS,
-                "workflow_ref": workflow_ref,
-                "org_slug": ORG,
-                "access_modes": ["public_x402"],
-            },
-        )
-
-        b64 = base64.b64encode(b"test content").decode()
-        result = await validate_file(
-            file_content=b64,
-            file_name="test.json",
-            workflow_ref=workflow_ref,
-        )
-
-        assert result["error"]["code"] == "PAYMENT_REQUIRED"
-
 
 class TestRunTools:
     """Verify status and wait tools."""
 
     async def test_get_run_status_returns_member_run(self, mock_auth, mock_api):
-        """Member run refs should resolve through the authenticated helper route."""
+        """Member run refs should resolve through the authenticated helper route.
+
+        WHY: polling must decode the opaque member ref and hit the authenticated
+        ``/api/v1/mcp/runs/`` endpoint, echoing back the same ``run_ref``.
+        """
 
         run_id = SAMPLE_RUN_PENDING["id"]
         run_ref = build_member_run_ref(org_slug=ORG, run_id=run_id)
@@ -305,7 +286,11 @@ class TestRunTools:
         assert result["run_ref"] == run_ref
 
     async def test_get_run_status_api_error_returns_structured_dict(self, mock_auth, mock_api):
-        """Authenticated helper errors should produce MCP API_ERROR payloads."""
+        """Authenticated helper errors should produce MCP API_ERROR payloads.
+
+        WHY: a 404 (or other non-2xx) from the helper run-detail endpoint must
+        become the stable ``API_ERROR`` envelope, not a raw exception.
+        """
 
         run_ref = build_member_run_ref(org_slug=ORG, run_id="nonexistent")
         mock_api.get(f"/api/v1/mcp/runs/{run_ref}/").respond(
@@ -318,7 +303,11 @@ class TestRunTools:
         assert result["error"]["code"] == "API_ERROR"
 
     async def test_wait_for_run_returns_completed_run(self, mock_auth, mock_api):
-        """Completed runs should return immediately without polling further."""
+        """Completed runs should return immediately without polling further.
+
+        WHY: when the helper already reports ``state=COMPLETED`` the tool must
+        return the terminal snapshot at once rather than idling on its poll loop.
+        """
 
         run_id = SAMPLE_RUN_COMPLETED["id"]
         run_ref = build_member_run_ref(org_slug=ORG, run_id=run_id)
@@ -332,7 +321,12 @@ class TestRunTools:
         assert result["result"] == "PASS"
 
     async def test_wait_for_run_timeout_returns_timed_out(self, mock_auth, mock_api):
-        """Timeout should return the last known run state plus TIMED_OUT."""
+        """Timeout should return the last known run state plus TIMED_OUT.
+
+        WHY: a non-terminal run past the client-side budget must yield the last
+        snapshot annotated with ``result=TIMED_OUT`` and ``is_complete=False``,
+        distinct from a server-side timeout outcome.
+        """
 
         run_id = SAMPLE_RUN_PENDING["id"]
         run_ref = build_member_run_ref(org_slug=ORG, run_id=run_id)
@@ -345,44 +339,26 @@ class TestRunTools:
         assert result["result"] == "TIMED_OUT"
         assert result["is_complete"] is False
 
-    async def test_wait_for_run_returns_when_server_reports_timed_out(self, monkeypatch, mock_api):
-        """
-        When the server reports a terminal run whose result is
-        ``TIMED_OUT``, ``wait_for_run`` must return the snapshot
-        immediately rather than polling until the client-side budget
-        expires.
+    async def test_wait_for_run_returns_when_server_reports_timed_out(self, mock_auth, mock_api):
+        """A terminal server-side ``TIMED_OUT`` must return immediately.
 
-        After the wire-format unification, both the authenticated MCP
-        path and the anonymous x402 path emit ``state="COMPLETED"``
-        for any terminal status, with the granular outcome in
-        ``result``. This test exercises that contract on the x402
-        path: the server says the run is done
-        (``state="COMPLETED", result="TIMED_OUT"``) and the tool must
-        surface that snapshot without idling for the client-side
-        ``timeout_seconds`` budget.
-
-        Previously the x402 endpoint emitted ``state="TIMED_OUT"`` and
-        the MCP terminal-state set didn't include it, so an agent
-        calling ``wait_for_run(timeout_seconds=300)`` after a server
-        timeout would idle for five minutes and then fabricate its
-        own client-side timeout envelope, hiding the real verdict.
+        WHY: after the wire-format unification both backends emit
+        ``state="COMPLETED"`` for any terminal status with the granular outcome
+        in ``result``. When the helper says a run is done with
+        ``result="TIMED_OUT"``, ``wait_for_run`` must surface that snapshot
+        without idling for the full client-side budget — otherwise an agent
+        would wait pointlessly and then fabricate its own timeout envelope,
+        hiding the real verdict.
         """
 
-        monkeypatch.setattr("validibot_mcp.auth.get_api_key_or_none", lambda: None)
         run_id = SAMPLE_RUN_PENDING["id"]
-        wallet_address = "0xMYWALLET"
-        run_ref = build_x402_run_ref(
-            run_id=run_id,
-            wallet_address=wallet_address,
-        )
-        # Production shape after the fix: ``state`` is the projected
-        # lifecycle value; ``result`` carries the granular outcome.
-        mock_api.get(f"/api/v1/agent/runs/{run_id}/").respond(
+        run_ref = build_member_run_ref(org_slug=ORG, run_id=run_id)
+        mock_api.get(f"/api/v1/mcp/runs/{run_ref}/").respond(
             json={
-                "run_id": run_id,
-                "wallet_address": wallet_address,
+                **SAMPLE_RUN_PENDING,
                 "state": "COMPLETED",
                 "result": "TIMED_OUT",
+                "run_ref": run_ref,
             },
         )
 
@@ -395,26 +371,3 @@ class TestRunTools:
         # The client-side timeout helper would have stamped ``is_complete``
         # to ``False``; an early-exit must not.
         assert "is_complete" not in result or result.get("is_complete") is not False
-
-    async def test_x402_run_ref_uses_agent_polling(self, monkeypatch, mock_api):
-        """x402 run refs should continue to use the anonymous agent endpoint."""
-
-        monkeypatch.setattr("validibot_mcp.auth.get_api_key_or_none", lambda: None)
-        run_id = SAMPLE_RUN_PENDING["id"]
-        wallet_address = "0xMYWALLET"
-        run_ref = build_x402_run_ref(
-            run_id=run_id,
-            wallet_address=wallet_address,
-        )
-        mock_api.get(f"/api/v1/agent/runs/{run_id}/").respond(
-            json={
-                "run_id": run_id,
-                "wallet_address": wallet_address,
-                "state": "PENDING",
-            },
-        )
-
-        result = await get_run_status(run_ref=run_ref)
-
-        assert result["state"] == "PENDING"
-        assert result["run_ref"] == run_ref

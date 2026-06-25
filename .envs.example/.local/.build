@@ -2,7 +2,7 @@
 # Local Docker Compose build + recipe configuration
 # =============================================================================
 #
-# Copy this file to ``.envs/.local/.build`` on first setup. Both layers
+# Copy this file to ``.envs/.local/.build`` on first setup. Three layers can
 # read it:
 #
 #   1. ``docker compose --env-file .envs/.local/.build`` — YAML interpolation
@@ -14,6 +14,10 @@
 #      category (2) drive recipe-level logic (which Compose profiles to
 #      activate, whether to pull extra overlays, etc.) before ``docker
 #      compose`` is invoked.
+#
+#   3. MCP/cloud Compose services load it via ``env_file`` so shared runtime
+#      values like x402 mode, wallet, and network/asset pair reach both Django
+#      and MCP without being repeated in .django and .mcp.
 #
 # Keep this file private; it is gitignored.
 # =============================================================================
@@ -63,3 +67,32 @@ VALIDIBOT_PRIVATE_INDEX_URL=
 # and would fail the runtime check even if ENABLE_MCP_SERVER=true
 # were honoured there.
 ENABLE_MCP_SERVER=false
+
+
+# -- 3. Shared x402 knobs --------------------------------------------------
+#
+# These values are shared by Django cloud-local settings and the MCP server
+# when you run ``just local-cloud up`` with MCP enabled. They live here so the
+# payment quote (MCP) and receipt verifier (Django) use the same mode, pay-to
+# wallet, and network/asset pair without copying values into both .django and
+# .mcp.
+#
+# A full x402 round-trip needs the CLOUD stack (``just local-cloud up``).
+# Plain ``local-pro`` can start the MCP container but has no Django cloud
+# agent endpoint to receive anonymous paid launches.
+VALIDIBOT_X402_ENABLED=false
+VALIDIBOT_X402_TEST_MODE=true
+
+# Testnet (Base Sepolia). Set the pay-to wallet before enabling x402.
+VALIDIBOT_TEST_X402_FACILITATOR_URL=https://x402.org/facilitator
+VALIDIBOT_TEST_X402_NETWORK=eip155:84532
+VALIDIBOT_TEST_X402_ASSET=0x036CbD53842c5426634e7929541eC2318f3dCF7e
+VALIDIBOT_TEST_X402_PAY_TO_ADDRESS=0xYOUR_BASE_SEPOLIA_WALLET
+
+# Mainnet values. Ignored while VALIDIBOT_X402_TEST_MODE=true. Set the
+# facilitator explicitly before live testing; the MCP server fails to boot in
+# live+enabled mode when this is blank.
+VALIDIBOT_X402_NETWORK=eip155:8453
+VALIDIBOT_X402_ASSET=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+VALIDIBOT_X402_PAY_TO_ADDRESS=0xYOUR_BASE_MAINNET_WALLET
+VALIDIBOT_X402_FACILITATOR_URL=

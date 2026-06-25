@@ -5,8 +5,8 @@
 # Copy this file to ``.envs/.production/.google-cloud/.build`` before
 # your first ``just gcp deploy-all prod``. The ``just gcp`` module
 # sources this file at the top of any recipe that needs deploy-time
-# knobs — currently the MCP build/deploy step, the MCP API URL, and
-# the MCP x402 public payment settings.
+# knobs — currently MCP activation, shared MCP public URLs, and shared
+# x402 payment settings stamped onto web and/or MCP Cloud Run services.
 #
 # Unlike the other files in this directory (``.django``, ``.mcp``,
 # ``.just``), this file is NOT uploaded to GCP Secret Manager — it
@@ -55,55 +55,48 @@ ENABLE_MCP_SERVER=false
 # ``VALIDIBOT_API_BASE_URL`` at deploy time.
 #
 # Required when ENABLE_MCP_SERVER=true. There is no default — set this
-# to YOUR Validibot deployment's hostname. Examples:
-#
-#   # validibot.com (hosted)
-#   VALIDIBOT_MCP_API_BASE_URL=https://app.validibot.com
+
 #
 #   # your own self-hosted deployment
-#   VALIDIBOT_MCP_API_BASE_URL=https://app.yourco.com
+#   VALIDIBOT_MCP_API_BASE_URL=https://app.example.com
 #
-# This value must also match what the MCP service account has
-# ``run.invoker`` on, since the MCP Cloud Run service authenticates
-# to Django using a Cloud Run OIDC identity token issued for this
-# audience. ``just gcp mcp setup`` wires that up automatically.
+# The deploy recipes use this one value in three places:
+#   1. stamp it onto MCP as ``VALIDIBOT_API_BASE_URL``;
+#   2. stamp it onto Django web as ``MCP_OIDC_AUDIENCE``; and
+#   3. use the corresponding Django service in ``just gcp mcp setup`` when
+#      granting the MCP service account ``roles/run.invoker``.
+#
+# Do not duplicate this URL elsewhere just to keep OIDC in sync; the recipes
+# derive the MCP->Django auth wiring from this value plus the stage/app config.
 VALIDIBOT_MCP_API_BASE_URL=
 
-# -- MCP x402 public config ----------------------------------------------
-
-# These values are public deploy-time config for the MCP Cloud Run
-# revision. They are deliberately kept out of ``.mcp`` because
-# ``.mcp`` is uploaded to Secret Manager and should only hold actual
-# secrets, such as receiving wallet addresses.
+# VALIDIBOT_MCP_BASE_URL
+# ----------------------
+# Public URL of the MCP service itself. Gets stamped onto BOTH Django web and
+# MCP Cloud Run services as ``VALIDIBOT_MCP_BASE_URL``.
 #
-# Django still verifies the receipt independently. If you enable x402
-# here, set the matching Django-side values in ``.django``:
+# Django uses it to derive the OIDC resource audience and confidential-client
+# redirect URI. MCP uses the same value for RFC 9728 protected-resource
+# metadata and audience validation. Author it here once; do not repeat it in
+# .django or .mcp.
 #
-#   X402_PAY_TO_ADDRESS=<same wallet MCP forwards>
-#   X402_ALLOWED_NETWORK_ASSET_PAIRS=eip155:8453=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+#   VALIDIBOT_MCP_BASE_URL=https://mcp.example.com
+VALIDIBOT_MCP_BASE_URL=
+
+# VALIDIBOT_MCP_ENABLED
+# ---------------------
+# Runtime kill switch, stamped onto the MCP Cloud Run revision by the
+# deploy recipe (defaults to true when unset). Set false to make the MCP
+# server return 503 on every tool call without a rebuild. This is the
+# RUNTIME switch; ENABLE_MCP_SERVER above is the BUILD-time switch that
+# decides whether the MCP service is deployed at all.
+# VALIDIBOT_MCP_ENABLED=true
+
+# -- x402 payments (moved to .django) -------------------------------------
 #
-# ENABLED
-# -------
-#   true   — anonymous x402 launches are available through /public-mcp
-#   false  — anonymous launches remain payment-required/disabled
-VALIDIBOT_X402_ENABLED=false
-
-# TEST MODE
-# ---------
-# Keep false for Base mainnet. When true, MCP uses the
-# VALIDIBOT_TEST_X402_PAY_TO_ADDRESS secret from .mcp and the built-in
-# Base Sepolia public defaults from config.py. Django must still be
-# configured with the matching testnet pay-to and allowed pair.
-VALIDIBOT_X402_TEST_MODE=false
-
-# NETWORK / ASSET
-# ---------------
-# Explicit pair the MCP server quotes. Django must list the same pair
-# in X402_ALLOWED_NETWORK_ASSET_PAIRS or run creation fails closed.
-VALIDIBOT_X402_NETWORK=eip155:8453
-VALIDIBOT_X402_ASSET=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
-
-# FACILITATOR
-# -----------
-# Endpoint the MCP server asks to verify and settle x402 payments.
-VALIDIBOT_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402
+# x402 is a cloud-only feature now: only validibot-cloud's Django reads it (the
+# MCP server no longer handles payments). So ALL x402 config — non-secret AND
+# the CDP secret — lives with its single consuming service in
+# .envs/.production/.google-cloud/.django, next to the Stripe and audit-archive
+# vars. Nothing x402 is authored here in .build or stamped via --set-env-vars
+# anymore.

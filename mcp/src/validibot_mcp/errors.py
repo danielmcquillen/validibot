@@ -45,24 +45,3 @@ class MCPToolError(Exception):
         if self.data:
             error["data"] = self.data
         return {"error": error}
-
-
-class PaymentRequiredError(MCPToolError):
-    """Raised when an x402-backed workflow needs payment before launch."""
-
-    default_code = "PAYMENT_REQUIRED"
-    default_message = "This workflow requires an x402 payment."
-
-    def __init__(self, requirements: dict[str, Any], message: str = "") -> None:
-        super().__init__(
-            message=message or self.default_message,
-            code=self.default_code,
-            data=requirements,
-        )
-
-
-class PaymentInvalidError(MCPToolError):
-    """Raised when an x402 payment signature fails verification."""
-
-    default_code = "PAYMENT_INVALID"
-    default_message = "x402 payment verification failed."

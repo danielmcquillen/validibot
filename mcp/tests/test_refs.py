@@ -1,8 +1,8 @@
 """Tests for the opaque MCP reference codec.
 
-The ref system encodes routing information (org, workflow slug, run ID,
-wallet address) into opaque base64url handles so that MCP agents never
-need to know or manage internal identifiers directly.
+The ref system encodes routing information (org, workflow slug, run ID)
+into opaque base64url handles so that MCP agents never need to know or
+manage internal identifiers directly.
 
 These tests verify:
 
@@ -21,10 +21,8 @@ import pytest
 
 from validibot_mcp.refs import (
     RUN_REF_MEMBER_KIND,
-    RUN_REF_X402_KIND,
     build_member_run_ref,
     build_workflow_ref,
-    build_x402_run_ref,
     parse_run_ref,
     parse_workflow_ref,
 )
@@ -124,32 +122,11 @@ class TestMemberRunRefRoundTrip:
         assert resolved.auth_kind == RUN_REF_MEMBER_KIND
         assert resolved.org_slug == "acme"
         assert resolved.run_id == "550e8400-e29b-41d4-a716-446655440000"
-        assert resolved.wallet_address is None
 
     def test_starts_with_prefix(self):
         """Run refs must start with 'run_'."""
         ref = build_member_run_ref(org_slug="acme", run_id="abc-123")
         assert ref.startswith("run_")
-
-
-# ── x402 run ref round-trips ─────────────────────────────────────────
-
-
-class TestX402RunRefRoundTrip:
-    """Build an x402 run ref and parse it back."""
-
-    def test_round_trip(self):
-        """build_x402_run_ref → parse_run_ref should return the
-        original run_id, wallet, and x402 auth kind."""
-        ref = build_x402_run_ref(
-            run_id="550e8400-e29b-41d4-a716-446655440000",
-            wallet_address="0x742d35Cc6634C0532925a3b844Bc96e7d3d6b6a5",
-        )
-        resolved = parse_run_ref(ref)
-        assert resolved.auth_kind == RUN_REF_X402_KIND
-        assert resolved.run_id == "550e8400-e29b-41d4-a716-446655440000"
-        assert resolved.wallet_address == "0x742d35Cc6634C0532925a3b844Bc96e7d3d6b6a5"
-        assert resolved.org_slug is None
 
 
 # ── Run ref error handling ────────────────────────────────────────────
@@ -196,16 +173,6 @@ class TestRunRefErrors:
         payload = json.dumps({"kind": "member", "run_id": "abc"}).encode()
         encoded = base64.urlsafe_b64encode(payload).decode().rstrip("=")
         with pytest.raises(ValueError, match="missing org"):
-            parse_run_ref(f"run_{encoded}")
-
-    def test_x402_ref_missing_wallet_raises(self):
-        """An x402 run ref without a 'wallet' field must be rejected."""
-        import base64
-        import json
-
-        payload = json.dumps({"kind": "x402", "run_id": "abc"}).encode()
-        encoded = base64.urlsafe_b64encode(payload).decode().rstrip("=")
-        with pytest.raises(ValueError, match="missing wallet"):
             parse_run_ref(f"run_{encoded}")
 
     def test_unsupported_kind_raises(self):

@@ -24,12 +24,29 @@ class UserViewSet(GenericViewSet):
     """
     User information endpoints.
 
-    Currently only provides the `/users/me/` endpoint to retrieve information
-    about the authenticated user.
+    Currently only provides the ``/users/me/`` endpoint to retrieve information
+    about the authenticated user. ``me`` is *self-scoped* — a caller can only
+    ever read their own profile — and is intentionally the sole user-facing API
+    route. There is deliberately no user-management API; creating, updating, and
+    deleting users happens through the Django admin and the org-scoped
+    membership views, not here.
     """
 
     serializer_class = UserSerializer
+    # SECURITY: keep this a bare ``GenericViewSet`` exposing only the ``me``
+    # action. Do NOT add ``ListModelMixin`` / ``RetrieveModelMixin`` or switch
+    # the base to ``ModelViewSet`` — combined with the ``User.objects.all()``
+    # queryset below, the router would immediately expose ``GET /users/`` (and
+    # ``/users/<pk>/``) returning every user in every org to any authenticated
+    # caller: a cross-tenant enumeration leak. The guard tests in
+    # ``users/tests/api/test_urls.py`` assert those routes stay absent.
     queryset = User.objects.all()
+    # Declare auth and the read-only verb set explicitly instead of leaning on
+    # the global ``DEFAULT_PERMISSION_CLASSES`` / method defaults, so a change to
+    # those project-wide settings (e.g. flipping ``DRF_ALLOW_ANONYMOUS``) can't
+    # silently open this endpoint. Mirrors ``OrganizationViewSet`` below.
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "head", "options"]
 
     @action(detail=False, methods=["get"])
     def me(self, request):

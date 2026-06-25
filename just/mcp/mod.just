@@ -18,8 +18,6 @@
 #   GCP_APP_NAME     — resource name prefix (service accounts, services)
 #   VALIDIBOT_MCP_API_BASE_URL
 #                    — URL of the Validibot Django API the MCP proxies to
-#   VALIDIBOT_X402_* — optional non-secret public x402 payment config,
-#                    — sourced from .build and stamped into Cloud Run env
 #
 # Source the config once per shell:
 #
@@ -67,20 +65,20 @@ mcp_image := gcp_region + "-docker.pkg.dev/" + gcp_project + "/" + app_name + "/
 # traceable back to a specific commit.
 git_sha := `git rev-parse --short HEAD`
 
-# Note: ``VALIDIBOT_MCP_API_BASE_URL`` is deliberately NOT a justfile
-# variable. It's read at recipe runtime — typically from the stage's
-# ``.build`` file — so self-hosters must supply it explicitly rather
-# than inheriting a default that happens to point at another
-# operator's API. See ``_require-mcp-api-base-url`` below and the
-# template at ``.envs.example/.production/.google-cloud/.build``.
+# Note: the public MCP URLs are deliberately NOT justfile variables. They are
+# read at recipe runtime — typically from the stage's ``.build`` file — so
+# self-hosters must supply them explicitly rather than inheriting defaults that
+# happen to point at another operator's services. See
+# ``_require-mcp-api-base-url`` below and the template at
+# ``.envs.example/.production/.google-cloud/.build``.
 
 
 # ── Environment check ────────────────────────────────────────────────────
 
-# Fail fast when VALIDIBOT_MCP_API_BASE_URL is missing. Used by the
-# deploy recipe so self-hosted operators who forgot to set this env
-# var get a loud error instead of silently shipping an MCP container
-# that proxies tool calls to some other operator's default hostname.
+# Fail fast when the shared public MCP URLs are missing. Used by the deploy
+# recipe so self-hosted operators who forgot to set these env vars get a loud
+# error instead of silently shipping an MCP container with wrong API routing,
+# OAuth audience, or protected-resource metadata.
 #
 # The value can be supplied three ways (checked in this order):
 #   1. inline on the command line
@@ -110,6 +108,17 @@ _require-mcp-api-base-url:
         echo ""
         echo "  3. (Recommended) .envs/<stage>/.google-cloud/.build"
         echo "     (template: .envs.example/.production/.google-cloud/.build)"
+        exit 1
+    fi
+    if [ -z "${VALIDIBOT_MCP_BASE_URL:-}" ]; then
+        echo "Error: VALIDIBOT_MCP_BASE_URL is not set."
+        echo ""
+        echo "The MCP server needs its own public URL for OAuth resource"
+        echo "metadata, redirect URI derivation, and token audience checks."
+        echo "There is no hosted default."
+        echo ""
+        echo "Set it in .envs/<stage>/.google-cloud/.build, for example:"
+        echo "  VALIDIBOT_MCP_BASE_URL=https://mcp.yourco.com"
         exit 1
     fi
 
@@ -352,9 +361,6 @@ secrets stage: _require-gcp-config
         echo "  cat > $ENV_FILE << 'EOF'"
         echo "VALIDIBOT_OAUTH_CLIENT_SECRET=<your-generated-secret>"
         echo "VALIDIBOT_LOG_LEVEL=INFO"
-        echo ""
-        echo "# Required only when VALIDIBOT_X402_ENABLED=true in .build"
-        echo "VALIDIBOT_X402_PAY_TO_ADDRESS="
         echo "EOF"
         exit 1
     fi
@@ -398,8 +404,9 @@ deploy stage: _require-gcp-config
     APP_NAME="{{app_name}}"
 
     # Source the stage's .build file (if present) to pick up deploy-time
-    # knobs like VALIDIBOT_MCP_API_BASE_URL and the non-secret x402
-    # settings. ``set -a`` exports every variable the file defines so the
+    # knobs like VALIDIBOT_MCP_API_BASE_URL, VALIDIBOT_MCP_BASE_URL, and shared
+    # x402 settings.
+    # ``set -a`` exports every variable the file defines so the
     # ``gcloud run deploy`` invocation below inherits them. Absent file →
     # no-op (inline env vars still work).
     if [ "{{stage}}" = "prod" ]; then
@@ -414,22 +421,17 @@ deploy stage: _require-gcp-config
         set +a
     fi
 
-    # Fail loudly if the API URL still isn't set — self-hosted operators
-    # must choose a destination rather than ship a default that might
-    # accidentally proxy their users' traffic to a different operator.
+    # Fail loudly if the shared public URLs still aren't set.
     just gcp mcp _require-mcp-api-base-url
 
-    # Re-read variables now that .build has been sourced. These are
-    # stamped into --set-env-vars because they are deploy-time public
-    # config, not Secret Manager values. The receiving wallet remains in
-    # mcp-env as VALIDIBOT_X402_PAY_TO_ADDRESS.
+    # Re-read variables now that .build has been sourced. The MCP server no
+    # longer handles x402 — anonymous agent payments moved to validibot-cloud's
+    # Django, which reads ALL x402 config from its own .django secret. So no
+    # x402 values are stamped onto the MCP service.
     API_BASE_URL="${VALIDIBOT_MCP_API_BASE_URL}"
+    MCP_BASE_URL="${VALIDIBOT_MCP_BASE_URL}"
     MCP_ENABLED="${VALIDIBOT_MCP_ENABLED:-true}"
-    X402_ENABLED="${VALIDIBOT_X402_ENABLED:-false}"
-    X402_TEST_MODE="${VALIDIBOT_X402_TEST_MODE:-false}"
-    X402_NETWORK="${VALIDIBOT_X402_NETWORK:-eip155:8453}"
-    X402_ASSET="${VALIDIBOT_X402_ASSET:-0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913}"
-    X402_FACILITATOR_URL="${VALIDIBOT_X402_FACILITATOR_URL:-https://api.cdp.coinbase.com/platform/v2/x402}"
+    SET_ENV_VARS="VALIDIBOT_API_BASE_URL=${API_BASE_URL},VALIDIBOT_MCP_BASE_URL=${MCP_BASE_URL},VALIDIBOT_MCP_ENABLED=${MCP_ENABLED}"
 
     if [ "{{stage}}" = "prod" ]; then
         SERVICE="${APP_NAME}-mcp"
@@ -466,7 +468,7 @@ deploy stage: _require-gcp-config
         --port 8080 \
         --service-account "$SA" \
         --set-secrets=/secrets/.env="$SECRET":latest \
-        --set-env-vars "VALIDIBOT_API_BASE_URL=${API_BASE_URL},VALIDIBOT_MCP_ENABLED=${MCP_ENABLED},VALIDIBOT_X402_ENABLED=${X402_ENABLED},VALIDIBOT_X402_TEST_MODE=${X402_TEST_MODE},VALIDIBOT_X402_NETWORK=${X402_NETWORK},VALIDIBOT_X402_ASSET=${X402_ASSET},VALIDIBOT_X402_FACILITATOR_URL=${X402_FACILITATOR_URL}" \
+        --set-env-vars "$SET_ENV_VARS" \
         --min-instances $MIN_INSTANCES \
         --max-instances $MAX_INSTANCES \
         --memory 512Mi \

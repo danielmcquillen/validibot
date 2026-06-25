@@ -2,6 +2,11 @@
 # ==============================================================================
 # Copy this file to .envs/.production/.google-cloud/.django
 # This file is for Google Cloud Platform deployments (Cloud Run).
+#
+# Layout — the file is ordered in three tiers so you only read what applies:
+#   1. COMMUNITY / CORE      — every deployment sets these (top of file)
+#   2. ADD-ON CONFIGURATION  — Pro / Enterprise self-hosted add-ons
+#   3. CLOUD-ONLY            — the hosted SaaS layer (very bottom)
 
 # Environment identifier
 VALIDIBOT_STAGE=prod
@@ -17,12 +22,13 @@ DJANGO_SECRET_KEY=your-secret-key-here-change-this
 DJANGO_ADMIN_URL=admin/
 # Specific Cloud Run hostnames plus custom domain
 # Security: Do NOT use wildcards like .run.app - that allows any Cloud Run service
-DJANGO_ALLOWED_HOSTS=your-service-name.region.run.app,validibot.example.com
+DJANGO_ALLOWED_HOSTS=your-service-name.region.run.app,your-subdomain.example.com
 # Generate a secret key with:
 # python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
 
-# Security settings for production
-SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO','https')
+# Production security headers (SECURE_PROXY_SSL_HEADER, SSL redirect, HSTS,
+# secure cookies) are hardcoded in config/settings/production.py — they are
+# NOT env-configurable, so there is nothing to set here.
 
 # DATABASE
 # ==============================================================================
@@ -76,46 +82,53 @@ DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@/${POSTGRES_DB}?ho
 #   private/ - Private files (submissions, validation data)
 STORAGE_BUCKET=your-app-name-storage
 
-# ADD-ON CONFIGURATION
-# ==============================================================================
-# Commercial add-ons installed on top of community define their own env
-# vars (e.g. audit-log archiving to object storage, runtime rate limits).
-# Consult each add-on's own documentation for the keys it expects; a
-# community-only deployment does not need any of them.
-
-# X402 RECEIPT VERIFICATION (cloud agent payments)
-# ==============================================================================
-# Required only when the MCP Cloud Run service has VALIDIBOT_X402_ENABLED=true
-# in .build. Django verifies the pay-to address and the exact
-# (network, asset) pair before creating anonymous x402 runs.
-#
-# The MCP receiver wallet lives in the separate .mcp Secret Manager
-# secret, so set the Django verifier value here explicitly. The allowed
-# pair must match the MCP-side VALIDIBOT_X402_NETWORK and
-# VALIDIBOT_X402_ASSET values from .build.
-#
-# Example: Base mainnet USDC
-#X402_PAY_TO_ADDRESS=0xYOUR_PRODUCTION_BASE_MAINNET_WALLET
-#X402_ALLOWED_NETWORK_ASSET_PAIRS=eip155:8453=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
-
 # DEFAULT USERS
 # ==============================================================================
 # Initial superuser created on first run
 SUPERUSER_USERNAME=admin
-SUPERUSER_PASSWORD=change-this-password
+# YOU MUST ADD A PASSWORD BELOW, OTHERWISE THIS USER WILL NOT BE CREATED
+SUPERUSER_PASSWORD=
 SUPERUSER_EMAIL=admin@example.com
 SUPERUSER_NAME=Admin User
 
 # EMAIL
 # ==============================================================================
 # From address for transactional emails. Change to your domain.
-DJANGO_DEFAULT_FROM_EMAIL=Validibot <noreply@your-domain.com>
+DJANGO_DEFAULT_FROM_EMAIL=MyCompanyValidibot <noreply@example.com>
 # If not configured, emails are logged to console.
 # Postmark (recommended):
 #POSTMARK_SERVER_TOKEN=your-postmark-server-token
 
+# SITE (Django Sites framework)
+# ==============================================================================
+# These seed the Django "Sites" framework row (the django_site table,
+# SITE_ID=1). They are read — via os.environ, not the settings module — by
+# the `setup_validibot` management command, which runs automatically on the
+# first container start and on every `just gcp setup-site`. The command calls
+# update_or_create(), so it re-asserts these values on each run (idempotent).
+#
+# Why they matter: get_current_site() reads this row to build absolute URLs
+# in contexts that have no HTTP request to derive the host from —
+# transactional emails, the help pages, and health checks. On a
+# non-interactive deploy (`setup_validibot --noinput`, which is what GCP
+# runs), an UNSET VALIDIBOT_SITE_DOMAIN silently falls back to
+# "localhost:8000", which then poisons those absolute URLs in production. So
+# always set it explicitly here.
+#
+# Note: this is the BARE HOST (no scheme), and is deliberately distinct from
+# SITE_URL below. Keep the host portion of the two in agreement.
+VALIDIBOT_SITE_DOMAIN=validibot.example.com
+# Human-readable display name for this deployment. Defaults to "Validibot"
+# when unset; override if you white-label the instance.
+VALIDIBOT_SITE_NAME=Validibot
+
 # URLS
 # ==============================================================================
+# SITE_URL is the full public ORIGIN (scheme + host). It is used for
+# validator callbacks, the issuer URL embedded in signed credentials
+# (CREDENTIAL_ISSUER_URL defaults to it), and the API server metadata. This
+# is distinct from VALIDIBOT_SITE_DOMAIN above (the bare host stored in the
+# Sites framework) — keep the host portion of the two in sync.
 SITE_URL=https://validibot.example.com
 WORKER_URL=https://your-worker-service.region.run.app
 
@@ -124,7 +137,9 @@ WORKER_URL=https://your-worker-service.region.run.app
 # Resource names follow the pattern: {GCP_APP_NAME}-{resource}[-{stage}]
 # where GCP_APP_NAME is set in .envs/.production/.google-cloud/.just
 GCP_PROJECT_ID=your-gcp-project-id
-GCP_REGION=us-west1
+# Runtime region the app reads for cloud resources such as Cloud Tasks and GCS.
+# Use the same deployment region chosen in .just for host-side GCP commands.
+GCP_REGION=australia-southeast1
 
 # Cloud Tasks
 GCS_TASK_QUEUE_NAME=your-app-name-tasks
@@ -150,11 +165,46 @@ TASK_OIDC_AUDIENCE=https://your-worker-service.region.run.app
 TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS=your-app-name-cloudrun-prod@your-project.iam.gserviceaccount.com
 
 # Validation infrastructure (Cloud Run Jobs)
-GCS_VALIDATION_BUCKET=your-app-name-storage
+# GCS_VALIDATION_BUCKET is the bucket validator Cloud Run Jobs stage run files
+# in (gs://<bucket>/runs/<org_id>/<run_id>/). You do NOT set it on GCP:
+# config/settings/production.py derives it from STORAGE_BUCKET inside the
+# DEPLOYMENT_TARGET=gcp branch (`GCS_VALIDATION_BUCKET = STORAGE_BUCKET`), so any
+# value placed here is overwritten and ignored. It is read from the environment
+# ONLY on self-hosted Docker deployments that opt into GCS storage. Left
+# commented here to document the relationship — STORAGE_BUCKET above is the one
+# place this bucket is defined for a GCP deploy.
+#GCS_VALIDATION_BUCKET=
 GCS_WEATHER_DATA_DIR=weather_data
+# TEST_ENERGYPLUS_WEATHER_FILE is a TEST/DEV-ONLY knob — the weather file used
+# when exercising EnergyPlus validators outside production (integration tests,
+# local smoke runs). A real deployment does not need it; left commented for
+# discoverability. Default is in config/settings/base.py.
+#TEST_ENERGYPLUS_WEATHER_FILE=USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw
 # Cloud Run job names are derived from the validator's slug
 # (e.g. slug="energyplus" -> "validibot-validator-backend-energyplus").
 # No per-validator env vars are required here.
+
+# SHACL VALIDATOR
+# ==============================================================================
+# Core SHACL validation is always on and needs no configuration. Everything
+# below is OPTIONAL — every knob has a safe default and a hard cap enforced in
+# engine code (validibot/validations/validators/shacl/engine.py), so you only
+# set these to TIGHTEN a deployment below its defaults.
+#
+# SHACL_ENABLE_ADVANCED_FEATURES gates the SHACL-AF constructs (author-supplied
+# SPARQL constraints + SHACL Rules). It defaults to False because those execute
+# SPARQL written by whoever authored the shape. The engine sandboxes them hard —
+# network egress (SERVICE/LOAD) and graph mutation (INSERT/DELETE) are rejected,
+# triples/depth/time are bounded, and SHACL-JS is always refused — and advanced
+# runs happen inside an isolated per-run validator job. It is still a larger
+# attack surface than core SHACL, so enabling it is a deliberate, per-deployment
+# opt-in for trusted/isolated worker environments. Uncomment to enable.
+#SHACL_ENABLE_ADVANCED_FEATURES=True
+#
+# Resource limits (optional; shown at their defaults). Lower to harden; the
+# engine hard-caps each regardless. See docs/dev_docs/how-to/use-shacl-validator.md.
+#SHACL_MAX_DATA_TRIPLES=100000
+#SHACL_VALIDATION_TIMEOUT_SECONDS=300
 
 # FEATURE TOGGLES
 # ==============================================================================
@@ -162,19 +212,16 @@ GCS_WEATHER_DATA_DIR=weather_data
 DJANGO_ACCOUNT_ALLOW_REGISTRATION=true
 DJANGO_ACCOUNT_ALLOW_LOGIN=true
 
-# GOOGLE CLOUD KMS (for JWKS / credential signing)
-# ==============================================================================
-# The signing key for validation credentials.
-# Each stage has its own key for isolation:
-#   prod:    credential-signing
-#   staging: credential-signing-staging
-#   dev:     credential-signing-dev
-GCP_KMS_SIGNING_KEY="projects/your-project/locations/region/keyRings/your-app-name-keys/cryptoKeys/credential-signing"
-# Optional explicit issuer URL for credential payloads. Leave empty to reuse
-# SITE_URL.
-CREDENTIAL_ISSUER_URL=https://validibot.example.com
-# Optional override. ES256 is the only algorithm currently supported.
-SIGNING_ALGORITHM=ES256
+# Mount the interactive web app and/or the REST API (both default to true).
+# Set ENABLE_APP=false for an API-only deployment, or ENABLE_API=false to serve
+# only the web UI. Read in config/settings/base.py; routes gated in
+# config/urls_web.py.
+ENABLE_APP=true
+ENABLE_API=true
+
+# How often (seconds) the run-detail page polls HTMX for run-status updates.
+# Default 3; raise to cut UI churn at the cost of slower refresh.
+WORKFLOW_RUN_POLL_INTERVAL_SECONDS=3
 
 # RECAPTCHA (optional)
 # ==============================================================================
@@ -197,7 +244,7 @@ SIGNING_ALGORITHM=ES256
 #POSTHOG_API_HOST=https://us.i.posthog.com
 
 # MFA
-# ------------------------------------------------------------------------------
+# ==============================================================================
 # Multi-factor authentication (authenticator apps + recovery codes).
 #
 # MFA_TOTP_ISSUER is the label shown in users' authenticator apps next to
@@ -222,7 +269,9 @@ MFA_TOTP_ISSUER=your-mfa-issuer-name
 # DO NOT reuse the dev key. DO NOT commit a real key to git.
 # See docs/dev_docs/how-to/configure-mfa.md for rotation procedure.
 DJANGO_MFA_ENCRYPTION_KEY=replace-with-generated-fernet-key
-#
+
+# DJANGO ALLAUTH
+# ==============================================================================
 # DJANGO_ADMIN_FORCE_ALLAUTH routes Django's built-in /admin/login/ view
 # through the django-allauth authentication flow, so that admin sign-in
 # inherits allauth's rate limiting, session rotation, and — most
@@ -239,6 +288,38 @@ DJANGO_MFA_ENCRYPTION_KEY=replace-with-generated-fernet-key
 # recovery procedure.
 DJANGO_ADMIN_FORCE_ALLAUTH=True
 
+# ==============================================================================
+# ADD-ON CONFIGURATION  —  Pro / Enterprise (self-hosted)
+# ==============================================================================
+# Everything ABOVE this line is community/core config that every Validibot
+# deployment sets. Everything from here down only matters once you install a
+# paid tier — a community-only deployment can stop reading here.
+#
+# These settings are read by the community settings module
+# (config.settings.production) but do nothing until the validibot-pro (or
+# -enterprise) package is installed to supply the backend that consumes them;
+# an empty value means the add-on is off. This section covers:
+#
+#   * Credential signing / JWKS  (Google Cloud KMS)
+#   * MCP server                 (OAuth + service-to-service auth)
+#
+# The hosted cloud layer adds a further block — see CLOUD-ONLY at the very
+# bottom of this file.
+
+# GOOGLE CLOUD KMS (for JWKS / credential signing)
+# ==============================================================================
+# The signing key for validation credentials.
+# Each stage has its own key for isolation:
+#   prod:    credential-signing
+#   staging: credential-signing-staging
+#   dev:     credential-signing-dev
+GCP_KMS_SIGNING_KEY="projects/your-project/locations/region/keyRings/your-app-name-keys/cryptoKeys/credential-signing"
+# Optional explicit issuer URL for credential payloads. Leave empty to reuse
+# SITE_URL.
+CREDENTIAL_ISSUER_URL=https://validibot.example.com
+# Optional override. ES256 is the only algorithm currently supported.
+SIGNING_ALGORITHM=ES256
+
 # OIDC — MCP OAuth support
 # ------------------------------------------------------------------------------
 # Required when your deployment runs the MCP server and you want
@@ -254,23 +335,16 @@ DJANGO_ADMIN_FORCE_ALLAUTH=True
 #   openssl genrsa -out oidc-key.pem 2048 \
 #     && base64 < oidc-key.pem | tr -d '\n'
 IDP_OIDC_PRIVATE_KEY_B64=<your-base64-encoded-pem>
-# Shared secret for the confidential OAuth client the MCP Cloud Run
-# service registers with. Must be identical to the value in
-# .envs/<stage>/.google-cloud/.mcp's VALIDIBOT_OAUTH_CLIENT_SECRET so
-# both sides of the token exchange agree. Generate with:
+# Paired secret for the confidential OAuth client the MCP Cloud Run service
+# registers with. This and `.mcp`'s VALIDIBOT_OAUTH_CLIENT_SECRET are the two
+# Secret Manager-backed copies of the same generated secret, so rotate them
+# together from one fresh value. Generate with:
 #   openssl rand -hex 32
 IDP_OIDC_MCP_SERVER_CLIENT_SECRET=<your-hex-random-secret>
 
-# Public URL of YOUR MCP server. This one variable drives both
-# Django's OIDC audience claim ({BASE}/mcp, stamped onto tokens) and
-# the confidential client's registered redirect URI
-# ({BASE}/auth/callback), so both sides of the OAuth flow stay in
-# lockstep. There is no default — set this to wherever your MCP Cloud
-# Run service is reachable:
-#
-#   VALIDIBOT_MCP_BASE_URL=https://mcp.your-domain.example
-VALIDIBOT_MCP_BASE_URL=
-
+# Public MCP URL: set VALIDIBOT_MCP_BASE_URL once in `.build`. The deploy
+# recipe stamps it onto Django web so the OIDC audience and redirect URI are
+# derived from the same value MCP uses for its public metadata.
 
 # MCP → Django service-to-service auth (Cloud Run OIDC identity tokens)
 # ------------------------------------------------------------------------------
@@ -283,33 +357,26 @@ VALIDIBOT_MCP_BASE_URL=
 #      X-Validibot-User-Sub / X-Validibot-Api-Token headers that the
 #      MCP server attaches after validating the user's OAuth token.
 #
-# In production on GCP, step 1 uses Cloud Run's built-in OIDC identity
-# token flow: the MCP service fetches a Google-signed token whose
-# ``aud`` claim equals MCP_OIDC_AUDIENCE (below), and Django verifies
-# both the signature and that the token's service-account email is on
-# the MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS list. This mirrors the
-# existing TASK_OIDC_* allowlist used for worker/Cloud Tasks auth.
+# In production on GCP, step 1 uses Cloud Run's built-in OIDC identity token
+# flow: the MCP service fetches a Google-signed token whose ``aud`` claim is
+# the Django API URL. The GCP deploy recipe stamps that audience onto Django as
+# MCP_OIDC_AUDIENCE from VALIDIBOT_MCP_API_BASE_URL in `.build`, so do not
+# repeat it here. Django also verifies that the token's service-account email
+# is on the MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS list. This mirrors the existing
+# TASK_OIDC_* allowlist used for worker/Cloud Tasks auth.
 #
-# Both settings are REQUIRED together when running MCP on GCP:
-# Django refuses to boot (ImproperlyConfigured) if MCP_OIDC_AUDIENCE is
-# set but MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS is empty — an empty
-# allowlist would let any Google service account that can mint a
-# token with our audience pass the check, which is equivalent to no
-# service identity at all.
+# The service-account allowlist is REQUIRED when running MCP on GCP. Django
+# refuses to boot (ImproperlyConfigured) if MCP_OIDC_AUDIENCE is stamped by the
+# deploy recipe but MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS is empty — an empty
+# allowlist would let any Google service account that can mint a token with our
+# audience pass the check, which is equivalent to no service identity at all.
 #
 # (On self-hosted docker-compose deployments, set VALIDIBOT_MCP_SERVICE_KEY
 # instead; that path uses a shared secret and skips OIDC entirely.
 # See the docker-compose env template.)
 
-# Audience Cloud Run stamps onto identity tokens the MCP service mints
-# for Django calls. By convention the audience is the public URL of
-# the service being called — set this to your Django hostname:
-#
-#   MCP_OIDC_AUDIENCE=https://app.your-domain.example
-MCP_OIDC_AUDIENCE=
-
 # Comma-separated allowlist of service-account emails permitted to
-# mint identity tokens for the audience above. Must include the
+# mint identity tokens for the Django API audience. Must include the
 # service account your MCP Cloud Run service runs as (typically
 # named ``{app}-mcp-prod@{project}.iam.gserviceaccount.com`` when
 # provisioned by ``just gcp mcp setup prod``).
@@ -321,3 +388,125 @@ MCP_OIDC_AUDIENCE=
 #
 #   MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS=validibot-mcp-prod@...,validibot-mcp-staging@...
 MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS=
+
+# ==============================================================================
+# CLOUD-ONLY  —  hosted SaaS layer
+# (read ONLY under DJANGO_SETTINGS_MODULE=validibot_cloud.settings.cloud)
+# ==============================================================================
+# Everything below is read ONLY when the deployment runs the hosted cloud
+# settings module (validibot-cloud editable-installed, EXTRA_UV_EXTRAS=cloud).
+# The community module this example defaults to (config.settings.production)
+# does NOT read any of it, so a community / self-hosted deploy can ignore this
+# whole block. (Other cloud-only knobs such as the LAUNCH_VELOCITY_* runtime
+# rate limits also belong under this header.)
+
+# X402 AGENT PAYMENTS (cloud-only)
+# ==============================================================================
+# x402 is a cloud-only feature — read ONLY under
+# DJANGO_SETTINGS_MODULE=validibot_cloud.settings.cloud (community
+# config.settings.production does not verify x402). The MCP server no longer
+# touches payments, so ALL x402 config now lives here with its single consuming
+# service, not in .build. Required only when VALIDIBOT_X402_ENABLED=true.
+#
+# Enable + test/live switch.
+#   VALIDIBOT_X402_ENABLED=true → anonymous paid validation is live.
+#   VALIDIBOT_X402_TEST_MODE    → false = mainnet (Base), true = testnet (Base Sepolia).
+VALIDIBOT_X402_ENABLED=false
+VALIDIBOT_X402_TEST_MODE=false
+
+# Testnet set (used when TEST_MODE=true) — Base Sepolia. The open x402.org
+# facilitator needs no CDP auth, so a Sepolia rehearsal needs no CDP key below.
+VALIDIBOT_TEST_X402_NETWORK=eip155:84532
+VALIDIBOT_TEST_X402_ASSET=0x036cbd53842c5426634e7929541ec2318f3dcf7e
+VALIDIBOT_TEST_X402_PAY_TO_ADDRESS=0xYOUR_BASE_SEPOLIA_WALLET
+VALIDIBOT_TEST_X402_FACILITATOR_URL=https://x402.org/facilitator
+
+# Mainnet set (used when TEST_MODE=false) — Base. The pay-to address is public
+# (quoted in payment requirements); the private key never goes in any env file.
+# The facilitator URL has NO default — set it explicitly before enabling live
+# x402 (the agent endpoint refuses to settle without it).
+VALIDIBOT_X402_NETWORK=eip155:8453
+VALIDIBOT_X402_ASSET=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
+VALIDIBOT_X402_PAY_TO_ADDRESS=0xYOUR_BASE_MAINNET_WALLET
+VALIDIBOT_X402_FACILITATOR_URL=
+
+# Coinbase CDP facilitator credentials (SECRET, mainnet only). The cloud
+# agent-validate endpoint signs a short-lived bearer JWT with this CDP key on
+# every /verify and /settle call. Leave blank for a Base Sepolia rehearsal.
+# Secret formats: base64 Ed25519 key (current) or PEM EC key (legacy ES256).
+#   key id:  organizations/{org}/apiKeys/{key}   (the CDP "key name")
+VALIDIBOT_X402_CDP_API_KEY_ID=
+VALIDIBOT_X402_CDP_API_KEY_SECRET=
+
+# AUDIT LOG ARCHIVE (GCS, CMEK-encrypted)
+# ==============================================================================
+# The cloud layer's validibot_cloud.audit_archive app writes gzipped JSONL
+# partitions of expired audit-log rows to a dedicated bucket so the table
+# stays small and the history survives Cloud SQL. A Django startup check
+# (validibot_cloud.audit_archive.E001) refuses to boot — including migrate —
+# when AUDIT_ARCHIVE_GCS_BUCKET is empty while the GCS backend is selected
+# (which is the cloud default). For a cloud deployment these two are REQUIRED.
+#
+# The bucket, CMEK key, lifecycle rules, and IAM bindings are provisioned by
+# `just gcp audit-archive-setup {stage}` (also run automatically as Step 9 of
+# `just gcp init-stage {stage}`). The recipe prints the exact values to paste
+# here at the end.
+#
+# Naming convention: {project}-{app}-audit-archive[-{stage}]
+AUDIT_ARCHIVE_GCS_BUCKET=
+AUDIT_ARCHIVE_GCS_PROJECT_ID=
+# Optional: explicit CMEK key. The bucket default encryption is already set to
+# this key by the setup recipe, so leave this commented unless you want the
+# backend to pass kms_key_name on every upload.
+#AUDIT_ARCHIVE_GCS_KMS_KEY=projects/your-project/locations/region/keyRings/your-app-name-keys/cryptoKeys/audit-archive
+# Optional: object-name prefix (default "audit/"). Change only if sharing the
+# bucket with other workloads.
+#AUDIT_ARCHIVE_GCS_PREFIX=audit/
+
+# STRIPE (cloud billing)  —  Starter Cloud + Pro Cloud products
+# ------------------------------------------------------------------------------
+# Namespaced VALIDIBOT_CLOUD_STRIPE_* on purpose: validibot-marketing runs a
+# SEPARATE Stripe integration with its OWN STRIPE_* vars (different keys,
+# different webhook endpoint). The prefix makes the two impossible to confuse.
+#
+# VALIDIBOT_CLOUD_STRIPE_LIVE_MODE is the master switch: it selects BOTH the key
+# set (test vs live) AND the price set below. Flip this one flag at go-live —
+# you never swap individual key/price values. Leave False until billing launches.
+VALIDIBOT_CLOUD_STRIPE_LIVE_MODE=False
+
+# API keys (restricted `rk_…` keys preferred over full `sk_…`). The TEST_ pair
+# is used while LIVE_MODE=False; the LIVE_ pair when True.
+VALIDIBOT_CLOUD_STRIPE_TEST_PUBLIC_KEY=pk_test_xxx
+VALIDIBOT_CLOUD_STRIPE_TEST_SECRET_KEY=rk_test_xxx
+VALIDIBOT_CLOUD_STRIPE_LIVE_PUBLIC_KEY=pk_live_xxx
+VALIDIBOT_CLOUD_STRIPE_LIVE_SECRET_KEY=rk_live_xxx
+
+# Webhook signing secrets. SEPARATE endpoint/secret from the marketing site —
+# do NOT reuse marketing's whsec_…. An empty secret while LIVE_MODE=True is a
+# boot-blocking error (billing.E001); empty in test mode is only a warning.
+VALIDIBOT_CLOUD_STRIPE_TEST_WEBHOOK_SECRET=whsec_test_xxx
+VALIDIBOT_CLOUD_STRIPE_LIVE_WEBHOOK_SECRET=whsec_live_xxx
+
+# Price IDs — these are `price_…` IDs, NOT product `prod_…` IDs (Stripe checkout
+# and the webhook→plan reverse-lookup both key on the price id). Stripe price
+# IDs differ between test and live mode, so BOTH sets are listed and LIVE_MODE
+# selects the active one. STARTER_CLOUD / PRO_CLOUD are the hosted subscription
+# plans; CREDITS_* are the pay-as-you-go credit packs.
+VALIDIBOT_CLOUD_STRIPE_TEST_PRICE_STARTER_CLOUD_MONTHLY=price_xxx
+VALIDIBOT_CLOUD_STRIPE_TEST_PRICE_PRO_CLOUD_MONTHLY=price_xxx
+VALIDIBOT_CLOUD_STRIPE_TEST_PRICE_CREDITS_STARTER_CLOUD=price_xxx
+VALIDIBOT_CLOUD_STRIPE_TEST_PRICE_CREDITS_PRO_CLOUD=price_xxx
+VALIDIBOT_CLOUD_STRIPE_LIVE_PRICE_STARTER_CLOUD_MONTHLY=price_xxx
+VALIDIBOT_CLOUD_STRIPE_LIVE_PRICE_PRO_CLOUD_MONTHLY=price_xxx
+VALIDIBOT_CLOUD_STRIPE_LIVE_PRICE_CREDITS_STARTER_CLOUD=price_xxx
+VALIDIBOT_CLOUD_STRIPE_LIVE_PRICE_CREDITS_PRO_CLOUD=price_xxx
+
+# RUNTIME LAUNCH VELOCITY LIMITS
+# ------------------------------------------------------------------------------
+# Per-org rate limits on validation-run launches, enforced by
+# validibot_cloud.metering.policies.launch_velocity_policy. Orthogonal to the
+# monthly plan quota — this caps SPEED, not total budget. Both have defaults
+# (30/min, 500/hour); raise if a legitimate Pro customer hits the limit, tighten
+# if abuse emerges.
+LAUNCH_VELOCITY_PER_MINUTE=30
+LAUNCH_VELOCITY_PER_HOUR=500

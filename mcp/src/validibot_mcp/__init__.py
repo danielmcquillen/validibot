@@ -32,16 +32,14 @@ Dockerfile is used by every deployment target — Cloud Run via
 ``just mcp build``, docker-compose production, and local-pro dev — so
 self-hosted Pro users and hosted cloud stay on a single image recipe.
 
-x402 / agent payments
----------------------
+Authenticated-only surface
+--------------------------
 
-Code implementing the x402 payment protocol is still bundled in this
-package (``x402.py``, branches inside ``tools/validate.py`` and
-``tools/runs.py``). It is dormant unless the x402 environment variables
-are configured — in practice that only happens in the hosted cloud
-deployment, which also operates the receiving wallet and owns the
-agent-run database models in ``validibot-cloud``. Carving the x402
-bits into a separate cloud-side overlay package is tracked as follow-up
-work; the code itself is an implementation of a public Linux Foundation
-spec, so hosting it in community carries no licensing exposure.
+The server exposes a single authenticated ``/mcp`` surface. MCP agents
+always act on behalf of an authenticated user (OAuth 2.1 access token or
+legacy Validibot API token) and validate against that user's member
+workflows through the authenticated ``/api/v1/mcp/*`` helper API. There is
+no anonymous or pay-per-call path here — anonymous paid access lives in the
+commercial repos (``validibot-pro`` and ``validibot-cloud``'s
+``/api/v1/agent/*`` endpoints), not in this package.
 """

@@ -25,8 +25,16 @@ cp .envs.example/.local/.postgres .envs/.local/.postgres
 # and build-time Pro/Enterprise packaging (community Docker builds).
 cp .envs.example/.local/.build .envs/.local/.build
 
+# For the MCP-enabled stacks (local-pro / local-cloud), also copy the
+# MCP env file — the `mcp` container reads it. Plain `just local` skips it.
+cp .envs.example/.local/.mcp .envs/.local/.mcp
+
 # Edit the files and replace !!!SET...!!! placeholders with your values.
 # For local-pro / local-cloud, flip ENABLE_MCP_SERVER=true in .build.
+# For local-pro / local-cloud, generate one local MCP service key and put that
+# paired secret in .local/.mcp and .local/.django. x402 is a cloud-only feature;
+# if you exercise it (local-cloud only), keep its shared values in .local/.build
+# rather than repeating them in .django or .mcp.
 # Then start the local stack:
 just local up
 ```
@@ -57,6 +65,9 @@ cp .envs.example/.production/.self-hosted/.postgres .envs/.production/.self-host
 # (ENABLE_MCP_SERVER=true). Safe to copy even if both stay unset.
 cp .envs.example/.production/.self-hosted/.build .envs/.production/.self-hosted/.build
 
+# For the MCP container (ENABLE_MCP_SERVER=true), also copy the MCP env file:
+cp .envs.example/.production/.self-hosted/.mcp .envs/.production/.self-hosted/.mcp
+
 # Edit with your production values (especially secrets!)
 # Then validate and bootstrap with:
 just self-hosted check-env
@@ -69,7 +80,7 @@ just self-hosted bootstrap
 # Create the directory structure
 mkdir -p .envs/.production/.google-cloud
 
-# Copy both template files
+# Copy the template files
 cp .envs.example/.production/.google-cloud/.django .envs/.production/.google-cloud/.django
 cp .envs.example/.production/.google-cloud/.just .envs/.production/.google-cloud/.just
 cp .envs.example/.production/.google-cloud/.build .envs/.production/.google-cloud/.build
@@ -77,19 +88,25 @@ cp .envs.example/.production/.google-cloud/.mcp .envs/.production/.google-cloud/
 
 # Edit .django with your GCP project values (uploaded to Secret Manager)
 # Edit .just with your GCP project ID and region (used locally by just commands)
-# Edit .build with deploy-time knobs like ENABLE_MCP_SERVER and x402 public config
+# Edit .build with deploy-time knobs like ENABLE_MCP_SERVER, public MCP URLs,
+# and shared non-secret x402 config
 # Edit .mcp with MCP-only secrets before uploading mcp-env
 
 # Source the just config before running deployment commands
 source .envs/.production/.google-cloud/.just
-just gcp deploy prod
+just gcp deploy-all prod          # build + push + migrate + web/worker/scheduler/mcp
+
+# Secrets upload via the `secrets` recipes (run after editing .django / .mcp):
+#   just gcp secrets prod          # umbrella: uploads BOTH .django and .mcp
+#   just gcp django secrets prod   # only .django  (django-env)
+#   just gcp mcp secrets prod      # only .mcp     (mcp-env)
 ```
 
 **GCP config files:**
 
 - `.django` - Django runtime settings, uploaded to Secret Manager
-- `.just` - Just command runner settings (project ID, region), sourced locally
-- `.build` - Deploy-time knobs read by just recipes and stamped into Cloud Run env vars
+- `.just` - Host-side GCP command context (project ID, region), sourced locally
+- `.build` - Build/deploy knobs read by just recipes; shared non-secret MCP URL and x402 values are stamped into Cloud Run env vars
 - `.mcp` - MCP server secrets, uploaded to the separate `mcp-env` Secret Manager secret
 
 ### AWS (Future)
@@ -113,6 +130,7 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
 ├── .local/
 │   ├── .django             # Django settings for local dev
 │   ├── .build              # Optional Docker build settings for Pro/Enterprise
+│   ├── .mcp                # MCP server config (local-pro / local-cloud only)
 │   └── .postgres           # Postgres credentials for local dev
 └── .production/
     ├── .self-hosted/       # Customer-operated single-VM Compose deployment
@@ -122,7 +140,9 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
     │   └── .postgres
     ├── .google-cloud/      # Validibot's hosted GCP deployment
     │   ├── .django         # Django runtime settings (uploaded to Secret Manager)
-    │   └── .just           # Just command runner settings (sourced locally)
+    │   ├── .just           # Just command runner settings (sourced locally)
+    │   ├── .build          # Deploy-time knobs stamped into Cloud Run env vars
+    │   └── .mcp            # MCP server secrets (uploaded to mcp-env)
     └── .aws/               # Future AWS deployment (stub)
         └── .django
 
@@ -160,7 +180,7 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
 
 ### Docker Build + Recipe Variables (`.build`)
 
-The `.build` file plays two roles — both loaded from the same file:
+The `.build` file plays three roles — all loaded from the same file:
 
 1. **Docker build-time vars** — passed to `docker compose --env-file` for
    YAML interpolation of `${FOO}` references in the compose files
@@ -171,15 +191,30 @@ The `.build` file plays two roles — both loaded from the same file:
    shell-level variables like `ENABLE_MCP_SERVER` drive which Compose
    profiles get activated.
 
-Both are optional — if the file is absent the recipes no-op cleanly.
+3. **Shared non-secret runtime values** — MCP/cloud stacks load this file into
+   the relevant services so public values needed by both Django and MCP, such
+   as MCP public URLs and x402 mode, wallet, and network/asset pair, are
+   authored once.
+
+All are optional — if the file is absent the recipes no-op cleanly where the
+stack does not need it.
 
 | Variable | Role | Description | Example |
 | --- | --- | --- | --- |
-| `VALIDIBOT_COMMERCIAL_PACKAGE` | Build-time | Exact commercial package reference to bake into the image. Not needed for `local-pro` / `local-cloud` development (those editable-install from the sibling repo). | `validibot-pro==0.1.0` |
+| `VALIDIBOT_COMMERCIAL_PACKAGE` | Build-time | **Self-hosted Pro/Enterprise operators:** the licensed package (or wheel URL) to bake into your Docker image, fetched from `VALIDIBOT_PRIVATE_INDEX_URL`. Installing it only makes the code _importable_ — to actually activate it you must _also_ set `DJANGO_SETTINGS_MODULE=config.settings.production_pro` in `.django`, which adds `validibot_pro` to `INSTALLED_APPS`. | `validibot-pro==0.1.0` |
 | `VALIDIBOT_PRIVATE_INDEX_URL` | Build-time | Private package index URL from your license email. | `https://user:pass@pypi.validibot.com/simple/` |
 | `ENABLE_MCP_SERVER` | Recipe | Activate the `mcp` Compose profile so the FastMCP container is built and started alongside the stack. Set to `true` for `just local-pro up` / `just local-cloud up`; ignored by `just local up` (community compose has no mcp service). | `true` / `false` |
-| `VALIDIBOT_MCP_API_BASE_URL` | Recipe | GCP-only API URL stamped into the MCP Cloud Run service as `VALIDIBOT_API_BASE_URL`. Required when `ENABLE_MCP_SERVER=true` on GCP. | `https://app.your-domain.example` |
-| `VALIDIBOT_X402_ENABLED`, `VALIDIBOT_X402_TEST_MODE`, `VALIDIBOT_X402_NETWORK`, `VALIDIBOT_X402_ASSET`, `VALIDIBOT_X402_FACILITATOR_URL` | Recipe | GCP-only public x402 config stamped into the MCP Cloud Run revision. The receiving wallet stays in `.mcp`; Django verifies the matching pay-to and `(network, asset)` pair from `.django`. | Base mainnet USDC |
+| `VALIDIBOT_MCP_API_BASE_URL` | Recipe | GCP-only API URL stamped into MCP as `VALIDIBOT_API_BASE_URL` and Django web as `MCP_OIDC_AUDIENCE`. Required when `ENABLE_MCP_SERVER=true` on GCP. | `https://app.your-domain.example` |
+| `VALIDIBOT_MCP_BASE_URL` | Recipe/runtime | GCP-only public MCP URL stamped into both Django and MCP as `VALIDIBOT_MCP_BASE_URL`, so OAuth audience/redirect metadata comes from one value. | `https://mcp.your-domain.example` |
+| `VALIDIBOT_X402_ENABLED`, `VALIDIBOT_X402_TEST_MODE`, `VALIDIBOT_X402_NETWORK`, `VALIDIBOT_X402_ASSET`, `VALIDIBOT_X402_PAY_TO_ADDRESS`, `VALIDIBOT_X402_FACILITATOR_URL`, and the `VALIDIBOT_TEST_X402_*` family | Recipe/runtime | **Hosted cloud only — skip on community / self-hosted.** x402 agent payments run only in the hosted deployment (`local-cloud` for dev, GCP for production); the community `mcp/` server ships the payment code dormant and never charges unless these are set. Local-cloud injects these from `.local/.build`; GCP stamps the relevant values from `.production/.google-cloud/.build` into Cloud Run. The receiving wallet is public by protocol; private wallet keys and MCP-only CDP API credentials do not go here. | Base mainnet / Base Sepolia USDC |
+
+> **Per-family note:** `VALIDIBOT_MCP_API_BASE_URL` is GCP-only and stays in
+> `.production/.google-cloud/.build`. Shared non-secret x402 values live in
+> `.build` for local-cloud and GCP because both Django and MCP need the active
+> mode, wallet, and payment pair. The facilitator URL is kept with those values
+> so the hosted x402 surface has one authoring file, but only MCP consumes it.
+> Self-hosted has no public x402 path today, so its `.build` remains limited to
+> build args and MCP activation.
 
 ### Django Variables (`.django`)
 

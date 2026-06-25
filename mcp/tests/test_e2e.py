@@ -149,13 +149,20 @@ class TestE2EHealth:
     """Basic connectivity and health checks against the live server."""
 
     def test_root_returns_service_info(self):
-        """GET / should return service info JSON (no auth required)."""
+        """GET / should return the service descriptor JSON (no auth required).
+
+        The descriptor was restructured to signpost the real discovery
+        mechanisms (per-surface endpoints + RFC 9728 metadata) and to fix the
+        docs link, so we assert the nested ``surfaces`` shape rather than the
+        old flat ``mcp_endpoint`` keys.
+        """
         response = httpx.get(f"{E2E_URL}/", timeout=10)
         assert response.status_code == 200
         data = response.json()
         assert data["service"] == "validibot-mcp"
-        assert data["mcp_endpoint"] == "/mcp"
-        assert data["public_mcp_endpoint"] == "/public-mcp"
+        assert data["surfaces"]["authenticated"]["endpoint"].endswith("/mcp")
+        assert "public" not in data["surfaces"]
+        assert data["docs"] == "https://docs.validibot.com/api/mcp-integration/"
 
     def test_unauthenticated_request_returns_401(self):
         """POST /mcp without a Bearer token should return 401."""

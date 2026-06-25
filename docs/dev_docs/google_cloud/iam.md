@@ -88,7 +88,7 @@ Only relevant on deployments that run the MCP server. Provisioned by
 
 | Role | Scope | Purpose |
 | ---- | ----- | ------- |
-| `roles/secretmanager.secretAccessor` | Project | Read the `mcp-env` secret (OAuth client secret, x402 config) |
+| `roles/secretmanager.secretAccessor` | Project | Read the `mcp-env` secret (OAuth client secret, optional MCP-only facilitator credentials) |
 | `roles/run.invoker` | Django web service | Mint OIDC identity tokens to call `/api/v1/mcp/*` on Django |
 
 The MCP SA deliberately does **not** have:
@@ -107,7 +107,8 @@ end user's forwarded identity.
 For the identity-token flow to work, Django must also be configured
 to accept tokens minted by this SA. Set
 `MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS` in `.envs/<stage>/.google-cloud/.django`
-to include the email, and `MCP_OIDC_AUDIENCE` to the Django hostname.
+to include the email. The deploy recipe stamps `MCP_OIDC_AUDIENCE` onto
+Django from `VALIDIBOT_MCP_API_BASE_URL` in `.build`; do not set it separately.
 See [Deploy to GCP — Configure MCP auth](../deployment/deploy-gcp.md)
 for the full setting list.
 

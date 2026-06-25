@@ -48,7 +48,6 @@ SUPERUSER_NAME=Admin
 # Postmark (recommended):
 # POSTMARK_SERVER_TOKEN=your-postmark-server-token
 
-
 # MFA
 # ------------------------------------------------------------------------------
 # Multi-factor authentication (authenticator apps + recovery codes).
@@ -89,8 +88,6 @@ DJANGO_ACCOUNT_ALLOW_REGISTRATION=true
 # Allow users to log in (can be false while allowing existing users to stay logged in)
 DJANGO_ACCOUNT_ALLOW_LOGIN=true
 
-
-
 # Workflow Configuration
 # ------------------------------------------------------------------------------
 # How often (in seconds) the run-detail page polls for status updates via HTMX.
@@ -116,6 +113,25 @@ WORKFLOW_RUN_POLL_INTERVAL_SECONDS=3
 #SHACL_MAX_DATA_TRIPLES=100000
 #SHACL_VALIDATION_TIMEOUT_SECONDS=300
 
+# SIGNUP ABUSE PROTECTIONS
+# ==============================================================================
+# Defaults are False. Some deployments (e.g. the hosted offering) flip
+# these on to reject throwaway addresses and add a honeypot field to the
+# signup form. Set to False explicitly during local dev if another
+# settings module has enabled them and you want to sign up with a
+# disposable address like test@mailinator.com.
+#REJECT_DISPOSABLE_EMAILS=False
+#USE_SIGNUP_HONEYPOT=False
+
+# ==============================================================================
+# ADD-ON CONFIGURATION  —  Pro / Enterprise
+# ==============================================================================
+# Everything ABOVE this line is community/core config that every local
+# deployment uses. Everything below only matters when you run the local-pro /
+# local-cloud stacks with a commercial tier installed — plain `just local` can
+# ignore it. These settings are read by the community settings module but do
+# nothing until validibot-pro supplies the backend that consumes them.
+
 # Signed Credentials (Pro / Enterprise)
 # ------------------------------------------------------------------------------
 # Generate a local P-256 signing key if you want to issue signed credentials:
@@ -137,28 +153,12 @@ CREDENTIAL_ISSUER_URL=
 # Optional override. ES256 is the only algorithm currently supported.
 SIGNING_ALGORITHM=ES256
 
-# SIGNUP ABUSE PROTECTIONS
-# ==============================================================================
-# Defaults are False. Some deployments (e.g. the hosted offering) flip
-# these on to reject throwaway addresses and add a honeypot field to the
-# signup form. Set to False explicitly during local dev if another
-# settings module has enabled them and you want to sign up with a
-# disposable address like test@mailinator.com.
-#REJECT_DISPOSABLE_EMAILS=False
-#USE_SIGNUP_HONEYPOT=False
-
-# ADD-ON CONFIGURATION
-# ==============================================================================
-# Commercial add-ons (e.g. runtime rate limits, audit-log archiving to
-# object storage) define their own env vars. Consult the add-on's own
-# documentation if you have one installed.
-
 # MCP HELPER API SERVICE-TO-SERVICE AUTH
 # ==============================================================================
-# Shared secret used by the FastMCP server to authenticate itself to
-# Django when calling /api/v1/mcp/*. MUST match ``VALIDIBOT_MCP_SERVICE_KEY``
-# in .envs/.local/.mcp on the MCP side. Without this, MCP tool calls
-# hit the helper API and get 401 on every request.
+# Paired local secret used by the FastMCP server to authenticate itself to
+# Django when calling /api/v1/mcp/*. Generate one value and place it here and
+# in .envs/.local/.mcp. Without this, MCP tool calls hit the helper API and get
+# 401 on every request.
 #
 # Read by ``validibot.mcp_api.authentication.MCPServiceAuthentication``
 # as ``settings.MCP_SERVICE_KEY``. In hosted cloud production, leave
@@ -166,4 +166,7 @@ SIGNING_ALGORITHM=ES256
 # tokens instead.
 #
 # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+# Uncomment and set this when running `local-pro`/`local-cloud` with
+# ENABLE_MCP_SERVER=true. Plain `just local` has no MCP container, so it can
+# stay commented there.
 #VALIDIBOT_MCP_SERVICE_KEY=

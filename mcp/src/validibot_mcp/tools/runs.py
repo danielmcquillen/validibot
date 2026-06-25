@@ -4,9 +4,8 @@ Run status tools: get_run_status and wait_for_run.
 Validation runs are asynchronous — EnergyPlus simulations can take minutes.
 These tools let agents check status or block until completion.
 
-Two-path dispatch:
-    - **run_ref**: decodes to the correct member-access helper path or
-      anonymous x402 polling path automatically.
+The opaque ``run_ref`` decodes to the member-access helper path that launched
+the run; polling always goes through the authenticated MCP helper API.
 """
 
 from __future__ import annotations
@@ -20,9 +19,7 @@ from validibot_mcp.errors import MCPToolError
 from validibot_mcp.gating import check_global_enabled
 from validibot_mcp.refs import (
     RUN_REF_MEMBER_KIND,
-    RUN_REF_X402_KIND,
     build_member_run_ref,
-    build_x402_run_ref,
     parse_run_ref,
 )
 from validibot_mcp.tools import format_error
@@ -58,11 +55,8 @@ async def _get_run_for_path(
     user_sub: str | None,
     run_ref: str | None,
 ) -> dict[str, Any]:
-    """Dispatch run status lookup to the correct path.
+    """Dispatch run status lookup through the authenticated MCP helper endpoint."""
 
-    Member-access runs use the authenticated MCP helper endpoint.
-    Anonymous x402 runs use the public dual-key agent endpoint.
-    """
     if run_ref:
         try:
             resolved_run = parse_run_ref(run_ref)
@@ -89,13 +83,6 @@ async def _get_run_for_path(
             )
             return _with_run_ref(run)
 
-        if resolved_run.auth_kind == RUN_REF_X402_KIND:
-            run = await client.get_agent_run_status(
-                run_id=resolved_run.run_id,
-                wallet_address=resolved_run.wallet_address or "",
-            )
-            return _with_run_ref(run)
-
     return {
         "error": {
             "code": "INVALID_PARAMS",
@@ -110,7 +97,6 @@ def _with_run_ref(run: dict[str, Any]) -> dict[str, Any]:
     enriched = {**run}
     run_id = str(enriched.get("run_id") or enriched.get("id") or "").strip()
     org_slug = str(enriched.get("org") or "").strip()
-    wallet_address = str(enriched.get("wallet_address") or "").strip()
 
     if run_id and org_slug:
         enriched["run_ref"] = build_member_run_ref(
@@ -118,13 +104,6 @@ def _with_run_ref(run: dict[str, Any]) -> dict[str, Any]:
             run_id=run_id,
         )
         enriched.setdefault("run_id", run_id)
-        return enriched
-
-    if run_id and wallet_address:
-        enriched["run_ref"] = build_x402_run_ref(
-            run_id=run_id,
-            wallet_address=wallet_address,
-        )
     return enriched
 
 
@@ -145,9 +124,6 @@ async def get_run_status(
           informative once ``state`` is ``COMPLETED``.
         - ``run_ref``: the opaque ref you passed in.
         - ``findings``: validation findings (if the run is terminal).
-
-        The same shape is emitted by both the authenticated MCP helper and
-        the anonymous x402 path, so polling code can be path-agnostic.
     """
     try:
         check_global_enabled()

@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from validibot_mcp import auth, client
 from validibot_mcp.errors import MCPToolError
-from validibot_mcp.gating import check_agent_access, check_global_enabled
+from validibot_mcp.gating import check_global_enabled
 from validibot_mcp.refs import build_workflow_ref
 from validibot_mcp.tools import format_error
 
@@ -170,17 +170,11 @@ def _invalid_params(message: str) -> dict[str, Any]:
 
 
 async def list_workflows() -> list[dict[str, Any]] | dict[str, Any]:
-    """List validation workflows available for agent access.
+    """List validation workflows available to you.
 
-    Two modes depending on whether you have a Validibot bearer credential:
-
-    **Authenticated** (with OAuth or a manual bearer token): returns all
-    MCP-accessible workflows available to you across every organization you
-    belong to, plus all public x402 workflows.
-
-    **Anonymous** (no API key): browse all workflows published for anonymous
-    agent access across all organizations.
-    Only x402-payable workflows are returned.
+    Requires a Validibot bearer credential (OAuth access token or manual API
+    token). Returns all MCP-accessible workflows available to you across every
+    organization you belong to.
 
     Returns:
         Array of workflow summaries with slug, name, version,
@@ -188,18 +182,14 @@ async def list_workflows() -> list[dict[str, Any]] | dict[str, Any]:
     """
     try:
         check_global_enabled()
-        api_key = auth.get_api_key_or_none()
+        # A Bearer token is mandatory — raises AuthenticationError when absent.
+        api_key = auth.get_api_key()
         user_sub = auth.get_authenticated_user_sub_or_none()
 
-        if api_key is not None:
-            return await client.list_authenticated_workflows(
-                user_sub=user_sub,
-                api_token=None if user_sub else api_key,
-            )
-
-        # Anonymous path — hit the cross-org agent discovery endpoint.
-        workflows = await client.list_agent_workflows()
-        return [_with_workflow_ref(workflow) for workflow in workflows]
+        return await client.list_authenticated_workflows(
+            user_sub=user_sub,
+            api_token=None if user_sub else api_key,
+        )
 
     except MCPToolError as exc:
         return format_error(exc)
@@ -213,30 +203,24 @@ async def get_workflow_details(
     Use ``workflow_ref`` from ``list_workflows``. The tool keeps ``org_slug`` in
     discovery results for display and disambiguation, but the MCP contract
     routes subsequent calls through this opaque handle.
+
+    Requires a Validibot bearer credential (OAuth access token or manual API
+    token).
     """
     try:
         check_global_enabled()
         if not workflow_ref:
             return _invalid_params("workflow_ref is required.")
 
-        api_key = auth.get_api_key_or_none()
+        # A Bearer token is mandatory — raises AuthenticationError when absent.
+        api_key = auth.get_api_key()
         user_sub = auth.get_authenticated_user_sub_or_none()
 
-        if api_key is not None:
-            workflow = await client.get_authenticated_workflow_detail(
-                workflow_ref,
-                user_sub=user_sub,
-                api_token=None if user_sub else api_key,
-            )
-        else:
-            workflow = await client.get_agent_workflow_detail(workflow_ref)
-
-        access_modes = workflow.get(
-            "access_modes",
-            ["member_access"] if api_key is not None else ["public_x402"],
+        workflow = await client.get_authenticated_workflow_detail(
+            workflow_ref,
+            user_sub=user_sub,
+            api_token=None if user_sub else api_key,
         )
-        if api_key is None or "member_access" not in access_modes:
-            check_agent_access(workflow)
         return _enrich_workflow_for_agent(workflow)
     except MCPToolError as exc:
         return format_error(exc)

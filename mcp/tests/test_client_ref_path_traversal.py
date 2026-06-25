@@ -31,7 +31,6 @@ import pytest
 
 from validibot_mcp.client import (
     _encode_ref,
-    get_agent_workflow_detail,
     get_authenticated_workflow_detail,
 )
 
@@ -103,23 +102,6 @@ class TestRefTraversalNeverHitsTheWire:
 
         with pytest.raises(ValueError, match="Invalid reference"):
             await get_authenticated_workflow_detail(TRAVERSAL_REF, user_sub="user-1")
-
-        assert not route.called
-
-    async def test_agent_workflow_detail_rejects_traversal(self, mock_api):
-        """The anonymous agent path rejects traversal refs pre-flight too.
-
-        The agent endpoint shares the same f-string interpolation pattern, so it
-        carries the identical vector; this pins that it refuses the ref before
-        sending anything.
-        """
-        route = mock_api.route().respond(
-            200,
-            json={"ok": True},
-        )
-
-        with pytest.raises(ValueError, match="Invalid reference"):
-            await get_agent_workflow_detail(TRAVERSAL_REF)
 
         assert not route.called
 

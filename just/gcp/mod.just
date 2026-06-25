@@ -1030,6 +1030,31 @@ _deploy-web stage:
     # that ``build``/``push`` produced.
     IMAGE_TAG="${VALIDIBOT_REVISION:-{{git_sha}}}"
 
+    # Source the stage's .build file so shared deploy-time public values are
+    # authored once and stamped onto the Cloud Run services. If the file is
+    # absent, inline/shell env values still work.
+    if [ "{{stage}}" = "prod" ]; then
+        BUILD_FILE=".envs/.production/.google-cloud/.build"
+    else
+        BUILD_FILE=".envs/.{{stage}}/.google-cloud/.build"
+    fi
+    if [ -f "$BUILD_FILE" ]; then
+        set -a
+        # shellcheck disable=SC1091
+        source "$BUILD_FILE"
+        set +a
+    fi
+
+    # Shared public values stamped onto the web revision. x402 is NOT here
+    # anymore: it is cloud-only config and lives entirely in the .django secret
+    # (loaded by the entrypoint's `set -a; source /secrets/.env`), so it must
+    # not be stamped via --set-env-vars. VALIDIBOT_MCP_BASE_URL is stamped so
+    # Django derives its OAuth audience and redirect URI from the same MCP
+    # public URL the MCP service uses.
+    SET_ENV_VARS="APP_ROLE=web,GCP_APP_NAME={{app_name}},VALIDIBOT_STAGE={{stage}},VALIDIBOT_VERSION=${VALIDIBOT_VERSION:-{{validibot_version}}}"
+    if [ -n "${VALIDIBOT_MCP_API_BASE_URL:-}" ]; then SET_ENV_VARS="${SET_ENV_VARS},MCP_OIDC_AUDIENCE=${VALIDIBOT_MCP_API_BASE_URL}"; fi
+    if [ -n "${VALIDIBOT_MCP_BASE_URL:-}" ]; then SET_ENV_VARS="${SET_ENV_VARS},VALIDIBOT_MCP_BASE_URL=${VALIDIBOT_MCP_BASE_URL}"; fi
+
     echo "Deploying $SERVICE to Cloud Run ({{stage}}, ingress: $INGRESS)..."
     gcloud run deploy "$SERVICE" \
         --image {{gcp_image}}:${IMAGE_TAG} \
@@ -1038,7 +1063,7 @@ _deploy-web stage:
         --service-account "$SA" \
         --add-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
-        --set-env-vars APP_ROLE=web,GCP_APP_NAME={{app_name}},VALIDIBOT_STAGE={{stage}},VALIDIBOT_VERSION="${VALIDIBOT_VERSION:-{{validibot_version}}}" \
+        --set-env-vars "$SET_ENV_VARS" \
         --min-instances $MIN_INSTANCES \
         --max-instances $MAX_INSTANCES \
         --memory 1Gi \

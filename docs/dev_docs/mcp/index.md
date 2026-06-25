@@ -130,7 +130,7 @@ just gcp mcp setup prod
 
 # Per-deploy — builds the image, pushes to Artifact Registry, deploys
 # to Cloud Run. Driven by ENABLE_MCP_SERVER, VALIDIBOT_MCP_API_BASE_URL,
-# and optional VALIDIBOT_X402_* public config in
+# and hosted-only VALIDIBOT_X402_* public config in
 # .envs/.production/.google-cloud/.build.
 just gcp deploy-all prod    # web + worker + scheduler + MCP
 
@@ -150,7 +150,7 @@ activates the `mcp` profile automatically.
 |---|---|
 | Container exits at startup | `mcp/src/validibot_mcp/license_check.py` — license gate |
 | `401 invalid_token` on tool call | Django audit/JWT verification + `mcp_api/authentication.py` |
-| `Mismatching redirect URI` on OAuth | The allauth `Client` row's redirect URI vs. `VALIDIBOT_MCP_BASE_URL` in `.django` |
+| `Mismatching redirect URI` on OAuth | The allauth `Client` row's redirect URI vs. `VALIDIBOT_MCP_BASE_URL` (`.build` on GCP, runtime env locally/self-hosted) |
 | `Connection issue — server config` | Client-cached failure; remove the connector and re-add fresh |
 | 401 on `/api/v1/mcp/*` from MCP | `MCP_OIDC_AUDIENCE` + `MCP_OIDC_ALLOWED_SERVICE_ACCOUNTS` in `.django` |
 

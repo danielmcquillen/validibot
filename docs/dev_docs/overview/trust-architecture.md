@@ -140,26 +140,16 @@ If callers want to self-identify, that goes into separate `client_name`, `client
 
 ## x402 trust gates
 
-x402 proves a payment was made. It does **not** prove:
+x402 is a hosted-cloud payment surface, not a community self-hosting feature.
+The community repo carries the shared source enum, workflow-resolution hooks,
+and MCP protocol helpers so the open-core code paths stay coherent, but the
+operational model lives in `validibot-project/docs/operations/x402-agent-payments.md`.
 
-- the referenced workflow is public;
-- the workflow version is latest;
-- the submitted file is accepted by the workflow;
-- the payment amount matches current price;
-- the run should retain data;
-- the caller may see prior runs.
-
-x402 run creation must therefore perform:
-
-1. trusted workflow resolution through `AgentWorkflowResolver`;
-2. current price comparison;
-3. idempotent payment lookup;
-4. replay prevention by txhash;
-5. launch-contract validation;
-6. run creation and enqueue inside one transaction where possible;
-7. failure states that do not leave ambiguous paid/no-run outcomes.
-
-MCP clients should perform cheap pre-payment validation where possible (base64 syntax, encoded size, filename presence), but Django remains the source of truth.
+The trust rule is simple: a payment proof never replaces Django authorization
+or launch validation. The cloud run-creation path still resolves the workflow
+through `AgentWorkflowResolver`, enforces the current public-x402 policy,
+checks request idempotency and replay keys, validates the launch contract, and
+fails closed on missing active pay-to or network/asset configuration.
 
 ## MCP positioning
 
@@ -208,42 +198,24 @@ Model `clean()` is useful but not enough — direct `QuerySet.update()`, data mi
 - submission content is either inline or file, not both;
 - purged submissions must have content cleared.
 
-## Three-sided config split for cross-service trust gates
+## Cross-service env placement
 
-Trust gates that span two services (e.g. the MCP server quotes a price; the Django runtime verifies the receipt) are configured by **three** files, not two. Treat this as a reusable pattern whenever a new feature crosses a service boundary:
+Trust gates that span Django and MCP must avoid duplicate non-secret values.
+The placement rule is:
 
-| File | Purpose | Lifecycle |
-| --- | --- | --- |
-| **Public-config file** (`.build`) | The half each side advertises publicly — chain identifiers, asset addresses, facilitator URLs, feature flags. Stamped by the deploy recipe via `--set-env-vars`. | Versioned with code; safe to commit values. |
-| **Secret-side file** (`.mcp` or per-service equivalent) | The half each side keeps private — receiving wallets, signing keys, OAuth client secrets. Mounted from Secret Manager. | Per-deployment; rotated independently. |
-| **Verifier-side file** (`.django`) | The other side's *copy* of the trust-relevant values, used to verify what arrived against what was expected. | Per-deployment; must agree with the matching values in the other two. |
+- Django-only runtime values live in `.django`.
+- MCP-only runtime values live in `.mcp`.
+- Non-secret values needed by both services live in `.build` and are injected
+  or stamped into each service by the deploy recipe.
+- Secrets do not move to `.build`, because GCP turns `.build` values into
+  Cloud Run `--set-env-vars`, not Secret Manager entries. Shared secrets are
+  stored as explicit paired secrets in service-specific secret files and
+  rotated together.
 
-The third file is the one teams forget. It exists because **the verifier's container does not see the producer's secret mount** — they're independent Cloud Run services with independent secret bindings. The verifier's settings module must declare its own copy of the canonical name, with an optional fallback to the producer-side name for combined deploys (one process holding both halves).
-
-A reusable helper for the verifier side:
-
-```python
-# In _cloud_common.py (or equivalent shared settings helper)
-def resolve_trusted_value(env, *, canonical: str, fallback: str, default: str = "") -> str:
-    """Read ``canonical`` first, then ``fallback`` (treating blank as unset)."""
-    val = env.str(canonical, default="").strip()
-    if val:
-        return val
-    val = env.str(fallback, default="").strip()
-    if val:
-        return val
-    return default
-```
-
-Properties worth replicating in any cross-service setting:
-
-- **Strict precedence** — canonical wins; fallback only fires when canonical is absent or blank.
-- **Blank treated as unset** — env-file templates often ship with placeholder lines (`X=`) that operators forget to fill in. Treating blank as unset lets the fallback take over rather than the canonical's empty string short-circuiting the chain.
-- **Fail-closed default** — when both env vars are absent or blank, the fail-closed default kicks in (typically `""`). The verifier refuses every payment / message / receipt until the operator opts in by setting at least one of the two.
-- **Whitespace stripped** — copy/paste from a runbook can introduce stray spaces; stripping them removes a footgun.
-- **Three-layer test coverage** — (1) helper logic with stubbed envs, (2) source-level grep that the assignment exists in each settings module, (3) live `settings.X` read without `override_settings`. The middle layer is the only one that catches "someone deleted the block from cloud.py."
-
-The x402 payment verification is the canonical example — see `validibot-cloud/validibot_cloud/settings/_cloud_common.py::resolve_x402_pay_to_address`.
+The x402 cloud path follows this rule: active mode, pay-to address, and
+network/asset pair are authored once in `.build`; the MCP-only facilitator
+credential stays in `.mcp`; missing active pay-to is a startup error, not a
+secondary-source lookup.
 
 ## Configuration patterns that close trust gaps
 

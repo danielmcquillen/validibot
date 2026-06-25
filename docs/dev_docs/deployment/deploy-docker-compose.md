@@ -122,10 +122,9 @@ you opt in:
       .envs/.production/.self-hosted/.mcp
    ```
 
-   Then edit `.envs/.production/.self-hosted/.mcp` and set
-   `VALIDIBOT_MCP_SERVICE_KEY` to a long random string. The same
-   value must be set as `VALIDIBOT_MCP_SERVICE_KEY` in your `.django`
-   file — that shared secret is how the MCP server authenticates
+   Then generate one long random `VALIDIBOT_MCP_SERVICE_KEY` and place that
+   paired secret in both `.envs/.production/.self-hosted/.mcp` and your
+   `.django` file. That shared secret is how the MCP server authenticates
    itself to Django's helper API. Generate one with:
 
    ```bash

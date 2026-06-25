@@ -8,13 +8,26 @@ real HTTP calls from leaking during tests.
 
 from __future__ import annotations
 
+import os
+
+# The MCP Settings now REQUIRE the core URLs — config.py no longer hardcodes
+# hosted validibot.com defaults. Provide them BEFORE importing any
+# validibot_mcp.* module: client.py calls get_settings() at import time, so
+# the vars must exist during test collection. These mirror the values the
+# tests historically assumed as the config defaults, so nothing else changes.
+os.environ.setdefault("VALIDIBOT_API_BASE_URL", "https://app.validibot.com")
+os.environ.setdefault("VALIDIBOT_MCP_BASE_URL", "https://mcp.validibot.com")
+os.environ.setdefault(
+    "VALIDIBOT_OAUTH_AUTHORIZATION_SERVER_URL",
+    "https://app.validibot.com",
+)
+
 from unittest.mock import MagicMock
 
 import pytest
 import respx
 
 from validibot_mcp.client import aclose_http_clients
-from validibot_mcp.x402 import aclose_x402_http_client
 
 # ── Sample API response payloads ───────────────────────────────────────
 # These mirror the shapes returned by the Validibot REST API serializers.
@@ -56,52 +69,6 @@ SAMPLE_WORKFLOW_FULL = {
     "agent_billing_mode": "AUTHOR_PAYS",
     "agent_max_launches_per_hour": 50,
     "steps": [],
-}
-
-# Workflow configured for agent-pays-ACP billing. Agents must provide a
-# Stripe Shared Payment Token (SPT) to launch runs on this workflow.
-SAMPLE_WORKFLOW_AGENT_PAYS = {
-    **SAMPLE_WORKFLOW_FULL,
-    "slug": "premium-check",
-    "name": "Premium Energy Check",
-    "agent_billing_mode": "AGENT_PAYS_X402",
-    "agent_price_cents": 100,
-    "steps": [
-        {
-            "id": 1,
-            "order": 1,
-            "step_number": 1,
-            "name": "JSON Schema Validation",
-            "description": "Validates against the EnergyPlus schema.",
-            "validator": {
-                "slug": "json-schema",
-                "name": "JSON Schema Validator",
-                "validation_type": "JSON_SCHEMA",
-                "short_description": "Validates JSON against a schema.",
-                "default_ruleset": None,
-            },
-            "action_type": None,
-            "config": {},
-            "ruleset": None,
-        },
-        {
-            "id": 2,
-            "order": 2,
-            "step_number": 2,
-            "name": "EnergyPlus Simulation",
-            "description": "Runs a full EnergyPlus simulation.",
-            "validator": {
-                "slug": "energyplus",
-                "name": "EnergyPlus",
-                "validation_type": "ENERGYPLUS",
-                "short_description": "Runs EnergyPlus simulation.",
-                "default_ruleset": None,
-            },
-            "action_type": None,
-            "config": {},
-            "ruleset": None,
-        },
-    ],
 }
 
 SAMPLE_RUN_PENDING = {
@@ -194,21 +161,6 @@ def mock_access_token(monkeypatch):
     return _set_token
 
 
-@pytest.fixture()
-def mock_spt(monkeypatch):
-    """Patch ``get_stripe_spt()`` to return a test SPT string.
-
-    Returns a factory function. Call it with a token string to set the
-    mock, or with None to simulate no SPT header.
-    """
-
-    def _set_spt(spt: str | None):
-        mock_fn = lambda: spt  # noqa: E731
-        monkeypatch.setattr("validibot_mcp.auth.get_stripe_spt", mock_fn)
-
-    return _set_spt
-
-
 @pytest.fixture(autouse=True)
 def _clear_settings_cache(monkeypatch):
     """Clear the pydantic-settings LRU cache between tests.
@@ -237,7 +189,6 @@ async def _close_mcp_http_clients():
 
     yield
     await aclose_http_clients()
-    await aclose_x402_http_client()
 
 
 @pytest.fixture(autouse=True, scope="session")

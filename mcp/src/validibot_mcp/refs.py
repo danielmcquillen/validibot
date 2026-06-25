@@ -15,7 +15,6 @@ from dataclasses import dataclass
 WORKFLOW_REF_PREFIX = "wf_"
 RUN_REF_PREFIX = "run_"
 RUN_REF_MEMBER_KIND = "member"
-RUN_REF_X402_KIND = "x402"
 
 # TODO: Move this ref codec into validibot-shared so the FastMCP package and
 # the Django helper layer stop maintaining parallel base64url/JSON helpers.
@@ -28,7 +27,6 @@ class ResolvedRunRef:
     auth_kind: str
     run_id: str
     org_slug: str | None = None
-    wallet_address: str | None = None
 
 
 def build_workflow_ref(*, org_slug: str, workflow_slug: str) -> str:
@@ -68,17 +66,6 @@ def build_member_run_ref(*, org_slug: str, run_id: str) -> str:
     return f"{RUN_REF_PREFIX}{_encode_payload(payload)}"
 
 
-def build_x402_run_ref(*, run_id: str, wallet_address: str) -> str:
-    """Return a run reference for an anonymous x402-backed run."""
-
-    payload = {
-        "kind": RUN_REF_X402_KIND,
-        "run_id": run_id,
-        "wallet": wallet_address,
-    }
-    return f"{RUN_REF_PREFIX}{_encode_payload(payload)}"
-
-
 def parse_run_ref(run_ref: str) -> ResolvedRunRef:
     """Decode a ``run_ref`` into the backend routing data it represents."""
 
@@ -102,17 +89,6 @@ def parse_run_ref(run_ref: str) -> ResolvedRunRef:
             auth_kind=auth_kind,
             run_id=run_id,
             org_slug=org_slug,
-        )
-
-    if auth_kind == RUN_REF_X402_KIND:
-        wallet_address = str(payload.get("wallet", "")).strip()
-        if not wallet_address:
-            msg = "x402 run_ref is missing wallet."
-            raise ValueError(msg)
-        return ResolvedRunRef(
-            auth_kind=auth_kind,
-            run_id=run_id,
-            wallet_address=wallet_address,
         )
 
     msg = f"Unsupported run_ref kind '{auth_kind}'."

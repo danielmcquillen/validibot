@@ -4,7 +4,11 @@ This directory contains Django settings modules for different environments.
 
 ## Structure
 
-There are exactly four settings files:
+Settings come in two layers: four community modules, plus a thin Pro
+activation variant for three of them.
+
+**Community modules** — the baseline, fully functional without any commercial
+package installed:
 
 | File | Purpose |
 |------|---------|
@@ -12,6 +16,26 @@ There are exactly four settings files:
 | `local.py` | Local development (DEBUG=True, console email, etc.) |
 | `production.py` | All production deployments (GCP, AWS, self-hosted) |
 | `test.py` | Test runner configuration |
+
+**Pro activation variants** — each does exactly one thing: `from .<base> import *`,
+then append `validibot_pro` to `INSTALLED_APPS`:
+
+| File | Extends | Selected by |
+|------|---------|-------------|
+| `local_pro.py` | `local.py` | `just local-pro` (`docker-compose.local-pro.yml`) |
+| `production_pro.py` | `production.py` | Self-hosted Pro — operators set `DJANGO_SETTINGS_MODULE=config.settings.production_pro` |
+| `test_pro.py` | `test.py` | `just test-pro` (`pytest --ds=config.settings.test_pro`) |
+
+That `INSTALLED_APPS` append is the load-bearing step. Installing the Pro wheel
+makes the package *importable*, but Django only runs its `AppConfig.ready()` and
+imports its `__init__.py` — where `validibot.core.license.set_license(PRO_LICENSE)`
+lives — when the app is listed in `INSTALLED_APPS`. So the settings module, not
+the package install, is what actually activates Pro.
+
+There is no `*_enterprise.py` variant yet. The hosted cloud offering doesn't use
+these modules either: it has its own `validibot_cloud.settings.*` modules (in the
+`validibot-cloud` repo) that import this repo's settings and already include
+`validibot_pro` in their app list.
 
 ## Local Development
 
@@ -27,10 +51,14 @@ All services (Django, Postgres, Redis, Celery) run in Docker containers.
 
 If you purchased Pro or Enterprise, copy `.envs.example/.local/.build` to
 `.envs/.local/.build`, set an exact `VALIDIBOT_COMMERCIAL_PACKAGE` and
-`VALIDIBOT_PRIVATE_INDEX_URL`, add the matching Django app to
-`config/settings/local.py`, then run `just local build` before `just local up`.
-Customers should not edit `config/settings/base.py` for that; use the
-environment-specific settings module instead.
+`VALIDIBOT_PRIVATE_INDEX_URL`, then run `just local build` before
+`just local up`. To activate Pro, point `DJANGO_SETTINGS_MODULE` at
+`config.settings.local_pro` (the variant that adds `validibot_pro` to
+`INSTALLED_APPS`) rather than hand-editing a settings module — this is the same
+module `just local-pro` selects. Enterprise has no dedicated variant yet, so add
+its app to a settings module that extends `local.py`. Either way, don't edit
+`config/settings/base.py`; keep edition-specific changes in the
+environment-specific module.
 
 ## Production Settings
 
@@ -50,6 +78,12 @@ The settings file reads `DEPLOYMENT_TARGET` and branches accordingly to configur
 - Task queue (Celery for self_hosted, Cloud Tasks for GCP)
 - Platform-specific integrations
 
+Self-hosted Pro deployments use `production_pro.py` instead, which extends
+`production.py` (so it inherits all the `DEPLOYMENT_TARGET` branching above) and
+adds `validibot_pro` to `INSTALLED_APPS`. Operators select it by setting
+`DJANGO_SETTINGS_MODULE=config.settings.production_pro` in their env file; see the
+edition note in `.envs.example/.production/.self-hosted/.django`.
+
 ## Environment Files
 
 Platform-specific values live in environment files, not in separate settings modules.
@@ -60,14 +94,20 @@ Platform-specific values live in environment files, not in separate settings mod
 .envs.example/
 ├── .local/
 │   ├── .django
+│   ├── .build
+│   ├── .mcp
 │   └── .postgres
 └── .production/
     ├── .self-hosted/
     │   ├── .build
     │   ├── .django
+    │   ├── .mcp
     │   └── .postgres
     ├── .google-cloud/
-    │   └── .django
+    │   ├── .build
+    │   ├── .django
+    │   ├── .just
+    │   └── .mcp
     └── .aws/
         └── .django
 ```
@@ -77,16 +117,21 @@ Platform-specific values live in environment files, not in separate settings mod
 ```
 .envs/
 ├── .local/
-│   ├── .build           # optional commercial package build settings only
+│   ├── .build           # optional build args, MCP activation, shared non-secret x402 values
 │   ├── .django
+│   ├── .mcp
 │   └── .postgres
 └── .production/
     ├── .self-hosted/
-    │   ├── .build       # optional commercial package build settings only
+    │   ├── .build       # optional build args and MCP activation
     │   ├── .django          # DEPLOYMENT_TARGET=self_hosted
+    │   ├── .mcp
     │   └── .postgres
     ├── .google-cloud/
-    │   └── .django          # DEPLOYMENT_TARGET=gcp
+    │   ├── .build           # deploy knobs and shared non-secret MCP URL / x402 values
+    │   ├── .django          # DEPLOYMENT_TARGET=gcp
+    │   ├── .just            # host-side GCP command context
+    │   └── .mcp             # MCP-only runtime secrets
     └── .aws/
         └── .django          # DEPLOYMENT_TARGET=aws
 ```

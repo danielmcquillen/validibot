@@ -150,13 +150,11 @@ start:
 cp .envs.example/.local/.mcp .envs/.local/.mcp
 ```
 
-The defaults work for local development. The one value worth changing is
-`VALIDIBOT_MCP_SERVICE_KEY` in `.envs/.local/.mcp` — set it to a long
-random string, then set the same value as
-`VALIDIBOT_MCP_SERVICE_KEY` in `.envs/.local/.django` (uncomment the
-line if it is commented out). That shared secret is how the MCP
-container authenticates itself to Django's helper API. Generate one
-with:
+The defaults work for local development. The one paired secret worth changing
+is `VALIDIBOT_MCP_SERVICE_KEY`: generate one long random string and place it in
+both `.envs/.local/.mcp` and `.envs/.local/.django` (uncomment the line if it is
+commented out). That shared secret is how the MCP container authenticates
+itself to Django's helper API. Generate one with:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(32))"

@@ -2622,11 +2622,11 @@ wheels = [
 
 [[package]]
 name = "python-jsonpath"
-version = "2.0.2"
+version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8e/e5/07f99c0fb448eeb2c9db5e817f8a9c43e3f4a7b59934adbe421a39677025/python_jsonpath-2.0.2.tar.gz", hash = "sha256:41abb6660b3ee54d5ae77e4b0e901049fb1662ad90de241f038df47edc75ee60", size = 49672, upload-time = "2026-01-06T08:21:01.194Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bc/aa/07ec5da5a4549078bdea5935c03cccfbe58fefc6c82d0d9467655f6a7d0d/python_jsonpath-2.1.0.tar.gz", hash = "sha256:c94d9ea0aba7e2f69140ad2e379e8b1b75d66f6e20e82a7496393e5cb40b2572", size = 50110, upload-time = "2026-06-26T06:26:49.902Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/84/2c/c1282c47a8bb641c3068f47780c5f1f5c97cdc39cda3ec507c64c029764e/python_jsonpath-2.0.2-py3-none-any.whl", hash = "sha256:3f8ab612f815ce10c03bf0deaede87235f3381b109a60b4a22744069953627e3", size = 64071, upload-time = "2026-01-06T08:20:59.751Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/30/7161a7384f02c61675e92dbd8915aa06e57ba2cb1a0049ed92f62f5be58d/python_jsonpath-2.1.0-py3-none-any.whl", hash = "sha256:f5be070ccb0c9b8d3776cf0058905dc030ad6fcb5f9b6c3ad5c2f7f76a283451", size = 64510, upload-time = "2026-06-26T06:26:48.433Z" },
 ]
 
 [[package]]
@@ -3417,7 +3417,7 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "pyjwt", extras = ["crypto"], specifier = "==2.13.0" },
     { name = "python-json-logger", specifier = "==4.1.0" },
-    { name = "python-jsonpath", specifier = "==2.0.2" },
+    { name = "python-jsonpath", specifier = "==2.1.0" },
     { name = "python-slugify", specifier = "==8.0.4" },
     { name = "rdflib", specifier = "==7.6.0" },
     { name = "sentry-sdk", specifier = "==2.63.0" },

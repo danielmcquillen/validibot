@@ -214,6 +214,7 @@ The quick version of "where does each variable go":
 | `VALIDIBOT_OAUTH_CLIENT_SECRET` | `.mcp` | Paired OAuth client secret; same generated value as `IDP_OIDC_MCP_SERVER_CLIENT_SECRET`, stored in the MCP secret file |
 | `VALIDIBOT_COMMERCIAL_PACKAGE`, `VALIDIBOT_PRIVATE_INDEX_URL` | `.build` | Docker build-time args (docker-compose only) |
 | `ENABLE_MCP_SERVER` | `.build` | Recipe-level knob; decides whether `just gcp deploy-all` and the compose MCP profile activate MCP |
+| `DRF_NUM_PROXIES` | `.django` | Trusted-proxy count for client-IP resolution in DRF throttles; must equal the inbound proxy hop count or IP rate-limits can be spoofed (too high) / over-applied (too low). Community default 1; hosted cloud 2 (behind the LB). See [reverse-proxy.md](reverse-proxy.md). |
 | `VALIDIBOT_MCP_API_BASE_URL` | `.build` (GCP) | Stamped onto MCP as `VALIDIBOT_API_BASE_URL` and onto Django as `MCP_OIDC_AUDIENCE` |
 | `VALIDIBOT_X402_*`, `VALIDIBOT_TEST_X402_*` (enabled, test-mode, network, asset, pay-to, facilitator URL, CDP key id/secret) | `.django` | **All** x402 config. x402 is cloud-only — only validibot-cloud's Django reads it (the MCP server no longer handles payments), so every value lives in the cloud Django secret alongside Stripe/audit. Only the CDP key id/secret are true secrets; the rest are non-secret but kept here so x402 has one authoring file. Not in `.build` and not stamped via `--set-env-vars`. |
 | `GCP_PROJECT_ID`, `GCP_REGION` | `.just` (GCP) | Sourced into the shell before running `just gcp` recipes |

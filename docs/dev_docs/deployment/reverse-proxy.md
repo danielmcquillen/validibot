@@ -27,6 +27,9 @@ Whichever proxy you choose, ensure:
 2. **Proper headers** — Forward `X-Forwarded-For`, `X-Forwarded-Proto`, and `Host`
 3. **WebSocket support** — Required for real-time updates (if using HTMx WebSocket extensions)
 4. **Timeout settings** — Increase timeouts for long-running validation uploads
+5. **Trusted-proxy count** — Set `DRF_NUM_PROXIES` to how many proxies sit in
+   front of Validibot (see [below](#trusted-proxy-count-and-throttle-integrity)).
+   Getting it wrong weakens IP-based rate limiting.
 
 Update your Validibot environment variables:
 
@@ -35,7 +38,40 @@ Update your Validibot environment variables:
 DJANGO_ALLOWED_HOSTS=validibot.example.com
 SITE_URL=https://validibot.example.com
 DJANGO_SECURE_SSL_REDIRECT=False  # Proxy handles TLS
+DRF_NUM_PROXIES=1                 # Trusted proxies in front of Validibot (see below)
 ```
+
+### Trusted-proxy count and throttle integrity
+
+Validibot's rate limits — including the anonymous agent endpoints' pre-payment
+abuse guards — key on the client IP. Behind a proxy, Django never sees the client
+directly: the real IP arrives in `X-Forwarded-For`, a comma-separated list that
+each proxy appends to. A client can forge the **left** of that list, so DRF reads
+the real IP from the **right**, using `DRF_NUM_PROXIES` to know how many
+right-hand entries were added by infrastructure you trust.
+
+Set it to the number of proxies that append to `X-Forwarded-For` between the
+internet and Validibot:
+
+- One reverse proxy (the typical nginx / Caddy / Traefik setup above): `1` (the default)
+- Two proxies (e.g. a CDN or load balancer in front of your reverse proxy): `2`
+- No proxy at all (Validibot exposed directly): `0` — ignore `X-Forwarded-For`
+
+Too **low** and distinct clients collapse onto a shared proxy IP and throttle each
+other; too **high** and a client can spoof `X-Forwarded-For` to dodge the throttle
+entirely. Verify it against a real request instead of guessing:
+
+```bash
+# From a machine whose public IP you know (check: curl https://ifconfig.me):
+curl https://validibot.example.com/api/v1/auth/debug/
+# Count from the RIGHT of the returned X-Forwarded-For until you reach your real
+# IP — that position is DRF_NUM_PROXIES. Then confirm a spoof is ignored:
+curl -H "X-Forwarded-For: 9.9.9.9" https://validibot.example.com/api/v1/auth/debug/
+# 9.9.9.9 must land to the LEFT of the entry your count selects.
+```
+
+> The hosted cloud deployment (app.validibot.com) sets this to `2` because it
+> runs behind a Google external HTTPS load balancer.
 
 ---
 

@@ -30,6 +30,22 @@ DJANGO_ALLOWED_HOSTS=your-service-name.region.run.app,your-subdomain.example.com
 # secure cookies) are hardcoded in config/settings/production.py — they are
 # NOT env-configurable, so there is nothing to set here.
 
+# Trusted-proxy count for client-IP resolution in DRF throttles. DRF reads the
+# real client IP from the Nth-from-last entry of X-Forwarded-For; the count must
+# match how many proxies append to XFF in front of this service, or IP-keyed
+# throttles (e.g. the anonymous x402 validate endpoint) misbehave — too low
+# over-throttles all clients together, too high is spoofable. app.validibot.com
+# runs behind the Google global external HTTPS load balancer, which appends two
+# hops (real client + Google front end), so the real client is the SECOND from
+# the right → 2. (A direct Cloud Run domain mapping would be 1; community
+# default is 1.) VERIFY before trusting this — curl from a known IP and count
+# from the right (see docs/dev_docs/deployment/reverse-proxy.md), then uncomment.
+# Until set, the community default of 1 applies (safe direction: over-throttles
+# rather than allowing a bypass). Stronger still: have the LB overwrite XFF with
+# {client_ip_address} so spoofed prefixes never arrive — see the x402 ops runbook
+# "Hardening: sanitize X-Forwarded-For at the load balancer".
+#DRF_NUM_PROXIES=2
+
 # DATABASE
 # ==============================================================================
 # Cloud SQL uses Unix socket connection via Cloud SQL Auth Proxy

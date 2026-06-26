@@ -73,6 +73,33 @@ curl -H "X-Forwarded-For: 9.9.9.9" https://validibot.example.com/api/v1/auth/deb
 > The hosted cloud deployment (app.validibot.com) sets this to `2` because it
 > runs behind a Google external HTTPS load balancer.
 
+#### Stronger: overwrite `X-Forwarded-For` at your trusted edge
+
+Counting hops is correct but fragile — it breaks silently if your proxy chain
+changes. The more robust pattern is to have your **outermost** proxy *replace*
+the header with the client IP it actually observed, so forged upstream values
+never reach Validibot:
+
+- **nginx:** at the internet-facing proxy, use `proxy_set_header X-Forwarded-For
+  $remote_addr;` (overwrite) instead of `$proxy_add_x_forwarded_for` (append),
+  then set `DRF_NUM_PROXIES=1`.
+- **Google Cloud external HTTPS LB:** rewrite the header on the backend service
+  so only LB-verified values survive, then keep `DRF_NUM_PROXIES=2`:
+
+  ```bash
+  gcloud compute backend-services update BACKEND_SERVICE_NAME --global \
+      --custom-request-header='X-Forwarded-For:{client_ip_address},{server_ip_address}'
+  ```
+
+  `{client_ip_address}` is the IP the LB itself saw, not client-supplied, so this
+  strips any spoofed prefix at the edge.
+
+Do both where you can: the edge rewrite removes the spoofing surface, and
+`DRF_NUM_PROXIES` keeps DRF reading the right position (and covers deploys where
+you can't rewrite at the edge). Google's
+[external Application Load Balancer docs](https://cloud.google.com/load-balancing/docs/https)
+describe the header behaviour and the `{client_ip_address}` variable in full.
+
 ---
 
 ## Caddy

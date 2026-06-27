@@ -16,6 +16,7 @@ from model_utils.models import TimeStampedModel
 
 from validibot.users.constants import RESERVED_ORG_SLUGS
 from validibot.users.constants import RoleCode
+from validibot.workflows.constants import WorkflowVisibility
 
 
 def select_public_storage():
@@ -227,6 +228,51 @@ class Organization(TimeStampedModel):
         help_text=_(
             "The trial duration in days, snapshotted "
             "when the trial was activated. NULL for non-trial orgs."
+        ),
+    )
+
+    # ── Access guardrails (org-level ceilings) ─────────────────────────
+    # These cap what individual workflows in this org may expose. A
+    # workflow's own access setting is honoured only up to these
+    # ceilings; the workflow form hides or disables controls beyond them.
+    # See ``WorkflowVisibility`` and the per-workflow access fields on
+    # ``Workflow`` (``workflow_visibility``, ``mcp_enabled``,
+    # ``x402_enabled``). The agent channels default OFF so a new org is
+    # locked down and must opt in to agent exposure; ``allow_authors_to_
+    # adjust_access`` defaults OFF so only admins/superusers touch access.
+    workflow_visibility_cap = models.CharField(
+        max_length=20,
+        choices=WorkflowVisibility.choices,
+        default=WorkflowVisibility.ALL_USERS,
+        help_text=_(
+            "Maximum visibility any workflow in this organization may have. "
+            "Workflows may be set no wider than this ceiling.",
+        ),
+    )
+    mcp_allowed = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Whether workflows in this organization may be exposed to "
+            "authenticated AI agents via MCP. Off by default; an admin "
+            "opts in.",
+        ),
+    )
+    x402_allowed = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Whether workflows in this organization may be published for "
+            "paid anonymous access via x402. Off by default — enabling it "
+            "permits a workflow to be made callable by anyone on the "
+            "internet who pays.",
+        ),
+    )
+    allow_authors_to_adjust_access = models.BooleanField(
+        default=False,
+        help_text=_(
+            "When off (the default), only admins and superusers can change "
+            "a workflow's access settings. When on, workflow authors may "
+            "also adjust the per-workflow access controls — never the "
+            "org-level ceilings above.",
         ),
     )
 

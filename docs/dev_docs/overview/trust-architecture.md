@@ -190,13 +190,17 @@ This is not a formal certification boundary. It is a realistic threat model for 
 Model `clean()` is useful but not enough — direct `QuerySet.update()`, data migrations, admin actions, imports, and test fixtures bypass it. Database constraints capture invariants local to one row:
 
 - x402 billing requires positive `agent_price_cents`;
-- public agent discovery requires agent access enabled;
-- public agent discovery requires x402 billing mode;
+- `x402_enabled` requires x402 billing mode;
 - x402 billing requires `data_retention=DO_NOT_STORE`;
-- tombstoned workflows cannot be public agent-discoverable;
-- archived workflows cannot be public agent-discoverable;
+- tombstoned workflows cannot have `x402_enabled=True`;
+- archived workflows cannot have `x402_enabled=True`;
 - submission content is either inline or file, not both;
 - purged submissions must have content cleared.
+
+`x402_enabled` (paid anonymous public access) is independent of `mcp_enabled`
+(authenticated agents acting on behalf of a user): the old constraint coupling
+public discovery to agent-access has been dropped, so a workflow can be
+private-to-org for free yet paid-public to anonymous agents.
 
 ## Cross-service env placement
 
@@ -222,7 +226,7 @@ secondary-source lookup.
 Three architectural patterns recur across trust-relevant code. Worth knowing as design vocabulary when working on new trust-relevant code:
 
 - **Fail-closed defaults** — empty allow-list rejects, unknown policy value raises, missing config refuses. The opposite (silently fall back to the loosest mode) is exactly the inversion of operator intent that turns hardening into a regression.
-- **Conservative suppression** — when a row is in a contradictory state (e.g. `agent_public_discovery=True` + `is_archived=True`), withdraw the *claim* (clear `agent_public_discovery`), not the *state* the operator chose (don't flip `is_archived`, don't flip `input_retention`). Reversible via re-publish; the alternative would silently change the privacy contract.
+- **Conservative suppression** — when a row is in a contradictory state (e.g. `x402_enabled=True` + `is_archived=True`), withdraw the *claim* (clear `x402_enabled`), not the *state* the operator chose (don't flip `is_archived`, don't flip `input_retention`). Reversible via re-publish; the alternative would silently change the privacy contract.
 - **Route-bound trust** — every trust-relevant value (run source, payment recipient, validator-backend digest) derives from the authenticated route, never from a client header. Headers are caller-controlled by definition; the route is what the auth layer already verified.
 
 Each pattern is enforced by tests that pin the exact behaviour. When you find yourself writing `assert result in {...some_values}` because the contract is unclear, that's evidence the underlying decision hasn't been made — pick a value and pin it.
@@ -248,7 +252,7 @@ The trust model distinguishes two orthogonal axes for "what is this user allowed
 
 1. **User kind** (`User.user_kind`) — the system-wide classifier: `BASIC` or `GUEST`. A property of the *account*, not of any workflow or org. In community deployments every account is `BASIC` (the GUEST classifier doesn't exist without `validibot-pro`). In Pro deployments, `GUEST` accounts are external collaborators who hold no `Membership` rows and can only see workflows they've been granted access to.
 
-2. **Per-workflow access** — answered by `WorkflowAccessGrant` (per-workflow), `OrgGuestAccess` (org-wide), `Membership` + `OrgPermissionBackend` (member-with-role), and the `is_public` flag (platform-wide). Resolved by `Workflow.objects.for_user(user)` which unions every access path. A `BASIC` user can hold a `WorkflowAccessGrant` for a workflow in another org for cross-org collaboration without becoming `GUEST` — the kind tracks the account, not any single relationship.
+2. **Per-workflow access** — answered by `WorkflowAccessGrant` (per-workflow), `OrgGuestAccess` (org-wide), `Membership` + `OrgPermissionBackend` (member-with-role), and the `workflow_visibility` tier (`PRIVATE` = creator + invited only, `ORG` = any org member, `ALL_USERS` = any Validibot identity may run it for free). Resolved by `Workflow.objects.for_user(user)` which unions every access path. A `BASIC` user can hold a `WorkflowAccessGrant` for a workflow in another org for cross-org collaboration without becoming `GUEST` — the kind tracks the account, not any single relationship.
 
 ### Why the split matters
 

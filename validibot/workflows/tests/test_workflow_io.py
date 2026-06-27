@@ -412,11 +412,20 @@ def test_import_forces_publication_and_agent_flags_private():
     """An import never makes a workflow public/agent-exposed, even if asked to.
 
     Imports are active (runnable), so the exposure toggles must not travel: a
-    crafted (or faithfully exported) definition that sets ``is_public`` /
-    ``make_info_page_public`` / ``agent_public_discovery`` /
-    ``agent_access_enabled`` must land private. Otherwise importing a public or
-    agent-discoverable workflow would auto-publish it in the target org.
+    crafted (or faithfully exported) definition that sets ``workflow_visibility``
+    wider than PRIVATE, ``make_info_page_public``, ``mcp_enabled``, or
+    ``x402_enabled`` must land fully private. After the 2026-06-27 refactor an
+    imported workflow gets ``workflow_visibility=PRIVATE`` (creator + explicit
+    grants only) and both agent channels off. Otherwise importing a public or
+    agent-exposed workflow would auto-publish it in the target org.
+
+    We still send the legacy ``is_public`` / ``agent_public_discovery`` /
+    ``agent_access_enabled`` keys in the hostile payload to prove the importer
+    ignores unknown/renamed external-exposure keys too — it must not honour
+    them under any name.
     """
+    from validibot.workflows.constants import WorkflowVisibility
+
     org, user = _org_and_user()
     _tabular_validator()
     definition = json.loads(
@@ -424,11 +433,16 @@ def test_import_forces_publication_and_agent_flags_private():
             Path(settings.BASE_DIR) / "tests" / "workflows" / "darwin_core.json"
         ).read_text(),
     )
-    # A hostile / over-eager definition asking for full external exposure.
+    # A hostile / over-eager definition asking for full external exposure,
+    # using both the current field names and the legacy ones.
     definition["workflow"].update(
         {
-            "is_public": True,
+            "workflow_visibility": WorkflowVisibility.ALL_USERS,
             "make_info_page_public": True,
+            "mcp_enabled": True,
+            "x402_enabled": True,
+            # Legacy keys the importer must also refuse to honour.
+            "is_public": True,
             "agent_public_discovery": True,
             "agent_access_enabled": True,
         },
@@ -437,11 +451,11 @@ def test_import_forces_publication_and_agent_flags_private():
     result = import_definition(definition, files={}, org=org, user=user)
 
     new = result.workflow
-    assert new.is_public is False
+    assert new.workflow_visibility == WorkflowVisibility.PRIVATE
     assert new.make_info_page_public is False
-    assert new.agent_public_discovery is False
-    assert new.agent_access_enabled is False
-    # ...but still active and runnable by org members.
+    assert new.mcp_enabled is False
+    assert new.x402_enabled is False
+    # ...but still active and runnable by its creator / invited guests.
     assert new.is_active is True
 
 

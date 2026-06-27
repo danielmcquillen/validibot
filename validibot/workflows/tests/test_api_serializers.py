@@ -196,7 +196,7 @@ class TestWorkflowDetailShape:
             "is_active",
             "allowed_file_types",
             "url",
-            "is_public",
+            "workflow_visibility",
             "allow_submission_name",
             "allow_submission_meta_data",
             "allow_submission_short_description",

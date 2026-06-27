@@ -1,78 +1,206 @@
 {% load i18n core_tags %}
 
+{% comment %}
+Workflow access section (HTMX-swappable).
+
+Renders the two INDEPENDENT access ideas the new model splits apart:
+
+  • workflow_visibility — WHO, by Validibot identity, may run this workflow
+    for free (Private / Your org / All Validibot users). Rendered as a
+    three-way radio selector, clamped to the org ceiling: only the
+    visibility tiers in ``visibility_choices`` are offered.
+
+  • the agent channels (admin-gated, shown only when ``can_edit_access``):
+      - mcp_enabled  — authenticated agents may run it on behalf of a user.
+      - x402_enabled — PAID ANONYMOUS access to anyone on the internet who
+        pays, regardless of the visibility tier. A danger-zone note makes
+        that explicit.
+
+Each control posts back to ``workflows:workflow_visibility_update`` and
+swaps this whole section (hx-target=#workflow-visibility-section,
+hx-swap=outerHTML). Context: workflow, can_manage_sharing, can_edit_access,
+visibility_choices (list of {value,label}), org_mcp_allowed, org_x402_allowed.
+{% endcomment %}
+
 <div class="card app-card mb-3" id="workflow-visibility-section">
   <div class="card-header">
     <div class="card-title">
-      {% trans "Visibility" %}
+      {% trans "Access" %}
     </div>
   </div>
   <div class="card-body">
-    <div class="d-flex flex-column gap-3">
-      {# Private option #}
-      <div class="form-check">
-        <input class="form-check-input"
-               type="radio"
-               name="visibility"
-               id="visibility-private"
-               value="private"
-               {% if not workflow.is_public %}
-                 checked
-               {% endif %}
-               {% if can_manage_sharing %}
-                 hx-post="{% org_url 'workflows:workflow_visibility_update' pk=workflow.pk %}" hx-target="#workflow-visibility-section" hx-swap="outerHTML" hx-vals='{"is_public": "false"}'
-               {% else %}
-                 disabled
-               {% endif %} />
-        <label class="form-check-label d-flex align-items-start gap-2"
-               for="visibility-private">
-          <div>
-            <span class="fw-medium">
-              <i class="bi-lock me-1"></i>{% trans "Private" %}
-            </span>
-            {% if not workflow.is_public %}
-              <span class="badge text-bg-secondary ms-2">{% trans "Current" %}</span>
-            {% endif %}
-            <p class="text-muted small mb-0 mt-1">
-              {% trans "Only org members and invited guests can launch this workflow." %}
-            </p>
-          </div>
-        </label>
-      </div>
-      {# Public option #}
-      <div class="form-check">
-        <input class="form-check-input"
-               type="radio"
-               name="visibility"
-               id="visibility-public"
-               value="public"
-               {% if workflow.is_public %}
-                 checked
-               {% endif %}
-               {% if can_manage_sharing %}
-                 hx-post="{% org_url 'workflows:workflow_visibility_update' pk=workflow.pk %}" hx-target="#workflow-visibility-section" hx-swap="outerHTML" hx-vals='{"is_public": "true"}'
-               {% else %}
-                 disabled
-               {% endif %} />
-        <label class="form-check-label d-flex align-items-start gap-2"
-               for="visibility-public">
-          <div>
-            <span class="fw-medium">
-              <i class="bi-globe me-1"></i>{% trans "Public" %}
-            </span>
-            {% if workflow.is_public %}
-              <span class="badge text-bg-primary ms-2">{% trans "Current" %}</span>
-            {% endif %}
-            <p class="text-muted small mb-0 mt-1">
-              {% trans "Any logged-in user can launch this workflow. Usage is billed to your organization." %}
-            </p>
-          </div>
-        </label>
+
+    {% comment %}Effective-access summary line — combines visibility + x402.{% endcomment %}
+    <div class="alert alert-light border d-flex align-items-start gap-2 mb-3">
+      <i class="bi-people fs-5"></i>
+      <div>
+        <div class="fw-medium">{% trans "Who can run this?" %}</div>
+        <div class="text-muted small">{{ workflow.who_can_run_summary }}</div>
       </div>
     </div>
-    {% if workflow.is_public %}
+
+    {% comment %}── WHO: identity-scoped visibility (three-way) ──{% endcomment %}
+    <div class="mb-2 fw-medium">{% trans "Visibility" %}</div>
+    <p class="text-muted small">
+      {% trans "Choose who, by Validibot identity, may run this workflow for free. Options are limited by your organization's ceiling." %}
+    </p>
+    <div class="d-flex flex-column gap-3">
+      {% for choice in visibility_choices %}
+        <div class="form-check">
+          <input class="form-check-input"
+                 type="radio"
+                 name="workflow_visibility"
+                 id="visibility-{{ choice.value }}"
+                 value="{{ choice.value }}"
+                 {% if workflow.workflow_visibility == choice.value %}
+                   checked
+                 {% endif %}
+                 {% if can_manage_sharing %}
+                   hx-post="{% org_url 'workflows:workflow_visibility_update' pk=workflow.pk %}" hx-target="#workflow-visibility-section" hx-swap="outerHTML" hx-vals='{"workflow_visibility": "{{ choice.value }}"}'
+                 {% else %}
+                   disabled
+                 {% endif %} />
+          <label class="form-check-label d-flex align-items-start gap-2"
+                 for="visibility-{{ choice.value }}">
+            <div>
+              <span class="fw-medium">
+                {% if choice.value == "PRIVATE" %}
+                  <i class="bi-lock me-1"></i>
+                {% elif choice.value == "ORG" %}
+                  <i class="bi-building me-1"></i>
+                {% else %}
+                  <i class="bi-globe me-1"></i>
+                {% endif %}
+                {{ choice.label }}
+              </span>
+              {% if workflow.workflow_visibility == choice.value %}
+                <span class="badge text-bg-primary ms-2">{% trans "Current" %}</span>
+              {% endif %}
+              <p class="text-muted small mb-0 mt-1">
+                {% if choice.value == "PRIVATE" %}
+                  {% trans "Only you and people you invite can run this workflow." %}
+                {% elif choice.value == "ORG" %}
+                  {% trans "Any member of your organization can run this workflow." %}
+                {% else %}
+                  {% trans "Any logged-in Validibot user can run this workflow." %}
+                {% endif %}
+              </p>
+            </div>
+          </label>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if workflow.workflow_visibility == "ALL_USERS" %}
       <div class="alert alert-info mt-3 mb-0 small">
         <i class="bi-info-circle me-1"></i>
-        {% trans "The info page is automatically made public when the workflow is public." %}
+        {% trans "The info page is automatically made public when the workflow is visible to all Validibot users." %}
+      </div>
+    {% endif %}
+
+    {% comment %}
+    ── HOW: agent channels (admin-gated) ──
+    Shown only when the user may edit access (superuser/staff or the org
+    opted in via allow_authors_to_adjust_access). The org-level ceilings
+    themselves are never exposed here.
+    {% endcomment %}
+    {% if can_edit_access %}
+      <hr class="my-4" />
+      <div class="mb-2 fw-medium">{% trans "Agent access" %}</div>
+      <p class="text-muted small">
+        {% trans "These channels are independent of the visibility setting above and of each other." %}
+      </p>
+
+      {% comment %}MCP — authenticated agents on behalf of a user.{% endcomment %}
+      <div class="form-check form-switch mb-3">
+        <input class="form-check-input"
+               type="checkbox"
+               role="switch"
+               name="mcp_enabled"
+               id="mcp-enabled-toggle"
+               value="true"
+               {% if workflow.mcp_enabled %}
+                 checked
+               {% endif %}
+               {% if can_manage_sharing and org_mcp_allowed %}
+                 hx-post="{% org_url 'workflows:workflow_visibility_update' pk=workflow.pk %}" hx-target="#workflow-visibility-section" hx-swap="outerHTML" hx-vals='{"mcp_enabled": "
+                 {% if workflow.mcp_enabled %}
+                   false
+                 {% else %}
+                   true
+                 {% endif %}
+               "
+               "
+               workflow_visibility
+               "
+               :
+               "
+               {{ workflow.workflow_visibility }}
+               "
+               '
+               {% else %}
+               disabled
+               {% endif %} />
+        <label class="form-check-label" for="mcp-enabled-toggle">
+          <span class="fw-medium">{% trans "Allow authenticated agents via MCP" %}</span>
+          <p class="text-muted small mb-0">
+            {% if org_mcp_allowed %}
+              {% trans "Authenticated AI agents may run this workflow on behalf of a user who already has identity access above. Billed to that user's plan quota." %}
+            {% else %}
+              {% trans "MCP access is disabled for this organization." %}
+            {% endif %}
+          </p>
+        </label>
+      </div>
+
+      {% comment %}x402 — paid anonymous public access. DANGER ZONE.{% endcomment %}
+      <div class="form-check form-switch mb-2">
+        <input class="form-check-input"
+               type="checkbox"
+               role="switch"
+               name="x402_enabled"
+               id="x402-enabled-toggle"
+               value="true"
+               {% if workflow.x402_enabled %}
+                 checked
+               {% endif %}
+               {% if can_manage_sharing and org_x402_allowed %}
+                 hx-post="{% org_url 'workflows:workflow_visibility_update' pk=workflow.pk %}" hx-target="#workflow-visibility-section" hx-swap="outerHTML" hx-vals='{"x402_enabled": "
+                 {% if workflow.x402_enabled %}
+                   false
+                 {% else %}
+                   true
+                 {% endif %}
+               "
+               "
+               workflow_visibility
+               "
+               :
+               "
+               {{ workflow.workflow_visibility }}
+               "
+               '
+               {% else %}
+               disabled
+               {% endif %} />
+        <label class="form-check-label" for="x402-enabled-toggle">
+          <span class="fw-medium">{% trans "Publish for paid anonymous access (x402)" %}</span>
+          {% if not org_x402_allowed %}
+            <p class="text-muted small mb-0">
+              {% trans "x402 access is disabled for this organization." %}
+            </p>
+          {% endif %}
+        </label>
+      </div>
+
+      {% comment %}
+      Danger-zone note shown wherever x402 appears (explicitly requested):
+      enabling x402 exposes the workflow to anyone on the internet who pays,
+      regardless of the visibility tier above.
+      {% endcomment %}
+      <div class="alert alert-warning small mb-0" role="alert">
+        <i class="bi-exclamation-triangle me-1"></i>
+        {% trans "Enabling this makes the workflow callable by ANYONE on the internet who pays the per-call price (anonymous x402), regardless of the visibility setting above." %}
       </div>
     {% endif %}
   </div>

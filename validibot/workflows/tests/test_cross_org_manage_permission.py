@@ -66,6 +66,8 @@ def attacker_and_victim_workflow(db):
     full rights in org A, and the victim workflow lives in org B and is
     reachable cross-org because it is public.
     """
+    from validibot.workflows.constants import WorkflowVisibility
+
     org_a = OrganizationFactory()
     org_b = OrganizationFactory()
 
@@ -73,7 +75,13 @@ def attacker_and_victim_workflow(db):
     grant_role(attacker, org_a, RoleCode.OWNER)
     attacker.set_current_org(org_a)
 
-    victim_workflow = WorkflowFactory(org=org_b, is_public=True)
+    # ALL_USERS visibility is the new home of ``is_public=True``: it makes
+    # the victim workflow cross-org reachable (viewable by anyone), which
+    # is the precondition the escalation test needs.
+    victim_workflow = WorkflowFactory(
+        org=org_b,
+        workflow_visibility=WorkflowVisibility.ALL_USERS,
+    )
     return attacker, victim_workflow, org_b
 
 

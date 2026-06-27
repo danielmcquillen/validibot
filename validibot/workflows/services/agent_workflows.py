@@ -60,7 +60,7 @@ def _public_x402_predicate() -> Q:
 
     The resolver SHOULD have a defensive filter that enforces every
     invariant the publishing decision depends on, not just the
-    ``agent_public_discovery`` flag. ``Workflow.clean()`` enforces
+    ``x402_enabled`` flag. ``Workflow.clean()`` enforces
     these as a unit, but ``clean()`` doesn't fire on
     ``QuerySet.update()``, on fixtures (``loaddata``), or on
     admin-side bulk paths. The ADR called for matching DB
@@ -72,16 +72,17 @@ def _public_x402_predicate() -> Q:
 
     1. Lifecycle: ``is_active=True``, not ``is_tombstoned``,
        not ``is_archived``.
-    2. Public-discovery flag is on: ``agent_public_discovery=True``.
-    3. Agent access is enabled (the runtime gate):
-       ``agent_access_enabled=True``.
-    4. Billing mode is x402: ``agent_billing_mode=AGENT_PAYS_X402``.
+    2. x402 paid access is enabled: ``x402_enabled=True``. This is
+       INDEPENDENT of MCP access (``mcp_enabled``) — a paid-public
+       workflow need not also be MCP-accessible. (Decoupled in the
+       2026-06-27 access-control refactor.)
+    3. Billing mode is x402: ``agent_billing_mode=AGENT_PAYS_X402``.
        Other billing modes don't expose anonymous agents to a
        payment flow, so they shouldn't appear in the public catalog.
-    5. Price is set (positive): ``agent_price_cents > 0``. A
+    4. Price is set (positive): ``agent_price_cents > 0``. A
        price of 0 or null means the row was created mid-config and
        doesn't yet describe a paying transaction.
-    6. Retention invariant for x402: ``input_retention=DO_NOT_STORE``.
+    5. Retention invariant for x402: ``input_retention=DO_NOT_STORE``.
        x402 is anonymous per-call payment; storing the input would
        undermine the privacy model the operator agreed to. The
        form-level cascade enforces this for human-driven edits;
@@ -97,8 +98,7 @@ def _public_x402_predicate() -> Q:
 
     return (
         Q(is_active=True)
-        & Q(agent_public_discovery=True)
-        & Q(agent_access_enabled=True)
+        & Q(x402_enabled=True)
         & Q(agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402)
         & Q(agent_price_cents__gt=0)
         & Q(input_retention=SubmissionRetention.DO_NOT_STORE)
@@ -238,11 +238,11 @@ class AgentWorkflowResolver:
         """Return the latest active workflow matching slug, x402-relaxed.
 
         Variant of :meth:`get_by_slug` that does NOT filter on
-        ``agent_public_discovery``. Used by x402's ``_resolve_workflow``
-        which has its own publishing checks (``_ensure_public_x402_workflow``
-        verifies ``agent_public_discovery`` AND ``agent_access_enabled``
-        AND ``agent_billing_mode``) — separating discovery from
-        resolution lets x402's error envelope distinguish "not found"
+        ``x402_enabled``. Used by x402's ``_resolve_workflow`` which has
+        its own publishing checks (``_ensure_public_x402_workflow``
+        verifies ``x402_enabled`` AND ``agent_billing_mode`` — MCP access
+        is INDEPENDENT and not required for x402) — separating discovery
+        from resolution lets x402's error envelope distinguish "not found"
         from "not published for x402".
 
         This split exists because x402 wants different error codes
@@ -257,8 +257,8 @@ class AgentWorkflowResolver:
 
         Returns:
             The latest active version of the matching workflow,
-            irrespective of ``agent_public_discovery``. None if no
-            active version exists.
+            irrespective of ``x402_enabled``. None if no active version
+            exists.
         """
         # Local import — see WorkflowAccessResolver.list_for_user.
         from validibot.workflows.models import Workflow

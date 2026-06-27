@@ -254,8 +254,8 @@ class WorkflowSlimSerializer(serializers.ModelSerializer):
             "is_active",
             "allowed_file_types",
             "input_schema",
-            "agent_access_enabled",
-            "agent_public_discovery",
+            "mcp_enabled",
+            "x402_enabled",
             "agent_price_cents",
             "url",
         ]
@@ -287,7 +287,7 @@ class WorkflowFullSerializer(WorkflowSlimSerializer):
     class Meta(WorkflowSlimSerializer.Meta):
         fields = [
             *WorkflowSlimSerializer.Meta.fields,
-            "is_public",
+            "workflow_visibility",
             "allow_submission_name",
             "allow_submission_meta_data",
             "allow_submission_short_description",

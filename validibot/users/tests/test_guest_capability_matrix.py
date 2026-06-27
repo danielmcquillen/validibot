@@ -43,6 +43,7 @@ from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
 from validibot.users.user_kind import classify_as_basic
 from validibot.users.user_kind import classify_as_guest
+from validibot.workflows.constants import WorkflowVisibility
 
 pytestmark = pytest.mark.django_db
 
@@ -242,8 +243,8 @@ class TestGuestCannotDo:
         guest = _setup_guest_user()
         # Create workflows in an org the guest has no relationship to.
         org = OrganizationFactory()
-        WorkflowFactory(org=org, is_public=False)
-        WorkflowFactory(org=org, is_public=False)
+        WorkflowFactory(org=org, workflow_visibility=WorkflowVisibility.PRIVATE)
+        WorkflowFactory(org=org, workflow_visibility=WorkflowVisibility.PRIVATE)
 
         visible = Workflow.objects.for_user(guest)
         assert visible.count() == 0
@@ -263,8 +264,12 @@ class TestGuestCannotDo:
 
         guest = _setup_guest_user()
         org = OrganizationFactory()
-        granted_wf = WorkflowFactory(org=org, is_public=False)
-        ungranted_wf = WorkflowFactory(org=org, is_public=False)
+        granted_wf = WorkflowFactory(
+            org=org, workflow_visibility=WorkflowVisibility.PRIVATE
+        )
+        ungranted_wf = WorkflowFactory(
+            org=org, workflow_visibility=WorkflowVisibility.PRIVATE
+        )
         WorkflowAccessGrant.objects.create(
             workflow=granted_wf,
             user=guest,
@@ -325,7 +330,7 @@ class TestGuestCanDo:
         from validibot.workflows.tests.factories import WorkflowFactory
 
         guest = _setup_guest_user()
-        wf = WorkflowFactory(is_public=False)
+        wf = WorkflowFactory(workflow_visibility=WorkflowVisibility.PRIVATE)
         WorkflowAccessGrant.objects.create(workflow=wf, user=guest, is_active=True)
 
         visible = Workflow.objects.for_user(guest)
@@ -355,11 +360,12 @@ class TestGuestCanDo:
         assert wf1.pk in visible_pks
         assert wf2.pk in visible_pks
 
-    def test_can_view_public_workflows(self):
-        """Guard: ``is_public=True`` resolved by for_user.
+    def test_can_view_all_users_workflows(self):
+        """Guard: ``WorkflowVisibility.ALL_USERS`` resolved by for_user.
 
-        Platform-wide public workflows are visible to every
-        authenticated user, including guests.
+        ALL_USERS workflows (the old ``is_public=True`` semantics) are
+        visible to every authenticated user, including guests with no
+        membership or grant.
         """
 
         set_license(_pro_license_with_guest_management())
@@ -367,7 +373,7 @@ class TestGuestCanDo:
         from validibot.workflows.tests.factories import WorkflowFactory
 
         guest = _setup_guest_user()
-        public_wf = WorkflowFactory(is_public=True)
+        public_wf = WorkflowFactory(workflow_visibility=WorkflowVisibility.ALL_USERS)
 
         visible_pks = set(
             Workflow.objects.for_user(guest).values_list("pk", flat=True),

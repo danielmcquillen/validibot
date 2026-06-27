@@ -35,6 +35,7 @@ from validibot.users.permissions import PermissionCode
 from validibot.users.permissions import roles_for_permission
 from validibot.workflows.constants import AgentBillingMode
 from validibot.workflows.constants import WorkflowHistoryPolicy
+from validibot.workflows.constants import WorkflowVisibility
 
 if TYPE_CHECKING:
     from validibot.users.constants import RoleCode
@@ -115,9 +116,12 @@ class WorkflowQuerySet(models.QuerySet):
            for the workflow's org. Authorises every CURRENT and FUTURE
            workflow in that org with no per-workflow maintenance — the
            "100 workflows, 10 new a month" simplification.
-        5. **Public**: the workflow's ``is_public`` flag is True. Public
-           workflows are visible to every authenticated user; their
-           visibility is the workflow author's deliberate choice.
+        5. **Visibility tier** (``workflow_visibility``): ``ALL_USERS``
+           is visible to every authenticated user; ``ORG`` additionally
+           surfaces it to org members + org-wide guests (paths 1 & 4);
+           ``PRIVATE`` restricts to the creator + explicit per-workflow
+           grants only (paths 2 & 3). Capability checks
+           (``required_role_code``) ignore this tiering — see below.
 
         If ``required_role_code`` is supplied, ONLY the membership path
         is used and it must match that specific role. The grant /
@@ -148,43 +152,62 @@ class WorkflowQuerySet(models.QuerySet):
             _has_membership=Exists(membership_subq),
         )
 
-        access_filter = Q(_has_membership=True) | Q(user_id=user.id)
+        # Role-specific queries are CAPABILITY checks ("is this user an
+        # AUTHOR in this workflow's org?"), not read-visibility. They are
+        # deliberately NOT narrowed by ``workflow_visibility`` — an org
+        # member's role-based capability does not depend on how widely
+        # the workflow is shared. The creator always qualifies.
+        if required_role_code:
+            return qs.filter(
+                Q(_has_membership=True) | Q(user_id=user.id),
+            ).distinct()
 
-        # For non-role-specific queries, union in the guest-style access
-        # paths: per-workflow grants, org-wide guest access, and public
-        # workflows. Role-specific queries deliberately skip these
-        # (see docstring).
-        if not required_role_code:
-            # Per-workflow grant: family-scoped to ``(org_id, slug)`` so
-            # any active grant on any version of the workflow family
-            # makes every version of that family visible. Without the
-            # family expansion, cloning a workflow to v2 would silently
-            # strip a guest's access until someone re-granted manually.
-            grant_subq = WorkflowAccessGrant.objects.filter(
-                user=user,
-                is_active=True,
-                workflow__org_id=OuterRef("org_id"),
-                workflow__slug=OuterRef("slug"),
-            )
-            qs = qs.annotate(_has_grant=Exists(grant_subq))
+        # Read/visibility path — tier by ``workflow_visibility``:
+        #   • creator + explicit per-workflow grant  → ALL tiers (incl PRIVATE)
+        #   • org membership + org-wide guest access → ORG and ALL_USERS only
+        #   • ALL_USERS                              → any authenticated user
+        # PRIVATE therefore surfaces a workflow only to its creator and
+        # the people explicitly invited to it (grants) — NOT to every
+        # org member, which is the new behaviour the old ``is_public``
+        # boolean could not express.
 
-            # Org-wide guest access: one row authorises every workflow
-            # in the org, current and future. The subquery joins back
-            # by ``org_id`` so the read-side picks up new workflows as
-            # they're added, with no acceptance-time snapshot.
-            org_guest_subq = OrgGuestAccess.objects.filter(
-                user=user,
-                is_active=True,
-                org_id=OuterRef("org_id"),
-            )
-            qs = qs.annotate(_has_org_guest_access=Exists(org_guest_subq))
+        # Per-workflow grant: family-scoped to ``(org_id, slug)`` so any
+        # active grant on any version of the workflow family makes every
+        # version visible. Without the family expansion, cloning a
+        # workflow to v2 would silently strip a guest's access until
+        # someone re-granted manually.
+        grant_subq = WorkflowAccessGrant.objects.filter(
+            user=user,
+            is_active=True,
+            workflow__org_id=OuterRef("org_id"),
+            workflow__slug=OuterRef("slug"),
+        )
+        qs = qs.annotate(_has_grant=Exists(grant_subq))
 
-            access_filter = (
-                access_filter
-                | Q(_has_grant=True)
-                | Q(_has_org_guest_access=True)
-                | Q(is_public=True)
-            )
+        # Org-wide guest access: one row authorises every workflow in the
+        # org, current and future. The subquery joins back by ``org_id``
+        # so the read-side picks up new workflows as they're added, with
+        # no acceptance-time snapshot.
+        org_guest_subq = OrgGuestAccess.objects.filter(
+            user=user,
+            is_active=True,
+            org_id=OuterRef("org_id"),
+        )
+        qs = qs.annotate(_has_org_guest_access=Exists(org_guest_subq))
+
+        org_or_wider = Q(
+            workflow_visibility__in=[
+                WorkflowVisibility.ORG,
+                WorkflowVisibility.ALL_USERS,
+            ],
+        )
+        access_filter = (
+            Q(user_id=user.id)
+            | Q(_has_grant=True)
+            | (Q(_has_membership=True) & org_or_wider)
+            | (Q(_has_org_guest_access=True) & org_or_wider)
+            | Q(workflow_visibility=WorkflowVisibility.ALL_USERS)
+        )
 
         return qs.filter(access_filter).distinct()
 
@@ -242,23 +265,23 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
             #   • Fixtures and ``loaddata``
             #   • Raw SQL writes
             # So a row can be persisted that satisfies
-            # ``agent_public_discovery=True`` while violating the rest
-            # of the publishing predicate. The defensive resolver
-            # filter (``_public_x402_predicate``) hides such rows from
-            # the catalog, but a row that exists in a contradictory
-            # state is still a bug — the constraints below close that
-            # last gap by enforcing each invariant at the database
-            # level for every write path.
+            # ``x402_enabled=True`` while violating the rest of the x402
+            # publishing predicate. The defensive resolver filter
+            # (``_public_x402_predicate``) hides such rows from the
+            # catalog, but a row that exists in a contradictory state is
+            # still a bug — the constraints below close that last gap by
+            # enforcing each invariant at the database level for every
+            # write path.
             #
             # Each constraint mirrors a clause in
             # ``_public_x402_predicate`` and the corresponding
             # ValidationError raised in ``clean()``.
-            models.CheckConstraint(
-                condition=(
-                    Q(agent_public_discovery=False) | Q(agent_access_enabled=True)
-                ),
-                name="ck_workflow_public_discovery_requires_agent_access",
-            ),
+            #
+            # NOTE: x402 is INDEPENDENT of MCP — there is deliberately no
+            # constraint coupling ``x402_enabled`` to ``mcp_enabled``. A
+            # workflow may be private to its org for identity-scoped use
+            # while still being paid-public to anonymous agents via x402.
+            #
             # x402 requires a positive, NON-NULL price.  SQL CHECK
             # constraints treat ``NULL > 0`` as UNKNOWN (not FALSE),
             # so the original ``agent_price_cents__gt=0`` clause
@@ -282,38 +305,36 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
             # for the same reason — ``clean()`` covers them but bulk
             # paths bypass it.
             #
-            # ① Public discovery implies x402 billing.  A workflow on
-            # the cross-org public catalog must accept x402 — the
-            # catalog is the anonymous payment surface.  Without this
-            # constraint a row with ``agent_public_discovery=True`` and
+            # ① x402 publish implies x402 billing.  A paid-public
+            # workflow must accept x402 — that is the anonymous payment
+            # surface.  Without this a row with ``x402_enabled=True`` and
             # ``agent_billing_mode=AUTHOR_PAYS`` could persist via
             # ``QuerySet.update`` (clean() would have rejected it,
             # but clean() doesn't run on bulk paths).
             models.CheckConstraint(
                 condition=(
-                    Q(agent_public_discovery=False)
+                    Q(x402_enabled=False)
                     | Q(agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402)
                 ),
-                name="ck_workflow_public_discovery_requires_x402_billing",
+                name="ck_workflow_x402_enabled_requires_x402_billing",
             ),
-            # ② Public discovery implies the row is alive (not
-            # archived, not tombstoned).  An archived row that still
-            # carries ``agent_public_discovery=True`` would be a
-            # contradiction the resolver hides from the catalog but
-            # x402 run-creation could still hit before the
-            # publish-invariants re-check (P1 #5) catches it.  The
-            # legacy NULL handling (treating ``is_archived=NULL`` and
-            # ``is_tombstoned=NULL`` as "not archived" / "not
+            # ② x402 publish implies the row is alive (not archived, not
+            # tombstoned).  An archived row that still carries
+            # ``x402_enabled=True`` would be a contradiction the resolver
+            # hides from the catalog but x402 run-creation could still
+            # hit before the publish-invariants re-check (P1 #5) catches
+            # it.  The legacy NULL handling (treating ``is_archived=NULL``
+            # and ``is_tombstoned=NULL`` as "not archived" / "not
             # tombstoned") matches ``_public_x402_predicate``.
             models.CheckConstraint(
                 condition=(
-                    Q(agent_public_discovery=False)
+                    Q(x402_enabled=False)
                     | (
                         (Q(is_archived=False) | Q(is_archived__isnull=True))
                         & (Q(is_tombstoned=False) | Q(is_tombstoned__isnull=True))
                     )
                 ),
-                name="ck_workflow_public_discovery_requires_alive_row",
+                name="ck_workflow_x402_enabled_requires_alive_row",
             ),
         ]
         ordering = [
@@ -474,35 +495,49 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         ),
     )
 
-    is_public = models.BooleanField(
-        default=False,
+    # ── Access: identity-scoped visibility (the WHO dial) ───────────────
+    # Who, by Validibot identity, may run this workflow for FREE. Applies
+    # uniformly to the web UI and to authenticated MCP agents (an agent
+    # acts on behalf of its user). INDEPENDENT of x402 paid access below.
+    # Capped by ``Organization.workflow_visibility_cap``.
+    workflow_visibility = models.CharField(
+        max_length=20,
+        choices=WorkflowVisibility.choices,
+        default=WorkflowVisibility.ORG,
         help_text=_(
-            "If true, any authenticated user can launch this workflow.",
+            "Who, by Validibot identity, may run this workflow for free: "
+            "PRIVATE (you and people you invite), ORG (your organization — "
+            "the default), or ALL_USERS (any Validibot user). Capped by the "
+            "organization ceiling. Independent of x402 paid access.",
         ),
     )
 
-    # ── Agent (MCP) access ──────────────────────────────────────────────
-    # These fields control whether AI agents can discover and invoke this
-    # workflow via MCP. They are dormant in the community edition — the
-    # cloud layer (or a self-hosted MCP server) reads them via the REST API.
+    # ── Access: agent channels (the HOW dials) ──────────────────────────
+    # ``mcp_enabled`` and ``x402_enabled`` are INDEPENDENT channels.
+    # mcp_enabled = authenticated agents (on behalf of a user with
+    # identity access above), billed to that user's plan quota.
+    # x402_enabled = paid anonymous access to anyone on the internet who
+    # pays, regardless of ``workflow_visibility``. They are dormant in the
+    # community edition — the cloud layer / a self-hosted MCP server reads
+    # them via the REST API.
 
-    agent_access_enabled = models.BooleanField(
+    mcp_enabled = models.BooleanField(
         default=False,
         help_text=_(
-            "Master switch for all agent access via MCP. When enabled, "
-            "authenticated agents in your organization can discover and "
-            "invoke this workflow. For public cross-org discovery, also "
-            "enable 'Public discovery'.",
+            "Allow authenticated AI agents to run this workflow via MCP, on "
+            "behalf of a user who already has identity access through "
+            "'workflow_visibility'. Billed to that user's plan quota. "
+            "Independent of x402 paid access.",
         ),
     )
 
-    agent_public_discovery = models.BooleanField(
+    x402_enabled = models.BooleanField(
         default=False,
         help_text=_(
-            "List this workflow on the cross-org public catalog so agents "
-            "outside your organization can discover and run it via x402 "
-            "micropayments. Requires 'Agent access enabled' and "
-            "automatically sets billing to 'Agent pays via x402'.",
+            "Publish this workflow for PAID, ANONYMOUS access via x402: "
+            "anyone on the internet who pays the per-call price can run it, "
+            "regardless of 'workflow_visibility'. Automatically bills via "
+            "x402 and requires a price and 'Do not store' retention.",
         ),
     )
 
@@ -697,23 +732,13 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                     {"input_schema": exc.messages},
                 ) from exc
 
-        # ── Cascade: disabling agent access clears public discovery ───
-        if not self.agent_access_enabled:
-            self.agent_public_discovery = False
-
-        # ── Cascade: public discovery forces x402 billing ─────────────
-        if self.agent_public_discovery:
+        # ── Cascade: enabling x402 selects the x402 billing rail ──────
+        # x402 and MCP are INDEPENDENT channels — there is deliberately
+        # no cascade between ``mcp_enabled`` and ``x402_enabled``.
+        # Enabling paid public access selects the x402 billing mode; the
+        # price and retention guards below then apply.
+        if self.x402_enabled:
             self.agent_billing_mode = AgentBillingMode.AGENT_PAYS_X402
-
-        # ── Public discovery requires agent access (belt-and-suspenders)
-        if self.agent_public_discovery and not self.agent_access_enabled:
-            raise ValidationError(
-                {
-                    "agent_public_discovery": _(
-                        "Public discovery requires agent access to be enabled first.",
-                    ),
-                },
-            )
 
         # ── x402 billing requires a price ─────────────────────────────
         if (
@@ -759,8 +784,11 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                 candidate = f"wf-{uuid.uuid4().hex[:8]}"
             self.slug = candidate
 
-        # Public workflows must have their info page public too
-        if self.is_public and not self.make_info_page_public:
+        # ALL_USERS-visible workflows surface their info page publicly too
+        if (
+            self.workflow_visibility == WorkflowVisibility.ALL_USERS
+            and not self.make_info_page_public
+        ):
             self.make_info_page_public = True
 
         self.full_clean()
@@ -778,8 +806,20 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         if not user or not user.is_authenticated:
             return False
 
-        # Org member check (existing behavior)
-        if user.has_perm(PermissionCode.WORKFLOW_VIEW.value, self):
+        # ALL_USERS visibility: any authenticated user can view.
+        if self.workflow_visibility == WorkflowVisibility.ALL_USERS:
+            return True
+
+        # The creator can always view.
+        if self.user_id == user.id:
+            return True
+
+        # Org member with VIEW — only when visibility is ORG, not
+        # PRIVATE. A PRIVATE workflow is visible solely to its creator
+        # and the people explicitly invited to it (grants, below).
+        if self.workflow_visibility == WorkflowVisibility.ORG and user.has_perm(
+            PermissionCode.WORKFLOW_VIEW.value, self
+        ):
             return True
 
         # Guest grant check.
@@ -828,12 +868,19 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         if not user or not user.is_authenticated:
             return False
 
-        # Public workflows: any authenticated user can execute
-        if self.is_public:
+        # ALL_USERS visibility: any authenticated user can execute.
+        if self.workflow_visibility == WorkflowVisibility.ALL_USERS:
             return True
 
-        # Org member check
-        if user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, self):
+        # The creator can always execute.
+        if self.user_id == user.id:
+            return True
+
+        # Org member with LAUNCH — only when visibility is ORG, not
+        # PRIVATE (PRIVATE = creator + explicitly-invited grants only).
+        if self.workflow_visibility == WorkflowVisibility.ORG and user.has_perm(
+            PermissionCode.WORKFLOW_LAUNCH.value, self
+        ):
             return True
 
         # Guest grant check — family-scoped.
@@ -887,10 +934,10 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         self.is_tombstoned = True
         self.is_archived = True
         self.is_active = False
-        self.is_public = False
+        self.workflow_visibility = WorkflowVisibility.PRIVATE
         self.make_info_page_public = False
-        self.agent_access_enabled = False
-        self.agent_public_discovery = False
+        self.mcp_enabled = False
+        self.x402_enabled = False
         self.tombstoned_at = now
         self.tombstoned_by = deleted_by
         self.tombstone_reason = cleaned_reason
@@ -900,10 +947,10 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                 "is_tombstoned",
                 "is_archived",
                 "is_active",
-                "is_public",
+                "workflow_visibility",
                 "make_info_page_public",
-                "agent_access_enabled",
-                "agent_public_discovery",
+                "mcp_enabled",
+                "x402_enabled",
                 "tombstoned_at",
                 "tombstoned_by",
                 "tombstone_reason",
@@ -1182,6 +1229,39 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     def get_public_info(self) -> WorkflowPublicInfo:
         public_info, _ = WorkflowPublicInfo.objects.get_or_create(workflow=self)
         return public_info
+
+    def who_can_run_summary(self) -> str:
+        """Return a short, human-readable description of who may run this.
+
+        Combines the two independent access ideas into one sentence for
+        the sharing UI's "Who can run this?" line:
+
+        - ``workflow_visibility`` answers WHO, by Validibot identity, may
+          run the workflow for free (PRIVATE / ORG / ALL_USERS).
+        - ``x402_enabled`` is the INDEPENDENT paid-anonymous channel: when
+          on, anyone on the internet who pays the per-call price may run
+          it too, regardless of the visibility tier. We append that as a
+          separate clause so the reader sees it is additive, not a
+          replacement for the identity audience.
+
+        This is a read-only display helper — it never changes state and
+        carries no authorization weight (the real gates live on
+        ``can_execute`` / the resolvers).
+        """
+        summaries = {
+            WorkflowVisibility.PRIVATE: _("Private — only you and people you invite"),
+            WorkflowVisibility.ORG: _("Your organization"),
+            WorkflowVisibility.ALL_USERS: _("All Validibot users"),
+        }
+        # Fall back to the most restrictive description for any unexpected
+        # value so the line never renders blank on a malformed row.
+        base = summaries.get(
+            self.workflow_visibility,
+            summaries[WorkflowVisibility.PRIVATE],
+        )
+        if self.x402_enabled:
+            base = str(base) + str(_(" · plus anyone who pays via x402"))
+        return str(base)
 
 
 class WorkflowPublicInfo(TimeStampedModel):

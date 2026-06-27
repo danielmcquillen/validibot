@@ -53,6 +53,51 @@ class AgentBillingMode(models.TextChoices):
     AGENT_PAYS_X402 = "AGENT_PAYS_X402", _("Agent pays via x402 micropayment")
 
 
+class WorkflowVisibility(models.TextChoices):
+    """Who, by Validibot identity, may run a workflow for free.
+
+    This is the workflow's *identity-scoped* audience, applied uniformly
+    to the web UI and to authenticated MCP agents (an agent acts on
+    behalf of its user, so it inherits the user's identity). It is
+    INDEPENDENT of x402 paid access (``Workflow.x402_enabled``), which
+    exposes the workflow to anonymous payers regardless of this setting.
+
+    Distinct from ``AccessScope`` (ORG_ALL vs RESTRICTED), which narrows
+    *within* the ORG tier to specific members/roles. Visibility is the
+    outer dial; AccessScope refines the ORG rung.
+
+    Ordered from most to least restrictive: PRIVATE < ORG < ALL_USERS.
+    The order enforces the org-level cap — a workflow's visibility may
+    not exceed its organization's ``workflow_visibility`` ceiling.
+    """
+
+    PRIVATE = "PRIVATE", _("Private — only you and people you invite")
+    ORG = "ORG", _("Your organization")
+    ALL_USERS = "ALL_USERS", _("All Validibot users")
+
+
+# Visibility ordered most-restrictive first. A workflow's visibility is
+# permitted only when its rank is <= the org ceiling's rank. Centralised
+# here so the model, forms, and resolvers share one definition of "wider".
+WORKFLOW_VISIBILITY_ORDER = (
+    WorkflowVisibility.PRIVATE,
+    WorkflowVisibility.ORG,
+    WorkflowVisibility.ALL_USERS,
+)
+
+
+def visibility_rank(value: str) -> int:
+    """Return restrictiveness rank of a visibility value (0 = most restrictive)."""
+
+    return WORKFLOW_VISIBILITY_ORDER.index(WorkflowVisibility(value))
+
+
+def visibility_within_cap(value: str, cap: str) -> bool:
+    """Return True if ``value`` is no wider than ``cap`` (org guardrail)."""
+
+    return visibility_rank(value) <= visibility_rank(cap)
+
+
 class WorkflowStartErrorCode(models.TextChoices):
     NO_WORKFLOW_STEPS = "NO_WORKFLOW_STEPS", _("Workflow has no steps to execute")
     WORKFLOW_INACTIVE = "WORKFLOW_INACTIVE", _("Workflow is inactive")

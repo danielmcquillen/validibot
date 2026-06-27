@@ -9,7 +9,7 @@ Guest management requires the `guest_management` Pro feature (installed by `vali
 Each user account has a system-wide `user_kind`:
 
 - **`BASIC`** — regular users. Members of organizations they belong to; their per-org capabilities flow from `Membership` roles.
-- **`GUEST`** — external collaborators. No `Membership` rows. Access workflows via `WorkflowAccessGrant` (per-workflow), `OrgGuestAccess` (org-wide), or `is_public=True` workflows.
+- **`GUEST`** — external collaborators. No `Membership` rows. Access workflows via `WorkflowAccessGrant` (per-workflow), `OrgGuestAccess` (org-wide), or workflows whose `workflow_visibility` is `ALL_USERS`.
 
 The classification is **sticky**: it only changes when a superuser explicitly runs the `promote_user` command or the matching Django admin action. A user's kind does NOT change automatically when their grants or memberships change. This protects against silent privilege escalation — an unrelated code path adding a `Membership` row to a guest's account is rejected at the data layer.
 

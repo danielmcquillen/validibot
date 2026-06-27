@@ -26,7 +26,7 @@ class WorkflowAdmin(admin.ModelAdmin):
         "is_active",
         "is_archived",
         "make_info_page_public",
-        "is_public",
+        "workflow_visibility",
         "allowed_file_types",
         "created",
         "modified",

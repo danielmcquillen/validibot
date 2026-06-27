@@ -334,20 +334,26 @@ class TestForUserOrgGuestAccessBranch:
         assert wf_b.pk not in visible
 
 
-class TestForUserPublicBranch:
-    """``for_user`` includes ``is_public=True`` workflows for any auth user.
+class TestForUserAllUsersVisibilityBranch:
+    """``for_user`` includes ALL_USERS-visible workflows for any auth user.
 
-    Public workflows are the author's deliberate choice — the
-    visibility is platform-wide, not per-org. Anyone authenticated
-    can see them.
+    ``WorkflowVisibility.ALL_USERS`` is the new home of the old
+    ``is_public=True`` behaviour: the audience is platform-wide, not
+    per-org, so anyone authenticated can see the workflow. The default
+    ``ORG`` tier (the old ``is_public=False``) restricts to org members
+    + org-wide guests, so an unrelated user must NOT see it.
     """
 
-    def test_public_workflow_visible_to_unrelated_user(self):
-        """A user with no membership/grant sees a public workflow."""
+    def test_all_users_workflow_visible_to_unrelated_user(self):
+        """A user with no membership/grant sees an ALL_USERS workflow."""
+        from validibot.workflows.constants import WorkflowVisibility
         from validibot.workflows.models import Workflow
 
         author = UserFactory()
-        public_wf = WorkflowFactory(user=author, is_public=True)
+        public_wf = WorkflowFactory(
+            user=author,
+            workflow_visibility=WorkflowVisibility.ALL_USERS,
+        )
 
         unrelated = UserFactory(orgs=[])
         Membership.objects.filter(user=unrelated).delete()
@@ -357,17 +363,23 @@ class TestForUserPublicBranch:
         )
         assert public_wf.pk in visible
 
-    def test_non_public_workflow_invisible_without_other_path(self):
-        """``is_public=False`` blocks visibility absent membership/grant.
+    def test_org_visibility_workflow_invisible_without_other_path(self):
+        """The default ORG tier blocks visibility absent membership/grant.
 
-        Pin to ensure the public branch is the *only* thing making a
-        public workflow visible — flipping it off should hide the row
-        for users without other access paths.
+        Pin to ensure ALL_USERS is the *only* tier that makes a workflow
+        visible to an unrelated user — the default ORG tier should hide
+        the row for users without an org/grant access path. (This is the
+        behaviour the old ``is_public=False`` had for non-members, now
+        expressed through the visibility enum.)
         """
+        from validibot.workflows.constants import WorkflowVisibility
         from validibot.workflows.models import Workflow
 
         author = UserFactory()
-        private_wf = WorkflowFactory(user=author, is_public=False)
+        org_wf = WorkflowFactory(
+            user=author,
+            workflow_visibility=WorkflowVisibility.ORG,
+        )
 
         unrelated = UserFactory(orgs=[])
         Membership.objects.filter(user=unrelated).delete()
@@ -375,4 +387,4 @@ class TestForUserPublicBranch:
         visible = set(
             Workflow.objects.for_user(unrelated).values_list("pk", flat=True),
         )
-        assert private_wf.pk not in visible
+        assert org_wf.pk not in visible

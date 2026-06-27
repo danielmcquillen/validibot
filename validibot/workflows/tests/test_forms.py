@@ -896,8 +896,9 @@ def test_workflow_form_superuser_bypasses_contract_lock():
         data=_post_payload_for(
             workflow,
             allowed_file_types=[SubmissionFileType.JSON],
-            # Superusers see the agent_* fields; provide the
-            # required billing-mode default so the bind succeeds.
+            # Superusers see the access fields; provide the required
+            # visibility + billing-mode defaults so the bind succeeds.
+            workflow_visibility=workflow.workflow_visibility,
             agent_billing_mode=workflow.agent_billing_mode,
         ),
         instance=workflow,
@@ -938,8 +939,9 @@ def test_workflow_form_superuser_bypass_writes_audit_entry():
         data=_post_payload_for(
             workflow,
             allowed_file_types=[SubmissionFileType.JSON],
-            # Superusers see the agent_* fields; provide the
-            # required billing-mode default so the bind succeeds.
+            # Superusers see the access fields; provide the required
+            # visibility + billing-mode defaults so the bind succeeds.
+            workflow_visibility=workflow.workflow_visibility,
             agent_billing_mode=workflow.agent_billing_mode,
         ),
         instance=workflow,

@@ -491,11 +491,15 @@ class WorkflowSharingView(WorkflowObjectMixin, TemplateView):
         # page.  The helpers also dedupe to one row per user/email.
         context.update(
             {
-                "workflow": workflow,
                 "access_grants": _family_active_grants_for_listing(workflow),
                 "pending_invites": _family_pending_invites_for_listing(workflow),
-                "can_manage_sharing": self.user_can_manage_sharing(),
             },
+        )
+        # The visibility-section signals (clamped choices, org ceilings,
+        # access-edit gate) come from the shared builder so the initial
+        # page render and the HTMX re-render after a POST stay identical.
+        context.update(
+            _build_visibility_section_context(self, workflow, self.request),
         )
         return context
 
@@ -525,40 +529,142 @@ class WorkflowSharingView(WorkflowObjectMixin, TemplateView):
         return breadcrumbs
 
 
+def _user_can_edit_workflow_access(user, workflow) -> bool:
+    """Return True when ``user`` may edit ``workflow``'s access controls.
+
+    Mirrors ``WorkflowForm._user_can_edit_access``: the per-workflow
+    access controls (visibility tier + the MCP / x402 agent channels) are
+    privileged. They may be changed only by a Django superuser/staff
+    member, OR when the workflow's organization has opted in via
+    ``Organization.allow_authors_to_adjust_access``.
+
+    This is separate from ``user_can_manage_sharing`` (which gates the
+    guest-invite surface): a workflow author can always invite guests to
+    their own workflow, but may only retune the access tier / agent
+    channels when their org allows it.
+    """
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+        return True
+    org = getattr(workflow, "org", None)
+    return bool(org and getattr(org, "allow_authors_to_adjust_access", False))
+
+
+def _build_visibility_section_context(view, workflow, request):
+    """Assemble the context the visibility section partial renders with.
+
+    Centralised so the GET-rendered page and the HTMX re-render after a
+    POST stay in lock-step. Surfaces the clamped visibility choices, the
+    org's MCP / x402 ceilings, and whether the current user may edit the
+    access controls — all read-only signals the template uses to decide
+    what to show, disable, or hide.
+    """
+    from validibot.workflows.constants import WORKFLOW_VISIBILITY_ORDER
+    from validibot.workflows.constants import WorkflowVisibility
+    from validibot.workflows.constants import visibility_within_cap
+
+    org = workflow.org
+    cap = getattr(org, "workflow_visibility_cap", None) or WorkflowVisibility.ALL_USERS
+    labels = dict(WorkflowVisibility.choices)
+    visibility_choices = [
+        {"value": value, "label": labels[value]}
+        for value in WORKFLOW_VISIBILITY_ORDER
+        if visibility_within_cap(value, cap)
+    ]
+    return {
+        "workflow": workflow,
+        "can_manage_sharing": view.user_can_manage_sharing(),
+        "can_edit_access": _user_can_edit_workflow_access(request.user, workflow),
+        "visibility_choices": visibility_choices,
+        "org_mcp_allowed": bool(getattr(org, "mcp_allowed", False)),
+        "org_x402_allowed": bool(getattr(org, "x402_allowed", False)),
+    }
+
+
 class WorkflowVisibilityUpdateView(WorkflowObjectMixin, View):
-    """Toggle workflow visibility between private and public."""
+    """Update a workflow's identity-scoped visibility and agent channels.
+
+    Replaces the old binary public/private toggle. The POST sets the
+    three-way ``workflow_visibility`` tier (clamped to the org ceiling)
+    and, when permitted, the two INDEPENDENT agent channels: ``mcp_enabled``
+    (authenticated agents on behalf of a user) and ``x402_enabled`` (paid
+    anonymous public access). Each agent channel is honoured only when the
+    org allows it AND the user passes the access-edit gate, so a forged
+    POST cannot widen a workflow beyond what its org and role permit.
+    """
 
     def post(self, request, *args, **kwargs):
+        from validibot.workflows.constants import WorkflowVisibility
+        from validibot.workflows.constants import visibility_within_cap
+
         if not self.user_can_manage_sharing():
             return HttpResponse(status=HTTPStatus.FORBIDDEN)
 
         workflow = self.get_workflow()
-        raw_state = (request.POST.get("is_public") or "").strip().lower()
+        org = workflow.org
+        changed_fields: list[str] = []
 
-        if raw_state in {"true", "1", "on"}:
-            new_state = True
-        elif raw_state in {"false", "0", "off"}:
-            new_state = False
-        else:
-            # Toggle if no explicit value
-            new_state = not workflow.is_public
+        # ── Visibility (the WHO dial) ─────────────────────────────────
+        # Validate against the enum, then CLAMP to the org ceiling so a
+        # submitted tier can never exceed ``workflow_visibility_cap`` even
+        # if the client forged a wider value. An unknown value is ignored
+        # (leaves the current tier untouched) rather than erroring.
+        raw_visibility = (request.POST.get("workflow_visibility") or "").strip()
+        if raw_visibility in WorkflowVisibility.values:
+            cap = (
+                getattr(org, "workflow_visibility_cap", None)
+                or WorkflowVisibility.ALL_USERS
+            )
+            if not visibility_within_cap(raw_visibility, cap):
+                # Requested wider than allowed — pin to the ceiling.
+                raw_visibility = cap
+            if workflow.workflow_visibility != raw_visibility:
+                workflow.workflow_visibility = raw_visibility
+                changed_fields.append("workflow_visibility")
 
-        if workflow.is_public != new_state:
-            workflow.is_public = new_state
-            # Note: make_info_page_public auto-synced in model.save()
-            workflow.save(update_fields=["is_public", "make_info_page_public"])
+        # ── Agent channels (the HOW dials) ────────────────────────────
+        # Only honoured when the user may edit access AND the org allows
+        # the channel. The two are independent of each other and of
+        # visibility. A blank/absent value is treated as "off" only when
+        # the field was actually submitted, so partial posts (e.g. just a
+        # visibility change) don't clobber the other channel.
+        can_edit_access = _user_can_edit_workflow_access(request.user, workflow)
+        if can_edit_access:
+            if "mcp_enabled" in request.POST and getattr(org, "mcp_allowed", False):
+                new_mcp = _coerce_bool(request.POST.get("mcp_enabled"))
+                if workflow.mcp_enabled != new_mcp:
+                    workflow.mcp_enabled = new_mcp
+                    changed_fields.append("mcp_enabled")
+
+            if "x402_enabled" in request.POST and getattr(org, "x402_allowed", False):
+                new_x402 = _coerce_bool(request.POST.get("x402_enabled"))
+                if workflow.x402_enabled != new_x402:
+                    workflow.x402_enabled = new_x402
+                    changed_fields.append("x402_enabled")
+
+        if changed_fields:
+            # ``make_info_page_public`` is always included: the model's
+            # ``save()`` auto-publishes the info page for ALL_USERS
+            # visibility, and a narrow ``update_fields`` would otherwise
+            # drop that synced flag.
+            workflow.save(
+                update_fields=[*changed_fields, "make_info_page_public", "modified"],
+            )
 
         # Return updated visibility section for HTMX
-        context = {
-            "workflow": workflow,
-            "can_manage_sharing": self.user_can_manage_sharing(),
-        }
+        context = _build_visibility_section_context(self, workflow, request)
         html = render_to_string(
             "workflows/partials/workflow_visibility_section.html",
             context,
             request=request,
         )
         return HttpResponse(html)
+
+
+def _coerce_bool(raw) -> bool:
+    """Interpret a posted checkbox/boolean string as a Python bool."""
+    return (raw or "").strip().lower() in {"true", "1", "on", "yes"}
 
 
 # RFC 5321 caps an email address at 254 characters; reject anything longer

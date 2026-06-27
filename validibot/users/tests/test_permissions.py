@@ -155,8 +155,15 @@ class OrgPermissionBackendTests(TestCase):
             guest.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, workflow),
         )
 
-    def test_any_user_can_launch_public_workflow(self):
-        """Public workflows can be launched by any authenticated user."""
+    def test_any_user_can_launch_all_users_workflow(self):
+        """ALL_USERS workflows can be launched by any authenticated user.
+
+        ``WorkflowVisibility.ALL_USERS`` is the new home of the old
+        ``is_public=True`` semantics: the audience is every Validibot
+        user, so a random user with no org relationship can still launch.
+        """
+        from validibot.workflows.constants import WorkflowVisibility
+
         org = OrganizationFactory()
         owner = UserFactory()
         grant_role(owner, org, RoleCode.OWNER)
@@ -166,7 +173,7 @@ class OrgPermissionBackendTests(TestCase):
             user=owner,
             project=ProjectFactory(org=org),
             name="Public Workflow",
-            is_public=True,
+            workflow_visibility=WorkflowVisibility.ALL_USERS,
         )
 
         # Random user with no relationship to org
@@ -176,8 +183,18 @@ class OrgPermissionBackendTests(TestCase):
             random_user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, workflow),
         )
 
-    def test_non_public_workflow_requires_membership_or_grant(self):
-        """Non-public workflows require org membership or explicit grant."""
+    def test_private_workflow_requires_membership_or_grant(self):
+        """PRIVATE workflows require the creator, a grant, or (for ORG)
+        org membership — never an unrelated user.
+
+        With ``WorkflowVisibility.PRIVATE`` the audience is the creator
+        plus explicitly invited grants only, so a random user with no
+        membership/grant cannot launch. (This is stricter than the old
+        ``is_public=False``/ORG default, which also admitted org members —
+        but for an unrelated random user the outcome is the same: denied.)
+        """
+        from validibot.workflows.constants import WorkflowVisibility
+
         org = OrganizationFactory()
         owner = UserFactory()
         grant_role(owner, org, RoleCode.OWNER)
@@ -187,7 +204,7 @@ class OrgPermissionBackendTests(TestCase):
             user=owner,
             project=ProjectFactory(org=org),
             name="Private Workflow",
-            is_public=False,
+            workflow_visibility=WorkflowVisibility.PRIVATE,
         )
 
         random_user = UserFactory()

@@ -55,6 +55,7 @@ from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.constants import AgentBillingMode
 from validibot.workflows.constants import WorkflowHistoryPolicy
+from validibot.workflows.constants import WorkflowVisibility
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowPublicInfo
 from validibot.workflows.models import WorkflowRoleAccess
@@ -383,23 +384,26 @@ class ContractFieldsTests(TestCase):
         assert expected == set(CONTRACT_FIELDS)
 
     def test_contract_fields_excludes_agent_commercial_settings(self):
-        """Agent commercial settings are NOT validation-contract fields.
+        """Agent commercial / access settings are NOT validation-contract fields.
 
         A past run's outcome doesn't depend on the current agent price,
-        billing mode, rate limit, or discovery flag — those affect what
-        future callers see and pay, not what the past run validated.
-        Forcing a workflow clone just to change a price would be
-        friction for no integrity benefit. The form layer separately
-        gates these fields to superusers because they're commercial
-        settings, but that's an access-control concern, not a
+        billing mode, rate limit, or the agent-channel flags
+        (``mcp_enabled`` / ``x402_enabled``) — those affect what future
+        callers see and pay, not what the past run validated. Forcing a
+        workflow clone just to change a price would be friction for no
+        integrity benefit. The form layer separately gates these fields
+        behind the access-edit permission because they're commercial /
+        access settings, but that's an access-control concern, not a
         contract-immutability concern.
         """
         agent_fields = {
             "agent_billing_mode",
             "agent_price_cents",
             "agent_max_launches_per_hour",
-            "agent_public_discovery",
-            "agent_access_enabled",
+            # Renamed in the 2026-06-27 refactor (was agent_public_discovery
+            # / agent_access_enabled). Still not contract fields.
+            "x402_enabled",
+            "mcp_enabled",
         }
         for field in agent_fields:
             assert field not in CONTRACT_FIELDS, (
@@ -508,8 +512,8 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             # with persistent storage).
             input_retention=SubmissionRetention.DO_NOT_STORE,
             output_retention=OutputRetention.STORE_30_DAYS,
-            agent_public_discovery=True,
-            agent_access_enabled=True,
+            x402_enabled=True,
+            mcp_enabled=True,
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=42,
             agent_max_launches_per_hour=99,
@@ -552,7 +556,8 @@ class WorkflowVersioningServiceCloneTests(TestCase):
 
         The clone is the author's next editable version of the same workflow,
         so descriptive fields, launch-form options, input schema authoring
-        metadata, and public visibility settings must carry forward.
+        metadata, and the identity-scoped ``workflow_visibility`` must carry
+        forward. (Visibility is the new home of the old ``is_public`` flag.)
         """
         workflow = WorkflowFactory(
             description="Original description",
@@ -560,7 +565,7 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             allow_submission_meta_data=True,
             allow_submission_short_description=True,
             make_info_page_public=True,
-            is_public=True,
+            workflow_visibility=WorkflowVisibility.ALL_USERS,
             success_message="Validation succeeded.",
             input_schema={
                 "type": "object",
@@ -581,7 +586,7 @@ class WorkflowVersioningServiceCloneTests(TestCase):
         assert new_workflow.allow_submission_meta_data is True
         assert new_workflow.allow_submission_short_description is True
         assert new_workflow.make_info_page_public is True
-        assert new_workflow.is_public is True
+        assert new_workflow.workflow_visibility == WorkflowVisibility.ALL_USERS
         assert new_workflow.success_message == "Validation succeeded."
         assert new_workflow.input_schema == workflow.input_schema
         assert new_workflow.input_schema_source_mode == "json_schema"

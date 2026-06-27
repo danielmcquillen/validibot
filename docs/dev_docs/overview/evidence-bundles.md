@@ -172,6 +172,12 @@ The current manifest shape is top-level, not nested under `run`, `workflow`, or 
 }
 ```
 
+> **Manifest field names vs. workflow field names.** The `workflow_contract`
+> object keeps the manifest-schema names `agent_public_discovery` and
+> `agent_access_enabled` (renaming them is a deferred `validibot-shared`
+> release). They map 1:1 to the workflow's current `x402_enabled` and
+> `mcp_enabled` fields respectively.
+
 ## Payload Digest Naming
 
 The evidence manifest uses schema-specific digest names:

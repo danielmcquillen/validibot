@@ -35,6 +35,7 @@ from django.utils.text import slugify
 
 from validibot.validations.validators.base.step_serializer import WorkflowImportError
 from validibot.validations.validators.base.step_serializer import get_step_serializer
+from validibot.workflows.constants import WorkflowVisibility
 from validibot.workflows.services.io import schema
 from validibot.workflows.services.io import vaf
 
@@ -177,16 +178,19 @@ def _create_workflow(
         # which blocked the common import-then-run flow. A workflow you
         # deliberately imported is one you want to use; deactivate it if not.
         is_active=True,
-        # External exposure is never inherited on import. An imported workflow is
-        # private — not publicly listed, not on a public info page, not
-        # agent-discoverable or agent-accessible — until the owner explicitly
-        # enables it. These are forced here (not just omitted from the serialized
-        # fields) so a hand-crafted definition that sets them can't auto-publish a
-        # workflow in the importing org now that imports are active.
-        is_public=False,
+        # External exposure is never inherited on import. An imported workflow
+        # lands maximally locked — PRIVATE visibility, no public info page, no
+        # MCP agent access, no x402 paid access — until the owner explicitly
+        # widens it. These are forced here (NOT left to model defaults — the
+        # default visibility is ORG, which would expose the import to the whole
+        # organization) so a hand-crafted definition can't auto-expose a
+        # workflow. The serialized field set (``io/schema.py``) also excludes
+        # the access fields, so they cannot be injected via ``fields`` (a
+        # duplicate-kwarg TypeError would fire if it tried).
+        workflow_visibility=WorkflowVisibility.PRIVATE,
         make_info_page_public=False,
-        agent_public_discovery=False,
-        agent_access_enabled=False,
+        mcp_enabled=False,
+        x402_enabled=False,
         slug=_unique_slug(org, data.get("slug") or slugify(name)),
         allowed_file_types=list(data.get("allowed_file_types") or []),
         input_schema=deepcopy(data.get("input_schema")),

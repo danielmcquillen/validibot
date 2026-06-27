@@ -301,20 +301,22 @@ class OrgPermissionBackend(BaseBackend):
         Check if user has launch access via public workflow or guest grant.
 
         This handles cases where a non-member should be able to launch:
-        1. Public workflows (is_public=True) - any authenticated user
+        1. ALL_USERS-visible workflows (workflow_visibility=ALL_USERS) -
+           any authenticated user
         2. Guest grants (WorkflowAccessGrant) - users with an active grant
            on ANY version of this workflow's family (family-grant
            expansion, see comment below)
         """
         # Import here to avoid circular imports
+        from validibot.workflows.constants import WorkflowVisibility
         from validibot.workflows.models import Workflow
         from validibot.workflows.models import WorkflowAccessGrant
 
         if not isinstance(obj, Workflow):
             return False
 
-        # Public workflows: any authenticated user can launch
-        if getattr(obj, "is_public", False):
+        # ALL_USERS visibility: any authenticated user can launch
+        if getattr(obj, "workflow_visibility", None) == WorkflowVisibility.ALL_USERS:
             return True
 
         # Guest grant check — family-scoped.

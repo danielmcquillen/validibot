@@ -301,7 +301,7 @@ class WorkflowVersioningService:
             allow_submission_meta_data=workflow.allow_submission_meta_data,
             allow_submission_short_description=workflow.allow_submission_short_description,
             make_info_page_public=workflow.make_info_page_public,
-            is_public=workflow.is_public,
+            workflow_visibility=workflow.workflow_visibility,
             allowed_file_types=list(workflow.allowed_file_types or []),
             input_retention=workflow.input_retention,
             output_retention=workflow.output_retention,
@@ -316,8 +316,8 @@ class WorkflowVersioningService:
             agent_billing_mode=workflow.agent_billing_mode,
             agent_price_cents=workflow.agent_price_cents,
             agent_max_launches_per_hour=workflow.agent_max_launches_per_hour,
-            agent_public_discovery=workflow.agent_public_discovery,
-            agent_access_enabled=workflow.agent_access_enabled,
+            x402_enabled=workflow.x402_enabled,
+            mcp_enabled=workflow.mcp_enabled,
         )
         if workflow.featured_image:
             with workflow.featured_image.open("rb") as source_image:

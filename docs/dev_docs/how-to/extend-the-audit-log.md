@@ -62,9 +62,9 @@ AUDITABLE_FIELDS = {
     "workflows.Workflow": (
         "name",
         "description",
-        "is_public",
-        "agent_access_enabled",
-        "agent_public_discovery",
+        "workflow_visibility",
+        "mcp_enabled",
+        "x402_enabled",
         "new_field_to_audit",   # ← add here
     ),
     # ...

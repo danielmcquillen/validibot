@@ -31,10 +31,14 @@
     </div>
     <div class="row flex-grow-1">
       <div class="col-12 col-lg-8">
-        {# Visibility Section #}
+        {% comment %}Access (visibility + agent channels) section.{% endcomment %}
         {% include "workflows/partials/workflow_visibility_section.html" %}
-        {# Guest Access Section - only for private workflows #}
-        {% if not workflow.is_public %}
+        {% comment %}
+        Guest access only matters when the workflow is NOT visible to all
+        Validibot users. When visibility is ALL_USERS every logged-in user
+        can already run it, so per-guest invites are redundant.
+        {% endcomment %}
+        {% if workflow.workflow_visibility != "ALL_USERS" %}
           {% include "workflows/partials/workflow_guest_access_section.html" %}
         {% else %}
           <div class="card app-card mb-3">
@@ -43,10 +47,10 @@
                 <i class="bi-globe text-primary fs-3 me-3"></i>
                 <div>
                   <p class="mb-0 fw-medium">
-                    {% trans "This workflow is public" %}
+                    {% trans "Visible to all Validibot users" %}
                   </p>
                   <p class="text-muted small mb-0">
-                    {% trans "Any authenticated user can launch this workflow. Guest access management is not needed for public workflows." %}
+                    {% trans "Any logged-in user can launch this workflow, so guest access management is not needed." %}
                   </p>
                 </div>
               </div>
@@ -67,13 +71,19 @@
                 <i class="bi-lock me-1"></i> {% trans "Private" %}
               </dt>
               <dd class="text-muted small mb-3">
-                {% trans "Only org members and invited guests can launch this workflow." %}
+                {% trans "Only you and people you invite can launch this workflow." %}
               </dd>
               <dt>
-                <i class="bi-globe me-1"></i> {% trans "Public" %}
+                <i class="bi-building me-1"></i> {% trans "Your organization" %}
+              </dt>
+              <dd class="text-muted small mb-3">
+                {% trans "Any member of your organization can launch this workflow." %}
+              </dd>
+              <dt>
+                <i class="bi-globe me-1"></i> {% trans "All Validibot users" %}
               </dt>
               <dd class="text-muted small mb-0">
-                {% trans "Any logged-in user can launch this workflow. Usage is billed to your organization." %}
+                {% trans "Any logged-in Validibot user can launch this workflow." %}
               </dd>
             </dl>
           </div>

@@ -111,8 +111,16 @@ class EvidenceManifestBuilder:
             agent_billing_mode=workflow.agent_billing_mode or "",
             agent_price_cents=workflow.agent_price_cents,
             agent_max_launches_per_hour=workflow.agent_max_launches_per_hour,
-            agent_public_discovery=workflow.agent_public_discovery,
-            agent_access_enabled=workflow.agent_access_enabled,
+            # The evidence-manifest schema field names
+            # (``agent_public_discovery`` / ``agent_access_enabled``) live
+            # in the published ``validibot-shared`` package and still use
+            # the pre-rename terminology. They map 1:1 to the renamed
+            # workflow fields — ``agent_public_discovery`` == ``x402_enabled``,
+            # ``agent_access_enabled`` == ``mcp_enabled`` — so the recorded
+            # meaning is unchanged. Renaming the shared manifest schema is a
+            # follow-up (needs a validibot-shared release).
+            agent_public_discovery=workflow.x402_enabled,
+            agent_access_enabled=workflow.mcp_enabled,
         )
 
         # Walk steps in execution order so the manifest's record

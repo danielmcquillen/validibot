@@ -94,7 +94,7 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         we want to allow access if the user has permission via:
         1. Org membership with appropriate role
         2. Active WorkflowAccessGrant (guest access)
-        3. Public workflow (is_public=True)
+        3. ALL_USERS-visible workflow (workflow_visibility=ALL_USERS)
 
         Unlike get_workflow_queryset(), this does NOT filter by current_org
         so guests and public workflow users can access workflows.
@@ -112,9 +112,14 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         # Use union to combine distinct querysets properly
         from django.db.models import Q
 
+        from validibot.workflows.constants import WorkflowVisibility
+
+        # ``for_user()`` above already includes ALL_USERS-visible
+        # workflows via its visibility tier; this union also surfaces
+        # them for users outside the workflow's org.
         public_qs = (
             Workflow.objects.filter(
-                Q(is_public=True)
+                Q(workflow_visibility=WorkflowVisibility.ALL_USERS)
                 & Q(is_active=True)
                 & Q(is_archived=False)
                 & Q(is_tombstoned=False)

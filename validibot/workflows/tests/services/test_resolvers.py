@@ -184,22 +184,31 @@ class WorkflowAccessResolverGetForUserTests(TestCase):
 
 
 class AgentWorkflowResolverListPublishedTests(TestCase):
-    """``list_published`` returns only public-discovery workflows."""
+    """``list_published`` returns only x402-published workflows.
+
+    This resolver feeds the anonymous, paid agent surface. After the
+    2026-06-27 refactor the publish flag is ``x402_enabled`` (decoupled
+    from MCP), so the resolver filters on ``x402_enabled=True`` plus the
+    x402 billing/price/retention/alive-row invariants. ``mcp_enabled`` is
+    irrelevant here — these are independent channels — but the factories
+    below still set it on some rows to prove it has no effect on the x402
+    catalog.
+    """
 
     def test_excludes_private_workflows(self):
-        """Workflows not published for agent discovery don't appear."""
+        """Workflows not published for paid agent access don't appear."""
         org = OrganizationFactory()
         WorkflowFactory(
             org=org,
-            agent_public_discovery=True,
-            agent_access_enabled=True,
+            x402_enabled=True,
+            mcp_enabled=True,
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=10,
             is_active=True,
         )
         WorkflowFactory(
             org=org,
-            agent_public_discovery=False,  # private
+            x402_enabled=False,  # not published for x402
             is_active=True,
         )
 
@@ -212,7 +221,7 @@ class AgentWorkflowResolverListPublishedTests(TestCase):
         """Inactive workflows don't appear in the public list.
 
         Tombstoned workflows are covered by a separate constraint
-        (``ck_workflow_public_discovery_requires_alive_row``) which
+        (``ck_workflow_x402_enabled_requires_alive_row``) which
         prevents the contradictory state at write time, so the test
         for that path lives in
         ``test_agent_access_fields.py::TestWorkflowCheckConstraints``.
@@ -220,15 +229,15 @@ class AgentWorkflowResolverListPublishedTests(TestCase):
         org = OrganizationFactory()
         active = WorkflowFactory(
             org=org,
-            agent_public_discovery=True,
-            agent_access_enabled=True,
+            x402_enabled=True,
+            mcp_enabled=True,
             agent_price_cents=10,
             is_active=True,
         )
         WorkflowFactory(
             org=org,
-            agent_public_discovery=True,
-            agent_access_enabled=True,
+            x402_enabled=True,
+            mcp_enabled=True,
             agent_price_cents=10,
             is_active=False,
         )  # inactive — should be filtered by the resolver
@@ -245,8 +254,8 @@ class AgentWorkflowResolverListPublishedTests(TestCase):
             org=org,
             slug="versioned-public",
             version="1",
-            agent_public_discovery=True,
-            agent_access_enabled=True,
+            x402_enabled=True,
+            mcp_enabled=True,
             agent_price_cents=10,
             is_active=True,
         )
@@ -254,8 +263,8 @@ class AgentWorkflowResolverListPublishedTests(TestCase):
             org=org,
             slug="versioned-public",
             version="2",
-            agent_public_discovery=True,
-            agent_access_enabled=True,
+            x402_enabled=True,
+            mcp_enabled=True,
             agent_price_cents=10,
             is_active=True,
         )
@@ -278,8 +287,8 @@ class AgentWorkflowResolverGetBySlugTests(TestCase):
             org=org,
             slug="versioned-public",
             version="1",
-            agent_public_discovery=True,
-            agent_access_enabled=True,
+            x402_enabled=True,
+            mcp_enabled=True,
             agent_price_cents=10,
             is_active=True,
         )
@@ -287,8 +296,8 @@ class AgentWorkflowResolverGetBySlugTests(TestCase):
             org=org,
             slug="versioned-public",
             version="2",
-            agent_public_discovery=True,
-            agent_access_enabled=True,
+            x402_enabled=True,
+            mcp_enabled=True,
             agent_price_cents=10,
             is_active=True,
         )
@@ -311,7 +320,7 @@ class AgentWorkflowResolverGetBySlugTests(TestCase):
         WorkflowFactory(
             org=org,
             slug="private-flow",
-            agent_public_discovery=False,
+            x402_enabled=False,
             is_active=True,
         )
 
@@ -349,8 +358,8 @@ class AgentWorkflowResolverGetBySlugForX402Tests(TestCase):
         workflow = WorkflowFactory(
             org=org,
             slug="x402-flow",
-            agent_public_discovery=False,
-            agent_access_enabled=True,
+            x402_enabled=False,
+            mcp_enabled=True,
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
             agent_price_cents=10,
             is_active=True,

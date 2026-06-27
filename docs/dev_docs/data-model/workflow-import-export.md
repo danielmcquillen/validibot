@@ -157,7 +157,7 @@ Then the workflow-level public info and signal mappings are created.
 | `slug` | From the definition, suffixed `-2`, `-3`, … on collision in the target org |
 | `version` | `1` |
 | `is_active` | `True` — imported workflows are active and launchable immediately (deactivate if not wanted). An inactive workflow reads as archived in the list, which blocked import-then-run, so imports are not made inactive. |
-| `is_public`, `make_info_page_public`, `agent_public_discovery`, `agent_access_enabled` | **Forced `False`.** External exposure is never inherited on import — these toggles aren't even serialized, *and* the importer forces them private (defense in depth against a hand-edited definition). Because imports are now active, inheriting "public" or "agent-accessible" would auto-publish a workflow in the importing org; an import is private until its owner opts in. |
+| `workflow_visibility`, `make_info_page_public`, `x402_enabled`, `mcp_enabled` | **Forced to the locked state** (`workflow_visibility=PRIVATE`; the rest `False`). External exposure is never inherited on import — these toggles aren't even serialized, *and* the importer forces them locked (defense in depth against a hand-edited definition). Because imports are now active, inheriting wider visibility or agent access would auto-expose a workflow in the importing org; an import is private until its owner opts in. |
 | `org` / `user` / `project` | The importing user's org/user; project unset |
 | Ruleset name | Suffixed ` (2)`, ` (3)`, … to satisfy the `(org, type, name, version)` key |
 | Validator | **Resolved**, never created (see below) |

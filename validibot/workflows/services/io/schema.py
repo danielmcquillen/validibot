@@ -18,10 +18,11 @@ FORMAT_VERSION = 1
 #
 # Deliberately EXCLUDED — external-exposure toggles are org-specific decisions
 # that must never travel in an import, or a public/agent-exposed export (or a
-# crafted JSON) would auto-publish itself in the target org: ``is_public``,
-# ``make_info_page_public``, ``agent_public_discovery``, ``agent_access_enabled``.
-# The importer forces these private regardless (see ``importer._create_workflow``),
-# so they are also belt-and-suspenders against a hand-edited definition.
+# crafted JSON) would auto-publish itself in the target org:
+# ``workflow_visibility``, ``make_info_page_public``, ``mcp_enabled``,
+# ``x402_enabled``. The importer forces these to the locked state regardless
+# (see ``importer._create_workflow``), so they are also belt-and-suspenders
+# against a hand-edited definition.
 WORKFLOW_SCALAR_FIELDS: tuple[str, ...] = (
     "name",
     "description",

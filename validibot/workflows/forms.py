@@ -640,44 +640,152 @@ class WorkflowForm(forms.ModelForm):
                     indent=2,
                 )
 
-        # ── Superuser-only agent access fields ──────────────────────────
+        # ── Access controls (visibility + agent channels) ───────────────
         # These fields are not in Meta.fields — they are added dynamically
-        # so that only superusers can see and edit them.
-        if self.user and getattr(self.user, "is_superuser", False):
-            self._add_agent_fields()
+        # and only when the current user is allowed to adjust access (see
+        # ``_user_can_edit_access``). For everyone else the access section
+        # is omitted entirely, so a submitted value can never change the
+        # workflow's audience.
+        self._access_fields: list[str] = []
+        if self._user_can_edit_access():
+            self._add_access_fields()
 
         self.helper.layout = self._build_layout()
 
-    def _add_agent_fields(self) -> None:
-        """Add agent access fields to the form for superusers."""
+    def _user_can_edit_access(self) -> bool:
+        """Return True when the current user may edit the access controls.
+
+        Access controls (visibility, MCP, x402, billing/price/launches)
+        are privileged: changing who can run a workflow — or publishing it
+        for paid anonymous access — has security and billing consequences.
+        They are therefore editable only when the user is a Django
+        superuser/staff member, OR the workflow's organization has opted
+        in via ``Organization.allow_authors_to_adjust_access``.
+
+        The org-level ceilings themselves (visibility cap, mcp/x402
+        allowed) are NEVER exposed in this form — they are an admin-only
+        concern. This gate only decides whether the per-workflow controls
+        appear at all.
+        """
+        user = self.user
+        if not user or not getattr(user, "is_authenticated", False):
+            return False
+        if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+            return True
+        org = self._org_for_access()
+        return bool(org and getattr(org, "allow_authors_to_adjust_access", False))
+
+    def _org_for_access(self):
+        """Return the org whose ceilings clamp this workflow's access.
+
+        Prefers the bound instance's org (edit flow); falls back to the
+        user's current org (create flow) so a brand-new workflow still
+        clamps its visibility choices to the right ceiling.
+        """
+        org = getattr(self.instance, "org", None) if self.instance else None
+        if org is not None:
+            return org
+        if self.user and getattr(self.user, "is_authenticated", False):
+            return self.user.get_current_org()
+        return None
+
+    def _allowed_visibility_choices(self):
+        """Return visibility choices clamped to the org's ceiling.
+
+        Uses the central ``WORKFLOW_VISIBILITY_ORDER`` /
+        ``visibility_within_cap`` definition of "no wider than" so the
+        form, model, and resolvers all agree on what the cap means. When
+        no org/cap is resolvable we fall back to the full set (the model
+        and view still re-clamp, so this is display-only).
+        """
+        from validibot.workflows.constants import WORKFLOW_VISIBILITY_ORDER
+        from validibot.workflows.constants import WorkflowVisibility
+        from validibot.workflows.constants import visibility_within_cap
+
+        org = self._org_for_access()
+        cap = getattr(org, "workflow_visibility_cap", None) or (
+            WorkflowVisibility.ALL_USERS
+        )
+        labels = dict(WorkflowVisibility.choices)
+        return [
+            (value, labels[value])
+            for value in WORKFLOW_VISIBILITY_ORDER
+            if visibility_within_cap(value, cap)
+        ]
+
+    def _add_access_fields(self) -> None:
+        """Add the per-workflow access controls to the form.
+
+        Adds the identity-scoped ``workflow_visibility`` selector plus the
+        two independent agent channels (``mcp_enabled``, ``x402_enabled``)
+        and their billing/price/rate-limit companions. Each control is
+        clamped to the organization's ceiling: visibility choices are
+        capped, and the MCP / x402 toggles are disabled (with an
+        explanatory note) when the org has not allowed that channel.
+        """
         from validibot.workflows.constants import AgentBillingMode
+        from validibot.workflows.constants import WorkflowVisibility
 
-        self.fields["agent_access_enabled"] = forms.BooleanField(
-            required=False,
-            label=_("Agent access enabled"),
+        org = self._org_for_access()
+        mcp_allowed = bool(getattr(org, "mcp_allowed", False))
+        x402_allowed = bool(getattr(org, "x402_allowed", False))
+
+        # ── WHO (identity-scoped visibility) ──────────────────────────
+        self.fields["workflow_visibility"] = forms.ChoiceField(
+            choices=self._allowed_visibility_choices(),
+            label=_("Who can run this workflow"),
             help_text=_(
-                "Expose this workflow for agent access via MCP.",
+                "Who, by Validibot identity, may run this workflow for "
+                "free. Limited to your organization's ceiling. This is "
+                "independent of paid anonymous (x402) access below.",
             ),
+            widget=forms.Select(attrs={"class": "form-select"}),
+        )
+        self.fields["workflow_visibility"].initial = (
+            self.instance.workflow_visibility
+            if self.instance and self.instance.pk
+            else WorkflowVisibility.PRIVATE
+        )
+        self._access_fields.append("workflow_visibility")
+
+        # ── HOW: MCP (authenticated agents on behalf of a user) ───────
+        mcp_help = _(
+            "Allow authenticated AI agents to run this workflow via MCP, "
+            "on behalf of a user who already has identity access above. "
+            "Billed to that user's plan quota.",
+        )
+        if not mcp_allowed:
+            mcp_help = _("MCP access is disabled for this organization.")
+        self.fields["mcp_enabled"] = forms.BooleanField(
+            required=False,
+            label=_("Allow authenticated agents via MCP"),
+            help_text=mcp_help,
+            disabled=not mcp_allowed,
         )
         if self.instance and self.instance.pk:
-            self.fields[
-                "agent_access_enabled"
-            ].initial = self.instance.agent_access_enabled
+            self.fields["mcp_enabled"].initial = self.instance.mcp_enabled
+        self._access_fields.append("mcp_enabled")
 
-        self.fields["agent_public_discovery"] = forms.BooleanField(
+        # ── HOW: x402 (paid anonymous access to anyone on the internet)
+        # DANGER ZONE: this is independent of visibility and exposes the
+        # workflow to the public internet for pay-per-call. The note below
+        # is shown wherever this control appears (here and in the template).
+        x402_help = _(
+            "Enabling this makes the workflow callable by ANYONE on the "
+            "internet who pays the per-call price (anonymous x402), "
+            "regardless of the visibility setting above.",
+        )
+        if not x402_allowed:
+            x402_help = _("x402 access is disabled for this organization.")
+        self.fields["x402_enabled"] = forms.BooleanField(
             required=False,
-            label=_("Public discovery (cross-org catalog)"),
-            help_text=_(
-                "List this workflow on the public agent catalog. External "
-                "agents from any organization can discover and run it via "
-                "x402 micropayments. Enabling this automatically sets "
-                "billing to 'Agent pays via x402'.",
-            ),
+            label=_("Publish for paid anonymous access (x402)"),
+            help_text=x402_help,
+            disabled=not x402_allowed,
         )
         if self.instance and self.instance.pk:
-            self.fields[
-                "agent_public_discovery"
-            ].initial = self.instance.agent_public_discovery
+            self.fields["x402_enabled"].initial = self.instance.x402_enabled
+        self._access_fields.append("x402_enabled")
 
         self.fields["agent_billing_mode"] = forms.ChoiceField(
             choices=AgentBillingMode.choices,
@@ -690,6 +798,7 @@ class WorkflowForm(forms.ModelForm):
         )
         if self.instance and self.instance.pk:
             self.fields["agent_billing_mode"].initial = self.instance.agent_billing_mode
+        self._access_fields.append("agent_billing_mode")
 
         self.fields["agent_price_cents"] = forms.IntegerField(
             required=False,
@@ -702,6 +811,7 @@ class WorkflowForm(forms.ModelForm):
         )
         if self.instance and self.instance.pk:
             self.fields["agent_price_cents"].initial = self.instance.agent_price_cents
+        self._access_fields.append("agent_price_cents")
 
         self.fields["agent_max_launches_per_hour"] = forms.IntegerField(
             required=False,
@@ -716,6 +826,7 @@ class WorkflowForm(forms.ModelForm):
             self.fields[
                 "agent_max_launches_per_hour"
             ].initial = self.instance.agent_max_launches_per_hour
+        self._access_fields.append("agent_max_launches_per_hour")
 
     def _build_layout(self) -> Layout:
         """Build the crispy layout used by the workflow create/edit page."""
@@ -860,18 +971,39 @@ class WorkflowForm(forms.ModelForm):
             ),
         ]
 
-        if self.user and getattr(self.user, "is_superuser", False):
+        if self._user_can_edit_access():
+            # DANGER-ZONE note for x402: rendered alongside the x402 toggle
+            # so authors cannot miss that enabling it exposes the workflow
+            # to anyone on the public internet who pays, independent of the
+            # identity-scoped visibility above.
+            x402_danger_note = HTML(
+                '<div class="alert alert-warning small mb-3" role="alert">'
+                '<i class="bi-exclamation-triangle me-1"></i>'
+                f"{
+                    _(
+                        'Enabling paid anonymous access (x402) makes the '
+                        'workflow callable by ANYONE on the internet who pays '
+                        'the per-call price, regardless of the visibility '
+                        'setting above.'
+                    )
+                }"
+                "</div>",
+            )
             sections.append(
                 Div(
                     self._section_intro(
-                        _("Agent access"),
+                        _("Access"),
                         _(
-                            "Control how AI agents discover and invoke this "
-                            "workflow via MCP. Only visible to superusers."
+                            "Choose who can run this workflow by Validibot "
+                            "identity, and whether AI agents may invoke it. "
+                            "Options are limited by your organization's "
+                            "ceilings."
                         ),
                     ),
-                    Field("agent_access_enabled"),
-                    Field("agent_public_discovery"),
+                    Field("workflow_visibility"),
+                    Field("mcp_enabled"),
+                    Field("x402_enabled"),
+                    x402_danger_note,
                     Field("agent_billing_mode"),
                     Field("agent_price_cents"),
                     Field("agent_max_launches_per_hour"),
@@ -981,10 +1113,14 @@ class WorkflowForm(forms.ModelForm):
 
         cleaned = super().clean()
 
-        # ── Cascade: public discovery forces x402 billing ─────────────
-        # Enabling public discovery implies agents-pay-x402, so auto-set
-        # the billing mode rather than making the user pick it manually.
-        if cleaned.get("agent_public_discovery"):
+        # ── Cascade: enabling x402 selects the x402 billing rail ──────
+        # x402 and MCP are INDEPENDENT channels (no cascade between them).
+        # Publishing for paid anonymous access implies agents-pay-x402, so
+        # auto-set the billing mode rather than making the user pick it
+        # manually. The price + DO_NOT_STORE guards below then apply. This
+        # mirrors the model's ``clean()`` so the form and model agree even
+        # when only one of them runs.
+        if cleaned.get("x402_enabled"):
             cleaned["agent_billing_mode"] = AgentBillingMode.AGENT_PAYS_X402
 
         # ── History policy + contract-edit gate ───────────────────────
@@ -1085,19 +1221,58 @@ class WorkflowForm(forms.ModelForm):
                         ),
                     )
 
-        # ── Public discovery requires agent access ──────────────────────
-        if cleaned.get("agent_public_discovery") and not cleaned.get(
-            "agent_access_enabled"
-        ):
-            self.add_error(
-                "agent_public_discovery",
-                ValidationError(
-                    _(
-                        "Public discovery requires agent access to be enabled first.",
+        # ── Access controls must stay within the org's ceilings ─────────
+        # The access fields only exist on the form when the user is allowed
+        # to edit them (``_user_can_edit_access``). When present, each is
+        # clamped to the organization's ceiling so an author can never set
+        # a workflow wider than the org permits — a defence-in-depth check
+        # alongside the clamped widget choices / disabled toggles (a
+        # crafted POST could otherwise bypass the UI). The org-level
+        # ceilings themselves are never editable here.
+        if self._access_fields:
+            from validibot.workflows.constants import WorkflowVisibility
+            from validibot.workflows.constants import visibility_within_cap
+
+            org = self._org_for_access()
+
+            requested_visibility = cleaned.get("workflow_visibility")
+            if requested_visibility:
+                cap = getattr(org, "workflow_visibility_cap", None) or (
+                    WorkflowVisibility.ALL_USERS
+                )
+                if not visibility_within_cap(requested_visibility, cap):
+                    self.add_error(
+                        "workflow_visibility",
+                        ValidationError(
+                            _(
+                                "That visibility exceeds the maximum allowed "
+                                "by your organization.",
+                            ),
+                            code="visibility_exceeds_org_cap",
+                        ),
+                    )
+
+            # MCP / x402 may only be enabled when the org permits the
+            # channel. ``disabled`` widgets already coerce these to their
+            # initial value, but we re-check here so a forged POST that
+            # flips them on is rejected rather than silently saved.
+            if cleaned.get("mcp_enabled") and not getattr(org, "mcp_allowed", False):
+                self.add_error(
+                    "mcp_enabled",
+                    ValidationError(
+                        _("MCP access is disabled for this organization."),
+                        code="mcp_disabled_for_org",
                     ),
-                    code="public_discovery_requires_agent_access",
-                ),
-            )
+                )
+
+            if cleaned.get("x402_enabled") and not getattr(org, "x402_allowed", False):
+                self.add_error(
+                    "x402_enabled",
+                    ValidationError(
+                        _("x402 access is disabled for this organization."),
+                        code="x402_disabled_for_org",
+                    ),
+                )
 
         # ── x402 billing must pair with DO_NOT_STORE retention ─────────
         # x402 is anonymous per-call micropayment access.  Storing agent
@@ -1105,8 +1280,8 @@ class WorkflowForm(forms.ModelForm):
         # Also enforced on the model so API/admin writes can't bypass it,
         # but surfacing the error on the form field gives better UX.
         #
-        # agent_billing_mode only exists on the form for superusers, so
-        # .get() returns None for non-superusers and the check falls
+        # agent_billing_mode only exists on the form for users allowed to
+        # edit access, so .get() returns None otherwise and the check falls
         # through harmlessly.
         if (
             cleaned.get("agent_billing_mode") == AgentBillingMode.AGENT_PAYS_X402
@@ -1265,20 +1440,22 @@ class WorkflowForm(forms.ModelForm):
     def save(self, *, commit: bool = True):
         workflow = super().save(commit=commit)
 
-        # Write superuser-only agent fields that are not in Meta.fields.
-        if self.user and getattr(self.user, "is_superuser", False):
-            agent_fields = [
-                "agent_access_enabled",
-                "agent_public_discovery",
-                "agent_billing_mode",
-                "agent_price_cents",
-                "agent_max_launches_per_hour",
-            ]
-            for field_name in agent_fields:
+        # Write the access-control fields that are not in Meta.fields.
+        # These are only present (in ``self._access_fields``) when the user
+        # was allowed to edit access, so non-privileged users never touch
+        # the workflow's audience. ``make_info_page_public`` is added to
+        # ``update_fields`` because the model's ``save()`` auto-publishes
+        # the info page for ALL_USERS visibility, and a narrow
+        # ``update_fields`` would otherwise drop that synced flag.
+        access_fields = getattr(self, "_access_fields", [])
+        if self._user_can_edit_access() and access_fields:
+            for field_name in access_fields:
                 if field_name in self.cleaned_data:
                     setattr(workflow, field_name, self.cleaned_data[field_name])
             if commit and workflow.pk:
-                workflow.save(update_fields=agent_fields)
+                workflow.save(
+                    update_fields=[*access_fields, "make_info_page_public"],
+                )
 
         if commit and workflow.pk:
             description_md = (self.cleaned_data.get("description_md") or "").strip()

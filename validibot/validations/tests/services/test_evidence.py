@@ -106,7 +106,10 @@ class TestBuildManifest:
                 SubmissionFileType.XML,
             ],
             input_retention=SubmissionRetention.DO_NOT_STORE,
-            agent_access_enabled=True,
+            # The Workflow field is ``mcp_enabled`` after the 2026-06-27
+            # rename; the evidence contract still records it under the
+            # frozen ``agent_access_enabled`` key (mapped in evidence.py).
+            mcp_enabled=True,
         )
         WorkflowStepFactory(workflow=workflow)
         run = _completed_run(workflow=workflow)
@@ -118,6 +121,8 @@ class TestBuildManifest:
             SubmissionFileType.XML,
         }
         assert contract.input_retention == SubmissionRetention.DO_NOT_STORE
+        # Evidence contract keeps the legacy field name, sourced from
+        # ``workflow.mcp_enabled``.
         assert contract.agent_access_enabled is True
 
     def test_build_records_validator_per_step(self):

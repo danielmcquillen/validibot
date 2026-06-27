@@ -656,11 +656,19 @@ class TestSubmissionRetentionPolicy:
         assert submission.expires_at is None
 
     def test_public_workflow_launcher_can_own_submission(self):
-        """Public launches should not fail model validation for non-members."""
+        """Public launches should not fail model validation for non-members.
+
+        ``WorkflowVisibility.ALL_USERS`` is the new home of the old
+        ``is_public=True``: any authenticated user can launch, so a
+        non-member's submission must still pass model validation.
+        """
         from validibot.users.tests.factories import UserFactory
+        from validibot.workflows.constants import WorkflowVisibility
         from validibot.workflows.tests.factories import WorkflowFactory
 
-        workflow = WorkflowFactory(is_public=True)
+        workflow = WorkflowFactory(
+            workflow_visibility=WorkflowVisibility.ALL_USERS,
+        )
         user = UserFactory()
         submission = SubmissionFactory(
             org=workflow.org,

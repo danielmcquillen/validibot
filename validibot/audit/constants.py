@@ -140,9 +140,9 @@ AUDITABLE_FIELDS: dict[str, tuple[str, ...]] = {
     "workflows.Workflow": (
         "name",
         "description",
-        "is_public",
-        "agent_access_enabled",
-        "agent_public_discovery",
+        "workflow_visibility",
+        "mcp_enabled",
+        "x402_enabled",
     ),
     # Ruleset — name only. The assertion bodies may reference customer
     # field paths, so the full diff goes behind the redaction line.

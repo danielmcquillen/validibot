@@ -15,8 +15,6 @@ from __future__ import annotations
 from http import HTTPStatus
 
 from django.core.exceptions import ImproperlyConfigured
-from django.db.models import Exists
-from django.db.models import OuterRef
 from django.db.models import Q
 from django.db.models import QuerySet
 from django.urls import reverse
@@ -143,44 +141,29 @@ def _latest_accessible_workflow_queryset(
 ) -> QuerySet[Workflow]:
     """Return the latest MCP-accessible workflows for ``user``.
 
-    Composes ``Workflow.objects.for_user(user)`` with two MCP-specific
-    layers:
+    A workflow is MCP-accessible when ALL of these hold:
 
-    1. **Member-branch agent gate.** ``for_user`` includes workflows
-       the user can see via membership *unconditionally*. The MCP
-       catalog additionally requires the org-level ``agent_access_enabled``
-       master switch to be on for those workflows. This is enforced by
-       *removing* member-only rows that have the flag off — workflows
-       reachable via grant / org-guest / public stay visible regardless
-       of the flag because those access paths are deliberate cross-org
-       exceptions.
-    2. **agent_public_discovery cross-org branch.** Workflows published
-       for external discovery are visible to every authenticated MCP
-       user even if the user has no ``for_user`` access to them. This
-       is the public catalog: anyone with an MCP token can see and run
-       a workflow whose author flipped the discovery flag.
+    1. **Identity access.** ``Workflow.objects.for_user`` resolves
+       membership, creator, family-scoped grants, OrgGuestAccess, and
+       the PRIVATE / ORG / ALL_USERS visibility tiers in ONE place — so
+       a future fix to any access path propagates to MCP automatically.
+    2. **Workflow opts into agents.** ``mcp_enabled=True``.
+    3. **Org permits agents.** ``org.mcp_allowed=True`` (the org-level
+       guardrail / master switch).
 
-    Delegating the access decision to ``for_user`` rather than
-    re-implementing it preserves the family-scoped grant logic
-    (``(org_id, slug)`` pair), the OrgGuestAccess branch, and the
-    ``is_public`` branch in ONE place — so a future fix to those paths
-    propagates to MCP automatically. Re-implementing the four branches
-    here previously regressed the family scope: a grant on v1 stopped
-    surfacing v2 of the same family in the catalog.
+    x402 paid-public workflows are deliberately NOT in this catalog.
+    Anonymous x402 discovery is a separate, cloud-only surface
+    (``/api/v1/agent/*``). MCP here is always authenticated — acting on
+    behalf of a user, billed to that user's plan quota. ``mcp_enabled``
+    and ``x402_enabled`` are INDEPENDENT channels (the 2026-06-27
+    access-control refactor decoupled them), so a workflow's x402
+    publication state has no bearing on its MCP catalog visibility.
 
-    The function returns the *latest* version of each workflow family
-    that matches.
+    The function returns the *latest* version of each matching family.
 
-    ``member_org_ids`` is accepted as an optional kwarg so callers
-    that already compute it can avoid the round-trip; if omitted the
-    function derives it.
+    ``member_org_ids`` is accepted for caller compatibility but is no
+    longer used here — ``for_user`` computes membership internally.
     """
-
-    from validibot.workflows.models import OrgGuestAccess
-    from validibot.workflows.models import WorkflowAccessGrant
-
-    if member_org_ids is None:
-        member_org_ids = _member_org_ids_for_user(user)
 
     base_filters = Q(
         is_active=True,
@@ -188,62 +171,15 @@ def _latest_accessible_workflow_queryset(
         is_tombstoned=False,
     )
 
-    # Branch A: workflows reachable via for_user (membership, creator,
-    # family-scoped grant, OrgGuestAccess, is_public). ``for_user``
-    # already short-circuits to ``none()`` for unauthenticated users.
-    for_user_qs = Workflow.objects.for_user(user).filter(base_filters)
-
-    # The MCP-specific exclusion: member-only rows whose org has the
-    # MCP master switch off. "Member-only" means the user does NOT
-    # also have a non-member access path to the row. Without the
-    # "non-member access path" carve-out, a guest with a per-workflow
-    # grant for a workflow whose org has agent_access_enabled=False
-    # would be incorrectly hidden from MCP — the grant is supposed to
-    # be a cross-org exception that overrides the org gate.
-    #
-    # Build a subquery for "user has a non-member access path to this
-    # workflow row" (covers grants + OrgGuestAccess + public flags).
-    non_member_path = Exists(
-        WorkflowAccessGrant.objects.filter(
-            user=user,
-            is_active=True,
-            workflow__org_id=OuterRef("org_id"),
-            workflow__slug=OuterRef("slug"),
-        ),
-    ) | Exists(
-        OrgGuestAccess.objects.filter(
-            user=user,
-            is_active=True,
-            org_id=OuterRef("org_id"),
-        ),
-    )
-    for_user_qs = for_user_qs.annotate(_has_non_member_path=non_member_path)
-
-    # Member-only rows are those in member orgs that the user can ONLY
-    # reach via membership (no grant, no org_guest, not is_public).
-    # Exclude them when agent_access_enabled is off.
-    for_user_qs = for_user_qs.exclude(
-        Q(org_id__in=member_org_ids)
-        & Q(agent_access_enabled=False)
-        & Q(_has_non_member_path=False)
-        & Q(is_public=False),
-    )
-
-    # Branch B: workflows opted into agent_public_discovery. These are
-    # visible to every authenticated MCP user, including those with no
-    # for_user access.
-    public_agent_qs = Workflow.objects.filter(
+    # Identity access (for_user — already none() for anonymous) ∩ the
+    # workflow's agent opt-in ∩ the org-level MCP guardrail. No more
+    # cross-org "public discovery" branch: that path is x402-only and
+    # lives on the anonymous cloud agent surface, not here.
+    eligible = Workflow.objects.for_user(user).filter(
         base_filters,
-        agent_public_discovery=True,
+        mcp_enabled=True,
+        org__mcp_allowed=True,
     )
-
-    # Combine. ``union`` would deduplicate, but we use a Q-based
-    # filter so the latest-version computation can run on a single
-    # queryset without losing the annotation.
-    combined_pks = set(for_user_qs.values_list("pk", flat=True)) | set(
-        public_agent_qs.values_list("pk", flat=True),
-    )
-    eligible = Workflow.objects.filter(pk__in=combined_pks).filter(base_filters)
 
     latest_ids = set(get_latest_workflow_ids(eligible))
     return Workflow.objects.filter(pk__in=latest_ids).filter(base_filters).distinct()
@@ -335,23 +271,21 @@ class MCPWorkflowAccessSerializerMixin:
         return build_workflow_ref(obj)
 
     def get_access_modes(self, obj: Workflow) -> list[str]:
-        """List how the current user can access this workflow via MCP."""
+        """List how the current user can access this workflow via MCP.
 
-        member_org_ids = self._get_member_org_ids()
-        modes: list[str] = []
-        if obj.org_id in member_org_ids:
-            modes.append("member_access")
-        if obj.agent_public_discovery:
-            modes.append("public_x402")
-        return modes
+        Every workflow in the MCP catalog is reachable via authenticated,
+        on-behalf-of-user access (resolved by the catalog queryset). x402
+        paid access is NOT exposed on the MCP surface — it is a separate
+        anonymous cloud endpoint — so ``public_x402`` is no longer
+        advertised here.
+        """
+
+        return ["member_access"]
 
     def get_preferred_access_mode(self, obj: Workflow) -> str:
-        """Prefer member access when available, otherwise public x402."""
+        """The MCP surface only offers authenticated (member) access."""
 
-        access_modes = self.get_access_modes(obj)
-        if "member_access" in access_modes:
-            return "member_access"
-        return "public_x402"
+        return "member_access"
 
 
 class MCPWorkflowCatalogView(APIView):
@@ -359,11 +293,10 @@ class MCPWorkflowCatalogView(APIView):
 
     The MCP service calls this endpoint over a trusted service-to-service
     channel after validating the end user's bearer credential. The
-    response merges:
-
-    1. All ``agent_access_enabled`` workflows in orgs where the user has
-       an active membership.
-    2. All public x402 workflows across every org.
+    response is the set of workflows the user has identity access to (any
+    visibility tier) that are ``mcp_enabled`` and whose org has
+    ``mcp_allowed`` on. x402 paid-public workflows are NOT included — they
+    live on the separate anonymous cloud agent surface.
 
     Each workflow includes a stable ``workflow_ref`` plus compatibility
     fields like ``org_slug`` and ``slug`` so the current tool contract
@@ -503,16 +436,21 @@ class MCPWorkflowRunCreateView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, workflow_ref: str):
-        """Launch a member-access run for the authenticated MCP user."""
+        """Launch an authenticated MCP run for the current user.
 
-        member_org_ids = _member_org_ids_for_user(request.user)
+        Authorization is fully decided by ``_resolve_accessible_workflow``
+        (identity access ∩ ``mcp_enabled`` ∩ ``org.mcp_allowed``), so a
+        workflow that resolves is one the user may launch via MCP. There
+        is no separate member-org restriction now that ALL_USERS-visible
+        ``mcp_enabled`` workflows are legitimately launchable by any
+        authenticated user (billed to that user's plan quota).
+        """
+
         workflow = _resolve_accessible_workflow(
             user=request.user,
-            member_org_ids=member_org_ids,
+            member_org_ids=_member_org_ids_for_user(request.user),
             workflow_ref=workflow_ref,
         )
-        if workflow.org_id not in member_org_ids:
-            _raise_not_found("Workflow is not available for member launches.")
 
         project = resolve_project(workflow=workflow, request=request)
         try:

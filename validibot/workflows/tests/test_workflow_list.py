@@ -315,14 +315,15 @@ def test_archived_badge_priority(client):
     assert "Archived" in html
 
 
-def test_archive_clears_public_agent_flags(client):
-    """Archiving must clear ``agent_public_discovery`` + ``agent_access_enabled``.
+def test_archive_clears_agent_channels(client):
+    """Archiving must clear ``x402_enabled`` + ``mcp_enabled``.
 
-    The ``ck_workflow_public_discovery_requires_alive_row`` constraint
+    The ``ck_workflow_x402_enabled_requires_alive_row`` constraint
     forbids the contradictory state where a row is archived but still
-    claims to be on the public agent catalog.  The archive view must
-    therefore strip the agent flags in the same transition, mirroring
-    what ``Workflow.tombstone()`` does for the harder removal.
+    claims to be published for paid anonymous (x402) access.  The
+    archive view must therefore strip both agent channels in the same
+    transition, mirroring what ``Workflow.tombstone()`` does for the
+    harder removal.
 
     Without this, archiving a published x402 workflow would raise an
     IntegrityError at save time — the archive button would simply
@@ -332,7 +333,7 @@ def test_archive_clears_public_agent_flags(client):
     from validibot.workflows.constants import AgentBillingMode
 
     user = UserFactory()
-    org = OrganizationFactory()
+    org = OrganizationFactory(mcp_allowed=True, x402_allowed=True)
     grant_role(user, org, RoleCode.OWNER)
     workflow = WorkflowFactory(
         org=org,
@@ -340,8 +341,8 @@ def test_archive_clears_public_agent_flags(client):
         name="Published x402 Workflow",
         is_active=True,
         is_archived=False,
-        agent_access_enabled=True,
-        agent_public_discovery=True,
+        mcp_enabled=True,
+        x402_enabled=True,
         agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
         agent_price_cents=10,
         input_retention=SubmissionRetention.DO_NOT_STORE,
@@ -361,8 +362,8 @@ def test_archive_clears_public_agent_flags(client):
     # violate the alive-row constraint.
     assert workflow.is_archived is True
     assert workflow.is_active is False
-    assert workflow.agent_public_discovery is False
-    assert workflow.agent_access_enabled is False
+    assert workflow.x402_enabled is False
+    assert workflow.mcp_enabled is False
 
 
 def test_unarchive_hx_updates_state(client):

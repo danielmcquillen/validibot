@@ -73,6 +73,8 @@ ordering; do not sort display strings lexicographically.
 | Validator class identity | `Validator.slug` + integer `Validator.version` (unique constraint `uq_validator_slug_version`) | `sync_validators` keys by `(slug, version)`; bumping `version` creates a new row |
 | Ruleset rules | `Ruleset.rules_text`, `rules_file`, `metadata`, `ruleset_type` | `Ruleset.clean()` rejects mutation when `is_used_by_locked_workflow()` is true |
 | Ruleset assertions | `RulesetAssertion.operator`, `target`, `rhs`, `options`, `when_expression`, `severity`, `spec_version`, `assertion_type` | `RulesetAssertion.clean()` rejects mutation AND rejects adding new rows when parent is in use |
+| Workflow signal mappings | `WorkflowSignalMapping.name`, `source_path`, `on_missing`, `default_value`, `data_type` | `WorkflowSignalMapping.clean()`/`delete()` reject add/edit/delete when the workflow is versioned + locked/run-having (ADR-2026-06-18 — closes a pre-existing gap) |
+| Workflow constants | `WorkflowConstant.name`, `value`, `data_type` | `WorkflowConstant.clean()`/`delete()` reject add/edit/delete under the same gate; cosmetic `description`/`position` stay editable (ADR-2026-06-18) |
 | Catalog file content | `ValidatorResourceFile.content_hash` (SHA-256) | `ValidatorResourceFile.save()` raises if hash differs and the row is referenced by a versioned locked/run-having workflow |
 | Step-owned file content | `WorkflowStepResource.content_hash` (SHA-256) | `WorkflowStepResource.save()` raises if hash differs and the step's workflow is versioned and locked/run-having |
 
@@ -102,7 +104,9 @@ Copied rows include:
 - step-owned `WorkflowStepResource` files;
 - `WorkflowPublicInfo`;
 - `WorkflowRoleAccess`;
-- `WorkflowSignalMapping`.
+- `WorkflowSignalMapping`;
+- `WorkflowConstant` (the `c.*` namespace — carried forward verbatim so a new
+  version keeps the fixed thresholds its assertions depend on).
 
 Referenced rows include:
 

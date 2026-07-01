@@ -96,3 +96,14 @@ SIGNAL_MAPPING_FIELDS: tuple[str, ...] = (
     "data_type",
     "position",
 )
+
+# Workflow Constants (c.* namespace, ADR-2026-06-18). ``value`` is handled
+# separately (deep-copied) like signal mappings' ``default_value`` because it
+# may hold structured JSON. A portable workflow must keep the thresholds its
+# assertions depend on, so constants round-trip through VAF.
+CONSTANT_FIELDS: tuple[str, ...] = (
+    "name",
+    "data_type",
+    "description",
+    "position",
+)

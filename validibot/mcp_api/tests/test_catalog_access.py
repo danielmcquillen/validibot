@@ -284,6 +284,28 @@ class TestMCPCatalogVisibilityTiers:
         visible = _visible_pks(unrelated)
         assert public_wf.pk in visible
 
+    def test_lowered_visibility_cap_hides_all_users_from_unrelated_user(self):
+        """The MCP catalog follows effective visibility, not the stored enum."""
+        author = UserFactory()
+        org = author.get_current_org()
+        org.mcp_allowed = True
+        org.workflow_visibility_cap = WorkflowVisibility.ORG
+        org.save(update_fields=["mcp_allowed", "workflow_visibility_cap"])
+
+        public_wf = WorkflowFactory(
+            org=org,
+            user=author,
+            workflow_visibility=WorkflowVisibility.ALL_USERS,
+            mcp_enabled=True,
+        )
+
+        unrelated = UserFactory(orgs=[])
+        Membership.objects.filter(user=unrelated).delete()
+
+        visible = _visible_pks(unrelated)
+        assert public_wf.effective_visibility() == WorkflowVisibility.ORG
+        assert public_wf.pk not in visible
+
     def test_private_workflow_hidden_from_unrelated_user(self):
         """A PRIVATE, mcp-enabled workflow is NOT in the catalog for a user
         with no membership/grant.

@@ -20,6 +20,25 @@ class WorkflowHistoryPolicy(models.TextChoices):
     MUTABLE = "mutable", _("Mutable history")
 
 
+class WorkflowConstantType(models.TextChoices):
+    """Explicit value types for a workflow ``Constant`` (``c.*``).
+
+    Per ADR-2026-06-18 the author always commits a type (no "Auto"): the
+    chosen type coerces and validates the entered value at save time, so
+    the constant's contract is guaranteed before any run. ``NUMBER`` is
+    stored as a canonical decimal *string* (parsed with ``Decimal``) to
+    preserve exact value and precision through the digest, manifest, and
+    credential — CEL itself has no decimal type, so the value is coerced
+    to ``double`` only at evaluation time.
+    """
+
+    STRING = "STRING", _("String")
+    NUMBER = "NUMBER", _("Number")
+    BOOLEAN = "BOOLEAN", _("Boolean")
+    LIST = "LIST", _("List")
+    OBJECT = "OBJECT", _("Object")
+
+
 class AccessScope(models.TextChoices):
     ORG_ALL = "ORG_ALL", _("All members of the workflow's organization")
     RESTRICTED = "RESTRICTED", _("Restricted to allowed users and/or roles")

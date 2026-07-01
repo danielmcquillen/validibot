@@ -101,6 +101,7 @@ def _export_workflow_fields(workflow: Workflow) -> dict[str, Any]:
     data["input_schema"] = deepcopy(workflow.input_schema)
     data["public_info"] = _export_public_info(workflow)
     data["signal_mappings"] = _export_signal_mappings(workflow)
+    data["constants"] = _export_constants(workflow)
     return data
 
 
@@ -127,6 +128,21 @@ def _export_signal_mappings(workflow: Workflow) -> list[dict[str, Any]]:
         row["default_value"] = deepcopy(mapping.default_value)
         mappings.append(row)
     return mappings
+
+
+def _export_constants(workflow: Workflow) -> list[dict[str, Any]]:
+    """Serialize workflow Constants (c.* namespace, ADR-2026-06-18).
+
+    ``value`` is deep-copied (it may be structured JSON, e.g. an allow-list).
+    A portable workflow must keep the named thresholds its assertions depend
+    on, or an export→import would silently drop them.
+    """
+    constants = []
+    for constant in workflow.constants.all().order_by("position", "pk"):
+        row = {field: getattr(constant, field) for field in schema.CONSTANT_FIELDS}
+        row["value"] = deepcopy(constant.value)
+        constants.append(row)
+    return constants
 
 
 def _export_step(step: WorkflowStep, files: dict[str, bytes]) -> dict[str, Any]:

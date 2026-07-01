@@ -184,8 +184,9 @@ CUSTOM_HELPER_NAMES: frozenset[str] = frozenset(DEFAULT_HELPERS)
 #   - ``_find_unknown_cel_slugs``   — validations/forms.py (slug discovery)
 #   - ``_validate_cel_expression``  — validations/views/rules.py (custom rules)
 #
-# Six namespaces — five from ADR-2026-05-22b (four with a short/long alias
-# pair plus the alias-free ``steps``) and ``submission`` from ADR-2026-06-03b:
+# Seven namespaces — five from ADR-2026-05-22b (four with a short/long alias
+# pair plus the alias-free ``steps``), ``submission`` from ADR-2026-06-03b, and
+# ``c`` / ``const`` from ADR-2026-06-18:
 #
 #   p / payload  — raw submission file data
 #   s / signal   — workflow vocabulary (author-defined named values)
@@ -194,6 +195,8 @@ CUSTOM_HELPER_NAMES: frozenset[str] = frozenset(DEFAULT_HELPERS)
 #   steps        — cross-step inputs and outputs (no short alias)
 #   submission   — submission envelope: submitter metadata + server facts
 #                  (long-only; ``s`` already means ``signal``)
+#   c / const    — workflow-defined Constants (fixed literals, known at
+#                  authoring time — the only design-time-known namespace)
 #
 # ``submission`` is deliberately long-only and carries data that lives BESIDE
 # the file (metadata bag + server-stamped facts), so it resolves identically
@@ -225,5 +228,7 @@ CEL_NAMESPACE_ROOTS: frozenset[str] = frozenset(
         "output",
         "steps",
         "submission",
+        "c",
+        "const",
     },
 )

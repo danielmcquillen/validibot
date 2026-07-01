@@ -34,6 +34,7 @@ from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
 from validibot.workflows.constants import AgentBillingMode
+from validibot.workflows.constants import WorkflowVisibility
 from validibot.workflows.services.access import WorkflowAccessResolver
 from validibot.workflows.services.agent_workflows import AgentWorkflowResolver
 from validibot.workflows.tests.factories import WorkflowFactory
@@ -92,7 +93,7 @@ class WorkflowAccessResolverListForUserTests(TestCase):
         Active+visible workflow appears; inactive, archived, and
         tombstoned ones don't.
         """
-        org = OrganizationFactory()
+        org = OrganizationFactory(x402_allowed=True)
         member = UserFactory()
         grant_role(member, org, RoleCode.EXECUTOR)
 
@@ -105,12 +106,98 @@ class WorkflowAccessResolverListForUserTests(TestCase):
         assert visible in result
         assert len(result) == 1
 
+    def test_lowered_org_visibility_cap_masks_all_users_at_read_time(self):
+        """Lowering the org cap must immediately narrow existing workflows.
+
+        The workflow keeps its stored ``ALL_USERS`` intent, but the effective
+        read-time audience is PRIVATE because the org ceiling was lowered.
+        This pins the ADR's mask-not-overwrite behavior across the queryset
+        resolver and the row-level execution check.
+        """
+        org = OrganizationFactory(workflow_visibility_cap=WorkflowVisibility.PRIVATE)
+        author = UserFactory()
+        workflow = WorkflowFactory(
+            org=org,
+            user=author,
+            workflow_visibility=WorkflowVisibility.ALL_USERS,
+            is_active=True,
+        )
+        unrelated = UserFactory(orgs=[])
+
+        assert workflow.effective_visibility() == WorkflowVisibility.PRIVATE
+        assert workflow.can_execute(user=unrelated) is False
+        result_ids = set(
+            WorkflowAccessResolver.list_for_user(unrelated).values_list(
+                "pk",
+                flat=True,
+            ),
+        )
+        assert workflow.pk not in result_ids
+
+    def test_org_cap_masks_all_users_to_org_members_only(self):
+        """An ORG cap turns stored ALL_USERS into effective ORG visibility."""
+        org = OrganizationFactory(workflow_visibility_cap=WorkflowVisibility.ORG)
+        author = UserFactory()
+        workflow = WorkflowFactory(
+            org=org,
+            user=author,
+            workflow_visibility=WorkflowVisibility.ALL_USERS,
+            is_active=True,
+        )
+        member = UserFactory()
+        unrelated = UserFactory(orgs=[])
+        grant_role(member, org, RoleCode.EXECUTOR)
+
+        assert workflow.effective_visibility() == WorkflowVisibility.ORG
+        assert workflow.can_execute(user=member) is True
+        assert workflow.can_execute(user=unrelated) is False
+        member_ids = set(
+            WorkflowAccessResolver.list_for_user(member).values_list("pk", flat=True),
+        )
+        unrelated_ids = set(
+            WorkflowAccessResolver.list_for_user(unrelated).values_list(
+                "pk",
+                flat=True,
+            ),
+        )
+        assert workflow.pk in member_ids
+        assert workflow.pk not in unrelated_ids
+
+    def test_mcp_effective_masks_on_org_ceiling(self):
+        """``mcp_effective()`` is the AND of the per-workflow flag and the org.
+
+        Completes the trio of effective-access helpers (``effective_visibility``
+        and ``x402_effective`` are asserted elsewhere). The MCP catalog enforces
+        this same predicate in SQL (``mcp_enabled AND org__mcp_allowed``); this
+        pins the Python method so the two can't silently drift — a workflow that
+        opted into MCP is only *effectively* MCP-reachable while its org still
+        permits the channel.
+        """
+        # Workflow opts in, org permits → effective.
+        allowed_org = OrganizationFactory(mcp_allowed=True)
+        on_wf = WorkflowFactory(org=allowed_org, mcp_enabled=True, is_active=True)
+        assert on_wf.mcp_effective() is True
+
+        # Workflow opts in, but the org switched the channel off → masked.
+        blocked_org = OrganizationFactory(mcp_allowed=False)
+        masked_wf = WorkflowFactory(org=blocked_org, mcp_enabled=True, is_active=True)
+        assert masked_wf.mcp_enabled is True
+        assert masked_wf.mcp_effective() is False
+
+        # Org permits, but the workflow never opted in → not effective.
+        opted_out_wf = WorkflowFactory(
+            org=allowed_org,
+            mcp_enabled=False,
+            is_active=True,
+        )
+        assert opted_out_wf.mcp_effective() is False
+
 
 class WorkflowAccessResolverGetForUserTests(TestCase):
     """``get_for_user`` returns a single workflow or None."""
 
     def test_returns_workflow_when_user_can_access(self):
-        org = OrganizationFactory()
+        org = OrganizationFactory(x402_allowed=True)
         member = UserFactory()
         grant_role(member, org, RoleCode.EXECUTOR)
         workflow = WorkflowFactory(org=org, is_active=True)
@@ -154,7 +241,7 @@ class WorkflowAccessResolverGetForUserTests(TestCase):
 
     def test_slug_lookup_returns_latest_version(self):
         """When a slug has multiple versions, get_for_user returns latest."""
-        org = OrganizationFactory()
+        org = OrganizationFactory(x402_allowed=True)
         member = UserFactory()
         grant_role(member, org, RoleCode.EXECUTOR)
         v1 = WorkflowFactory(org=org, slug="versioned", version="1", is_active=True)
@@ -197,7 +284,7 @@ class AgentWorkflowResolverListPublishedTests(TestCase):
 
     def test_excludes_private_workflows(self):
         """Workflows not published for paid agent access don't appear."""
-        org = OrganizationFactory()
+        org = OrganizationFactory(x402_allowed=True)
         WorkflowFactory(
             org=org,
             x402_enabled=True,
@@ -226,7 +313,7 @@ class AgentWorkflowResolverListPublishedTests(TestCase):
         for that path lives in
         ``test_agent_access_fields.py::TestWorkflowCheckConstraints``.
         """
-        org = OrganizationFactory()
+        org = OrganizationFactory(x402_allowed=True)
         active = WorkflowFactory(
             org=org,
             x402_enabled=True,
@@ -249,7 +336,7 @@ class AgentWorkflowResolverListPublishedTests(TestCase):
 
     def test_returns_only_latest_version_per_slug(self):
         """Versioned workflow families appear once (latest version)."""
-        org = OrganizationFactory()
+        org = OrganizationFactory(x402_allowed=True)
         v1 = WorkflowFactory(
             org=org,
             slug="versioned-public",
@@ -282,7 +369,7 @@ class AgentWorkflowResolverGetBySlugTests(TestCase):
 
     def test_returns_latest_version(self):
         """Versioned slug resolves to latest active published version."""
-        org = OrganizationFactory()
+        org = OrganizationFactory(x402_allowed=True)
         v1 = WorkflowFactory(
             org=org,
             slug="versioned-public",
@@ -308,6 +395,29 @@ class AgentWorkflowResolverGetBySlugTests(TestCase):
         )
         assert result == v2
         assert result != v1
+
+    def test_org_x402_allowed_masks_published_workflow_at_read_time(self):
+        """Turning off org x402 access removes an otherwise-published row."""
+        org = OrganizationFactory(x402_allowed=False)
+        workflow = WorkflowFactory(
+            org=org,
+            slug="masked-x402",
+            x402_enabled=True,
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=10,
+            is_active=True,
+        )
+
+        assert workflow.x402_enabled is True
+        assert workflow.x402_effective() is False
+        assert (
+            AgentWorkflowResolver.get_by_slug(
+                org_slug=org.slug,
+                workflow_slug="masked-x402",
+            )
+            is None
+        )
+        assert AgentWorkflowResolver.is_valid_public_x402_publish(workflow) is False
 
     def test_returns_none_for_private_workflow(self):
         """Workflows not published for agent discovery return None.

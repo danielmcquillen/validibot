@@ -29,6 +29,13 @@ visibility_choices (list of {value,label}), org_mcp_allowed, org_x402_allowed.
     </div>
   </div>
   <div class="card-body">
+    {% if access_error_messages %}
+      <div class="alert alert-danger" role="alert" aria-live="assertive">
+        {% for error in access_error_messages %}
+          <div>{{ error }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
 
     {% comment %}Effective-access summary line — combines visibility + x402.{% endcomment %}
     <div class="alert alert-light border d-flex align-items-start gap-2 mb-3">
@@ -55,7 +62,7 @@ visibility_choices (list of {value,label}), org_mcp_allowed, org_x402_allowed.
                  {% if workflow.workflow_visibility == choice.value %}
                    checked
                  {% endif %}
-                 {% if can_manage_sharing %}
+                 {% if can_edit_access %}
                    hx-post="{% org_url 'workflows:workflow_visibility_update' pk=workflow.pk %}" hx-target="#workflow-visibility-section" hx-swap="outerHTML" hx-vals='{"workflow_visibility": "{{ choice.value }}"}'
                  {% else %}
                    disabled
@@ -122,7 +129,7 @@ visibility_choices (list of {value,label}), org_mcp_allowed, org_x402_allowed.
                {% if workflow.mcp_enabled %}
                  checked
                {% endif %}
-               {% if can_manage_sharing and org_mcp_allowed %}
+               {% if can_edit_access and org_mcp_allowed %}
                  hx-post="{% org_url 'workflows:workflow_visibility_update' pk=workflow.pk %}" hx-target="#workflow-visibility-section" hx-swap="outerHTML" hx-vals='{"mcp_enabled": "
                  {% if workflow.mcp_enabled %}
                    false
@@ -164,7 +171,7 @@ visibility_choices (list of {value,label}), org_mcp_allowed, org_x402_allowed.
                {% if workflow.x402_enabled %}
                  checked
                {% endif %}
-               {% if can_manage_sharing and org_x402_allowed %}
+               {% if can_edit_access and org_x402_allowed %}
                  hx-post="{% org_url 'workflows:workflow_visibility_update' pk=workflow.pk %}" hx-target="#workflow-visibility-section" hx-swap="outerHTML" hx-vals='{"x402_enabled": "
                  {% if workflow.x402_enabled %}
                    false

@@ -377,3 +377,57 @@ class TestWorkflowDetailQueryCount:
             f"Detail endpoint issued {len(ctx.captured_queries)} queries — "
             "possible N+1 regression. Check prefetch_related in get_object()."
         )
+
+
+# ---------------------------------------------------------------------------
+# Constants surfacing (c.* namespace, ADR-2026-06-18)
+# ---------------------------------------------------------------------------
+
+
+class TestWorkflowConstantsInDetail:
+    """The detail response exposes Constants with their values.
+
+    Surfacing constants (name + value) through the API gives CLI and MCP
+    consumers parity with the UI and the signed credential — an agent can see
+    the fixed thresholds a workflow judges against before launching it.
+    """
+
+    def test_detail_includes_constants_with_values(
+        self, api_client, member, org, workflow
+    ):
+        """A workflow's constants appear in the detail response with exact values.
+
+        The decimal-string value must round-trip verbatim (``0.40``, not
+        ``0.4``) so a consumer sees the attested precision.
+        """
+        from validibot.workflows.constants import WorkflowConstantType
+        from validibot.workflows.models import WorkflowConstant
+
+        WorkflowConstant.objects.create(
+            workflow=workflow,
+            name="energy_price",
+            data_type=WorkflowConstantType.NUMBER,
+            value="0.40",
+        )
+
+        api_client.force_authenticate(user=member)
+        resp = api_client.get(f"/api/v1/orgs/{org.slug}/workflows/{workflow.slug}/")
+        data = resp.json()
+
+        assert resp.status_code == HTTPStatus.OK
+        assert data["constants"] == [
+            {
+                "name": "energy_price",
+                "data_type": "NUMBER",
+                "value": "0.40",
+                "description": "",
+            }
+        ]
+
+    def test_detail_constants_empty_when_none(self, api_client, member, org, workflow):
+        """A workflow with no constants returns an empty list, not a missing key."""
+        api_client.force_authenticate(user=member)
+        resp = api_client.get(f"/api/v1/orgs/{org.slug}/workflows/{workflow.slug}/")
+
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.json()["constants"] == []

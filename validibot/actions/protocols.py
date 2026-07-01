@@ -36,6 +36,13 @@ class RunContext:
             at run start from ``WorkflowSignalMapping`` rows resolved
             against the submission data. Available in CEL expressions
             via ``s.<name>`` (or ``signal.<name>``).
+        workflow_constants: Author-defined Constants (the ``c.*`` /
+            ``const.*`` namespace) — a literal ``{name: value}`` map built
+            once from the workflow's ``WorkflowConstant`` rows (ADR-2026-06-18).
+            Unlike signals these need no submission data and never "resolve":
+            a constant is workflow-definition-derived. Available in CEL as
+            ``c.<name>`` and, in Basic assertions, as a nested ``c``/``const``
+            sub-dict of the enriched payload.
         step_input_contract_values: The merged contract-keyed step input
             dict for the current step, populated at the start of the
             input stage from (a) parser-extracted facts via
@@ -50,6 +57,7 @@ class RunContext:
     step: WorkflowStep | None = None
     downstream_signals: dict[str, Any] = field(default_factory=dict)
     workflow_signals: dict[str, Any] = field(default_factory=dict)
+    workflow_constants: dict[str, Any] = field(default_factory=dict)
     step_input_contract_values: dict[str, Any] = field(default_factory=dict)
 
 

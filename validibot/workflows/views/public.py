@@ -228,12 +228,25 @@ class PublicWorkflowInfoView(DetailView):
         if workflow_has_input_form(workflow):
             schema_requirement_rows = schema_to_requirement_rows(workflow.input_schema)
 
+        # Workflow Constants (c.* namespace, ADR-2026-06-18) — shown on the
+        # public info page so a submitter can see the fixed thresholds their
+        # data will be judged against BEFORE they submit. A constant is a
+        # workflow-defined literal (never submission-derived), so publishing its
+        # value here is always safe. Visibility inherits the info page's own
+        # rules — this view already gates who can see the page.
+        from validibot.workflows.models import WorkflowConstant
+
+        constants = list(
+            WorkflowConstant.objects.filter(workflow=workflow).order_by("position"),
+        )
+
         context.update(
             {
                 "steps": steps,
                 "recent_runs": recent_runs,
                 "user_has_access": user_has_access,
                 "schema_requirement_rows": schema_requirement_rows,
+                "constants": constants,
                 "breadcrumbs": [
                     {
                         "name": _("All Workflows"),

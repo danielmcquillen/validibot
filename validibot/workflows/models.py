@@ -34,8 +34,10 @@ from validibot.users.models import User
 from validibot.users.permissions import PermissionCode
 from validibot.users.permissions import roles_for_permission
 from validibot.workflows.constants import AgentBillingMode
+from validibot.workflows.constants import WorkflowConstantType
 from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.constants import WorkflowVisibility
+from validibot.workflows.constants import visibility_rank
 
 if TYPE_CHECKING:
     from validibot.users.constants import RoleCode
@@ -195,18 +197,33 @@ class WorkflowQuerySet(models.QuerySet):
         )
         qs = qs.annotate(_has_org_guest_access=Exists(org_guest_subq))
 
+        # Effective visibility is stored visibility masked by the org
+        # ceiling at READ time. In SQL that means:
+        #   effective >= ORG       iff both stored value and cap are >= ORG
+        #   effective == ALL_USERS iff both stored value and cap are ALL_USERS
+        # This mirrors ``Workflow.effective_visibility()`` so lowering an
+        # org cap immediately narrows existing rows without overwriting the
+        # workflow's stored intent.
         org_or_wider = Q(
             workflow_visibility__in=[
                 WorkflowVisibility.ORG,
                 WorkflowVisibility.ALL_USERS,
             ],
+            org__workflow_visibility_cap__in=[
+                WorkflowVisibility.ORG,
+                WorkflowVisibility.ALL_USERS,
+            ],
+        )
+        all_users_effective = Q(
+            workflow_visibility=WorkflowVisibility.ALL_USERS,
+            org__workflow_visibility_cap=WorkflowVisibility.ALL_USERS,
         )
         access_filter = (
             Q(user_id=user.id)
             | Q(_has_grant=True)
             | (Q(_has_membership=True) & org_or_wider)
             | (Q(_has_org_guest_access=True) & org_or_wider)
-            | Q(workflow_visibility=WorkflowVisibility.ALL_USERS)
+            | all_users_effective
         )
 
         return qs.filter(access_filter).distinct()
@@ -503,11 +520,11 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     workflow_visibility = models.CharField(
         max_length=20,
         choices=WorkflowVisibility.choices,
-        default=WorkflowVisibility.ORG,
+        default=WorkflowVisibility.PRIVATE,
         help_text=_(
             "Who, by Validibot identity, may run this workflow for free: "
-            "PRIVATE (you and people you invite), ORG (your organization — "
-            "the default), or ALL_USERS (any Validibot user). Capped by the "
+            "PRIVATE (you and people you invite — the default), ORG (your "
+            "organization), or ALL_USERS (any Validibot user). Capped by the "
             "organization ceiling. Independent of x402 paid access.",
         ),
     )
@@ -737,6 +754,15 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         # no cascade between ``mcp_enabled`` and ``x402_enabled``.
         # Enabling paid public access selects the x402 billing mode; the
         # price and retention guards below then apply.
+        #
+        # This cascade is INTENTIONALLY one-directional. ``agent_billing_mode``
+        # is the source of truth for the billing rail and can be configured
+        # independently of ``x402_enabled`` (price + retention staged BEFORE
+        # publishing, then kept staged after un-publishing for easy
+        # republish — see ``test_disabled_with_x402_billing_configured_is_
+        # valid``). Disabling x402 must therefore NOT auto-clear the rail
+        # here. To fully decommission the rail, set ``agent_billing_mode``
+        # back to ``AUTHOR_PAYS`` explicitly via the edit form.
         if self.x402_enabled:
             self.agent_billing_mode = AgentBillingMode.AGENT_PAYS_X402
 
@@ -794,6 +820,66 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         self.full_clean()
         super().save(*args, **kwargs)
 
+    def effective_visibility(self) -> str:
+        """Return stored visibility masked by the organization ceiling.
+
+        The org cap is a runtime mask, not a write-time rewrite. A workflow
+        can remember that its author intended ``ALL_USERS`` while the org
+        temporarily caps access at ``ORG`` or ``PRIVATE``. Every read path
+        must use this method, or the SQL-equivalent predicate in
+        ``WorkflowQuerySet.for_user``.
+        """
+        visibility = self.workflow_visibility or WorkflowVisibility.PRIVATE
+        org = getattr(self, "org", None)
+        cap = (
+            getattr(org, "workflow_visibility_cap", None)
+            or WorkflowVisibility.ALL_USERS
+        )
+        try:
+            visibility_rank_value = visibility_rank(visibility)
+            cap_rank_value = visibility_rank(cap)
+        except (TypeError, ValueError):
+            return WorkflowVisibility.PRIVATE
+        if visibility_rank_value <= cap_rank_value:
+            return visibility
+        return cap
+
+    def mcp_effective(self) -> bool:
+        """Return whether authenticated MCP access is currently effective."""
+        org = getattr(self, "org", None)
+        return bool(self.mcp_enabled and getattr(org, "mcp_allowed", False))
+
+    def x402_effective(self) -> bool:
+        """Return whether paid anonymous x402 access is currently effective."""
+        org = getattr(self, "org", None)
+        return bool(self.x402_enabled and getattr(org, "x402_allowed", False))
+
+    def enable_x402(self, *, price_cents: int | None = None) -> None:
+        """Guard the dangerous transition into paid anonymous access.
+
+        Enabling x402 has prerequisites: x402 billing, a positive price, and
+        ``DO_NOT_STORE`` input retention. This method applies the billing
+        cascade and validates the full model before callers save, restoring
+        the prior in-memory values if validation fails so a re-rendered form
+        does not display a state that never persisted.
+        """
+        previous = {
+            "x402_enabled": self.x402_enabled,
+            "agent_billing_mode": self.agent_billing_mode,
+            "agent_price_cents": self.agent_price_cents,
+        }
+        self.x402_enabled = True
+        self.agent_billing_mode = AgentBillingMode.AGENT_PAYS_X402
+        if price_cents is not None:
+            self.agent_price_cents = price_cents
+        try:
+            self.full_clean()
+        except ValidationError:
+            self.x402_enabled = previous["x402_enabled"]
+            self.agent_billing_mode = previous["agent_billing_mode"]
+            self.agent_price_cents = previous["agent_price_cents"]
+            raise
+
     def can_view(self, *, user: User) -> bool:
         """
         Check if the given user can view this workflow.
@@ -806,18 +892,32 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         if not user or not user.is_authenticated:
             return False
 
-        # ALL_USERS visibility: any authenticated user can view.
-        if self.workflow_visibility == WorkflowVisibility.ALL_USERS:
+        effective_visibility = self.effective_visibility()
+
+        # ALL_USERS effective visibility: any authenticated user can view.
+        if effective_visibility == WorkflowVisibility.ALL_USERS:
             return True
 
         # The creator can always view.
         if self.user_id == user.id:
             return True
 
+        # Org admins/owners administer every workflow in their org,
+        # PRIVATE ones included (ADR 2026-06-27, "admins administer
+        # everything"). This keeps ``can_view`` consistent with the admin
+        # row-access branch in
+        # ``WorkflowAccessMixin.get_workflow_queryset_for_access``: both
+        # must agree, or an admin could open a detail page that
+        # ``can_view`` would then deny. ``has_perm`` is object-scoped — it
+        # derives the org from the workflow, so this grants nothing in
+        # orgs the user does not administer.
+        if user.has_perm(PermissionCode.ADMIN_MANAGE_ORG.value, self):
+            return True
+
         # Org member with VIEW — only when visibility is ORG, not
         # PRIVATE. A PRIVATE workflow is visible solely to its creator
         # and the people explicitly invited to it (grants, below).
-        if self.workflow_visibility == WorkflowVisibility.ORG and user.has_perm(
+        if effective_visibility == WorkflowVisibility.ORG and user.has_perm(
             PermissionCode.WORKFLOW_VIEW.value, self
         ):
             return True
@@ -868,8 +968,10 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         if not user or not user.is_authenticated:
             return False
 
-        # ALL_USERS visibility: any authenticated user can execute.
-        if self.workflow_visibility == WorkflowVisibility.ALL_USERS:
+        effective_visibility = self.effective_visibility()
+
+        # ALL_USERS effective visibility: any authenticated user can execute.
+        if effective_visibility == WorkflowVisibility.ALL_USERS:
             return True
 
         # The creator can always execute.
@@ -878,7 +980,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
         # Org member with LAUNCH — only when visibility is ORG, not
         # PRIVATE (PRIVATE = creator + explicitly-invited grants only).
-        if self.workflow_visibility == WorkflowVisibility.ORG and user.has_perm(
+        if effective_visibility == WorkflowVisibility.ORG and user.has_perm(
             PermissionCode.WORKFLOW_LAUNCH.value, self
         ):
             return True
@@ -1256,10 +1358,10 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         # Fall back to the most restrictive description for any unexpected
         # value so the line never renders blank on a malformed row.
         base = summaries.get(
-            self.workflow_visibility,
+            self.effective_visibility(),
             summaries[WorkflowVisibility.PRIVATE],
         )
-        if self.x402_enabled:
+        if self.x402_effective():
             base = str(base) + str(_(" · plus anyone who pays via x402"))
         return str(base)
 
@@ -2586,6 +2688,95 @@ class GuestInvite(TimeStampedModel):
         return self.status == InviteStatus.PENDING and not self.is_expired
 
 
+def _guard_contract_member_write(
+    instance,
+    *,
+    immutable_fields: tuple[str, ...],
+    member_label: str,
+) -> None:
+    """Block an unsafe add/edit of a workflow-scoped contract member.
+
+    Shared by :class:`WorkflowSignalMapping` and :class:`WorkflowConstant`
+    (ADR-2026-06-18). Both are part of the versioned trust contract: a signal
+    mapping's resolved value and a constant's literal value each determine
+    pass/fail, so editing them after runs exist (or once the workflow is locked)
+    would silently rewrite what "passed against workflow vX" meant. On a
+    ``versioned`` workflow with runs/lock, this rejects:
+
+    * **adding** a new member (no ``pk``), and
+    * **editing** any *semantic* field in ``immutable_fields`` (cosmetic fields
+      like ``description``/``position`` are intentionally excluded and stay
+      freely editable).
+
+    The author is directed to clone the workflow to a new version instead. Runs
+    only when the workflow's ``requires_new_version_for_contract_edits()`` gate
+    is set, so it has no effect during normal authoring or on mutable-history
+    workflows. (Deletion is guarded separately in each model's ``delete()``.)
+
+    NOTE: like the assertion immutability guard this lives on the per-instance
+    write path (``clean()``), so it covers form/service/VAF saves but not bulk
+    ``QuerySet.update()/delete()`` — clone uses ``bulk_create`` on the *new*
+    (unlocked) workflow, which is the intended escape hatch.
+    """
+    workflow_id = getattr(instance, "workflow_id", None)
+    if not workflow_id:
+        return
+    workflow = instance.workflow
+    if not workflow.requires_new_version_for_contract_edits():
+        return
+
+    if instance.pk is None:
+        raise ValidationError(
+            _(
+                "Cannot add a new %(member)s: this workflow has runs (or is "
+                "locked), so its contract is fixed. Clone it to a new version "
+                "to change %(member)s.",
+            )
+            % {"member": member_label},
+        )
+
+    try:
+        original = type(instance).objects.get(pk=instance.pk)
+    except type(instance).DoesNotExist:
+        return
+    changed = [
+        field
+        for field in immutable_fields
+        if getattr(instance, field, None) != getattr(original, field, None)
+    ]
+    if changed:
+        raise ValidationError(
+            _(
+                "Cannot change %(member)s on a workflow that has runs (or is "
+                "locked): clone it to a new version to change this.",
+            )
+            % {"member": member_label},
+        )
+
+
+def _guard_contract_member_delete(instance, *, member_label: str) -> None:
+    """Block deleting a workflow-scoped contract member after runs/lock.
+
+    The delete-side companion to :func:`_guard_contract_member_write`: removing a
+    signal mapping or constant changes the workflow contract and its digest
+    exactly as an edit does, so it is blocked on a ``versioned`` workflow with
+    runs/lock. Only fires for a direct ``instance.delete()`` — Django's cascade
+    on workflow deletion uses the collector's bulk delete and does not call this,
+    so deleting the whole workflow is unaffected.
+    """
+    workflow_id = getattr(instance, "workflow_id", None)
+    if not workflow_id:
+        return
+    if instance.workflow.requires_new_version_for_contract_edits():
+        raise ValidationError(
+            _(
+                "Cannot delete this %(member)s: the workflow has runs (or is "
+                "locked). Clone it to a new version to change %(member)s.",
+            )
+            % {"member": member_label},
+        )
+
+
 class WorkflowSignalMapping(TimeStampedModel):
     """A named signal defined at the workflow level.
 
@@ -2648,9 +2839,26 @@ class WorkflowSignalMapping(TimeStampedModel):
         ]
         ordering = ["position"]
 
+    # Semantic fields whose mutation changes how the signal resolves and thus
+    # what a run was checked against. ADR-2026-06-18 adds signal mappings to the
+    # edit-after-runs protected family (closing a pre-existing gap). ``position``
+    # is cosmetic (display order) and intentionally excluded.
+    IMMUTABLE_SIGNAL_FIELDS = (
+        "name",
+        "source_path",
+        "on_missing",
+        "default_value",
+        "data_type",
+    )
+
     def clean(self) -> None:
         """Validate signal name is a valid CEL identifier, not reserved,
         and unique across both workflow mappings and promoted outputs.
+
+        Also enforces the versioned trust contract: on a ``versioned`` workflow
+        that has runs (or is locked), adding a mapping or editing a semantic
+        field is rejected and the author is directed to clone a new version
+        (ADR-2026-06-18).
         """
         from validibot.validations.services.signal_resolution import (
             validate_signal_name,
@@ -2679,6 +2887,14 @@ class WorkflowSignalMapping(TimeStampedModel):
         if errors:
             raise ValidationError(errors)
 
+        # Versioned trust-contract guard (after name validation so the message
+        # ordering matches the constant model).
+        _guard_contract_member_write(
+            self,
+            immutable_fields=self.IMMUTABLE_SIGNAL_FIELDS,
+            member_label="signal mapping",
+        )
+
     def save(self, *args, **kwargs):
         """Run full model validation on every save.
 
@@ -2690,5 +2906,161 @@ class WorkflowSignalMapping(TimeStampedModel):
         self.full_clean()
         super().save(*args, **kwargs)
 
+    def delete(self, *args, **kwargs):
+        """Block deletion once the workflow's contract is locked by runs.
+
+        Removing a mapping changes the contract just as editing one does
+        (ADR-2026-06-18), so it is gated the same way.
+        """
+        _guard_contract_member_delete(self, member_label="signal mapping")
+        return super().delete(*args, **kwargs)
+
     def __str__(self) -> str:
         return f"s.{self.name} → {self.source_path}"
+
+
+class WorkflowConstant(TimeStampedModel):
+    """A named, fixed value defined at the workflow level (the ``c.*`` namespace).
+
+    ADR-2026-06-18. A constant is the first value that comes from the *workflow
+    definition* instead of the run — workflow-definition-derived, fixed at
+    authoring time. That is what distinguishes it from a
+    :class:`WorkflowSignalMapping` (``s.<name>``), which is *resolved from the
+    submission payload* at a source path. A constant therefore has **no**
+    ``source_path``, ``on_missing``, or ``default_value`` — it can never be
+    "missing" and never needs resolution; at runtime it is just a literal map
+    injected once before any step. Referenced in assertions as ``c.<name>``
+    (long form ``const.<name>``).
+
+    Type is explicit (no "Auto"): the chosen ``data_type`` coerces and validates
+    ``value`` at save time via
+    :func:`validibot.workflows.services.constants.coerce_constant_value`. A
+    ``NUMBER`` is stored as a canonical decimal *string* (e.g. ``"0.40"``) so its
+    exact value and precision survive into the evidence manifest, the
+    workflow-definition digest, and the Pro signed credential — CEL has no
+    decimal type, so the value is coerced to ``double`` only at evaluation time.
+    """
+
+    workflow = models.ForeignKey(
+        "Workflow",
+        on_delete=models.CASCADE,
+        related_name="constants",
+    )
+    name = models.CharField(
+        max_length=100,
+        help_text="Constant name.  Valid CEL identifier.  Used as c.<name>.",
+    )
+    value = models.JSONField(
+        help_text=(
+            "The literal value.  NUMBER is stored as a canonical decimal "
+            "string; LIST/OBJECT as JSON; STRING/BOOLEAN directly."
+        ),
+    )
+    data_type = models.CharField(
+        max_length=20,
+        choices=WorkflowConstantType.choices,
+        help_text="Explicit value type (required; no inference).",
+    )
+    description = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Optional human note (e.g. 'agreed €/kWh per the 2026 contract').",
+    )
+    position = models.PositiveIntegerField(
+        default=0,
+        help_text="Display order in the constants editor.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow", "name"],
+                name="unique_constant_name_per_workflow",
+            ),
+        ]
+        ordering = ["position"]
+
+    # Semantic fields whose mutation changes pass/fail. ``description`` and
+    # ``position`` are cosmetic (ADR-2026-06-18) and stay freely editable even
+    # after runs.
+    IMMUTABLE_CONSTANT_FIELDS = (
+        "name",
+        "value",
+        "data_type",
+    )
+
+    def clean(self) -> None:
+        """Validate the constant name and coerce/validate its value by type.
+
+        Name rules (valid CEL identifier, not a reserved root, unique *among
+        constants*) reuse the constant-scoped helpers — NOT the signal
+        uniqueness helper, because a constant sharing a bare name with a signal
+        is allowed (the ``c.``/``s.`` prefix disambiguates). The value is run
+        through ``coerce_constant_value`` so the stored form is canonical and
+        type-correct before it ever reaches a run. Finally, the versioned
+        trust-contract guard blocks add/edit of semantic fields once the
+        workflow has runs (or is locked).
+        """
+        from validibot.workflows.services.constants import ConstantValueError
+        from validibot.workflows.services.constants import coerce_constant_value
+        from validibot.workflows.services.constants import validate_constant_name
+        from validibot.workflows.services.constants import validate_constant_name_unique
+
+        errors: dict[str, list[str]] = {}
+
+        name_errors = validate_constant_name(self.name)
+        if name_errors:
+            errors["name"] = name_errors
+
+        if self.workflow_id:
+            unique_errors = validate_constant_name_unique(
+                workflow_id=self.workflow_id,
+                name=self.name,
+                exclude_constant_id=self.pk,
+            )
+            if unique_errors:
+                errors.setdefault("name", []).extend(unique_errors)
+
+        if self.data_type:
+            try:
+                # Coerce in place so the canonical (e.g. decimal-string) form is
+                # what gets persisted.
+                self.value = coerce_constant_value(self.data_type, self.value)
+            except ConstantValueError as exc:
+                errors["value"] = [str(exc)]
+        else:
+            errors["data_type"] = [str(_("A constant type is required."))]
+
+        if errors:
+            raise ValidationError(errors)
+
+        # Versioned trust-contract guard — blocks add/edit of name/value/
+        # data_type after runs exist (or once locked).
+        _guard_contract_member_write(
+            self,
+            immutable_fields=self.IMMUTABLE_CONSTANT_FIELDS,
+            member_label="constant",
+        )
+
+    def save(self, *args, **kwargs):
+        """Run full model validation on every save.
+
+        Mirrors :class:`WorkflowSignalMapping`: Django's ``save()`` does not call
+        ``clean()``, so ORM-level creates would otherwise bypass the
+        reserved-name, uniqueness, and value-coercion guards.
+        """
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Block deletion once the workflow's contract is locked by runs.
+
+        Removing a constant changes the workflow contract and digest just as
+        editing one does (ADR-2026-06-18).
+        """
+        _guard_contract_member_delete(self, member_label="constant")
+        return super().delete(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"c.{self.name} = {self.value!r}"

@@ -6,6 +6,7 @@ from rest_framework.reverse import reverse
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import Validator
 from validibot.workflows.models import Workflow
+from validibot.workflows.models import WorkflowConstant
 from validibot.workflows.models import WorkflowStep
 
 # ---------------------------------------------------------------------------
@@ -262,6 +263,21 @@ class WorkflowSlimSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class WorkflowConstantSerializer(serializers.ModelSerializer):
+    """Read-only representation of a workflow Constant (the ``c.*`` namespace).
+
+    Exposes the constant's name, type, and *value* so API/CLI/MCP consumers see
+    the fixed thresholds a workflow judges against — parity with the UI and the
+    signed credential (ADR-2026-06-18). A constant is workflow-defined (never
+    submission-derived), so publishing its value here is always safe.
+    """
+
+    class Meta:
+        model = WorkflowConstant
+        fields = ["name", "data_type", "value", "description"]
+        read_only_fields = fields
+
+
 class WorkflowFullSerializer(WorkflowSlimSerializer):
     """
     Full read-only workflow representation for the detail endpoint.
@@ -283,6 +299,11 @@ class WorkflowFullSerializer(WorkflowSlimSerializer):
         read_only=True,
         help_text="Ordered list of validation steps and actions in this workflow.",
     )
+    constants = WorkflowConstantSerializer(
+        many=True,
+        read_only=True,
+        help_text="Workflow Constants (c.* namespace) with their fixed values.",
+    )
 
     class Meta(WorkflowSlimSerializer.Meta):
         fields = [
@@ -297,5 +318,6 @@ class WorkflowFullSerializer(WorkflowSlimSerializer):
             "agent_billing_mode",
             "agent_max_launches_per_hour",
             "steps",
+            "constants",
         ]
         read_only_fields = fields

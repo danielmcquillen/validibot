@@ -45,6 +45,10 @@ from django.core.exceptions import ValidationError
 
 from validibot.projects.tests.factories import ProjectFactory
 from validibot.submissions.constants import SubmissionFileType
+from validibot.users.constants import RoleCode
+from validibot.users.tests.factories import OrganizationFactory
+from validibot.users.tests.factories import UserFactory
+from validibot.users.tests.factories import grant_role
 from validibot.workflows.constants import AgentBillingMode
 from validibot.workflows.constants import WorkflowVisibility
 from validibot.workflows.models import Workflow
@@ -287,7 +291,7 @@ class TestX402RequiresDoNotStore:
 # ── Form: access fields gated by who-may-edit-access ────────────────
 # The WorkflowForm conditionally adds the access controls (visibility +
 # the two agent channels + billing companions). They appear only when
-# the user is allowed to adjust access — a Django superuser/staff member,
+# the user is allowed to adjust access — an org admin in the workflow's org,
 # OR the org has opted in via ``allow_authors_to_adjust_access``. Regular
 # authors in a non-opted-in org should not see or be able to submit them.
 
@@ -317,7 +321,7 @@ class TestWorkflowFormAccessFields:
         return user
 
     def test_non_privileged_user_form_excludes_access_fields(self):
-        """A regular author (no superuser/staff, org not opted in) should
+        """A regular author (no org-admin role, org not opted in) should
         not see the access controls.  They are privileged: changing who
         can run a workflow — or publishing it for paid anonymous access —
         has security and billing consequences."""
@@ -331,13 +335,29 @@ class TestWorkflowFormAccessFields:
         assert "agent_price_cents" not in form.fields
         assert "agent_max_launches_per_hour" not in form.fields
 
-    def test_superuser_form_includes_access_fields(self):
-        """Superusers should see the full access control set in the
-        workflow form: the visibility dial, both agent channels, and the
-        billing companions."""
+    def test_platform_superuser_without_org_role_excludes_access_fields(self):
+        """Django superuser/staff alone is not the access-policy admin gate."""
         from validibot.workflows.forms import WorkflowForm
 
         form = WorkflowForm(user=self._make_user(is_superuser=True))
+        assert "workflow_visibility" not in form.fields
+        assert "mcp_enabled" not in form.fields
+        assert "x402_enabled" not in form.fields
+
+    def test_org_admin_form_includes_access_fields(self):
+        """Org admins should see the full access control set.
+
+        Access policy is an organization decision, so the gate is the org
+        admin role in the workflow's org rather than Django staff/superuser.
+        """
+        from validibot.workflows.forms import WorkflowForm
+
+        org = OrganizationFactory()
+        user = UserFactory()
+        grant_role(user, org, RoleCode.ADMIN)
+        user.set_current_org(org)
+
+        form = WorkflowForm(user=user)
         assert "workflow_visibility" in form.fields
         assert "mcp_enabled" in form.fields
         assert "x402_enabled" in form.fields
@@ -345,19 +365,62 @@ class TestWorkflowFormAccessFields:
         assert "agent_price_cents" in form.fields
         assert "agent_max_launches_per_hour" in form.fields
 
+    def test_privileged_create_omitting_access_fields_defaults_securely(self):
+        """An admin create that OMITS the access fields must default securely.
+
+        Org admins now see the access section, which made ``workflow_visibility``
+        and ``agent_billing_mode`` present on the form. Both used to be
+        ``required``, so any client that didn't submit them (a non-browser
+        client, a minimal API/test POST) got a 400 instead of a workflow.
+        This regression guard pins the fix: an omitted tier falls back to the
+        secure model defaults (PRIVATE audience, AUTHOR_PAYS billing) rather
+        than erroring — so omission can only NARROW access, never widen it or
+        block creation.
+        """
+        from validibot.submissions.constants import SubmissionRetention
+        from validibot.users.models import ensure_default_project
+        from validibot.workflows.forms import WorkflowForm
+
+        org = OrganizationFactory()
+        user = UserFactory()
+        grant_role(user, org, RoleCode.ADMIN)
+        user.set_current_org(org)
+        default_project = ensure_default_project(org)
+
+        # Note: workflow_visibility and agent_billing_mode are deliberately
+        # absent from the POST even though the form exposes them.
+        form = WorkflowForm(
+            data={
+                "name": "Minimal create",
+                "slug": "minimal-create",
+                "project": str(default_project.pk),
+                "allowed_file_types": [SubmissionFileType.JSON],
+                "input_retention": SubmissionRetention.DO_NOT_STORE,
+                "output_retention": "STORE_30_DAYS",
+                "version": "1",
+                "is_active": "on",
+            },
+            user=user,
+        )
+        # The form must accept the minimal POST (no 400), and ``clean()`` must
+        # normalise the omitted access fields to the secure defaults rather
+        # than leaving them blank. (``org``/``user`` are wired by the create
+        # view at save time, so we assert on the validated cleaned data — the
+        # exact output of the fallback logic — not a full DB save.)
+        assert form.is_valid(), form.errors
+        assert form.cleaned_data["workflow_visibility"] == WorkflowVisibility.PRIVATE
+        assert form.cleaned_data["agent_billing_mode"] == AgentBillingMode.AUTHOR_PAYS
+
     def test_author_in_opted_in_org_sees_access_fields(self):
         """A non-superuser author whose org set
         ``allow_authors_to_adjust_access=True`` should also see the
         access controls — the org opted its authors in deliberately."""
         from validibot.users.models import ensure_default_project
-        from validibot.users.tests.factories import MembershipFactory
-        from validibot.users.tests.factories import OrganizationFactory
-        from validibot.users.tests.factories import UserFactory
         from validibot.workflows.forms import WorkflowForm
 
         org = OrganizationFactory(allow_authors_to_adjust_access=True)
         user = UserFactory(is_superuser=False, is_staff=False)
-        MembershipFactory(user=user, org=org, is_active=True)
+        grant_role(user, org, RoleCode.AUTHOR)
         user.set_current_org(org)
         ensure_default_project(org)
 
@@ -375,15 +438,12 @@ class TestWorkflowFormAccessFields:
         the form field so the UI can highlight the right control."""
         from validibot.submissions.constants import SubmissionRetention
         from validibot.users.models import ensure_default_project
-        from validibot.users.tests.factories import MembershipFactory
-        from validibot.users.tests.factories import OrganizationFactory
-        from validibot.users.tests.factories import UserFactory
         from validibot.workflows.forms import WorkflowForm
 
         # x402_allowed so the form lets the privileged user turn x402 on.
         org = OrganizationFactory(x402_allowed=True, mcp_allowed=True)
-        user = UserFactory(is_superuser=True)
-        MembershipFactory(user=user, org=org, is_active=True)
+        user = UserFactory()
+        grant_role(user, org, RoleCode.ADMIN)
         user.set_current_org(org)
         default_project = ensure_default_project(org)
 
@@ -410,14 +470,11 @@ class TestWorkflowFormAccessFields:
         """The valid combination: x402 enabled + DO_NOT_STORE retention."""
         from validibot.submissions.constants import SubmissionRetention
         from validibot.users.models import ensure_default_project
-        from validibot.users.tests.factories import MembershipFactory
-        from validibot.users.tests.factories import OrganizationFactory
-        from validibot.users.tests.factories import UserFactory
         from validibot.workflows.forms import WorkflowForm
 
         org = OrganizationFactory(x402_allowed=True, mcp_allowed=True)
-        user = UserFactory(is_superuser=True)
-        MembershipFactory(user=user, org=org, is_active=True)
+        user = UserFactory()
+        grant_role(user, org, RoleCode.ADMIN)
         user.set_current_org(org)
         default_project = ensure_default_project(org)
 
@@ -452,15 +509,12 @@ class TestWorkflowFormAccessFields:
         up x402-published, which is the security property we care about."""
         from validibot.submissions.constants import SubmissionRetention
         from validibot.users.models import ensure_default_project
-        from validibot.users.tests.factories import MembershipFactory
-        from validibot.users.tests.factories import OrganizationFactory
-        from validibot.users.tests.factories import UserFactory
         from validibot.workflows.forms import WorkflowForm
 
         # x402 NOT allowed for this org, even though the user is privileged.
         org = OrganizationFactory(x402_allowed=False, mcp_allowed=True)
-        user = UserFactory(is_superuser=True)
-        MembershipFactory(user=user, org=org, is_active=True)
+        user = UserFactory()
+        grant_role(user, org, RoleCode.ADMIN)
         user.set_current_org(org)
         default_project = ensure_default_project(org)
 
@@ -494,14 +548,11 @@ class TestWorkflowFormAccessFields:
         MCP are independent, so this does NOT touch ``mcp_enabled``.)"""
         from validibot.submissions.constants import SubmissionRetention
         from validibot.users.models import ensure_default_project
-        from validibot.users.tests.factories import MembershipFactory
-        from validibot.users.tests.factories import OrganizationFactory
-        from validibot.users.tests.factories import UserFactory
         from validibot.workflows.forms import WorkflowForm
 
         org = OrganizationFactory(x402_allowed=True, mcp_allowed=True)
-        user = UserFactory(is_superuser=True)
-        MembershipFactory(user=user, org=org, is_active=True)
+        user = UserFactory()
+        grant_role(user, org, RoleCode.ADMIN)
         user.set_current_org(org)
         default_project = ensure_default_project(org)
 
@@ -546,6 +597,29 @@ class TestX402EnabledDefault:
         access by default.  The author must explicitly opt in."""
         wf = WorkflowFactory.build()
         assert wf.x402_enabled is False
+
+
+class TestWorkflowVisibilityDefault:
+    """New workflows must be private at the model layer, not only in forms."""
+
+    def test_model_field_defaults_to_private(self):
+        """A raw model instance should default to PRIVATE visibility.
+
+        This catches create paths that bypass the workflow form's initial
+        value, such as API/import/admin code paths. The test deliberately
+        avoids ``WorkflowFactory`` because that fixture stays ORG-visible for
+        older org-member behavior tests.
+        """
+        org = OrganizationFactory()
+        user = UserFactory()
+        workflow = Workflow(
+            org=org,
+            user=user,
+            project=ProjectFactory(org=org),
+            name="Default private workflow",
+        )
+
+        assert workflow.workflow_visibility == WorkflowVisibility.PRIVATE
 
 
 # ── clean(): x402 is INDEPENDENT of MCP (the decoupling) ────────────

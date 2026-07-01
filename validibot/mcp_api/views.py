@@ -147,9 +147,9 @@ def _latest_accessible_workflow_queryset(
        membership, creator, family-scoped grants, OrgGuestAccess, and
        the PRIVATE / ORG / ALL_USERS visibility tiers in ONE place — so
        a future fix to any access path propagates to MCP automatically.
-    2. **Workflow opts into agents.** ``mcp_enabled=True``.
-    3. **Org permits agents.** ``org.mcp_allowed=True`` (the org-level
-       guardrail / master switch).
+    2. **Effective MCP access.** ``mcp_enabled=True`` AND
+       ``org.mcp_allowed=True``. This is the SQL equivalent of
+       ``Workflow.mcp_effective()``.
 
     x402 paid-public workflows are deliberately NOT in this catalog.
     Anonymous x402 discovery is a separate, cloud-only surface

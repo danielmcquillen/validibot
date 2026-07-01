@@ -70,6 +70,12 @@ _OUTPUT_NAMESPACE_PATTERN = re.compile(
 _SUBMISSION_NAMESPACE_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_])submission\.[A-Za-z_]",
 )
+# Constants (c./const.) — design-time-known literals (ADR-2026-06-18). Same
+# shape and negative-lookbehind as the patterns above, so ``arc.x`` / ``func.x``
+# don't false-match — only the ``c`` / ``const`` namespace roots count.
+_CONSTANTS_NAMESPACE_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_])(?:c|const)\.[A-Za-z_]",
+)
 
 
 def _expr_references_input_namespace(expr: str) -> bool:
@@ -115,6 +121,20 @@ def _expr_references_submission_namespace(expr: str) -> bool:
     ``RulesetAssertion.resolved_run_stage``.
     """
     return bool(_SUBMISSION_NAMESPACE_PATTERN.search(expr or ""))
+
+
+def _expr_references_constants_namespace(expr: str) -> bool:
+    """Heuristic: does this text reference the c.* / const.* namespace?
+
+    A Constant (ADR-2026-06-18) is workflow-definition-derived and known at
+    authoring time, so it adds NO runtime dependency: an assertion that reads a
+    constant can be an early INPUT-stage gate — unless it ALSO reads
+    ``o.*``/``output.*``. This is what keeps a constants-only CEL check (e.g.
+    ``payload.cost == payload.energy * c.energy_price``) from needlessly waiting
+    for an advanced validator's container to run. See
+    ``RulesetAssertion.resolved_run_stage``.
+    """
+    return bool(_CONSTANTS_NAMESPACE_PATTERN.search(expr or ""))
 
 
 def get_allowed_extensions_for_workflow(workflow) -> set[str]:
@@ -699,6 +719,10 @@ class RulesetAssertion(TimeStampedModel):
           knowable before the run, so a submission-only rule is an early
           gate, but one that also reads outputs genuinely needs results
           (ADR-2026-06-03b)
+        - **``c.*`` / ``const.*`` (basic target or CEL expression)** → INPUT,
+          UNLESS it also references ``o.*``/``output.*`` — a Constant is a
+          workflow-defined literal known at authoring time, so it adds no
+          runtime dependency and is stage-neutral (ADR-2026-06-18)
         - **CEL expression that explicitly references ``i.*`` or
           ``input.*``** → INPUT (opt-in reclassification — the only
           case where we override the legacy output-stage default for
@@ -719,22 +743,34 @@ class RulesetAssertion(TimeStampedModel):
         ):
             return CatalogRunStage.INPUT
 
-        # submission.* (ADR-2026-06-03b): the envelope is fixed at submission
-        # time, so an assertion that reads it is an INPUT-stage gate — UNLESS
-        # it also needs output values (o.*/output.*), which exist only after
-        # the run. The text to inspect is the CEL expression (rhs["expr"]) for
-        # a CEL assertion, otherwise the basic target path. A basic submission
-        # target is a clean path that never mentions o.*, so it classifies
-        # INPUT; a CEL ``submission.x == o.y`` correctly stays OUTPUT. This
-        # block only fires when submission.* is actually referenced, so it has
-        # no effect on any pre-existing assertion.
+        # Namespaces knowable BEFORE the run classify INPUT-stage — UNLESS the
+        # assertion also needs output values (o.*/output.*), which exist only
+        # after the validator runs. Two such namespaces:
+        #   - submission.* (ADR-2026-06-03b): the envelope is fixed at
+        #     submission time.
+        #   - c.* / const.* (ADR-2026-06-18): Constants are workflow-defined
+        #     literals, so a constants-only check (e.g.
+        #     ``payload.cost == payload.energy * c.energy_price``) adds NO
+        #     runtime dependency and must not be forced to wait for container
+        #     dispatch. Constants are stage-neutral: INPUT unless o.*/output.*
+        #     is also referenced.
+        # The text to inspect is the CEL expression (rhs["expr"]) for a CEL
+        # assertion, otherwise the basic target path. A basic ``c.<name>`` /
+        # ``submission.<name>`` target is a clean path that never mentions o.*,
+        # so it classifies INPUT; a CEL ``c.x == o.y`` correctly stays OUTPUT.
+        # This block only fires when one of these namespaces is actually
+        # referenced, so it has no effect on any pre-existing assertion.
         is_cel = self.assertion_type == AssertionType.CEL_EXPRESSION
         cel_expr = ((self.rhs or {}).get("expr") or "").strip() if is_cel else ""
-        submission_text = cel_expr or path
-        if (
-            submission_text.startswith("submission.")
-            or _expr_references_submission_namespace(submission_text)
-        ) and not _expr_references_output_namespace(submission_text):
+        early_text = cel_expr or path
+        references_early_namespace = (
+            early_text.startswith(("submission.", "c.", "const."))
+            or _expr_references_submission_namespace(early_text)
+            or _expr_references_constants_namespace(early_text)
+        )
+        if references_early_namespace and not _expr_references_output_namespace(
+            early_text,
+        ):
             return CatalogRunStage.INPUT
 
         # CEL expressions store their expression in rhs["expr"]. Only

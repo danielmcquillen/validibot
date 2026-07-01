@@ -40,6 +40,19 @@ any scope hierarchy because it isn't named.
 | `i.*` / `input.*` | Step-local — what the validator sees at the start | Validator catalog (parser facts) or upstream config (resolved bindings) | `i.zone_count`, `i.idf_version` |
 | `o.*` / `output.*` | Step-local — what the validator produced after running | Validator catalog | `o.site_eui_kwh_m2` |
 | `steps.<key>.input.*` / `steps.<key>.output.*` | Cross-step (downstream) | Same as `i.*` and `o.*`, just qualified by step | `steps.preflight.output.warning_count` |
+| `c.*` / `const.*` | Workflow-wide **fixed literals**, known at authoring time | Workflow author (Constants editor) | `c.energy_price`, `c.allowed_currencies` |
+
+`c.*` is the odd one out and worth calling out: it is the **only** namespace
+whose values come from the *workflow definition* rather than the run, so it is
+the only one known at authoring time. That's why the Constants editor and the
+"Available Data" panel can show a constant's actual *value* (signals can only
+show a name + path). See [ADR-2026-06-18](../../../../validibot-project/docs/adr/2026-06-18-constant-primitive.md).
+In the Basic evaluator, constants are injected as a **nested** `c`/`const`
+sub-dict (like `submission`), *not* flattened like `s.*` — so `c.energy_price`
+and a signal `s.energy_price` can coexist without colliding. Threshold-style
+comparisons (`payload.currency in c.allowed_currencies`) are **CEL-only in v1**;
+in a Basic assertion a constant is reachable only as a `c.<name>` *target path*,
+because the Basic RHS is a stored literal, not a path reference.
 
 The teaching analogy worth keeping in mind: **each step is a function**.
 Inputs (`i.*`) are its parameters. Outputs (`o.*`) are what it returns.

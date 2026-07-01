@@ -232,6 +232,70 @@ to launch the workflow.
             </div>
           </div>
         {% endif %}
+        {% comment %}
+        Constants section (c.* namespace, ADR-2026-06-18). Shows the fixed
+        thresholds the submitter's data will be judged against, with their
+        actual values — safe to publish because a constant is workflow-defined,
+        not submission-derived.
+        {% endcomment %}
+        {% if constants %}
+          <div class="row mt-4">
+            <div class="col-12">
+              <div class="card app-card">
+                <div class="card-header">
+                  {% trans "Constants" %}
+                </div>
+                <div class="card-body">
+                  <p class="text-muted small mb-3">
+                    {% trans "This workflow checks submissions against these fixed, named values." %}
+                  </p>
+                  <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                      <thead>
+                        <tr>
+                          <th>
+                            {% trans "Constant" %}
+                          </th>
+                          <th>
+                            {% trans "Type" %}
+                          </th>
+                          <th>
+                            {% trans "Value" %}
+                          </th>
+                          <th>
+                            {% trans "Description" %}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for c in constants %}
+                          <tr>
+                            <td>
+                              <code>c.{{ c.name }}</code>
+                            </td>
+                            <td>
+                              {{ c.get_data_type_display }}
+                            </td>
+                            <td>
+                              <code>{{ c.value }}</code>
+                            </td>
+                            <td>
+                              {% if c.description %}
+                                {{ c.description }}
+                              {% else %}
+                                <span class="text-muted">—</span>
+                              {% endif %}
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        {% endif %}
       {% endwith %}
     </div>
   </section>

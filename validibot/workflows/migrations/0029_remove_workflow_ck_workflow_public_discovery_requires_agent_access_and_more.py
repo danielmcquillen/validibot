@@ -34,7 +34,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='workflow',
             name='workflow_visibility',
-            field=models.CharField(choices=[('PRIVATE', 'Private — only you and people you invite'), ('ORG', 'Your organization'), ('ALL_USERS', 'All Validibot users')], default='ORG', help_text='Who, by Validibot identity, may run this workflow for free: PRIVATE (you and people you invite), ORG (your organization — the default), or ALL_USERS (any Validibot user). Capped by the organization ceiling. Independent of x402 paid access.', max_length=20),
+            field=models.CharField(choices=[('PRIVATE', 'Private — only you and people you invite'), ('ORG', 'Your organization'), ('ALL_USERS', 'All Validibot users')], default='PRIVATE', help_text='Who, by Validibot identity, may run this workflow for free: PRIVATE (you and people you invite — the default), ORG (your organization), or ALL_USERS (any Validibot user). Capped by the organization ceiling. Independent of x402 paid access.', max_length=20),
         ),
         migrations.AddField(
             model_name='workflow',

@@ -240,6 +240,7 @@ class WorkflowVersioningService:
         5. Copy ``WorkflowPublicInfo`` (one-to-one).
         6. Copy ``WorkflowRoleAccess`` rows.
         7. Copy ``WorkflowSignalMapping`` rows.
+        7b. Copy ``WorkflowConstant`` rows (c.* namespace).
         8. Lock the source workflow.
 
         All operations run inside a single transaction so a failure
@@ -264,6 +265,7 @@ class WorkflowVersioningService:
         from validibot.validations.models import StepIODefinition
         from validibot.validations.models import WorkflowStepIOPromotion
         from validibot.workflows.models import Workflow
+        from validibot.workflows.models import WorkflowConstant
         from validibot.workflows.models import WorkflowPublicInfo
         from validibot.workflows.models import WorkflowRoleAccess
         from validibot.workflows.models import WorkflowSignalMapping
@@ -551,6 +553,17 @@ class WorkflowVersioningService:
             sm.workflow = new_workflow
         WorkflowSignalMapping.objects.bulk_create(signal_mappings)
         components_copied["signal_mappings"] = len(signal_mappings)
+
+        # 7b. WorkflowConstant (c.* namespace, ADR-2026-06-18). Constants are
+        # part of the versioned trust contract, so a new version must carry them
+        # forward verbatim — bulk_create on the fresh (unlocked) workflow
+        # intentionally bypasses the per-instance edit-after-runs guard.
+        constants = list(WorkflowConstant.objects.filter(workflow=workflow))
+        for const in constants:
+            const.pk = None
+            const.workflow = new_workflow
+        WorkflowConstant.objects.bulk_create(constants)
+        components_copied["constants"] = len(constants)
 
         # 8. Lock the source workflow.
         workflow.is_locked = True

@@ -51,13 +51,14 @@ from validibot.validations.views.rules import ValidatorRuleMixin
 # CEL_NAMESPACE_ROOTS (dropping an alias, adding ``row`` globally) is caught.
 
 
-def test_namespace_roots_contain_the_six_namespaces_and_aliases():
-    """The constant must hold all six namespaces plus their short aliases.
+def test_namespace_roots_contain_the_seven_namespaces_and_aliases():
+    """The constant must hold all seven namespaces plus their short aliases.
 
-    ``steps`` and ``submission`` are deliberately alias-free; the other four
-    each have a single-letter alias for use in tight expressions. This is the
-    contract every downstream allowlist relies on, so we assert it explicitly
-    rather than trusting the literal to stay correct.
+    ``steps`` and ``submission`` are deliberately alias-free; the other five
+    (``p``, ``s``, ``i``, ``o``, ``c``) each have a long-form alias for use in
+    readable expressions. This is the contract every downstream allowlist
+    relies on, so we assert it explicitly rather than trusting the literal to
+    stay correct. ``c``/``const`` were added by ADR-2026-06-18 (Constants).
     """
     assert {
         "p",
@@ -70,6 +71,8 @@ def test_namespace_roots_contain_the_six_namespaces_and_aliases():
         "output",
         "steps",
         "submission",
+        "c",
+        "const",
     } == CEL_NAMESPACE_ROOTS
 
 
@@ -96,6 +99,21 @@ def test_submission_is_a_namespace_root():
     assert "submission" in CEL_NAMESPACE_ROOTS
     # Long-only: there is no single-letter alias for submission.
     assert "sub" not in CEL_NAMESPACE_ROOTS
+
+
+def test_constants_is_a_namespace_root():
+    """The seventh namespace ``c`` / ``const`` (ADR-2026-06-18) is implemented.
+
+    Constants are author-defined fixed literals from the workflow definition —
+    the only namespace whose values are known at authoring time. Both the short
+    ``c`` and long ``const`` spellings are roots (like ``s`` / ``signal``).
+    Being in the constant is what flows them through every authoring-time
+    allowlist and reserves them as signal/constant names; the runtime binding
+    lives in ``_build_cel_context`` and is locked to this constant by the canary
+    test in test_basic_validator.py.
+    """
+    assert "c" in CEL_NAMESPACE_ROOTS
+    assert "const" in CEL_NAMESPACE_ROOTS
 
 
 # ── Site 1: RESERVED_CEL_NAMES derives from the constant ─────────────────

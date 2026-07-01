@@ -1,6 +1,7 @@
 from django.urls import path
 
 from validibot.workflows import views
+from validibot.workflows.views import constants as constants_views
 from validibot.workflows.views import signal_mapping
 
 app_name = "workflows"
@@ -317,6 +318,32 @@ urlpatterns = [
         "<int:pk>/signals/sample-data/",
         signal_mapping.WorkflowSignalMappingSampleDataView.as_view(),
         name="workflow_signal_mapping_sample_data",
+    ),
+    # Constants — editor page + CRUD (the c.* namespace, ADR-2026-06-18)
+    path(
+        "<int:pk>/constants/",
+        constants_views.WorkflowConstantView.as_view(),
+        name="workflow_constants",
+    ),
+    path(
+        "<int:pk>/constants/new/",
+        constants_views.WorkflowConstantCreateView.as_view(),
+        name="workflow_constant_create",
+    ),
+    path(
+        "<int:pk>/constants/<int:constant_id>/edit/",
+        constants_views.WorkflowConstantEditView.as_view(),
+        name="workflow_constant_edit",
+    ),
+    path(
+        "<int:pk>/constants/<int:constant_id>/delete/",
+        constants_views.WorkflowConstantDeleteView.as_view(),
+        name="workflow_constant_delete",
+    ),
+    path(
+        "<int:pk>/constants/<int:constant_id>/move/",
+        constants_views.WorkflowConstantMoveView.as_view(),
+        name="workflow_constant_move",
     ),
     # Step-IO promotion — toggle promoted_signal_name on a
     # StepIODefinition (any direction) or write to the

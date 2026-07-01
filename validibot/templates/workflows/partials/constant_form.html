@@ -1,0 +1,33 @@
+{% load i18n crispy_forms_tags %}
+
+<form method="post"
+      hx-post="{{ form_action }}"
+      hx-target="#constant-modal-content"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']">
+  <div class="modal-header">
+    <h5 class="modal-title">
+      {{ modal_title }}
+    </h5>
+    <button type="button"
+            class="btn-close"
+            data-bs-dismiss="modal"
+            aria-label="Close">
+    </button>
+  </div>
+  <div class="modal-body">
+    {% csrf_token %}
+    {% include "core/partial/_form_errors_summary.html" %}
+    {{ form|crispy }}
+  </div>
+  <div class="modal-footer">
+    <button type="button"
+            class="btn btn-light action-button"
+            data-bs-dismiss="modal">
+      {% trans "Cancel" %}
+    </button>
+    <button type="submit" class="btn btn-primary action-button">
+      {{ submit_label }}
+    </button>
+  </div>
+</form>

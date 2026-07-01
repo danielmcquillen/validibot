@@ -888,11 +888,17 @@ class StepOrchestrator:
             step,
         )
 
+        # Workflow Constants (the c.* namespace) — a literal map from the
+        # workflow definition. Unlike signals these need no submission data and
+        # never fail to resolve (ADR-2026-06-18).
+        workflow_constants = self._resolve_workflow_constants(step)
+
         context = RunContext(
             validation_run=validation_run,
             step=step,
             downstream_signals=signals,
             workflow_signals=workflow_signals,
+            workflow_constants=workflow_constants,
         )
 
         # 2. Resolve Handler
@@ -1119,6 +1125,31 @@ class StepOrchestrator:
 
         result = resolve_workflow_signals(workflow, submission_data)
         return result.signals
+
+    def _resolve_workflow_constants(
+        self,
+        step: WorkflowStep | None,
+    ) -> dict[str, Any]:
+        """Build the ``c.*`` / ``const.*`` namespace map for the step's workflow.
+
+        A constant is workflow-definition-derived, so this is a pure read of the
+        workflow's ``WorkflowConstant`` rows — no submission data, no resolution,
+        no failure mode (contrast ``_resolve_workflow_signals``). Returns an
+        empty dict when there are no constants. Numeric constants are coerced to
+        their CEL-ready (``double``) form by the service; exact storage stays on
+        the model.
+        """
+        if not step:
+            return {}
+        workflow = getattr(step, "workflow", None)
+        if not workflow:
+            return {}
+
+        from validibot.workflows.services.constants import (
+            build_workflow_constants_context,
+        )
+
+        return build_workflow_constants_context(workflow)
 
     def _extract_downstream_signals(
         self,

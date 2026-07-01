@@ -315,8 +315,9 @@ class OrgPermissionBackend(BaseBackend):
         if not isinstance(obj, Workflow):
             return False
 
-        # ALL_USERS visibility: any authenticated user can launch
-        if getattr(obj, "workflow_visibility", None) == WorkflowVisibility.ALL_USERS:
+        # ALL_USERS effective visibility: any authenticated user can launch.
+        # The workflow's org cap masks stored visibility at read time.
+        if obj.effective_visibility() == WorkflowVisibility.ALL_USERS:
             return True
 
         # Guest grant check — family-scoped.

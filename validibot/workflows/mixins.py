@@ -88,46 +88,54 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
 
     def get_workflow_queryset_for_access(self):
         """
-        Get workflows for single-object lookup (includes guest/public access).
+        Get workflows for single-object lookup (includes guest/public/admin access).
 
         This method is used when looking up a specific workflow by ID where
         we want to allow access if the user has permission via:
         1. Org membership with appropriate role
         2. Active WorkflowAccessGrant (guest access)
-        3. ALL_USERS-visible workflow (workflow_visibility=ALL_USERS)
+        3. ALL_USERS-visible workflow after org-cap masking
+        4. Org admin/owner management access for exact-row recovery/edit surfaces
 
         Unlike get_workflow_queryset(), this does NOT filter by current_org
-        so guests and public workflow users can access workflows.
+        so guests and public workflow users can access workflows. The admin
+        branch is intentionally exact-row only via this mixin; workflow lists
+        still use ``for_user`` and do not expose PRIVATE rows to every admin
+        catalog by default.
         """
         user = self.request.user
-        # Start with workflows accessible via membership or guest grants
+        from django.db.models import Exists
+        from django.db.models import OuterRef
+
+        from validibot.users.constants import RoleCode
+        from validibot.users.models import Membership
+
+        # ``for_user`` is the canonical read-time access contract. It includes
+        # membership, guest grants, and ALL_USERS visibility after applying the
+        # organization visibility cap. Do not union a raw public queryset here:
+        # that would bypass a lowered ``workflow_visibility_cap``.
         queryset = (
             Workflow.objects.for_user(user)
             .select_related("org", "user", "project")
             .prefetch_related("validation_runs")
         )
-        if not self.include_tombstoned_workflows:
-            queryset = queryset.filter(is_tombstoned=False)
-        # Also include public workflows (any authenticated user can access)
-        # Use union to combine distinct querysets properly
-        from django.db.models import Q
-
-        from validibot.workflows.constants import WorkflowVisibility
-
-        # ``for_user()`` above already includes ALL_USERS-visible
-        # workflows via its visibility tier; this union also surfaces
-        # them for users outside the workflow's org.
-        public_qs = (
-            Workflow.objects.filter(
-                Q(workflow_visibility=WorkflowVisibility.ALL_USERS)
-                & Q(is_active=True)
-                & Q(is_archived=False)
-                & Q(is_tombstoned=False)
-            )
+        admin_membership = Membership.objects.filter(
+            org=OuterRef("org_id"),
+            user=user,
+            is_active=True,
+            roles__code__in=[RoleCode.ADMIN, RoleCode.OWNER],
+        )
+        admin_queryset = (
+            Workflow.objects.annotate(_has_admin_membership=Exists(admin_membership))
+            .filter(_has_admin_membership=True)
             .select_related("org", "user", "project")
+            .prefetch_related("validation_runs")
             .distinct()
         )
-        return queryset | public_qs
+        queryset = queryset | admin_queryset
+        if not self.include_tombstoned_workflows:
+            queryset = queryset.filter(is_tombstoned=False)
+        return queryset
 
     def get_queryset(self):
         return self.get_workflow_queryset()
@@ -445,6 +453,25 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
             name = mapping["name"]
             seen_signal_names.add(name)
             choices.append((f"s.{name}", f"{name} · {_('Signal')}"))
+
+        # ── Workflow Constants appear as c.<name> (ADR-2026-06-18) ──
+        # Available at both stages, for every validator. Constants are the one
+        # namespace whose values are known at authoring time, so the hint shows
+        # the VALUE — the author sees "c.energy_price = 0.40 · Constant" rather
+        # than just the name. Grouped separately from signals via the "Constant"
+        # suffix.
+        from validibot.workflows.models import WorkflowConstant
+
+        constant_label = _("Constant")
+        for constant in WorkflowConstant.objects.filter(workflow=workflow).order_by(
+            "position",
+        ):
+            choices.append(
+                (
+                    f"c.{constant.name}",
+                    f"{constant.name} = {constant.value} · {constant_label}",
+                ),
+            )
 
         # ── Promoted step inputs/outputs from upstream steps ──
         # Per ADR-2026-05-22b's temporal rule, promoted values from

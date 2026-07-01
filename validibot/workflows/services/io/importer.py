@@ -130,6 +130,10 @@ def import_definition(
         workflow,
         workflow_data.get("signal_mappings") or [],
     )
+    components["constants"] = _import_constants(
+        workflow,
+        workflow_data.get("constants") or [],
+    )
     _note_unsupported_role_access(workflow_data, warnings)
 
     return ImportResult(workflow=workflow, warnings=warnings, components=components)
@@ -523,6 +527,28 @@ def _import_signal_mappings(workflow, rows) -> int:
         )
         mapping.full_clean()
         mapping.save()
+        count += 1
+    return count
+
+
+def _import_constants(workflow, rows) -> int:
+    """Recreate workflow Constants (c.* namespace); return the count.
+
+    ``value`` is restored verbatim (deep-copied); ``full_clean()`` re-runs
+    ``coerce_constant_value`` so an imported constant is re-validated against
+    its declared type, and an export→import reproduces identical constants.
+    """
+    from validibot.workflows.models import WorkflowConstant
+
+    count = 0
+    for row in rows:
+        constant = WorkflowConstant(
+            workflow=workflow,
+            value=deepcopy(row.get("value")),
+            **{f: row.get(f) for f in schema.CONSTANT_FIELDS if row.get(f) is not None},
+        )
+        constant.full_clean()
+        constant.save()
         count += 1
     return count
 

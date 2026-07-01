@@ -1798,6 +1798,17 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 }
             )
 
+        # Workflow Constants (c.* namespace, ADR-2026-06-18) — shown in the
+        # "Available Data" panel WITH their values. Constants are the one
+        # namespace whose values are known at authoring time, so unlike signals
+        # (name + path only) the panel can show the actual value the author will
+        # be asserting against.
+        from validibot.workflows.models import WorkflowConstant
+
+        available_constants = list(
+            WorkflowConstant.objects.filter(workflow=workflow).order_by("position"),
+        )
+
         # Upstream step outputs — shown so authors know what
         # steps.<key>.output.<name> paths are available.
         from validibot.workflows.models import WorkflowStep
@@ -1883,6 +1894,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "can_manage_workflow": self.user_can_manage_workflow(),
                 "unified_signals": unified_signals,
                 "available_signals": available_signals,
+                "available_constants": available_constants,
                 "upstream_outputs": upstream_outputs,
             },
         )

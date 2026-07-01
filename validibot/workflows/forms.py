@@ -66,6 +66,41 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _membership_for_access_gate(user, org):
+    """Return active membership for access-policy editing, if any."""
+    if not user or not getattr(user, "is_authenticated", False) or org is None:
+        return None
+    from validibot.users.models import Membership
+
+    return (
+        Membership.objects.filter(user=user, org=org, is_active=True)
+        .prefetch_related("membership_roles__role")
+        .first()
+    )
+
+
+def _membership_is_org_admin(membership) -> bool:
+    """Return True for org owner/admin roles, without Django superuser bypass."""
+    if membership is None:
+        return False
+    from validibot.users.constants import RoleCode
+
+    return membership.has_role(RoleCode.OWNER) or membership.has_role(RoleCode.ADMIN)
+
+
+def _membership_is_author(membership) -> bool:
+    """Return True when membership carries workflow-author capability."""
+    if membership is None:
+        return False
+    from validibot.users.constants import RoleCode
+
+    return (
+        membership.has_role(RoleCode.OWNER)
+        or membership.has_role(RoleCode.ADMIN)
+        or membership.has_role(RoleCode.AUTHOR)
+    )
+
+
 class AllowedFileTypesCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
     """Render workflow file-type choices with aligned extension hints."""
 
@@ -658,9 +693,9 @@ class WorkflowForm(forms.ModelForm):
         Access controls (visibility, MCP, x402, billing/price/launches)
         are privileged: changing who can run a workflow — or publishing it
         for paid anonymous access — has security and billing consequences.
-        They are therefore editable only when the user is a Django
-        superuser/staff member, OR the workflow's organization has opted
-        in via ``Organization.allow_authors_to_adjust_access``.
+        They are therefore editable only when the user has an org admin
+        role in the workflow's organization, OR the organization has opted
+        in via ``Organization.allow_authors_to_adjust_access`` for authors.
 
         The org-level ceilings themselves (visibility cap, mcp/x402
         allowed) are NEVER exposed in this form — they are an admin-only
@@ -668,12 +703,17 @@ class WorkflowForm(forms.ModelForm):
         appear at all.
         """
         user = self.user
-        if not user or not getattr(user, "is_authenticated", False):
-            return False
-        if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
-            return True
         org = self._org_for_access()
-        return bool(org and getattr(org, "allow_authors_to_adjust_access", False))
+        membership = _membership_for_access_gate(user, org)
+        if _membership_is_org_admin(membership):
+            return True
+        if not (org and getattr(org, "allow_authors_to_adjust_access", False)):
+            return False
+        if not _membership_is_author(membership):
+            return False
+        if self.instance and self.instance.pk:
+            return self.instance.user_id == getattr(user, "id", None)
+        return True
 
     def _org_for_access(self):
         """Return the org whose ceilings clamp this workflow's access.
@@ -734,6 +774,12 @@ class WorkflowForm(forms.ModelForm):
         self.fields["workflow_visibility"] = forms.ChoiceField(
             choices=self._allowed_visibility_choices(),
             label=_("Who can run this workflow"),
+            # Not hard-required: a submission that omits the tier (a
+            # non-browser client, or a minimal create POST) must fall back
+            # to the secure default in ``clean()`` rather than 400-ing.
+            # The model field defaults to PRIVATE, so omitting it can only
+            # narrow access, never widen it.
+            required=False,
             help_text=_(
                 "Who, by Validibot identity, may run this workflow for "
                 "free. Limited to your organization's ceiling. This is "
@@ -790,6 +836,10 @@ class WorkflowForm(forms.ModelForm):
         self.fields["agent_billing_mode"] = forms.ChoiceField(
             choices=AgentBillingMode.choices,
             initial=AgentBillingMode.AUTHOR_PAYS,
+            # Not hard-required: a submission that omits it falls back to
+            # the model default (AUTHOR_PAYS) in ``clean()``. Enabling x402
+            # re-selects the x402 rail via the model cascade regardless.
+            required=False,
             label=_("Agent billing mode"),
             help_text=_(
                 "Who pays when an agent invokes this workflow.",
@@ -1236,6 +1286,31 @@ class WorkflowForm(forms.ModelForm):
             org = self._org_for_access()
 
             requested_visibility = cleaned.get("workflow_visibility")
+            if not requested_visibility:
+                # Omitted on a form that exposes the field: fall back to the
+                # secure default rather than writing an empty tier. Keep the
+                # current tier on edit; default to PRIVATE on create, mirroring
+                # the model field so access can never silently widen.
+                requested_visibility = (
+                    self.instance.workflow_visibility
+                    if self.instance and self.instance.pk
+                    else WorkflowVisibility.PRIVATE
+                )
+                cleaned["workflow_visibility"] = requested_visibility
+
+            # Same secure-default treatment for the billing rail: an omitted
+            # mode must not write an empty value. Keep the current mode on
+            # edit; default to AUTHOR_PAYS on create. (Enabling x402 re-selects
+            # the x402 rail via the model cascade, so this never traps x402.)
+            if not cleaned.get("agent_billing_mode"):
+                from validibot.workflows.constants import AgentBillingMode
+
+                cleaned["agent_billing_mode"] = (
+                    self.instance.agent_billing_mode
+                    if self.instance and self.instance.pk
+                    else AgentBillingMode.AUTHOR_PAYS
+                )
+
             if requested_visibility:
                 cap = getattr(org, "workflow_visibility_cap", None) or (
                     WorkflowVisibility.ALL_USERS
@@ -4621,5 +4696,159 @@ class WorkflowSignalMappingForm(forms.Form):
             on_missing=self.cleaned_data["on_missing"],
             default_value=default_value,
             data_type=self.cleaned_data["data_type"],
+            position=next_position,
+        )
+
+
+class WorkflowConstantForm(forms.Form):
+    """Form for creating and editing workflow Constants (the ``c.*`` namespace).
+
+    A Constant is a fixed, author-defined value referenced in assertions as
+    ``c.<name>`` (ADR-2026-06-18). The form deliberately has only four fields —
+    Name, Type, Value, Description — and **no** Source path / On missing /
+    Default, because a constant comes from the workflow definition and can never
+    be "missing" (contrast :class:`WorkflowSignalMappingForm`).
+
+    Type is explicit (no "Auto"): the chosen ``data_type`` drives coercion of
+    ``value`` via ``coerce_constant_value`` at clean time, so the constant's
+    contract is guaranteed before save — including storing a ``NUMBER`` as an
+    exact decimal string. Structured ``LIST``/``OBJECT`` values are entered as
+    JSON in the value textarea.
+    """
+
+    name = forms.CharField(
+        max_length=100,
+        label=_("Constant name"),
+        help_text=_("Used in CEL expressions as c.name."),
+    )
+    data_type = forms.ChoiceField(
+        label=_("Type"),
+        help_text=_("The value's type. List/Object are entered as JSON."),
+    )
+    value = forms.CharField(
+        label=_("Value"),
+        widget=forms.Textarea(attrs={"rows": 2}),
+        help_text=_(
+            'For Number type "0.40"; String takes the text literally; '
+            'List/Object are JSON (e.g. ["EUR", "GBP"]).'
+        ),
+    )
+    description = forms.CharField(
+        max_length=500,
+        required=False,
+        label=_("Description"),
+        help_text=_("Optional note (e.g. 'agreed €/kWh per the 2026 contract')."),
+    )
+
+    def __init__(
+        self,
+        *args,
+        workflow: Workflow | None = None,
+        exclude_constant_id: int | None = None,
+        **kwargs,
+    ):
+        from validibot.workflows.constants import WorkflowConstantType
+
+        self.workflow = workflow
+        self.exclude_constant_id = exclude_constant_id
+        super().__init__(*args, **kwargs)
+
+        # Populate type choices from the single source of truth.
+        self.fields["data_type"].choices = WorkflowConstantType.choices
+
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            Row(
+                Column("name", css_class="col-12 col-lg-6"),
+                Column("data_type", css_class="col-12 col-lg-6"),
+            ),
+            "value",
+            "description",
+        )
+
+    def clean_name(self) -> str:
+        """Validate constant name: CEL identifier, not reserved, unique.
+
+        Uses the constant-scoped helpers (NOT the signal uniqueness check), so a
+        constant may share a bare name with a signal — the ``c.``/``s.`` prefix
+        disambiguates.
+        """
+        from validibot.workflows.services.constants import validate_constant_name
+        from validibot.workflows.services.constants import validate_constant_name_unique
+
+        name = self.cleaned_data["name"].strip()
+
+        errors = validate_constant_name(name)
+        if errors:
+            raise ValidationError(errors)
+
+        if self.workflow:
+            unique_errors = validate_constant_name_unique(
+                workflow_id=self.workflow.pk,
+                name=name,
+                exclude_constant_id=self.exclude_constant_id,
+            )
+            if unique_errors:
+                raise ValidationError(unique_errors)
+
+        return name
+
+    def clean(self):
+        """Coerce ``value`` against the chosen ``data_type`` at form level.
+
+        Surfaces a type/bounds problem on the ``value`` field (rather than as a
+        non-field error) so the author sees it next to the input. The coerced,
+        canonical value is stashed on ``cleaned_data["_coerced_value"]`` for
+        ``save_constant``.
+        """
+        from validibot.workflows.services.constants import ConstantValueError
+        from validibot.workflows.services.constants import coerce_constant_value
+
+        cleaned = super().clean()
+        data_type = cleaned.get("data_type")
+        raw_value = cleaned.get("value")
+        if data_type and raw_value is not None:
+            try:
+                cleaned["_coerced_value"] = coerce_constant_value(
+                    data_type,
+                    raw_value,
+                )
+            except ConstantValueError as exc:
+                self.add_error("value", str(exc))
+        return cleaned
+
+    def save_constant(self, workflow: Workflow, *, instance=None):
+        """Create or update a ``WorkflowConstant`` from cleaned data.
+
+        When creating, auto-assigns the next position so the new constant
+        appears at the end of the list (mirrors signal mappings).
+        """
+        from validibot.workflows.models import WorkflowConstant
+
+        coerced_value = self.cleaned_data["_coerced_value"]
+
+        if instance:
+            instance.name = self.cleaned_data["name"]
+            instance.data_type = self.cleaned_data["data_type"]
+            instance.value = coerced_value
+            instance.description = self.cleaned_data["description"]
+            instance.save()
+            return instance
+
+        last_position = (
+            WorkflowConstant.objects.filter(workflow=workflow)
+            .order_by("-position")
+            .values_list("position", flat=True)
+            .first()
+        )
+        next_position = (last_position or 0) + 10
+
+        return WorkflowConstant.objects.create(
+            workflow=workflow,
+            name=self.cleaned_data["name"],
+            data_type=self.cleaned_data["data_type"],
+            value=coerced_value,
+            description=self.cleaned_data["description"],
             position=next_position,
         )

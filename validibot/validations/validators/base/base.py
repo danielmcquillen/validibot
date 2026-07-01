@@ -339,9 +339,10 @@ class BaseValidator(ABC):
         """
         Build the namespaced CEL context for assertion evaluation.
 
-        Per ADR-2026-05-22b (five namespaces) and ADR-2026-06-03b
-        (the sixth, ``submission``), the context has SIX namespaces,
-        four with short/long aliases. Singular long names are used
+        Per ADR-2026-05-22b (five namespaces), ADR-2026-06-03b
+        (the sixth, ``submission``), and ADR-2026-06-18 (the seventh,
+        ``c`` / ``const``), the context has SEVEN namespaces,
+        five with short/long aliases. Singular long names are used
         throughout (``payload``, ``signal``, ``input``, ``output``) —
         each namespace is a singular "thing" from the author's
         perspective, even when the underlying dict holds many
@@ -389,6 +390,11 @@ class BaseValidator(ABC):
           resolves identically for any file format — the one namespace
           usable in a SHACL/``.ttl`` workflow. Resolves to ``{}`` when
           there is no run/submission (e.g. unit tests).
+        - ``c`` / ``const`` — author-defined Constants from the workflow
+          definition (ADR-2026-06-18): fixed literals known at authoring
+          time, carried as a literal map on
+          ``RunContext.workflow_constants``. Always present, never
+          resolved, identical at input and output stage.
 
         Raw payload keys are **never promoted** to top-level CEL
         variables. Authors access raw data via ``p.key`` (or
@@ -538,6 +544,21 @@ class BaseValidator(ABC):
         run = getattr(getattr(self, "run_context", None), "validation_run", None)
         submission_dict = build_submission_assertion_context(run)
 
+        # ── Constants namespace (c / const) ──────────────────────────
+        # Author-defined fixed literals from the workflow definition
+        # (ADR-2026-06-18). A literal map built once at run start and carried on
+        # the run context — no resolution, always present, the only namespace
+        # whose values are known at authoring time. Bound under both ``c`` and
+        # ``const`` (alias), like ``s`` / ``signal``.
+        constants_dict = (
+            getattr(
+                getattr(self, "run_context", None),
+                "workflow_constants",
+                None,
+            )
+            or {}
+        )
+
         # ── Assemble the context ─────────────────────────────────────
         # All namespace roots are always present (even if empty) so CEL
         # expressions can reference them without undefined-variable
@@ -568,6 +589,8 @@ class BaseValidator(ABC):
             "output": output_dict,
             "steps": steps_context if steps_context else {},
             "submission": submission_dict,
+            "c": constants_dict,
+            "const": constants_dict,
         }
         return context
 
@@ -937,6 +960,25 @@ class BaseValidator(ABC):
         # fixed at submission time.
         run = getattr(getattr(self, "run_context", None), "validation_run", None)
         enriched["submission"] = build_submission_assertion_context(run)
+
+        # Constants envelope (c / const) — injected as a NESTED sub-dict, exactly
+        # like ``submission`` and explicitly NOT flattened to bare keys the way
+        # s.* signals are (ADR-2026-06-18). This is what makes ``c.energy_price``
+        # and a bare-key signal ``energy_price`` coexist without colliding: a
+        # Basic target ``c.energy_price`` resolves to ``payload["c"]["price"]``
+        # while the signal flattens to ``payload["energy_price"]``. Authoritative
+        # (overwrites any same-named payload key) because ``c``/``const`` are
+        # reserved namespace roots. Both spellings bound for parity with CEL.
+        constants_dict = (
+            getattr(
+                getattr(self, "run_context", None),
+                "workflow_constants",
+                None,
+            )
+            or {}
+        )
+        enriched["c"] = constants_dict
+        enriched["const"] = constants_dict
 
         return enriched
 

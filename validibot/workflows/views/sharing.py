@@ -26,6 +26,9 @@ from django.views.generic import TemplateView
 
 from validibot.core.mixins import GuestInvitesEnabledMixin
 from validibot.core.utils import reverse_with_org
+from validibot.workflows.forms import _membership_for_access_gate
+from validibot.workflows.forms import _membership_is_author
+from validibot.workflows.forms import _membership_is_org_admin
 from validibot.workflows.mixins import WorkflowObjectMixin
 
 logger = logging.getLogger(__name__)
@@ -534,9 +537,9 @@ def _user_can_edit_workflow_access(user, workflow) -> bool:
 
     Mirrors ``WorkflowForm._user_can_edit_access``: the per-workflow
     access controls (visibility tier + the MCP / x402 agent channels) are
-    privileged. They may be changed only by a Django superuser/staff
-    member, OR when the workflow's organization has opted in via
-    ``Organization.allow_authors_to_adjust_access``.
+    privileged. They may be changed only by an org admin in the workflow's
+    organization, OR when the workflow's organization has opted in via
+    ``Organization.allow_authors_to_adjust_access`` for authors.
 
     This is separate from ``user_can_manage_sharing`` (which gates the
     guest-invite surface): a workflow author can always invite guests to
@@ -545,10 +548,17 @@ def _user_can_edit_workflow_access(user, workflow) -> bool:
     """
     if not user or not getattr(user, "is_authenticated", False):
         return False
-    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
-        return True
     org = getattr(workflow, "org", None)
-    return bool(org and getattr(org, "allow_authors_to_adjust_access", False))
+    membership = _membership_for_access_gate(user, org)
+    if _membership_is_org_admin(membership):
+        return True
+    if not (org and getattr(org, "allow_authors_to_adjust_access", False)):
+        return False
+    return _membership_is_author(membership) and workflow.user_id == getattr(
+        user,
+        "id",
+        None,
+    )
 
 
 def _build_visibility_section_context(view, workflow, request):
@@ -582,6 +592,40 @@ def _build_visibility_section_context(view, workflow, request):
     }
 
 
+def _validation_error_messages(exc: ValidationError) -> list[str]:
+    """Flatten a Django ValidationError into template-friendly messages."""
+    if hasattr(exc, "message_dict"):
+        messages: list[str] = []
+        for field_name, field_messages in exc.message_dict.items():
+            for message in field_messages:
+                if field_name == "__all__":
+                    messages.append(str(message))
+                else:
+                    messages.append(f"{field_name}: {message}")
+        return messages
+    return [str(message) for message in exc.messages]
+
+
+def _render_visibility_section(
+    request,
+    view,
+    workflow,
+    *,
+    status=HTTPStatus.OK,
+    errors=None,
+):
+    """Render the HTMX-swappable visibility section."""
+    context = _build_visibility_section_context(view, workflow, request)
+    if errors:
+        context["access_error_messages"] = errors
+    html = render_to_string(
+        "workflows/partials/workflow_visibility_section.html",
+        context,
+        request=request,
+    )
+    return HttpResponse(html, status=status)
+
+
 class WorkflowVisibilityUpdateView(WorkflowObjectMixin, View):
     """Update a workflow's identity-scoped visibility and agent channels.
 
@@ -604,6 +648,14 @@ class WorkflowVisibilityUpdateView(WorkflowObjectMixin, View):
         workflow = self.get_workflow()
         org = workflow.org
         changed_fields: list[str] = []
+        can_edit_access = _user_can_edit_workflow_access(request.user, workflow)
+        posted_access_fields = {
+            "workflow_visibility",
+            "mcp_enabled",
+            "x402_enabled",
+        }.intersection(request.POST)
+        if posted_access_fields and not can_edit_access:
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
 
         # ── Visibility (the WHO dial) ─────────────────────────────────
         # Validate against the enum, then CLAMP to the org ceiling so a
@@ -611,7 +663,7 @@ class WorkflowVisibilityUpdateView(WorkflowObjectMixin, View):
         # if the client forged a wider value. An unknown value is ignored
         # (leaves the current tier untouched) rather than erroring.
         raw_visibility = (request.POST.get("workflow_visibility") or "").strip()
-        if raw_visibility in WorkflowVisibility.values:
+        if can_edit_access and raw_visibility in WorkflowVisibility.values:
             cap = (
                 getattr(org, "workflow_visibility_cap", None)
                 or WorkflowVisibility.ALL_USERS
@@ -629,7 +681,6 @@ class WorkflowVisibilityUpdateView(WorkflowObjectMixin, View):
         # visibility. A blank/absent value is treated as "off" only when
         # the field was actually submitted, so partial posts (e.g. just a
         # visibility change) don't clobber the other channel.
-        can_edit_access = _user_can_edit_workflow_access(request.user, workflow)
         if can_edit_access:
             if "mcp_enabled" in request.POST and getattr(org, "mcp_allowed", False):
                 new_mcp = _coerce_bool(request.POST.get("mcp_enabled"))
@@ -640,26 +691,48 @@ class WorkflowVisibilityUpdateView(WorkflowObjectMixin, View):
             if "x402_enabled" in request.POST and getattr(org, "x402_allowed", False):
                 new_x402 = _coerce_bool(request.POST.get("x402_enabled"))
                 if workflow.x402_enabled != new_x402:
-                    workflow.x402_enabled = new_x402
+                    if new_x402:
+                        try:
+                            workflow.enable_x402()
+                        except ValidationError as exc:
+                            workflow.refresh_from_db()
+                            return _render_visibility_section(
+                                request,
+                                self,
+                                workflow,
+                                status=HTTPStatus.BAD_REQUEST,
+                                errors=_validation_error_messages(exc),
+                            )
+                    else:
+                        workflow.x402_enabled = False
                     changed_fields.append("x402_enabled")
+                    changed_fields.append("agent_billing_mode")
 
         if changed_fields:
             # ``make_info_page_public`` is always included: the model's
             # ``save()`` auto-publishes the info page for ALL_USERS
             # visibility, and a narrow ``update_fields`` would otherwise
             # drop that synced flag.
-            workflow.save(
-                update_fields=[*changed_fields, "make_info_page_public", "modified"],
-            )
+            try:
+                workflow.save(
+                    update_fields=[
+                        *changed_fields,
+                        "make_info_page_public",
+                        "modified",
+                    ],
+                )
+            except ValidationError as exc:
+                workflow.refresh_from_db()
+                return _render_visibility_section(
+                    request,
+                    self,
+                    workflow,
+                    status=HTTPStatus.BAD_REQUEST,
+                    errors=_validation_error_messages(exc),
+                )
 
         # Return updated visibility section for HTMX
-        context = _build_visibility_section_context(self, workflow, request)
-        html = render_to_string(
-            "workflows/partials/workflow_visibility_section.html",
-            context,
-            request=request,
-        )
-        return HttpResponse(html)
+        return _render_visibility_section(request, self, workflow)
 
 
 def _coerce_bool(raw) -> bool:

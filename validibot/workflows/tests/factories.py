@@ -11,6 +11,7 @@ from validibot.users.models import Membership
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.workflows.constants import WorkflowHistoryPolicy
+from validibot.workflows.constants import WorkflowVisibility
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.models import WorkflowStepResource
@@ -29,6 +30,10 @@ class WorkflowFactory(DjangoModelFactory):
     project = factory.SubFactory(ProjectFactory, org=factory.SelfAttribute("..org"))
     version = 1
     history_policy = WorkflowHistoryPolicy.VERSIONED
+    # Most existing workflow tests exercise org-member behaviour. Keep the
+    # factory org-visible by default while the model field itself remains
+    # secure-by-default (PRIVATE) for real create paths.
+    workflow_visibility = WorkflowVisibility.ORG
     is_locked = False
     is_active = True
     allow_submission_meta_data = True

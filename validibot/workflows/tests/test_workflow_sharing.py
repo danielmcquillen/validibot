@@ -22,6 +22,7 @@ from validibot.users.models import Membership
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
+from validibot.workflows.constants import WorkflowVisibility
 from validibot.workflows.models import GuestInvite
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowAccessGrant
@@ -837,6 +838,93 @@ class TestWorkflowPermissionExtensions:
 
         assert guest.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, v1) is True
         assert guest.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, v2) is True
+
+    # ────────────────────────────────────────────────────────────────
+    # Org-admin carve-out for PRIVATE workflows (ADR 2026-06-27)
+    # ────────────────────────────────────────────────────────────────
+    #
+    # The ADR's "admins administer everything" decision lets an org
+    # admin/owner VIEW and MANAGE every workflow in their org, including
+    # another member's PRIVATE workflow, while the run-audience stays
+    # narrow. ``can_view`` must agree with the admin row-access branch in
+    # ``WorkflowAccessMixin.get_workflow_queryset_for_access`` — otherwise
+    # an admin opens a detail page the model predicate would deny — and
+    # ``can_execute`` must NOT inherit the carve-out, because administering
+    # a workflow is not the same as being licensed to run someone else's
+    # private one. These tests pin both halves and the tenancy boundary so
+    # a future change can't silently widen (or break) admin reach.
+    def test_org_admin_can_view_private_workflow_of_another_member(self):
+        """An org admin may open a PRIVATE workflow they did not create.
+
+        This is the read half of the ADR carve-out. Without it the admin
+        row-access branch and ``can_view`` disagree (row resolves, predicate
+        denies), which is exactly the split this session closed.
+        """
+        org = OrganizationFactory()
+        author = UserFactory(orgs=[org])
+        grant_role(author, org, RoleCode.AUTHOR)
+        private_wf = WorkflowFactory(
+            org=org,
+            user=author,
+            workflow_visibility=WorkflowVisibility.PRIVATE,
+            is_active=True,
+        )
+
+        admin = UserFactory(orgs=[org])
+        grant_role(admin, org, RoleCode.ADMIN)
+
+        assert private_wf.can_view(user=admin) is True
+
+    def test_org_admin_cannot_execute_private_workflow_of_another_member(self):
+        """The carve-out is view/manage only — NOT launch.
+
+        ``can_execute`` is deliberately left unwidened: an admin can
+        administer a PRIVATE workflow's policy without gaining the right to
+        run someone else's private workflow (which has billing/quota and
+        data-handling consequences). This negative test guards that
+        intentional boundary against a future copy-paste of the view rule.
+        """
+        org = OrganizationFactory()
+        author = UserFactory(orgs=[org])
+        grant_role(author, org, RoleCode.AUTHOR)
+        private_wf = WorkflowFactory(
+            org=org,
+            user=author,
+            workflow_visibility=WorkflowVisibility.PRIVATE,
+            is_active=True,
+        )
+
+        admin = UserFactory(orgs=[org])
+        grant_role(admin, org, RoleCode.ADMIN)
+
+        assert private_wf.can_execute(user=admin) is False
+
+    def test_admin_carve_out_does_not_cross_orgs(self):
+        """The carve-out is object-scoped to the workflow's OWN org.
+
+        An admin of org A must not be able to view a PRIVATE workflow in
+        org B. ``has_perm(ADMIN_MANAGE_ORG, workflow)`` derives the org from
+        the workflow, so admin power can never leak across the tenancy
+        boundary — the multi-tenant invariant the whole access model rests
+        on.
+        """
+        org_a = OrganizationFactory()
+        org_b = OrganizationFactory()
+        author_b = UserFactory(orgs=[org_b])
+        grant_role(author_b, org_b, RoleCode.AUTHOR)
+        private_b = WorkflowFactory(
+            org=org_b,
+            user=author_b,
+            workflow_visibility=WorkflowVisibility.PRIVATE,
+            is_active=True,
+        )
+
+        admin_a = UserFactory(orgs=[org_a])
+        grant_role(admin_a, org_a, RoleCode.ADMIN)
+
+        # Admin of org A has no reach into org B's private workflow.
+        assert private_b.can_view(user=admin_a) is False
+        assert private_b.can_execute(user=admin_a) is False
 
     def test_for_user_includes_grant_workflows(self):
         """Test that for_user queryset includes grant-accessible workflows."""
@@ -1948,6 +2036,104 @@ class TestWorkflowSharingPermissions:
             reverse("workflows:workflow_sharing", kwargs={"pk": workflow.pk}),
         )
         assert response.status_code == HTTPStatus.FORBIDDEN
+
+    def test_author_cannot_forge_visibility_update_when_author_adjust_off(self, client):
+        """Guest-sharing authority must not imply access-policy authority.
+
+        Authors can manage guest access for their own workflow, but when the
+        org has ``allow_authors_to_adjust_access=False`` they may not retune
+        the workflow's visibility. This pins the HTMX endpoint, not just the
+        form field visibility.
+        """
+        org = OrganizationFactory(allow_authors_to_adjust_access=False)
+        author = UserFactory()
+        grant_role(author, org, RoleCode.AUTHOR)
+        workflow = WorkflowFactory(
+            org=org,
+            user=author,
+            workflow_visibility=WorkflowVisibility.PRIVATE,
+        )
+
+        client.force_login(author)
+        session = client.session
+        session["active_org_id"] = str(org.id)
+        session.save()
+
+        response = client.post(
+            reverse("workflows:workflow_visibility_update", kwargs={"pk": workflow.pk}),
+            data={"workflow_visibility": WorkflowVisibility.ALL_USERS},
+        )
+
+        workflow.refresh_from_db()
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert workflow.workflow_visibility == WorkflowVisibility.PRIVATE
+
+    def test_org_admin_can_update_visibility_even_when_author_adjust_off(self, client):
+        """Org admins own access policy even when ordinary authors do not."""
+        org = OrganizationFactory(allow_authors_to_adjust_access=False)
+        admin = UserFactory()
+        grant_role(admin, org, RoleCode.ADMIN)
+        author = UserFactory()
+        grant_role(author, org, RoleCode.AUTHOR)
+        workflow = WorkflowFactory(
+            org=org,
+            user=author,
+            workflow_visibility=WorkflowVisibility.PRIVATE,
+        )
+
+        client.force_login(admin)
+        session = client.session
+        session["active_org_id"] = str(org.id)
+        session.save()
+
+        response = client.post(
+            reverse("workflows:workflow_visibility_update", kwargs={"pk": workflow.pk}),
+            data={"workflow_visibility": WorkflowVisibility.ORG},
+        )
+
+        workflow.refresh_from_db()
+        assert response.status_code == HTTPStatus.OK
+        assert workflow.workflow_visibility == WorkflowVisibility.ORG
+
+    def test_x402_toggle_without_prereqs_returns_inline_error_not_500(self, client):
+        """Enabling x402 from the sharing toggle surfaces a graceful error.
+
+        The sharing toggle posts only ``x402_enabled`` — it has no price or
+        retention input. x402 publishing requires a positive price and
+        DO_NOT_STORE retention (model invariants). The endpoint must therefore
+        route through the guarded ``enable_x402`` path: validation fails, the
+        workflow stays un-published, and the user gets the section re-rendered
+        with an inline error (HTTP 400) rather than a 500 or a silently
+        inconsistent row. This pins the P2 the access review flagged.
+        """
+        org = OrganizationFactory(x402_allowed=True)
+        admin = UserFactory()
+        grant_role(admin, org, RoleCode.ADMIN)
+        # A bare workflow: no price set, so x402 prerequisites are unmet.
+        workflow = WorkflowFactory(
+            org=org,
+            user=admin,
+            workflow_visibility=WorkflowVisibility.PRIVATE,
+            x402_enabled=False,
+            agent_price_cents=None,
+        )
+
+        client.force_login(admin)
+        session = client.session
+        session["active_org_id"] = str(org.id)
+        session.save()
+
+        response = client.post(
+            reverse("workflows:workflow_visibility_update", kwargs={"pk": workflow.pk}),
+            data={"x402_enabled": "true"},
+        )
+
+        workflow.refresh_from_db()
+        # Graceful failure, not a 500; workflow is NOT published to x402.
+        assert response.status_code == HTTPStatus.BAD_REQUEST
+        assert workflow.x402_enabled is False
+        # The re-rendered section carries a human-readable error.
+        assert b"price" in response.content.lower()
 
     def test_viewer_cannot_manage_sharing(self, client):
         """Test that viewers cannot manage sharing for any workflow."""

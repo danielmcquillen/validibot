@@ -99,6 +99,7 @@ def _public_x402_predicate() -> Q:
     return (
         Q(is_active=True)
         & Q(x402_enabled=True)
+        & Q(org__x402_allowed=True)
         & Q(agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402)
         & Q(agent_price_cents__gt=0)
         & Q(input_retention=SubmissionRetention.DO_NOT_STORE)

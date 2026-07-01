@@ -542,9 +542,10 @@ class CelContextNamespaceTests(TestCase):
         submission file), s/signal (workflow vocabulary), i/input (step-local
         input-stage values), o/output (step-local output-stage values), and
         steps (cross-step inputs and outputs); ADR-2026-06-03b adds the sixth,
-        submission (submission envelope: metadata + server facts). Here the
-        submission envelope resolves to ``{}`` because this unit test builds
-        the context without a run, but the ``submission`` root key is still
+        submission (submission envelope: metadata + server facts); ADR-2026-06-18
+        adds the seventh, c/const (author-defined Constants). Here both
+        submission and the constants map resolve to ``{}`` because this unit
+        test builds the context without a run, but their root keys are still
         present. Payload keys are never at the root regardless of their names.
         """
         engine = BasicValidator()

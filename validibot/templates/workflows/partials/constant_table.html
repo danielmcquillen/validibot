@@ -1,0 +1,129 @@
+{% load i18n core_tags %}
+
+{% comment %}
+Constants table partial. Unlike the signals table, constants show their actual
+VALUE — they are the one namespace whose values are known at authoring time
+(ADR-2026-06-18). Re-rendered in place on the `constants-changed` HTMx event.
+{% endcomment %}
+
+{% if constants %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0" style="min-width: 580px">
+      <thead>
+        <tr>
+          <th class="text-nowrap">
+            {% trans "Constant" %}
+          </th>
+          <th class="text-nowrap">
+            {% trans "Type" %}
+          </th>
+          <th class="text-nowrap">
+            {% trans "Value" %}
+          </th>
+          <th class="text-nowrap">
+            {% trans "Description" %}
+          </th>
+          {% if can_manage_workflow %}
+            <th class="text-end text-nowrap">
+              {% trans "Actions" %}
+            </th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in constants %}
+          <tr>
+            <td class="text-nowrap">
+              <code>c.{{ c.name }}</code>
+            </td>
+            <td>
+              <span class="badge bg-secondary-subtle text-secondary">{{ c.get_data_type_display }}</span>
+            </td>
+            <td>
+              <code class="text-muted">{{ c.value }}</code>
+            </td>
+            <td>
+              {% if c.description %}
+                <span class="text-muted small">{{ c.description }}</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            {% if can_manage_workflow %}
+              <td class="text-end">
+                <div class="btn-group btn-group-sm" role="group">
+                  <button type="button"
+                          class="btn btn-outline-secondary"
+                          data-bs-toggle="modal"
+                          data-bs-target="#constantModal"
+                          hx-get="{% url 'workflows:workflow_constant_edit' workflow.pk c.pk %}"
+                          hx-target="#constant-modal-content"
+                          hx-trigger="click"
+                          title="{% trans 'Edit' %}">
+                    <i class="bi bi-pencil-square"></i>
+                  </button>
+                  <button type="button"
+                          class="btn btn-outline-secondary"
+                          hx-post="{% url 'workflows:workflow_constant_move' workflow.pk c.pk %}"
+                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                          hx-vals='{"direction": "up"}'
+                          hx-swap="none"
+                          hx-disabled-elt="this"
+                          title="{% trans 'Move up' %}"
+                          {% if forloop.first %}
+                            disabled
+                          {% endif %}>
+                    <i class="bi bi-arrow-up"></i>
+                  </button>
+                  <button type="button"
+                          class="btn btn-outline-secondary"
+                          hx-post="{% url 'workflows:workflow_constant_move' workflow.pk c.pk %}"
+                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                          hx-vals='{"direction": "down"}'
+                          hx-swap="none"
+                          hx-disabled-elt="this"
+                          title="{% trans 'Move down' %}"
+                          {% if forloop.last %}
+                            disabled
+                          {% endif %}>
+                    <i class="bi bi-arrow-down"></i>
+                  </button>
+                  <button type="button"
+                          class="btn btn-outline-danger"
+                          hx-post="{% url 'workflows:workflow_constant_delete' workflow.pk c.pk %}"
+                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                          hx-confirm="{% trans 'Delete this constant?' %}"
+                          hx-swap="none"
+                          hx-disabled-elt="this"
+                          title="{% trans 'Delete' %}">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
+              </td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="text-center py-5">
+    <p class="text-muted mb-2">
+      {% trans "No constants have been defined yet." %}
+    </p>
+    <p class="text-muted small mb-3">
+      {% trans "Constants are fixed values you name once and reference as c.name in assertions — e.g. an agreed price or an allowed-currency list." %}
+    </p>
+    {% if can_manage_workflow %}
+      <button type="button"
+              class="btn btn-secondary"
+              data-bs-toggle="modal"
+              data-bs-target="#constantModal"
+              hx-get="{% url 'workflows:workflow_constant_create' workflow.pk %}"
+              hx-target="#constant-modal-content"
+              hx-trigger="click">
+        <i class="bi bi-plus me-1"></i>{% trans "Create the first constant" %}
+      </button>
+    {% endif %}
+  </div>
+{% endif %}

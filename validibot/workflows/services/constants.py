@@ -290,6 +290,26 @@ def build_workflow_constants_context(workflow: Workflow | None) -> dict[str, Any
     return context
 
 
+def format_constant_value(constant: WorkflowConstant) -> str:
+    """Render just a constant's VALUE for display (no name/type decoration).
+
+    Structured LIST/OBJECT values render as JSON (``["EUR", "GBP"]``), not the
+    Python ``repr`` (``['EUR', 'GBP']``) that ``{{ c.value }}`` would print;
+    BOOLEAN renders as ``true``/``false``; scalars use the stored string so
+    NUMBER precision (``0.40``) is preserved verbatim. Used by templates via the
+    ``WorkflowConstant.display_value`` property.
+    """
+    stored = constant.value
+    if constant.data_type in {
+        WorkflowConstantType.LIST,
+        WorkflowConstantType.OBJECT,
+    }:
+        return json.dumps(stored, separators=(", ", ": "), ensure_ascii=False)
+    if constant.data_type == WorkflowConstantType.BOOLEAN:
+        return "true" if stored else "false"
+    return str(stored)
+
+
 def format_constant_display(constant: WorkflowConstant) -> str:
     """Render a constant for the author reference panel / autocomplete hint.
 
@@ -299,17 +319,7 @@ def format_constant_display(constant: WorkflowConstant) -> str:
     type_label = str(
         WorkflowConstantType(constant.data_type).label,
     ).lower()
-    stored = constant.value
-    if constant.data_type in {
-        WorkflowConstantType.LIST,
-        WorkflowConstantType.OBJECT,
-    }:
-        rendered = json.dumps(stored, separators=(", ", ": "), ensure_ascii=False)
-    elif constant.data_type == WorkflowConstantType.BOOLEAN:
-        rendered = "true" if stored else "false"
-    else:
-        rendered = str(stored)
-    return f"c.{constant.name} = {rendered} ({type_label})"
+    return f"c.{constant.name} = {format_constant_value(constant)} ({type_label})"
 
 
 def validate_constant_name(name: str) -> list[str]:

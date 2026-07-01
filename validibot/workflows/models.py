@@ -3091,5 +3091,17 @@ class WorkflowConstant(TimeStampedModel):
         _guard_contract_member_delete(self, member_label="constant")
         return super().delete(*args, **kwargs)
 
+    @property
+    def display_value(self) -> str:
+        """Human-facing value for templates (JSON for LIST/OBJECT, not repr).
+
+        Templates should render ``{{ c.display_value }}`` rather than
+        ``{{ c.value }}`` so a list shows as ``["EUR", "GBP"]`` instead of the
+        Python ``['EUR', 'GBP']`` repr (ADR-2026-06-18).
+        """
+        from validibot.workflows.services.constants import format_constant_value
+
+        return format_constant_value(self)
+
     def __str__(self) -> str:
         return f"c.{self.name} = {self.value!r}"

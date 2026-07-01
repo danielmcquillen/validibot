@@ -14,6 +14,13 @@ distinct" caution):
   This is the only input to the hash.
 * :func:`compute_workflow_definition_hash` — ``sha256`` over the canonical JSON
   of that preimage.
+* :func:`build_workflow_contract_snapshot` — the broader **evidence object**: a
+  ``validibot_shared.evidence.WorkflowContractSnapshot`` carrying the launch
+  contract PLUS the constants, signal-mapping definitions, and the definition
+  hash. Both the community evidence manifest (``validations/services/evidence.py``)
+  and the Pro signed credential derive from these functions, so they cannot
+  drift — a constant value change moves ``compute_workflow_definition_hash`` and
+  therefore both the manifest record and the signed credential.
 
 Design rules encoded here (each is an ADR decision):
 
@@ -30,21 +37,13 @@ Design rules encoded here (each is an ADR decision):
 * **Constants store exact values.** A ``NUMBER`` constant's decimal string
   (``"0.40"``) is hashed verbatim, preserving attested precision.
 
-Release-gated remainder (NOT done here, needs a ``validibot-shared`` release +
-the access-control refactor's sequencing — see ADR):
-
-* Adding ``constants`` / ``signal_mappings`` / ``workflow_definition_hash`` as
-  optional fields on ``validibot_shared.evidence.WorkflowContractSnapshot``
-  (stays ``v1``; additive) and populating them in the manifest builder.
-* Pro's ``credentials/workflow_digest.py`` delegating to this module instead of
-  building its own preimage, and the JCS canonicalizer moving to
-  ``validibot-shared`` so both use identical bytes.
-
-Until that reconciliation, this module canonicalizes with sorted-key JSON (the
-same scheme the manifest *envelope* already uses). The projection **logic** —
-field set, ordering, semantic boundary — is final; only the canonicalizer swaps
-to RFC 8785 / JCS at reconciliation, and nothing consumes this hash yet, so no
-stored value is invalidated.
+Canonicalization: this module hashes with sorted-key JSON (the same scheme the
+manifest *envelope* already uses), so the community manifest and the Pro
+credential share one byte-for-byte identical hash by both calling
+:func:`compute_workflow_definition_hash`. Moving the canonicalizer to RFC 8785 /
+JCS in ``validibot-shared`` (for third-party verifier portability) is a possible
+future enhancement; it would change the hash *bytes* but not the "single
+projection, no drift" guarantee, since both consumers would swap together.
 """
 
 from __future__ import annotations
@@ -55,6 +54,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 if TYPE_CHECKING:
+    from validibot_shared.evidence import WorkflowContractSnapshot
+
     from validibot.validations.models import Ruleset
     from validibot.validations.models import RulesetAssertion
     from validibot.workflows.models import Workflow
@@ -77,14 +78,49 @@ def build_workflow_definition_contract(workflow: Workflow) -> dict[str, Any]:
 
 
 def compute_workflow_definition_hash(workflow: Workflow) -> str:
-    """Return ``sha256:<hex>`` over the canonical JSON of the definition contract.
+    """Return ``sha256:<hex>`` over the canonical JSON of the definition contract."""
+    return _hash_preimage(build_workflow_definition_contract(workflow))
 
-    See the module docstring for why the canonicalizer is sorted-key JSON today
-    and reconciles to JCS at release time.
+
+def _hash_preimage(preimage: dict[str, Any]) -> str:
+    """Return ``sha256:<hex>`` of a preimage's canonical JSON bytes."""
+    return f"sha256:{hashlib.sha256(_canonical_bytes(preimage)).hexdigest()}"
+
+
+def build_workflow_contract_snapshot(workflow: Workflow) -> WorkflowContractSnapshot:
+    """Build the full evidence ``WorkflowContractSnapshot`` for a workflow.
+
+    This is the **single** producer of the manifest's contract snapshot: it
+    carries the launch-contract fields (file types, retention, agent policy)
+    *plus* the constants, signal-mapping definitions, and the workflow-definition
+    hash (ADR-2026-06-18). The community evidence manifest and the Pro signed
+    credential both derive from here, so a constant value change moves the hash
+    in both — no drift.
     """
-    preimage = build_workflow_definition_contract(workflow)
-    digest = hashlib.sha256(_canonical_bytes(preimage)).hexdigest()
-    return f"sha256:{digest}"
+    from validibot_shared.evidence import ContractConstant
+    from validibot_shared.evidence import ContractSignalMapping
+    from validibot_shared.evidence import WorkflowContractSnapshot
+
+    definition = build_workflow_definition_contract(workflow)
+    return WorkflowContractSnapshot(
+        allowed_file_types=list(workflow.allowed_file_types or []),
+        input_retention=workflow.input_retention or "",
+        output_retention=workflow.output_retention or "",
+        agent_billing_mode=workflow.agent_billing_mode or "",
+        agent_price_cents=workflow.agent_price_cents,
+        agent_max_launches_per_hour=workflow.agent_max_launches_per_hour,
+        # Shared-schema field names still use pre-rename terminology and map 1:1
+        # to the renamed workflow fields (agent_public_discovery == x402_enabled,
+        # agent_access_enabled == mcp_enabled). Renaming the shared schema is a
+        # separate follow-up; the recorded meaning is unchanged.
+        agent_public_discovery=workflow.x402_enabled,
+        agent_access_enabled=workflow.mcp_enabled,
+        constants=[ContractConstant(**c) for c in definition["constants"]],
+        signal_mappings=[
+            ContractSignalMapping(**m) for m in definition["signal_mappings"]
+        ],
+        workflow_definition_hash=_hash_preimage(definition),
+    )
 
 
 # ── Canonicalization ─────────────────────────────────────────────────────────

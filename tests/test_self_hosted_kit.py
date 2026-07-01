@@ -664,7 +664,12 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         )
         accepted_deploy_forms = (
             "VALIDIBOT_VERSION={{validibot_version}}",
+            # Worker: inline in --set-env-vars, so the override form is quoted.
             f'VALIDIBOT_VERSION="{override_form}"',
+            # Web: nested inside the double-quoted ``SET_ENV_VARS="..."`` shell
+            # string, so the same override form appears UNQUOTED (you can't nest
+            # double quotes). Both stamp the version; only the spelling differs.
+            f"VALIDIBOT_VERSION={override_form}",
         )
 
         assert any(form in build_block for form in accepted_build_forms), (

@@ -27,6 +27,9 @@ from validibot.workflows.models import WorkflowConstant
 from validibot.workflows.models import WorkflowSignalMapping
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.services.contract_snapshot import (
+    build_workflow_contract_snapshot,
+)
+from validibot.workflows.services.contract_snapshot import (
     build_workflow_definition_contract,
 )
 from validibot.workflows.services.contract_snapshot import (
@@ -240,3 +243,59 @@ class HashDriftTests(TestCase):
         )
         after = compute_workflow_definition_hash(self.workflow)
         assert before == after
+
+
+class ContractSnapshotEvidenceTests(TestCase):
+    """``build_workflow_contract_snapshot`` populates the shared evidence object.
+
+    This is the single producer both the community manifest and the Pro
+    credential derive from (ADR-2026-06-18). These tests pin that constants and
+    the definition hash actually land in the ``WorkflowContractSnapshot`` — the
+    thing that was previously missing, so a constant change did not reach the
+    signed credential.
+    """
+
+    def setUp(self):
+        self.workflow = WorkflowFactory()
+        self.validator = ValidatorFactory(validation_type=ValidationType.BASIC)
+        self.ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+        WorkflowStepFactory(
+            workflow=self.workflow,
+            validator=self.validator,
+            ruleset=self.ruleset,
+            order=10,
+        )
+        self.constant = WorkflowConstant.objects.create(
+            workflow=self.workflow,
+            name="energy_price",
+            data_type=WorkflowConstantType.NUMBER,
+            value="0.40",
+        )
+
+    def test_snapshot_carries_constants_and_definition_hash(self):
+        """The snapshot records the constant (exact value) and the definition hash.
+
+        Records "checked against these constants" for every run, and the hash
+        equals the community projection's — so manifest and credential agree.
+        """
+        snap = build_workflow_contract_snapshot(self.workflow)
+        assert [(c.name, c.value) for c in snap.constants] == [("energy_price", "0.40")]
+        assert snap.workflow_definition_hash == compute_workflow_definition_hash(
+            self.workflow,
+        )
+        assert snap.workflow_definition_hash.startswith("sha256:")
+
+    def test_constant_value_change_moves_the_snapshot_hash(self):
+        """Editing a constant value changes the snapshot's definition hash.
+
+        The P1 acceptance criterion: a constant value change must reach the
+        signed credential's hash (previously it did not).
+        """
+        before = build_workflow_contract_snapshot(
+            self.workflow,
+        ).workflow_definition_hash
+        WorkflowConstant.objects.filter(pk=self.constant.pk).update(value="0.45")
+        after = build_workflow_contract_snapshot(
+            self.workflow,
+        ).workflow_definition_hash
+        assert before != after

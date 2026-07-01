@@ -264,6 +264,29 @@ class FormatConstantDisplayTests(SimpleTestCase):
             == 'c.allowed_currencies = ["EUR", "GBP"] (list)'
         )
 
+    def test_display_value_renders_list_as_json_not_repr(self):
+        """``WorkflowConstant.display_value`` gives templates JSON, not Python repr.
+
+        Templates render ``{{ c.display_value }}`` so a LIST shows as
+        ``["EUR", "GBP"]`` rather than the ``['EUR', 'GBP']`` repr that
+        ``{{ c.value }}`` would print (ADR-2026-06-18 P3).
+        """
+        const = WorkflowConstant(
+            name="allowed_currencies",
+            data_type=WorkflowConstantType.LIST,
+            value=["EUR", "GBP"],
+        )
+        assert const.display_value == '["EUR", "GBP"]'
+
+    def test_display_value_preserves_number_precision(self):
+        """A NUMBER's display value keeps the stored decimal string (``0.40``)."""
+        const = WorkflowConstant(
+            name="energy_price",
+            data_type=WorkflowConstantType.NUMBER,
+            value="0.40",
+        )
+        assert const.display_value == "0.40"
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # Name rules

@@ -65,10 +65,12 @@ from validibot_shared.evidence import EvidenceManifest
 from validibot_shared.evidence import ManifestPayloadDigests
 from validibot_shared.evidence import ManifestRetentionInfo
 from validibot_shared.evidence import StepValidatorRecord
-from validibot_shared.evidence import WorkflowContractSnapshot
 
 from validibot.core.filesafety import sha256_hexdigest
 from validibot.validations.services.evidence_retention import RetentionPolicy
+from validibot.workflows.services.contract_snapshot import (
+    build_workflow_contract_snapshot,
+)
 
 if TYPE_CHECKING:
     from validibot.validations.models import RunEvidenceArtifact
@@ -104,24 +106,11 @@ class EvidenceManifestBuilder:
             ``persist`` to also write to storage.
         """
         workflow = run.workflow
-        contract = WorkflowContractSnapshot(
-            allowed_file_types=list(workflow.allowed_file_types or []),
-            input_retention=workflow.input_retention or "",
-            output_retention=workflow.output_retention or "",
-            agent_billing_mode=workflow.agent_billing_mode or "",
-            agent_price_cents=workflow.agent_price_cents,
-            agent_max_launches_per_hour=workflow.agent_max_launches_per_hour,
-            # The evidence-manifest schema field names
-            # (``agent_public_discovery`` / ``agent_access_enabled``) live
-            # in the published ``validibot-shared`` package and still use
-            # the pre-rename terminology. They map 1:1 to the renamed
-            # workflow fields — ``agent_public_discovery`` == ``x402_enabled``,
-            # ``agent_access_enabled`` == ``mcp_enabled`` — so the recorded
-            # meaning is unchanged. Renaming the shared manifest schema is a
-            # follow-up (needs a validibot-shared release).
-            agent_public_discovery=workflow.x402_enabled,
-            agent_access_enabled=workflow.mcp_enabled,
-        )
+        # Single source of the contract snapshot (ADR-2026-06-18): the community
+        # projection carries the launch contract PLUS constants, signal-mapping
+        # definitions, and the workflow-definition hash — the same object the Pro
+        # signed credential derives from, so a constant change moves both.
+        contract = build_workflow_contract_snapshot(workflow)
 
         # Walk steps in execution order so the manifest's record
         # mirrors what the run actually did. Pre-fetch the validator

@@ -28,8 +28,27 @@ authored workflow. Key relationships:
   it overrides the validator’s default ruleset so this step can enforce stricter
   or looser assertions. When `ruleset` is blank, the validator’s
   `default_ruleset` (if any) is used.
-- `config` is a JSON column for per-step overrides (severity thresholds, AI
-  templates, etc.) passed straight into the validator or action class.
+- `config` and `display_settings` are two JSON columns that together hold a
+  step's settings, split by whether they change what validation *does*
+  (ADR-2026-06-18):
+    - **`config`** is the *semantic* bucket — only settings that affect the
+      validation result (`schema_type`, `delimiter`, `encoding`, `has_header`,
+      `case_sensitive`, FMU simulation settings, and so on). Its per-validator
+      Pydantic models (`workflows/step_configs.py`) use `extra="forbid"`, so
+      nothing cosmetic or run-injected can land here. Because of that guarantee,
+      the workflow-definition digest (`services/contract_snapshot.py`) hashes
+      this whole field — a change to any key re-bases the hash, which is exactly
+      what you want for a value that changes pass/fail.
+    - **`display_settings`** is the *cosmetic + runtime-injected* bucket —
+      human labels, text previews, column counts, `display_step_outputs`, and the
+      keys the runner injects at launch time (`primary_file_uri`, …). Its models
+      use `extra="allow"`, and it is **never** hashed, so editing a label or
+      preview can't invalidate a prior attestation.
+  Use `step.typed_config` and `step.display_settings_typed` for type-safe access
+  to each bucket. New keys should go in whichever bucket matches this rule: does
+  it change the validation result? If yes, `config`; if it's only for display or
+  is injected at run time, `display_settings`. Both buckets round-trip through
+  workflow import/export (VAF).
 - `display_schema` is limited to validator steps; action steps automatically
   disable it.
 

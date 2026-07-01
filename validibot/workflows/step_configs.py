@@ -1,30 +1,48 @@
-"""
-Type-safe Pydantic models for WorkflowStep.config.
+"""Type-safe Pydantic models for a WorkflowStep's two config buckets.
 
-Each validator/action type stores different keys in WorkflowStep.config (a
-JSONField). Previously these were untyped dicts — code that read config keys
-used string literals with no schema validation. These Pydantic models provide:
+ADR-2026-06-18 split ``WorkflowStep``'s single ``config`` JSONField into two
+physically-separate buckets so that "hash the whole step config" is correct by
+construction:
 
-- Type safety: Each config key has a declared type and optionality.
-- Validation: Pydantic validates config at parse time, catching typos and
-  type mismatches early.
-- Documentation: The models serve as living documentation of what each
-  validator/action type expects in its config.
-- Forward compatibility: ``extra="allow"`` means runtime-injected keys
-  (e.g., ``primary_file_uri`` added during container launch) don't break.
+* **``config``** — the **semantic** bucket. Only settings that change what
+  validation *does* (``schema_type``, ``delimiter``, ``encoding``,
+  ``has_header``, ``case_sensitive``, FMU sim settings, …). Its models forbid
+  extra keys (see :data:`_SEMANTIC_EXTRA`), so the workflow-definition digest can
+  hash this field **wholesale** and stay provably free of cosmetic or
+  run-injected data.
+* **``display_settings``** — the **cosmetic + runtime-injected** bucket
+  (``schema_type_label``, previews, column counts, ``display_step_outputs``, and
+  keys the runner injects such as ``primary_file_uri``). Its models use
+  ``extra="allow"`` and are **never hashed**.
+
+This module is the single source of truth for *which key belongs in which
+bucket*. Three consumers read that boundary and must never re-derive it:
+
+* :func:`get_step_config` / :func:`get_step_display_settings` — typed access,
+  backing ``WorkflowStep.typed_config`` / ``WorkflowStep.display_settings_typed``.
+* :func:`partition_step_config` — routes a freshly-built config dict into the two
+  buckets at save time, using the semantic model's declared field set as the
+  discriminator.
+* The contract-snapshot digest (``workflows/services/contract_snapshot.py``),
+  which hashes ``config`` wholesale precisely because this module guarantees it
+  holds only semantic keys.
 
 Usage::
 
     from validibot.workflows.step_configs import get_step_config
 
-    # Parse a WorkflowStep's config into a typed model
-    typed = get_step_config(step)
+    typed = get_step_config(step)          # semantic bucket
     if isinstance(typed, EnergyPlusStepConfig):
-        checks = typed.idf_checks  # list[str], type-checked
+        checks = typed.idf_checks          # list[str], type-checked
+
+    display = get_step_display_settings(step)   # cosmetic bucket
+    label = display.schema_type_label if hasattr(display, "schema_type_label") else ""
 
 See Also:
-    - GitHub issue #96: Add type-safe Pydantic models for WorkflowStep.config
-    - WorkflowStep.typed_config property (workflows/models.py)
+    - ADR-2026-06-18 (implementation note, "Step config: split the semantic and
+      cosmetic buckets").
+    - GitHub issue #96: Add type-safe Pydantic models for WorkflowStep.config.
+    - WorkflowStep.typed_config / display_settings_typed (workflows/models.py).
 """
 
 from __future__ import annotations
@@ -41,15 +59,48 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Base
+# The semantic/cosmetic boundary switch
+# ---------------------------------------------------------------------------
+
+# The semantic (``config``) models forbid undeclared keys so nothing cosmetic or
+# runtime-injected can land in the hashed bucket. This is the whole point of the
+# split: with ``extra="forbid"`` the workflow-definition digest can hash the
+# ``config`` field wholesale and stay provably semantic-only.
+#
+# One switch controls every semantic model at once. The flip to ``"forbid"`` is
+# only safe once (a) the data migration has moved legacy cosmetic keys out of
+# ``config`` and (b) every writer targets the right bucket — until both hold, an
+# existing/in-flight config could still carry a cosmetic key and
+# ``get_step_config`` (called from ``WorkflowStep.clean``) would reject it. The
+# committed end state is ``"forbid"``.
+_SEMANTIC_EXTRA = "forbid"
+
+
+# ---------------------------------------------------------------------------
+# Base models
 # ---------------------------------------------------------------------------
 
 
 class BaseStepConfig(BaseModel):
-    """Base config model for all step types.
+    """Base model for the **semantic** ``config`` bucket.
 
-    Uses ``extra="allow"`` so runtime-injected keys (like ``primary_file_uri``
-    or ``schema_type_label``) don't cause validation errors.
+    Declares no fields — a step type with no semantic settings (Basic, Custom)
+    uses this directly. Subclasses add only keys that change validation
+    behaviour. ``extra`` is forbidden so an undeclared/cosmetic/run-injected key
+    cannot silently enter the hashed bucket; cosmetic data belongs in
+    ``display_settings`` (see :class:`BaseDisplaySettings`).
+    """
+
+    model_config = ConfigDict(extra=_SEMANTIC_EXTRA)
+
+
+class BaseDisplaySettings(BaseModel):
+    """Base model for the **cosmetic + runtime-injected** ``display_settings``
+    bucket.
+
+    Uses ``extra="allow"`` so derived caches (labels, previews) and keys the
+    runner injects at launch time (``primary_file_uri`` …) never raise. Nothing
+    here is hashed into the workflow-definition digest.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -57,81 +108,54 @@ class BaseStepConfig(BaseModel):
     display_step_outputs: list[str] = Field(default_factory=list)
     """Catalog entry slugs for output signals to display to the submitter.
 
-    Controls which output signals are shown in the results view and
-    returned by the API.  **Empty means show NONE** — authors opt in to
-    each signal they want exposed.  This is cross-validator — any step
-    type can use it.
+    Controls which output signals are shown in the results view and returned by
+    the API. **Empty means show NONE** — authors opt in to each signal they want
+    exposed. This is cross-validator — any step type can use it. It changes only
+    *what is shown*, never pass/fail, so it lives in ``display_settings``.
 
-    A workflow-step toggle to "show all output signals" is on the
-    roadmap (tracked in validibot-project); until then, authors who
-    want every signal exposed must list every slug here."""
+    A workflow-step toggle to "show all output signals" is on the roadmap
+    (tracked in validibot-project); until then, authors who want every signal
+    exposed must list every slug here."""
 
 
 # ---------------------------------------------------------------------------
-# Validator step configs
+# Semantic config models (one per validator/action type)
 # ---------------------------------------------------------------------------
 
 
 class JsonSchemaStepConfig(BaseStepConfig):
-    """Config for JSON Schema validator steps.
+    """Semantic config for JSON Schema validator steps.
 
-    Stores metadata about the schema source and a text preview for display.
-    The actual schema content is stored on the Ruleset, not in step config.
+    The schema *content* lives on the Ruleset; the only step-level semantic knob
+    is which draft to validate against. Display metadata (source, preview, label)
+    lives in :class:`JsonSchemaDisplaySettings`.
     """
-
-    schema_source: str = ""
-    """How the schema was provided: "text", "upload", or "keep"."""
 
     schema_type: str = ""
     """JSON Schema draft version (e.g., "2020-12", "draft-07")."""
 
-    schema_text_preview: str = ""
-    """First 1200 characters of the schema for display in the step editor."""
-
-    schema_type_label: str = ""
-    """Human-readable label for the schema type (computed in views)."""
-
 
 class XmlSchemaStepConfig(BaseStepConfig):
-    """Config for XML Schema validator steps.
+    """Semantic config for XML Schema validator steps.
 
-    Same structure as JSON Schema — stores source metadata and text preview.
+    Mirror of :class:`JsonSchemaStepConfig`: only the schema type is semantic.
     """
-
-    schema_source: str = ""
-    """How the schema was provided: "text", "upload", or "keep"."""
 
     schema_type: str = ""
     """Schema type: "XSD", "DTD", or "RELAXNG"."""
 
-    schema_text_preview: str = ""
-    """First 1200 characters of the schema for display in the step editor."""
-
-    schema_type_label: str = ""
-    """Human-readable label for the schema type (computed in views)."""
-
 
 class TabularStepConfig(BaseStepConfig):
-    """Config for Tabular Validator steps.
+    """Semantic config for Tabular Validator steps.
 
-    Display metadata only — the Table Schema descriptor itself lives on the
-    Ruleset (``rules_text``) and the dialect on ``ruleset.metadata``, mirroring
-    the JSON/XML schema validators. These fields drive the step-detail summary
-    card.
+    The dialect knobs (delimiter / encoding / header) change how the file is
+    parsed, so they are semantic. The Table Schema descriptor itself lives on the
+    Ruleset. Display metadata (labels, counts, preview) lives in
+    :class:`TabularDisplaySettings`.
     """
-
-    schema_source: str = ""
-    """How the schema was provided: "editor" (column UI), "text" (pasted),
-    "upload" (JSON file), "infer" (from a sample), or "keep" (unchanged)."""
-
-    schema_text_preview: str = ""
-    """First 1200 characters of the Table Schema descriptor, for display."""
 
     delimiter: str = ""
     """Declared delimiter, or "" for auto-detect (sniffed at read time)."""
-
-    delimiter_label: str = ""
-    """Human-readable delimiter label for the summary card (e.g. "Tab")."""
 
     encoding: str = ""
     """Declared file encoding (e.g. "utf-8")."""
@@ -139,101 +163,83 @@ class TabularStepConfig(BaseStepConfig):
     has_header: bool = True
     """Whether the file has a header row."""
 
-    column_count: int = 0
-    """Number of declared columns, for the summary card."""
 
-    required_column_count: int = 0
-    """Number of columns whose values are required."""
+class ShaclStepConfig(BaseStepConfig):
+    """Semantic config for SHACL (RDF graph) validator steps.
 
+    The engine knobs below change how validation runs (inference, bundled
+    standards, result handling). They are duplicated on ``ruleset.metadata``
+    (the authoritative copy the engine reads); the copies here keep the step's
+    semantics self-describing and hashable. File-upload metadata and the shapes
+    preview are display-only and live in :class:`ShaclDisplaySettings`.
+    """
 
-# ---------------------------------------------------------------------------
-# EnergyPlus
-# ---------------------------------------------------------------------------
+    bundled_standards: list[str] = Field(default_factory=list)
+    """Bundled vocabularies to load before validation (e.g. "brick-1.4")."""
+
+    inference_mode: str = ""
+    """RDFS/OWL inference mode applied before shape checking."""
+
+    advanced_shacl: bool = False
+    """Whether SHACL-AF (advanced features: SPARQL constraints) is enabled."""
+
+    submission_format: str = ""
+    """Declared RDF serialization ("auto", "turtle", "xml", …)."""
+
+    shacl_result_handling: str = ""
+    """How violation severities map to pass/fail."""
 
 
 class EnergyPlusStepConfig(BaseStepConfig):
-    """Config for EnergyPlus validator steps.
+    """Semantic config for EnergyPlus validator steps.
 
-    Stores simulation settings (checks, timestep) and template configuration
-    (case sensitivity, output signal selection).  Template variable metadata
-    is stored relationally in ``StepIODefinition`` rows rather than here.
+    Simulation and template-matching settings change what is validated, so they
+    are semantic. Warning display and output-signal selection are cosmetic and
+    live in :class:`EnergyPlusDisplaySettings`. Resource files (weather EPWs,
+    model templates) are stored relationally via ``WorkflowStepResource``.
 
-    Resource files (weather EPWs, model templates) are stored relationally
-    via ``WorkflowStepResource`` rather than in this config. See the
-    ``step.step_resources`` reverse relation. The template *file* lives on
-    ``WorkflowStepResource`` with ``role=MODEL_TEMPLATE``; the template
-    *configuration* (case sensitivity) lives here.
+    NOTE: Several run settings (``idf_checks``, ``run_simulation``,
+    ``timestep_per_hour``) are stored and validated here but not yet forwarded to
+    the validator container — a pre-existing gap tracked separately, not a
+    regression from this split.
     """
 
-    # ── Simulation settings ──────────────────────────────────────────
-    # NOTE: These settings are stored in the step config and validated by
-    # Pydantic, but they are NOT yet forwarded to the validator container.
-    # ``timestep_per_hour`` reaches the input envelope but the runner
-    # ignores it.  ``idf_checks`` and ``run_simulation`` are not included
-    # in the envelope schema at all.  Wiring these requires changes to
-    # both validibot-shared (envelope schema) and validibot-validator-backends
-    # (runner logic).  This is a pre-existing gap, not a regression from
-    # the template work.
-    # TODO: Forward run settings to the container (requires validibot-shared
-    #       and validibot-validator-backends changes).
+    validation_mode: str = ""
+    """"direct" (IDF checks / simulation) or "template" (parameterized IDF)."""
 
     idf_checks: list[str] = Field(default_factory=list)
-    """Author-selected IDF compliance checks to run before simulation
-    (e.g., ``'duplicate-names'``, ``'hvac-sizing'``, ``'schedule-coverage'``).
-    Maps to EnergyPlus's ``-x`` flags.
+    """Author-selected IDF compliance checks to run before simulation.
 
     .. warning:: Not yet forwarded to the container. Stored for future use.
     """
 
     run_simulation: bool = False
-    """Whether to run the full EnergyPlus simulation or just IDF syntax
-    checks. When False, only ``idf_checks`` are executed (fast, no weather
-    file needed).
+    """Whether to run the full simulation or just IDF syntax checks.
 
     .. warning:: Not yet forwarded to the container. Stored for future use.
     """
 
     timestep_per_hour: int = 4
-    """Number of simulation timesteps per hour (1-60). Higher values
-    increase accuracy but slow the simulation. EnergyPlus default is 6;
-    we default to 4.
+    """Number of simulation timesteps per hour (1-60).
 
-    .. note:: Reaches the input envelope (``inputs.timestep_per_hour``)
-       but the validator runner currently ignores it.
+    .. note:: Reaches the input envelope but the runner currently ignores it.
     """
 
-    # ── Template settings ──────────────────────────────────────────
-
     case_sensitive: bool = True
-    """Whether template variable matching is case-sensitive.
+    """Whether template-variable matching is case-sensitive.
 
-    When True (default), only ``$UPPERCASE_NAMES`` (matching
-    ``[A-Z][A-Z0-9_]*``) are detected as template variables. ``$u_factor``
-    or ``$U_Factor`` in the IDF would not be detected — the scanner emits a
-    warning so the author can rename or switch modes.
-
-    When False, all variable names are normalized to uppercase during
-    scanning and matching."""
-
-    # ── Output display ────────────────────────────────────────────
-
-    show_energyplus_warnings: bool = True
-    """Whether to include EnergyPlus simulation warnings in the findings
-    shown to submitters.
-
-    EnergyPlus often emits dozens of warnings (e.g., unused objects,
-    default assumptions) that are useful for modelers debugging an IDF
-    but confusing for submitters who only care about pass/fail results.
-    When False, only ERROR-severity messages from the simulation are
-    shown as findings; WARNING and INFO messages are suppressed."""
+    When True (default), only ``$UPPERCASE_NAMES`` are detected as template
+    variables; when False, names are normalized to uppercase during scanning and
+    matching. This changes which placeholders the pipeline substitutes, so it is
+    semantic."""
 
 
 class FMUSimulationConfig(BaseModel):
     """Simulation settings for step-level FMU execution.
 
-    Pre-populated from the FMU's ``DefaultExperiment`` element when
-    available.  The workflow author can override any value.  When a
-    field is ``None``, the container runner uses its own default.
+    Pre-populated from the FMU's ``DefaultExperiment`` element when available.
+    The workflow author can override any value. When a field is ``None``, the
+    container runner uses its own default.
     """
 
     start_time: float | None = None
@@ -243,35 +249,38 @@ class FMUSimulationConfig(BaseModel):
 
 
 class FmuStepConfig(BaseStepConfig):
-    """Config for FMU validator steps.
+    """Semantic config for FMU validator steps.
 
-    When the step uses a step-level FMU upload (primary path), the
-    ``fmu_simulation`` field stores the discovered simulation defaults.
-    FMU variable metadata is stored relationally in ``StepIODefinition``
-    rows rather than in the step config. When the step uses a library
-    FMU validator (secondary path), this field is empty and the
-    metadata comes from the validator's ``StepIODefinition`` rows and
-    ``FMUModel``.
+    Both fields are set at *authoring* time (when the author uploads/edits the
+    FMU), not injected per run, and both change what runs or how ``i.*`` signals
+    resolve — so they are semantic and hashed. FMU variable metadata is stored
+    relationally in ``StepIODefinition`` rows.
     """
 
     fmu_simulation: FMUSimulationConfig | None = None
-    """Simulation settings, pre-populated from DefaultExperiment.
-    Only populated for step-level FMU uploads."""
+    """Simulation settings, pre-populated from DefaultExperiment. Only populated
+    for step-level FMU uploads."""
+
+    fmu_introspection: dict[str, Any] | None = None
+    """Parser facts stamped from the uploaded FMU (fmi_version, variable counts,
+    …), used at runtime to resolve ``i.*`` signals for step-level uploads.
+    Derived from the FMU file at authoring time and read from ``step.config`` by
+    ``FMUValidator``, so it stays in the semantic bucket."""
 
 
 class BasicStepConfig(BaseStepConfig):
-    """Config for Basic assertion validator steps.
+    """Semantic config for Basic assertion validator steps.
 
-    Basic validation has no per-step configuration — assertions are
-    managed on the Ruleset, not in step config.
+    Basic validation has no per-step semantic configuration — assertions live on
+    the Ruleset.
     """
 
 
 class AiAssistStepConfig(BaseStepConfig):
-    """Config for AI Assist validator steps.
+    """Semantic config for AI Assist validator steps.
 
-    Controls the AI template, enforcement mode, cost limits, and any
-    policy rules or JSONPath selectors.
+    Template, mode, cost cap, selectors, and policy rules all change what the AI
+    step does, so all are semantic.
     """
 
     template: str = ""
@@ -291,40 +300,134 @@ class AiAssistStepConfig(BaseStepConfig):
 
 
 class CustomValidatorStepConfig(BaseStepConfig):
-    """Config for Custom Validator steps.
+    """Semantic config for Custom Validator steps.
 
-    Custom validators have no per-step configuration — assertions are
-    managed on the Ruleset.
+    Custom validators have no per-step semantic configuration — assertions live
+    on the Ruleset.
     """
 
 
 # ---------------------------------------------------------------------------
 # Action step configs
 # ---------------------------------------------------------------------------
+#
+# Action steps are EXCLUDED from the workflow-definition digest (see
+# contract_snapshot._project_validation_steps), so they do not need the
+# forbid-guarded semantic bucket. They keep ``extra="allow"`` so an action's
+# display summary (persisted on ``step.config`` by ``build_step_summary``) does
+# not need to be partitioned.
 
 
-class SlackActionStepConfig(BaseStepConfig):
+class BaseActionStepConfig(BaseModel):
+    """Base for action-step configs — permissive because actions aren't hashed."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class SlackActionStepConfig(BaseActionStepConfig):
     """Config for Slack message action steps."""
 
     message: str = ""
     """Message text to send to the configured Slack channel."""
 
 
-class CredentialActionStepConfig(BaseStepConfig):
+class CredentialActionStepConfig(BaseActionStepConfig):
     """Config for signed credential action steps."""
 
 
 # ---------------------------------------------------------------------------
-# Registry
+# Display settings models (one per validator type that has cosmetic keys)
+# ---------------------------------------------------------------------------
+#
+# Types with no cosmetic keys beyond ``display_step_outputs`` (FMU, AI, Basic,
+# Custom) fall back to BaseDisplaySettings via STEP_DISPLAY_MODELS.get(...).
+
+
+class JsonSchemaDisplaySettings(BaseDisplaySettings):
+    """Cosmetic display metadata for JSON Schema steps."""
+
+    schema_source: str = ""
+    """How the schema was provided: "text", "upload", or "keep"."""
+
+    schema_text_preview: str = ""
+    """First 1200 characters of the schema for display in the step editor."""
+
+    schema_type_label: str = ""
+    """Human-readable label for the schema type (computed in views)."""
+
+
+class XmlSchemaDisplaySettings(BaseDisplaySettings):
+    """Cosmetic display metadata for XML Schema steps."""
+
+    schema_source: str = ""
+    """How the schema was provided: "text", "upload", or "keep"."""
+
+    schema_text_preview: str = ""
+    """First 1200 characters of the schema for display in the step editor."""
+
+    schema_type_label: str = ""
+    """Human-readable label for the schema type (computed in views)."""
+
+
+class TabularDisplaySettings(BaseDisplaySettings):
+    """Cosmetic display metadata for the Tabular step summary card."""
+
+    schema_source: str = ""
+    """How the schema was provided: "editor", "text", "upload", "infer", "keep"."""
+
+    schema_text_preview: str = ""
+    """First 1200 characters of the Table Schema descriptor, for display."""
+
+    delimiter_label: str = ""
+    """Human-readable delimiter label for the summary card (e.g. "Tab")."""
+
+    column_count: int = 0
+    """Number of declared columns, for the summary card."""
+
+    required_column_count: int = 0
+    """Number of columns whose values are required."""
+
+
+class ShaclDisplaySettings(BaseDisplaySettings):
+    """Cosmetic display metadata for SHACL steps.
+
+    The authoritative copies of the file lists and snapshot live on
+    ``ruleset.metadata``; these are display duplicates for the step editor.
+    """
+
+    shape_files: list[dict[str, Any]] = Field(default_factory=list)
+    """Metadata (name/size) for the uploaded shapes files, for the editor."""
+
+    ontology_files: list[dict[str, Any]] = Field(default_factory=list)
+    """Metadata for the uploaded ontology files, for the editor."""
+
+    shapes_text_preview: str = ""
+    """First 1200 characters of the merged shapes, for a read-only preview."""
+
+    library_default_snapshot: dict[str, Any] | None = None
+    """Provenance of the inlined library default ruleset (ids, hashes)."""
+
+
+class EnergyPlusDisplaySettings(BaseDisplaySettings):
+    """Cosmetic display metadata for EnergyPlus steps."""
+
+    show_energyplus_warnings: bool = True
+    """Whether to include EnergyPlus simulation warnings in the findings shown to
+    submitters. Filters *display* of non-blocking warnings; it never changes
+    pass/fail, so it is cosmetic."""
+
+
+# ---------------------------------------------------------------------------
+# Registries
 # ---------------------------------------------------------------------------
 
-# Maps ValidationType / action type string → config model class.
-# Used by get_step_config() to select the right model.
-STEP_CONFIG_MODELS: dict[str, type[BaseStepConfig]] = {
+# Maps ValidationType / action type string → SEMANTIC config model class.
+STEP_CONFIG_MODELS: dict[str, type[BaseModel]] = {
     # Validator types (from ValidationType)
     "JSON_SCHEMA": JsonSchemaStepConfig,
     "XML_SCHEMA": XmlSchemaStepConfig,
     "TABULAR": TabularStepConfig,
+    "SHACL": ShaclStepConfig,
     "ENERGYPLUS": EnergyPlusStepConfig,
     "FMU": FmuStepConfig,
     "BASIC": BasicStepConfig,
@@ -335,32 +438,99 @@ STEP_CONFIG_MODELS: dict[str, type[BaseStepConfig]] = {
     "SIGNED_CREDENTIAL": CredentialActionStepConfig,
 }
 
+# Maps the same type strings → DISPLAY settings model class. Types absent here
+# fall back to BaseDisplaySettings (only ``display_step_outputs``).
+STEP_DISPLAY_MODELS: dict[str, type[BaseDisplaySettings]] = {
+    "JSON_SCHEMA": JsonSchemaDisplaySettings,
+    "XML_SCHEMA": XmlSchemaDisplaySettings,
+    "TABULAR": TabularDisplaySettings,
+    "SHACL": ShaclDisplaySettings,
+    "ENERGYPLUS": EnergyPlusDisplaySettings,
+}
 
-def get_step_config(step: WorkflowStep) -> BaseStepConfig:
-    """Parse a WorkflowStep's config dict into a typed Pydantic model.
 
-    Resolves the step's validator or action type, looks up the matching
-    config model from the registry, and returns a validated instance.
-    Falls back to BaseStepConfig if the type is unknown.
+# ---------------------------------------------------------------------------
+# Resolution helpers
+# ---------------------------------------------------------------------------
+
+
+def _resolve_step_type(step: WorkflowStep) -> str | None:
+    """Return the validator/action type string for a step, or None if unknown."""
+    if step.validator_id:
+        return getattr(step.validator, "validation_type", None)
+    if step.action_id:
+        action = getattr(step, "action", None)
+        definition = getattr(action, "definition", None) if action else None
+        if definition:
+            return getattr(definition, "type", None)
+    return None
+
+
+def get_step_config(step: WorkflowStep) -> BaseModel:
+    """Parse a step's ``config`` (semantic bucket) into a typed Pydantic model.
+
+    Resolves the step's validator or action type, looks up the matching semantic
+    model, and returns a validated instance. Falls back to :class:`BaseStepConfig`
+    for unknown types.
 
     Args:
-        step: The WorkflowStep whose config to parse.
+        step: The WorkflowStep whose ``config`` to parse.
 
     Returns:
-        A typed config model instance (e.g., EnergyPlusStepConfig).
+        A typed semantic config model instance (e.g., EnergyPlusStepConfig).
     """
-    config_data = step.config or {}
-
-    # Determine the step type string
-    step_type = None
-    if step.validator_id:
-        step_type = getattr(step.validator, "validation_type", None)
-    elif step.action_id:
-        action = getattr(step, "action", None)
-        if action:
-            definition = getattr(action, "definition", None)
-            if definition:
-                step_type = getattr(definition, "type", None)
-
+    step_type = _resolve_step_type(step)
     model_class = STEP_CONFIG_MODELS.get(step_type or "", BaseStepConfig)
-    return model_class.model_validate(config_data)
+    return model_class.model_validate(step.config or {})
+
+
+def get_step_display_settings(step: WorkflowStep) -> BaseDisplaySettings:
+    """Parse a step's ``display_settings`` (cosmetic bucket) into a typed model.
+
+    Mirror of :func:`get_step_config` for the cosmetic bucket. Falls back to
+    :class:`BaseDisplaySettings` (which still exposes ``display_step_outputs``)
+    for types without extra display fields.
+
+    Args:
+        step: The WorkflowStep whose ``display_settings`` to parse.
+
+    Returns:
+        A typed display settings model instance.
+    """
+    step_type = _resolve_step_type(step)
+    model_class = STEP_DISPLAY_MODELS.get(step_type or "", BaseDisplaySettings)
+    return model_class.model_validate(step.display_settings or {})
+
+
+def partition_step_config(
+    step_type: str | None,
+    merged: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Split a freshly-built config dict into (``config``, ``display_settings``).
+
+    The semantic model's declared field set is the single discriminator: a key
+    declared on the semantic model goes to ``config``; everything else (cosmetic
+    labels, previews, ``display_step_outputs``, and any undeclared key) goes to
+    ``display_settings``. Routing undeclared keys to the permissive display
+    bucket is deliberate and fail-safe — it keeps run/cosmetic data out of the
+    hashed bucket even if a new key is added without updating a model.
+
+    Args:
+        step_type: The validator/action type string (as returned by
+            ``validator.validation_type``).
+        merged: The combined config dict a builder produced.
+
+    Returns:
+        ``(config, display_settings)`` — two disjoint dicts.
+    """
+    model_class = STEP_CONFIG_MODELS.get(step_type or "", BaseStepConfig)
+    semantic_fields = set(model_class.model_fields)
+
+    config: dict[str, Any] = {}
+    display: dict[str, Any] = {}
+    for key, value in merged.items():
+        if key in semantic_fields:
+            config[key] = value
+        else:
+            display[key] = value
+    return config, display

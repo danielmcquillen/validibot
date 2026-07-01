@@ -264,6 +264,9 @@ def _import_step(
         validator=validator,
         ruleset=ruleset,
         config=deepcopy(data.get("config") or {}),
+        # ``display_settings`` defaults to {} for pre-split exports (additive,
+        # so FORMAT_VERSION stays 1) — ADR-2026-06-18.
+        display_settings=deepcopy(data.get("display_settings") or {}),
         **{k: v for k, v in step_fields.items() if v is not None},
     )
     step.save()

@@ -230,21 +230,20 @@ def _build_template_param_meta(
 
 
 def _get_display_step_outputs_filter(step_run: ValidationStepRun) -> list[str]:
-    """Extract the ``display_step_outputs`` list from the step's typed config.
+    """Extract the ``display_step_outputs`` list from the step's display settings.
 
-    Returns an empty list when:
+    ``display_step_outputs`` is cosmetic, so it lives in the ``display_settings``
+    bucket (ADR-2026-06-18). Returns an empty list when:
     - The step has no workflow_step (defensive).
-    - The config model has no ``display_step_outputs`` attribute (cross-
-      validator: show all signals).
     - The author left ``display_step_outputs`` empty (backward-compatible
-      default).
+      default: show all signals).
     """
     workflow_step = getattr(step_run, "workflow_step", None)
     if not workflow_step:
         return []
     try:
-        typed_config = workflow_step.typed_config
-        return getattr(typed_config, "display_step_outputs", [])
+        display_settings = workflow_step.display_settings_typed
+        return getattr(display_settings, "display_step_outputs", [])
     except (AttributeError, TypeError, KeyError, ValueError):
         # Parsing/attribute failures are safe to degrade (show all
         # signals).  Infrastructure errors (DatabaseError, etc.) are

@@ -1013,7 +1013,7 @@ class ValidationRunViewSetTestCase(TestCase):
         target_workflow_step = WorkflowStepFactory(
             workflow=self.workflow,
             validator=target_validator,
-            config={"display_step_outputs": ["eui", "total_cost"]},
+            display_settings={"display_step_outputs": ["eui", "total_cost"]},
         )
 
         def _make_run_with_signal_bearing_step():

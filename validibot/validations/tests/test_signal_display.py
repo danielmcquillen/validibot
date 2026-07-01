@@ -66,11 +66,18 @@ def _make_energyplus_step_run(
     """
     validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
     config: dict = {}
+    display_settings: dict = {}
     if display_step_outputs is not None:
-        config["display_step_outputs"] = display_step_outputs
+        # display_step_outputs is cosmetic — it lives in the display bucket now
+        # (ADR-2026-06-18), which is where build_display_step_outputs reads it.
+        display_settings["display_step_outputs"] = display_step_outputs
     if template_variables is not None:
         config["template_variables"] = template_variables
-    step = WorkflowStepFactory(validator=validator, config=config)
+    step = WorkflowStepFactory(
+        validator=validator,
+        config=config,
+        display_settings=display_settings,
+    )
     return ValidationStepRunFactory(
         workflow_step=step,
         output=output or {},
@@ -177,7 +184,7 @@ class TestBuildDisplaySignals:
         )
         step = WorkflowStepFactory(
             validator=validator,
-            config={"display_step_outputs": ["electricity_kwh"]},
+            display_settings={"display_step_outputs": ["electricity_kwh"]},
         )
         sr = ValidationStepRunFactory(
             workflow_step=step,
@@ -260,7 +267,7 @@ class TestBuildDisplaySignals:
         )
         step = WorkflowStepFactory(
             validator=validator,
-            config={"display_step_outputs": ["alpha", "beta"]},
+            display_settings={"display_step_outputs": ["alpha", "beta"]},
         )
         sr = ValidationStepRunFactory(
             workflow_step=step,

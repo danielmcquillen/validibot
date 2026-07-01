@@ -123,7 +123,7 @@ The `.build` file plays three roles, all loaded from the same file:
    is where you bake a commercial package into the image:
 
     - `VALIDIBOT_COMMERCIAL_PACKAGE` — must be an exact version like
-      `validibot-pro==0.1.0` or a quoted exact wheel URL on
+      `validibot-pro==0.5.0` or a quoted exact wheel URL on
       `pypi.validibot.com` that includes `#sha256=<hash>`
     - `VALIDIBOT_PRIVATE_INDEX_URL`
 

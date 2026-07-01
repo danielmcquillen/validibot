@@ -153,10 +153,13 @@ def _project_validation_steps(workflow: Workflow) -> list[dict[str, Any]]:
 def _project_step(step: WorkflowStep) -> dict[str, Any]:
     """Project one validation step to its semantic fields.
 
-    ``step_config`` is hashed as-is today. Once the ``config`` /
-    ``display_settings`` split lands (ADR Phase 5), ``config`` will hold only
-    semantic keys and this stays correct by construction; until then a cosmetic
-    config key could perturb the hash — an accepted, documented interim.
+    ``step_config`` is hashed **wholesale** — correct by construction now that
+    the ``config`` / ``display_settings`` split has landed (ADR-2026-06-18): the
+    semantic config Pydantic models use ``extra="forbid"``
+    (``workflows/step_configs.py``), so ``config`` can hold only
+    validation-affecting keys. Cosmetic labels/previews/counts and the keys the
+    runner injects at launch (``primary_file_uri`` …) live in the step's separate
+    ``display_settings`` field, which is deliberately NOT part of this preimage.
     """
     validator = step.validator
     return {

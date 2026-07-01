@@ -893,7 +893,7 @@ check-dns:
 #   just self-hosted build-pro-image VALIDIBOT_COMMERCIAL_PACKAGE
 #
 # where the argument is one of:
-#   - validibot-pro==0.1.0 (exact-pinned name+version)
+#   - validibot-pro==0.5.0 (exact-pinned name+version)
 #   - https://...@pypi.validibot.com/.../*.whl#sha256=... (full URL)
 #
 # Ranges (>=, ~=, ^) are rejected. The recipe reads

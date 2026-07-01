@@ -791,7 +791,7 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertIsNotNone(step.ruleset)
         self.assertEqual(step.ruleset.rules_text, _DESCRIPTOR)
         self.assertEqual(step.ruleset.metadata["delimiter"], ",")
-        self.assertEqual(step.typed_config.column_count, 2)
+        self.assertEqual(step.display_settings_typed.column_count, 2)
 
     def test_large_schema_survives_a_dialect_only_edit(self):
         """A schema larger than the 1200-char preview is not corrupted when the
@@ -856,7 +856,7 @@ class TabularStepSettingsViewTests(TestCase):
         # Schema preserved byte-for-byte; only the delimiter changed.
         self.assertEqual(step.ruleset.rules_text, big_descriptor)
         self.assertEqual(step.ruleset.metadata["delimiter"], ";")
-        self.assertEqual(step.typed_config.schema_source, "keep")
+        self.assertEqual(step.display_settings_typed.schema_source, "keep")
 
     def test_editor_save_does_not_toast_compatibility_warnings(self):
         """Regression: an ordinary save must not re-toast schema warnings.
@@ -938,7 +938,7 @@ class TabularStepSettingsViewTests(TestCase):
             ["meter_id", "reading"],
         )
         self.assertEqual(descriptor["primaryKey"], ["meter_id"])
-        self.assertEqual(step.typed_config.column_count, 2)
+        self.assertEqual(step.display_settings_typed.column_count, 2)
 
     def test_add_column_htmx_endpoint_returns_next_prefixed_row(self):
         """HTMx row insertion advances the management count and field prefix.

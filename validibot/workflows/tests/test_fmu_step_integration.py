@@ -532,13 +532,29 @@ class FmuStepConfigModelTests(TestCase):
         self.assertIsNone(sim.step_size)
         self.assertIsNone(sim.tolerance)
 
-    def test_extra_fields_allowed(self):
-        """BaseStepConfig uses ``extra='allow'`` — runtime-injected keys
-        (like ``primary_file_uri``) should not cause validation errors."""
-        data = {
-            "primary_file_uri": "gs://bucket/some.fmu",
-        }
-        FmuStepConfig.model_validate(data)  # Should not raise
+    def test_extra_fields_forbidden_in_config_allowed_in_display(self):
+        """The SEMANTIC FmuStepConfig FORBIDS undeclared keys (ADR-2026-06-18).
+
+        This is what lets the workflow-definition digest hash ``config``
+        wholesale: a run-injected key like ``primary_file_uri`` must not be
+        absorbed into the hashed bucket. Such keys belong in the display bucket
+        (``BaseDisplaySettings``), which still uses ``extra="allow"``.
+        """
+        from pydantic import ValidationError as PydanticValidationError
+
+        from validibot.workflows.step_configs import BaseDisplaySettings
+
+        with pytest.raises(PydanticValidationError):
+            FmuStepConfig.model_validate({"primary_file_uri": "gs://bucket/some.fmu"})
+
+        # The display bucket is the correct home for runtime-injected keys.
+        display = BaseDisplaySettings.model_validate(
+            {"primary_file_uri": "gs://bucket/some.fmu"},
+        )
+        self.assertEqual(
+            display.model_extra["primary_file_uri"],
+            "gs://bucket/some.fmu",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -647,8 +663,9 @@ class UnifiedSignalsFmuTests(TestCase):
             contract_key="q_cool",
             native_name="Q_cool",
         )
-        # display_step_outputs uses contract_key for matching.
-        step.config = {"display_step_outputs": ["t_room"]}
+        # display_step_outputs uses contract_key for matching. It is cosmetic, so
+        # it lives in the display bucket now (ADR-2026-06-18).
+        step.display_settings = {"display_step_outputs": ["t_room"]}
         step.save()
 
         result = build_unified_signals_from_definitions(step=step)

@@ -154,6 +154,41 @@ def test_export_then_import_rebuilds_the_workflow_in_a_new_org():
     assert all(a.options.get("tabular_stage") == "row" for a in assertions)
 
 
+def test_both_step_config_buckets_survive_export_import():
+    """The semantic ``config`` AND cosmetic ``display_settings`` round-trip (VAF).
+
+    ADR-2026-06-18 split step config into two fields; the exporter/importer
+    serialize both independently. A portable workflow must keep its dialect
+    (``config``) *and* its submitter-facing summary labels/counts
+    (``display_settings``) — dropping the latter would silently lose display data
+    a shared workflow carries. Fields are set with ``.update()`` to write them
+    directly without re-running step validation.
+    """
+    from validibot.workflows.models import WorkflowStep
+
+    src_org, src_user = _org_and_user()
+    validator = _tabular_validator()
+    workflow = _darwin_core_workflow(src_org, src_user, validator)
+
+    source_step = workflow.steps.first()
+    WorkflowStep.objects.filter(pk=source_step.pk).update(
+        config={"delimiter": ",", "encoding": "utf-8", "has_header": True},
+        display_settings={"delimiter_label": "Comma", "column_count": 2},
+    )
+
+    definition, files = export_definition(workflow)
+    dst_org, dst_user = _org_and_user()
+    result = import_definition(definition, files=files, org=dst_org, user=dst_user)
+
+    imported = result.workflow.steps.first()
+    assert imported.config == {
+        "delimiter": ",",
+        "encoding": "utf-8",
+        "has_header": True,
+    }
+    assert imported.display_settings == {"delimiter_label": "Comma", "column_count": 2}
+
+
 def test_import_binds_workflow_to_importing_orgs_default_project():
     """Imported workflows must belong to the importing org's default project.
 

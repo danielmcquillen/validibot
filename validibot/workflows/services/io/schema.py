@@ -41,6 +41,9 @@ WORKFLOW_SCALAR_FIELDS: tuple[str, ...] = (
 )
 
 # WorkflowStep scalar fields (validator/action/ruleset FKs handled separately).
+# The two JSON config buckets — ``config`` (semantic) and ``display_settings``
+# (cosmetic), per ADR-2026-06-18 — are ALSO handled separately (deep-copied) in
+# the exporter/importer, not listed here, so both round-trip through VAF.
 STEP_SCALAR_FIELDS: tuple[str, ...] = (
     "order",
     "step_key",

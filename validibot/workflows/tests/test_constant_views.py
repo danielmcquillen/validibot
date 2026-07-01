@@ -249,6 +249,45 @@ class TestConstantDelete(TestCase):
         assert response.status_code == HTTPStatus.OK
         assert WorkflowConstant.objects.filter(pk=constant.pk).exists()
 
+    def test_delete_blocked_when_referenced_by_basic_assertion_target(self):
+        """Deleting a constant used as a Basic assertion's TARGET is blocked.
+
+        The ADR allows a Basic assertion to reference a constant as its
+        ``target_data_path`` (e.g. ``c.energy_price``), not only inside a CEL
+        expression. Deleting the constant would silently break that Basic rule at
+        the next run, so the guard must scan ``target_data_path`` too — the exact
+        case the original CEL-only guard missed.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        validator = ValidatorFactory(validation_type=ValidationType.BASIC)
+        ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+        workflow.steps.create(validator=validator, ruleset=ruleset, order=10)
+        # A Basic assertion whose TARGET (not a CEL expression) is the constant.
+        RulesetAssertion.objects.create(
+            ruleset=ruleset,
+            assertion_type=AssertionType.BASIC,
+            operator=AssertionOperator.LT,
+            target_data_path="c.energy_price",
+            rhs={"value": 120},
+        )
+        constant = WorkflowConstant.objects.create(
+            workflow=workflow,
+            name="energy_price",
+            data_type=WorkflowConstantType.NUMBER,
+            value="0.40",
+        )
+        url = reverse(
+            "workflows:workflow_constant_delete",
+            kwargs={"pk": workflow.pk, "constant_id": constant.pk},
+        )
+
+        response = self.client.post(url)
+
+        # Blocked: HTMx error response (200 + toast) and the constant survives.
+        assert response.status_code == HTTPStatus.OK
+        assert WorkflowConstant.objects.filter(pk=constant.pk).exists()
+
 
 class TestConstantsVisibleWhereAuthored(TestCase):
     """The "always-visible constants" requirement (ADR-2026-06-18 Phase 3b).

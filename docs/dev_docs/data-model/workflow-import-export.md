@@ -74,7 +74,8 @@ actually hash to its name so a tampered archive can't smuggle mismatched bytes.
       "order": 10,
       "step_key": "check_incoming_csv",
       "name": "Check incoming CSV",
-      "config": {},
+      "config": {"delimiter": ",", "encoding": "utf-8", "has_header": true},
+      "display_settings": {"delimiter_label": "Comma", "column_count": 2},
       "kind": "validator",
       "validator_ref": {
         "validation_type": "TABULAR",

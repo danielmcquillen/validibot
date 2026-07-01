@@ -79,16 +79,44 @@ class ValidationStepProcessor(ABC):
     def _build_run_context(self) -> RunContext:
         """Build RunContext for validator calls.
 
-        Includes workflow-level signals (resolved from
-        ``WorkflowSignalMapping`` against the submission data) so that
-        the CEL ``s`` namespace is populated for all validator steps.
+        Populates the namespaces every validator step needs:
+
+        * ``s`` — workflow-level signals resolved from ``WorkflowSignalMapping``
+          against the submission data.
+        * ``c`` / ``const`` — workflow Constants (ADR-2026-06-18): a literal map
+          from the workflow definition (no submission data, never resolves).
+
+        Both MUST be built here, not only on the orchestrator's action/handler
+        path (``execute_workflow_step``): the main run loop routes *validator*
+        steps through the processor (``get_step_processor().execute()``), so a
+        context missing ``c.*`` here makes constant-referencing assertions
+        silently evaluate against ``{}`` in real runs while unit tests with
+        hand-built contexts pass.
         """
         return RunContext(
             validation_run=self.validation_run,
             step=self.workflow_step,
             downstream_signals=self._get_downstream_signals(),
             workflow_signals=self._resolve_workflow_signals(),
+            workflow_constants=self._resolve_workflow_constants(),
         )
+
+    def _resolve_workflow_constants(self) -> dict[str, Any]:
+        """Build the ``c.*`` / ``const.*`` namespace map for the step's workflow.
+
+        A constant is workflow-definition-derived, so this is a pure read of the
+        workflow's ``WorkflowConstant`` rows — no submission data, no resolution,
+        no failure mode (contrast ``_resolve_workflow_signals``). Delegates to the
+        same community service the orchestrator's
+        ``_resolve_workflow_constants`` uses, so both execution paths agree on
+        the map.
+        """
+        from validibot.workflows.services.constants import (
+            build_workflow_constants_context,
+        )
+
+        workflow = getattr(self.workflow_step, "workflow", None)
+        return build_workflow_constants_context(workflow)
 
     def _get_downstream_signals(self) -> dict[str, Any]:
         """Extract validator outputs from prior steps for cross-step CEL.

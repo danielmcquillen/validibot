@@ -69,7 +69,7 @@ class InstallCommercialPackageScriptTests(SimpleTestCase):
                 TEST_PYTHON_BIN,
                 "--index",
                 "https://license@example.com@pypi.validibot.com/simple/",
-                "validibot-pro==0.1.0",
+                "validibot-pro==0.5.0",
             ],
         )
 

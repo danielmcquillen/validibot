@@ -134,7 +134,10 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
             .select_related("validator", "ruleset", "action", "action__definition")
         )
         for step in steps:
-            config = dict(step.config or {})
+            # In-memory display dict for the template (this list view never
+            # saves the step): semantic keys from ``config`` plus cosmetic ones
+            # (schema_type_label, …) from ``display_settings`` (ADR-2026-06-18).
+            config = {**(step.display_settings or {}), **(step.config or {})}
             if step.validator:
                 vtype = step.validator.validation_type
                 if vtype == ValidationType.XML_SCHEMA:
@@ -179,7 +182,12 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
                     "message": config.get("message"),
                     "extras": extras,
                 }
-            step.config = config
+            # Attach the merged display dict as a SEPARATE attribute rather than
+            # overwriting ``step.config``: config must stay semantic-only so
+            # ``typed_config``/forbid never sees the cosmetic keys we fold in here
+            # for the template (ADR-2026-06-18). The template binds
+            # ``{% with config=step.display_config %}``.
+            step.display_config = config
         has_credential_step = _annotate_reorder_controls(steps)
         show_private_notes = self.user_can_manage_workflow()
         context = {
@@ -1602,8 +1610,14 @@ def _tabular_assertion_counts(assertions) -> dict[str, int]:
 
 
 def _tabular_summary_config(step: WorkflowStep) -> dict[str, object]:
-    """Build summary values with Ruleset fallbacks for pre-editor steps."""
-    config = dict(step.config or {})
+    """Build summary values with Ruleset fallbacks for pre-editor steps.
+
+    Merges both step-config buckets: the semantic dialect (delimiter / encoding /
+    has_header) from ``config`` and the cosmetic labels / counts from
+    ``display_settings`` (ADR-2026-06-18). Missing values are still recomputed via
+    the ``setdefault`` fallbacks below, so pre-editor and imported steps work too.
+    """
+    config = {**(step.display_settings or {}), **(step.config or {})}
     ruleset = step.ruleset if step.ruleset_id else None
     metadata = dict(ruleset.metadata or {}) if ruleset else {}
 
@@ -1975,13 +1989,15 @@ class WorkflowStepTemplateVariablesView(WorkflowObjectMixin, FormView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        step_config = self.step.config or {}
         context.update(
             {
                 "workflow": self.get_workflow(),
                 "step": self.step,
                 "tplvar_form": context.get("form"),
-                "display_step_outputs": step_config.get("display_step_outputs", []),
+                "display_step_outputs": (self.step.display_settings or {}).get(
+                    "display_step_outputs",
+                    [],
+                ),
             },
         )
         return context
@@ -2032,8 +2048,9 @@ class WorkflowStepDisplayStepOutputsView(WorkflowObjectMixin, FormView):
     """HTMx modal endpoint for editing which output signals are shown to users.
 
     GET returns the modal form content (loaded into displayStepOutputsModal).
-    POST validates and saves the selection to ``step.config["display_step_outputs"]``,
-    then triggers a page reload via HX-Trigger.
+    POST validates and saves the selection to
+    ``step.display_settings["display_step_outputs"]`` (the cosmetic bucket —
+    ADR-2026-06-18), then triggers a page reload via HX-Trigger.
     """
 
     template_name = "workflows/partials/display_step_outputs_modal_content.html"
@@ -2069,10 +2086,10 @@ class WorkflowStepDisplayStepOutputsView(WorkflowObjectMixin, FormView):
 
     def form_valid(self, form):
         selected = form.cleaned_data.get("display_step_outputs", [])
-        config = dict(self.step.config or {})
-        config["display_step_outputs"] = selected
-        self.step.config = config
-        self.step.save(update_fields=["config"])
+        display_settings = dict(self.step.display_settings or {})
+        display_settings["display_step_outputs"] = selected
+        self.step.display_settings = display_settings
+        self.step.save(update_fields=["display_settings"])
 
         response = HttpResponse(status=HTTPStatus.NO_CONTENT)
         response["HX-Trigger"] = json.dumps(
@@ -2096,8 +2113,8 @@ class WorkflowStepToggleStepOutputDisplayView(WorkflowObjectMixin, View):
     """HTMx endpoint that toggles a single output signal's visibility.
 
     POST adds or removes the signal slug from the step's
-    ``config["display_step_outputs"]`` list and returns the updated toggle
-    button HTML fragment.
+    ``display_settings["display_step_outputs"]`` list (the cosmetic bucket —
+    ADR-2026-06-18) and returns the updated toggle button HTML fragment.
 
     Semantics: an empty ``display_step_outputs`` list means "show all".
     Toggling a signal OFF when the list is empty first populates the
@@ -2116,8 +2133,8 @@ class WorkflowStepToggleStepOutputDisplayView(WorkflowObjectMixin, View):
 
     def post(self, request, *args, **kwargs):
         slug = self.kwargs["signal_slug"]
-        config = dict(self.step.config or {})
-        display_step_outputs = list(config.get("display_step_outputs", []))
+        display_settings = dict(self.step.display_settings or {})
+        display_step_outputs = list(display_settings.get("display_step_outputs", []))
 
         from validibot.validations.constants import SignalDirection
 
@@ -2147,9 +2164,9 @@ class WorkflowStepToggleStepOutputDisplayView(WorkflowObjectMixin, View):
         if set(display_step_outputs) == set(all_slugs):
             display_step_outputs = []
 
-        config["display_step_outputs"] = display_step_outputs
-        self.step.config = config
-        self.step.save(update_fields=["config"])
+        display_settings["display_step_outputs"] = display_step_outputs
+        self.step.display_settings = display_settings
+        self.step.save(update_fields=["display_settings"])
 
         is_shown = not display_step_outputs or slug in display_step_outputs
         return HttpResponse(

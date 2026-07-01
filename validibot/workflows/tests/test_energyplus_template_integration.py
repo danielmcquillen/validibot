@@ -554,8 +554,11 @@ class TestBuildConfigPreservesExisting:
                 "idf_checks": [],
                 "run_simulation": True,
                 "case_sensitive": True,
-                "display_step_outputs": ["some_signal"],
             },
+            # display_step_outputs is cosmetic — it lives in the display bucket,
+            # which is where build_energyplus_config's keep-read now looks
+            # (ADR-2026-06-18).
+            display_settings={"display_step_outputs": ["some_signal"]},
         )
         form = _make_form(
             validator=validator,
@@ -1686,7 +1689,7 @@ class TestBuildUnifiedSignals(TestCase):
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(
-            config={"display_step_outputs": ["total-energy"]},
+            display_settings={"display_step_outputs": ["total-energy"]},
             validator=validator,
         )
 

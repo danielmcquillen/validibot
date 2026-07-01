@@ -79,15 +79,17 @@ class EnergyPlusValidator(AdvancedValidator):
     def _should_filter_warnings(self, run_context: RunContext | None) -> bool:
         """Check whether simulation warnings should be suppressed.
 
-        Reads ``show_energyplus_warnings`` from the step config. When False,
-        non-ERROR issues from the EnergyPlus ``.err`` file should be stripped
-        before they are persisted as findings.
+        Reads ``show_energyplus_warnings`` from the step's ``display_settings``.
+        It is cosmetic (it filters which non-blocking warnings are *shown*, never
+        pass/fail), so it lives in the display bucket (ADR-2026-06-18). When
+        False, non-ERROR issues from the EnergyPlus ``.err`` file should be
+        stripped before they are persisted as findings.
         """
         step = run_context.step if run_context else None
         if not step:
             return False
-        config = step.config or {}
-        return not config.get("show_energyplus_warnings", True)
+        display_settings = step.display_settings or {}
+        return not display_settings.get("show_energyplus_warnings", True)
 
     def _filter_issues(
         self,

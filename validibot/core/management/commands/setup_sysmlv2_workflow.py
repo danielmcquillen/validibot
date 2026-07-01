@@ -234,6 +234,14 @@ class Command(BaseCommand):
     def _ensure_step(
         self, *, workflow, order, name, step_key, validator, ruleset, config
     ):
+        # Split the seed config into the semantic (hashed) and cosmetic buckets,
+        # exactly as the real step-save path does (ADR-2026-06-18).
+        from validibot.workflows.step_configs import partition_step_config
+
+        step_config, display_settings = partition_step_config(
+            getattr(validator, "validation_type", None),
+            config,
+        )
         step, created = WorkflowStep.objects.get_or_create(
             workflow=workflow,
             step_key=step_key,
@@ -242,7 +250,8 @@ class Command(BaseCommand):
                 "name": name,
                 "validator": validator,
                 "ruleset": ruleset,
-                "config": config,
+                "config": step_config,
+                "display_settings": display_settings,
             },
         )
         if not created:
@@ -250,7 +259,8 @@ class Command(BaseCommand):
             step.name = name
             step.validator = validator
             step.ruleset = ruleset
-            step.config = config
+            step.config = step_config
+            step.display_settings = display_settings
             step.save()
         action = "Created" if created else "Updated"
         self.stdout.write(f"  {action} step: {name}")

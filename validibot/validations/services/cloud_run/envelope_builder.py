@@ -326,9 +326,15 @@ def build_input_envelope(
         msg = f"WorkflowStep {step.id} has no validator configured"
         raise ValueError(msg)
 
-    # Merge input_file_uris with step.config for lookups
-    # input_file_uris takes precedence (they contain dynamically uploaded files)
-    step_config = {**(step.config or {}), **(input_file_uris or {})}
+    # Merge both step-config buckets with input_file_uris for runtime lookups.
+    # ``config`` holds semantic keys (e.g. timestep_per_hour), ``display_settings``
+    # holds cosmetic/runtime-injected keys (ADR-2026-06-18); input_file_uris takes
+    # precedence last (it contains the dynamically uploaded primary_file_uri).
+    step_config = {
+        **(step.config or {}),
+        **(step.display_settings or {}),
+        **(input_file_uris or {}),
+    }
 
     if validator.validation_type == ValidationType.ENERGYPLUS:
         # Get model file URI (primary file from the workflow step or input_file_uris)

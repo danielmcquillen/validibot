@@ -7,7 +7,12 @@
   {% endif %}
   {% if steps %}
     {% for step in steps %}
-      {% with config=step.config %}
+      {% comment %}
+      ``display_config`` is the view-built merge of the semantic ``config`` and
+      cosmetic ``display_settings`` buckets (ADR-2026-06-18); ``step.config``
+      itself stays semantic-only.
+      {% endcomment %}
+      {% with config=step.display_config %}
         <div class="workflow-step-wrapper"
              id="workflow-step-{{ step.id }}"
              data-step-id="{{ step.id }}"

@@ -293,7 +293,7 @@ class PublicWorkflowInfoView(DetailView):
                         "(ruleset=%s, has_config_preview=%s)",
                         step.pk,
                         step.ruleset_id,
-                        bool((step.config or {}).get("schema_text_preview")),
+                        bool((step.display_settings or {}).get("schema_text_preview")),
                     )
 
             if schema_content:
@@ -345,7 +345,11 @@ class PublicWorkflowInfoView(DetailView):
                 )
         step.public_tabular = build_tabular_public_details(
             schema_text=schema_text,
-            config=step.config or {},
+            # Merge both buckets: the dialect (delimiter/encoding/has_header) is
+            # semantic (``config``) while the pre-computed ``delimiter_label`` is
+            # cosmetic (``display_settings``). The builder recomputes the label
+            # if absent, so this only honours a stored one.
+            config={**(step.display_settings or {}), **(step.config or {})},
             metadata=(ruleset.metadata if ruleset else {}) or {},
         )
 
@@ -375,7 +379,7 @@ class PublicWorkflowInfoView(DetailView):
                 schema_text = ""
 
         if not schema_text:
-            schema_text = step.config.get("schema_text_preview", "")
+            schema_text = (step.display_settings or {}).get("schema_text_preview", "")
 
         if not schema_text:
             return None, None

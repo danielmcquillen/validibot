@@ -1525,9 +1525,20 @@ class WorkflowStep(TimeStampedModel):
         on_delete=models.SET_NULL,
     )
 
-    # Optional per-step config (e.g., severity thresholds, mapping).
-    # Use the typed_config property for type-safe access — see step_configs.py.
+    # ── The two step-config buckets (ADR-2026-06-18) ──
+    # ``config`` is the SEMANTIC bucket: only settings that change what
+    # validation *does* (schema_type, delimiter, encoding, has_header,
+    # case_sensitive, FMU sim settings, …). Its Pydantic models forbid extra
+    # keys, so the workflow-definition digest can hash this field WHOLESALE and
+    # stay provably free of cosmetic or run-injected data.
+    # ``display_settings`` is the COSMETIC + runtime-injected bucket
+    # (schema_type_label, previews, column counts, display_step_outputs, and
+    # keys the runner injects like primary_file_uri). It is NEVER hashed.
+    # Use ``typed_config`` / ``display_settings_typed`` for type-safe access —
+    # see step_configs.py, which is the single source of truth for which key
+    # belongs in which bucket.
     config = models.JSONField(default=dict, blank=True)
+    display_settings = models.JSONField(default=dict, blank=True)
 
     @property
     def typed_config(self):
@@ -1551,6 +1562,24 @@ class WorkflowStep(TimeStampedModel):
         from validibot.workflows.step_configs import get_step_config
 
         return get_step_config(self)
+
+    @property
+    def display_settings_typed(self):
+        """Return this step's ``display_settings`` as a typed Pydantic model.
+
+        Mirror of :attr:`typed_config` for the **cosmetic** bucket. Parses the
+        raw ``display_settings`` JSONField into the appropriate display model
+        (e.g. a Tabular step returns a ``TabularDisplaySettings`` with
+        ``delimiter_label``/``column_count``). Falls back to
+        ``BaseDisplaySettings`` (still exposing ``display_step_outputs``) for
+        types without extra display fields.
+
+        See Also:
+            validibot.workflows.step_configs for available display models.
+        """
+        from validibot.workflows.step_configs import get_step_display_settings
+
+        return get_step_display_settings(self)
 
     @property
     def step_number(self) -> int:

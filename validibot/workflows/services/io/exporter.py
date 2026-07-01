@@ -150,7 +150,12 @@ def _export_step(step: WorkflowStep, files: dict[str, bytes]) -> dict[str, Any]:
     data: dict[str, Any] = {
         field: getattr(step, field) for field in schema.STEP_SCALAR_FIELDS
     }
+    # Round-trip BOTH step-config buckets (ADR-2026-06-18): the semantic
+    # ``config`` and the cosmetic ``display_settings``. Dropping display_settings
+    # on export would silently lose the labels/previews/display_step_outputs a
+    # portable workflow carries.
     data["config"] = deepcopy(step.config) or {}
+    data["display_settings"] = deepcopy(step.display_settings) or {}
 
     if step.action_id:
         # Action steps aren't part of the validator graph; record enough to

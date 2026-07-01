@@ -25,6 +25,7 @@ from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.constants import WorkflowConstantType
 from validibot.workflows.models import WorkflowConstant
 from validibot.workflows.models import WorkflowSignalMapping
+from validibot.workflows.models import WorkflowStep
 from validibot.workflows.services.contract_snapshot import (
     build_workflow_definition_contract,
 )
@@ -206,3 +207,36 @@ class HashDriftTests(TestCase):
         )
         after = compute_workflow_definition_hash(self.workflow)
         assert before != after
+
+    def test_editing_semantic_config_key_changes_hash(self):
+        """A semantic ``config`` key edit re-bases the hash (ADR-2026-06-18).
+
+        ``config`` is the semantic bucket and is hashed WHOLESALE, so changing a
+        parse-affecting knob like ``delimiter`` must move the digest. Updates use
+        ``.update()`` to write the field directly (the projection reads the field,
+        not the typed model, so this exercises the hash, not step validation).
+        """
+        step = self.workflow.steps.first()
+        WorkflowStep.objects.filter(pk=step.pk).update(config={"delimiter": ","})
+        before = compute_workflow_definition_hash(self.workflow)
+        WorkflowStep.objects.filter(pk=step.pk).update(config={"delimiter": ";"})
+        after = compute_workflow_definition_hash(self.workflow)
+        assert before != after
+
+    def test_editing_display_settings_does_not_change_hash(self):
+        """A cosmetic ``display_settings`` edit must NOT change the hash.
+
+        ``display_settings`` is never part of the definition preimage, so tweaking
+        a label / preview / count there cannot invalidate a prior attestation —
+        the whole reason the config/display_settings split exists.
+        """
+        step = self.workflow.steps.first()
+        WorkflowStep.objects.filter(pk=step.pk).update(
+            display_settings={"delimiter_label": "Comma"},
+        )
+        before = compute_workflow_definition_hash(self.workflow)
+        WorkflowStep.objects.filter(pk=step.pk).update(
+            display_settings={"delimiter_label": "Semicolon", "column_count": 9},
+        )
+        after = compute_workflow_definition_hash(self.workflow)
+        assert before == after

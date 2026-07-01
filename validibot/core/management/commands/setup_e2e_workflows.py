@@ -266,13 +266,17 @@ class Command(BaseCommand):
             version="1",
         )
 
-        return WorkflowStep.objects.create(
-            workflow=workflow,
-            validator=validator,
-            ruleset=ruleset,
-            order=10,
-            name="EnergyPlus Window Glazing Simulation",
-            config={
+        # Partition the seed config into the semantic (hashed) and cosmetic
+        # buckets exactly as the real step-save path does (ADR-2026-06-18):
+        # run_simulation/case_sensitive stay in ``config``; display_step_outputs
+        # (cosmetic) and the legacy template_variables list (superseded by
+        # relational StepIODefinition rows, migration 0029) land in
+        # ``display_settings``.
+        from validibot.workflows.step_configs import partition_step_config
+
+        step_config, display_settings = partition_step_config(
+            getattr(validator, "validation_type", None),
+            {
                 "run_simulation": True,
                 "case_sensitive": True,
                 "template_variables": [
@@ -307,6 +311,15 @@ class Command(BaseCommand):
                     "cooling_energy_kwh",
                 ],
             },
+        )
+        return WorkflowStep.objects.create(
+            workflow=workflow,
+            validator=validator,
+            ruleset=ruleset,
+            order=10,
+            name="EnergyPlus Window Glazing Simulation",
+            config=step_config,
+            display_settings=display_settings,
         )
 
     def _attach_template_idf(self, step: WorkflowStep) -> None:

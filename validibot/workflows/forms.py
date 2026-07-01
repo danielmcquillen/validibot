@@ -2060,7 +2060,7 @@ class JsonSchemaStepConfigForm(BaseStepConfigForm):
         schema_field.initial = JSONSchemaVersion.DRAFT_2020_12.value
         self.initial["schema_type"] = JSONSchemaVersion.DRAFT_2020_12.value
         if step and step.ruleset_id:
-            self.fields["schema_text"].initial = step.config.get(
+            self.fields["schema_text"].initial = (step.display_settings or {}).get(
                 "schema_text_preview",
                 "",
             )
@@ -2173,7 +2173,7 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
                 and step.config.get("schema_type") in XMLSchemaType.values
             ):
                 self.fields["schema_type"].initial = step.config.get("schema_type")
-            self.fields["schema_text"].initial = step.config.get(
+            self.fields["schema_text"].initial = (step.display_settings or {}).get(
                 "schema_text_preview",
                 "",
             )
@@ -2334,19 +2334,29 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
         uploaded files are shown read-only above the file fields.
         """
         config = step.config or {}
+        # File-upload metadata, the shapes preview, and the library snapshot are
+        # cosmetic (display duplicates of ruleset.metadata) and live in the
+        # display bucket now; engine knobs below stay in ``config`` (semantic).
+        # (ADR-2026-06-18.)
+        display_settings = step.display_settings or {}
         metadata = dict(getattr(step.ruleset, "metadata", None) or {})
         self.existing_shape_files = (
-            config.get("shape_files") or metadata.get("shape_files") or []
+            display_settings.get("shape_files") or metadata.get("shape_files") or []
         )
         self.existing_ontology_files = (
-            config.get("ontology_files") or metadata.get("ontology_files") or []
+            display_settings.get("ontology_files")
+            or metadata.get("ontology_files")
+            or []
         )
         self.has_existing_inline_shapes = bool(
             metadata.get("has_inline_shapes")
-            or (config.get("shapes_text_preview") and not self.existing_shape_files)
+            or (
+                display_settings.get("shapes_text_preview")
+                and not self.existing_shape_files
+            )
         )
         self.has_existing_inline_ontology = bool(metadata.get("has_inline_ontology"))
-        self.library_default_snapshot = config.get(
+        self.library_default_snapshot = display_settings.get(
             "library_default_snapshot"
         ) or metadata.get("library_default_snapshot")
         self.has_library_ontology = bool(
@@ -2369,7 +2379,7 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
             self.fields["bundle_qudt"].initial = "qudt-2.1" in bundled
         # On edit, surface the existing concatenated shapes for paste-area
         # preview but make it clear they're optional to replace.
-        preview = config.get("shapes_text_preview", "")
+        preview = display_settings.get("shapes_text_preview", "")
         if preview:
             self.fields["shapes_files"].help_text = _(
                 "Leave blank to keep the current shapes. Upload one or more "
@@ -2799,7 +2809,8 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                     "idf_checks": config.get("idf_checks", []),
                     "run_simulation": config.get("run_simulation", False),
                     "case_sensitive": config.get("case_sensitive", True),
-                    "show_energyplus_warnings": config.get(
+                    # Cosmetic (display bucket) — ADR-2026-06-18.
+                    "show_energyplus_warnings": (step.display_settings or {}).get(
                         "show_energyplus_warnings",
                         True,
                     ),
@@ -2982,9 +2993,10 @@ class DisplayStepOutputsForm(forms.Form):
 
         self.fields["display_step_outputs"].choices = choices
 
-        # Pre-select currently displayed signals
+        # Pre-select currently displayed signals (cosmetic → display bucket,
+        # ADR-2026-06-18).
         if step:
-            current = (step.config or {}).get("display_step_outputs", [])
+            current = (step.display_settings or {}).get("display_step_outputs", [])
             if current:
                 self.fields["display_step_outputs"].initial = current
 

@@ -44,6 +44,7 @@ from validibot.workflows.forms import XmlSchemaStepConfigForm
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.models import WorkflowStepResource
+from validibot.workflows.step_configs import partition_step_config
 
 logger = logging.getLogger(__name__)
 
@@ -362,7 +363,7 @@ def build_json_schema_config(
         raise ValidationError(_("Select a valid JSON Schema draft."))
 
     if source == "keep" and step and step.ruleset_id:
-        preview = step.config.get("schema_text_preview", "")
+        preview = (step.display_settings or {}).get("schema_text_preview", "")
         ruleset = step.ruleset
         metadata = dict(ruleset.metadata or {})
         metadata["schema_type"] = schema_type
@@ -460,9 +461,10 @@ def build_tabular_config(
     metadata["has_header"] = has_header
 
     if source == "keep" and step and step.ruleset_id:
-        preview = step.config.get("schema_text_preview", "")
-        column_count = step.config.get("column_count", 0)
-        required_column_count = step.config.get("required_column_count")
+        prior_display = step.display_settings or {}
+        preview = prior_display.get("schema_text_preview", "")
+        column_count = prior_display.get("column_count", 0)
+        required_column_count = prior_display.get("required_column_count")
         if required_column_count is None:
             try:
                 existing_descriptor = json.loads(ruleset.rules_text or "{}")
@@ -532,7 +534,7 @@ def build_xml_schema_config(
         raise ValidationError(_("Select a valid XML schema type."))
 
     if source == "keep" and step and step.ruleset_id:
-        preview = step.config.get("schema_text_preview", "")
+        preview = (step.display_settings or {}).get("schema_text_preview", "")
         ruleset = step.ruleset
         metadata = dict(ruleset.metadata or {})
         metadata["schema_type"] = schema_type
@@ -678,7 +680,9 @@ def build_shacl_config(
         shapes_concat = ruleset.rules_text
         shape_files_meta = existing_metadata.get("shape_files", []) or []
         has_inline_shapes = bool(existing_metadata.get("has_inline_shapes"))
-        preview = (step.config or {}).get("shapes_text_preview", "") if step else ""
+        preview = (
+            (step.display_settings or {}).get("shapes_text_preview", "") if step else ""
+        )
         if not preview:
             preview = shapes_concat[:1200]
     else:
@@ -902,9 +906,11 @@ def build_energyplus_config(
         # No upload, no removal — existing StepIODefinition rows are
         # left unchanged.  Variable annotation editing happens in the
         # dedicated template variables card on the step detail page.
-        existing_config = step.config or {}
         config["case_sensitive"] = form.cleaned_data.get("case_sensitive", True)
-        config["display_step_outputs"] = existing_config.get("display_step_outputs", [])
+        config["display_step_outputs"] = (step.display_settings or {}).get(
+            "display_step_outputs",
+            [],
+        )
 
     return config, template_vars
 
@@ -1111,8 +1117,9 @@ def build_unified_signals_from_definitions(
     from validibot.validations.models import StepIODefinition
     from validibot.validations.models import WorkflowStepIOPromotion
 
-    step_config = step.config or {}
-    display_step_outputs = step_config.get("display_step_outputs", [])
+    # ``display_step_outputs`` is cosmetic (which output signals the submitter
+    # sees), so it lives in the display bucket (ADR-2026-06-18).
+    display_step_outputs = (step.display_settings or {}).get("display_step_outputs", [])
 
     # Query step-owned + validator-owned signal definitions.
     step_sigs = list(
@@ -1738,7 +1745,12 @@ def save_workflow_step(
     elif vtype not in (ValidationType.JSON_SCHEMA, ValidationType.XML_SCHEMA):
         step.ruleset = None
 
-    step.config = config
+    # Split the freshly-built config into the semantic (``config``, hashed) and
+    # cosmetic (``display_settings``, never hashed) buckets. Replacing both
+    # wholesale mirrors the previous single-field ``step.config = config`` — the
+    # per-builder keep-reads above already re-read prior cosmetic values from
+    # ``display_settings`` so nothing an author set is dropped (ADR-2026-06-18).
+    step.config, step.display_settings = partition_step_config(vtype, config)
 
     if is_new:
         step.order = _compute_insert_order(workflow, insert_after_step)

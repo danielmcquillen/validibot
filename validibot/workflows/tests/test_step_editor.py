@@ -406,15 +406,15 @@ def test_toggle_display_signal_view_round_trips_step_owned_outputs(client):
 
     assert hide_response.status_code == HTTPStatus.OK
     step.refresh_from_db()
-    assert set(step.config["display_step_outputs"]) == {"q_cool"}
-    assert "foreign_output" not in step.config["display_step_outputs"]
+    assert set(step.display_settings["display_step_outputs"]) == {"q_cool"}
+    assert "foreign_output" not in step.display_settings["display_step_outputs"]
     assert "Hidden from results" in hide_response.content.decode()
 
     show_response = client.post(url, HTTP_HX_REQUEST="true")
 
     assert show_response.status_code == HTTPStatus.OK
     step.refresh_from_db()
-    assert step.config["display_step_outputs"] == []
+    assert step.display_settings["display_step_outputs"] == []
     assert "Shown in results" in show_response.content.decode()
 
 
@@ -459,7 +459,7 @@ def test_create_view_creates_json_schema_step(client):
     stored_schema = step.ruleset.rules
     assert "$schema" in stored_schema
     assert "type" in stored_schema
-    assert step.config["schema_source"] == "text"
+    assert step.display_settings["schema_source"] == "text"
     assert step.config["schema_type"] == JSONSchemaVersion.DRAFT_2020_12.value
     assert step.description == "Ensures posted documents follow the schema."
     assert step.notes == "Remember to update schema when payload changes."

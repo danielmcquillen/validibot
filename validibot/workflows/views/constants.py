@@ -230,8 +230,9 @@ def _find_constant_references(workflow, constant_name: str) -> list[str]:
     """Find assertions in this workflow that reference ``c.<name>``.
 
     Mirrors the signal reference check: searches CEL expressions, the cached
-    CEL preview, and guard conditions for ``c.<name>`` / ``const.<name>`` so a
-    delete that would silently break a rule is blocked with a clear message.
+    CEL preview, guard conditions, and a Basic assertion's ``target_data_path``
+    for ``c.<name>`` / ``const.<name>`` so a delete that would silently break a
+    rule (CEL or Basic) is blocked with a clear message.
     """
     from validibot.validations.models import RulesetAssertion
 
@@ -261,6 +262,12 @@ def _find_constant_references(workflow, constant_name: str) -> list[str]:
             texts.append(assertion.cel_cache)
         if assertion.when_expression:
             texts.append(assertion.when_expression)
+        # A Basic assertion can reference a constant as its TARGET
+        # (``target_data_path = "c.energy_price"``, ADR-2026-06-18), not only
+        # inside a CEL expression. Scan it too, or deleting a constant that a
+        # Basic assertion depends on would slip past this guard.
+        if assertion.target_data_path:
+            texts.append(assertion.target_data_path)
         for text in texts:
             if pattern.search(text):
                 step = ruleset_to_step.get(assertion.ruleset_id)

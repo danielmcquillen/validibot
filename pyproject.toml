@@ -336,7 +336,7 @@ dev = [
   "pytest-sugar==1.1.1",
   "selenium==4.45.0",
   # Linting and formatting
-  "djlint==1.39.4",
+  "djlint==1.40.0",
   "pre-commit==4.6.0",
   "ruff==0.15.20",
   # Type checking

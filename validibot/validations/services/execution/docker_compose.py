@@ -444,6 +444,36 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             ):
                 fmu_resource_id = resource_id
 
+        # Schematron: stage the vendored, checksum-verified rule-pack
+        # artefact as a workspace resource (ADR-2026-07-01 D4b). Curated
+        # packs are repo files, not WorkflowStepResource rows, so they need
+        # their own spec; the pack is resolved from the library validator's
+        # default_ruleset — never from anything the submitter controls.
+        # Imports stay inside this branch so non-Schematron dispatch never
+        # touches the schematron package.
+        schematron_artifact_resource_id: str | None = None
+        if validator_type_upper == ValidationType.SCHEMATRON:
+            from validibot.validations.validators.schematron.packs import (
+                resolve_pack_for_validator,
+            )
+            from validibot.validations.validators.schematron.staging import (
+                PACK_ARTIFACT_FILENAME,
+            )
+            from validibot.validations.validators.schematron.staging import (
+                verified_pack_artifact_path,
+            )
+
+            pack = resolve_pack_for_validator(request.validator)
+            artifact_path = verified_pack_artifact_path(pack)
+            schematron_artifact_resource_id = "schematron-pack-artifact"
+            resource_specs.append(
+                ResourceFileSpec(
+                    filename=PACK_ARTIFACT_FILENAME,
+                    source_path=artifact_path,
+                    resource_id=schematron_artifact_resource_id,
+                ),
+            )
+
         # Build the workspace.
         builder = RunWorkspaceBuilder(storage=self.storage)
         primary_content = request.submission.get_content()
@@ -483,6 +513,21 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             )
             if fmu_container_uri is not None:
                 input_file_uris["fmu_model_uri"] = fmu_container_uri
+
+        # Schematron: hand the envelope builder the container-visible URI of
+        # the staged pack artefact (same role-keyed mechanism as the FMU
+        # model URI). The container re-verifies its checksum before running.
+        if schematron_artifact_resource_id is not None:
+            artifact_container_uri = next(
+                (
+                    mf.container_uri
+                    for mf in workspace.resource_files
+                    if mf.resource_id == schematron_artifact_resource_id
+                ),
+                None,
+            )
+            if artifact_container_uri is not None:
+                input_file_uris["schematron_artifact_uri"] = artifact_container_uri
 
         return workspace, input_file_uris, resource_uri_overrides
 

@@ -121,6 +121,14 @@ def get_validator_operation_display(
                 "XSD, RelaxNG, or DTD schema before any step assertions run.",
             ),
         },
+        ValidationType.SCHEMATRON: {
+            "label": _("Schematron Validation"),
+            "description": _(
+                "Runs the selected curated Schematron rule pack against "
+                "the submitted XML document before any step assertions "
+                "run, reporting failed rules by their native IDs.",
+            ),
+        },
         ValidationType.SHACL: {
             "label": _("SHACL Validation"),
             "description": _(
@@ -1698,6 +1706,10 @@ def save_workflow_step(
         config, ruleset = build_json_schema_config(workflow, form, step)
     elif vtype == ValidationType.XML_SCHEMA:
         config, ruleset = build_xml_schema_config(workflow, form, step)
+    # NOTE: SCHEMATRON deliberately has no branch (ADR-2026-07-01 D2/D5):
+    # pack selection is validator selection (library Validator rows carry the
+    # pack via default_ruleset), and the ensure_advanced_ruleset fallback
+    # below creates the per-step assertion ruleset.
     elif vtype == ValidationType.SHACL:
         config, ruleset = build_shacl_config(
             workflow,

@@ -630,5 +630,58 @@ def build_input_envelope(
             skip_callback=skip_callback,
         )
 
+    if validator.validation_type == ValidationType.SCHEMATRON:
+        # The XML submission is the primary file; the compiled rule-pack
+        # XSLT arrives as a STAGED ARTEFACT REFERENCE (ADR-2026-07-01 D4b):
+        # the dispatch layer verifies + stages the vendored file (Cloud Run
+        # → gs://, local Docker → container file://) and passes its URI via
+        # ``input_file_uris["schematron_artifact_uri"]`` — the same
+        # role-keyed override mechanism as ``fmu_model_uri``. The container
+        # re-verifies the artefact checksum before executing.
+        #
+        # Imports are deliberately local: ``validibot_shared.schematron``
+        # requires validibot-shared >= 0.11.0, and this branch is the only
+        # part of the envelope builder that touches it.
+        submission_uri = step_config.get("primary_file_uri")
+        if not submission_uri:
+            msg = f"Step {step.id} has no primary_file_uri in config for Schematron"
+            raise ValueError(msg)
+        artifact_uri = step_config.get("schematron_artifact_uri")
+        if not artifact_uri:
+            msg = (
+                f"Step {step.id} has no schematron_artifact_uri — the "
+                f"dispatch layer must stage the pack artefact before "
+                f"building the envelope"
+            )
+            raise ValueError(msg)
+
+        from validibot_shared.schematron.envelopes import (
+            build_schematron_input_envelope,
+        )
+
+        from validibot.validations.validators.schematron.launch import (
+            resolve_schematron_inputs,
+        )
+
+        schematron_inputs = resolve_schematron_inputs(
+            validator=validator,
+            artifact_uri=artifact_uri,
+        )
+        return build_schematron_input_envelope(
+            run_id=str(run.id),
+            validator=validator,
+            org_id=str(run.org.id),
+            org_name=run.org.name,
+            workflow_id=str(run.workflow.id),
+            step_id=str(step.id),
+            step_name=step.name,
+            submission_uri=submission_uri,
+            inputs=schematron_inputs,
+            callback_url=callback_url,
+            callback_id=callback_id,
+            execution_bundle_uri=execution_bundle_uri,
+            skip_callback=skip_callback,
+        )
+
     msg = f"Unsupported validator type: {validator.validation_type}"
     raise ValueError(msg)

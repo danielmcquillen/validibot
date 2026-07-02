@@ -167,6 +167,7 @@ class RulesetType(TextChoices):
     BASIC = "BASIC", _("Basic Assertions")
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
+    SCHEMATRON = "SCHEMATRON", _("Schematron")
     SHACL = "SHACL", _("SHACL Shapes")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
     FMU = "FMU", _("FMU Validator")
@@ -186,6 +187,9 @@ class ValidationType(TextChoices):
     - FMU: Supports CEL assertions against output signals
     - JSON_SCHEMA: Supports BASIC and CEL assertions after schema validation
     - XML_SCHEMA: Supports BASIC and CEL assertions after schema validation
+    - SCHEMATRON: Supports CEL assertions against output signals (the SVRL
+      summary is exposed as ``o.*`` — e.g. ``o.error_count == 0`` for a
+      warnings-tolerant gate)
     - SHACL: Supports CEL assertions against output signals
     - CUSTOM_VALIDATOR: Supports BASIC and CEL assertions
     - THERM: Supports CEL assertions against output signals
@@ -194,9 +198,10 @@ class ValidationType(TextChoices):
 
     Namespace availability is otherwise per the validator's place on the
     process spectrum: ``i.*`` (step inputs) and ``o.*`` (step outputs) exist
-    only for validators that parse/produce them (EnergyPlus, FMU, SHACL, THERM,
-    Custom, Tabular); schema validators (BASIC, JSON_SCHEMA, XML_SCHEMA) have
-    none. The ``submission.*`` namespace (envelope metadata + server facts) and
+    only for validators that parse/produce them (EnergyPlus, FMU, SHACL,
+    SCHEMATRON, THERM, Custom, Tabular); schema validators (BASIC,
+    JSON_SCHEMA, XML_SCHEMA) have none.
+    The ``submission.*`` namespace (envelope metadata + server facts) and
     ``s.*`` (workflow signals) are available to BASIC and CEL assertions for
     EVERY validator regardless of file format — that universality is the whole
     point of ``submission.*`` (ADR-2026-06-03b). The one exception is the
@@ -206,6 +211,7 @@ class ValidationType(TextChoices):
     BASIC = "BASIC", _("Basic Assertions")
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
+    SCHEMATRON = "SCHEMATRON", _("Schematron")
     SHACL = "SHACL", _("SHACL (RDF Graph)")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
     FMU = "FMU", _("FMU Validator")
@@ -254,6 +260,7 @@ class ValidatorAvailabilityState(TextChoices):
 # Django worker process.
 ADVANCED_VALIDATION_TYPES = {
     ValidationType.SHACL,
+    ValidationType.SCHEMATRON,
     ValidationType.ENERGYPLUS,
     ValidationType.FMU,
     ValidationType.CUSTOM_VALIDATOR,
@@ -265,6 +272,13 @@ ADVANCED_VALIDATION_TYPES = {
 # DEFAULT_COMPUTE_TIERS below / config.py), so it is NOT metered as heavy compute:
 # cloud metering only deducts credits for ComputeTier.HIGH validators. Isolation
 # is a safety upgrade, not a price change.
+#
+# NOTE on SCHEMATRON: same posture as SHACL — routed to the isolated
+# ``validibot-validator-backend-schematron`` container because the official
+# rule packs require an XSLT 2.0 engine (Saxon) executing rule-pack XSLT over
+# untrusted submitted XML, which must never run in the worker process. It
+# stays ``ComputeTier.LOW``: metered by launch count, not credits (see
+# ADR-2026-07-01, decision D4).
 
 
 class ComputeTier(models.TextChoices):
@@ -331,6 +345,9 @@ DEFAULT_COMPUTE_TIERS: dict[str, str] = {
     ValidationType.BASIC: ComputeTier.LOW,
     ValidationType.JSON_SCHEMA: ComputeTier.LOW,
     ValidationType.XML_SCHEMA: ComputeTier.LOW,
+    # Schematron is container-routed for isolation (Saxon/XSLT), not for
+    # heavy compute — metered by launch count like SHACL (ADR-2026-07-01 D4).
+    ValidationType.SCHEMATRON: ComputeTier.LOW,
     ValidationType.SHACL: ComputeTier.LOW,
     ValidationType.CUSTOM_VALIDATOR: ComputeTier.LOW,
     ValidationType.ENERGYPLUS: ComputeTier.HIGH,

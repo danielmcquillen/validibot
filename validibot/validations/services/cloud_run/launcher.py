@@ -751,3 +751,240 @@ def launch_shacl_validation(
             ),
         ]
         return ValidationResult(passed=False, issues=issues, stats={})
+
+
+def launch_schematron_validation(
+    *,
+    run: ValidationRun,
+    validator: Validator,
+    submission: Submission,
+    ruleset: Ruleset | None,
+    step: WorkflowStep,
+) -> ValidationResult:
+    """
+    Launch a Schematron validation via Cloud Run Jobs.
+
+    Mirrors :func:`launch_shacl_validation`, with one addition (ADR-2026-07-01
+    D4b): besides uploading the XML submission, it stages the **vendored,
+    checksum-verified rule-pack artefact** to the run bundle and passes its
+    URI through ``input_file_uris["schematron_artifact_uri"]`` — the pack is
+    resolved from the library validator's ``default_ruleset`` (D5), never
+    from anything the submitter controls. Launch-time failures map to the D9
+    taxonomy (reserved ``schematron.*`` codes + ``meta.infra_error``) so
+    "we couldn't run the rules" never renders as a rule failure.
+    """
+    from validibot.validations.validators.schematron.packs import (
+        SchematronPackResolutionError,
+    )
+    from validibot.validations.validators.schematron.packs import (
+        resolve_pack_for_validator,
+    )
+    from validibot.validations.validators.schematron.staging import (
+        PACK_ARTIFACT_FILENAME,
+    )
+    from validibot.validations.validators.schematron.staging import (
+        verified_pack_artifact_path,
+    )
+    from validibot.validations.validators.schematron.validator import (
+        CODE_ARTIFACT_MISMATCH,
+    )
+    from validibot.validations.validators.schematron.validator import (
+        CODE_BACKEND_UNAVAILABLE,
+    )
+
+    try:
+        # 0. Idempotency check.
+        current_step_run = run.current_step_run
+        if not current_step_run:
+            msg = f"No active step run for run {run.id}"
+            raise ValueError(msg)  # noqa: TRY301
+
+        already_launched = _check_already_launched(current_step_run)
+        if already_launched:
+            return already_launched
+
+        # 1. Resolve + verify the pinned pack artefact BEFORE any upload —
+        # a drifted checkout must fail fast, not ship an unverified XSLT.
+        pack = resolve_pack_for_validator(validator)
+        artifact_path = verified_pack_artifact_path(pack)
+
+        org_id = str(run.org.id)
+        run_id = str(run.id)
+        if settings.GCS_VALIDATION_BUCKET:
+            execution_bundle_uri = (
+                f"gs://{settings.GCS_VALIDATION_BUCKET}/runs/{org_id}/{run_id}"
+            )
+            input_envelope_uri = f"{execution_bundle_uri}/input.json"
+            submission_uri = f"{execution_bundle_uri}/submission.xml"
+            artifact_uri = f"{execution_bundle_uri}/{PACK_ARTIFACT_FILENAME}"
+            is_gcs = True
+            local_submission_path = None
+            local_artifact_path = None
+        else:
+            # Local dev: store under media/files/runs/<org>/<run>/ for the
+            # local-async test path (the normal self-hosted path uses the
+            # synchronous Docker backend, not this launcher).
+            from pathlib import Path
+
+            base_dir = Path(settings.MEDIA_ROOT) / "files" / "runs" / org_id / run_id
+            base_dir.mkdir(parents=True, exist_ok=True)
+            execution_bundle_uri = str(base_dir)
+            input_envelope_uri = str(base_dir / "input.json")
+            local_submission_path = base_dir / "submission.xml"
+            local_artifact_path = base_dir / PACK_ARTIFACT_FILENAME
+            submission_uri = f"file://{local_submission_path}"
+            artifact_uri = f"file://{local_artifact_path}"
+            is_gcs = False
+
+        # 2. Stage the submission and the pack artefact into the run bundle.
+        content = submission.get_content()
+        content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+        if is_gcs:
+            logger.info("Uploading Schematron submission to %s", submission_uri)
+            upload_file(
+                content=content_bytes,
+                uri=submission_uri,
+                content_type="application/xml",
+            )
+            logger.info("Staging Schematron pack artefact to %s", artifact_uri)
+            upload_file(
+                content=artifact_path.read_bytes(),
+                uri=artifact_uri,
+                content_type="application/xslt+xml",
+            )
+        else:
+            local_submission_path.write_bytes(content_bytes)
+            local_artifact_path.write_bytes(artifact_path.read_bytes())
+
+        # 3. Callback + idempotency key.
+        callback_url = build_validation_callback_url()
+        callback_id = f"step-run-{current_step_run.id}"
+
+        # 4. Build the typed envelope via the shared builder (the SCHEMATRON
+        # branch resolves the pack pin from validator.default_ruleset and
+        # reads both URIs from input_file_uris).
+        from validibot.validations.services.cloud_run.envelope_builder import (
+            build_input_envelope,
+        )
+
+        envelope = build_input_envelope(
+            run=run,
+            callback_url=callback_url,
+            callback_id=callback_id,
+            execution_bundle_uri=execution_bundle_uri,
+            input_file_uris={
+                "primary_file_uri": submission_uri,
+                "schematron_artifact_uri": artifact_uri,
+            },
+        )
+
+        # 5. Upload the input envelope.
+        if is_gcs:
+            upload_envelope(envelope, input_envelope_uri)
+        else:
+            from pathlib import Path
+
+            upload_envelope_local(envelope, Path(input_envelope_uri))
+
+        # 6. Trigger the Cloud Run Job. Job name comes from ValidatorConfig,
+        # gated by the same image policy as the other advanced launchers.
+        job_name = _resolve_cloud_run_job_name("SCHEMATRON")
+
+        policy = get_current_policy()
+        configured_image = get_job_configured_image(
+            project_id=settings.GCP_PROJECT_ID,
+            region=settings.GCP_REGION,
+            job_name=job_name,
+        )
+        if policy != ValidatorBackendImagePolicy.TAG and configured_image is None:
+            msg = (
+                f"VALIDATOR_BACKEND_IMAGE_POLICY={policy.value} requires "
+                f"verifying the Cloud Run Job's configured image, but the "
+                f"lookup for '{job_name}' returned no image. Refusing to launch."
+            )
+            logger.warning(
+                "Refusing to trigger Cloud Run Job %s: image lookup failed "
+                "under strict policy '%s'",
+                job_name,
+                policy.value,
+            )
+            raise RuntimeError(msg)  # noqa: TRY301
+        if configured_image:
+            policy_result = enforce_image_policy(configured_image)
+            if not policy_result.should_proceed:
+                logger.warning(
+                    "Refusing to trigger Cloud Run Job %s: %s",
+                    job_name,
+                    policy_result.message,
+                )
+                msg = (
+                    f"Cloud Run Job '{job_name}' violates "
+                    f"VALIDATOR_BACKEND_IMAGE_POLICY: {policy_result.message}"
+                )
+                raise RuntimeError(msg)  # noqa: TRY301
+
+        execution_name = run_validator_job(
+            project_id=settings.GCP_PROJECT_ID,
+            region=settings.GCP_REGION,
+            job_name=job_name,
+            input_uri=input_envelope_uri,
+        )
+
+        backend_image_digest = get_execution_image_digest(execution_name)
+        _mark_step_run_running(current_step_run, image_digest=backend_image_digest)
+
+        stats = {
+            "job_status": CloudRunJobStatus.PENDING,
+            "job_name": job_name,
+            "execution_name": execution_name,
+            "input_uri": input_envelope_uri,
+            "execution_bundle_uri": execution_bundle_uri,
+            # Full provenance of the staged artefact (D5) — recorded at
+            # launch so the run is auditable even if the callback never
+            # arrives.
+            "pack_id": pack.id,
+            "pack_version": pack.version,
+            "pack_source_sha256": pack.source_sha256,
+            "pack_artifact_sha256": pack.artifact_sha256,
+            "signals": {},  # populated on callback; reserved for downstream steps
+        }
+        return ValidationResult(passed=None, issues=[], stats=stats)
+
+    except SchematronPackResolutionError as exc:
+        # D9: a pack that can't be resolved/verified is an infrastructure
+        # failure — the rules were never run, and this must not read as
+        # "your document failed the rules".
+        logger.exception(
+            "Schematron pack resolution failed for run %s",
+            run.id,
+        )
+        issues = [
+            ValidationIssue(
+                path="",
+                message=str(exc),
+                severity=Severity.ERROR,
+                code=CODE_ARTIFACT_MISMATCH,
+                meta={"infra_error": True},
+            ),
+        ]
+        return ValidationResult(passed=False, issues=issues, stats={})
+    except Exception:
+        logger.exception(
+            "Failed to launch Schematron Cloud Run Job for run %s",
+            run.id,
+        )
+        issues = [
+            ValidationIssue(
+                path="",
+                message=(
+                    "The Schematron validation backend could not be "
+                    "launched. This says nothing about whether your "
+                    "document satisfies the rules; the error has been "
+                    "logged for investigation."
+                ),
+                severity=Severity.ERROR,
+                code=CODE_BACKEND_UNAVAILABLE,
+                meta={"infra_error": True},
+            ),
+        ]
+        return ValidationResult(passed=False, issues=issues, stats={})

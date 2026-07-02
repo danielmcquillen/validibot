@@ -424,6 +424,9 @@ class EnergyPlusDisplaySettings(BaseDisplaySettings):
 # Maps ValidationType / action type string → SEMANTIC config model class.
 STEP_CONFIG_MODELS: dict[str, type[BaseModel]] = {
     # Validator types (from ValidationType)
+    # NOTE: SCHEMATRON has no semantic config model — pack identity is the
+    # step's validator FK (a library validator per pack, ADR-2026-07-01 D5),
+    # so there are no step-level semantic keys to hash.
     "JSON_SCHEMA": JsonSchemaStepConfig,
     "XML_SCHEMA": XmlSchemaStepConfig,
     "TABULAR": TabularStepConfig,

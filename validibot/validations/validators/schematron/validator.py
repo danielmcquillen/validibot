@@ -1,0 +1,374 @@
+"""Schematron validator — dispatches to the isolated container backend.
+
+The official Schematron rule packs (EN 16931, Peppol BIS) are authored with
+``queryBinding="xslt2"`` and require a Saxon engine executing rule-pack XSLT
+over the untrusted submitted XML. That must never run inside the Django
+worker, so — exactly like SHACL — ``SchematronValidator`` is an
+:class:`AdvancedValidator`: Django resolves the pinned rule pack, stages its
+checksummed artefact, ships a ``SchematronInputEnvelope``, and the
+``validibot-validator-backend-schematron`` container runs Saxon and returns a
+``SchematronOutputEnvelope`` with the parsed SVRL summary. See
+ADR-2026-07-01 (decisions D3/D4/D4b) for the execution model.
+
+There is **one execution path**: this class never runs an XSLT engine
+in-process. The XSLT-1.0 ``lxml.isoschematron`` capability seen in tests is a
+fixture-generating helper only (ADR test layers A–C).
+
+The base class handles the lifecycle (input-stage gate, dispatch, sync/async
+completion). This subclass supplies:
+
+1. :meth:`preprocess_submission` — the D8 hardened-XML guard. An XXE /
+   entity-bomb / oversize / malformed submission is rejected *before*
+   any container is launched.
+2. :meth:`extract_output_signals` — the ``o.*`` signal dict for CEL
+   assertions, filtered to the catalog-declared keys.
+3. :meth:`post_execute_validate` — rebuilds findings from the container's
+   structured output with the D10 contract (``code`` = native rule id,
+   ``meta`` = location XPath + publisher deep link) and enforces the D9
+   failure taxonomy: an engine failure surfaces as ONE reserved
+   ``schematron.*`` finding flagged ``meta.infra_error`` — never as
+   fabricated rule findings.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+from typing import Any
+
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext as _
+
+from validibot.validations.constants import Severity
+from validibot.validations.validators.base.advanced import AdvancedValidator
+from validibot.validations.validators.base.base import AssertionStats
+from validibot.validations.validators.base.base import ValidationIssue
+from validibot.validations.validators.base.base import ValidationResult
+from validibot.validations.validators.schematron.packs import get_pack
+from validibot.validations.validators.schematron.security import SchematronSecurityError
+from validibot.validations.validators.schematron.security import (
+    assert_submission_is_safe_xml,
+)
+
+if TYPE_CHECKING:
+    from validibot.actions.protocols import RunContext
+    from validibot.submissions.models import Submission
+    from validibot.workflows.models import WorkflowStep
+
+logger = logging.getLogger(__name__)
+
+# ── D9 reserved finding codes ───────────────────────────────────────────────
+# Non-rule codes for "we couldn't run the check" outcomes. UI/API render
+# findings carrying these (plus meta.infra_error=True) as infrastructure
+# problems, never as business-rule failures — an engine crash must not read
+# as "your invoice is non-compliant".
+CODE_ENGINE_ERROR = "schematron.engine_error"
+CODE_ENGINE_TIMEOUT = "schematron.engine_timeout"
+CODE_ARTIFACT_MISMATCH = "schematron.artifact_mismatch"
+CODE_BACKEND_UNAVAILABLE = "schematron.backend_unavailable"
+# D10 truncation signal — emitted alongside the kept findings when the
+# document blew the findings cap, so truncation is never silent.
+CODE_FINDINGS_TRUNCATED = "schematron.findings_truncated"
+
+# Container engine_status values (mirrors the shared envelope contract).
+ENGINE_STATUS_OK = "ok"
+ENGINE_STATUS_ERROR = "error"
+ENGINE_STATUS_TIMEOUT = "timeout"
+
+# Map the container's finding-severity strings to the Django Severity enum.
+_SEVERITY_FROM_STRING = {
+    "ERROR": Severity.ERROR,
+    "WARNING": Severity.WARNING,
+    "INFO": Severity.INFO,
+}
+
+# The o.* signal keys this validator exposes — must match the catalog entries
+# in config.py (the "catalog is the contract" rule, as SHACL/EnergyPlus).
+_SIGNAL_KEYS = (
+    "passed",
+    "error_count",
+    "warning_count",
+    "fired_rule_count",
+    "finding_rule_ids_by_severity",
+    "pack_id",
+    "pack_version",
+    "query_binding",
+    "engine",
+)
+
+# Provenance keys surfaced in step-run stats (D5: a result is only meaningful
+# if you can point at the exact artefact + engine that produced it).
+_PROVENANCE_KEYS = (
+    "pack_id",
+    "pack_version",
+    "pack_source_sha256",
+    "pack_artifact_sha256",
+    "query_binding",
+    "engine",
+)
+
+
+class SchematronValidator(AdvancedValidator):
+    """Schematron rule-pack validator dispatched to an isolated container."""
+
+    @property
+    def validator_display_name(self) -> str:
+        return "Schematron"
+
+    def preprocess_submission(
+        self,
+        *,
+        step: WorkflowStep,
+        submission: Submission,
+    ) -> dict[str, object]:
+        """Reject unsafe/malformed XML before any container is launched (D8a).
+
+        Applies the hardened parser posture (defusedxml: no DTD, no entities,
+        no external references) plus the size/depth caps. Raising
+        ``ValidationError`` here means the base class returns a clean
+        pre-dispatch failure — no compute is spent on a payload we would
+        refuse anyway, and nothing dangerous ever reaches Saxon.
+        """
+        try:
+            assert_submission_is_safe_xml(submission.get_content())
+        except SchematronSecurityError as exc:
+            raise ValidationError(str(exc)) from exc
+        return {}
+
+    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
+        """Pull the ``o.*`` signal dict from the container's outputs.
+
+        Filtered to the catalog-declared keys so extra output fields cannot
+        leak into the ``o.*`` namespace. On an engine failure (D9) the rule
+        counts are ``None`` — *unknown*, not zero — so a CEL gate like
+        ``o.error_count == 0`` cannot accidentally pass when the rules never
+        ran; the map stays empty per the ADR.
+        """
+        outputs = getattr(output_envelope, "outputs", None)
+        if outputs is None:
+            return None
+
+        signals = {key: getattr(outputs, key, None) for key in _SIGNAL_KEYS}
+
+        engine_status = getattr(outputs, "engine_status", ENGINE_STATUS_OK)
+        if engine_status != ENGINE_STATUS_OK:
+            # D9: findings/counts are only meaningful when the engine ran.
+            signals["passed"] = None
+            signals["error_count"] = None
+            signals["warning_count"] = None
+            signals["fired_rule_count"] = None
+            signals["finding_rule_ids_by_severity"] = {}
+        return signals
+
+    def post_execute_validate(
+        self,
+        output_envelope: Any,
+        run_context: RunContext | None = None,
+    ) -> ValidationResult:
+        """Process the container output: findings, signals, assertions (D9/D10).
+
+        Overrides the base because Schematron needs the richer mapping the
+        generic envelope path doesn't provide:
+
+        1. **Native rule ids as first-class findings (D10).** Findings are
+           rebuilt from ``outputs.findings`` with ``code`` = the publisher's
+           rule id and ``meta`` carrying the SVRL location XPath, the raw
+           ``flag``/``role``, the pack id, and a deep link to the publisher's
+           own rule documentation.
+        2. **The failure taxonomy (D9).** ``engine_status != ok`` produces a
+           single reserved ``schematron.*`` finding with
+           ``meta.infra_error=True`` and *no* rule findings — "we couldn't
+           run the check" is never rendered as a rule failure.
+        3. **Explicit truncation (D10).** A capped findings list is
+           accompanied by one ``schematron.findings_truncated`` finding.
+        """
+        self.run_context = run_context
+
+        outputs = getattr(output_envelope, "outputs", None)
+
+        if outputs is None:
+            # No structured outputs at all — engine-level failure surfaced
+            # via the generic envelope messages.
+            issues = self._extract_issues_from_envelope(output_envelope)
+            signals: dict[str, Any] = {}
+        elif getattr(outputs, "engine_status", ENGINE_STATUS_OK) != ENGINE_STATUS_OK:
+            issues = [self._engine_failure_issue(outputs)]
+            signals = self.extract_output_signals(output_envelope) or {}
+        else:
+            issues = self._issues_from_outputs(outputs)
+            signals = self.extract_output_signals(output_envelope) or {}
+
+        # Django-side CEL/Basic output-stage assertions against the o.*
+        # signals (e.g. a warnings-tolerant gate: ``o.error_count == 0``).
+        assertion_total = 0
+        assertion_failures = 0
+        if run_context and run_context.step:
+            validator = run_context.step.validator
+            ruleset = run_context.step.ruleset
+            if validator and ruleset:
+                resolved_inputs = self._get_resolved_inputs(run_context)
+                payload = self._build_assertion_payload(
+                    signals,
+                    run_context,
+                    resolved_inputs=resolved_inputs,
+                )
+                payload = self._enrich_basic_payload(
+                    payload,
+                    stage="output",
+                    output_signals=None,
+                )
+                assertion_result = self.evaluate_assertions_for_stage(
+                    validator=validator,
+                    ruleset=ruleset,
+                    payload=payload,
+                    stage="output",
+                )
+                issues.extend(assertion_result.issues)
+                assertion_total = assertion_result.total
+                assertion_failures = assertion_result.failures
+
+        passed = self._determine_passed(
+            output_envelope,
+            assertion_failures=assertion_failures,
+        )
+
+        return ValidationResult(
+            passed=passed,
+            issues=issues,
+            assertion_stats=AssertionStats(
+                total=assertion_total,
+                failures=assertion_failures,
+            ),
+            signals=signals,
+            stats=self._build_stats(outputs),
+        )
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _issues_from_outputs(self, outputs: Any) -> list[ValidationIssue]:
+        """Rebuild findings from structured output per the D10 contract."""
+        pack = get_pack(
+            str(getattr(outputs, "pack_id", "") or ""),
+            str(getattr(outputs, "pack_version", "") or ""),
+        )
+
+        issues: list[ValidationIssue] = []
+        for finding in getattr(outputs, "findings", None) or []:
+            rule_id = str(getattr(finding, "rule_id", "") or "")
+            location = str(getattr(finding, "location_xpath", "") or "")
+            meta: dict[str, Any] = {
+                "location_xpath": location,
+                "flag": getattr(finding, "flag", "") or "",
+                "role": getattr(finding, "role", "") or "",
+                "pack_id": getattr(outputs, "pack_id", "") or "",
+            }
+            rule_url = pack.rule_url(rule_id) if pack else ""
+            if rule_url:
+                meta["rule_url"] = rule_url
+            issues.append(
+                ValidationIssue(
+                    path=location,
+                    message=str(getattr(finding, "message", "") or ""),
+                    severity=_SEVERITY_FROM_STRING.get(
+                        str(getattr(finding, "severity", "") or ""),
+                        # Fail-closed, matching svrl.py: nothing
+                        # publisher-authored is silently downgraded.
+                        Severity.ERROR,
+                    ),
+                    code=rule_id,
+                    meta=meta,
+                ),
+            )
+
+        if getattr(outputs, "findings_truncated", False):
+            suppressed = int(getattr(outputs, "findings_suppressed_count", 0) or 0)
+            issues.append(
+                ValidationIssue(
+                    path="",
+                    message=_(
+                        "Findings were truncated: %(count)d additional "
+                        "findings were suppressed by the findings cap. The "
+                        "counts above reflect the full totals.",
+                    )
+                    % {"count": suppressed},
+                    severity=Severity.WARNING,
+                    code=CODE_FINDINGS_TRUNCATED,
+                    meta={"suppressed_count": suppressed},
+                ),
+            )
+        return issues
+
+    @staticmethod
+    def _engine_failure_issue(outputs: Any) -> ValidationIssue:
+        """Build the single reserved D9 finding for an engine failure.
+
+        Reserved codes (``schematron.engine_timeout`` /
+        ``schematron.artifact_mismatch`` / ``schematron.backend_unavailable``
+        / ``schematron.engine_error``) plus ``meta.infra_error=True`` let the
+        UI/API render this as "we couldn't run the check" — categorically
+        distinct from a rule failure. No rule findings are synthesised.
+        """
+        engine_status = str(getattr(outputs, "engine_status", "") or "")
+        engine_error_code = str(getattr(outputs, "engine_error_code", "") or "")
+        engine_message = str(getattr(outputs, "engine_message", "") or "")
+
+        if engine_status == ENGINE_STATUS_TIMEOUT:
+            code = CODE_ENGINE_TIMEOUT
+            default_message = _(
+                "The Schematron engine timed out before completing. "
+                "This says nothing about whether your document satisfies "
+                "the rules.",
+            )
+        elif engine_error_code == "artifact_mismatch":
+            code = CODE_ARTIFACT_MISMATCH
+            default_message = _(
+                "The rule-pack artefact failed its checksum verification, "
+                "so the rules were not run.",
+            )
+        elif engine_error_code == "backend_unavailable":
+            code = CODE_BACKEND_UNAVAILABLE
+            default_message = _(
+                "The Schematron validation backend is not available in "
+                "this deployment, so the rules were not run.",
+            )
+        else:
+            code = CODE_ENGINE_ERROR
+            default_message = _(
+                "The Schematron engine could not run the rules. "
+                "This says nothing about whether your document satisfies "
+                "the rules.",
+            )
+
+        return ValidationIssue(
+            path="",
+            message=engine_message or default_message,
+            severity=Severity.ERROR,
+            code=code,
+            meta={
+                "infra_error": True,
+                "engine_status": engine_status,
+                "engine_error_code": engine_error_code,
+            },
+        )
+
+    @staticmethod
+    def _build_stats(outputs: Any) -> dict[str, Any]:
+        """Surface run provenance + engine metadata in step-run stats (D5).
+
+        ``pack_id`` + ``pack_version`` alone don't let you reproduce a
+        result; the full checksum/engine set does. These keys land in
+        ``step_run.output`` alongside the serialized envelope.
+        """
+        if outputs is None:
+            return {}
+        stats: dict[str, Any] = {
+            key: getattr(outputs, key, "") or "" for key in _PROVENANCE_KEYS
+        }
+        stats["engine_status"] = getattr(outputs, "engine_status", "") or ""
+        stats["fired_rule_count"] = getattr(outputs, "fired_rule_count", 0)
+        execution_seconds = getattr(outputs, "execution_seconds", None)
+        if execution_seconds is not None:
+            stats["execution_seconds"] = execution_seconds
+        return stats

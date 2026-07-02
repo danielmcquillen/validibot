@@ -232,6 +232,8 @@ class GCPExecutionBackend(ExecutionBackend):
                 return self._execute_fmu(request)
             if validator_type == "SHACL":
                 return self._execute_shacl(request)
+            if validator_type == "SCHEMATRON":
+                return self._execute_schematron(request)
             return ExecutionResponse(
                 execution_id="",
                 is_complete=True,
@@ -297,6 +299,29 @@ class GCPExecutionBackend(ExecutionBackend):
             validator=request.validator,
             submission=request.submission,
             ruleset=ruleset,
+            step=request.step,
+        )
+
+        return self._launch_result_to_response(result)
+
+    def _execute_schematron(self, request: ExecutionRequest) -> ExecutionResponse:
+        """
+        Execute Schematron validation via Cloud Run.
+
+        Delegates to the launcher, which resolves the pack from the library
+        validator's default_ruleset, stages the checksum-verified rule-pack
+        artefact + XML submission to the run bundle, and triggers the
+        isolated Schematron Cloud Run Job (ADR-2026-07-01 D4/D4b).
+        """
+        from validibot.validations.services.cloud_run.launcher import (
+            launch_schematron_validation,
+        )
+
+        result = launch_schematron_validation(
+            run=request.run,
+            validator=request.validator,
+            submission=request.submission,
+            ruleset=request.step.ruleset,
             step=request.step,
         )
 

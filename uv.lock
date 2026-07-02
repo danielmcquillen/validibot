@@ -1012,14 +1012,14 @@ sidecar = [
 
 [[package]]
 name = "drf-spectacular-sidecar"
-version = "2026.6.1"
+version = "2026.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "django" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7f/d8/735b129e7d55c4f6c682ecedfcc0438816e1d859e5e1837f914ac4544f6d/drf_spectacular_sidecar-2026.6.1.tar.gz", hash = "sha256:e159874fa85ccee39b801e260f2a3585fbe36a0c79bf811824eef9010ab98ea9", size = 2589761, upload-time = "2026-06-01T16:45:30.851Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/51/9e038d14bf51a0bd051e8bcb690287349c908fa7ba69021d9f3e5d5ac51f/drf_spectacular_sidecar-2026.7.1.tar.gz", hash = "sha256:40113c4066c7bc3ef15a7ce1c40cda227a907a9986748024a813a9e0595eba25", size = 2593211, upload-time = "2026-07-01T13:39:06.084Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4f/46/10bcaf965edcb70e7647e62b88b9e0de266f8bea7a7a3224e8f977f77eab/drf_spectacular_sidecar-2026.6.1-py3-none-any.whl", hash = "sha256:4560572773c7e5f636d36cd2903204e2c59560af0548da254e311f94458c51a2", size = 2613235, upload-time = "2026-06-01T16:45:29.031Z" },
+    { url = "https://files.pythonhosted.org/packages/9d/76/d08f5c79f7643dbff4512605c28b75481966ed6c8cc9b397c9dd2ee91cd1/drf_spectacular_sidecar-2026.7.1-py3-none-any.whl", hash = "sha256:bc6d50c9b64660e45e09296d39553b3e759eedd825fc41d631ee5b3f88e0c5de", size = 2617384, upload-time = "2026-07-01T13:39:03.787Z" },
 ]
 
 [[package]]
@@ -1054,14 +1054,14 @@ wheels = [
 
 [[package]]
 name = "faker"
-version = "40.27.0"
+version = "40.28.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1a/7b/c62c98764137c949be240ad83f763b6f96cf76055952a3e2835359acc3af/faker-40.27.0.tar.gz", hash = "sha256:f697cf07f461474ad7d511164c21f45317e69f1d531d25f3e0f872b639e346a1", size = 2018361, upload-time = "2026-06-30T18:05:17.775Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/2d/3ead106cef42eab305e15f9c089dcc68a40387d5ce04af18585af4ebbb44/faker-40.28.1.tar.gz", hash = "sha256:2a63fb51abab8790636d4030a094cf942404cbccc9c288d1cad70e2e3e9ecd58", size = 2022717, upload-time = "2026-07-01T22:23:43.763Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c6/b2/788aae329da3d7e4f08f8e1a82e82243c3376c0f3f49b75ae29eea40b371/faker-40.27.0-py3-none-any.whl", hash = "sha256:6099bd6d7bc79041b46c28e100815e2558952bcf384b76ce6c71c8bdca744256", size = 2057897, upload-time = "2026-06-30T18:05:15.555Z" },
+    { url = "https://files.pythonhosted.org/packages/92/a6/6111b9f13c1564b0e2f5dbeeb611fd00dc731e6add2336f62b798598c73d/faker-40.28.1-py3-none-any.whl", hash = "sha256:e8d3f5c469100a553d246dce7937c291308068a5ec6c9c3a228d7878b50720be", size = 2061052, upload-time = "2026-07-01T22:23:41.946Z" },
 ]
 
 [[package]]
@@ -3413,7 +3413,7 @@ requires-dist = [
     { name = "stripe", marker = "extra == 'cloud'", specifier = "==15.3.0" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.49.0" },
     { name = "uvicorn-worker", specifier = "==0.4.0" },
-    { name = "validibot-shared", specifier = "==0.10.0" },
+    { name = "validibot-shared", specifier = "==0.11.0" },
     { name = "whitenoise", specifier = "==6.12.0" },
 ]
 provides-extras = ["cloud", "docker-runner"]
@@ -3443,14 +3443,15 @@ docs = [{ name = "zensical", specifier = "==0.0.46" }]
 
 [[package]]
 name = "validibot-shared"
-version = "0.10.0"
+version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "defusedxml" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cf/53/704b65717dcd12af0490dfdd94880ae19c558b6b01b9d37449654a9e6001/validibot_shared-0.10.0.tar.gz", hash = "sha256:1d5042e8210e336c35864343d79db7e0d7d7305c003d750846304f4f6661f7c6", size = 37721, upload-time = "2026-07-01T02:22:02.995Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/40/2cd5cd07ef38be0ca8d36c8489c07779e66419b05ee5e09aa2b05d853416/validibot_shared-0.11.0.tar.gz", hash = "sha256:6e5b985d632a52a0fdcf1859056a40aae9d1637898b0966619130e25b682c149", size = 48769, upload-time = "2026-07-02T03:54:34.463Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/ba/32458b392e7e1a358f7c5d65cc0050e07f19a708394a4e89971687f7562d/validibot_shared-0.10.0-py3-none-any.whl", hash = "sha256:711153bdb29c0eb02b68c49222890ecd1cb6c628bc803347379eac453d98c57e", size = 35035, upload-time = "2026-07-01T02:22:01.662Z" },
+    { url = "https://files.pythonhosted.org/packages/af/5a/486a9567700a96d62a0bf33be50ffb80770b9a0463b650a61d1af0218377/validibot_shared-0.11.0-py3-none-any.whl", hash = "sha256:af998e547970b205a30853e03c6cb370b7886cc8659d62e36bab745ed8198bd0", size = 44076, upload-time = "2026-07-02T03:54:33.189Z" },
 ]
 
 [[package]]

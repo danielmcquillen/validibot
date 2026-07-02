@@ -4229,6 +4229,14 @@ class TabularStepConfigForm(BaseStepConfigForm):
         return inferred.descriptor
 
 
+# NOTE: Schematron deliberately has NO step-config form (ADR-2026-07-01 D2):
+# pack selection is validator selection. Each vendored pack is a library
+# Validator row (sharing the one Schematron engine config) picked in the
+# step wizard, and get_config_form_class() falls through to
+# BaseStepConfigForm. The per-step assertion ruleset comes from
+# save_workflow_step()'s existing ensure_advanced_ruleset fallback.
+
+
 def get_config_form_class(validation_type: str) -> type[forms.Form]:
     mapping: dict[str, type[forms.Form]] = {
         ValidationType.BASIC: BasicStepConfigForm,

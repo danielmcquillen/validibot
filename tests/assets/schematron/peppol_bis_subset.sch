@@ -3,7 +3,7 @@
   Validibot test fixture — ILLUSTRATIVE Peppol-LAYER subset, *NOT* the
   official OpenPEPPOL rule set.
 
-  Companion to peppol_billing_subset.sch (the EN 16931-like layer): together
+  Companion to en16931_subset.sch (the EN 16931-like layer): together
   they model the two-pack layering of the canonical Peppol pre-flight
   workflow (ADR-2026-07-01 D7) — the EN pack checks core business rules,
   and this pack adds the Peppol-specific requirements on top, exactly as

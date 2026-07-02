@@ -5,7 +5,7 @@
   business rule that only Schematron can express.
 
   SEEDED DEFECT: TaxInclusiveAmount (120.00) != TaxExclusiveAmount (100.00)
-  + TaxAmount (21.00). This trips rule VB-CO-15 in peppol_billing_subset.sch
+  + TaxAmount (21.00). This trips rule VB-CO-15 in en16931_subset.sch
   (the fixture analogue of EN 16931 BR-CO-15). An XSD cannot catch this,
   because the arithmetic relationship between three separate elements is not
   expressible in a grammar. This is exactly why the SchematronValidator exists.

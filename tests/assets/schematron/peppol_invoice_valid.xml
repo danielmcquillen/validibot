@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Validibot test fixture: a well-formed Peppol BIS Billing 3.0 (UBL) invoice
-  that PASSES the illustrative Schematron subset in peppol_billing_subset.sch.
+  that PASSES the illustrative Schematron subset in en16931_subset.sch.
 
   Totals reconcile: TaxExclusive (100.00) + TaxAmount (21.00) = TaxInclusive (121.00).
   This is a hand-built fixture for exercising the SchematronValidator, not a real

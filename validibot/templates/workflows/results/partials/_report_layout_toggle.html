@@ -6,22 +6,38 @@ Report layout toggle — switches the run report between the stacked
 
 Icons only, with the label in a Bootstrap tooltip (initialised globally in
 project.ts on [data-bs-toggle="tooltip"]); aria-label carries the same text for
-screen readers since there is no visible text. Two links rather than JS: each
-carries ``?layout=`` which the rendering view reads via ``resolve_report_layout``
-and persists to the session, so the choice sticks across pages. A full reload is
-fine for a layout preference. The active button reflects the current
-``report_layout`` (anything that isn't "classic" is the stacked default).
+screen readers since there is no visible text. Each button carries ``?layout=``
+which the rendering view reads via ``resolve_report_layout`` and persists to
+the session, so the choice sticks across pages. On the standalone report pages
+a full reload is fine for a layout preference. The active button reflects the
+current ``report_layout`` (anything that isn't "classic" is the stacked
+default).
+
+On the launch page the report lives inside an HTMx-swapped panel
+(``#workflow-run-detail-panel``), so a full ``?layout=`` reload would re-render
+the launch page and lose the report. Callers there pass
+``layout_toggle_hx_url`` (the panel-refresh URL): the buttons then swap the
+panel in place — the layout rides in ``hx-vals`` because the URL may already
+carry query params — and the plain href remains as the no-JS fallback.
 
 Renders just the btn-group — the caller (a card header) positions it. No outer
 spacing wrapper.
 
 Context variables:
   report_layout — "stacked" (default) or "classic".
+  layout_toggle_hx_url — optional. When set, clicks hx-get this URL with the
+      chosen layout and swap ``layout_toggle_hx_target`` instead of
+      navigating.
+  layout_toggle_hx_target — optional swap target selector; defaults to
+      ``#workflow-run-detail-panel``.
 {% endcomment %}
 <div class="btn-group"
      role="group"
      aria-label="{% trans 'Report layout' %}">
   <a href="?layout=stacked"
+     {% if layout_toggle_hx_url %}
+       hx-get="{{ layout_toggle_hx_url }}" hx-vals='{"layout": "stacked"}' hx-target="{{ layout_toggle_hx_target|default:'#workflow-run-detail-panel' }}" hx-swap="innerHTML"
+     {% endif %}
      class="btn
             {% if report_layout != 'classic' %}
               btn-light
@@ -37,6 +53,9 @@ Context variables:
     <i class="bi-list-task"></i>
   </a>
   <a href="?layout=classic"
+     {% if layout_toggle_hx_url %}
+       hx-get="{{ layout_toggle_hx_url }}" hx-vals='{"layout": "classic"}' hx-target="{{ layout_toggle_hx_target|default:'#workflow-run-detail-panel' }}" hx-swap="innerHTML"
+     {% endif %}
      class="btn
             {% if report_layout == 'classic' %}
               btn-light

@@ -8,11 +8,11 @@ other domain folders under `tests/assets/` (`xml/`, `xsd/`, `rng/`, `fmu/`,
 
 | File | Purpose |
 |------|---------|
-| `peppol_billing_subset.sch` | A **tiny, illustrative** ISO Schematron subset — **not** the official EN 16931 / Peppol rule set. Plays the "EN 16931 layer" in the two-pack workflow tests. XSLT 1.0 query binding so it runs under `lxml.isoschematron` with no Saxon dependency. Rule IDs are `VB-*` to avoid being confused with canonical `BR-*` / `PEPPOL-*` IDs. |
+| `en16931_subset.sch` | A **tiny, illustrative** ISO Schematron subset — **not** the official EN 16931 / Peppol rule set. Plays the "EN 16931 layer" (step 1) in the two-step workflow tests. XSLT 1.0 query binding so it runs under `lxml.isoschematron` with no Saxon dependency. Rule IDs are `VB-*` to avoid being confused with canonical `BR-*` / `PEPPOL-*` IDs. |
 | `peppol_bis_subset.sch` | The companion **Peppol-layer** subset (`VB-PEPPOL-*` ids): one rule requiring `ProfileID`, mirroring how OpenPEPPOL's `PEPPOL-EN16931-*` rules layer over CEN's `BR-*` rules (ADR D7). |
 | `peppol_invoice_valid.xml` | Well-formed invoice whose totals reconcile. Expected result: **pass both layers** (0 errors; may emit informational/warning findings only). |
 | `peppol_invoice_invalid.xml` | Well-formed, XSD-valid invoice with a **seeded defect**: `TaxInclusiveAmount` (120.00) ≠ `TaxExclusiveAmount` (100.00) + `TaxAmount` (21.00). Expected result: **fail the EN layer** with one `ERROR` finding carrying rule id `VB-CO-15` (fail-fast: the Peppol layer never runs). |
-| `peppol_invoice_missing_profile.xml` | Totals reconcile (**passes the EN layer**) but `ProfileID` is removed, so the **Peppol layer fails** with `VB-PEPPOL-R001` — proving the two-pack layering reports under each pack's own native ids. |
+| `peppol_invoice_missing_profile.xml` | Totals reconcile (**passes the EN layer**) but `ProfileID` is removed, so the **Peppol layer fails** with `VB-PEPPOL-R001` — proving the two-step layering reports under each rules file's own native ids. |
 
 ## Why these fixtures exist
 

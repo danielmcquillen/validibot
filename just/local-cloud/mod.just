@@ -120,6 +120,15 @@ up *args:
 # Tears down every service defined in docker-compose.cloud.yml — web, worker,
 # postgres, redis, mcp, mailpit, etc. Volumes are preserved so data persists
 # across restarts; use `just local-cloud clean` for a full reset.
+# Run a Django management command in the cloud web container
+# (mirrors `just local manage` — the exec bypasses the entrypoint, so
+# DATABASE_URL is assembled from the POSTGRES_* vars via _db_url).
+# Usage: just local-cloud manage createsuperuser
+# Usage: just local-cloud manage "changepassword admin"
+[no-cd]
+manage +command:
+    docker compose -f {{cloud_compose}} exec web bash -c '{{_db_url}} python manage.py {{command}}'
+
 [no-cd]
 down:
     #!/usr/bin/env bash

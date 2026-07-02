@@ -26,8 +26,13 @@
       {% if is_polling %}
         <span class="text-muted small">started {{ run.created|naturaltime }}</span>
       {% else %}
-        {% comment %} Layout toggle (icons only, tooltips) — only on a finished run. {% endcomment %}
-        {% include "workflows/results/partials/_report_layout_toggle.html" %}
+        {% comment %}
+        Layout toggle (icons only, tooltips) — only on a finished run.
+        The panel-refresh URL makes the toggle swap this HTMx panel in
+        place; a plain ?layout= navigation would re-render the launch
+        page and lose the report.
+        {% endcomment %}
+        {% include "workflows/results/partials/_report_layout_toggle.html" with layout_toggle_hx_url=run_detail_refresh_url %}
       {% endif %}
     </div>
   </div>

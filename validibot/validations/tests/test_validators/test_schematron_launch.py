@@ -33,7 +33,7 @@ if "schematron_text" not in SchematronInputs.model_fields:
 from validibot.validations.validators.schematron import launch
 
 ASSETS = Path("tests/assets/schematron")
-SCH_TEXT = (ASSETS / "peppol_billing_subset.sch").read_text()
+SCH_TEXT = (ASSETS / "en16931_subset.sch").read_text()
 
 
 def _step_ruleset(rules_text: str = SCH_TEXT) -> Ruleset:

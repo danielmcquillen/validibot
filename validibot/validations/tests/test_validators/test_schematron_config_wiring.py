@@ -31,7 +31,7 @@ from validibot.workflows.forms import SchematronStepConfigForm
 from validibot.workflows.forms import get_config_form_class
 
 ASSETS = Path("tests/assets/schematron")
-SCH_TEXT = (ASSETS / "peppol_billing_subset.sch").read_text()
+SCH_TEXT = (ASSETS / "en16931_subset.sch").read_text()
 DOC_URL_TEMPLATE = "https://docs.example.test/rules/#{rule_id}"
 
 

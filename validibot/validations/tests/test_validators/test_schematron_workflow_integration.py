@@ -187,7 +187,7 @@ class TestPeppolPreflightWorkflow(TestCase):
         # Author step 1 through the REAL form: the EN 16931-like rules.
         self.en_step = self._author_step(
             "EN 16931 rules",
-            (ASSETS / "peppol_billing_subset.sch").read_text(),
+            (ASSETS / "en16931_subset.sch").read_text(),
         )
         # Author step 2: the Peppol-layer rules.
         self.peppol_step = self._author_step(

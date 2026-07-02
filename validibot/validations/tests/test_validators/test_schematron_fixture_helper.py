@@ -48,7 +48,7 @@ def _run_subset_pack(invoice_filename: str):
     plus our parser's view of the SVRL report it produced.
     """
     schematron = isoschematron.Schematron(
-        etree.parse(str(ASSETS / "peppol_billing_subset.sch")),
+        etree.parse(str(ASSETS / "en16931_subset.sch")),
         store_report=True,
     )
     document = etree.parse(str(ASSETS / invoice_filename))

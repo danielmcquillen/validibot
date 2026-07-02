@@ -351,7 +351,7 @@ class TestSignalsFeedCelAssertions:
             validation_type=ValidationType.SCHEMATRON,
             is_system=False,
         )
-        rules_text = Path("tests/assets/schematron/peppol_billing_subset.sch")
+        rules_text = Path("tests/assets/schematron/en16931_subset.sch")
         ruleset = RulesetFactory(
             ruleset_type=RulesetType.SCHEMATRON,
             rules_text=rules_text.read_text(),

@@ -1,211 +1,121 @@
-"""Tests for Schematron pack resolution at launch time (ADR-2026-07-01 D4b/D5).
+"""Tests for Schematron rules resolution at launch time (ADR-2026-07-01 D4b).
 
-``resolve_schematron_inputs`` builds the typed container inputs from the
-step's **library validator**: the pack pointer lives on
-``validator.default_ruleset`` (the global pack row the vendoring command
-materialised), mirroring how ``resolve_shacl_inputs`` reads a library
-validator's default ruleset for shapes. These tests pin that resolution and
-its refusal modes — launch must never proceed past a missing, unregistered,
-or drifted pack, because executing an unpinned artefact would void the
-entire provenance story.
+``resolve_schematron_inputs`` builds the typed container inputs by resolving
+the author's rules text — from the step's ruleset (where the step-config
+upload stored it), falling back to the validator's ``default_ruleset`` for
+library validators that bundle rules. The rules ship INLINE (the SHACL
+shapes_text pattern) with a sha256 provenance stamp; a step that resolves to
+no rules refuses to dispatch.
 
-Skips as a module when validibot-shared < 0.11.0 (no
-``validibot_shared.schematron``); activates automatically once the released
-package is synced into the venv.
+Skips as a module when validibot-shared < 0.12.0 (the inline-rules
+contract); activates automatically once the released package is synced.
 """
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+
 import pytest
+from validibot_shared.schematron.envelopes import SchematronInputs
 
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Ruleset
-from validibot.validations.validators.schematron.packs import SchematronPack
-from validibot.validations.validators.schematron.packs import register_pack
-from validibot.validations.validators.schematron.packs import unregister_pack
+from validibot.validations.models import Validator
 
-launch = pytest.importorskip(
-    "validibot.validations.validators.schematron.launch",
-    reason="requires validibot-shared >= 0.11.0 (validibot_shared.schematron)",
-)
-
-PACK_ID = "vb-peppol-subset"
-PACK_VERSION = "0.1.0"
-SOURCE_SHA = "a" * 64
-ARTIFACT_SHA = "b" * 64
-STAGED_URI = "gs://bucket/runs/run-1/pack.xslt"
-
-
-@pytest.fixture
-def vb_pack():
-    """Register a temporary vetted pack for the duration of a test."""
-    pack = SchematronPack(
-        id=PACK_ID,
-        title="VB Peppol subset",
-        version=PACK_VERSION,
-        syntax="ubl",
-        source_url="https://example.test/packs/vb-peppol-subset",
-        license="MIT",
-        query_binding="xslt1",
-        artifact="tests/assets/schematron/peppol_billing_subset.sch",
-        source_sha256=SOURCE_SHA,
-        artifact_sha256=ARTIFACT_SHA,
-        engine="lxml-xslt1",
+if "schematron_text" not in SchematronInputs.model_fields:
+    pytest.skip(
+        "requires validibot-shared >= 0.12.0 (inline Schematron rules contract)",
+        allow_module_level=True,
     )
-    register_pack(pack)
-    yield pack
-    unregister_pack(pack.id, pack.version)
+
+from validibot.validations.validators.schematron import launch
+
+ASSETS = Path("tests/assets/schematron")
+SCH_TEXT = (ASSETS / "peppol_billing_subset.sch").read_text()
 
 
-def _pack_validator(vb_pack):
-    """Build a library pack validator: global pack row as default_ruleset."""
-    from validibot.validations.tests.factories import ValidatorFactory
-
-    pack_ruleset = Ruleset(
-        org=None,
-        name=vb_pack.id,
+def _step_ruleset(rules_text: str = SCH_TEXT) -> Ruleset:
+    """An org-owned step ruleset carrying the author's rules (unsaved OK)."""
+    return Ruleset(
+        name="step-rules",
         ruleset_type=RulesetType.SCHEMATRON,
-        version=vb_pack.version,
-        metadata={"pack_id": vb_pack.id, "pack_version": vb_pack.version},
-    )
-    pack_ruleset.full_clean()
-    pack_ruleset.save()
-    return ValidatorFactory(
-        validation_type=ValidationType.SCHEMATRON,
-        default_ruleset=pack_ruleset,
+        version="1",
+        rules_text=rules_text,
     )
 
 
 @pytest.mark.django_db
 class TestResolveSchematronInputs:
-    def test_resolves_pin_checksums_and_limits_from_the_library_validator(
-        self,
-        vb_pack,
-    ):
-        """The typed inputs carry the pin, checksums, binding, and D8 limits.
+    def test_step_rules_ship_inline_with_provenance_and_limits(self):
+        """The typed inputs carry the rules text, its sha256, and D8 limits.
 
-        The container verifies the staged artefact against
-        ``artifact_sha256`` before executing (D4b) — so the value MUST come
-        from the registry pin via the validator's default_ruleset, never
-        from anything the step or submission could influence.
+        The sha256 computed at dispatch is the run's provenance identity —
+        the container echoes it back so a result can always be tied to the
+        exact rules that produced it.
         """
-        validator = _pack_validator(vb_pack)
+        from validibot.validations.tests.factories import ValidatorFactory
 
+        validator = ValidatorFactory(validation_type=ValidationType.SCHEMATRON)
         inputs = launch.resolve_schematron_inputs(
             validator=validator,
-            artifact_uri=STAGED_URI,
+            ruleset=_step_ruleset(),
         )
 
-        assert inputs.pack_id == PACK_ID
-        assert inputs.pack_version == PACK_VERSION
-        assert inputs.artifact_uri == STAGED_URI
-        assert inputs.artifact_sha256 == ARTIFACT_SHA
-        assert inputs.source_sha256 == SOURCE_SHA
-        assert inputs.query_binding == "xslt1"
-        assert inputs.engine == "lxml-xslt1"
-        # D8 defaults ride along, already clamped Django-side.
+        assert inputs.schematron_text == SCH_TEXT.strip()
+        assert (
+            inputs.schematron_sha256
+            == hashlib.sha256(
+                SCH_TEXT.strip().encode("utf-8"),
+            ).hexdigest()
+        )
         assert inputs.max_findings > 0
         assert inputs.xslt_timeout_seconds > 0
 
-    def test_validator_without_default_ruleset_refuses_to_launch(self):
-        """A pack validator with no default_ruleset fails resolution.
+    def test_library_default_rules_are_the_fallback(self):
+        """A library validator's bundled rules apply when the step has none.
 
-        This state is defensive (``Validator.save()`` auto-creates a
-        default ruleset), but remains reachable — the FK can be nulled by a
-        ruleset deletion — so resolution must still refuse loudly rather
-        than crash or run unpinned. Uses an unsaved instance to model the
-        null-FK state without fighting the save hook.
+        This is the SHACL library-validator pattern: an org can publish a
+        reusable validator whose default_ruleset carries the rules, and
+        steps using it need not upload anything.
         """
-        from validibot.validations.models import Validator
+        from validibot.validations.tests.factories import ValidatorFactory
 
-        validator = Validator(
-            slug="schematron-orphan",
-            name="Orphan pack validator",
+        default_ruleset = Ruleset.objects.create(
+            name="library-rules",
+            ruleset_type=RulesetType.SCHEMATRON,
+            version="1",
+            rules_text=SCH_TEXT,
+        )
+        validator = ValidatorFactory(
+            validation_type=ValidationType.SCHEMATRON,
+            default_ruleset=default_ruleset,
+        )
+
+        inputs = launch.resolve_schematron_inputs(validator=validator, ruleset=None)
+
+        assert "VB-CO-15" in inputs.schematron_text
+
+    def test_no_rules_anywhere_refuses_to_dispatch(self):
+        """A step resolving to no rules raises instead of dispatching.
+
+        The form requires rules at save time, so this guards fixtures,
+        imports, and emptied rulesets: a run with nothing to check must
+        error loudly, never launch a container to validate against nothing.
+        (Built without the factory: ``Validator.save()`` auto-creates an
+        empty default ruleset, which is exactly the no-rules fallback case
+        this exercises.)
+        """
+        validator = Validator.objects.create(
+            slug="schematron-empty",
+            name="Empty schematron validator",
             validation_type=ValidationType.SCHEMATRON,
             version=1,
         )
 
         with pytest.raises(
-            launch.SchematronPackResolutionError,
-            match="no default_ruleset",
+            launch.SchematronRulesResolutionError,
+            match="No Schematron rules",
         ):
-            launch.resolve_schematron_inputs(
-                validator=validator,
-                artifact_uri=STAGED_URI,
-            )
-
-    def test_default_ruleset_without_pack_pointer_refuses_to_launch(self):
-        """A default_ruleset lacking the pack pin fails resolution.
-
-        Guards the factory/fixture path: a Schematron validator whose
-        default ruleset exists but carries no pack pointer (e.g. created by
-        generic tooling) must refuse at launch, not run an unpinned
-        artefact. ValidatorFactory's auto-created default ruleset is exactly
-        this shape.
-        """
-        from validibot.validations.tests.factories import ValidatorFactory
-
-        validator = ValidatorFactory(validation_type=ValidationType.SCHEMATRON)
-
-        with pytest.raises(
-            launch.SchematronPackResolutionError,
-            match="no pack_id/pack_version",
-        ):
-            launch.resolve_schematron_inputs(
-                validator=validator,
-                artifact_uri=STAGED_URI,
-            )
-
-    def test_unregistering_a_pack_after_vendoring_refuses_to_launch(
-        self,
-        vb_pack,
-    ):
-        """A pack row whose registry entry vanished fails resolution.
-
-        ``Ruleset.clean()`` enforced the pin at save time; this guards the
-        launch-time race (registry changed under a saved row). The step must
-        error, not silently run whatever artefact is lying around.
-        """
-        validator = _pack_validator(vb_pack)
-        unregister_pack(PACK_ID, PACK_VERSION)
-        try:
-            with pytest.raises(
-                launch.SchematronPackResolutionError,
-                match="not in the vetted",
-            ):
-                launch.resolve_schematron_inputs(
-                    validator=validator,
-                    artifact_uri=STAGED_URI,
-                )
-        finally:
-            register_pack(vb_pack)  # restore for fixture teardown
-
-    def test_checksum_drift_between_row_and_registry_refuses_to_launch(
-        self,
-        vb_pack,
-    ):
-        """A pack row snapshot disagreeing with the registry pin is refused.
-
-        Defence in depth for the provenance story: if the row says one
-        artefact hash and the registry says another, something moved —
-        never execute a drifted artefact.
-        """
-        validator = _pack_validator(vb_pack)
-        # Simulate drift by tampering the saved snapshot (bypassing clean).
-        ruleset = validator.default_ruleset
-        ruleset.metadata = {
-            **ruleset.metadata,
-            "pack_artifact_sha256": "f" * 64,
-        }
-        ruleset.save(update_fields=["metadata"])
-        validator.refresh_from_db()
-
-        with pytest.raises(
-            launch.SchematronPackResolutionError,
-            match="refusing to run a drifted artefact",
-        ):
-            launch.resolve_schematron_inputs(
-                validator=validator,
-                artifact_uri=STAGED_URI,
-            )
+            launch.resolve_schematron_inputs(validator=validator, ruleset=None)

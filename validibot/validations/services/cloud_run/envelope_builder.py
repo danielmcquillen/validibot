@@ -631,28 +631,18 @@ def build_input_envelope(
         )
 
     if validator.validation_type == ValidationType.SCHEMATRON:
-        # The XML submission is the primary file; the compiled rule-pack
-        # XSLT arrives as a STAGED ARTEFACT REFERENCE (ADR-2026-07-01 D4b):
-        # the dispatch layer verifies + stages the vendored file (Cloud Run
-        # → gs://, local Docker → container file://) and passes its URI via
-        # ``input_file_uris["schematron_artifact_uri"]`` — the same
-        # role-keyed override mechanism as ``fmu_model_uri``. The container
-        # re-verifies the artefact checksum before executing.
+        # The XML submission is the primary file; the author's Schematron
+        # rules travel INLINE in the typed inputs (ADR-2026-07-01 D4b) —
+        # the SHACL shapes_text pattern. ``resolve_schematron_inputs``
+        # reads them from the step's ruleset (where the step-config upload
+        # stored them); the container compiles and runs them in isolation.
         #
         # Imports are deliberately local: ``validibot_shared.schematron``
-        # requires validibot-shared >= 0.11.0, and this branch is the only
+        # requires validibot-shared >= 0.12.0, and this branch is the only
         # part of the envelope builder that touches it.
         submission_uri = step_config.get("primary_file_uri")
         if not submission_uri:
             msg = f"Step {step.id} has no primary_file_uri in config for Schematron"
-            raise ValueError(msg)
-        artifact_uri = step_config.get("schematron_artifact_uri")
-        if not artifact_uri:
-            msg = (
-                f"Step {step.id} has no schematron_artifact_uri — the "
-                f"dispatch layer must stage the pack artefact before "
-                f"building the envelope"
-            )
             raise ValueError(msg)
 
         from validibot_shared.schematron.envelopes import (
@@ -665,7 +655,7 @@ def build_input_envelope(
 
         schematron_inputs = resolve_schematron_inputs(
             validator=validator,
-            artifact_uri=artifact_uri,
+            ruleset=step.ruleset,
         )
         return build_schematron_input_envelope(
             run_id=str(run.id),

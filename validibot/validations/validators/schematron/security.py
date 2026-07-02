@@ -1,7 +1,8 @@
 """Untrusted-input hardening + resource limits (ADR-2026-07-01, D8).
 
-The Schematron *packs* are curated and trusted; the **submitted XML is not**.
-This module owns the Django-side half of the D8 posture:
+Neither input is trusted: the **submitted XML** comes from submitters, and
+the **rules are author-uploaded code** (compiled Schematron is XSLT). This
+module owns the Django-side half of the D8 posture:
 
 - **The hardened submission parse guard** (:func:`assert_submission_is_safe_xml`)
   — the same ``defusedxml`` posture as ``validations/xml_utils.py``
@@ -72,6 +73,10 @@ class SchematronSecurityError(ValueError):
     The message is user-facing: the validator converts it into a clear
     pre-dispatch ValidationError finding rather than a container launch.
     """
+
+
+# The ISO Schematron namespace an uploaded .sch root must declare.
+SCHEMATRON_NS = "http://purl.oclc.org/dsdl/schematron"
 
 
 @dataclass(frozen=True)
@@ -167,6 +172,56 @@ def assert_submission_is_safe_xml(
         ) from exc
 
     _assert_depth_within(root, effective_max_depth)
+
+
+def validate_schematron_source(content: str | bytes | None) -> None:
+    """Authoring-time guard for uploaded Schematron rules (step config).
+
+    Applies the same hardened-XML posture as the submission guard (size and
+    depth caps, defusedxml's no-DTD/no-entities stance) plus one authoring
+    check: the root element must be ``{schematron-ns}schema``, so a stray
+    XSD or random XML file fails at upload with a clear message instead of
+    at run time inside the container. Full compilation happens only in the
+    sandboxed container (compiled Schematron is executable XSLT) — this is
+    the cheap, safe subset Django can check.
+
+    Raises:
+        SchematronSecurityError: With an author-facing message.
+    """
+    if content is None or not str(content).strip():
+        raise SchematronSecurityError(
+            "The Schematron rules are empty — paste rules or upload a .sch file.",
+        )
+
+    raw = content.encode("utf-8") if isinstance(content, str) else content
+    limits = resolve_schematron_limits()
+    if len(raw) > limits.max_input_bytes:
+        raise SchematronSecurityError(
+            f"The Schematron file is too large "
+            f"({len(raw):,} bytes > {limits.max_input_bytes:,} bytes).",
+        )
+
+    try:
+        root = SafeET.fromstring(raw, forbid_dtd=True)
+    except (EntitiesForbidden, ExternalReferenceForbidden, DTDForbidden) as exc:
+        raise SchematronSecurityError(
+            "The Schematron file contains forbidden constructs "
+            "(entities, external references, or DTD declarations).",
+        ) from exc
+    except SafeET.ParseError as exc:
+        raise SchematronSecurityError(
+            f"The Schematron file is not well-formed XML: {exc}",
+        ) from exc
+
+    expected_root = f"{{{SCHEMATRON_NS}}}schema"
+    if root.tag != expected_root:
+        raise SchematronSecurityError(
+            "The uploaded file is not a Schematron schema — the root "
+            "element must be <schema> in the ISO Schematron namespace "
+            f"({SCHEMATRON_NS}).",
+        )
+
+    _assert_depth_within(root, limits.max_input_depth)
 
 
 def _assert_depth_within(root, max_depth: int) -> None:

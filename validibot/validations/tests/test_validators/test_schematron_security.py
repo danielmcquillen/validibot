@@ -121,6 +121,32 @@ def test_empty_and_malformed_submissions_are_rejected():
         assert_submission_is_safe_xml("<open><unclosed></open>")
 
 
+def test_uploaded_schematron_source_is_validated_at_authoring_time():
+    """The step-config guard accepts real .sch and rejects everything else.
+
+    Authors get immediate feedback at upload: a well-formed document with
+    the ISO Schematron root passes; a random XML document (or an XXE
+    payload smuggled as "rules") is rejected with a clear message instead
+    of failing later inside the container.
+    """
+    from validibot.validations.validators.schematron.security import (
+        validate_schematron_source,
+    )
+
+    validate_schematron_source(
+        '<schema xmlns="http://purl.oclc.org/dsdl/schematron">'
+        "<pattern><rule context='/'><assert test='true()'>ok</assert>"
+        "</rule></pattern></schema>",
+    )
+
+    with pytest.raises(SchematronSecurityError, match="root"):
+        validate_schematron_source("<not-schematron/>")
+    with pytest.raises(SchematronSecurityError, match="forbidden constructs"):
+        validate_schematron_source(XXE_PAYLOAD)
+    with pytest.raises(SchematronSecurityError, match="empty"):
+        validate_schematron_source("   ")
+
+
 def test_preprocess_submission_converts_guard_failures_to_validation_errors():
     """The validator's preprocess hook rejects unsafe XML pre-dispatch.
 

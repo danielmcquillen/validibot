@@ -1,14 +1,14 @@
 """Schematron validator — dispatches to the isolated container backend.
 
-The official Schematron rule packs (EN 16931, Peppol BIS) are authored with
-``queryBinding="xslt2"`` and require a Saxon engine executing rule-pack XSLT
-over the untrusted submitted XML. That must never run inside the Django
-worker, so — exactly like SHACL — ``SchematronValidator`` is an
-:class:`AdvancedValidator`: Django resolves the pinned rule pack, stages its
-checksummed artefact, ships a ``SchematronInputEnvelope``, and the
-``validibot-validator-backend-schematron`` container runs Saxon and returns a
-``SchematronOutputEnvelope`` with the parsed SVRL summary. See
-ADR-2026-07-01 (decisions D3/D4/D4b) for the execution model.
+Schematron rules compile to XSLT — a full programming language — so the
+author's uploaded rules are executable code and must never run inside the
+Django worker. Exactly like SHACL, ``SchematronValidator`` is an
+:class:`AdvancedValidator`: Django resolves the rules from the step's
+Ruleset (where the step-config upload stored them), ships them inline in a
+``SchematronInputEnvelope``, and the
+``validibot-validator-backend-schematron`` container compiles + runs them
+under Saxon and returns a ``SchematronOutputEnvelope`` with the parsed SVRL
+summary. See ADR-2026-07-01 (decisions D3/D4/D4b) for the execution model.
 
 There is **one execution path**: this class never runs an XSLT engine
 in-process. The XSLT-1.0 ``lxml.isoschematron`` capability seen in tests is a
@@ -44,7 +44,6 @@ from validibot.validations.validators.base.advanced import AdvancedValidator
 from validibot.validations.validators.base.base import AssertionStats
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
-from validibot.validations.validators.schematron.packs import get_pack
 from validibot.validations.validators.schematron.security import SchematronSecurityError
 from validibot.validations.validators.schematron.security import (
     assert_submission_is_safe_xml,
@@ -64,7 +63,10 @@ logger = logging.getLogger(__name__)
 # as "your invoice is non-compliant".
 CODE_ENGINE_ERROR = "schematron.engine_error"
 CODE_ENGINE_TIMEOUT = "schematron.engine_timeout"
-CODE_ARTIFACT_MISMATCH = "schematron.artifact_mismatch"
+# The author's uploaded rules failed to compile — a workflow-authoring
+# problem, not a fact about the submitted document (still infra_error from
+# the submitter's perspective: the check never ran).
+CODE_RULES_INVALID = "schematron.rules_invalid"
 CODE_BACKEND_UNAVAILABLE = "schematron.backend_unavailable"
 # D10 truncation signal — emitted alongside the kept findings when the
 # document blew the findings cap, so truncation is never silent.
@@ -90,19 +92,14 @@ _SIGNAL_KEYS = (
     "warning_count",
     "fired_rule_count",
     "finding_rule_ids_by_severity",
-    "pack_id",
-    "pack_version",
     "query_binding",
     "engine",
 )
 
 # Provenance keys surfaced in step-run stats (D5: a result is only meaningful
-# if you can point at the exact artefact + engine that produced it).
+# if you can point at the exact rules + engine that produced it).
 _PROVENANCE_KEYS = (
-    "pack_id",
-    "pack_version",
-    "pack_source_sha256",
-    "pack_artifact_sha256",
+    "schematron_sha256",
     "query_binding",
     "engine",
 )
@@ -249,10 +246,7 @@ class SchematronValidator(AdvancedValidator):
 
     def _issues_from_outputs(self, outputs: Any) -> list[ValidationIssue]:
         """Rebuild findings from structured output per the D10 contract."""
-        pack = get_pack(
-            str(getattr(outputs, "pack_id", "") or ""),
-            str(getattr(outputs, "pack_version", "") or ""),
-        )
+        url_template = self._rule_doc_url_template()
 
         issues: list[ValidationIssue] = []
         for finding in getattr(outputs, "findings", None) or []:
@@ -262,9 +256,8 @@ class SchematronValidator(AdvancedValidator):
                 "location_xpath": location,
                 "flag": getattr(finding, "flag", "") or "",
                 "role": getattr(finding, "role", "") or "",
-                "pack_id": getattr(outputs, "pack_id", "") or "",
             }
-            rule_url = pack.rule_url(rule_id) if pack else ""
+            rule_url = self._rule_url(url_template, rule_id)
             if rule_url:
                 meta["rule_url"] = rule_url
             issues.append(
@@ -305,7 +298,7 @@ class SchematronValidator(AdvancedValidator):
         """Build the single reserved D9 finding for an engine failure.
 
         Reserved codes (``schematron.engine_timeout`` /
-        ``schematron.artifact_mismatch`` / ``schematron.backend_unavailable``
+        ``schematron.rules_invalid`` / ``schematron.backend_unavailable``
         / ``schematron.engine_error``) plus ``meta.infra_error=True`` let the
         UI/API render this as "we couldn't run the check" — categorically
         distinct from a rule failure. No rule findings are synthesised.
@@ -321,11 +314,12 @@ class SchematronValidator(AdvancedValidator):
                 "This says nothing about whether your document satisfies "
                 "the rules.",
             )
-        elif engine_error_code == "artifact_mismatch":
-            code = CODE_ARTIFACT_MISMATCH
+        elif engine_error_code == "rules_invalid":
+            code = CODE_RULES_INVALID
             default_message = _(
-                "The rule-pack artefact failed its checksum verification, "
-                "so the rules were not run.",
+                "This step's Schematron rules failed to compile, so the "
+                "submission was not checked. The workflow author needs to "
+                "fix the uploaded rules.",
             )
         elif engine_error_code == "backend_unavailable":
             code = CODE_BACKEND_UNAVAILABLE
@@ -353,13 +347,39 @@ class SchematronValidator(AdvancedValidator):
             },
         )
 
+    def _rule_doc_url_template(self) -> str:
+        """The step's optional rule-documentation URL template (D10).
+
+        Authors validating against a published standard can set
+        ``rule_doc_url_template`` (e.g.
+        ``"https://docs.peppol.eu/poacc/billing/3.0/rules/#{rule_id}"``) in
+        the step config so every finding deep-links to the publisher's own
+        rule text. Stored on the step ruleset's metadata by
+        ``build_schematron_config``.
+        """
+        step = getattr(self.run_context, "step", None) if self.run_context else None
+        ruleset = getattr(step, "ruleset", None)
+        metadata = getattr(ruleset, "metadata", None) or {}
+        return str(metadata.get("rule_doc_url_template") or "")
+
+    @staticmethod
+    def _rule_url(template: str, rule_id: str) -> str:
+        """Build the D10 deep link for one finding (empty when unavailable)."""
+        if not template or not rule_id:
+            return ""
+        try:
+            return template.format(rule_id=rule_id)
+        except (KeyError, IndexError, ValueError):
+            logger.warning("Bad rule_doc_url_template on step ruleset")
+            return ""
+
     @staticmethod
     def _build_stats(outputs: Any) -> dict[str, Any]:
         """Surface run provenance + engine metadata in step-run stats (D5).
 
-        ``pack_id`` + ``pack_version`` alone don't let you reproduce a
-        result; the full checksum/engine set does. These keys land in
-        ``step_run.output`` alongside the serialized envelope.
+        The sha256 of the executed rules plus the engine identity are what
+        make a result reproducible. These keys land in ``step_run.output``
+        alongside the serialized envelope.
         """
         if outputs is None:
             return {}

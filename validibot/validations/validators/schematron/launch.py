@@ -1,84 +1,109 @@
 """Django-side assembly of the typed Schematron container inputs.
 
-Mirrors ``validators/shacl/launch.py``: the container has no database and no
-access to the community repo's vendored pack files, so everything it needs is
-resolved here and shipped in the typed ``SchematronInputs`` (ADR-2026-07-01,
-D4b). Unlike SHACL — which inlines merged shapes *text* — Schematron ships an
-**artefact reference**: the dispatch layer stages the vendored, checksum-
-verified XSLT to run-scoped storage (Cloud Run → ``gs://…``; local Docker →
-container-mounted ``file://…``, see ``staging.py``) and this module packages
-the staged URI together with the pinned checksums so the container can verify
-before executing.
+Mirrors ``validators/shacl/launch.py``: the container has no database, so
+everything it needs is resolved here and shipped in the typed
+``SchematronInputs`` (ADR-2026-07-01, D4b). Like SHACL's ``shapes_text``,
+the author's Schematron rules travel **inline as text** — resolved from the
+step's ``Ruleset`` (where the step-config upload stored them), falling back
+to the validator's ``default_ruleset`` for library validators that bundle
+rules. The container compiles the source itself (SchXslt2 transpiler
+baked into the image) and runs it over the submission.
 
-Pack resolution follows the library attachment (D5): each vendored pack is a
-library ``Validator`` row whose ``default_ruleset`` is the global pack
-``Ruleset`` carrying the pin — resolution reads ``validator.default_ruleset``
-(see ``packs.resolve_pack_for_validator``), exactly as ``resolve_shacl_inputs``
-reads a library validator's default ruleset for shapes. The step's own
-ruleset is the author's assertion surface and plays no part here.
-
-NOTE: this module imports ``validibot_shared.schematron`` (shared >= 0.11.0).
-It is intentionally NOT imported by ``config.py``/``validator.py`` (which
-must be importable at app boot against older shared releases) — only the
-dispatch layer and the launch tests import it. The shared-free half of
-resolution (registry lookups, pointer verification) lives in ``packs.py``.
+NOTE: this module imports ``validibot_shared.schematron`` (shared >= 0.12.0
+for the inline-rules contract). It is intentionally NOT imported by
+``config.py``/``validator.py`` (which must be importable at app boot) —
+only the dispatch layer and the launch tests import it.
 """
 
 from __future__ import annotations
 
+import hashlib
+from typing import TYPE_CHECKING
 from typing import Any
 
 from validibot_shared.schematron.envelopes import SchematronInputs
 
-from validibot.validations.validators.schematron.packs import (
-    SchematronPackResolutionError,
-)
-from validibot.validations.validators.schematron.packs import resolve_pack_for_ruleset
-from validibot.validations.validators.schematron.packs import resolve_pack_for_validator
 from validibot.validations.validators.schematron.security import (
     resolve_schematron_limits,
 )
 
+if TYPE_CHECKING:
+    from validibot.validations.models import Ruleset
+
 __all__ = [
-    "SchematronPackResolutionError",
-    "resolve_pack_for_ruleset",
-    "resolve_pack_for_validator",
+    "SchematronRulesResolutionError",
     "resolve_schematron_inputs",
+    "resolve_schematron_rules",
 ]
+
+
+class SchematronRulesResolutionError(ValueError):
+    """Raised when a step does not resolve to any Schematron rules.
+
+    The step-config form requires rules at save time, so hitting this at
+    launch means the ruleset was emptied or a fixture/import bypassed the
+    form. Either way: refuse to dispatch — a run with no rules to check
+    would be meaningless.
+    """
+
+
+def resolve_schematron_rules(
+    *,
+    validator: Any,
+    ruleset: Ruleset | None,
+) -> str:
+    """Resolve the Schematron source text for a step.
+
+    Resolution order (the SHACL precedent, minus merging — two ``.sch``
+    documents cannot be concatenated the way shape graphs can):
+
+    1. The step's own ruleset (``step.ruleset``) — where the step-config
+       upload stored the author's rules.
+    2. The validator's ``default_ruleset`` — library validators that bundle
+       rules (e.g. an org's reusable "Our EN 16931 profile" validator).
+
+    Raises:
+        SchematronRulesResolutionError: If neither carries rules text.
+    """
+    step_rules = (getattr(ruleset, "rules", "") or "").strip() if ruleset else ""
+    if step_rules:
+        return step_rules
+
+    default_ruleset = getattr(validator, "default_ruleset", None)
+    default_rules = (
+        (getattr(default_ruleset, "rules", "") or "").strip() if default_ruleset else ""
+    )
+    if default_rules:
+        return default_rules
+
+    msg = (
+        "No Schematron rules found on the step's ruleset or the "
+        "validator's default ruleset — upload rules in the step "
+        "configuration before running."
+    )
+    raise SchematronRulesResolutionError(msg)
 
 
 def resolve_schematron_inputs(
     *,
     validator: Any,
-    artifact_uri: str,
+    ruleset: Ruleset | None,
 ) -> SchematronInputs:
     """Build the typed ``SchematronInputs`` for the container.
 
-    Args:
-        validator: The step's library ``Validator`` row (its
-            ``default_ruleset`` carries the pack pointer, D5).
-        artifact_uri: The *staged*, container-visible URI for the compiled
-            XSLT — ``gs://…`` on Cloud Run, ``file://…`` for local Docker —
-            produced by ``staging.verified_pack_artifact_path`` + the
-            dispatch layer's delivery. The container fetches this URI and
-            verifies ``artifact_sha256`` before executing (D4b); it never
-            reads a Django package path.
+    The rules ship inline; the sha256 computed here is the run's
+    provenance identity for the executed rules (echoed back by the
+    container in ``SchematronOutputs.schematron_sha256``).
 
     Raises:
-        SchematronPackResolutionError: If the validator doesn't resolve to a
-            vetted pack (see :func:`packs.resolve_pack_for_validator`).
+        SchematronRulesResolutionError: If the step resolves to no rules.
     """
-    pack = resolve_pack_for_validator(validator)
+    rules_text = resolve_schematron_rules(validator=validator, ruleset=ruleset)
     limits = resolve_schematron_limits()
 
     return SchematronInputs(
-        pack_id=pack.id,
-        pack_version=pack.version,
-        artifact_uri=artifact_uri,
-        artifact_sha256=pack.artifact_sha256,
-        source_sha256=pack.source_sha256,
-        query_binding=pack.query_binding,
-        engine=pack.engine,
+        schematron_text=rules_text,
+        schematron_sha256=hashlib.sha256(rules_text.encode("utf-8")).hexdigest(),
         max_input_bytes=limits.max_input_bytes,
         max_input_depth=limits.max_input_depth,
         xslt_timeout_seconds=limits.xslt_timeout_seconds,

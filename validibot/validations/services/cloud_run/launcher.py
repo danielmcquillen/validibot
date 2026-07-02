@@ -764,33 +764,20 @@ def launch_schematron_validation(
     """
     Launch a Schematron validation via Cloud Run Jobs.
 
-    Mirrors :func:`launch_shacl_validation`, with one addition (ADR-2026-07-01
-    D4b): besides uploading the XML submission, it stages the **vendored,
-    checksum-verified rule-pack artefact** to the run bundle and passes its
-    URI through ``input_file_uris["schematron_artifact_uri"]`` — the pack is
-    resolved from the library validator's ``default_ruleset`` (D5), never
-    from anything the submitter controls. Launch-time failures map to the D9
-    taxonomy (reserved ``schematron.*`` codes + ``meta.infra_error``) so
-    "we couldn't run the rules" never renders as a rule failure.
+    Mirrors :func:`launch_shacl_validation`: the XML submission is uploaded
+    to the run bundle, and the author's Schematron rules travel **inline**
+    in the typed envelope (resolved from the step's ruleset — the SHACL
+    shapes_text pattern, ADR-2026-07-01 D4b). Launch-time failures map to
+    the D9 taxonomy (reserved ``schematron.*`` codes + ``meta.infra_error``)
+    so "we couldn't run the rules" never renders as a rule failure.
     """
-    from validibot.validations.validators.schematron.packs import (
-        SchematronPackResolutionError,
-    )
-    from validibot.validations.validators.schematron.packs import (
-        resolve_pack_for_validator,
-    )
-    from validibot.validations.validators.schematron.staging import (
-        PACK_ARTIFACT_FILENAME,
-    )
-    from validibot.validations.validators.schematron.staging import (
-        verified_pack_artifact_path,
-    )
-    from validibot.validations.validators.schematron.validator import (
-        CODE_ARTIFACT_MISMATCH,
+    from validibot.validations.validators.schematron.launch import (
+        SchematronRulesResolutionError,
     )
     from validibot.validations.validators.schematron.validator import (
         CODE_BACKEND_UNAVAILABLE,
     )
+    from validibot.validations.validators.schematron.validator import CODE_RULES_INVALID
 
     try:
         # 0. Idempotency check.
@@ -803,11 +790,6 @@ def launch_schematron_validation(
         if already_launched:
             return already_launched
 
-        # 1. Resolve + verify the pinned pack artefact BEFORE any upload —
-        # a drifted checkout must fail fast, not ship an unverified XSLT.
-        pack = resolve_pack_for_validator(validator)
-        artifact_path = verified_pack_artifact_path(pack)
-
         org_id = str(run.org.id)
         run_id = str(run.id)
         if settings.GCS_VALIDATION_BUCKET:
@@ -816,10 +798,8 @@ def launch_schematron_validation(
             )
             input_envelope_uri = f"{execution_bundle_uri}/input.json"
             submission_uri = f"{execution_bundle_uri}/submission.xml"
-            artifact_uri = f"{execution_bundle_uri}/{PACK_ARTIFACT_FILENAME}"
             is_gcs = True
             local_submission_path = None
-            local_artifact_path = None
         else:
             # Local dev: store under media/files/runs/<org>/<run>/ for the
             # local-async test path (the normal self-hosted path uses the
@@ -831,12 +811,11 @@ def launch_schematron_validation(
             execution_bundle_uri = str(base_dir)
             input_envelope_uri = str(base_dir / "input.json")
             local_submission_path = base_dir / "submission.xml"
-            local_artifact_path = base_dir / PACK_ARTIFACT_FILENAME
             submission_uri = f"file://{local_submission_path}"
-            artifact_uri = f"file://{local_artifact_path}"
             is_gcs = False
 
-        # 2. Stage the submission and the pack artefact into the run bundle.
+        # 1. Upload the XML submission (the rules need no staging — they
+        # ship inline in the envelope below).
         content = submission.get_content()
         content_bytes = content.encode("utf-8") if isinstance(content, str) else content
         if is_gcs:
@@ -846,23 +825,16 @@ def launch_schematron_validation(
                 uri=submission_uri,
                 content_type="application/xml",
             )
-            logger.info("Staging Schematron pack artefact to %s", artifact_uri)
-            upload_file(
-                content=artifact_path.read_bytes(),
-                uri=artifact_uri,
-                content_type="application/xslt+xml",
-            )
         else:
             local_submission_path.write_bytes(content_bytes)
-            local_artifact_path.write_bytes(artifact_path.read_bytes())
 
-        # 3. Callback + idempotency key.
+        # 2. Callback + idempotency key.
         callback_url = build_validation_callback_url()
         callback_id = f"step-run-{current_step_run.id}"
 
-        # 4. Build the typed envelope via the shared builder (the SCHEMATRON
-        # branch resolves the pack pin from validator.default_ruleset and
-        # reads both URIs from input_file_uris).
+        # 3. Build the typed envelope via the shared builder (the SCHEMATRON
+        # branch resolves the rules text from the step's ruleset and ships
+        # it inline in SchematronInputs).
         from validibot.validations.services.cloud_run.envelope_builder import (
             build_input_envelope,
         )
@@ -872,13 +844,10 @@ def launch_schematron_validation(
             callback_url=callback_url,
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
-            input_file_uris={
-                "primary_file_uri": submission_uri,
-                "schematron_artifact_uri": artifact_uri,
-            },
+            input_file_uris={"primary_file_uri": submission_uri},
         )
 
-        # 5. Upload the input envelope.
+        # 4. Upload the input envelope.
         if is_gcs:
             upload_envelope(envelope, input_envelope_uri)
         else:
@@ -886,7 +855,7 @@ def launch_schematron_validation(
 
             upload_envelope_local(envelope, Path(input_envelope_uri))
 
-        # 6. Trigger the Cloud Run Job. Job name comes from ValidatorConfig,
+        # 5. Trigger the Cloud Run Job. Job name comes from ValidatorConfig,
         # gated by the same image policy as the other advanced launchers.
         job_name = _resolve_cloud_run_job_name("SCHEMATRON")
 
@@ -939,23 +908,19 @@ def launch_schematron_validation(
             "execution_name": execution_name,
             "input_uri": input_envelope_uri,
             "execution_bundle_uri": execution_bundle_uri,
-            # Full provenance of the staged artefact (D5) — recorded at
-            # launch so the run is auditable even if the callback never
-            # arrives.
-            "pack_id": pack.id,
-            "pack_version": pack.version,
-            "pack_source_sha256": pack.source_sha256,
-            "pack_artifact_sha256": pack.artifact_sha256,
+            # Provenance of the executed rules (D5) — recorded at launch so
+            # the run is auditable even if the callback never arrives.
+            "schematron_sha256": envelope.inputs.schematron_sha256,
             "signals": {},  # populated on callback; reserved for downstream steps
         }
         return ValidationResult(passed=None, issues=[], stats=stats)
 
-    except SchematronPackResolutionError as exc:
-        # D9: a pack that can't be resolved/verified is an infrastructure
-        # failure — the rules were never run, and this must not read as
-        # "your document failed the rules".
+    except SchematronRulesResolutionError as exc:
+        # D9: a step with no resolvable rules is an authoring problem — the
+        # rules were never run, and this must not read as "your document
+        # failed the rules".
         logger.exception(
-            "Schematron pack resolution failed for run %s",
+            "Schematron rules resolution failed for run %s",
             run.id,
         )
         issues = [
@@ -963,7 +928,7 @@ def launch_schematron_validation(
                 path="",
                 message=str(exc),
                 severity=Severity.ERROR,
-                code=CODE_ARTIFACT_MISMATCH,
+                code=CODE_RULES_INVALID,
                 meta={"infra_error": True},
             ),
         ]

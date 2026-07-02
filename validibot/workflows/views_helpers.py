@@ -124,9 +124,9 @@ def get_validator_operation_display(
         ValidationType.SCHEMATRON: {
             "label": _("Schematron Validation"),
             "description": _(
-                "Runs the selected curated Schematron rule pack against "
-                "the submitted XML document before any step assertions "
-                "run, reporting failed rules by their native IDs.",
+                "Runs the step's uploaded Schematron rules against the "
+                "submitted XML document before any step assertions run, "
+                "reporting failed rules by their native IDs.",
             ),
         },
         ValidationType.SHACL: {
@@ -599,6 +599,71 @@ def build_xml_schema_config(
         "schema_type": schema_type,
         "schema_text_preview": preview,
         "schema_type_label": str(XMLSchemaType(schema_type).label),
+    }
+    return config, ruleset
+
+
+def build_schematron_config(
+    workflow: Workflow,
+    form: forms.Form,
+    step: WorkflowStep | None,
+) -> tuple[dict[str, Any], Ruleset]:
+    """Materialise a Schematron step config + Ruleset from form data.
+
+    Parallels :func:`build_xml_schema_config`: the author's Schematron
+    source (pasted or uploaded, already validated by the form) is stored in
+    ``Ruleset.rules_text``; editing with both fields blank keeps the saved
+    rules. ``metadata`` records the source's sha256 (the run-provenance
+    identity the container echoes back) and the optional
+    ``rule_doc_url_template`` for D10 deep links.
+    """
+    import hashlib as _hashlib
+
+    source = form.cleaned_data.get("schematron_source")
+    url_template = (form.cleaned_data.get("rule_doc_url_template") or "").strip()
+
+    if source == "keep" and step and step.ruleset_id:
+        ruleset = step.ruleset
+        metadata = dict(ruleset.metadata or {})
+        metadata["rule_doc_url_template"] = url_template
+        ruleset.metadata = metadata
+        ruleset.full_clean()
+        ruleset.save(update_fields=["metadata"])
+        preview = (step.display_settings or {}).get("schematron_preview", "")
+        config = {
+            "schematron_source": "keep",
+            "schematron_preview": preview,
+        }
+        return config, ruleset
+
+    payload = form.cleaned_data.get("schematron_payload") or ""
+    if not payload.strip():
+        raise ValidationError(
+            _("Paste Schematron rules or upload a .sch file."),
+        )
+
+    ruleset = ensure_ruleset(
+        workflow=workflow,
+        step=step,
+        ruleset_type=RulesetType.SCHEMATRON,
+    )
+    ruleset.rules_text = payload
+    if ruleset.rules_file:
+        ruleset.rules_file.delete(save=False)
+    ruleset.rules_file = None
+
+    metadata = dict(ruleset.metadata or {})
+    metadata["schematron_sha256"] = _hashlib.sha256(
+        payload.encode("utf-8"),
+    ).hexdigest()
+    metadata["rule_doc_url_template"] = url_template
+    ruleset.metadata = metadata
+    ruleset.full_clean()
+    ruleset.save()
+
+    config = {
+        "schematron_source": source,
+        "schematron_preview": payload[:1200],
     }
     return config, ruleset
 
@@ -1706,10 +1771,8 @@ def save_workflow_step(
         config, ruleset = build_json_schema_config(workflow, form, step)
     elif vtype == ValidationType.XML_SCHEMA:
         config, ruleset = build_xml_schema_config(workflow, form, step)
-    # NOTE: SCHEMATRON deliberately has no branch (ADR-2026-07-01 D2/D5):
-    # pack selection is validator selection (library Validator rows carry the
-    # pack via default_ruleset), and the ensure_advanced_ruleset fallback
-    # below creates the per-step assertion ruleset.
+    elif vtype == ValidationType.SCHEMATRON:
+        config, ruleset = build_schematron_config(workflow, form, step)
     elif vtype == ValidationType.SHACL:
         config, ruleset = build_shacl_config(
             workflow,

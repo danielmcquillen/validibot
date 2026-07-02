@@ -10,21 +10,24 @@ fed with **canned output envelopes** — no engine ever runs here:
    nulls the rule counts on an engine failure so a CEL gate can never read
    fake zeros (D9).
 3. ``post_execute_validate`` rebuilds findings with the D10 contract —
-   ``code`` = native rule id, ``meta`` carrying the location XPath and the
-   publisher deep link — and maps engine failures to the single reserved
-   ``schematron.*`` finding with ``meta.infra_error`` (D9): "we couldn't run
-   the check" must never render as "your invoice failed the rules".
+   ``code`` = native rule id, ``meta`` carrying the location XPath and (when
+   the step configures a documentation-URL template) a deep link — and maps
+   engine failures to the single reserved ``schematron.*`` finding with
+   ``meta.infra_error`` (D9): "we couldn't run the check" must never render
+   as "your document failed the rules".
 4. The signal surface actually feeds CEL: an ``o.error_count == 0`` output
    assertion passes/fails with the envelope (ADR test-plan item 4).
 
-Skips as a module when validibot-shared < 0.11.0 (no
-``validibot_shared.schematron``); the tests activate automatically once the
-released package is synced into the venv.
+Skips as a module when validibot-shared < 0.12.0 (the inline-rules
+contract); activates automatically once the released package is synced.
 """
 
 from __future__ import annotations
 
 import pytest
+from validibot_shared.schematron.envelopes import SchematronFinding
+from validibot_shared.schematron.envelopes import SchematronOutputEnvelope
+from validibot_shared.schematron.envelopes import SchematronOutputs
 from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
 from validibot_shared.validations.envelopes import ValidationMessage
 from validibot_shared.validations.envelopes import ValidationStatus
@@ -35,10 +38,6 @@ from validibot.validations.constants import AssertionType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
-from validibot.validations.validators.schematron.packs import SchematronPack
-from validibot.validations.validators.schematron.packs import register_pack
-from validibot.validations.validators.schematron.packs import unregister_pack
-from validibot.validations.validators.schematron.validator import CODE_ARTIFACT_MISMATCH
 from validibot.validations.validators.schematron.validator import (
     CODE_BACKEND_UNAVAILABLE,
 )
@@ -46,15 +45,14 @@ from validibot.validations.validators.schematron.validator import CODE_ENGINE_TI
 from validibot.validations.validators.schematron.validator import (
     CODE_FINDINGS_TRUNCATED,
 )
+from validibot.validations.validators.schematron.validator import CODE_RULES_INVALID
 from validibot.validations.validators.schematron.validator import SchematronValidator
 
-schematron_envelopes = pytest.importorskip(
-    "validibot_shared.schematron.envelopes",
-    reason="requires validibot-shared >= 0.11.0 (validibot_shared.schematron)",
-)
-SchematronFinding = schematron_envelopes.SchematronFinding
-SchematronOutputEnvelope = schematron_envelopes.SchematronOutputEnvelope
-SchematronOutputs = schematron_envelopes.SchematronOutputs
+if "schematron_sha256" not in SchematronOutputs.model_fields:
+    pytest.skip(
+        "requires validibot-shared >= 0.12.0 (inline Schematron rules contract)",
+        allow_module_level=True,
+    )
 
 # Catalog signal keys the Schematron ValidatorConfig declares.
 # extract_output_signals must return exactly these ("catalog is the contract").
@@ -64,43 +62,14 @@ CATALOG_SIGNAL_KEYS = {
     "warning_count",
     "fired_rule_count",
     "finding_rule_ids_by_severity",
-    "pack_id",
-    "pack_version",
     "query_binding",
     "engine",
 }
 
-PACK_ID = "vb-peppol-subset"
-PACK_VERSION = "0.1.0"
+RULES_SHA = "b" * 64
 SUPPRESSED_COUNT = 7
 FIRED_RULES = 3
-
-
-@pytest.fixture
-def vb_pack():
-    """Register a temporary vetted pack (with a doc-URL template) and clean up.
-
-    The D10 deep-link mapping resolves ``rule_url`` through the pack
-    registry, so tests that assert on ``meta['rule_url']`` need a registered
-    pack matching the envelope's pack_id/pack_version.
-    """
-    pack = SchematronPack(
-        id=PACK_ID,
-        title="VB Peppol subset",
-        version=PACK_VERSION,
-        syntax="ubl",
-        source_url="https://example.test/packs/vb-peppol-subset",
-        license="MIT",
-        query_binding="xslt1",
-        artifact="tests/assets/schematron/peppol_billing_subset.sch",
-        source_sha256="a" * 64,
-        artifact_sha256="b" * 64,
-        engine="lxml-xslt1",
-        rule_doc_url_template="https://docs.example.test/rules/#{rule_id}",
-    )
-    register_pack(pack)
-    yield pack
-    unregister_pack(pack.id, pack.version)
+DOC_URL_TEMPLATE = "https://docs.example.test/rules/#{rule_id}"
 
 
 def _outputs(**overrides) -> SchematronOutputs:
@@ -114,12 +83,9 @@ def _outputs(**overrides) -> SchematronOutputs:
         "fired_rule_count": FIRED_RULES,
         "finding_rule_ids_by_severity": {},
         "findings": [],
-        "pack_id": PACK_ID,
-        "pack_version": PACK_VERSION,
-        "pack_source_sha256": "a" * 64,
-        "pack_artifact_sha256": "b" * 64,
-        "query_binding": "xslt1",
-        "engine": "SaxonC-HE 12.5",
+        "schematron_sha256": RULES_SHA,
+        "query_binding": "xslt2",
+        "engine": "SaxonC-HE 12.9",
         "execution_seconds": 0.2,
     }
     base.update(overrides)
@@ -170,8 +136,8 @@ def test_schematron_is_an_advanced_validation_type():
     """SCHEMATRON must route to the container processor, never in-process.
 
     ``get_step_processor`` keys off ADVANCED_VALIDATION_TYPES; without
-    membership, Schematron would run in the worker — the Saxon/XSLT isolation
-    D4 exists to prevent.
+    membership, Schematron would run in the worker — uploaded rules are
+    executable XSLT, the exact thing the D4 isolation exists to contain.
     """
     assert ValidationType.SCHEMATRON in ADVANCED_VALIDATION_TYPES
 
@@ -182,9 +148,9 @@ def test_schematron_is_an_advanced_validation_type():
 def test_extract_output_signals_returns_catalog_keys_only():
     """Signals are exactly the catalog keys — no envelope-field leakage.
 
-    ``info_count``/``execution_seconds``/checksums are outputs but NOT
-    catalog signals; leaking them into ``o.*`` would break the "catalog is
-    the contract" invariant every advanced validator holds.
+    ``info_count``/``execution_seconds``/``schematron_sha256`` are outputs
+    but NOT catalog signals; leaking them into ``o.*`` would break the
+    "catalog is the contract" invariant every advanced validator holds.
     """
     envelope = _envelope(status=ValidationStatus.SUCCESS, outputs=_outputs())
     signals = SchematronValidator().extract_output_signals(envelope)
@@ -192,7 +158,7 @@ def test_extract_output_signals_returns_catalog_keys_only():
     assert set(signals) == CATALOG_SIGNAL_KEYS
     assert signals["passed"] is True
     assert signals["error_count"] == 0
-    assert signals["pack_id"] == PACK_ID
+    assert signals["engine"] == "SaxonC-HE 12.9"
 
 
 def test_extract_output_signals_none_when_no_outputs():
@@ -219,19 +185,17 @@ def test_engine_failure_nulls_rule_signals_instead_of_fake_zeros():
     assert signals["warning_count"] is None
     assert signals["fired_rule_count"] is None
     assert signals["finding_rule_ids_by_severity"] == {}
-    # Provenance still flows — you can see WHICH pack failed to run.
-    assert signals["pack_id"] == PACK_ID
 
 
 # ── post_execute_validate: the D10 findings contract ─────────────────────────
 
 
-def test_findings_carry_native_rule_id_location_and_deep_link(vb_pack):
-    """Findings map with code=rule id and meta carrying location + rule_url.
+def test_findings_carry_native_rule_id_and_location():
+    """Findings map with code=rule id and meta carrying the location XPath.
 
     The feature's value proposition is actionable, cross-referenceable rule
-    ids: ``ValidationFinding.code`` holds the publisher's id verbatim and
-    ``meta['rule_url']`` deep-links to the publisher's own rule text (D10).
+    ids: ``ValidationFinding.code`` holds the rule's id verbatim and the
+    SVRL location points at the offending element.
     """
     envelope = _envelope(
         status=ValidationStatus.FAILED_VALIDATION,
@@ -245,27 +209,24 @@ def test_findings_carry_native_rule_id_location_and_deep_link(vb_pack):
     assert finding.path == "/Invoice/LegalMonetaryTotal"
     assert finding.meta["location_xpath"] == "/Invoice/LegalMonetaryTotal"
     assert finding.meta["flag"] == "fatal"
-    assert finding.meta["pack_id"] == PACK_ID
-    assert finding.meta["rule_url"] == "https://docs.example.test/rules/#VB-CO-15"
+    # No step context → no documentation template → no deep link.
+    assert "rule_url" not in finding.meta
 
 
 def test_clean_run_passes_and_records_provenance_stats():
-    """A clean run passes and stats carry the full D5 provenance set.
+    """A clean run passes and stats carry the D5 provenance set.
 
-    pack id/version alone don't let you reproduce a result — the checksums,
-    query binding, and engine version do. They land in step-run stats.
+    The sha256 of the executed rules + the engine identity are what make a
+    result reproducible. They land in step-run stats.
     """
     envelope = _envelope(status=ValidationStatus.SUCCESS, outputs=_outputs())
     result = SchematronValidator().post_execute_validate(envelope, run_context=None)
 
     assert result.passed is True
     assert result.issues == []
-    assert result.stats["pack_id"] == PACK_ID
-    assert result.stats["pack_version"] == PACK_VERSION
-    assert result.stats["pack_source_sha256"] == "a" * 64
-    assert result.stats["pack_artifact_sha256"] == "b" * 64
-    assert result.stats["query_binding"] == "xslt1"
-    assert result.stats["engine"] == "SaxonC-HE 12.5"
+    assert result.stats["schematron_sha256"] == RULES_SHA
+    assert result.stats["query_binding"] == "xslt2"
+    assert result.stats["engine"] == "SaxonC-HE 12.9"
     assert result.stats["engine_status"] == "ok"
 
 
@@ -276,8 +237,7 @@ def test_truncated_findings_surface_an_explicit_marker():
     row states how many findings were suppressed, so "clean-ish" and
     "thousands of errors, capped" can never look the same.
     """
-    outputs = _invalid_outputs()
-    outputs = outputs.model_copy(
+    outputs = _invalid_outputs().model_copy(
         update={
             "findings_truncated": True,
             "findings_suppressed_count": SUPPRESSED_COUNT,
@@ -299,7 +259,7 @@ def test_truncated_findings_surface_an_explicit_marker():
     ("engine_status", "engine_error_code", "expected_code"),
     [
         ("timeout", "", CODE_ENGINE_TIMEOUT),
-        ("error", "artifact_mismatch", CODE_ARTIFACT_MISMATCH),
+        ("error", "rules_invalid", CODE_RULES_INVALID),
         ("error", "backend_unavailable", CODE_BACKEND_UNAVAILABLE),
     ],
 )
@@ -310,10 +270,10 @@ def test_engine_failures_produce_one_reserved_infra_finding(
 ):
     """Engine failures yield ONE reserved finding flagged infra_error (D9).
 
-    'We couldn't run the rules' ≠ 'your invoice failed the rules'. The
-    reserved non-rule code + ``meta.infra_error`` is what lets UI/API render
-    these as infrastructure problems; no business-rule findings may be
-    synthesised alongside them.
+    'We couldn't run the rules' ≠ 'your document failed the rules'. That
+    includes ``rules_invalid`` — the author's uploaded rules failing to
+    compile is an authoring problem, and the submitter's document must not
+    be branded non-compliant because of it.
     """
     envelope = _envelope(
         status=ValidationStatus.FAILED_RUNTIME,
@@ -331,7 +291,6 @@ def test_engine_failures_produce_one_reserved_infra_finding(
     assert finding.code == expected_code
     assert finding.severity == Severity.ERROR
     assert finding.meta["infra_error"] is True
-    # No rule ids anywhere: the run says nothing about rule compliance.
     assert result.signals["finding_rule_ids_by_severity"] == {}
 
 
@@ -360,7 +319,7 @@ def test_runtime_failure_without_outputs_preserves_envelope_messages():
     assert "failed before producing results" in result.issues[0].message
 
 
-# ── Signals → CEL (ADR test-plan item 4) ─────────────────────────────────────
+# ── Signals → CEL + the D10 deep link (DB-backed) ────────────────────────────
 
 
 @pytest.mark.django_db
@@ -370,11 +329,15 @@ class TestSignalsFeedCelAssertions:
     A warnings-tolerant gate (``o.error_count == 0``) is the flagship D1
     authoring pattern; this test runs it through the actual assertion
     pipeline (DB rows, evaluator registry, CEL context) — not a mock — for
-    both a passing and a failing envelope.
+    both a passing and a failing envelope. The failing case also proves the
+    D10 deep link: the step's ``rule_doc_url_template`` turns the finding's
+    native id into a publisher-docs URL.
     """
 
     def _run_context_with_cel_gate(self):
-        """Build a Schematron step whose ruleset carries the CEL gate."""
+        """Build a Schematron step whose ruleset carries rules + the gate."""
+        from pathlib import Path
+
         from validibot.actions.protocols import RunContext
         from validibot.submissions.constants import SubmissionFileType
         from validibot.submissions.tests.factories import SubmissionFactory
@@ -388,9 +351,11 @@ class TestSignalsFeedCelAssertions:
             validation_type=ValidationType.SCHEMATRON,
             is_system=False,
         )
+        rules_text = Path("tests/assets/schematron/peppol_billing_subset.sch")
         ruleset = RulesetFactory(
             ruleset_type=RulesetType.SCHEMATRON,
-            rules_text="",
+            rules_text=rules_text.read_text(),
+            metadata={"rule_doc_url_template": DOC_URL_TEMPLATE},
         )
         RulesetAssertion.objects.create(
             ruleset=ruleset,
@@ -423,8 +388,8 @@ class TestSignalsFeedCelAssertions:
         assert result.assertion_stats.total == 1
         assert result.assertion_stats.failures == 0
 
-    def test_gate_fails_for_envelope_with_rule_errors(self):
-        """error_count == 1 → the CEL gate fails alongside the rule finding."""
+    def test_gate_fails_and_finding_carries_the_deep_link(self):
+        """error_count == 1 → the gate fails; the finding deep-links (D10)."""
         run_context = self._run_context_with_cel_gate()
         envelope = _envelope(
             status=ValidationStatus.FAILED_VALIDATION,
@@ -437,6 +402,6 @@ class TestSignalsFeedCelAssertions:
         )
 
         assert result.passed is False
-        assert result.assertion_stats.total == 1
         assert result.assertion_stats.failures == 1
-        assert any("rule errors" in i.message for i in result.issues)
+        finding = next(i for i in result.issues if i.code == "VB-CO-15")
+        assert finding.meta["rule_url"] == ("https://docs.example.test/rules/#VB-CO-15")

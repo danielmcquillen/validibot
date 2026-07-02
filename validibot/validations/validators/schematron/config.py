@@ -39,17 +39,18 @@ config = ValidatorConfig(
     slug="schematron-validator",
     name="Schematron Validator",
     short_description=(
-        "Run a curated Schematron rule pack (e.g. EN 16931, Peppol BIS "
-        "Billing 3.0) against an XML submission and report failed rules "
+        "Validate XML submissions against your uploaded Schematron rules "
+        "(e.g. EN 16931, Peppol BIS Billing 3.0) and report failed rules "
         "by their native IDs."
     ),
     description=(
-        "Validate XML documents against curated, version-pinned Schematron "
-        "rule packs — the publishers' own business rules, preserving native "
-        "rule identifiers like BR-CO-15 and PEPPOL-EN16931-R010. Pairs with "
-        "an XML Schema step for a complete structural + business-rule "
-        "pre-flight. This is a pre-flight developer aid, not a certification "
-        "of compliance."
+        "Run Schematron business rules against XML documents. Upload the "
+        "rules in the step configuration — for example a published "
+        "standard's official .sch file — and findings preserve the native "
+        "rule identifiers like BR-CO-15 and PEPPOL-EN16931-R010. Pairs "
+        "with an XML Schema step for a complete structural + business-rule "
+        "pre-flight. This is a pre-flight developer aid, not a "
+        "certification of compliance."
     ),
     validation_type=ValidationType.SCHEMATRON,
     validator_class=(
@@ -154,37 +155,17 @@ config = ValidatorConfig(
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
         ),
-        # ── Provenance of the exact executed artefact (D5) ──
-        CatalogEntrySpec(
-            slug="pack_id",
-            label="Pack ID",
-            entry_type=CatalogEntryType.SIGNAL,
-            run_stage=CatalogRunStage.OUTPUT,
-            data_type=CatalogValueType.STRING,
-            description="Identifier of the executed rule pack.",
-            order=60,
-            source_kind=SignalSourceKind.INTERNAL,
-            is_path_editable=False,
-        ),
-        CatalogEntrySpec(
-            slug="pack_version",
-            label="Pack Version",
-            entry_type=CatalogEntryType.SIGNAL,
-            run_stage=CatalogRunStage.OUTPUT,
-            data_type=CatalogValueType.STRING,
-            description="Pinned version of the executed rule pack.",
-            order=70,
-            source_kind=SignalSourceKind.INTERNAL,
-            is_path_editable=False,
-        ),
+        # ── Provenance of the executed rules (D5) ──
         CatalogEntrySpec(
             slug="query_binding",
             label="Query Binding",
             entry_type=CatalogEntryType.SIGNAL,
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.STRING,
-            description="Schematron query binding of the pack (xslt1/xslt2).",
-            order=80,
+            description=(
+                "Query binding detected from the uploaded rules (xslt1/xslt2)."
+            ),
+            order=60,
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
         ),
@@ -195,10 +176,10 @@ config = ValidatorConfig(
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.STRING,
             description=(
-                "XSLT engine (name + version) that executed the pack, "
-                "e.g. 'SaxonC-HE 12.5'."
+                "XSLT engine (name + version) that executed the rules, "
+                "e.g. 'SaxonC-HE 12.9'."
             ),
-            order=90,
+            order=70,
             source_kind=SignalSourceKind.INTERNAL,
             is_path_editable=False,
         ),

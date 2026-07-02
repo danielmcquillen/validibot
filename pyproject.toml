@@ -106,7 +106,13 @@ dependencies = [
   # SHACLOutputEnvelope, SHACLInputs/SHACLOutputs, SHACLFinding,
   # SHACLSparqlAssertionSpec) plus ValidatorType.SHACL and RDF MIME types —
   # the contract for running SHACL in the isolated container backend.
-  "validibot-shared==0.11.0",
+  # 0.12.0 is the Schematron contract (ADR-2026-07-01, upload model):
+  # SchematronInputs ship the author's rules inline as ``schematron_text``
+  # (the SHACL shapes_text pattern), SchematronOutputs carry the D9
+  # engine-status taxonomy + SVRL summary, and the canonical SVRL parser
+  # (``validibot_shared.schematron.svrl``) lives here so Django and the
+  # container backend parse SVRL identically.
+  "validibot-shared==0.12.0",
   "django-csp==4.0",
   "django-permissions-policy==4.32.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in

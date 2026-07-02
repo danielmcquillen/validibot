@@ -1,240 +1,207 @@
-"""Tests for Schematron pack wiring: the two-sided Ruleset guard + step flow.
+"""Tests for Schematron step authoring: form, Ruleset storage, save flow.
 
-Covers the ADR-2026-07-01 D5 data model at the DB/authoring layer. A pack is
-**library content**: each vendored pack is a library ``Validator`` row whose
-``default_ruleset`` is the global (`org=None`) pack ``Ruleset`` row. The
-step's own ruleset is the author's assertion surface. That split gives
-``Ruleset.clean()`` a two-sided contract:
+Under the upload model (ADR-2026-07-01, revised D5) a Schematron step is
+authored exactly like an XML Schema step: the author pastes or uploads
+their rules, the step's Ruleset stores the source, and the existing
+ruleset-immutability gate protects locked workflows. These tests pin that
+authoring surface:
 
-- **Global SCHEMATRON rows** (pack rows) must reference a pack registered in
-  ``packs.py`` with matching checksums — matching pins are denormalized into
-  metadata as the provenance snapshot. A hand-crafted row cannot smuggle in
-  an un-vetted artefact.
-- **Org-owned SCHEMATRON rows** (per-step assertion surfaces created by
-  ``ensure_advanced_ruleset``) need no pack pointer, and — like the global
-  rows — may never carry inline rule content (arbitrary Schematron is
-  arbitrary XSLT, i.e. code execution).
-
-Also proves the step-authoring flow needs no Schematron-specific wiring:
-``get_config_form_class`` falls through to ``BaseStepConfigForm`` and
-``save_workflow_step`` creates the per-step assertion ruleset via its
-existing ``ensure_advanced_ruleset`` fallback (ADR D2: pack selection is
-validator selection).
+- ``SchematronStepConfigForm`` accepts pasted/uploaded ``.sch``, keeps the
+  saved rules on blank edits, and rejects non-Schematron content at upload.
+- ``Ruleset.clean()`` requires rules content on SCHEMATRON rulesets (the
+  schema-ruleset rule).
+- ``save_workflow_step`` stores the rules with a sha256 provenance stamp
+  and the optional D10 documentation-URL template.
 """
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+
 import pytest
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 
+from validibot.users.tests.factories import OrganizationFactory
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Ruleset
-from validibot.validations.validators.schematron.packs import SchematronPack
-from validibot.validations.validators.schematron.packs import register_pack
-from validibot.validations.validators.schematron.packs import unregister_pack
-from validibot.workflows.forms import BaseStepConfigForm
+from validibot.workflows.forms import SchematronStepConfigForm
 from validibot.workflows.forms import get_config_form_class
 
-PACK_ID = "vb-peppol-subset"
-PACK_VERSION = "0.1.0"
-SOURCE_SHA = "a" * 64
-ARTIFACT_SHA = "b" * 64
+ASSETS = Path("tests/assets/schematron")
+SCH_TEXT = (ASSETS / "peppol_billing_subset.sch").read_text()
+DOC_URL_TEMPLATE = "https://docs.example.test/rules/#{rule_id}"
 
 
-@pytest.fixture
-def vb_pack():
-    """Register a temporary vetted pack for the duration of a test."""
-    pack = SchematronPack(
-        id=PACK_ID,
-        title="VB Peppol subset",
-        version=PACK_VERSION,
-        syntax="ubl",
-        source_url="https://example.test/packs/vb-peppol-subset",
-        license="MIT",
-        query_binding="xslt1",
-        artifact="tests/assets/schematron/peppol_billing_subset.sch",
-        source_sha256=SOURCE_SHA,
-        artifact_sha256=ARTIFACT_SHA,
-        engine="lxml-xslt1",
-    )
-    register_pack(pack)
-    yield pack
-    unregister_pack(pack.id, pack.version)
+# ── The step-config form ─────────────────────────────────────────────────────
 
 
-def _global_pack_ruleset(**metadata) -> Ruleset:
-    """Unsaved GLOBAL (org=None) SCHEMATRON ruleset — a pack row."""
-    return Ruleset(
-        org=None,
-        name=PACK_ID,
-        ruleset_type=RulesetType.SCHEMATRON,
-        version=PACK_VERSION,
-        metadata=metadata,
-    )
+class TestSchematronStepConfigForm:
+    def test_pasted_rules_validate_and_carry_the_payload(self):
+        """Pasted .sch text is accepted and normalised into the payload.
 
-
-# ── Global pack rows: the DB-layer allowlist enforcement ────────────────────
-
-
-@pytest.mark.django_db
-class TestGlobalPackRulesetClean:
-    def test_bare_global_row_without_pointer_is_allowed(self):
-        """A global SCHEMATRON ruleset with no pointer at all passes clean.
-
-        ``Validator.ensure_default_ruleset()`` auto-creates exactly this
-        shape for every validator row (including the Schematron engine row),
-        so clean() must tolerate it. Safety is preserved elsewhere: such a
-        row carries no content and launch-time resolution refuses no-pin
-        rows.
+        ``schematron_payload`` is what the builder persists — producing it
+        in clean() means text and upload paths converge on one code path.
         """
-        _global_pack_ruleset().full_clean()  # must not raise
-
-    def test_partial_pack_pointer_is_rejected(self, vb_pack):
-        """A pointer with pack_id but no pack_version is rejected.
-
-        A half-written pointer is either tampering or a vendoring bug; it
-        must never save as if it were an intentional (absent or complete)
-        state.
-        """
-        with pytest.raises(ValidationError, match="both"):
-            _global_pack_ruleset(pack_id=PACK_ID).full_clean()
-
-    def test_unregistered_pack_is_rejected(self):
-        """A pointer to a pack absent from packs.py is rejected.
-
-        This is half of "no arbitrary uploads": a hand-crafted global row
-        cannot reference an artefact we never vetted.
-        """
-        with pytest.raises(ValidationError, match="not in the vetted"):
-            _global_pack_ruleset(
-                pack_id="rogue-pack",
-                pack_version="9.9.9",
-            ).full_clean()
-
-    def test_checksum_drift_is_rejected(self, vb_pack):
-        """A checksum snapshot disagreeing with the registry pin is rejected.
-
-        If the metadata claims a different artefact hash than the vetted pin,
-        either the row was tampered with or the registry moved under it —
-        both must fail loudly, never execute.
-        """
-        with pytest.raises(ValidationError, match="does not match"):
-            _global_pack_ruleset(
-                pack_id=PACK_ID,
-                pack_version=PACK_VERSION,
-                pack_artifact_sha256="f" * 64,
-            ).full_clean()
-
-    def test_inline_rules_are_rejected(self, vb_pack):
-        """Inline rules_text on any SCHEMATRON ruleset is rejected outright.
-
-        Arbitrary Schematron is arbitrary XSLT (code execution). Pack
-        content is delivered by artefact staging from the vendored file —
-        rule content on the row is always smuggling.
-        """
-        ruleset = _global_pack_ruleset(
-            pack_id=PACK_ID,
-            pack_version=PACK_VERSION,
+        form = SchematronStepConfigForm(
+            data={"name": "EN 16931 rules", "schematron_text": SCH_TEXT},
         )
-        ruleset.rules_text = "<schema>rogue rules</schema>"
-        with pytest.raises(ValidationError, match="never carry rule content"):
-            ruleset.full_clean()
+        assert form.is_valid(), form.errors
+        assert form.cleaned_data["schematron_source"] == "text"
+        assert form.cleaned_data["schematron_payload"] == SCH_TEXT.strip()
 
-    def test_valid_pointer_denormalizes_pinned_checksums(self, vb_pack):
-        """A valid pack row passes clean and snapshots the pinned checksums.
+    def test_uploaded_file_validates_and_carries_the_payload(self):
+        """An uploaded .sch file is decoded and accepted like pasted text."""
+        form = SchematronStepConfigForm(
+            data={"name": "EN 16931 rules"},
+            files={
+                "schematron_file": SimpleUploadedFile(
+                    "rules.sch",
+                    SCH_TEXT.encode("utf-8"),
+                ),
+            },
+        )
+        assert form.is_valid(), form.errors
+        assert form.cleaned_data["schematron_source"] == "upload"
+        assert "VB-CO-15" in form.cleaned_data["schematron_payload"]
 
-        The denormalized hashes are the row's provenance snapshot — what
-        launch-time re-verification compares against — so they must be
-        stamped from the registry pin, not left to the caller.
+    def test_non_schematron_content_is_rejected_at_upload(self):
+        """A random XML document fails with an author-facing message.
+
+        Catching "wrong file" at authoring time (root element must be the
+        ISO Schematron <schema>) beats a run-time engine error — the author
+        is right there to fix it.
         """
-        ruleset = _global_pack_ruleset(pack_id=PACK_ID, pack_version=PACK_VERSION)
-        ruleset.full_clean()
-        assert ruleset.metadata["pack_source_sha256"] == SOURCE_SHA
-        assert ruleset.metadata["pack_artifact_sha256"] == ARTIFACT_SHA
+        form = SchematronStepConfigForm(
+            data={"name": "Rules", "schematron_text": "<invoice/>"},
+        )
+        assert not form.is_valid()
+        assert "schematron_text" in form.errors
+
+    def test_blank_fields_require_rules_for_a_new_step(self):
+        """A new step with neither text nor file gets a clear error."""
+        form = SchematronStepConfigForm(data={"name": "Rules"})
+        assert not form.is_valid()
+        assert "schematron_text" in form.errors
+        assert "schematron_file" in form.errors
+
+    def test_schematron_maps_to_its_form(self):
+        """get_config_form_class routes SCHEMATRON to the upload form."""
+        assert (
+            get_config_form_class(ValidationType.SCHEMATRON) is SchematronStepConfigForm
+        )
 
 
-# ── Org-owned rows: the per-step assertion surface ──────────────────────────
+# ── Ruleset.clean(): rules content required, like any schema ruleset ────────
 
 
 @pytest.mark.django_db
-class TestStepAssertionRulesetClean:
-    def test_org_owned_row_needs_no_pack_pointer(self):
-        """An org-owned SCHEMATRON ruleset passes clean with no pointer.
-
-        These rows are per-step assertion surfaces (ensure_advanced_ruleset
-        creates them); pack identity lives on the step's validator FK, so
-        demanding a pointer here would break ordinary step authoring.
-        """
-        from validibot.users.tests.factories import OrganizationFactory
-
+class TestSchematronRulesetClean:
+    def test_ruleset_with_rules_text_passes(self):
+        """A SCHEMATRON ruleset carrying .sch source is valid."""
         ruleset = Ruleset(
             org=OrganizationFactory(),
-            name="step-assertions",
+            name="step-rules",
             ruleset_type=RulesetType.SCHEMATRON,
             version="1",
+            rules_text=SCH_TEXT,
         )
         ruleset.full_clean()  # must not raise
 
-    def test_org_owned_row_may_not_carry_rule_content(self):
-        """Rule content on a step assertion ruleset is rejected.
+    def test_ruleset_without_content_is_rejected(self):
+        """A SCHEMATRON ruleset with no rules is rejected.
 
-        The no-smuggling posture applies on both sides: an org row with
-        inline Schematron would be an un-vetted artefact one FK-swap away
-        from execution.
+        Same rule as JSON/XML schema rulesets: the ruleset IS the rules;
+        an empty one can only produce meaningless runs.
         """
-        from validibot.users.tests.factories import OrganizationFactory
-
         ruleset = Ruleset(
             org=OrganizationFactory(),
-            name="step-assertions",
+            name="step-rules",
             ruleset_type=RulesetType.SCHEMATRON,
             version="1",
-            rules_text="<schema>rogue rules</schema>",
         )
-        with pytest.raises(ValidationError, match="never carry rule content"):
+        with pytest.raises(ValidationError, match="rules"):
             ruleset.full_clean()
 
 
-# ── Step authoring flow: no Schematron-specific wiring (ADR D2) ─────────────
-
-
-def test_schematron_uses_the_base_step_config_form():
-    """get_config_form_class falls through to BaseStepConfigForm.
-
-    Pack selection is validator selection — there is deliberately no
-    Schematron form in the mapping, so the wizard shows only the generic
-    name/description/notes fields.
-    """
-    assert get_config_form_class(ValidationType.SCHEMATRON) is BaseStepConfigForm
+# ── save_workflow_step: the full authoring flow ──────────────────────────────
 
 
 @pytest.mark.django_db
-def test_save_workflow_step_creates_a_per_step_assertion_ruleset():
-    """Saving a Schematron step yields an org-owned assertion ruleset.
+class TestSaveWorkflowStep:
+    def test_saving_a_step_stores_rules_with_provenance(self):
+        """Saving a Schematron step persists rules + sha256 + doc template.
 
-    This is the ensure_advanced_ruleset fallback doing its job with NO
-    Schematron branch in save_workflow_step: the step gets its own
-    org-owned SCHEMATRON ruleset (the author's assertion surface, deep-
-    copied on workflow versioning), and nothing pack-related lands in the
-    semantic config bucket — pack identity is the validator FK.
-    """
-    from validibot.validations.tests.factories import ValidatorFactory
-    from validibot.workflows.tests.factories import WorkflowFactory
-    from validibot.workflows.views_helpers import save_workflow_step
+        The three durable artefacts of authoring: the source on the step's
+        org-owned ruleset (deep-copied on workflow versioning, frozen by
+        the immutability gate once locked), its sha256 (the provenance
+        identity the container echoes back), and the optional D10 deep-link
+        template.
+        """
+        from validibot.validations.tests.factories import ValidatorFactory
+        from validibot.workflows.tests.factories import WorkflowFactory
+        from validibot.workflows.views_helpers import save_workflow_step
 
-    workflow = WorkflowFactory()
-    validator = ValidatorFactory(
-        validation_type=ValidationType.SCHEMATRON,
-        supports_assertions=True,
-    )
-    form = BaseStepConfigForm(data={"name": "EN 16931 rules"})
-    assert form.is_valid(), form.errors
+        workflow = WorkflowFactory()
+        validator = ValidatorFactory(
+            validation_type=ValidationType.SCHEMATRON,
+            supports_assertions=True,
+        )
+        form = SchematronStepConfigForm(
+            data={
+                "name": "EN 16931 rules",
+                "schematron_text": SCH_TEXT,
+                "rule_doc_url_template": DOC_URL_TEMPLATE,
+            },
+        )
+        assert form.is_valid(), form.errors
 
-    step = save_workflow_step(workflow, validator, form)
+        step = save_workflow_step(workflow, validator, form)
 
-    assert step.ruleset is not None
-    assert step.ruleset.org == workflow.org
-    assert step.ruleset.ruleset_type == RulesetType.SCHEMATRON
-    assert step.ruleset.rules == ""
-    assert step.config == {}
+        assert step.ruleset is not None
+        assert step.ruleset.org == workflow.org
+        assert step.ruleset.ruleset_type == RulesetType.SCHEMATRON
+        assert "VB-CO-15" in step.ruleset.rules
+        expected_sha = hashlib.sha256(
+            step.ruleset.rules_text.encode("utf-8"),
+        ).hexdigest()
+        assert step.ruleset.metadata["schematron_sha256"] == expected_sha
+        assert step.ruleset.metadata["rule_doc_url_template"] == DOC_URL_TEMPLATE
+        # The preview is cosmetic — it must land in display_settings, never
+        # the hashed semantic bucket.
+        assert "schematron_preview" in step.display_settings
+        assert step.config == {}
+
+    def test_blank_edit_keeps_the_saved_rules(self):
+        """Re-saving with blank rule fields preserves the stored source.
+
+        The XSD "keep" behaviour: editing a step's name must not force the
+        author to re-upload their rules.
+        """
+        from validibot.validations.tests.factories import ValidatorFactory
+        from validibot.workflows.tests.factories import WorkflowFactory
+        from validibot.workflows.views_helpers import save_workflow_step
+
+        workflow = WorkflowFactory()
+        validator = ValidatorFactory(
+            validation_type=ValidationType.SCHEMATRON,
+            supports_assertions=True,
+        )
+        create_form = SchematronStepConfigForm(
+            data={"name": "Rules", "schematron_text": SCH_TEXT},
+        )
+        assert create_form.is_valid(), create_form.errors
+        step = save_workflow_step(workflow, validator, create_form)
+        original_rules = step.ruleset.rules
+
+        edit_form = SchematronStepConfigForm(
+            data={"name": "Renamed step"},
+            step=step,
+        )
+        assert edit_form.is_valid(), edit_form.errors
+        step = save_workflow_step(workflow, validator, edit_form, step=step)
+
+        assert step.name == "Renamed step"
+        assert step.ruleset.rules == original_rules

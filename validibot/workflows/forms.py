@@ -4229,12 +4229,95 @@ class TabularStepConfigForm(BaseStepConfigForm):
         return inferred.descriptor
 
 
-# NOTE: Schematron deliberately has NO step-config form (ADR-2026-07-01 D2):
-# pack selection is validator selection. Each vendored pack is a library
-# Validator row (sharing the one Schematron engine config) picked in the
-# step wizard, and get_config_form_class() falls through to
-# BaseStepConfigForm. The per-step assertion ruleset comes from
-# save_workflow_step()'s existing ensure_advanced_ruleset fallback.
+class SchematronStepConfigForm(BaseStepConfigForm):
+    """Step configuration for the Schematron validator (ADR-2026-07-01 D2).
+
+    Mirrors the XML Schema / SHACL authoring flow: the author pastes or
+    uploads their Schematron rules (a ``.sch`` document — e.g. a published
+    standard's official rules file), and the step's Ruleset stores the
+    source. Editing an existing step with both fields blank keeps the
+    saved rules ("keep" mode, as XSD). The optional documentation-URL
+    template turns every finding's native rule id into a deep link to the
+    publisher's rule text (D10).
+
+    Compiled Schematron is executable XSLT, so the rules only ever run
+    inside the sandboxed validator container — Django just performs the
+    cheap authoring checks here (well-formed XML, Schematron root, size).
+    """
+
+    schematron_text = forms.CharField(
+        label=_("Schematron rules"),
+        widget=forms.Textarea(attrs={"rows": 12, "spellcheck": "false"}),
+        required=False,
+    )
+    schematron_file = forms.FileField(
+        label=_("Upload Schematron (.sch)"),
+        required=False,
+    )
+    rule_doc_url_template = forms.CharField(
+        label=_("Rule documentation URL template"),
+        required=False,
+        help_text=_(
+            "Optional. A URL template with {rule_id} for deep-linking "
+            "findings to published rule docs, e.g. "
+            "https://docs.peppol.eu/poacc/billing/3.0/rules/#{rule_id}",
+        ),
+    )
+
+    def __init__(self, *args, step=None, **kwargs):
+        super().__init__(*args, step=step, **kwargs)
+        if step and step.ruleset_id and step.ruleset:
+            metadata = step.ruleset.metadata or {}
+            self.fields["rule_doc_url_template"].initial = metadata.get(
+                "rule_doc_url_template",
+                "",
+            )
+
+    def clean(self):
+        cleaned = super().clean()
+        text = (cleaned.get("schematron_text") or "").strip()
+        upload = cleaned.get("schematron_file")
+
+        if not text and not upload:
+            if self.step and self.step.ruleset_id:
+                cleaned["schematron_source"] = "keep"
+                return cleaned
+            message = _("Paste Schematron rules or upload a .sch file.")
+            self.add_error("schematron_text", message)
+            self.add_error("schematron_file", message)
+            return cleaned
+
+        cleaned["schematron_source"] = "text" if text else "upload"
+        field_name = "schematron_text" if text else "schematron_file"
+        payload: str | None = text or None
+        if payload is None and upload:
+            upload.seek(0)
+            raw_bytes = upload.read()
+            upload.seek(0)
+            try:
+                payload = raw_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                self.add_error(
+                    field_name,
+                    _("Uploaded Schematron must be UTF-8 encoded."),
+                )
+                return cleaned
+
+        from validibot.validations.validators.schematron.security import (
+            SchematronSecurityError,
+        )
+        from validibot.validations.validators.schematron.security import (
+            validate_schematron_source,
+        )
+
+        try:
+            validate_schematron_source(payload)
+        except SchematronSecurityError as exc:
+            self.add_error(field_name, str(exc))
+            return cleaned
+
+        cleaned["schematron_payload"] = payload
+        return cleaned
 
 
 def get_config_form_class(validation_type: str) -> type[forms.Form]:
@@ -4242,6 +4325,7 @@ def get_config_form_class(validation_type: str) -> type[forms.Form]:
         ValidationType.BASIC: BasicStepConfigForm,
         ValidationType.JSON_SCHEMA: JsonSchemaStepConfigForm,
         ValidationType.XML_SCHEMA: XmlSchemaStepConfigForm,
+        ValidationType.SCHEMATRON: SchematronStepConfigForm,
         ValidationType.SHACL: ShaclStepConfigForm,
         ValidationType.TABULAR: TabularStepConfigForm,
         ValidationType.ENERGYPLUS: EnergyPlusStepConfigForm,

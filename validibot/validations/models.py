@@ -355,102 +355,18 @@ class Ruleset(TimeStampedModel):
             meta["schema_type"] = schema_type_value
             self.metadata = meta
 
-        # ── Schematron: the no-smuggling guard (ADR-2026-07-01 D5) ────────
-        # A SCHEMATRON ruleset is either a curated pack row (global,
-        # attached as a library validator's ``default_ruleset``, carrying a
-        # pack pointer stamped by the vendoring command) or a per-step
-        # assertion surface (org-owned, created by
-        # ``ensure_advanced_ruleset``, holding RulesetAssertion rows only).
-        # Two rules make smuggling impossible on both:
-        #
-        # 1. NO row may carry inline rule content — arbitrary Schematron is
-        #    arbitrary XSLT (code execution). Pack content only ever comes
-        #    from the vendored artefact staged by the launcher.
-        # 2. Any pack POINTER present must be complete, registered in the
-        #    code-reviewed registry (validators/schematron/packs.py), and
-        #    checksum-true; matching pins are denormalized into metadata as
-        #    the provenance snapshot. (Pointer *presence* can't be required
-        #    here: ``Validator.ensure_default_ruleset()`` auto-creates empty
-        #    default rulesets; launch-time resolution refuses no-pin rows.)
-        if self.ruleset_type == RulesetType.SCHEMATRON:
-            from validibot.validations.validators.schematron.packs import get_pack
-
-            if has_file or has_text:
-                raise ValidationError(
-                    {
-                        "rules_text": _(
-                            "Schematron rulesets never carry rule content: "
-                            "packs are curated and vendored, and step "
-                            "rulesets hold assertions only.",
-                        ),
-                    },
-                )
-            meta = dict(self.metadata or {})
-            has_pointer = any(
-                str(meta.get(key) or "").strip()
-                for key in (
-                    "pack_id",
-                    "pack_version",
-                    "pack_source_sha256",
-                    "pack_artifact_sha256",
-                )
-            )
-            # Pin *presence* is owned by the vendoring command (which stamps
-            # it on pack rows) and enforced at launch (resolution refuses
-            # no-pin rows) — clean() can't require it, because
-            # ``Validator.ensure_default_ruleset()`` auto-creates an empty
-            # default ruleset for every validator row, including the
-            # Schematron engine row itself. What clean() DOES own: any
-            # pointer that IS present must be complete, registered, and
-            # checksum-true.
-            if has_pointer:
-                pack_id = str(meta.get("pack_id") or "").strip()
-                pack_version = str(meta.get("pack_version") or "").strip()
-                if not pack_id or not pack_version:
-                    raise ValidationError(
-                        {
-                            "metadata": _(
-                                "Schematron pack pointers must carry both "
-                                "metadata['pack_id'] and "
-                                "metadata['pack_version'].",
-                            ),
-                        },
-                    )
-                pack = get_pack(pack_id, pack_version)
-                if pack is None:
-                    raise ValidationError(
-                        {
-                            "metadata": _(
-                                "Schematron pack '%(pid)s@%(pver)s' is not "
-                                "in the vetted pack registry.",
-                            )
-                            % {"pid": pack_id, "pver": pack_version},
-                        },
-                    )
-                for key, pinned in (
-                    ("pack_source_sha256", pack.source_sha256),
-                    ("pack_artifact_sha256", pack.artifact_sha256),
-                ):
-                    current = str(meta.get(key) or "").strip()
-                    if current and current != pinned:
-                        raise ValidationError(
-                            {
-                                "metadata": _(
-                                    "Schematron pack checksum %(key)s does "
-                                    "not match the vetted registry pin for "
-                                    "'%(pid)s@%(pver)s'.",
-                                )
-                                % {
-                                    "key": key,
-                                    "pid": pack_id,
-                                    "pver": pack_version,
-                                },
-                            },
-                        )
-                    meta[key] = pinned
-                self.metadata = meta
-
-        if self.ruleset_type in {RulesetType.JSON_SCHEMA, RulesetType.XML_SCHEMA}:
+        # SCHEMATRON rulesets carry the author's uploaded .sch source in
+        # rules_text/rules_file, exactly like schema rulesets carry their
+        # schema — so they share the content-required rule below. (The
+        # step-config form additionally checks the source is well-formed
+        # XML with the Schematron root; execution only ever happens in the
+        # sandboxed container because compiled Schematron is XSLT, i.e.
+        # code — ADR-2026-07-01 D4/D8.)
+        if self.ruleset_type in {
+            RulesetType.JSON_SCHEMA,
+            RulesetType.XML_SCHEMA,
+            RulesetType.SCHEMATRON,
+        }:
             if not has_file and not has_text:
                 raise ValidationError(
                     {

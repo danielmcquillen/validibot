@@ -17,19 +17,11 @@ NOTE on translations: ``ValidatorConfig`` / ``CatalogEntrySpec`` are pydantic
 models with strict ``str`` fields — ``gettext_lazy`` proxies crash app boot.
 Plain strings are intentional, matching every other validator config.
 
-TODO(shared-0.11.0): declare the container output contract once
-``validibot-shared`` >= 0.11.0 (which adds ``validibot_shared.schematron``)
-is released and synced into this repo::
-
-    output_envelope_class=(
-        "validibot_shared.schematron.envelopes.SchematronOutputEnvelope"
-    ),
-
-It is deliberately absent right now: ``register_validator_config()`` resolves
-the dotted path eagerly at app boot and raises ImportError when the module
-doesn't exist — declaring it before the shared release lands would break
-every Django startup. The callback path hard-fails without it, so this MUST
-be flipped before (or with) the Phase 3 backend wiring.
+NOTE on ``output_envelope_class``: ``register_validator_config()`` resolves
+the dotted path eagerly at app boot, so this config requires
+``validibot-shared`` >= 0.11.0 (which provides
+``validibot_shared.schematron``) — an older shared release makes Django
+startup fail loudly here rather than 400 later on the callback path.
 """
 
 from validibot.submissions.constants import SubmissionDataFormat
@@ -62,6 +54,11 @@ config = ValidatorConfig(
     validation_type=ValidationType.SCHEMATRON,
     validator_class=(
         "validibot.validations.validators.schematron.validator.SchematronValidator"
+    ),
+    # Typed container output contract — Django deserializes output.json with
+    # this. The callback path hard-fails without it (D4b).
+    output_envelope_class=(
+        "validibot_shared.schematron.envelopes.SchematronOutputEnvelope"
     ),
     # Cloud Run Job / Docker image. Set explicitly because the slug
     # ("schematron-validator") would otherwise produce the wrong convention

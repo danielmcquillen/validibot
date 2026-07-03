@@ -127,6 +127,11 @@ jobs:
           DJANGO_ALLOWED_HOSTS: localhost
           DEPLOYMENT_TARGET: self_hosted
           EMAIL_HOST: localhost
+          # self_hosted/aws targets fail-fast at settings import unless
+          # WORKER_API_KEY is set — it's the only auth on the worker-only
+          # endpoints (see config/settings/production.py). A throwaway CI-only
+          # value satisfies the boot check; nothing here actually serves traffic.
+          WORKER_API_KEY: fake-worker-key-for-ci-only
         run: uv run python manage.py check --deploy
 
   # Guarantees the committed front-end bundle is a fresh, minified production

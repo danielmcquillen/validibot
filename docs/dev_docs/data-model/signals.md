@@ -46,7 +46,8 @@ any scope hierarchy because it isn't named.
 whose values come from the *workflow definition* rather than the run, so it is
 the only one known at authoring time. That's why the Constants editor and the
 "Available Data" panel can show a constant's actual *value* (signals can only
-show a name + path). See [ADR-2026-06-18](../../../../validibot-project/docs/adr/2026-06-18-constant-primitive.md).
+show a name + path). See ADR-2026-06-18 (`docs/adr/2026-06-18-constant-primitive.md`
+in the private validibot-project repo).
 In the Basic evaluator, constants are injected as a **nested** `c`/`const`
 sub-dict (like `submission`), *not* flattened like `s.*` — so `c.energy_price`
 and a signal `s.energy_price` can coexist without colliding. Threshold-style

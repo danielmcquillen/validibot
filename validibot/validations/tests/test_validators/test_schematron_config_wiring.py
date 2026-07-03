@@ -33,6 +33,10 @@ from validibot.workflows.forms import get_config_form_class
 ASSETS = Path("tests/assets/schematron")
 SCH_TEXT = (ASSETS / "en16931_subset.sch").read_text()
 DOC_URL_TEMPLATE = "https://docs.example.test/rules/#{rule_id}"
+# The display bucket stores only the first 1,200 chars of the rules
+# (``schematron_preview`` in views_helpers); the fixture is deliberately
+# longer so tests can prove the edit form prefills the FULL source.
+DISPLAY_PREVIEW_MAX_CHARS = 1200
 
 
 # ── The step-config form ─────────────────────────────────────────────────────
@@ -205,3 +209,92 @@ class TestSaveWorkflowStep:
 
         assert step.name == "Renamed step"
         assert step.ruleset.rules == original_rules
+
+    def test_edit_form_shows_current_rules_and_filename(self):
+        """Re-opening the step config shows the saved rules and file name.
+
+        The regression this pins: after uploading a .sch, the edit form
+        rendered blank — no indication of the assigned file or its
+        contents. The form must prefill the textarea with the step's FULL
+        rules (from the Ruleset, never the truncated display preview —
+        prefilled text is resubmitted verbatim on save, so a truncated
+        prefill would corrupt the stored rules) and name the uploaded
+        file in the file field's help text.
+        """
+        from validibot.validations.tests.factories import ValidatorFactory
+        from validibot.workflows.tests.factories import WorkflowFactory
+        from validibot.workflows.views_helpers import save_workflow_step
+
+        workflow = WorkflowFactory()
+        validator = ValidatorFactory(
+            validation_type=ValidationType.SCHEMATRON,
+            supports_assertions=True,
+        )
+        create_form = SchematronStepConfigForm(
+            data={"name": "EN 16931 rules"},
+            files={
+                "schematron_file": SimpleUploadedFile(
+                    "en16931.sch",
+                    SCH_TEXT.encode("utf-8"),
+                ),
+            },
+        )
+        assert create_form.is_valid(), create_form.errors
+        step = save_workflow_step(workflow, validator, create_form)
+        assert step.ruleset.metadata["schematron_filename"] == "en16931.sch"
+
+        edit_form = SchematronStepConfigForm(step=step)
+
+        prefilled = edit_form.fields["schematron_text"].initial
+        assert prefilled == step.ruleset.rules
+        # The fixture is longer than the display-preview cutoff, so this
+        # also proves the prefill is the full source, not the preview.
+        assert len(prefilled) > DISPLAY_PREVIEW_MAX_CHARS
+        assert "en16931.sch" in edit_form.fields["schematron_file"].help_text
+
+    def test_resaving_the_prefilled_rules_is_lossless(self):
+        """Submitting the edit form with the prefilled rules keeps them intact.
+
+        The browser resubmits whatever the textarea was prefilled with, so
+        saving an otherwise-untouched edit form must round-trip the full
+        rules byte-for-byte (same sha256) — this is why the prefill comes
+        from ``Ruleset.rules`` and never from the truncated
+        ``schematron_preview``. The original upload's filename also
+        survives: identical bytes are the same provenance.
+        """
+        from validibot.validations.tests.factories import ValidatorFactory
+        from validibot.workflows.tests.factories import WorkflowFactory
+        from validibot.workflows.views_helpers import save_workflow_step
+
+        workflow = WorkflowFactory()
+        validator = ValidatorFactory(
+            validation_type=ValidationType.SCHEMATRON,
+            supports_assertions=True,
+        )
+        create_form = SchematronStepConfigForm(
+            data={"name": "Rules"},
+            files={
+                "schematron_file": SimpleUploadedFile(
+                    "en16931.sch",
+                    SCH_TEXT.encode("utf-8"),
+                ),
+            },
+        )
+        assert create_form.is_valid(), create_form.errors
+        step = save_workflow_step(workflow, validator, create_form)
+        sha_before = step.ruleset.metadata["schematron_sha256"]
+        assert len(step.ruleset.rules) > DISPLAY_PREVIEW_MAX_CHARS
+
+        prefilled = (
+            SchematronStepConfigForm(step=step).fields["schematron_text"].initial
+        )
+        edit_form = SchematronStepConfigForm(
+            data={"name": "Rules", "schematron_text": prefilled},
+            step=step,
+        )
+        assert edit_form.is_valid(), edit_form.errors
+        step = save_workflow_step(workflow, validator, edit_form, step=step)
+
+        assert step.ruleset.metadata["schematron_sha256"] == sha_before
+        assert step.ruleset.metadata["schematron_filename"] == "en16931.sch"
+        assert len(step.ruleset.rules) > DISPLAY_PREVIEW_MAX_CHARS

@@ -653,10 +653,21 @@ def build_schematron_config(
     ruleset.rules_file = None
 
     metadata = dict(ruleset.metadata or {})
-    metadata["schematron_sha256"] = _hashlib.sha256(
-        payload.encode("utf-8"),
-    ).hexdigest()
+    new_sha = _hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    # The upload's filename, shown as "currently assigned" on the next
+    # edit. Pasted rules carry none and clear any stale filename — except
+    # when the pasted text is byte-identical to the stored rules (an
+    # untouched edit form resubmitting its own prefill): same bytes, same
+    # provenance, so the original upload's name survives.
+    filename = form.cleaned_data.get("schematron_filename") or ""
+    if not filename and metadata.get("schematron_sha256") == new_sha:
+        filename = metadata.get("schematron_filename", "")
+    metadata["schematron_sha256"] = new_sha
     metadata["rule_doc_url_template"] = url_template
+    if filename:
+        metadata["schematron_filename"] = filename
+    else:
+        metadata.pop("schematron_filename", None)
     ruleset.metadata = metadata
     ruleset.full_clean()
     ruleset.save()

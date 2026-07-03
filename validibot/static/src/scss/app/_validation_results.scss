@@ -78,6 +78,21 @@
   }
 }
 
+// Without the optional Subject column only Message and Path compete for
+// width, and the fixed 11rem Path above truncated long locations (e.g.
+// Schematron XPath expressions) to a few characters while Message hoarded
+// the rest. Give Message ~65% and let Path absorb the remainder; Severity
+// keeps its fixed width. The template adds this class when the step has no
+// subjects, so SHACL tables (with Subject) keep the four-column widths.
+.findings-table-no-subject {
+  .findings-col-message {
+    width: 65%;
+  }
+  .findings-col-path {
+    width: auto;
+  }
+}
+
 // The Run Summary card reads cleaner without the dotted section dividers the
 // other results cards use — the two-column split already groups the metadata,
 // so the dotted lines were just visual noise. Scoped to ``.run-summary-card``

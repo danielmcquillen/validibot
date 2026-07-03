@@ -2060,13 +2060,16 @@ class JsonSchemaStepConfigForm(BaseStepConfigForm):
         schema_field.initial = JSONSchemaVersion.DRAFT_2020_12.value
         self.initial["schema_type"] = JSONSchemaVersion.DRAFT_2020_12.value
         if step and step.ruleset_id:
-            self.fields["schema_text"].initial = (step.display_settings or {}).get(
-                "schema_text_preview",
-                "",
-            )
+            # Show the step's current schema on edit — but from the
+            # Ruleset's FULL source, never the truncated display preview:
+            # prefilled text is resubmitted verbatim on save, so a
+            # truncated prefill would silently replace a schema longer
+            # than the preview cutoff with its own first 1,200 chars.
+            self.fields["schema_text"].initial = step.ruleset.rules or ""
             self.fields["schema_text"].help_text = _(
-                "Leave blank to keep the existing schema. "
-                "Paste new JSON to replace it.",
+                "The step's current schema. Edit it or paste new JSON to "
+                "replace it; leaving the field blank also keeps the "
+                "saved schema.",
             )
         else:
             self.fields["schema_text"].help_text = _(
@@ -2140,7 +2143,6 @@ class JsonSchemaStepConfigForm(BaseStepConfigForm):
                             _("JSON schemas must declare $schema as Draft 2020-12."),
                         )
         return cleaned
-        return cleaned
 
 
 class XmlSchemaStepConfigForm(BaseStepConfigForm):
@@ -2173,12 +2175,16 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
                 and step.config.get("schema_type") in XMLSchemaType.values
             ):
                 self.fields["schema_type"].initial = step.config.get("schema_type")
-            self.fields["schema_text"].initial = (step.display_settings or {}).get(
-                "schema_text_preview",
-                "",
-            )
+            # Show the step's current schema on edit — but from the
+            # Ruleset's FULL source, never the truncated display preview:
+            # prefilled text is resubmitted verbatim on save, so a
+            # truncated prefill would silently replace a schema longer
+            # than the preview cutoff with its own first 1,200 chars.
+            self.fields["schema_text"].initial = step.ruleset.rules or ""
             self.fields["schema_text"].help_text = _(
-                "Leave blank to keep the existing schema. Paste new XML to replace it.",
+                "The step's current schema. Edit it or paste new XML to "
+                "replace it; leaving the field blank also keeps the "
+                "saved schema.",
             )
         else:
             self.fields["schema_text"].help_text = _(
@@ -4272,6 +4278,27 @@ class SchematronStepConfigForm(BaseStepConfigForm):
                 "rule_doc_url_template",
                 "",
             )
+            # Show the step's current rules on edit (the XSD prefill
+            # pattern) — but from the Ruleset's FULL source, never the
+            # truncated display preview: prefilled text is resubmitted
+            # verbatim on save, so a truncated prefill would silently
+            # replace the stored rules with their own first 1,200 chars.
+            self.fields["schematron_text"].initial = step.ruleset.rules or ""
+            self.fields["schematron_text"].help_text = _(
+                "The step's current rules. Edit them or paste new rules to "
+                "replace them; leaving the field blank also keeps the "
+                "saved rules.",
+            )
+            current_name = metadata.get("schematron_filename", "")
+            if current_name:
+                self.fields["schematron_file"].help_text = _(
+                    "Currently assigned: %(name)s. Upload a new .sch file "
+                    "to replace it.",
+                ) % {"name": current_name}
+        else:
+            self.fields["schematron_text"].help_text = _(
+                "Paste your Schematron rules or upload a .sch file below.",
+            )
 
     def clean(self):
         cleaned = super().clean()
@@ -4316,7 +4343,17 @@ class SchematronStepConfigForm(BaseStepConfigForm):
             self.add_error(field_name, str(exc))
             return cleaned
 
-        cleaned["schematron_payload"] = payload
+        # Strip both entry paths identically (pasted text already is): the
+        # sha256 provenance identity must not differ between "uploaded the
+        # file" and "resubmitted the same rules from the edit form's
+        # prefilled textarea" over trailing whitespace.
+        cleaned["schematron_payload"] = payload.strip()
+        # Remember the upload's filename so the next edit can say which
+        # file is currently assigned; pasted text carries no filename and
+        # clears any stale one.
+        cleaned["schematron_filename"] = (
+            upload.name if cleaned["schematron_source"] == "upload" else ""
+        )
         return cleaned
 
 

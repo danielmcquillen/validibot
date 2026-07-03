@@ -795,6 +795,44 @@ def test_run_detail_page_shows_cancelled_actions(client):
     assert "View previous runs" in body
 
 
+def test_run_detail_layout_toggle_swaps_the_panel_in_place(client):
+    """The report layout toggle must swap the HTMx panel, not navigate.
+
+    Regression test: the toggle used to render as plain ``?layout=`` links,
+    which navigated back to the launch page and lost the report the user
+    was looking at. Inside the run status card the buttons must hx-get the
+    panel-refresh URL (the layout choice rides in ``hx-vals``) and swap
+    ``#workflow-run-detail-panel`` in place — the plain href remains only
+    as a no-JS fallback.
+    """
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        user=user,
+        status=ValidationRunStatus.SUCCEEDED,
+    )
+
+    detail_url = reverse(
+        "workflows:workflow_run_detail",
+        kwargs={"pk": workflow.pk, "run_id": run.pk},
+    )
+    response = client.get(detail_url)
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    # Both layout buttons hx-get the panel-refresh URL with their layout.
+    assert f'hx-get="{detail_url}' in body
+    assert 'hx-vals=\'{"layout": "stacked"}\'' in body
+    assert 'hx-vals=\'{"layout": "classic"}\'' in body
+    assert 'hx-target="#workflow-run-detail-panel"' in body
+
+
 def test_run_detail_page_shows_completion_actions(client):
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)

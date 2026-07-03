@@ -236,13 +236,23 @@ See [Justfile Guide](justfile-guide.md) for the full command reference.
 
 ## Advanced validators locally
 
-Built-in validators work as soon as the local stack is running. Advanced validators such as EnergyPlus and FMU run as sibling containers launched by the worker, so you also need the relevant validator images available on the Docker host.
+Built-in validators (JSON Schema, XML Schema, Tabular, and so on) work as soon as the local stack is running. Advanced validators such as EnergyPlus, FMU, and SHACL run as sibling containers that the worker launches on demand, so you also need the relevant validator image available on the Docker host. If the image is missing, only that advanced validation fails — the rest of the app keeps working, and the `just` doctor and test recipes tell you which image to build.
+
+These images live in a separate repo and build with one command — no registry, login, or push needed for local use:
+
+```bash
+git clone https://github.com/danielmcquillen/validibot-validator-backends.git
+cd validibot-validator-backends
+just build-all          # or build one: just build energyplus
+```
+
+This produces images named `validibot-validator-backend-<slug>:latest` (slugs: `energyplus`, `fmu`, `shacl`). The worker finds each one by that name automatically — there's nothing to configure.
 
 For consistency with the production stack, only the local `worker` service gets Docker socket access. The `web` and `scheduler` containers do not need it.
 
-If you plan to test advanced validators locally, check:
+For more detail — per-backend notes, the container security model, and registry-based deployment — see:
 
-- [Docker Setup](../docker.md)
+- [Docker Setup](../docker.md) (the "Advanced validators" section)
 - [Execution Backends](../overview/execution_backends.md)
 
 ## A note on `local-cloud`

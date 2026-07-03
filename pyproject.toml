@@ -62,7 +62,7 @@ dependencies = [
   "lxml==6.1.1",
   "markdown2==2.5.5",
   "nh3==0.3.6",
-  "pillow==12.2.0",
+  "pillow==12.3.0",
   "psycopg[c]==3.3.4",
   "pydantic==2.13.4",
   "python-jsonpath==2.1.0",
@@ -334,7 +334,7 @@ force-single-line = true
 [dependency-groups]
 dev = [
   # Testing
-  "coverage==7.14.3",
+  "coverage==7.15.0",
   "django-coverage-plugin==3.2.2",
   "factory-boy==3.3.3",
   "pytest==9.1.1",
@@ -342,7 +342,7 @@ dev = [
   "pytest-sugar==1.1.1",
   "selenium==4.45.0",
   # Linting and formatting
-  "djlint==1.40.0",
+  "djlint==1.40.2",
   "pre-commit==4.6.0",
   "ruff==0.15.20",
   # Type checking

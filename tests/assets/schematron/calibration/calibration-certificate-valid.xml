@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cal:CalibrationCertificate
+  xmlns:cal="https://validibot.com/examples/calibration-certificate"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="https://validibot.com/examples/calibration-certificate calibration-certificate-demo.xsd"
+  id="CERT-2026-00017"
+  issueDate="2026-07-05">
+
+  <cal:issuer name="ABC Calibration Lab" accreditationId="CAL-12345"/>
+  <cal:customer name="Acme Manufacturing"/>
+
+  <cal:asset
+    id="PG-1001"
+    kind="pressure-gauge"
+    serialNumber="PG1001-2026"
+    unit="MPa"
+    rangeMin="0"
+    rangeMax="10"/>
+
+  <cal:calibration
+    performedOn="2026-07-03"
+    nextDue="2027-07-03"
+    method="pressure-gauge-demo-v1"
+    accredited="true">
+
+    <cal:environment temperatureC="20.4" humidityPct="43"/>
+
+    <cal:result unit="MPa" coverageFactor="2">
+      <cal:point nominal="0" indicated="0.001" correction="-0.001"
+        standardUncertainty="0.002" expandedUncertainty="0.004"
+        tolerance="0.010" verdict="pass"/>
+      <cal:point nominal="5" indicated="5.006" correction="-0.006"
+        standardUncertainty="0.003" expandedUncertainty="0.006"
+        tolerance="0.020" verdict="pass"/>
+      <cal:point nominal="10" indicated="9.996" correction="0.004"
+        standardUncertainty="0.004" expandedUncertainty="0.008"
+        tolerance="0.025" verdict="pass"/>
+    </cal:result>
+  </cal:calibration>
+</cal:CalibrationCertificate>

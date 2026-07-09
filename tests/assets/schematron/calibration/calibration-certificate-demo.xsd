@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns:cal="https://validibot.com/examples/calibration-certificate"
+  targetNamespace="https://validibot.com/examples/calibration-certificate"
+  elementFormDefault="qualified"
+  attributeFormDefault="unqualified">
+
+  <xs:element name="CalibrationCertificate">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="issuer" type="cal:IssuerType"/>
+        <xs:element name="customer" type="cal:NamedPartyType"/>
+        <xs:element name="asset" type="cal:AssetType"/>
+        <xs:element name="calibration" type="cal:CalibrationType"/>
+      </xs:sequence>
+      <xs:attribute name="id" type="xs:token" use="required"/>
+      <xs:attribute name="issueDate" type="xs:date" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="IssuerType">
+    <xs:attribute name="name" type="xs:token" use="required"/>
+    <xs:attribute name="accreditationId" type="xs:token" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="NamedPartyType">
+    <xs:attribute name="name" type="xs:token" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="AssetType">
+    <xs:attribute name="id" type="xs:token" use="required"/>
+    <xs:attribute name="kind" type="xs:token" use="required"/>
+    <xs:attribute name="serialNumber" type="xs:token" use="required"/>
+    <xs:attribute name="unit" type="cal:PressureUnitType" use="required"/>
+    <xs:attribute name="rangeMin" type="xs:decimal" use="required"/>
+    <xs:attribute name="rangeMax" type="xs:decimal" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="CalibrationType">
+    <xs:sequence>
+      <xs:element name="environment" type="cal:EnvironmentType"/>
+      <xs:element name="result" type="cal:ResultType"/>
+    </xs:sequence>
+    <xs:attribute name="performedOn" type="xs:date" use="required"/>
+    <xs:attribute name="nextDue" type="xs:date" use="required"/>
+    <xs:attribute name="method" type="xs:token" use="required"/>
+    <xs:attribute name="accredited" type="xs:boolean" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="EnvironmentType">
+    <xs:attribute name="temperatureC" type="xs:decimal" use="required"/>
+    <xs:attribute name="humidityPct" type="xs:decimal" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ResultType">
+    <xs:sequence>
+      <xs:element name="point" type="cal:PointType" minOccurs="1" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="unit" type="cal:PressureUnitType" use="required"/>
+    <xs:attribute name="coverageFactor" type="xs:decimal" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="PointType">
+    <xs:attribute name="nominal" type="xs:decimal" use="required"/>
+    <xs:attribute name="indicated" type="xs:decimal" use="required"/>
+    <xs:attribute name="correction" type="xs:decimal" use="required"/>
+    <xs:attribute name="standardUncertainty" type="xs:decimal" use="required"/>
+    <xs:attribute name="expandedUncertainty" type="xs:decimal" use="required"/>
+    <xs:attribute name="tolerance" type="xs:decimal" use="required"/>
+    <xs:attribute name="verdict" type="cal:VerdictType" use="required"/>
+  </xs:complexType>
+
+  <xs:simpleType name="PressureUnitType">
+    <xs:restriction base="xs:token">
+      <xs:enumeration value="MPa"/>
+      <xs:enumeration value="kPa"/>
+      <xs:enumeration value="psi"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="VerdictType">
+    <xs:restriction base="xs:token">
+      <xs:enumeration value="pass"/>
+      <xs:enumeration value="fail"/>
+      <xs:enumeration value="review"/>
+    </xs:restriction>
+  </xs:simpleType>
+</xs:schema>

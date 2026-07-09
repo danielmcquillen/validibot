@@ -144,6 +144,60 @@ class FMUInputEnvelope(ValidationInputEnvelope):
 }
 ```
 
+## File Ports And Cardinality
+
+The envelope uses `input_files` and `resource_files` as wire-level lists, but
+new validators should be designed around **declared file ports**.
+
+A file port is the validator contract for one file-like input or output. It
+defines:
+
+- a stable port key, such as `primary_model`, `weather_file`, `data_graph`,
+  `xml_document`, or `schema_file`;
+- the backend-facing role/type rendered into the envelope, such as
+  `primary-model`, `weather`, `fmu`, or `data-graph`;
+- cardinality, such as exactly one (`1..1`), optional singleton (`0..1`), or a
+  future bounded collection;
+- accepted data formats and media types;
+- allowed sources, such as submitted file, workflow resource, upstream
+  artifact, or signal containing an artifact reference;
+- default binding behavior for the common case.
+
+For example, EnergyPlus should be modeled as two ports:
+
+```text
+primary_model
+  channel: input_files
+  role: primary-model
+  cardinality: 1..1
+  formats: IDF, epJSON
+  default: submitted file first
+
+weather_file
+  channel: resource_files
+  role/type: energyplus_weather
+  cardinality: 1..1 for simulation
+  formats: EPW
+  default: submitted EPW if present, otherwise default weather resource
+```
+
+The backend can continue to receive:
+
+```json
+{
+  "input_files": [{ "role": "primary-model", "uri": "..." }],
+  "resource_files": [{ "type": "energyplus_weather", "uri": "..." }]
+}
+```
+
+The file-port contract lives above that envelope rendering. It lets Django
+validate cardinality, choose simple defaults, present a clean UI, and bind a
+future upstream artifact without mutating the original payload.
+
+Do not make a new validator assume "whatever is in `input_files[0]`" unless
+the declared port contract has exactly one compatible file and the backend
+still validates that assumption defensively.
+
 ## Output Envelope
 
 The output envelope reports validation results back to Validibot.

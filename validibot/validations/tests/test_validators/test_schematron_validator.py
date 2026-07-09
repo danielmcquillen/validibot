@@ -41,6 +41,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.validators.schematron.validator import (
     CODE_BACKEND_UNAVAILABLE,
 )
+from validibot.validations.validators.schematron.validator import CODE_ENGINE_ERROR
 from validibot.validations.validators.schematron.validator import CODE_ENGINE_TIMEOUT
 from validibot.validations.validators.schematron.validator import (
     CODE_FINDINGS_TRUNCATED,
@@ -124,6 +125,41 @@ def _invalid_outputs() -> SchematronOutputs:
                 severity="ERROR",
                 location_xpath="/Invoice/LegalMonetaryTotal",
                 flag="fatal",
+            ),
+        ],
+    )
+
+
+def _warning_only_outputs() -> SchematronOutputs:
+    """Outputs for a run that PASSES but carries one WARNING and one INFO.
+
+    Mirrors the ``purchase_order_warnings_only`` fixture: zero ERROR findings,
+    so ``passed`` is True, but a warning (e.g. a deprecated-status ``report``)
+    and an info finding are still present and must survive the mapping.
+    """
+    return _outputs(
+        passed=True,
+        error_count=0,
+        warning_count=1,
+        info_count=1,
+        finding_rule_ids_by_severity={
+            "VBPO-LEGACY-01": "WARNING",
+            "VBPO-NOTE-01": "INFO",
+        },
+        findings=[
+            SchematronFinding(
+                rule_id="VBPO-LEGACY-01",
+                message="This order uses a deprecated audit status.",
+                severity="WARNING",
+                location_xpath="/order/audit",
+                flag="warning",
+            ),
+            SchematronFinding(
+                rule_id="VBPO-NOTE-01",
+                message="An order should carry a free-text note.",
+                severity="INFO",
+                location_xpath="/order",
+                flag="info",
             ),
         ],
     )
@@ -317,6 +353,103 @@ def test_runtime_failure_without_outputs_preserves_envelope_messages():
     assert result.passed is False
     assert len(result.issues) == 1
     assert "failed before producing results" in result.issues[0].message
+
+
+# ── post_execute_validate: severity mapping & non-error findings ─────────────
+
+
+def test_warning_only_run_passes_and_still_surfaces_the_findings():
+    """A run with only WARNING/INFO findings passes, findings still mapped (D3).
+
+    ``passed`` follows the envelope status (SUCCESS here — zero ERRORs), yet the
+    warning and info findings must survive ``post_execute_validate`` as issues
+    with their native ids and mapped severities. "Passes" must never mean
+    "silently drop the advisory findings".
+    """
+    envelope = _envelope(
+        status=ValidationStatus.SUCCESS,
+        outputs=_warning_only_outputs(),
+    )
+    result = SchematronValidator().post_execute_validate(envelope, run_context=None)
+
+    assert result.passed is True
+    by_code = {issue.code: issue for issue in result.issues}
+    assert by_code["VBPO-LEGACY-01"].severity == Severity.WARNING
+    assert by_code["VBPO-NOTE-01"].severity == Severity.INFO
+    # No infrastructure/truncation rows — just the two real findings.
+    assert set(by_code) == {"VBPO-LEGACY-01", "VBPO-NOTE-01"}
+
+
+def test_finding_without_a_rule_id_maps_with_an_empty_code():
+    """A finding whose SVRL element had no ``@id`` maps to an empty ``code``.
+
+    Not every publisher assertion carries an id. The mapping must not crash or
+    invent one, and with no id there can be no documentation deep link even when
+    a template is configured — ``code`` is "" and ``rule_url`` is absent.
+    """
+    outputs = _outputs(
+        passed=False,
+        error_count=1,
+        findings=[
+            SchematronFinding(
+                rule_id="",
+                message="An unlabelled assertion failed.",
+                severity="ERROR",
+                location_xpath="/root/child",
+                flag="fatal",
+            ),
+        ],
+    )
+    envelope = _envelope(status=ValidationStatus.FAILED_VALIDATION, outputs=outputs)
+    result = SchematronValidator().post_execute_validate(envelope, run_context=None)
+
+    finding = result.issues[0]
+    assert finding.code == ""
+    assert finding.path == "/root/child"
+    assert "rule_url" not in finding.meta
+
+
+def test_generic_engine_error_without_a_code_maps_to_engine_error():
+    """An engine failure with no ``engine_error_code`` uses the catch-all code.
+
+    The D9 taxonomy has a default: ``engine_status="error"`` with no machine
+    hint is neither a timeout, a compile failure, nor a missing backend, so it
+    surfaces as the reserved ``schematron.engine_error`` — still flagged
+    ``infra_error`` so it never reads as a rule failure.
+    """
+    envelope = _envelope(
+        status=ValidationStatus.FAILED_RUNTIME,
+        outputs=_outputs(
+            engine_status="error",
+            engine_error_code="",
+            engine_message="Saxon aborted unexpectedly.",
+            passed=None,
+        ),
+    )
+    result = SchematronValidator().post_execute_validate(envelope, run_context=None)
+
+    assert len(result.issues) == 1
+    finding = result.issues[0]
+    assert finding.code == CODE_ENGINE_ERROR
+    assert finding.meta["infra_error"] is True
+    assert "Saxon aborted" in finding.message
+
+
+def test_xslt1_query_binding_flows_through_to_provenance_stats():
+    """The detected query binding is echoed verbatim into the D5 provenance.
+
+    Whether a pack ran under xslt1 or xslt2 is part of what makes a result
+    reproducible, so an xslt1 run must record ``query_binding == "xslt1"`` in
+    stats — not silently normalise to the xslt2 default the other tests use.
+    """
+    envelope = _envelope(
+        status=ValidationStatus.SUCCESS,
+        outputs=_outputs(query_binding="xslt1", engine="lxml.isoschematron"),
+    )
+    result = SchematronValidator().post_execute_validate(envelope, run_context=None)
+
+    assert result.stats["query_binding"] == "xslt1"
+    assert result.signals["query_binding"] == "xslt1"
 
 
 # ── Signals → CEL + the D10 deep link (DB-backed) ────────────────────────────

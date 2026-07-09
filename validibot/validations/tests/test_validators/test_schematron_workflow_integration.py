@@ -316,3 +316,131 @@ class TestPeppolPreflightWorkflow(TestCase):
                 code="VB-CO-15",
             ).exists(),
         )
+
+
+class TestPurchaseOrderPreflightWorkflow(TestCase):
+    """The same pipeline on a NEUTRAL (non-invoice) pack, end to end.
+
+    Reuses the exact production path — real step-config form, real inline-rules
+    resolution, real ``ValidationRunService`` orchestration, real findings
+    persistence, only the container's XSLT engine swapped for
+    ``LxmlContainerBackend``. The point is to prove two things the invoice
+    scenarios don't:
+
+    1. **A warnings-only run SUCCEEDS end to end** (D3). Non-ERROR findings are
+       persisted and visible, but the run is not failed by them — the
+       "warnings are advisory" contract, proven through the whole stack rather
+       than at the parser.
+    2. The engine handles a domain with no invoice semantics at all, so nothing
+       invoice-specific is quietly baked into the pipeline.
+    """
+
+    def setUp(self):
+        self.org = OrganizationFactory()
+        self.user = UserFactory()
+        grant_role(self.user, self.org, RoleCode.EXECUTOR)
+        self.user.set_current_org(self.org)
+
+        from validibot.validations.tests.factories import ValidatorFactory
+
+        self.validator = ValidatorFactory(
+            validation_type=ValidationType.SCHEMATRON,
+            supports_assertions=True,
+        )
+        self.workflow = WorkflowFactory(org=self.org)
+
+        # One Schematron step carrying the neutral purchase-order pack.
+        form = SchematronStepConfigForm(
+            data={
+                "name": "Purchase-order rules",
+                "schematron_text": (
+                    ASSETS / "purchase_order" / "purchase_order.sch"
+                ).read_text(),
+            },
+        )
+        assert form.is_valid(), form.errors
+        self.step = save_workflow_step(self.workflow, self.validator, form)
+
+    def _execute(self, fixture_filename: str) -> ValidationRun:
+        submission = SubmissionFactory(
+            org=self.org,
+            project=self.workflow.project,
+            user=self.user,
+            workflow=self.workflow,
+            content=(ASSETS / "purchase_order" / fixture_filename).read_text(),
+            file_type=SubmissionFileType.XML,
+        )
+        run = ValidationRun.objects.create(
+            org=self.org,
+            workflow=self.workflow,
+            submission=submission,
+            project=submission.project,
+            user=self.user,
+            status=ValidationRunStatus.PENDING,
+        )
+        with patch(
+            "validibot.validations.services.execution.get_execution_backend",
+            return_value=LxmlContainerBackend(),
+        ):
+            ValidationRunService().execute_workflow_steps(
+                validation_run_id=run.id,
+                user_id=self.user.id,
+            )
+        run.refresh_from_db()
+        return run
+
+    def test_warnings_only_order_succeeds_with_findings_persisted(self):
+        """A warnings/info-only order run SUCCEEDS, and the findings persist.
+
+        The order reconciles arithmetically (no ERROR) but trips a deprecated
+        audit-status ``report`` and a missing description (WARNING) plus a
+        missing note (INFO). The run must SUCCEED and the step PASS, while all
+        three findings are stored under their native ids at their mapped
+        severities — advisory findings surfaced without blocking.
+        """
+        run = self._execute("purchase_order_warnings_only.xml")
+
+        self.assertEqual(run.status, ValidationRunStatus.SUCCEEDED)
+        step_run = run.step_runs.get()
+        self.assertEqual(step_run.status, StepStatus.PASSED)
+
+        self.assertFalse(
+            ValidationFinding.objects.filter(
+                validation_run=run,
+                severity=Severity.ERROR,
+            ).exists(),
+        )
+        warning_codes = set(
+            ValidationFinding.objects.filter(
+                validation_run=run,
+                severity=Severity.WARNING,
+            ).values_list("code", flat=True),
+        )
+        self.assertEqual(warning_codes, {"VBPO-LEGACY-01", "VBPO-DESC-01"})
+        self.assertTrue(
+            ValidationFinding.objects.filter(
+                validation_run=run,
+                code="VBPO-NOTE-01",
+                severity=Severity.INFO,
+            ).exists(),
+        )
+
+    def test_bad_math_order_fails_on_the_cross_field_arithmetic_rule(self):
+        """A cross-field arithmetic defect fails the run end to end.
+
+        ``grandTotal`` does not equal the sum of the line totals, so the
+        order-level ``VBPO-MATH-02`` fires as an ERROR and the run FAILS —
+        proving the neutral pack's fatal path (a constraint no grammar can
+        express) flows through the whole pipeline under its native rule id.
+        """
+        run = self._execute("purchase_order_bad_math.xml")
+
+        self.assertEqual(run.status, ValidationRunStatus.FAILED)
+        step_run = run.step_runs.get()
+        self.assertEqual(step_run.status, StepStatus.FAILED)
+
+        finding = ValidationFinding.objects.get(
+            validation_run=run,
+            code="VBPO-MATH-02",
+        )
+        self.assertEqual(finding.severity, Severity.ERROR)

@@ -30,6 +30,9 @@ from validibot.validations.validators.schematron.validator import SchematronVali
 # Small caps for the resource-limit tests (defaults are 10 MB / depth 200).
 TINY_MAX_BYTES = 64
 TINY_MAX_DEPTH = 3
+# A byte cap generous enough that the depth-case schema is refused for DEPTH,
+# not size (so the two caps are exercised independently).
+HARD_MAX_BYTES_FOR_DEPTH_CASE = 10_000
 
 XXE_PAYLOAD = (
     '<?xml version="1.0"?>'
@@ -145,6 +148,52 @@ def test_uploaded_schematron_source_is_validated_at_authoring_time():
         validate_schematron_source(XXE_PAYLOAD)
     with pytest.raises(SchematronSecurityError, match="empty"):
         validate_schematron_source("   ")
+
+
+def test_schematron_source_guard_rejects_entity_bombs_in_the_rules():
+    """An author cannot upload a billion-laughs ``.sch`` any more than an XXE one.
+
+    The rules document is XML too, so the authoring guard applies the same
+    ``forbid_dtd`` posture: a nested-entity bomb carried in the rules is refused
+    at upload (its DTD is rejected outright) rather than shipped to the container
+    to be expanded. Malicious author input is guarded exactly like malicious
+    submitter input.
+    """
+    from validibot.validations.validators.schematron.security import (
+        validate_schematron_source,
+    )
+
+    with pytest.raises(SchematronSecurityError, match="forbidden constructs"):
+        validate_schematron_source(BILLION_LAUGHS)
+
+
+def test_schematron_source_guard_enforces_size_and_depth_caps(settings):
+    """Oversize / pathologically deep rules are refused at authoring time.
+
+    The rules guard shares the submission guard's resource caps, so an author
+    cannot paste a 100 MB or absurdly nested ``.sch`` that would burden the
+    container. The size cap is checked before parsing; the depth cap uses the
+    same iterative walk as the submission guard.
+    """
+    from validibot.validations.validators.schematron.security import (
+        validate_schematron_source,
+    )
+
+    ns = 'xmlns="http://purl.oclc.org/dsdl/schematron"'
+
+    settings.SCHEMATRON_MAX_INPUT_BYTES = 200
+    oversize = f"<schema {ns}>" + "<pattern/>" * 50 + "</schema>"
+    with pytest.raises(SchematronSecurityError, match="too large"):
+        validate_schematron_source(oversize)
+
+    settings.SCHEMATRON_MAX_INPUT_BYTES = HARD_MAX_BYTES_FOR_DEPTH_CASE
+    settings.SCHEMATRON_MAX_INPUT_DEPTH = TINY_MAX_DEPTH
+    deep = (
+        f"<schema {ns}><pattern><rule context='/'>"
+        "<assert test='true()'><nested/></assert></rule></pattern></schema>"
+    )
+    with pytest.raises(SchematronSecurityError, match="deeper"):
+        validate_schematron_source(deep)
 
 
 def test_preprocess_submission_converts_guard_failures_to_validation_errors():

@@ -13,6 +13,15 @@ other domain folders under `tests/assets/` (`xml/`, `xsd/`, `rng/`, `fmu/`,
 | `peppol_invoice_valid.xml` | Well-formed invoice whose totals reconcile. Expected result: **pass both layers** (0 errors; may emit informational/warning findings only). |
 | `peppol_invoice_invalid.xml` | Well-formed, XSD-valid invoice with a **seeded defect**: `TaxInclusiveAmount` (120.00) ≠ `TaxExclusiveAmount` (100.00) + `TaxAmount` (21.00). Expected result: **fail the EN layer** with one `ERROR` finding carrying rule id `VB-CO-15` (fail-fast: the Peppol layer never runs). |
 | `peppol_invoice_missing_profile.xml` | Totals reconcile (**passes the EN layer**) but `ProfileID` is removed, so the **Peppol layer fails** with `VB-PEPPOL-R001` — proving the two-step layering reports under each rules file's own native ids. |
+| `peppol_invoice_warning_only.xml` | Totals reconcile and a line is present, but the supplier `EndpointID` has no `schemeID`, so only the advisory `VB-EAS-01` (`flag="warning"`) fires. Expected result: **passes** (0 errors) while still surfacing the warning — the "warnings are advisory, not blocking" case (D3). |
+
+## Neutral (non-invoice) domain
+
+`purchase_order/` holds a second, self-contained fixture pack in a purchase-order
+vocabulary (two namespaces, `VBPO-*` rule ids) used by the engine-behaviour
+matrix. It exercises Schematron *mechanics* — cross-field arithmetic,
+enumerations, multi-namespace resolution, per-severity findings, `assert` vs
+`report` — without invoice semantics. See `purchase_order/README.md`.
 
 ## Why these fixtures exist
 

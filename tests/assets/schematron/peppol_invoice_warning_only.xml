@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Validibot test fixture: a well-formed Peppol BIS Billing 3.0 (UBL) invoice
+  that PASSES the illustrative en16931_subset.sch (zero ERROR findings) but
+  trips ONE WARNING.
+
+  It is identical to peppol_invoice_valid.xml except the supplier's
+  cbc:EndpointID has NO schemeID attribute, which fires the advisory rule
+  VB-EAS-01 (flag="warning"). Totals still reconcile
+  (TaxExclusive 100.00 + TaxAmount 21.00 = TaxInclusive 121.00), a line and a
+  currency code are present, so no fatal rule fires.
+
+  Expected: error_count == 0, warning_count == 1 (VB-EAS-01), passed == True —
+  the invoice-domain counterpart to purchase_order_warnings_only.xml, proving
+  the D3 "passes with warnings" rule on the flagship domain too.
+
+  Hand-built fixture, not a real invoice or a conformance sample.
+-->
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2">
+  <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0</cbc:CustomizationID>
+  <cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>
+  <cbc:ID>INV-2026-0008</cbc:ID>
+  <cbc:IssueDate>2026-06-15</cbc:IssueDate>
+  <cbc:DueDate>2026-07-15</cbc:DueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+  <cbc:BuyerReference>PO-4451</cbc:BuyerReference>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cbc:EndpointID>0680123456</cbc:EndpointID>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>Frietkot Systems BV</cbc:RegistrationName>
+        <cbc:CompanyID schemeID="0208">0680123456</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>BE0680123456</cbc:CompanyID>
+        <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+      </cac:PartyTaxScheme>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <cbc:EndpointID schemeID="0208">0999888777</cbc:EndpointID>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>De Nachtwinkel NV</cbc:RegistrationName>
+        <cbc:CompanyID schemeID="0208">0999888777</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+  <cac:TaxTotal>
+    <cbc:TaxAmount currencyID="EUR">21.00</cbc:TaxAmount>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="EUR">100.00</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="EUR">21.00</cbc:TaxAmount>
+      <cac:TaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>21</cbc:Percent>
+        <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:TaxTotal>
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="EUR">100.00</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="EUR">100.00</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="EUR">121.00</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="EUR">121.00</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="C62">10</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">100.00</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Name>Frozen fries 2.5kg</cbc:Name>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>21</cbc:Percent>
+        <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">10.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+</Invoice>

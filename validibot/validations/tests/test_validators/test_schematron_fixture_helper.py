@@ -99,3 +99,32 @@ def test_invalid_invoice_fails_vb_co_15_at_legal_monetary_total():
     # The CEL-facing map carries the same verdict.
     assert summary.finding_rule_ids_by_severity == {"VB-CO-15": SEVERITY_ERROR}
     assert not summary.passed
+
+
+def test_warning_only_invoice_passes_but_still_surfaces_the_warning():
+    """An invoice with only a WARNING passes yet the warning is reported.
+
+    A Schematron run passes iff there are zero ERROR findings (D3), so an
+    otherwise-clean invoice whose supplier EndpointID lacks a schemeID trips the
+    advisory VB-EAS-01 rule (flag="warning") without failing: ``passed`` is
+    True, ``error_count`` is 0, and the warning is still visible to the author.
+    This is the "warnings are advisory, not blocking" contract on the flagship
+    invoice domain — the counterpart to the neutral purchase-order pack's
+    warnings-only fixture.
+    """
+    ok, summary = _run_subset_pack("peppol_invoice_warning_only.xml")
+
+    # lxml's validate() returns False whenever ANY assertion fired, even a
+    # warning — but our severity-aware verdict is what the pipeline trusts.
+    assert ok is False
+    assert summary.error_count == 0
+    assert summary.warning_count == 1
+    assert summary.info_count == 0
+    assert summary.passed
+
+    warning = summary.findings[0]
+    assert warning.rule_id == "VB-EAS-01"
+    assert warning.severity == svrl.SEVERITY_WARNING
+    assert summary.finding_rule_ids_by_severity == {"VB-EAS-01": svrl.SEVERITY_WARNING}
+    # The run genuinely evaluated rules (guard against a false green).
+    assert summary.fired_rule_count > 0

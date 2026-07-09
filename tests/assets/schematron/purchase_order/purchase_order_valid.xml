@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Validibot test fixture: a purchase order that PASSES purchase_order.sch with
+  ZERO findings of any severity.
+
+  - Two lines, each lineTotal = qty * unitPrice (20.00 and 15.00).
+  - grandTotal (35.00) = sum of line totals.
+  - currency USD is in the accepted set.
+  - both lines carry a description; a note is present; audit status is active
+    (so the deprecated-status REPORT does not fire).
+
+  Every rule context (order, each line, audit) is still MATCHED, so a run over
+  this document proves rules genuinely evaluated (fired_rule_count > 0) rather
+  than silently matching nothing.
+-->
+<po:order xmlns:po="urn:validibot:test:po"
+          xmlns:au="urn:validibot:test:audit"
+          currency="USD">
+  <po:note>Standard monthly replenishment.</po:note>
+  <au:audit status="active" reviewer="mara"/>
+  <po:line sku="A-1" qty="2" unitPrice="10.00" lineTotal="20.00" desc="Widget, 5cm"/>
+  <po:line sku="B-2" qty="3" unitPrice="5.00" lineTotal="15.00" desc="Gadget, blue"/>
+  <po:grandTotal>35.00</po:grandTotal>
+</po:order>

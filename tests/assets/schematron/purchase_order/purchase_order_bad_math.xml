@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Validibot test fixture: a purchase order that FAILS purchase_order.sch on a
+  cross-field arithmetic rule while ALSO carrying a warning — proving an ERROR
+  and a WARNING coexist in one run and that the ERROR is what fails it.
+
+  Each individual line's lineTotal is internally consistent (qty * unitPrice),
+  so the per-line VBPO-MATH-01 does NOT fire. But grandTotal (999.00) does not
+  equal the sum of the line totals (35.00), so the order-level VBPO-MATH-02
+  fires as a fatal ERROR. Line B-2 has no description, so VBPO-DESC-01 fires as
+  a WARNING.
+
+  Expected: error_count == 1 (VBPO-MATH-02), warning_count == 1 (VBPO-DESC-01),
+  passed == False. The document is perfectly well-formed and would satisfy any
+  grammar — the defect is purely a cross-element numeric relationship.
+-->
+<po:order xmlns:po="urn:validibot:test:po"
+          xmlns:au="urn:validibot:test:audit"
+          currency="USD">
+  <po:note>Rush order.</po:note>
+  <au:audit status="active"/>
+  <po:line sku="A-1" qty="2" unitPrice="10.00" lineTotal="20.00" desc="Widget, 5cm"/>
+  <po:line sku="B-2" qty="3" unitPrice="5.00" lineTotal="15.00"/>
+  <po:grandTotal>999.00</po:grandTotal>
+</po:order>

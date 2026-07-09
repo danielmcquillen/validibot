@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Validibot test fixture: a purchase order that PASSES (zero ERROR findings)
+  yet carries WARNING and INFO findings. This is the "passes with warnings"
+  case (ADR-2026-07-01 D3): a Schematron run passes iff there are no
+  ERROR-level findings — non-fatal findings must still surface without
+  failing the run.
+
+  Expected findings:
+    - VBPO-LEGACY-01 (warning)  audit status is "deprecated" -> the REPORT fires
+    - VBPO-DESC-01   (warning)  line B-2 has no description
+    - VBPO-NOTE-01   (info)     the order carries no note
+
+  Arithmetic and currency are all correct, so there are NO errors. passed=True.
+-->
+<po:order xmlns:po="urn:validibot:test:po"
+          xmlns:au="urn:validibot:test:audit"
+          currency="EUR">
+  <au:audit status="deprecated"/>
+  <po:line sku="A-1" qty="2" unitPrice="10.00" lineTotal="20.00" desc="Widget, 5cm"/>
+  <po:line sku="B-2" qty="1" unitPrice="15.00" lineTotal="15.00"/>
+  <po:grandTotal>35.00</po:grandTotal>
+</po:order>

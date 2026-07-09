@@ -48,7 +48,7 @@ dependencies = [
   "djangorestframework==3.17.1",
   "drf-spectacular[sidecar]==0.30.0",
   "fmpy==0.3.30",
-  "google-cloud-kms==3.14.0",
+  "google-cloud-kms==3.15.0",
   "google-cloud-tasks==2.23.0",
   # RE2 regex engine: linear-time, no catastrophic backtracking. Used by
   # validibot.validations.regex_safety to run author-supplied patterns (Basic
@@ -79,7 +79,7 @@ dependencies = [
   # See: https://github.com/celery/django-celery-beat/issues/977
   "django-celery-beat==2.9.0",
   "uvicorn-worker==0.4.0",
-  "uvicorn[standard]==0.50.2",
+  "uvicorn[standard]==0.51.0",
   "whitenoise==6.12.0",
   "google-cloud-run==0.16.1",
   "python-json-logger==4.1.0",
@@ -88,7 +88,7 @@ dependencies = [
   # guerrillamail, tempmail, etc). Used by UserSignupForm when
   # REJECT_DISPOSABLE_EMAILS is enabled — off by default for community/
   # self-hosted deployments, on in cloud to deter free-trial abuse.
-  "disposable-email-domains==0.0.215",
+  "disposable-email-domains==0.0.216",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # 0.7.0 adds ``StepValidatorRecord.validator_backend_image_digest``;
   # 0.7.1–0.7.3 shipped publish-workflow fixes;

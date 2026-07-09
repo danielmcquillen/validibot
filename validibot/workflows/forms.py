@@ -4300,6 +4300,40 @@ class SchematronStepConfigForm(BaseStepConfigForm):
                 "Paste your Schematron rules or upload a .sch file below.",
             )
 
+    def clean_rule_doc_url_template(self):
+        """Restrict the deep-link template to a safe absolute http(s) URL.
+
+        The template is stored in ruleset metadata and formatted into each
+        finding's ``meta.rule_url``, which UI/API clients render as a
+        clickable link. Left unchecked, an author could paste
+        ``javascript:alert(1)#{rule_id}`` (or a malformed template) and turn a
+        finding into an XSS/redirect vector. We validate the *substituted* URL
+        (a sentinel stands in for the rule id) and require an http(s) scheme
+        with a host, refusing everything else at authoring time.
+        """
+        from urllib.parse import urlsplit
+
+        template = (self.cleaned_data.get("rule_doc_url_template") or "").strip()
+        if not template:
+            return ""
+
+        try:
+            probe = template.format(rule_id="__vb_sentinel_rule_id__")
+        except (KeyError, IndexError, ValueError) as exc:
+            raise forms.ValidationError(
+                _("Use only {rule_id} as the placeholder in the URL template."),
+            ) from exc
+
+        parsed = urlsplit(probe)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise forms.ValidationError(
+                _(
+                    "The rule documentation URL must be an absolute http(s) "
+                    "URL, e.g. https://docs.example.org/rules/#{rule_id}.",
+                ),
+            )
+        return template
+
     def clean(self):
         cleaned = super().clean()
         text = (cleaned.get("schematron_text") or "").strip()

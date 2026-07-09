@@ -927,6 +927,10 @@ class AdvancedValidator(BaseValidator):
 
         # Error during execution
         if response.error_message:
+            # Preserve a reserved failure code + meta the backend supplied
+            # (e.g. schematron.rules_invalid with meta.infra_error) so a
+            # launch-time failure is categorised the same as a callback-time
+            # one — "we couldn't run the check", not a rule failure.
             return ValidationResult(
                 passed=False,
                 issues=[
@@ -934,6 +938,8 @@ class AdvancedValidator(BaseValidator):
                         path="",
                         message=response.error_message,
                         severity=Severity.ERROR,
+                        code=getattr(response, "error_code", None) or "",
+                        meta=dict(getattr(response, "error_meta", None) or {}),
                     ),
                 ],
                 stats=stats,

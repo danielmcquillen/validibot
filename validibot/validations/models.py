@@ -377,6 +377,27 @@ class Ruleset(TimeStampedModel):
                     },
                 )
 
+        # SCHEMATRON rules are executable code (compiled Schematron is XSLT), so
+        # inline rules get the same hardened-XML authoring guard the step-config
+        # form applies — enforced here too, so a ruleset created OUTSIDE that
+        # form (import, admin, API) cannot persist a rules document carrying a
+        # DTD/XXE or a non-Schematron root. The container re-guards regardless
+        # (engine.guard_rules, D8b); failing at authoring is just the earlier,
+        # clearer error. File-only rules are guarded on the upload path and in
+        # the container.
+        if self.ruleset_type == RulesetType.SCHEMATRON and has_text:
+            from validibot.validations.validators.schematron.security import (
+                SchematronSecurityError,
+            )
+            from validibot.validations.validators.schematron.security import (
+                validate_schematron_source,
+            )
+
+            try:
+                validate_schematron_source(self.rules_text)
+            except SchematronSecurityError as exc:
+                raise ValidationError({"rules_text": str(exc)}) from exc
+
         # ── Phase 3 task 10: ruleset immutability ───────────────────
         # A ruleset that's referenced by any step on a locked or used
         # workflow is part of those workflows' launch contract. Editing

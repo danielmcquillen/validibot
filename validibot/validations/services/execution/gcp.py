@@ -190,9 +190,23 @@ class GCPExecutionBackend(ExecutionBackend):
                 if getattr(issue, "message", None)
             ]
             error_message = "\n".join(messages) or "Failed to launch Cloud Run Job"
+            # Preserve a reserved failure code + meta (e.g.
+            # ``schematron.rules_invalid`` with ``meta.infra_error``) from the
+            # launcher, so a LAUNCH-time infrastructure failure renders the same
+            # as a callback-time one instead of collapsing to a bare message.
+            coded_issue = next(
+                (issue for issue in result.issues if getattr(issue, "code", None)),
+                None,
+            )
             return ExecutionResponse(
                 is_complete=True,
                 error_message=error_message,
+                error_code=getattr(coded_issue, "code", None) if coded_issue else None,
+                error_meta=(
+                    dict(getattr(coded_issue, "meta", None) or {})
+                    if coded_issue
+                    else None
+                ),
                 **common,
             )
         return ExecutionResponse(
@@ -308,10 +322,14 @@ class GCPExecutionBackend(ExecutionBackend):
         """
         Execute Schematron validation via Cloud Run.
 
-        Delegates to the launcher, which resolves the pack from the library
-        validator's default_ruleset, stages the checksum-verified rule-pack
-        artefact + XML submission to the run bundle, and triggers the
-        isolated Schematron Cloud Run Job (ADR-2026-07-01 D4/D4b).
+        Delegates to the launcher, which resolves the author's rules from the
+        step's ruleset (falling back to the validator's ``default_ruleset``),
+        ships them **inline** in the typed input envelope
+        (``SchematronInputs.schematron_text``) alongside the staged XML
+        submission, and triggers the isolated Schematron Cloud Run Job. The
+        container compiles the rules (SchXslt2) and runs them under Saxon
+        (ADR-2026-07-01 D4/D4b) — there is no separate checksum-verified rule
+        pack artefact.
         """
         from validibot.validations.services.cloud_run.launcher import (
             launch_schematron_validation,

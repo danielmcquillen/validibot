@@ -93,6 +93,17 @@ class ExecutionResponse:
     error_message: str | None = None
     """Error message if execution failed."""
 
+    error_code: str | None = None
+    """Machine-readable code for a launch/execution failure, when the backend
+    supplied one (e.g. ``schematron.rules_invalid``). Lets a launch-time failure
+    carry the same reserved code a callback-time failure would, instead of
+    collapsing to a generic message. ``None`` when no code applies."""
+
+    error_meta: dict | None = None
+    """Structured metadata for a failure (e.g. ``{"infra_error": True}``) so a
+    launch-time infrastructure failure renders as "we couldn't run the check",
+    not a rule failure. ``None`` when no metadata applies."""
+
     # Metadata
     input_uri: str | None = None
     """URI where input envelope was stored."""

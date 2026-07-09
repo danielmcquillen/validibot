@@ -97,6 +97,46 @@ class TestSchematronStepConfigForm:
             get_config_form_class(ValidationType.SCHEMATRON) is SchematronStepConfigForm
         )
 
+    def test_rule_doc_url_template_must_be_a_safe_http_url(self):
+        """The deep-link template is restricted to an absolute http(s) URL.
+
+        The template is formatted into every finding's ``meta.rule_url``, which
+        clients render as a clickable link. A ``javascript:`` scheme or a
+        malformed template is an XSS/redirect vector, so it is refused at
+        authoring time; a well-formed https template is accepted.
+        """
+        # A javascript: scheme is rejected.
+        bad_scheme = SchematronStepConfigForm(
+            data={
+                "name": "Rules",
+                "schematron_text": SCH_TEXT,
+                "rule_doc_url_template": "javascript:alert(1)#{rule_id}",
+            },
+        )
+        assert not bad_scheme.is_valid()
+        assert "rule_doc_url_template" in bad_scheme.errors
+
+        # An unknown placeholder (anything but {rule_id}) is rejected.
+        bad_placeholder = SchematronStepConfigForm(
+            data={
+                "name": "Rules",
+                "schematron_text": SCH_TEXT,
+                "rule_doc_url_template": "https://docs.example.test/{oops}",
+            },
+        )
+        assert not bad_placeholder.is_valid()
+        assert "rule_doc_url_template" in bad_placeholder.errors
+
+        # A well-formed https template with {rule_id} is accepted.
+        good = SchematronStepConfigForm(
+            data={
+                "name": "Rules",
+                "schematron_text": SCH_TEXT,
+                "rule_doc_url_template": DOC_URL_TEMPLATE,
+            },
+        )
+        assert good.is_valid(), good.errors
+
 
 # ── Ruleset.clean(): rules content required, like any schema ruleset ────────
 
@@ -128,6 +168,38 @@ class TestSchematronRulesetClean:
         )
         with pytest.raises(ValidationError, match="rules"):
             ruleset.full_clean()
+
+    def test_malicious_or_non_schematron_rules_text_is_rejected(self):
+        """The hardened-XML guard runs on the model, not just the step form.
+
+        A ruleset created outside the step-config form (import, admin, API)
+        must not persist a rules document carrying a DTD/XXE or a
+        non-Schematron root. The container re-guards regardless
+        (``engine.guard_rules``, D8b); enforcing it in ``clean()`` makes it the
+        earlier, clearer failure and closes the non-form authoring paths.
+        """
+        xxe_rules = (
+            '<?xml version="1.0"?>'
+            '<!DOCTYPE schema [<!ENTITY x SYSTEM "file:///etc/passwd">]>'
+            '<schema xmlns="http://purl.oclc.org/dsdl/schematron"/>'
+        )
+        with pytest.raises(ValidationError, match="forbidden constructs"):
+            Ruleset(
+                org=OrganizationFactory(),
+                name="xxe-rules",
+                ruleset_type=RulesetType.SCHEMATRON,
+                version="1",
+                rules_text=xxe_rules,
+            ).full_clean()
+
+        with pytest.raises(ValidationError, match="root"):
+            Ruleset(
+                org=OrganizationFactory(),
+                name="not-schematron",
+                ruleset_type=RulesetType.SCHEMATRON,
+                version="1",
+                rules_text="<invoice/>",
+            ).full_clean()
 
 
 # ── save_workflow_step: the full authoring flow ──────────────────────────────

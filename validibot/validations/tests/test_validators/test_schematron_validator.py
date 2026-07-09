@@ -452,6 +452,69 @@ def test_xslt1_query_binding_flows_through_to_provenance_stats():
     assert result.signals["query_binding"] == "xslt1"
 
 
+# ── Deep-link URL safety + launch-time failure code preservation ─────────────
+
+
+def test_rule_url_percent_encodes_the_rule_id():
+    """The rule id is percent-encoded before it lands in the deep-link URL.
+
+    The id comes from the author-controlled SVRL ``@id`` and is placed into a
+    URL that clients render as a link, so characters that could break out of
+    the URL/href (spaces, quotes, angle brackets) are encoded; a conventional
+    rule id passes through unchanged.
+    """
+    make = SchematronValidator._rule_url
+
+    encoded = make("https://docs.test/#{rule_id}", 'x y"<z>')
+    assert " " not in encoded
+    assert '"' not in encoded
+    assert "<" not in encoded
+
+    assert (
+        make("https://docs.test/#{rule_id}", "VB-CO-15")
+        == "https://docs.test/#VB-CO-15"
+    )
+
+
+def test_launch_time_infra_code_survives_to_the_result():
+    """A launch-time reserved code + infra_error is preserved end-to-end (D9).
+
+    Callback-time engine failures already carry ``schematron.*`` codes; this
+    pins the LAUNCH path. A launcher result whose issue carries
+    ``schematron.rules_invalid`` + ``meta.infra_error`` must flow through
+    ``GCPExecutionBackend._launch_result_to_response`` and
+    ``AdvancedValidator._response_to_result`` without collapsing to a generic
+    coded-nothing error — so a launch-time failure renders as "we couldn't run
+    the check", not as a rule failure.
+    """
+    from validibot.validations.services.execution.gcp import GCPExecutionBackend
+    from validibot.validations.validators.base.base import ValidationIssue
+    from validibot.validations.validators.base.base import ValidationResult
+
+    launch_result = ValidationResult(
+        passed=False,
+        issues=[
+            ValidationIssue(
+                path="",
+                message="The step's Schematron rules failed to compile.",
+                severity=Severity.ERROR,
+                code=CODE_RULES_INVALID,
+                meta={"infra_error": True},
+            ),
+        ],
+    )
+
+    response = GCPExecutionBackend()._launch_result_to_response(launch_result)
+    assert response.error_code == CODE_RULES_INVALID
+    assert response.error_meta == {"infra_error": True}
+
+    result = SchematronValidator()._response_to_result(response, is_async=True)
+    assert result.passed is False
+    issue = result.issues[0]
+    assert issue.code == CODE_RULES_INVALID
+    assert issue.meta.get("infra_error") is True
+
+
 # ── Signals → CEL + the D10 deep link (DB-backed) ────────────────────────────
 
 

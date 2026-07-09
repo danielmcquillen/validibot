@@ -364,11 +364,21 @@ class SchematronValidator(AdvancedValidator):
 
     @staticmethod
     def _rule_url(template: str, rule_id: str) -> str:
-        """Build the D10 deep link for one finding (empty when unavailable)."""
+        """Build the D10 deep link for one finding (empty when unavailable).
+
+        The rule id comes from the author's SVRL ``@id`` and is interpolated
+        into a URL that is rendered as a link, so it is percent-encoded before
+        substitution — a rule id containing a quote, angle bracket, or space
+        cannot break out of the URL/href. The template itself was already
+        restricted to an http(s) scheme at authoring time
+        (``SchematronStepConfigForm.clean_rule_doc_url_template``).
+        """
         if not template or not rule_id:
             return ""
+        from urllib.parse import quote
+
         try:
-            return template.format(rule_id=rule_id)
+            return template.format(rule_id=quote(rule_id, safe=""))
         except (KeyError, IndexError, ValueError):
             logger.warning("Bad rule_doc_url_template on step ruleset")
             return ""

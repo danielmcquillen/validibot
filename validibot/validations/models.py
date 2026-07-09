@@ -377,26 +377,40 @@ class Ruleset(TimeStampedModel):
                     },
                 )
 
-        # SCHEMATRON rules are executable code (compiled Schematron is XSLT), so
-        # inline rules get the same hardened-XML authoring guard the step-config
-        # form applies — enforced here too, so a ruleset created OUTSIDE that
-        # form (import, admin, API) cannot persist a rules document carrying a
-        # DTD/XXE or a non-Schematron root. The container re-guards regardless
-        # (engine.guard_rules, D8b); failing at authoring is just the earlier,
-        # clearer error. File-only rules are guarded on the upload path and in
-        # the container.
-        if self.ruleset_type == RulesetType.SCHEMATRON and has_text:
-            from validibot.validations.validators.schematron.security import (
-                SchematronSecurityError,
-            )
-            from validibot.validations.validators.schematron.security import (
-                validate_schematron_source,
-            )
+        # SCHEMATRON rules are executable code (compiled Schematron is XSLT) and
+        # ship INLINE in the run envelope (``schematron_text``), so they must be
+        # stored as inline ``rules_text`` — the step-config form always
+        # normalizes an uploaded .sch into text and clears ``rules_file``
+        # (workflows/views_helpers). A file-backed row can therefore only come
+        # from a non-form path (import, admin, API), and it would BOTH break the
+        # inline-rules contract and dodge the hardened-XML guard below — so we
+        # forbid it here. The inline rules then get the same authoring guard the
+        # form applies, so a ruleset created outside the form cannot persist a
+        # rules document carrying a DTD/XXE or a non-Schematron root. The
+        # container re-guards regardless (engine.guard_rules, D8b); failing at
+        # authoring is just the earlier, clearer error.
+        if self.ruleset_type == RulesetType.SCHEMATRON:
+            if has_file:
+                raise ValidationError(
+                    {
+                        "rules_file": _(
+                            "Schematron rulesets must store their rules as "
+                            "inline text, not an uploaded file.",
+                        ),
+                    },
+                )
+            if has_text:
+                from validibot.validations.validators.schematron.security import (
+                    SchematronSecurityError,
+                )
+                from validibot.validations.validators.schematron.security import (
+                    validate_schematron_source,
+                )
 
-            try:
-                validate_schematron_source(self.rules_text)
-            except SchematronSecurityError as exc:
-                raise ValidationError({"rules_text": str(exc)}) from exc
+                try:
+                    validate_schematron_source(self.rules_text)
+                except SchematronSecurityError as exc:
+                    raise ValidationError({"rules_text": str(exc)}) from exc
 
         # ── Phase 3 task 10: ruleset immutability ───────────────────
         # A ruleset that's referenced by any step on a locked or used

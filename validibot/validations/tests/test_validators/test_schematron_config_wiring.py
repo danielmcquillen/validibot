@@ -201,6 +201,26 @@ class TestSchematronRulesetClean:
                 rules_text="<invoice/>",
             ).full_clean()
 
+    def test_file_backed_schematron_ruleset_is_rejected(self):
+        """Schematron rules must be stored as inline text, never a file.
+
+        The rules ship inline in the run envelope (``schematron_text``), and the
+        step-config form always normalizes an uploaded .sch into ``rules_text``
+        and clears ``rules_file``. A file-backed SCHEMATRON ruleset can only
+        come from a non-form path (import, admin, API) — and it would both break
+        the inline-rules contract and skip the inline authoring guard, so
+        ``clean()`` forbids it. (The container re-guards regardless.)
+        """
+        ruleset = Ruleset(
+            org=OrganizationFactory(),
+            name="file-rules",
+            ruleset_type=RulesetType.SCHEMATRON,
+            version="1",
+            rules_file=SimpleUploadedFile("rules.sch", SCH_TEXT.encode("utf-8")),
+        )
+        with pytest.raises(ValidationError, match="inline text"):
+            ruleset.full_clean()
+
 
 # ── save_workflow_step: the full authoring flow ──────────────────────────────
 

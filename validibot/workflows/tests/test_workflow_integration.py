@@ -214,6 +214,11 @@ def test_workflow_update_header_uses_shared_version_badge(client):
     assert "app-form-section" in body
     assert "Workflow basics" in body
     assert "Submission settings" in body
+    assert "app-viewport-locked" in body
+    assert 'id="workflow-edit" class="container-fluid editor-shell"' in body
+    assert 'class="card app-card editor-card"' in body
+    assert 'class="card-body editor-card__scroll"' in body
+    assert "card-footer" in body
 
 
 def test_workflow_breadcrumb_places_version_badge_before_truncated_name(client):

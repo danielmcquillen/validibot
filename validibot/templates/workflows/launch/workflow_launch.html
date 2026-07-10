@@ -8,8 +8,16 @@
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
+{% comment %}Keep the launch action visible for generated input forms of any length.{% endcomment %}
+{% block bodyclass %}
+  {% if workflow.is_active and has_steps and can_execute %}
+    d-flex flex-column min-vh-100 flex-grow-1 navbar-fixed-offset app-viewport-locked
+  {% else %}
+    {{ block.super }}
+  {% endif %}
+{% endblock bodyclass %}
 {% block app_content %}
-  <div class="container-fluid" id="workflow-launch">
+  <div class="container-fluid editor-shell" id="workflow-launch">
     <div class="app-content-header-bar row">
       <div class="app-content-header col-12 d-flex align-items-start mb-2 mb-lg-0">
         <h1 class="app-page-title">

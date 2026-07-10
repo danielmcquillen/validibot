@@ -768,6 +768,7 @@ def test_create_energyplus_step_with_idf_checks(client):
 
 
 def test_step_settings_does_not_expose_validator_selector(client):
+    """The settings page stays focused on the already-selected validator."""
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     validator = ensure_validator(
@@ -783,6 +784,42 @@ def test_step_settings_does_not_expose_validator_selector(client):
     assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
     assert 'name="validator_choice"' not in body
+
+
+def test_step_settings_uses_sticky_action_footer_editor(client):
+    """Long validator forms must keep Cancel and Save visible in the viewport.
+
+    XML, SHACL, Schematron, and the other non-Tabular validators all share this
+    template. Pinning the reusable editor-shell classes here protects the whole
+    family from regressing to document-level scrolling.
+    """
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ensure_validator(
+        ValidationType.XML_SCHEMA,
+        "xml-sticky-footer",
+        "XML Validator",
+    )
+    validator.description = "This explanatory subhead should not appear."
+    validator.save(update_fields=["description"])
+    step = WorkflowStepFactory(workflow=workflow, validator=validator)
+
+    response = client.get(
+        reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk]),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "app-viewport-locked" in body
+    assert 'id="workflow-step-form" class="container-fluid editor-shell"' in body
+    assert 'class="card app-card editor-card"' in body
+    assert "card-title h5 mb-0" in body
+    assert "Workflow Step Validator: XML Validator" in body
+    assert "This explanatory subhead should not appear." not in body
+    assert '<span class="badge text-bg-primary">XML Schema</span>' not in body
+    assert 'class="card-body editor-card__scroll"' in body
+    assert "card-footer" in body
+    assert "Save changes" in body
 
 
 def test_shacl_step_settings_shows_current_shapes_and_ontologies(client):

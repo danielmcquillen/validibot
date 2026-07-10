@@ -4,7 +4,7 @@
 <form method="post"
       action="{% org_url 'workflows:workflow_launch' pk=workflow.pk %}"
       enctype="multipart/form-data"
-      class="card app-card submit-content-card"
+      class="card app-card editor-card submit-content-card"
       id="workflow-launch-form"
       data-workflow-launch-form="true"
       data-default-mode="{% if input_form %}
@@ -18,7 +18,7 @@
         data-validate-input-url="{% org_url 'workflows:workflow_launch_validate_input' pk=workflow.pk %}"
       {% endif %}>
   {% csrf_token %}
-  <div class="card submit-content-card">
+  <div class="card editor-card submit-content-card">
     <div class="card-header">
       <ul class="nav nav-tabs card-header-tabs " role="tablist">
         <li class="nav-item" role="presentation">
@@ -61,7 +61,7 @@
         {% endif %}
       </ul>
     </div>
-    <div class="card-body">
+    <div class="card-body editor-card__scroll">
       {% include "core/partial/_form_errors_summary.html" with form=launch_form %}
       {% if launch_form.non_field_errors %}
         <div class="alert alert-danger" role="alert">

@@ -7,12 +7,6 @@
 // active tab pane scrolls, and the Cancel / Save footer stays pinned. Styles
 // here are page-specific; the bound + sticky-footer mechanics are shared.
 
-#tabular-step-settings {
-  // `.editor-shell` (markup) supplies the fill column; add a little breathing
-  // room below the pinned footer so it isn't flush with the viewport edge.
-  padding-bottom: 1rem;
-}
-
 // Tab strip pinned at the top of the editor card body.
 .tabular-editor-tabs {
   border-bottom: 1px solid var(--bs-border-color);

@@ -99,6 +99,7 @@ def test_launch_page_requires_authentication(client):
 
 
 def test_launch_page_renders_for_org_member(client):
+    """Executors should get a viewport-bound launch editor with pinned actions."""
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
     user = _force_login_for_workflow(client, workflow)
@@ -112,9 +113,14 @@ def test_launch_page_renders_for_org_member(client):
     assert response.status_code == HTTPStatus.OK
     assert "Launch Validation" in body
     assert "workflow-launch-status-area" not in body
+    assert "app-viewport-locked" in body
+    assert 'class="container-fluid editor-shell" id="workflow-launch"' in body
+    assert 'class="card app-card editor-card submit-content-card"' in body
+    assert 'class="card-body editor-card__scroll"' in body
 
 
 def test_launch_page_disables_form_without_steps(client):
+    """A non-editor launch gate should retain natural document scrolling."""
     workflow = WorkflowFactory()
     user = _force_login_for_workflow(client, workflow)
     grant_role(user, workflow.org, RoleCode.EXECUTOR)
@@ -127,6 +133,7 @@ def test_launch_page_disables_form_without_steps(client):
     assert response.status_code == HTTPStatus.OK
     assert "This workflow has no steps yet." in body
     assert "Start Validation" not in body
+    assert "app-viewport-locked" not in body
 
 
 def test_launch_post_creates_run_and_redirects(client, monkeypatch):

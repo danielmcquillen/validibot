@@ -194,6 +194,11 @@ class Command(BaseCommand):
                     "Failed to delete artifact file",
                     extra={"run_id": run_id, "artifact_id": artifact.id},
                 )
+                # The artifact row is the durable identity required to retry
+                # this external delete. Propagate the failure so the enclosing
+                # transaction restores findings/artifact rows and never stamps
+                # output_purged_at while bytes may remain.
+                raise
             artifact.delete()
 
         if artifacts:

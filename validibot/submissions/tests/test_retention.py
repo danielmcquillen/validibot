@@ -14,6 +14,7 @@ from io import StringIO
 from unittest.mock import patch
 
 import pytest
+from django.core.files.base import ContentFile
 from django.core.management import call_command
 from django.test import override_settings
 from django.utils import timezone
@@ -108,6 +109,41 @@ class TestSubmissionPurgeContent:
 
         # Should have been called for the related run
         mock_delete.assert_called_once_with(run)
+
+    @patch("validibot.submissions.models._delete_run_files")
+    def test_purge_content_preserves_input_when_run_deletion_fails(
+        self,
+        mock_delete,
+        tmp_path,
+    ):
+        """A failed run-bundle delete must leave the submission retryable.
+
+        Retention truth depends on keeping both the database identity and any
+        not-yet-deleted input bytes until every required run bundle is gone.
+        Deleting the input first would leave an unpurged record whose content
+        could no longer be read or retried coherently.
+        """
+        mock_delete.side_effect = OSError("object storage unavailable")
+
+        with override_settings(MEDIA_ROOT=str(tmp_path)):
+            submission = SubmissionFactory(content='{"test": "data"}')
+            submission.input_file.save(
+                "submission.json",
+                ContentFile(b'{"test": "data"}'),
+                save=False,
+            )
+            submission.content = ""
+            submission.save(update_fields=["content", "input_file"])
+            ValidationRunFactory(submission=submission)
+            original_file_name = submission.input_file.name
+
+            with pytest.raises(OSError, match="object storage unavailable"):
+                submission.purge_content()
+
+            submission.refresh_from_db()
+            assert submission.content_purged_at is None
+            assert submission.input_file.name == original_file_name
+            assert submission.input_file.storage.exists(original_file_name)
 
     @override_settings(GCS_VALIDATION_BUCKET="test-validation-bucket")
     @patch("validibot.validations.services.cloud_run.gcs_client.delete_prefix")

@@ -40,6 +40,8 @@ from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.tabular.schema import parse_table_schema
+from validibot.workflows.forms import TABULAR_INFER_REQUEST_MAX_BYTES
+from validibot.workflows.forms import TABULAR_SAMPLE_MAX_BYTES
 from validibot.workflows.forms import TabularStepConfigForm
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -148,13 +150,16 @@ class TabularStepConfigFormTests(SimpleTestCase):
         self.assertIn("table_schema", form.errors)
 
     def test_sample_upload_infers_descriptor(self):
-        """Uploading a sample CSV infers a descriptor (tagged ``infer``), typed
-        from the sample's values — the no-coding setup path.
+        """A tab-delimited ``.txt`` sample infers a typed descriptor.
+
+        GBIF and OBIS commonly package Darwin Core tables this way. Inference
+        is content-based, so neither a ``.csv`` suffix nor ``text/csv`` MIME
+        metadata is required for the no-coding setup path.
         """
         sample = SimpleUploadedFile(
-            "sample.csv",
-            b"lat,lon\n10,20\n-5,30\n",
-            content_type="text/csv",
+            "occurrence.txt",
+            b"lat\tlon\n10\t20\n-5\t30\n",
+            content_type="text/plain",
         )
         form = TabularStepConfigForm(
             data={"name": "x", "encoding": "utf-8", "has_header": "on"},
@@ -602,6 +607,9 @@ class TabularStepSettingsViewTests(TestCase):
         # target, which is stable even if the button labels change).
         self.assertContains(response, 'data-bs-target="#tabularInferModal"')
         self.assertContains(response, 'data-bs-target="#tabularImportModal"')
+        self.assertContains(response, "Delimited text sample")
+        self.assertContains(response, "filename extension does not matter")
+        self.assertNotContains(response, 'accept=".csv')
         self.assertContains(response, "data-tabular-column-editor")
         self.assertNotContains(response, 'id="tabular-assertions-heading"')
         self.assertContains(response, "Required when another column exists")
@@ -1048,12 +1056,13 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertNotContains(response, 'value="unsaved_column"')
 
     def test_infer_endpoint_previews_columns_and_resolves_dialect(self):
-        """Inference previews typed rows and updates dialect controls.
+        """A tab-delimited ``.txt`` previews columns and resolves its dialect.
 
         The sample upload cannot be replayed after the response, so inference
         stores the proposed descriptor in the preview. Applying that descriptor
-        is a separate request and the resolved dialect is still returned
-        through HTMx out-of-band swaps.
+        is a separate request and the resolved tab dialect is still returned
+        through HTMx out-of-band swaps. The filename and generic text MIME type
+        deliberately play no part in parsing.
         """
         workflow, step = self._tabular_workflow_and_step()
         _login_as_author(self.client, workflow)
@@ -1062,9 +1071,9 @@ class TabularStepSettingsViewTests(TestCase):
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
         sample = SimpleUploadedFile(
-            "sample.csv",
-            b"site_id,reading\nA-1,12.5\nA-2,13.75\n",
-            content_type="text/csv",
+            "occurrence.txt",
+            b"site_id\treading\nA-1\t12.5\nA-2\t13.75\n",
+            content_type="text/plain",
         )
 
         response = self.client.post(
@@ -1087,6 +1096,7 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertContains(response, "site_id")  # carried in pending_schema
         self.assertNotContains(response, 'value="site_id"')
         self.assertContains(response, 'hx-swap-oob="outerHTML"')
+        self.assertContains(response, 'value="\t" selected')
 
         apply_url = reverse(
             "workflows:workflow_tabular_schema_apply_existing",
@@ -1115,6 +1125,119 @@ class TabularStepSettingsViewTests(TestCase):
         self.assertContains(applied, 'value="site_id"')
         self.assertContains(applied, 'value="reading"')
         self.assertContains(applied, 'value="number" selected')
+
+    def test_infer_endpoint_rejects_binary_content_cleanly(self):
+        """Binary bytes disguised with a text extension remain inert.
+
+        The endpoint performs strict UTF-8 decoding and returns an author-facing
+        error; it does not execute, persist, or attempt to repair the payload.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_tabular_schema_infer_existing",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        sample = SimpleUploadedFile(
+            "occurrence.txt",
+            b"id\tvalue\n1\t\xff\n",
+            content_type="text/plain",
+        )
+
+        response = self.client.post(
+            url,
+            {"sample_file": sample, "delimiter": "", "has_header": "on"},
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Could not decode the file")
+        self.assertEqual(
+            response.headers.get("HX-Retarget"),
+            "#tabular-infer-input-error",
+        )
+
+    def test_infer_endpoint_rejects_oversized_sample(self):
+        """A sample over 5 MB is rejected before schema inference.
+
+        This bounds decode and dataframe work even when the overall multipart
+        request remains under its separate request-size ceiling.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_tabular_schema_infer_existing",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        sample = SimpleUploadedFile(
+            "large.data",
+            b"x" * (TABULAR_SAMPLE_MAX_BYTES + 1),
+            content_type="application/octet-stream",
+        )
+
+        response = self.client.post(
+            url,
+            {"sample_file": sample},
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sample files must be 5 MB or smaller")
+
+    def test_infer_endpoint_rejects_oversized_request_before_file_parsing(self):
+        """The complete multipart request is bounded before ``request.FILES``.
+
+        File-size checks run after multipart parsing, so the Content-Length
+        guard prevents a large request from first consuming temporary storage
+        or memory merely to discover that its sample is too large.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_tabular_schema_infer_existing",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+
+        response = self.client.generic(
+            "POST",
+            url,
+            b"",
+            content_type="multipart/form-data; boundary=validibot",
+            CONTENT_LENGTH=str(TABULAR_INFER_REQUEST_MAX_BYTES + 1),
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Inference requests must be 10 MB or smaller")
+
+    def test_inferred_hostile_header_is_html_escaped(self):
+        """An HTML-shaped header is data, never executable review markup.
+
+        Header names are carried in a hidden JSON form field, so this pins
+        Django's escaping at the HTTP boundary where an XSS regression would
+        otherwise occur.
+        """
+        workflow, step = self._tabular_workflow_and_step()
+        _login_as_author(self.client, workflow)
+        url = reverse(
+            "workflows:workflow_tabular_schema_infer_existing",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        sample = SimpleUploadedFile(
+            "hostile.anything",
+            b"<script>alert(1)</script>\tvalue\nplain\t1\n",
+            content_type="text/plain",
+        )
+
+        response = self.client.post(
+            url,
+            {"sample_file": sample, "delimiter": "", "has_header": "on"},
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "<script>alert(1)</script>")
+        self.assertContains(response, "&lt;script&gt;alert(1)&lt;/script&gt;")
 
     def test_import_preview_reports_unsupported_features(self):
         """Import compatibility warnings are visible before replacement.

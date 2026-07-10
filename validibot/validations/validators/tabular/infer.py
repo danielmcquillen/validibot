@@ -1,10 +1,11 @@
 """Schema inference — "drop a sample → get a Table Schema to edit".
 
-Most target users have a *sample CSV*, not a hand-written Frictionless
-descriptor, so inferring a starting schema from a sample is the fastest common
-setup path (and, per ADR-2026-05-26, likely the single highest-value setup
-feature). This module reads a bounded sample, resolves the dialect and column
-names via the normal reader, and guesses each column's type from its values.
+Most target users have a *delimited text sample*, not a hand-written
+Frictionless descriptor, so inferring a starting schema from a sample is the
+fastest common setup path (and, per ADR-2026-05-26, likely the single
+highest-value setup feature). This module reads bounded content regardless of
+its filename extension, resolves the dialect and column names via the normal
+reader, and guesses each column's type from its values.
 
 The result is a *starting point* the author tightens in the settings editor —
 inference picks a type, the author adds the ``min``/``max``/``enum``/``required``
@@ -23,16 +24,24 @@ as integer, not boolean), ``"1.5"`` is ``number``, ``"true"``/``"false"`` is
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 from validibot.validations.validators.tabular.coercion import coerce_cell
 from validibot.validations.validators.tabular.preflight import TabularDialect
 from validibot.validations.validators.tabular.preflight import TabularLimits
+from validibot.validations.validators.tabular.preflight import TabularReadError
 from validibot.validations.validators.tabular.readers.csv import read_csv
 
 # Default number of rows sampled for inference. Enough to type columns
 # confidently without reading a whole large file.
 DEFAULT_SAMPLE_ROWS = 1000
+
+# Inferred descriptors are returned through a hidden form field before the
+# author applies them. Bound the serialized result so hostile header names
+# cannot inflate that response or a subsequently stored ruleset.
+DEFAULT_MAX_SCHEMA_BYTES = 2 * 1024 * 1024
+CODE_INFERRED_SCHEMA_TOO_LARGE = "tabular.inferred_schema_too_large"
 
 # Candidate types tried in order; the first that *all* non-empty values satisfy
 # wins. ``string`` is the implicit fallback when none match.
@@ -51,6 +60,10 @@ class InferredSchema:
 
     descriptor: dict
     dialect: TabularDialect
+
+
+class InferenceError(TabularReadError):
+    """A bounded schema-inference failure after the sample was parsed."""
 
 
 def _infer_column_type(values: list[str]) -> str:
@@ -76,6 +89,7 @@ def infer_table_schema(
     dialect: TabularDialect | None = None,
     limits: TabularLimits | None = None,
     sample_rows: int = DEFAULT_SAMPLE_ROWS,
+    max_schema_bytes: int = DEFAULT_MAX_SCHEMA_BYTES,
 ) -> InferredSchema:
     """Infer a Table Schema descriptor and dialect from a sample of *content*.
 
@@ -96,10 +110,20 @@ def infer_table_schema(
         {"name": name, "type": _infer_column_type(read_result.dataframe[name].tolist())}
         for name in read_result.column_names
     ]
+    descriptor = {"fields": fields}
+    serialized_size = len(
+        json.dumps(descriptor, separators=(",", ":")).encode("utf-8"),
+    )
+    if serialized_size > max_schema_bytes:
+        msg = (
+            f"Inferred schema is {serialized_size} bytes, over the "
+            f"{max_schema_bytes}-byte limit."
+        )
+        raise InferenceError(msg, code=CODE_INFERRED_SCHEMA_TOO_LARGE)
 
     resolved_dialect = TabularDialect(
         delimiter=read_result.preflight.delimiter,
         has_header=read_result.preflight.has_header,
         encoding=read_result.preflight.encoding,
     )
-    return InferredSchema(descriptor={"fields": fields}, dialect=resolved_dialect)
+    return InferredSchema(descriptor=descriptor, dialect=resolved_dialect)

@@ -55,10 +55,15 @@ as counting newlines, because a quoted field may legitimately contain a newline.
 
 The delimiter is decided, not guessed-and-hoped. If the settings declare one,
 that declaration is authoritative. If nothing is declared, the reader sniffs
-the delimiter from a bounded sample of the file. If a declaration and a sniff
-disagree, the read fails with a clear message rather than silently preferring
-one — an honest "you said comma, this looks tab-delimited" beats a wrong guess
-that would mis-parse every row.
+comma, tab, semicolon, and pipe delimiters from a bounded sample of the file.
+The filename and MIME type are not inputs to this decision. If the standard
+sniffer cannot decide, a bounded fallback looks for one unambiguous delimiter
+that gives every sampled logical record the same multi-column width. Ambiguous
+content fails with guidance to select the delimiter explicitly instead of
+silently becoming a one-column schema. If a declaration and a sniff disagree,
+the read fails with a clear message rather than silently preferring one — an
+honest "you said comma, this looks tab-delimited" beats a wrong guess that
+would mis-parse every row.
 
 ## Column names: one canonical name per column
 
@@ -70,7 +75,8 @@ this precedence:
    must be safe to address: a blank name, a duplicate name, or two names that
    collide ignoring case (`Lat` vs `lat`) all fail by default, because
    `row.*` keys come from these names and an ambiguous header would make a
-   reference silently wrong.
+   reference silently wrong. A name longer than 255 characters also fails so a
+   hostile header cannot inflate generated schemas and editor responses.
 2. **Headerless file with a declared name for that position** → the declared
    name (aligned by position).
 3. **Headerless file with no declared name** → a synthesised `column_1`,
@@ -314,7 +320,15 @@ run with a clear finding; it never silently truncates.
 |-----|---------|-------------|
 | File size | 50 MB | PREFLIGHT (before the load) |
 | Columns | 1,024 | PREFLIGHT (from the first record) |
+| Header name | 255 characters | READ (before the dataframe load) |
 | Rows | 1,000,000 | READ |
+
+Schema inference applies tighter authoring-path limits: a sample file is at
+most 5 MB, the complete multipart request is at most 10 MB, only the first
+1,000 data rows are sampled, and the serialized proposal is at most 2 MB. The
+request-size check runs before Django parses `request.FILES`, while the file
+check bounds decoding and dataframe work. Inference never stores the uploaded
+sample; only the reviewed descriptor is eligible to be applied.
 
 ## Where the code lives
 

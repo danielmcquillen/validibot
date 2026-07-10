@@ -31,10 +31,14 @@ is the stable machine-readable contract the validator emits as a finding.
 
 from __future__ import annotations
 
+import csv
+from unittest.mock import patch
+
 import pytest
 from django.test import SimpleTestCase
 
 from validibot.validations.validators.tabular.preflight import CODE_DIALECT_MISMATCH
+from validibot.validations.validators.tabular.preflight import CODE_DIALECT_UNDETERMINED
 from validibot.validations.validators.tabular.preflight import CODE_EMPTY_FILE
 from validibot.validations.validators.tabular.preflight import CODE_ENCODING_ERROR
 from validibot.validations.validators.tabular.preflight import CODE_FILE_TOO_LARGE
@@ -47,6 +51,9 @@ from validibot.validations.validators.tabular.readers.csv import CODE_BLANK_HEAD
 from validibot.validations.validators.tabular.readers.csv import CODE_DUPLICATE_HEADER
 from validibot.validations.validators.tabular.readers.csv import (
     CODE_HEADER_CASE_COLLISION,
+)
+from validibot.validations.validators.tabular.readers.csv import (
+    CODE_HEADER_NAME_TOO_LONG,
 )
 from validibot.validations.validators.tabular.readers.csv import CODE_PARSE_ERROR
 from validibot.validations.validators.tabular.readers.csv import CODE_TOO_MANY_ROWS
@@ -116,6 +123,90 @@ class PreflightTests(SimpleTestCase):
         result = run_preflight(b"a\tb\tc\n1\t2\t3\n4\t5\t6\n")
         self.assertEqual(result.delimiter, "\t")
         self.assertEqual(result.field_count, 3)
+
+    def test_each_supported_delimiter_is_detected_from_content(self):
+        """Comma, tab, semicolon, and pipe all work without filename hints.
+
+        Keeping the complete supported set in one table-driven test prevents a
+        future sniffing change from accidentally narrowing inference to the two
+        most common dialects.
+        """
+        samples = {
+            ",": b"a,b\n1,2\n",
+            "\t": b"a\tb\n1\t2\n",
+            ";": b"a;b\n1;2\n",
+            "|": b"a|b\n1|2\n",
+        }
+        for expected, content in samples.items():
+            with self.subTest(delimiter=repr(expected)):
+                result = run_preflight(content)
+                self.assertEqual(result.delimiter, expected)
+                self.assertEqual(result.field_count, 2)
+
+    def test_quoted_punctuation_does_not_create_false_ambiguity(self):
+        """Supported delimiter characters inside quoted cells remain data.
+
+        A comma-delimited export may legitimately contain tabs, semicolons, or
+        pipes in text values; quote-aware candidate parsing must not mistake
+        those characters for competing dialects.
+        """
+        content = b'a,b\n1,"tab\tpipe|semicolon;"\n2,"plain"\n'
+        result = run_preflight(content)
+        self.assertEqual(result.delimiter, ",")
+        self.assertEqual(result.field_count, 2)
+
+    def test_consistent_width_fallback_detects_tab_delimiter(self):
+        """A valid TSV remains detectable when ``csv.Sniffer`` gives up.
+
+        Real-world generated exports can defeat the heuristic sniffer because
+        their values contain varied punctuation. The bounded fallback parses
+        logical records with each supported delimiter and accepts the one
+        unambiguous, consistent multi-column shape.
+        """
+        content = b"id\tscientificName\tdepth\n1\tA, alpha\t10\n2\tB|beta\t20\n"
+        with patch(
+            "validibot.validations.validators.tabular.preflight.csv.Sniffer.sniff",
+            side_effect=csv.Error,
+        ):
+            result = run_preflight(content)
+        self.assertEqual(result.delimiter, "\t")
+        self.assertEqual(result.field_count, 3)
+
+    def test_ambiguous_fallback_requires_explicit_delimiter(self):
+        """Equally plausible delimiters fail instead of becoming one column.
+
+        When automatic detection has no defensible answer, asking the author
+        to select a delimiter is safer than silently falling back to comma and
+        proposing a misleading schema.
+        """
+        content = b"a\tb,c\n1\t2,3\n"
+        with pytest.raises(PreflightError) as exc_info:
+            run_preflight(content)
+        self.assertEqual(exc_info.value.code, CODE_DIALECT_UNDETERMINED)
+
+    def test_explicit_delimiter_resolves_ambiguous_content(self):
+        """The author's explicit selection resolves an automatic-detect tie.
+
+        The ambiguity error is actionable rather than a dead end: selecting tab
+        makes the same bytes parse deterministically as the intended table.
+        """
+        content = b"a\tb,c\n1\t2,3\n"
+        result = run_preflight(
+            content,
+            dialect=TabularDialect(delimiter="\t"),
+        )
+        self.assertEqual(result.delimiter, "\t")
+        self.assertEqual(result.field_count, 2)
+
+    def test_single_column_without_delimiter_remains_valid(self):
+        """No delimiter at all is a legitimate one-column table.
+
+        Ambiguity protection must not reject a plain list merely because the
+        internal reader needs a dialect value; comma remains the inert default.
+        """
+        result = run_preflight(b"occurrenceID\nurn:one\nurn:two\n")
+        self.assertEqual(result.delimiter, ",")
+        self.assertEqual(result.field_count, 1)
 
     def test_too_many_columns_rejected(self):
         """A file wider than the column cap is rejected in PREFLIGHT, from
@@ -310,3 +401,14 @@ class UnsafeHeaderTests(SimpleTestCase):
         with pytest.raises(ParseError) as exc_info:
             read_csv(b"Lat,lat\n1,2\n")
         self.assertEqual(exc_info.value.code, CODE_HEADER_CASE_COLLISION)
+
+    def test_overlong_header_name_fails_before_schema_generation(self):
+        """A huge header cell cannot inflate an inferred or stored schema.
+
+        The test uses a deliberately small custom limit to exercise the same
+        parser guard without constructing a large fixture.
+        """
+        limits = TabularLimits(max_header_name_chars=8)
+        with pytest.raises(ParseError) as exc_info:
+            read_csv(b"occurrenceID,value\nurn:one,1\n", limits=limits)
+        self.assertEqual(exc_info.value.code, CODE_HEADER_NAME_TOO_LONG)

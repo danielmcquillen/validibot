@@ -32,6 +32,7 @@ CODE_TOO_MANY_ROWS = "tabular.too_many_rows"
 CODE_DUPLICATE_HEADER = "tabular.duplicate_header"
 CODE_BLANK_HEADER = "tabular.blank_header"
 CODE_HEADER_CASE_COLLISION = "tabular.header_case_collision"
+CODE_HEADER_NAME_TOO_LONG = "tabular.header_name_too_long"
 CODE_COLUMN_COUNT_MISMATCH = "tabular.column_count_mismatch"
 
 
@@ -61,7 +62,11 @@ class ReadResult:
     preflight: PreflightResult
 
 
-def _canonical_header_names(raw_names: list[str]) -> list[str]:
+def _canonical_header_names(
+    raw_names: list[str],
+    *,
+    max_name_chars: int,
+) -> list[str]:
     """Validate and canonicalise header names; fail on unsafe headers.
 
     ``row.*`` keys come from these names, so the header must be nailed down
@@ -82,6 +87,14 @@ def _canonical_header_names(raw_names: list[str]) -> list[str]:
     if blanks:
         msg = f"Header has blank/empty column name(s) at position(s): {blanks}."
         raise ParseError(msg, code=CODE_BLANK_HEADER)
+
+    oversized = [i + 1 for i, name in enumerate(names) if len(name) > max_name_chars]
+    if oversized:
+        msg = (
+            f"Header has column name(s) over the {max_name_chars}-character "
+            f"limit at position(s): {oversized}."
+        )
+        raise ParseError(msg, code=CODE_HEADER_NAME_TOO_LONG)
 
     # Track first occurrence by casefolded key so we can tell an exact
     # duplicate (same bytes) apart from a case-only collision.
@@ -107,6 +120,7 @@ def _resolve_logical_names(
     column_count: int,
     header_names: list[str] | None,
     declared_columns: list[str] | None,
+    max_header_name_chars: int,
 ) -> list[str]:
     """Resolve the one canonical logical name for each column position.
 
@@ -121,7 +135,10 @@ def _resolve_logical_names(
     is declared — there is no second naming layer.
     """
     if header_names is not None:
-        return _canonical_header_names(header_names)
+        return _canonical_header_names(
+            header_names,
+            max_name_chars=max_header_name_chars,
+        )
 
     declared = declared_columns or []
     return [
@@ -168,7 +185,10 @@ def read_csv(
     # record — not pandas' auto-mangled columns — so a duplicate header
     # fails cleanly instead of being silently renamed to ``value.1``.
     if preflight.header_names is not None:
-        canonical_header = _canonical_header_names(preflight.header_names)
+        canonical_header = _canonical_header_names(
+            preflight.header_names,
+            max_name_chars=limits.max_header_name_chars,
+        )
     else:
         canonical_header = None
 
@@ -215,6 +235,7 @@ def read_csv(
         column_count=column_count,
         header_names=canonical_header,
         declared_columns=declared_columns,
+        max_header_name_chars=limits.max_header_name_chars,
     )
     frame.columns = pd.Index(logical_names)
 

@@ -48,6 +48,7 @@ from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.validators.base.config import get_config
 from validibot.workflows.forms import TABULAR_COLUMN_FORMSET_PREFIX
+from validibot.workflows.forms import TABULAR_INFER_REQUEST_MAX_BYTES
 from validibot.workflows.forms import TABULAR_SAMPLE_MAX_BYTES
 from validibot.workflows.forms import TABULAR_SCHEMA_MAX_BYTES
 from validibot.workflows.forms import SignalBindingEditForm
@@ -939,7 +940,13 @@ class TabularSchemaImportView(TabularSettingsEndpointMixin, View):
 
 
 class TabularSchemaInferView(TabularSettingsEndpointMixin, View):
-    """Infer a starting descriptor and preview it before replacement."""
+    """Infer a starting descriptor from bounded delimited text.
+
+    The endpoint checks the complete multipart request size before touching
+    ``request.FILES``. This complements the uploaded-file size check: Django
+    otherwise has to parse and spool an arbitrarily large request before the
+    application can inspect ``UploadedFile.size``.
+    """
 
     #: Input-screen error slot for this modal (HX-Retarget target on failure).
     ERROR_TARGET = "#tabular-infer-input-error"
@@ -949,10 +956,21 @@ class TabularSchemaInferView(TabularSettingsEndpointMixin, View):
         from validibot.validations.validators.tabular.preflight import TabularDialect
         from validibot.validations.validators.tabular.preflight import TabularReadError
 
+        raw_content_length = request.headers.get("content-length", "")
+        try:
+            content_length = int(raw_content_length)
+        except (TypeError, ValueError):
+            content_length = 0
+        if content_length > TABULAR_INFER_REQUEST_MAX_BYTES:
+            return self._render_input_error(
+                _("Inference requests must be 10 MB or smaller."),
+                self.ERROR_TARGET,
+            )
+
         sample = request.FILES.get("sample_file")
         if sample is None:
             return self._render_input_error(
-                _("Choose a sample CSV first."),
+                _("Choose a delimited text sample first."),
                 self.ERROR_TARGET,
             )
         if sample.size > TABULAR_SAMPLE_MAX_BYTES:

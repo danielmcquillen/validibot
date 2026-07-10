@@ -49,22 +49,10 @@
     <form method="post"
           enctype="multipart/form-data"
           class="card app-card editor-card">
-      <div class="card-header d-flex align-items-start justify-content-between flex-wrap gap-3">
-        <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 w-100">
-          <div>
-            <h2 class="card-title h5 mb-1">
-              Workflow Step Validator: {{ subject_details.name }}
-            </h2>
-            {% if subject_details.description %}
-              <div class="text-muted mb-0 markdown-content">
-                {{ subject_details.short_description|render_markdown }}
-              </div>
-            {% endif %}
-          </div>
-          {% if not is_tabular_settings %}
-            <span class="badge text-bg-primary">{{ subject_details.type_label }}</span>
-          {% endif %}
-        </div>
+      <div class="card-header">
+        <h2 class="card-title h5 mb-0">
+          Workflow Step Validator: {{ subject_details.name }}
+        </h2>
       </div>
       <div class="card-body editor-card__scroll">
         {% csrf_token %}

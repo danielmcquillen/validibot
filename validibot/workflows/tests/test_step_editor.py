@@ -800,6 +800,8 @@ def test_step_settings_uses_sticky_action_footer_editor(client):
         "xml-sticky-footer",
         "XML Validator",
     )
+    validator.description = "This explanatory subhead should not appear."
+    validator.save(update_fields=["description"])
     step = WorkflowStepFactory(workflow=workflow, validator=validator)
 
     response = client.get(
@@ -811,6 +813,10 @@ def test_step_settings_uses_sticky_action_footer_editor(client):
     assert "app-viewport-locked" in body
     assert 'id="workflow-step-form" class="container-fluid editor-shell"' in body
     assert 'class="card app-card editor-card"' in body
+    assert "card-title h5 mb-0" in body
+    assert "Workflow Step Validator: XML Validator" in body
+    assert "This explanatory subhead should not appear." not in body
+    assert '<span class="badge text-bg-primary">XML Schema</span>' not in body
     assert 'class="card-body editor-card__scroll"' in body
     assert "card-footer" in body
     assert "Save changes" in body

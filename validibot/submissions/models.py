@@ -586,7 +586,24 @@ class Submission(TimeStampedModel):
         if self.content_purged_at:
             return  # Already purged (idempotent)
 
-        # Delete file from storage
+        # Delete every run bundle before the original input. If a bundle delete
+        # fails, keeping the input and database fields intact gives the retry a
+        # coherent source record instead of leaving an unpurged submission that
+        # already lost part of its content. External deletes are idempotent, so
+        # a retry can safely revisit bundles removed before a later failure.
+        for run in self.runs.all():
+            try:
+                _delete_run_files(run)
+            except Exception:
+                logger.exception(
+                    "Failed to delete run files",
+                    extra={"submission_id": str(self.id), "run_id": str(run.id)},
+                )
+                raise
+
+        # Delete the original input only after every related run bundle is
+        # confirmed absent. A failed input deletion likewise prevents the
+        # database from claiming the submission was purged.
         if self.input_file:
             try:
                 self.input_file.delete(save=False)
@@ -596,17 +613,6 @@ class Submission(TimeStampedModel):
                     extra={"id": str(self.id)},
                 )
                 raise
-
-        # Delete run files for all validation runs
-        for run in self.runs.all():
-            try:
-                _delete_run_files(run)
-            except Exception:
-                logger.exception(
-                    "Failed to delete run files",
-                    extra={"submission_id": str(self.id), "run_id": str(run.id)},
-                )
-                # Continue with other runs - don't fail entire purge
 
         # Clear content
         self.content = ""

@@ -220,6 +220,7 @@ class WorkflowEditorBrowserTests(StaticLiveServerTestCase):
                   pageOverflow: getComputedStyle(document.body).overflow,
                   footerBottom: footer.getBoundingClientRect().bottom,
                   viewportHeight: window.innerHeight,
+                  footerGap: window.innerHeight - footer.getBoundingClientRect().bottom,
                   bodyClientHeight: body.clientHeight,
                   bodyScrollHeight: body.scrollHeight,
                   bodyOverflowY: getComputedStyle(body).overflowY,
@@ -232,6 +233,7 @@ class WorkflowEditorBrowserTests(StaticLiveServerTestCase):
                 metrics["footerBottom"],
                 metrics["viewportHeight"] + 1,
             )
+            self.assertAlmostEqual(metrics["footerGap"], 5, delta=1)
             self.assertEqual(metrics["bodyOverflowY"], "auto")
             self.assertGreater(
                 metrics["bodyScrollHeight"],

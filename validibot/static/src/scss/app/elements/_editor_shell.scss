@@ -71,6 +71,11 @@ body.app-viewport-locked {
   min-height: 0;
   display: flex;
   flex-direction: column;
+
+  // Leave a narrow strip of the app background visible beneath every pinned
+  // footer. The shell owns this inset so nested editor cards do not compound
+  // per-card margins.
+  padding-bottom: 0.3125rem;
 }
 
 // -----------------------------------------------------------------------------

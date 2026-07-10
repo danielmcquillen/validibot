@@ -967,6 +967,10 @@ else:
 #
 # See validibot/validations/services/runners/ for implementation details.
 VALIDATOR_RUNNER = env("VALIDATOR_RUNNER", default="docker")
+# One outer wall-clock budget shared by the runner and the stuck-run watchdog.
+# Provider deployment recipes use the same environment variable and default,
+# so the watchdog never declares timeout before the configured runtime does.
+VALIDATOR_TIMEOUT_SECONDS = env.int("VALIDATOR_TIMEOUT_SECONDS", default=3600)
 VALIDATOR_RUNNER_OPTIONS = {
     "memory_limit": env("VALIDATOR_MEMORY_LIMIT", default="4g"),
     "cpu_limit": env("VALIDATOR_CPU_LIMIT", default="2.0"),
@@ -976,6 +980,7 @@ VALIDATOR_RUNNER_OPTIONS = {
     "storage_volume": env("VALIDATOR_STORAGE_VOLUME", default=None),
     # Mount path for storage volume inside validator containers
     "storage_mount_path": env("VALIDATOR_STORAGE_MOUNT_PATH", default="/app/storage"),
+    "timeout_seconds": VALIDATOR_TIMEOUT_SECONDS,
 }
 
 # Validator backend trust-tier hardening overrides (Trust ADR

@@ -236,12 +236,14 @@ Run `validibot doctor` to get a stage-aware advisory:
 If a Cloud Run Job completes but its callback never reaches Django (network failure, container crash before POST, Cloud Run retry exhaustion), the run gets stuck in `RUNNING` status. The `cleanup_stuck_runs` management command handles this:
 
 1. The command runs every 10 minutes via Cloud Scheduler
-2. It finds runs stuck in `RUNNING` past the timeout threshold (default: 30 minutes)
+2. It finds runs stuck in `RUNNING` past `VALIDATOR_TIMEOUT_SECONDS` (default:
+   3600 seconds / 60 minutes)
 3. For GCP runs, it looks for `execution_name` in `step_run.output` (stored by the launcher at job trigger time)
 4. It queries the Cloud Run Jobs API to check the actual execution status
 5. If the job **succeeded**, it constructs a synthetic callback and processes it through `ValidationCallbackService`, recovering the full validation results
 6. If the job **failed**, it marks the run as `FAILED` with the Cloud Run error
-7. If the job is **still running**, it skips the run (no false timeout)
+7. If the job is **still running after that outer deadline**, it commits the
+   `TIMED_OUT` decision and calls Cloud Run's execution-cancellation operation
 
 ### Where execution metadata is stored
 

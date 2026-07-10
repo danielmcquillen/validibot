@@ -50,11 +50,13 @@ from rest_framework import status
 from validibot.submissions.constants import get_output_retention_timedelta
 from validibot.tracking.services import TrackingEventService
 from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
+from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.exceptions import OrgPolicyDeniedError
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationRunSummary
+from validibot.validations.models import ValidationStepRun
 from validibot.validations.services.step_orchestrator import StepOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -84,6 +86,65 @@ def _send_run_created_signal(validation_run: ValidationRun, workflow_type: str) 
         validation_run=validation_run,
         workflow_type=workflow_type,
     )
+
+
+def cancel_active_execution(run: ValidationRun) -> bool | None:
+    """Best-effort cancel the concrete provider execution for an active step.
+
+    The caller must commit the run's logical terminal state before invoking
+    this helper. Provider APIs and PostgreSQL cannot share a transaction, so a
+    provider failure is logged and returned without reopening the run. ``None``
+    means the legacy run has no addressable execution identity.
+    """
+    step_run = (
+        ValidationStepRun.objects.filter(
+            validation_run=run,
+            status__in=[StepStatus.RUNNING, StepStatus.PENDING],
+        )
+        .order_by("step_order")
+        .first()
+    )
+    if not step_run:
+        return None
+
+    step_output = step_run.output or {}
+    execution_id = step_output.get("execution_name") or step_output.get("execution_id")
+    if not execution_id:
+        return None
+
+    try:
+        from validibot.validations.services.runners import get_validator_runner
+
+        canceled = get_validator_runner().cancel(execution_id)
+    except Exception:
+        logger.warning(
+            "Failed to request provider cancellation",
+            extra={
+                "run_id": str(run.id),
+                "execution_id": execution_id,
+            },
+            exc_info=True,
+        )
+        return False
+
+    if not canceled:
+        logger.warning(
+            "Provider did not accept execution cancellation",
+            extra={
+                "run_id": str(run.id),
+                "execution_id": execution_id,
+            },
+        )
+        return False
+
+    logger.info(
+        "Requested provider execution cancellation",
+        extra={
+            "run_id": str(run.id),
+            "execution_id": execution_id,
+        },
+    )
+    return True
 
 
 @dataclass
@@ -390,38 +451,50 @@ class ValidationRunService:
         run: ValidationRun,
         actor: User | None = None,
     ) -> tuple[ValidationRun, bool]:
-        """Attempt to cancel a validation run if it has not finished yet."""
+        """Fence a validation run, then stop any known provider execution."""
 
         if run is None:
             raise ValueError("run is required to cancel a validation")
 
-        run.refresh_from_db()
-        if run.status == ValidationRunStatus.CANCELED:
-            return run, True
+        with transaction.atomic():
+            locked_run = ValidationRun.objects.select_for_update().get(pk=run.pk)
+            if locked_run.status == ValidationRunStatus.CANCELED:
+                return locked_run, True
 
-        if run.status not in (
-            ValidationRunStatus.PENDING,
-            ValidationRunStatus.RUNNING,
-        ):
-            return run, False
+            if locked_run.status not in (
+                ValidationRunStatus.PENDING,
+                ValidationRunStatus.RUNNING,
+            ):
+                return locked_run, False
 
-        run.status = ValidationRunStatus.CANCELED
-        if not run.ended_at:
-            run.ended_at = timezone.now()
-        if not run.error:
-            run.error = RUN_CANCELED_MESSAGE
-        run.save(update_fields=["status", "ended_at", "error"])
+            locked_run.status = ValidationRunStatus.CANCELED
+            if not locked_run.ended_at:
+                locked_run.ended_at = timezone.now()
+            if not locked_run.error:
+                locked_run.error = RUN_CANCELED_MESSAGE
+            locked_run.save(update_fields=["status", "ended_at", "error"])
+
+        # External work stays outside the database transaction. The terminal
+        # decision is authoritative even if the provider is unavailable.
+        cancel_active_execution(locked_run)
 
         tracking_service = TrackingEventService()
-        extra = {"duration_ms": run.computed_duration_ms}
+        extra = {"duration_ms": locked_run.computed_duration_ms}
         tracking_service.log_validation_run_status(
-            run=run,
+            run=locked_run,
             status=ValidationRunStatus.CANCELED,
             actor=actor,
             extra_data=extra,
         )
 
-        return run, True
+        from validibot.validations.signals import validation_run_finalized
+
+        validation_run_finalized.send_robust(
+            sender=self.__class__,
+            validation_run=locked_run,
+        )
+
+        return locked_run, True
 
     # ---------- Delegated to StepOrchestrator ----------
 

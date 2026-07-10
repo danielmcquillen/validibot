@@ -51,7 +51,7 @@ Current entries:
 | `purge_expired_submissions` | Hourly | Remove expired user submission content |
 | `purge_expired_outputs` | Hourly | Remove expired validation outputs |
 | `process_purge_retries` | Every 5 minutes | Retry failed purge operations |
-| `cleanup_stuck_runs` | Every 10 minutes | Mark hung runs as failed |
+| `cleanup_stuck_runs` | Every 10 minutes | Reconcile or time out and cancel hung runs |
 | `cleanup_orphaned_containers` | Every 10 minutes | Remove orphaned Docker containers (Docker Compose only) |
 | `cleanup_idempotency_keys` | Daily at 3 AM | Remove expired idempotency keys |
 | `cleanup_callback_receipts` | Weekly (Sunday 4 AM) | Clean old callback receipts |

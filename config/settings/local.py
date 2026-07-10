@@ -187,7 +187,7 @@ VALIDATOR_RUNNER_OPTIONS = {
     "memory_limit": env("VALIDATOR_MEMORY_LIMIT", default="4g"),
     "cpu_limit": env("VALIDATOR_CPU_LIMIT", default="2.0"),
     "network": env("VALIDATOR_NETWORK", default=None),
-    "timeout_seconds": env.int("VALIDATOR_TIMEOUT_SECONDS", default=3600),
+    "timeout_seconds": VALIDATOR_TIMEOUT_SECONDS,  # noqa: F405
     # Named volume for storage (validator containers mount this)
     "storage_volume": env("VALIDATOR_STORAGE_VOLUME", default=None),
     # Mount path for storage volume inside validator containers

@@ -290,12 +290,19 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
 
         # Map Cloud Run condition to ExecutionStatus
         status = ExecutionStatus.UNKNOWN
+        error_message = None
         for condition in execution.conditions:
             if condition.type_ == "Completed":
-                if condition.state == run_v2.Condition.State.CONDITION_SUCCEEDED:
+                if (
+                    condition.execution_reason
+                    == run_v2.Condition.ExecutionReason.CANCELLED
+                ):
+                    status = ExecutionStatus.CANCELLED
+                elif condition.state == run_v2.Condition.State.CONDITION_SUCCEEDED:
                     status = ExecutionStatus.SUCCEEDED
                 elif condition.state == run_v2.Condition.State.CONDITION_FAILED:
                     status = ExecutionStatus.FAILED
+                    error_message = condition.message or None
                 break
 
         # If no completion condition, infer running/pending
@@ -312,26 +319,32 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
             end_time=(
                 str(execution.completion_time) if execution.completion_time else None
             ),
+            error_message=error_message,
         )
 
     def cancel(self, execution_id: str) -> bool:
         """
         Cancel a Cloud Run Job execution.
 
-        Cloud Run Jobs support cancellation via the delete operation on
-        the execution.
+        Cloud Run Jobs expose a distinct cancellation operation. Deleting an
+        execution is retention cleanup and does not request active work to stop.
 
         Args:
             execution_id: Full execution name from run()
 
         Returns:
-            True if cancellation was successful, False otherwise
+            True if the cancellation request was accepted, False otherwise.
+            The API returns a long-running operation; this method deliberately
+            does not wait for provider completion in the caller's request path.
         """
         client = self._get_executions_client()
 
         try:
-            client.delete_execution(name=execution_id)
-            logger.info("Cancelled Cloud Run execution: %s", execution_id)
+            client.cancel_execution(name=execution_id)
+            logger.info(
+                "Requested cancellation of Cloud Run execution: %s",
+                execution_id,
+            )
         except Exception as e:
             logger.warning("Failed to cancel execution %s: %s", execution_id, e)
             return False

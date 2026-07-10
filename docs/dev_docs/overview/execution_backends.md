@@ -416,7 +416,8 @@ If a Cloud Run Job completes but its callback never reaches Django (network fail
 2. For GCP runs, checks `step_run.output` for `execution_name` metadata
 3. Queries Cloud Run Jobs API via `GCPExecutionBackend.check_status()`
 4. Based on result:
-   - **Still running**: Skips the run (legitimately in progress)
+   - **Still running after the configured outer deadline**: Marks the run
+     `TIMED_OUT`, then requests provider cancellation
    - **Succeeded**: Constructs a synthetic callback and processes through `ValidationCallbackService` (reuses existing idempotency, finding persistence, assertion evaluation)
    - **Failed**: Marks the run as `FAILED` with the Cloud Run error message
    - **API error**: Falls through to simple `TIMED_OUT` marking
@@ -425,7 +426,12 @@ This reconciliation runs automatically when `cleanup_stuck_runs` is scheduled (t
 
 ### Stuck Run Timeout (All Backends)
 
-For runs where reconciliation is not possible (non-GCP, no execution metadata, API errors), the command marks them as `TIMED_OUT` after the configured threshold (default: 30 minutes).
+For runs where reconciliation is not possible (non-GCP, no execution metadata,
+API errors), the command marks them as `TIMED_OUT` after the configured
+`VALIDATOR_TIMEOUT_SECONDS` threshold (default: 3600 seconds / 60 minutes). The
+same setting configures local container runtime and the GCP validator Job deploy
+recipe. `--timeout-minutes` remains available as an explicit operational
+override.
 
 ```bash
 # Manual invocation

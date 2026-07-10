@@ -69,6 +69,7 @@ class TestDockerCheckStatus(SimpleTestCase):
         assert isinstance(result, ExecutionResponse)
         assert result.execution_id == "container-123"
         assert result.is_complete is True
+        assert result.execution_status == ExecutionStatus.SUCCEEDED
         assert result.error_message is None
         mock_runner.get_execution_status.assert_called_once_with("container-123")
 
@@ -89,6 +90,7 @@ class TestDockerCheckStatus(SimpleTestCase):
 
         assert result is not None
         assert result.is_complete is False
+        assert result.execution_status == ExecutionStatus.RUNNING
 
     @patch(
         "validibot.validations.services.execution.docker_compose.get_validator_runner"
@@ -108,6 +110,7 @@ class TestDockerCheckStatus(SimpleTestCase):
 
         assert result is not None
         assert result.is_complete is True
+        assert result.execution_status == ExecutionStatus.FAILED
         assert result.error_message == "OOM killed"
 
     @patch(
@@ -157,6 +160,7 @@ class TestDockerCheckStatus(SimpleTestCase):
 
         assert result is not None
         assert result.is_complete is False
+        assert result.execution_status == ExecutionStatus.PENDING
 
 
 class TestGCPCheckStatus(SimpleTestCase):
@@ -191,6 +195,7 @@ class TestGCPCheckStatus(SimpleTestCase):
         assert result is not None
         assert isinstance(result, ExecutionResponse)
         assert result.is_complete is True
+        assert result.execution_status == ExecutionStatus.SUCCEEDED
         assert result.error_message is None
         mock_runner_cls.assert_called_once_with(
             project_id="test-project",
@@ -215,6 +220,7 @@ class TestGCPCheckStatus(SimpleTestCase):
 
         assert result is not None
         assert result.is_complete is False
+        assert result.execution_status == ExecutionStatus.RUNNING
 
     @patch(RUNNER_PATH)
     def test_check_status_failed_maps_to_complete_with_error(self, mock_runner_cls):
@@ -235,7 +241,39 @@ class TestGCPCheckStatus(SimpleTestCase):
 
         assert result is not None
         assert result.is_complete is True
+        assert result.execution_status == ExecutionStatus.FAILED
         assert result.error_message == "Container OOM killed"
+
+    @patch(RUNNER_PATH)
+    def test_check_status_preserves_failed_without_diagnostic_text(
+        self,
+        mock_runner_cls,
+    ):
+        """A provider failure must remain explicit when its message is empty.
+
+        Reconciliation decides whether to recover a successful output or mark
+        infrastructure failure. If the backend carries only message text, an
+        empty Cloud Run diagnostic is indistinguishable from success and can
+        send a failed execution down the synthetic-callback path.
+        """
+        mock_runner_instance = MagicMock()
+        mock_runner_instance.get_execution_status.return_value = ExecutionInfo(
+            execution_id="projects/p/locations/r/jobs/j/executions/e",
+            status=ExecutionStatus.FAILED,
+            error_message=None,
+        )
+        mock_runner_cls.return_value = mock_runner_instance
+
+        backend = GCPExecutionBackend()
+        backend._project_id = "test-project"
+        backend._region = "us-central1"
+
+        result = backend.check_status("projects/p/locations/r/jobs/j/executions/e")
+
+        assert result is not None
+        assert result.is_complete is True
+        assert result.execution_status == ExecutionStatus.FAILED
+        assert result.error_message is None
 
     def test_check_status_handles_import_error(self):
         """Returns None when google-cloud-run is not installed."""

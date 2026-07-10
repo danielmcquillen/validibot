@@ -82,7 +82,7 @@ The doctor command's VB001-VB099 range checks these.
 | `VALIDATOR_RUNNER` | `docker` for self-hosted (default). `google_cloud_run` for GCP. |
 | `VALIDATOR_BACKEND_IMAGE_POLICY` | `tag` (default), `digest`, or `signed-digest` (Phase 5). Production: `digest` or higher. Enforced at launch — only enable `digest` once validator images are digest-pinned, or launches fail. |
 | `VALIDATOR_RETAIN_HOURS` | How long stopped validator containers are kept before `cleanup` removes them. Default: `24`. |
-| `VALIDATOR_TIMEOUT_SECONDS` | Default per-validator timeout. Validators can request shorter via their manifest. |
+| `VALIDATOR_TIMEOUT_SECONDS` | Outer per-validator timeout and stuck-run watchdog deadline. Validators can request shorter via their manifest. |
 
 ### 7. Pro and signing
 

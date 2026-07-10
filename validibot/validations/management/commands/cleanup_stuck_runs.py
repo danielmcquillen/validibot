@@ -12,8 +12,9 @@ job succeeded but the callback was lost, it recovers the run by constructing a
 synthetic callback and processing it through the normal callback pipeline. This
 preserves validation results that would otherwise be lost.
 
-If reconciliation is not possible (non-GCP deployment, API errors, or the job
-is still running), the command falls through to marking the run as TIMED_OUT.
+If reconciliation is not possible (non-GCP deployment or API errors), or the
+provider is still running after the configured outer runtime deadline, the
+command marks the run TIMED_OUT and requests provider cancellation.
 
 Usage:
     python manage.py cleanup_stuck_runs
@@ -30,10 +31,13 @@ See also:
 """
 
 import logging
+import math
 from datetime import timedelta
 from http import HTTPStatus
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
+from django.core.management.base import CommandError
 from django.db import transaction
 from django.utils import timezone
 
@@ -42,15 +46,32 @@ from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
+from validibot.validations.services.runners.base import ExecutionStatus
+from validibot.validations.services.validation_run import cancel_active_execution
 
 logger = logging.getLogger(__name__)
 
-# Default timeout: 30 minutes is generous for most validations.
-# EnergyPlus runs can take 5-15 minutes; this gives plenty of buffer.
-DEFAULT_TIMEOUT_MINUTES = 30
+DEFAULT_VALIDATOR_TIMEOUT_SECONDS = 3600
+
+# Cloud Run occasionally reports a terminal failure without diagnostic text.
+# Keep the fallback static and bounded so reconciliation remains truthful
+# without exposing provider payloads to end users.
+PROVIDER_FAILURE_WITHOUT_DETAILS = (
+    "Cloud Run reported a failed execution without diagnostic details"
+)
 
 # Max IDs to display in output before truncating
 MAX_DISPLAY_IDS = 10
+
+
+def get_default_timeout_minutes() -> int:
+    """Return the configured outer validator timeout rounded up to minutes."""
+    timeout_seconds = getattr(
+        settings,
+        "VALIDATOR_TIMEOUT_SECONDS",
+        DEFAULT_VALIDATOR_TIMEOUT_SECONDS,
+    )
+    return max(1, math.ceil(timeout_seconds / 60))
 
 
 class Command(BaseCommand):
@@ -60,10 +81,11 @@ class Command(BaseCommand):
         parser.add_argument(
             "--timeout-minutes",
             type=int,
-            default=DEFAULT_TIMEOUT_MINUTES,
+            default=None,
             help=(
-                f"Consider runs stuck after this many minutes (default: "
-                f"{DEFAULT_TIMEOUT_MINUTES})"
+                "Consider runs stuck after this many minutes. Defaults to the "
+                "configured VALIDATOR_TIMEOUT_SECONDS value "
+                f"({get_default_timeout_minutes()} minutes)."
             ),
         )
         parser.add_argument(
@@ -80,6 +102,10 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         timeout_minutes = options["timeout_minutes"]
+        if timeout_minutes is None:
+            timeout_minutes = get_default_timeout_minutes()
+        if timeout_minutes <= 0:
+            raise CommandError("--timeout-minutes must be greater than zero")
         dry_run = options["dry_run"]
         batch_size = options["batch_size"]
 
@@ -105,8 +131,6 @@ class Command(BaseCommand):
 
         reconciled_ids = []
         timed_out_ids = []
-        skipped_ids = []
-
         error_message = (
             f"Run timed out after {timeout_minutes} minutes - "
             "no callback received from validator. This may indicate the validator "
@@ -119,10 +143,10 @@ class Command(BaseCommand):
             if result == "reconciled":
                 reconciled_ids.append(str(run.id))
                 continue
-            if result == "still_running":
-                skipped_ids.append(str(run.id))
-                continue
-            # result == "not_applicable" or "error" — fall through to timeout
+            # Once the configured outer deadline has elapsed, a provider that
+            # still reports RUNNING must be fenced and canceled rather than
+            # skipped forever. "not_applicable" and API errors also fall
+            # through to the same authoritative timeout decision.
 
             if dry_run:
                 minutes_running = (timezone.now() - run.started_at).total_seconds() / 60
@@ -172,15 +196,25 @@ class Command(BaseCommand):
                     },
                 )
 
+            # The database decision is committed before provider contact. A
+            # cancellation failure is logged by the helper and cannot reopen
+            # the terminal run; durable retries arrive with the attempt model.
+            from validibot.validations.signals import validation_run_finalized
+
+            validation_run_finalized.send_robust(
+                sender=self.__class__,
+                validation_run=locked,
+            )
+            cancel_active_execution(locked)
+
         # Report results
         if dry_run:
-            total = len(reconciled_ids) + len(timed_out_ids) + len(skipped_ids)
+            total = len(reconciled_ids) + len(timed_out_ids)
             self.stdout.write(
                 self.style.WARNING(
                     f"[DRY RUN] {total} stuck run(s): "
                     f"{len(reconciled_ids)} reconcilable, "
-                    f"{len(timed_out_ids)} would time out, "
-                    f"{len(skipped_ids)} still running"
+                    f"{len(timed_out_ids)} would time out"
                 )
             )
         else:
@@ -201,14 +235,7 @@ class Command(BaseCommand):
                 )
                 self._display_ids(timed_out_ids)
 
-            if skipped_ids:
-                self.stdout.write(
-                    self.style.SUCCESS(
-                        f"Skipped {len(skipped_ids)} run(s) still running on GCP."
-                    )
-                )
-
-            if not reconciled_ids and not timed_out_ids and not skipped_ids:
+            if not reconciled_ids and not timed_out_ids:
                 self.stdout.write(self.style.SUCCESS("No runs needed cleanup."))
 
     def _display_ids(self, ids: list[str]) -> None:
@@ -239,7 +266,8 @@ class Command(BaseCommand):
         Returns:
             One of:
             - "reconciled": Run was recovered or marked failed based on GCP status
-            - "still_running": Job is still executing on GCP (skip)
+            - "still_running": Job is still executing on GCP; the caller
+              applies the configured timeout fence and requests cancellation
             - "not_applicable": Not a GCP run or missing metadata
             - "error": GCP API call failed (fall through to timeout)
         """
@@ -274,27 +302,42 @@ class Command(BaseCommand):
         if status_response is None:
             return "error"
 
-        # 4. Act based on status
+        # 4. Act based on the explicit provider state. Human-readable messages
+        # are diagnostics only and must never determine success versus failure.
+        execution_status = status_response.execution_status
+        is_failed = execution_status == ExecutionStatus.FAILED or (
+            execution_status is None and bool(status_response.error_message)
+        )
+        if is_failed:
+            error_message = (
+                status_response.error_message or PROVIDER_FAILURE_WITHOUT_DETAILS
+            )
+            if dry_run:
+                self.stdout.write(
+                    f"  [RECONCILE-FAIL] {run.id}: Cloud Run job failed "
+                    f"({error_message})"
+                )
+                return "reconciled"
+
+            self._mark_run_failed_from_gcp(run, error_message)
+            return "reconciled"
+
         if not status_response.is_complete:
-            # Job is still running — skip, don't time it out
             logger.info(
-                "GCP job still running for run %s (execution=%s), skipping",
+                "GCP job still running beyond the watchdog deadline for run %s "
+                "(execution=%s)",
                 run.id,
                 execution_name,
             )
             return "still_running"
 
-        if status_response.error_message:
-            # Job failed on GCP
-            if dry_run:
-                self.stdout.write(
-                    f"  [RECONCILE-FAIL] {run.id}: Cloud Run job failed "
-                    f"({status_response.error_message})"
-                )
-                return "reconciled"
-
-            self._mark_run_failed_from_gcp(run, status_response.error_message)
-            return "reconciled"
+        if execution_status not in {None, ExecutionStatus.SUCCEEDED}:
+            logger.warning(
+                "Cannot safely reconcile provider state %s for run %s",
+                execution_status,
+                run.id,
+            )
+            return "error"
 
         # Job succeeded — attempt to recover via synthetic callback
         if dry_run:
@@ -336,6 +379,7 @@ class Command(BaseCommand):
         error_message: str,
     ) -> None:
         """Mark a run as failed based on GCP Cloud Run Job failure."""
+        error_message = error_message or PROVIDER_FAILURE_WITHOUT_DETAILS
         with transaction.atomic():
             locked = ValidationRun.objects.select_for_update().get(pk=run.pk)
             if locked.status != ValidationRunStatus.RUNNING:
@@ -372,6 +416,13 @@ class Command(BaseCommand):
                     "error_message": error_message,
                 },
             )
+
+        from validibot.validations.signals import validation_run_finalized
+
+        validation_run_finalized.send_robust(
+            sender=self.__class__,
+            validation_run=locked,
+        )
 
     def _recover_lost_callback(
         self,

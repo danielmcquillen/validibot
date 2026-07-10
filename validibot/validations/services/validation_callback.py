@@ -34,6 +34,7 @@ from validibot_shared.validations.envelopes import ValidationCallback
 from validibot_shared.validations.envelopes import ValidationStatus
 
 from validibot.core.models import CallbackReceiptStatus
+from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
@@ -212,6 +213,26 @@ class ValidationCallbackService:
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @staticmethod
+    def _late_callback_response(
+        callback: ValidationCallback,
+        run: ValidationRun,
+    ) -> Response:
+        """Acknowledge output that arrived after the run became terminal."""
+        logger.info(
+            "Ignoring late callback for terminal run %s (status=%s, callback_id=%s)",
+            run.id,
+            run.status,
+            callback.callback_id,
+        )
+        return Response(
+            {
+                "message": "Run is already terminal",
+                "late_callback_ignored": True,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     # ── Idempotency guard ─────────────────────────────────────────────
 
     def _process_with_idempotency_guard(
@@ -238,6 +259,9 @@ class ValidationCallbackService:
            409 so Cloud Tasks retries later.
         """
         if not callback.callback_id:
+            run.refresh_from_db(fields=["status"])
+            if run.status in VALIDATION_RUN_TERMINAL_STATUSES:
+                return self._late_callback_response(callback, run)
             return self._process_callback(
                 callback=callback,
                 run=run,
@@ -286,6 +310,16 @@ class ValidationCallbackService:
                         "failed), retrying",
                         callback.callback_id,
                     )
+
+                # Preserve the existing idempotent response above for a true
+                # duplicate receipt. For a new/dangling receipt, refresh the
+                # authoritative run before any storage read; if cancellation,
+                # timeout, or another callback already won, close the receipt
+                # and acknowledge without processing stale output.
+                run.refresh_from_db(fields=["status"])
+                if run.status in VALIDATION_RUN_TERMINAL_STATUSES:
+                    self._mark_receipt_completed(callback, receipt, run)
+                    return self._late_callback_response(callback, run)
 
                 # Process inside the transaction so the row lock is held
                 # until the receipt status reaches a terminal value.
@@ -712,6 +746,19 @@ class ValidationCallbackService:
         """
         from validibot.core.tasks import enqueue_validation_run
 
+        if not ValidationRun.objects.filter(
+            pk=run.pk,
+            status__in=[
+                ValidationRunStatus.PENDING,
+                ValidationRunStatus.RUNNING,
+            ],
+        ).exists():
+            logger.info(
+                "Not enqueuing the next step for terminal run %s",
+                run.id,
+            )
+            return
+
         # NOTE: resume_from_step here is the *completed* step's order, not
         # the next step's order. The orchestrator uses order__gt (not __gte)
         # to skip it and start from the next one. This avoids fabricating a
@@ -768,31 +815,51 @@ class ValidationCallbackService:
             result.output_envelope.timing.finished_at,
         )
 
-        run.status = step_to_run_status.get(
+        target_status = step_to_run_status.get(
             result.step_status,
             ValidationRunStatus.FAILED,
         )
+        duration_ms = run.duration_ms
+
+        if run.started_at and finished_at:
+            delta = finished_at - run.started_at
+            duration_ms = int(delta.total_seconds() * 1000)
+
+        # Optimistic terminal fence: callback admission and output processing
+        # cannot hold a database lock across storage/provider work. Make the
+        # final transition conditional instead, so a concurrent cancel or
+        # watchdog timeout wins without a stale model save resurrecting it.
+        updated = ValidationRun.objects.filter(
+            pk=run.pk,
+            status__in=[
+                ValidationRunStatus.PENDING,
+                ValidationRunStatus.RUNNING,
+            ],
+        ).update(
+            status=target_status,
+            error_category=error_category,
+            ended_at=finished_at,
+            error=result.step_error,
+            duration_ms=duration_ms,
+        )
+        if updated == 0:
+            run.refresh_from_db(
+                fields=["status", "error_category", "ended_at", "error", "duration_ms"]
+            )
+            logger.info(
+                "Ignored callback finalization for terminal run %s (status=%s)",
+                run.id,
+                run.status,
+            )
+            return
+
+        # Keep the model passed to downstream signals/projections aligned with
+        # the conditional database update without another query.
+        run.status = target_status
         run.error_category = error_category
         run.ended_at = finished_at
         run.error = result.step_error
-
-        if run.started_at and run.ended_at:
-            delta = run.ended_at - run.started_at
-            run.duration_ms = int(delta.total_seconds() * 1000)
-
-        # Save only the fields this finalization path actually mutates. Every
-        # other ValidationRun.save() uses update_fields (see receipt.save()
-        # below); a bare save() here writes the whole in-memory row and can
-        # clobber a concurrent write (e.g. a parallel cancel toggling status).
-        run.save(
-            update_fields=[
-                "status",
-                "error_category",
-                "ended_at",
-                "error",
-                "duration_ms",
-            ],
-        )
+        run.duration_ms = duration_ms
 
         # Notify listeners that the run reached a terminal status (e.g. cloud
         # metering releases the compute-credit reservation). send_robust so a

@@ -80,7 +80,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           repository: danielmcquillen/validibot-validator-backends
-          ref: 9d79adc35485f4d485ec74afe699d3789781dd0c  # v0.7.1
+          ref: 8bda36e97b920366f078ca2afccf275aaab95c5c  # v0.9.2
           path: .ci/validibot-validator-backends
           persist-credentials: false
 

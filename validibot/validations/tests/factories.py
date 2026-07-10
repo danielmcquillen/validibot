@@ -244,11 +244,13 @@ class ValidationFindingFactory(DjangoModelFactory):
 
 
 class ArtifactFactory(DjangoModelFactory):
+    """Build artifacts whose organization matches their validation run."""
+
     class Meta:
         model = Artifact
 
     validation_run = factory.SubFactory(ValidationRunFactory)
-    org = factory.SubFactory(OrganizationFactory)
+    org = factory.SelfAttribute("validation_run.org")
     label = factory.Sequence(lambda n: f"artifact-{n}.txt")
     content_type = "text/plain"
     size_bytes = 0

@@ -3240,11 +3240,12 @@ class ValidationFinding(TimeStampedModel):
 
 
 def artifact_upload_to(instance, filename: str) -> str:
-    f = (
-        f"artifacts/org-{instance.org_id}/runs/{instance.run_id}/"
+    """Return the tenant- and run-scoped storage path for an artifact."""
+
+    return (
+        f"artifacts/org-{instance.org_id}/runs/{instance.validation_run_id}/"
         f"{uuid.uuid4().hex}/{filename}"
     )
-    return f
 
 
 class Artifact(TimeStampedModel):
@@ -3271,7 +3272,10 @@ class Artifact(TimeStampedModel):
 
     content_type = models.CharField(max_length=128, blank=True, default="")
 
-    file = models.FileField(upload_to=artifact_upload_to)
+    file = models.FileField(
+        upload_to=artifact_upload_to,
+        max_length=500,
+    )
 
     size_bytes = models.BigIntegerField(default=0)
 
@@ -3280,7 +3284,11 @@ class Artifact(TimeStampedModel):
 
     def clean(self):
         super().clean()
-        if self.org_id and self.run_id and self.org_id != self.run.org_id:
+        if (
+            self.org_id
+            and self.validation_run_id
+            and self.org_id != self.validation_run.org_id
+        ):
             raise ValidationError({"org": _("Artifact org must match run org.")})
 
 

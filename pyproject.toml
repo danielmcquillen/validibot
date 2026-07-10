@@ -344,7 +344,7 @@ dev = [
   # Linting and formatting
   "djlint==1.40.4",
   "pre-commit==4.6.0",
-  "ruff==0.15.20",
+  "ruff==0.15.21",
   # Type checking
   "django-stubs[compatible-mypy]==6.0.6",
   "djangorestframework-stubs==3.17.0",
@@ -367,5 +367,5 @@ dev = [
 # hash-pinned requirements/docs.txt, independent of this group.
 docs = [
   # Documentation
-  "zensical==0.0.47",
+  "zensical==0.0.50",
 ]

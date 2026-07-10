@@ -62,6 +62,48 @@ methods call each other and share the same execution context.
 Each module was extracted as a standalone step and tested before proceeding.
 This minimises risk when refactoring a critical code path.
 
+### Runtime profiles make rolling deployments explicit
+
+Every `ValidationRun` records an immutable `runtime_profile`. The profile is
+chosen when the run is created and remains authoritative for its lifetime; a
+worker never infers execution behavior from nullable attempt rows or its local
+settings.
+
+The accepted progression is:
+
+```text
+LEGACY
+  -> ATTEMPT_LIFECYCLE_V1
+  -> ATTEMPT_STRICT_V1
+  -> ATTEMPT_CONTEXT_V1
+```
+
+`runtime_profiles.py` is the single table describing which capabilities each
+rung adds and which I/O contract it requires. Deployments may remain on a rung
+or advance by one rung only.
+
+The current reader-first release still creates `LEGACY` runs exclusively. It
+adds the schema and selectors required to understand attempt-mode records, but
+legacy execution, callback, and reconciliation handlers reject an attempt-mode
+run as a system error before reading legacy JSON coordination metadata. This is
+intentional downgrade protection, not a feature flag. Attempt creation is
+enabled only after every live worker and callback instance has the matching
+handler implementation.
+
+### Execution attempts identify concrete provider work
+
+`ExecutionAttempt` is the durable identity for one concrete container or cloud
+job launched for a `ValidationStepRun`. It records provider identity, attempt
+number, runner and contract policy, exact bundle/envelope locations, image
+identity, timeout, bounded diagnostics, and provider observations.
+
+The database permits at most one non-terminal attempt per step and prevents two
+rows from claiming the same provider execution within a runner/job namespace.
+State changes go through `execution_attempts.py`, whose small monotonic graph
+makes same-state delivery idempotent and prevents terminal attempts from
+reopening. Callback receipts have an additive nullable attempt reference;
+legacy receipts remain valid during migration.
+
 ## Module Responsibilities
 
 ### ValidationRunService (`validation_run.py`)
@@ -169,6 +211,8 @@ mismatches at save time rather than at runtime.
 
 ```
 validations/services/
+├── runtime_profiles.py        # Runtime-profile policy and mixed-version guards
+├── execution_attempts.py      # Attempt selectors and monotonic transitions
 ├── validation_run.py          # Public facade (launch, cancel, delegation)
 ├── step_orchestrator.py       # Worker-side step execution loop
 ├── summary_builder.py         # Run/step summary aggregation

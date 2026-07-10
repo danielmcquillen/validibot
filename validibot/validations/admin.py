@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from validibot.validations.models import CustomValidator
+from validibot.validations.models import ExecutionAttempt
 from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import ValidationRun
@@ -207,12 +208,14 @@ class ValidationRunAdmin(admin.ModelAdmin):
         "workflow_name",
         "org",
         "status",
+        "runtime_profile",
         "error_category",
         "duration_display",
         "created",
     )
     list_filter = (
         "status",
+        "runtime_profile",
         "error_category",
         "source",
         "org",
@@ -234,6 +237,7 @@ class ValidationRunAdmin(admin.ModelAdmin):
         "user",
         "submission",
         "status",
+        "runtime_profile",
         "error_category",
         "error",
         "user_friendly_error",
@@ -251,6 +255,7 @@ class ValidationRunAdmin(admin.ModelAdmin):
                 "fields": (
                     "id",
                     "status",
+                    "runtime_profile",
                     "error_category",
                     "user_friendly_error",
                 ),
@@ -332,3 +337,44 @@ class ValidationRunAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         """Allow superusers to delete runs for cleanup."""
         return request.user.is_superuser
+
+
+@admin.register(ExecutionAttempt)
+class ExecutionAttemptAdmin(admin.ModelAdmin):
+    """Read-only operator view of concrete provider execution attempts.
+
+    Attempts are lifecycle records written by orchestration services.  The
+    admin exposes their correlation and diagnostic fields for incidents but
+    never allows an operator edit to bypass monotonic transition rules.
+    """
+
+    list_display = (
+        "id",
+        "step_run",
+        "attempt_number",
+        "state",
+        "runner_type",
+        "provider_execution_id",
+        "created",
+    )
+    list_filter = ("state", "runner_type", "contract_version", "created")
+    search_fields = (
+        "id",
+        "step_run__validation_run__id",
+        "provider_execution_id",
+        "provider_job_name",
+    )
+    readonly_fields = tuple(field.name for field in ExecutionAttempt._meta.fields)
+    ordering = ("-created",)
+
+    def has_add_permission(self, request):
+        """Attempts are created by orchestration, never through the admin."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Attempt state is immutable outside lifecycle services."""
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        """Attempt history follows its parent run's retention lifecycle."""
+        return False

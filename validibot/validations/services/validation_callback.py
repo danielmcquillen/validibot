@@ -38,11 +38,15 @@ from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.models import CallbackReceipt
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.services.cloud_run.gcs_client import download_envelope
 from validibot.validations.services.cloud_run.gcs_client import parse_gcs_uri
+from validibot.validations.services.runtime_profiles import (
+    ensure_runtime_profile_supported,
+)
 from validibot.validations.services.validation_run import ValidationRunService
 
 logger = logging.getLogger(__name__)
@@ -192,6 +196,23 @@ class ValidationCallbackService:
                 return Response(
                     {"error": "Validation run not found"},
                     status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if (
+                run.status not in VALIDATION_RUN_TERMINAL_STATUSES
+                and not ensure_runtime_profile_supported(
+                    run,
+                    supported_profiles=(ValidationRuntimeProfile.LEGACY,),
+                    operation="process_validation_callback",
+                    sender=self.__class__,
+                )
+            ):
+                return Response(
+                    {
+                        "message": "Run cannot be processed by this deployment",
+                        "runtime_profile_rejected": True,
+                    },
+                    status=status.HTTP_200_OK,
                 )
 
             return self._process_with_idempotency_guard(callback, run)

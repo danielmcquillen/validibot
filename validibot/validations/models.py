@@ -26,6 +26,7 @@ from validibot.submissions.constants import data_format_allowed_file_types
 from validibot.submissions.models import Submission
 from validibot.users.models import Organization
 from validibot.users.models import User
+from validibot.validations.constants import EXECUTION_ATTEMPT_TERMINAL_STATES
 from validibot.validations.constants import RULESET_ASSERTION_NOTES_MAX_LENGTH
 from validibot.validations.constants import VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH
 from validibot.validations.constants import AssertionOperator
@@ -35,6 +36,8 @@ from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import CustomValidatorType
+from validibot.validations.constants import ExecutionAttemptState
+from validibot.validations.constants import ExecutionContractVersion
 from validibot.validations.constants import FMUProbeStatus
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ResourceFileType
@@ -47,6 +50,7 @@ from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.constants import ValidatorReleaseState
@@ -2746,6 +2750,16 @@ class ValidationRun(TimeStampedModel):
         default=ValidationRunStatus.PENDING,
     )
 
+    runtime_profile = models.CharField(
+        max_length=32,
+        choices=ValidationRuntimeProfile.choices,
+        default=ValidationRuntimeProfile.LEGACY,
+        editable=False,
+        help_text=_(
+            "Immutable execution semantics selected when this run was created."
+        ),
+    )
+
     short_description = models.CharField(
         max_length=VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH,
         blank=True,
@@ -2819,6 +2833,35 @@ class ValidationRun(TimeStampedModel):
             "final run outcome."
         ),
     )
+
+    def save(self, *args, **kwargs):
+        """Persist the run without allowing its runtime profile to change.
+
+        The profile determines how callbacks and worker tasks interpret the
+        row, so changing it in place would reinterpret in-flight execution.
+        ``QuerySet.update()`` remains available to explicit data migrations;
+        normal model saves enforce immutability.
+        """
+        update_fields = kwargs.get("update_fields")
+        should_check_profile = update_fields is None or "runtime_profile" in set(
+            update_fields
+        )
+        if self.pk and not self._state.adding and should_check_profile:
+            stored_profile = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values_list("runtime_profile", flat=True)
+                .first()
+            )
+            if stored_profile is not None and stored_profile != self.runtime_profile:
+                raise ValidationError(
+                    {
+                        "runtime_profile": _(
+                            "A validation run's runtime profile cannot be changed."
+                        )
+                    }
+                )
+        super().save(*args, **kwargs)
 
     def clean(self):
         super().clean()
@@ -3051,6 +3094,153 @@ class ValidationStepRun(TimeStampedModel):
             and self.workflow_step.order != self.step_order
         ):
             raise ValidationError({"step_order": _("Must equal WorkflowStep.order.")})
+
+
+class ExecutionAttempt(TimeStampedModel):
+    """One concrete, provider-addressable execution of a logical step run.
+
+    The step run remains the workflow-level unit.  This row gives each actual
+    container or cloud job a durable identity so retries, callbacks,
+    reconciliation, cancellation, evidence, and billing can all refer to the
+    same launch.  Stage 1 adds this reader-first schema but does not create
+    attempts in production; attempt writers are enabled in a later stage.
+    """
+
+    class Meta:
+        ordering = ["step_run_id", "attempt_number"]
+        indexes = [
+            models.Index(fields=["state", "timeout_at"]),
+            models.Index(fields=["provider_execution_id"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["step_run", "attempt_number"],
+                name="uq_attempt_step_number",
+            ),
+            models.UniqueConstraint(
+                fields=["step_run"],
+                condition=Q(
+                    state__in=(
+                        ExecutionAttemptState.PENDING,
+                        ExecutionAttemptState.DISPATCHING,
+                        ExecutionAttemptState.RUNNING,
+                        ExecutionAttemptState.UNKNOWN,
+                    )
+                ),
+                name="uq_attempt_one_active_per_step",
+            ),
+            models.UniqueConstraint(
+                fields=[
+                    "runner_type",
+                    "provider_job_name",
+                    "provider_execution_id",
+                ],
+                condition=~Q(provider_execution_id=""),
+                name="uq_attempt_provider_execution",
+            ),
+            models.CheckConstraint(
+                condition=Q(attempt_number__gte=1),
+                name="ck_attempt_number_positive",
+            ),
+            models.CheckConstraint(
+                condition=Q(state__in=ExecutionAttemptState.values),
+                name="ck_attempt_state_known",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(provider_finished_at__isnull=True)
+                    | Q(provider_started_at__isnull=True)
+                    | Q(provider_finished_at__gte=models.F("provider_started_at"))
+                ),
+                name="ck_attempt_provider_times_valid",
+            ),
+        ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    step_run = models.ForeignKey(
+        ValidationStepRun,
+        on_delete=models.CASCADE,
+        related_name="execution_attempts",
+    )
+    attempt_number = models.PositiveIntegerField()
+    state = models.CharField(
+        max_length=16,
+        choices=ExecutionAttemptState.choices,
+        default=ExecutionAttemptState.PENDING,
+    )
+    runner_type = models.CharField(max_length=64)
+    contract_version = models.CharField(
+        max_length=32,
+        choices=ExecutionContractVersion.choices,
+        default=ExecutionContractVersion.LEGACY_URI_V1,
+    )
+
+    provider_job_name = models.CharField(max_length=512, blank=True, default="")
+    provider_execution_id = models.CharField(
+        max_length=512,
+        blank=True,
+        default="",
+    )
+    callback_nonce_hash = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text=_("Digest verifier for the per-attempt callback secret."),
+    )
+
+    execution_bundle_uri = models.CharField(max_length=2048, blank=True, default="")
+    input_envelope_uri = models.CharField(max_length=2048, blank=True, default="")
+    input_envelope_sha256 = models.CharField(max_length=64, blank=True, default="")
+    output_envelope_uri = models.CharField(max_length=2048, blank=True, default="")
+    output_envelope_sha256 = models.CharField(max_length=64, blank=True, default="")
+    backend_image_ref = models.CharField(max_length=512, blank=True, default="")
+    backend_image_digest = models.CharField(max_length=256, blank=True, default="")
+
+    timeout_at = models.DateTimeField(null=True, blank=True)
+    retry_policy_snapshot = models.JSONField(default=dict, blank=True)
+
+    dispatch_started_at = models.DateTimeField(null=True, blank=True)
+    provider_started_at = models.DateTimeField(null=True, blank=True)
+    provider_finished_at = models.DateTimeField(null=True, blank=True)
+    terminal_at = models.DateTimeField(null=True, blank=True)
+    provider_status_code = models.CharField(max_length=64, blank=True, default="")
+    last_error_code = models.CharField(max_length=64, blank=True, default="")
+    last_error = models.CharField(max_length=2000, blank=True, default="")
+
+    @property
+    def is_terminal(self) -> bool:
+        """Return whether this attempt can no longer change state."""
+        return self.state in EXECUTION_ATTEMPT_TERMINAL_STATES
+
+    def clean(self):
+        """Validate profile-derived fields that cannot be database constraints."""
+        super().clean()
+        if not self.step_run_id:
+            return
+
+        from validibot.validations.services.runtime_profiles import (
+            get_runtime_profile_policy,
+        )
+
+        policy = get_runtime_profile_policy(
+            self.step_run.validation_run.runtime_profile
+        )
+        errors = {}
+        if not policy.uses_execution_attempts:
+            errors["step_run"] = _("Legacy runs cannot contain execution attempts.")
+        if self.contract_version != policy.contract_version:
+            errors["contract_version"] = _(
+                "The attempt contract must match its run's runtime profile."
+            )
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        """Show the logical step, attempt sequence, and current state."""
+        return (
+            f"ExecutionAttempt(step={self.step_run_id}, "
+            f"number={self.attempt_number}, state={self.state})"
+        )
 
 
 class ValidationStepRunSummary(TimeStampedModel):
@@ -3328,6 +3518,18 @@ class CallbackReceipt(models.Model):
         help_text=_("The validation run this callback was for."),
     )
 
+    execution_attempt = models.ForeignKey(
+        ExecutionAttempt,
+        on_delete=models.RESTRICT,
+        null=True,
+        blank=True,
+        related_name="callback_receipts",
+        help_text=_(
+            "The concrete execution that produced this callback. "
+            "Null only for legacy callbacks during migration."
+        ),
+    )
+
     received_at = models.DateTimeField(
         auto_now_add=True,
         help_text=_("When this callback was first processed."),
@@ -3358,6 +3560,23 @@ class CallbackReceipt(models.Model):
     def __str__(self):
         short_id = self.callback_id[:8]
         return f"CallbackReceipt({short_id}... for run {self.validation_run_id})"
+
+    def clean(self):
+        """Keep an attempt-bound receipt within the same validation run."""
+        super().clean()
+        if (
+            self.execution_attempt_id
+            and self.validation_run_id
+            and self.execution_attempt.step_run.validation_run_id
+            != self.validation_run_id
+        ):
+            raise ValidationError(
+                {
+                    "execution_attempt": _(
+                        "Callback receipt attempt must belong to the same run."
+                    )
+                }
+            )
 
 
 class RunEvidenceArtifactAvailability(models.TextChoices):

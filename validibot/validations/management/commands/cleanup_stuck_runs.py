@@ -44,9 +44,14 @@ from django.utils import timezone
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.services.runners.base import ExecutionStatus
+from validibot.validations.services.runtime_profiles import (
+    ensure_runtime_profile_supported,
+)
+from validibot.validations.services.runtime_profiles import is_runtime_profile_supported
 from validibot.validations.services.validation_run import cancel_active_execution
 
 logger = logging.getLogger(__name__)
@@ -130,6 +135,7 @@ class Command(BaseCommand):
             return
 
         reconciled_ids = []
+        profile_rejected_ids = []
         timed_out_ids = []
         error_message = (
             f"Run timed out after {timeout_minutes} minutes - "
@@ -142,6 +148,9 @@ class Command(BaseCommand):
             result = self._try_reconcile_gcp_run(run, dry_run=dry_run)
             if result == "reconciled":
                 reconciled_ids.append(str(run.id))
+                continue
+            if result == "profile_rejected":
+                profile_rejected_ids.append(str(run.id))
                 continue
             # Once the configured outer deadline has elapsed, a provider that
             # still reports RUNNING must be fenced and canceled rather than
@@ -209,11 +218,12 @@ class Command(BaseCommand):
 
         # Report results
         if dry_run:
-            total = len(reconciled_ids) + len(timed_out_ids)
+            total = len(reconciled_ids) + len(profile_rejected_ids) + len(timed_out_ids)
             self.stdout.write(
                 self.style.WARNING(
                     f"[DRY RUN] {total} stuck run(s): "
                     f"{len(reconciled_ids)} reconcilable, "
+                    f"{len(profile_rejected_ids)} profile-rejected, "
                     f"{len(timed_out_ids)} would time out"
                 )
             )
@@ -235,7 +245,17 @@ class Command(BaseCommand):
                 )
                 self._display_ids(timed_out_ids)
 
-            if not reconciled_ids and not timed_out_ids:
+            if profile_rejected_ids:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "Failed "
+                        f"{len(profile_rejected_ids)} run(s) whose runtime "
+                        "profile this watchdog cannot process safely."
+                    )
+                )
+                self._display_ids(profile_rejected_ids)
+
+            if not reconciled_ids and not profile_rejected_ids and not timed_out_ids:
                 self.stdout.write(self.style.SUCCESS("No runs needed cleanup."))
 
     def _display_ids(self, ids: list[str]) -> None:
@@ -268,9 +288,26 @@ class Command(BaseCommand):
             - "reconciled": Run was recovered or marked failed based on GCP status
             - "still_running": Job is still executing on GCP; the caller
               applies the configured timeout fence and requests cancellation
+            - "profile_rejected": This legacy watchdog fenced an attempt-mode run
             - "not_applicable": Not a GCP run or missing metadata
             - "error": GCP API call failed (fall through to timeout)
         """
+        legacy_profiles = (ValidationRuntimeProfile.LEGACY,)
+        if not is_runtime_profile_supported(run.runtime_profile, legacy_profiles):
+            if dry_run:
+                self.stdout.write(
+                    f"  [PROFILE-REJECT] {run.id}: runtime profile "
+                    f"{run.runtime_profile!r} is not supported by this handler"
+                )
+            else:
+                ensure_runtime_profile_supported(
+                    run,
+                    supported_profiles=legacy_profiles,
+                    operation="cleanup_stuck_runs",
+                    sender=self.__class__,
+                )
+            return "profile_rejected"
+
         # 1. Check if deployment is GCP
         if not self._is_gcp_deployment():
             return "not_applicable"

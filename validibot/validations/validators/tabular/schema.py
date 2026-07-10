@@ -23,6 +23,8 @@ from django.utils.html import format_html
 from django.utils.html import format_html_join
 from django.utils.translation import gettext_lazy as _
 
+from validibot.validations.validators.tabular.preflight import MAX_HEADER_NAME_CHARS
+
 # The field types V1 understands. Anything else is treated as ``string``.
 SUPPORTED_TYPES: frozenset[str] = frozenset(
     {"string", "number", "integer", "boolean", "date", "datetime"},
@@ -433,10 +435,11 @@ def _validate_field_names(names: list[str]) -> None:
     ``AttributeError`` mid-validation. Catching it here turns a crash into a
     clean configuration error.
 
-    Three rules, all raising ``ValueError`` (an unusable *value*, not a wrong
+    Four rules, all raising ``ValueError`` (an unusable *value*, not a wrong
     *type*):
 
     - blank-after-trim → a column with no usable name can't be addressed;
+    - overlong → a hostile name cannot inflate forms and generated schemas;
     - exact duplicate → ``row.value`` / ``frame[name]`` would be ambiguous;
     - case-only collision → Table Schema treats names as not-case-sensitive for
       uniqueness, so ``Lat`` vs ``lat`` is a collision, not two columns.
@@ -444,6 +447,16 @@ def _validate_field_names(names: list[str]) -> None:
     blanks = [i + 1 for i, name in enumerate(names) if name.strip() == ""]
     if blanks:
         msg = f"Table Schema has blank field name(s) at position(s): {blanks}."
+        raise ValueError(msg)
+
+    oversized = [
+        i + 1 for i, name in enumerate(names) if len(name) > MAX_HEADER_NAME_CHARS
+    ]
+    if oversized:
+        msg = (
+            f"Table Schema has field name(s) over the "
+            f"{MAX_HEADER_NAME_CHARS}-character limit at position(s): {oversized}."
+        )
         raise ValueError(msg)
 
     # Track first occurrence by trimmed+casefolded key so an exact duplicate

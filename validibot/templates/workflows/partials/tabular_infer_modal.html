@@ -3,10 +3,11 @@
 {% comment %}
 "Infer from Sample" modal — a two-screen wizard launched from the page header.
 
-Screen 1 (input): upload a representative CSV. The "Infer columns" submit posts
-to the infer endpoint; on success the endpoint returns the review body + an
-HX-Trigger flipping the modal to screen 2 (and out-of-band swaps for the
-detected dialect), and on failure it HX-Retargets the error onto this screen.
+Screen 1 (input): upload representative delimited text. The "Infer columns"
+submit posts to the infer endpoint; on success the endpoint returns the review
+body + an HX-Trigger flipping the modal to screen 2 (and out-of-band swaps for
+the detected dialect), and on failure it HX-Retargets the error onto this
+screen.
 
 Screen 2 (review): the compatibility report + column-count summary, with Apply
 (replace the columns and close), Back (return to input), and Cancel.
@@ -40,14 +41,13 @@ Screen switching, Back, and Apply-close are wired in tabular_step_settings.html.
           </button>
         </div>
         <div class="modal-body">
-          <label class="form-label" for="id_sample_file">{% trans "Sample CSV" %}</label>
+          <label class="form-label" for="id_sample_file">{% trans "Delimited text sample" %}</label>
           <input type="file"
                  name="sample_file"
                  id="id_sample_file"
-                 class="form-control"
-                 accept=".csv,.tsv,text/csv,text/tab-separated-values" />
+                 class="form-control" />
           <p class="form-text">
-            {% trans "Your current columns are kept until you apply the proposal." %}
+            {% trans "Comma, tab, semicolon, and pipe delimiters are supported. The filename extension does not matter. Your current columns are kept until you apply the proposal." %}
           </p>
           <div id="tabular-infer-input-error">
           </div>

@@ -4,9 +4,9 @@ Tests for the Tabular Validator's schema inference
 
 ### What this suite covers and why
 
-Inferring a schema from a sample CSV is the fastest setup path — "drop a file,
-get a Table Schema to tighten." The behaviours pinned here are the ones that
-make the inferred schema trustworthy as a starting point:
+Inferring a schema from delimited text is the fastest setup path — "drop a
+file, get a Table Schema to tighten." The behaviours pinned here are the ones
+that make the inferred schema trustworthy as a starting point:
 
 - **Type guessing is locale-free and reuses the validator's coercion**, so an
   inferred type means what validation will enforce.
@@ -22,8 +22,13 @@ Pure functions (no DB) → ``SimpleTestCase``.
 
 from __future__ import annotations
 
+import pytest
 from django.test import SimpleTestCase
 
+from validibot.validations.validators.tabular.infer import (
+    CODE_INFERRED_SCHEMA_TOO_LARGE,
+)
+from validibot.validations.validators.tabular.infer import InferenceError
 from validibot.validations.validators.tabular.infer import infer_table_schema
 from validibot.validations.validators.tabular.preflight import TabularDialect
 from validibot.validations.validators.tabular.schema import parse_table_schema
@@ -125,3 +130,20 @@ class InferSamplingTests(SimpleTestCase):
         # Full read would infer string (mixed); sampling 1 row sees only "1".
         result = infer_table_schema(b"n\n1\nabc\n", sample_rows=1)
         self.assertEqual(_types(result)["n"], "integer")
+
+    def test_serialized_descriptor_size_is_bounded(self):
+        """Inference rejects a proposal that would exceed its response cap.
+
+        Header-length and column-count limits provide the normal protection;
+        this independent serialized-size check is defence in depth for Unicode
+        expansion and future descriptor fields.
+        """
+        with pytest.raises(InferenceError) as exc_info:
+            infer_table_schema(
+                b"first,second\n1,2\n",
+                max_schema_bytes=20,
+            )
+        self.assertEqual(
+            exc_info.value.code,
+            CODE_INFERRED_SCHEMA_TOO_LARGE,
+        )

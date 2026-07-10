@@ -216,6 +216,21 @@ class TableSchemaParseTests(SimpleTestCase):
                 {"fields": [{"name": "Lat"}, {"name": "lat"}]},
             )
 
+    def test_overlong_field_name_rejected(self):
+        """Imported schemas obey the same field-name bound as file headers.
+
+        Otherwise an author could bypass the inference guard by importing a
+        descriptor whose names later inflate the editor and validation UI.
+        """
+        names = ("x" * 256, (" " * 255) + "x")
+        for name in names:
+            name_kind = "whitespace" if name.startswith(" ") else "text"
+            with (
+                self.subTest(name_kind=name_kind),
+                pytest.raises(ValueError, match="character limit"),
+            ):
+                parse_table_schema({"fields": [{"name": name}]})
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Cell coercion

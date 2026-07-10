@@ -47,13 +47,15 @@ below.
 
 When you configure a Tabular step you can build the column schema three ways:
 
-1. **Infer it from a sample file (the quick path).** Upload a representative
-   CSV and select **Infer columns**. Validibot reads the header, resolves the
-   delimiter, and guesses each column's type from its values. Review the
-   proposal, then select **Apply proposed schema**. Your current unsaved
-   columns are not replaced until you apply it. Inference picks types only, so
-   add the ranges, allowed values, and required flags that matter for your
-   check.
+1. **Infer it from a sample file (the quick path).** Upload representative
+   delimited text and select **Infer columns**. The filename extension does not
+   matter: Validibot reads the content, detects comma, tab, semicolon, or pipe
+   delimiters, reads the header, and guesses each column's type from its
+   values. If detection is ambiguous, select the delimiter explicitly and try
+   again. Review the proposal, then select **Apply proposed schema**. Your
+   current unsaved columns are not replaced until you apply it. Inference picks
+   types only, so add the ranges, allowed values, and required flags that
+   matter for your check.
 2. **Import a descriptor.** Paste or upload a Frictionless Table Schema JSON
    descriptor and select **Import schema**. Validibot shows a compatibility
    report and proposal before replacing the current editor. Unsupported

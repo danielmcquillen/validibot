@@ -35,6 +35,7 @@ CODE_ENCODING_ERROR = "tabular.encoding_error"
 CODE_EMPTY_FILE = "tabular.empty_file"
 CODE_TOO_MANY_COLUMNS = "tabular.too_many_columns"
 CODE_DIALECT_MISMATCH = "tabular.dialect_mismatch"
+CODE_DIALECT_UNDETERMINED = "tabular.dialect_undetermined"
 
 # Sniff the dialect from at most this many decoded characters. The header
 # and a few rows are plenty to detect a delimiter; sniffing the whole file
@@ -45,6 +46,17 @@ _SNIFF_SAMPLE_CHARS = 65536
 # avoids the sniffer guessing an exotic separator from incidental
 # punctuation in the data.
 _SNIFF_DELIMITERS = ",\t;|"
+
+# When ``csv.Sniffer`` cannot decide, compare a small number of logical
+# records with each supported delimiter. A real delimiter produces the same
+# multi-column width for every well-formed record; punctuation inside values
+# generally does not. Keeping this fallback bounded preserves PREFLIGHT's
+# cheap-cost contract.
+_SNIFF_FALLBACK_RECORDS = 25
+
+# Column names are carried through Django form fields and the portable Table
+# Schema descriptor. This matches the editor's existing column-name limit.
+MAX_HEADER_NAME_CHARS = 255
 
 # Default delimiter when nothing is declared and sniffing is inconclusive
 # (e.g. a single-column file has no delimiter to detect). Comma is the
@@ -81,6 +93,11 @@ class TabularLimits:
     max_bytes: int = 50 * 1024 * 1024  # 50 MB
     max_rows: int = 1_000_000
     max_columns: int = 1024
+    max_header_name_chars: int = MAX_HEADER_NAME_CHARS
+    # Header names become schema fields and UI form values. Bounding each name
+    # prevents a small file with one enormous header cell from producing an
+    # unwieldy descriptor or response while leaving ample room for URI-shaped
+    # scientific vocabulary terms.
     # Wall-clock budget for the *native* validation pass (per submission). The
     # per-row CEL lane already caps its loop; native validation needs the same
     # because an author-supplied regex ``pattern`` runs against every cell, and
@@ -150,30 +167,94 @@ def _decode(content: bytes, encoding: str) -> str:
         raise PreflightError(msg, code=CODE_ENCODING_ERROR) from exc
 
 
-def _sniff_delimiter(sample: str) -> str | None:
+def _consistent_delimiter_candidates(
+    sample: str,
+    *,
+    quotechar: str,
+) -> list[str]:
+    """Return delimiters that produce one consistent multi-column width.
+
+    Every candidate is parsed with the standard CSV reader so quoted
+    punctuation is ignored. A candidate only qualifies when all sampled
+    logical records have the same width greater than one. The caller uses this
+    both as a fallback when :class:`csv.Sniffer` fails and as an ambiguity check
+    when the heuristic sniffer chooses one of several plausible delimiters.
+    """
+    candidates: list[str] = []
+    for delimiter in _SNIFF_DELIMITERS:
+        widths: list[int] = []
+        try:
+            reader = csv.reader(
+                io.StringIO(sample),
+                delimiter=delimiter,
+                quotechar=quotechar,
+                strict=True,
+            )
+            for record in reader:
+                if not record or (len(record) == 1 and record[0] == ""):
+                    continue
+                widths.append(len(record))
+                if len(widths) >= _SNIFF_FALLBACK_RECORDS:
+                    break
+        except csv.Error:
+            continue
+        if widths and widths[0] > 1 and len(set(widths)) == 1:
+            candidates.append(delimiter)
+    return candidates
+
+
+def _sniff_delimiter(sample: str, *, quotechar: str) -> str | None:
     """Best-effort delimiter detection over a bounded text sample.
 
-    Returns ``None`` when the sniffer cannot decide (e.g. a single-column
-    file with no delimiter at all) so the caller can fall back to a
-    sensible default rather than propagating a sniff error.
+    Returns ``None`` when neither the standard sniffer nor the conservative
+    consistent-width fallback can decide. The caller distinguishes a genuine
+    single-column file from ambiguous delimiter-bearing content.
     """
     try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=_SNIFF_DELIMITERS)
+        sniffed = (
+            csv.Sniffer()
+            .sniff(
+                sample,
+                delimiters=_SNIFF_DELIMITERS,
+            )
+            .delimiter
+        )
     except csv.Error:
+        sniffed = None
+
+    candidates = _consistent_delimiter_candidates(sample, quotechar=quotechar)
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
         return None
-    return dialect.delimiter
+    return sniffed
 
 
-def _resolve_delimiter(declared: str | None, sample: str) -> str:
+def _resolve_delimiter(
+    declared: str | None,
+    sample: str,
+    *,
+    quotechar: str,
+) -> str:
     """Apply the delimiter decision: declared overrides, mismatch fails.
 
     - If a delimiter is declared, it is authoritative; but if a sniff also
       produces a *different* delimiter, the disagreement is a clean failure
       (an honest "you said comma, this looks tab-delimited" beats a guess).
-    - If nothing is declared, use the sniffed delimiter; if sniffing is
-      inconclusive, fall back to the default (comma).
+    - If nothing is declared, use the sniffed delimiter. Ambiguous content
+      fails with guidance; content with no delimiter is a valid single-column
+      file and uses the default comma dialect internally.
     """
-    sniffed = _sniff_delimiter(sample)
+    sniffed = _sniff_delimiter(sample, quotechar=quotechar)
+    visible_candidates = [
+        delimiter for delimiter in _SNIFF_DELIMITERS if delimiter in sample
+    ]
+    # If only one supported delimiter character occurs, it remains the only
+    # defensible dialect even when ragged rows make consistency-based sniffing
+    # fail. Resolve it here and let READ produce the more accurate strict parse
+    # error for the malformed body.
+    if sniffed is None and len(visible_candidates) == 1:
+        sniffed = visible_candidates[0]
     if declared is not None:
         if sniffed is not None and sniffed != declared:
             msg = (
@@ -182,7 +263,15 @@ def _resolve_delimiter(declared: str | None, sample: str) -> str:
             )
             raise PreflightError(msg, code=CODE_DIALECT_MISMATCH)
         return declared
-    return sniffed if sniffed is not None else _DEFAULT_DELIMITER
+    if sniffed is not None:
+        return sniffed
+    if visible_candidates:
+        msg = (
+            "Could not determine the file delimiter unambiguously. "
+            "Select the delimiter explicitly and try again."
+        )
+        raise PreflightError(msg, code=CODE_DIALECT_UNDETERMINED)
+    return _DEFAULT_DELIMITER
 
 
 def _read_first_record(text: str, delimiter: str, quotechar: str) -> list[str]:
@@ -232,7 +321,11 @@ def run_preflight(
         raise PreflightError("File has no content.", code=CODE_EMPTY_FILE)
 
     sample = text[:_SNIFF_SAMPLE_CHARS]
-    delimiter = _resolve_delimiter(dialect.delimiter, sample)
+    delimiter = _resolve_delimiter(
+        dialect.delimiter,
+        sample,
+        quotechar=dialect.quotechar,
+    )
 
     first_record = _read_first_record(text, delimiter, dialect.quotechar)
     field_count = len(first_record)

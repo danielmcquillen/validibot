@@ -3448,6 +3448,10 @@ TABULAR_DELIMITER_CHOICES = [
 ]
 # Sample uploads for inference are small by nature; cap to keep it cheap.
 TABULAR_SAMPLE_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
+# The multipart request also carries the current editor state. Check its total
+# size before Django parses uploaded files, leaving headroom above the sample
+# cap without accepting an unbounded request body at this endpoint.
+TABULAR_INFER_REQUEST_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 TABULAR_SCHEMA_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
 TABULAR_COLUMN_FORMSET_PREFIX = "columns"
 TABULAR_TYPE_CHOICES = [
@@ -3857,7 +3861,7 @@ class TabularStepConfigForm(BaseStepConfigForm):
 
     Configures the file dialect (delimiter / header) and the column
     schema. The schema can be provided two ways: paste a Frictionless Table
-    Schema descriptor, or upload a sample CSV to *infer* one (the inferred
+    Schema descriptor, or upload delimited text to *infer* one (the inferred
     descriptor is stored and shown for the author to tighten next time). The
     descriptor is written to ``ruleset.rules_text`` and the dialect to
     ``ruleset.metadata`` by ``build_tabular_config``.
@@ -3904,15 +3908,16 @@ class TabularStepConfigForm(BaseStepConfigForm):
         ),
     )
     sample_file = forms.FileField(
-        label=_("Infer from a sample file"),
+        label=_("Infer from a delimited text sample"),
         required=False,
         help_text=_(
-            "Upload a small sample CSV to infer column names and types.",
+            "Upload a small comma-, tab-, semicolon-, or pipe-delimited text "
+            "file to infer column names and types. The filename extension "
+            "does not matter.",
         ),
         widget=forms.ClearableFileInput(
             attrs={
                 "class": "form-control",
-                "accept": ".csv,.tsv,text/csv,text/tab-separated-values",
             },
         ),
     )

@@ -46,6 +46,7 @@ from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
@@ -53,6 +54,9 @@ from validibot.validations.services.findings_persistence import normalize_issue
 from validibot.validations.services.findings_persistence import persist_findings
 from validibot.validations.services.models import ValidationRunTaskResult
 from validibot.validations.services.output_hash import safe_stamp_output_hash
+from validibot.validations.services.runtime_profiles import (
+    ensure_runtime_profile_supported,
+)
 from validibot.validations.services.step_processor.result import StepProcessingResult
 from validibot.validations.services.summary_builder import build_run_summary_record
 from validibot.validations.services.summary_builder import extract_assertion_total
@@ -146,6 +150,19 @@ class StepOrchestrator:
                 run_id=validation_run_id,
                 status=ValidationRunStatus.FAILED,
                 error=GENERIC_EXECUTION_ERROR,
+            )
+
+        if not ensure_runtime_profile_supported(
+            validation_run,
+            supported_profiles=(ValidationRuntimeProfile.LEGACY,),
+            operation="execute_workflow_steps",
+            sender=self.__class__,
+        ):
+            validation_run.refresh_from_db(fields=["status", "error"])
+            return ValidationRunTaskResult(
+                run_id=validation_run.id,
+                status=validation_run.status,
+                error=validation_run.error,
             )
 
         tracking_service = TrackingEventService()
@@ -871,6 +888,18 @@ class StepOrchestrator:
             ValidationResult with passed=True/False for sync handlers, or
             passed=None for async handlers awaiting callback.
         """
+        if not ensure_runtime_profile_supported(
+            validation_run,
+            supported_profiles=(ValidationRuntimeProfile.LEGACY,),
+            operation="execute_workflow_step",
+            sender=self.__class__,
+        ):
+            return ValidationResult(
+                passed=False,
+                issues=[],
+                stats={"runtime_profile_rejected": True},
+            )
+
         # 1. Prepare Context
         from validibot.actions.handlers import ValidatorStepHandler
         from validibot.actions.protocols import RunContext

@@ -21,6 +21,7 @@ from django.utils import timezone
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.management.commands.cleanup_stuck_runs import Command
 from validibot.validations.management.commands.cleanup_stuck_runs import (
     get_default_timeout_minutes,
@@ -57,6 +58,7 @@ def _mock_run(*, step_output=None, minutes_ago=45, status=ValidationRunStatus.RU
     run.id = uuid.uuid4()
     run.pk = run.id
     run.status = status
+    run.runtime_profile = ValidationRuntimeProfile.LEGACY
     run.started_at = timezone.now() - timedelta(minutes=minutes_ago)
     run.ended_at = None
     run.duration_ms = None

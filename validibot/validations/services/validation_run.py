@@ -53,6 +53,7 @@ from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.exceptions import OrgPolicyDeniedError
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationRunSummary
@@ -107,10 +108,15 @@ def cancel_active_execution(run: ValidationRun) -> bool | None:
     if not step_run:
         return None
 
-    step_output = step_run.output or {}
-    execution_id = step_output.get("execution_name") or step_output.get("execution_id")
-    if not execution_id:
+    from validibot.validations.services.execution_attempts import (
+        resolve_provider_execution_identity,
+    )
+    from validibot.validations.services.runtime_profiles import execution_log_context
+
+    identity = resolve_provider_execution_identity(step_run)
+    if identity is None:
         return None
+    execution_id = identity.execution_id
 
     try:
         from validibot.validations.services.runners import get_validator_runner
@@ -119,10 +125,12 @@ def cancel_active_execution(run: ValidationRun) -> bool | None:
     except Exception:
         logger.warning(
             "Failed to request provider cancellation",
-            extra={
-                "run_id": str(run.id),
-                "execution_id": execution_id,
-            },
+            extra=execution_log_context(
+                run,
+                step_run=step_run,
+                attempt=identity.attempt,
+                provider_execution_id=execution_id,
+            ),
             exc_info=True,
         )
         return False
@@ -130,19 +138,23 @@ def cancel_active_execution(run: ValidationRun) -> bool | None:
     if not canceled:
         logger.warning(
             "Provider did not accept execution cancellation",
-            extra={
-                "run_id": str(run.id),
-                "execution_id": execution_id,
-            },
+            extra=execution_log_context(
+                run,
+                step_run=step_run,
+                attempt=identity.attempt,
+                provider_execution_id=execution_id,
+            ),
         )
         return False
 
     logger.info(
         "Requested provider execution cancellation",
-        extra={
-            "run_id": str(run.id),
-            "execution_id": execution_id,
-        },
+        extra=execution_log_context(
+            run,
+            step_run=step_run,
+            attempt=identity.attempt,
+            provider_execution_id=execution_id,
+        ),
     )
     return True
 
@@ -294,6 +306,22 @@ class ValidationRunService:
             # "completion + retention period", which is acceptable.
             output_expires_at = timezone.now() + retention_delta
 
+        run_extra = dict(extra or {})
+        requested_profile = run_extra.pop(
+            "runtime_profile",
+            ValidationRuntimeProfile.LEGACY,
+        )
+        from validibot.validations.services.runtime_profiles import (
+            is_runtime_profile_writer_enabled,
+        )
+
+        if not is_runtime_profile_writer_enabled(requested_profile):
+            msg = (
+                "This release creates LEGACY validation runs only; "
+                f"runtime profile {requested_profile!r} is reader-only."
+            )
+            raise ValueError(msg)
+
         with transaction.atomic():
             validation_run = ValidationRun.objects.create(
                 org=org,
@@ -303,10 +331,11 @@ class ValidationRunService:
                 or getattr(workflow, "project", None),
                 user=run_user,
                 status=ValidationRunStatus.PENDING,
+                runtime_profile=ValidationRuntimeProfile.LEGACY,
                 source=source,
                 output_retention_policy=output_retention_policy,
                 output_expires_at=output_expires_at,
-                **(extra or {}),
+                **run_extra,
             )
 
             # Run-created hooks fire INSIDE this transaction, under any row

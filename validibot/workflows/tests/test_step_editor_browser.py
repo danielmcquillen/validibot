@@ -1,8 +1,9 @@
 """Browser regressions for workflow authoring layouts.
 
-These opt-in tests cover resizable column behavior that response tests cannot
-observe. Workflow and step editors must start with matching geometry, and the
-separator must resize their panels.
+These opt-in tests cover editor geometry that response tests cannot observe.
+Workflow and step detail pages must share resizable-column behavior, while long
+settings forms must keep their action footer visible and hand vertical scrolling
+to the card body.
 """
 
 from __future__ import annotations
@@ -21,7 +22,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from validibot.users.constants import RoleCode
 from validibot.users.tests.utils import ensure_all_roles_exist
+from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationType
+from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -184,6 +187,61 @@ class WorkflowEditorBrowserTests(StaticLiveServerTestCase):
             workflow_geometry["divider_space"],
             step_geometry["divider_space"],
         )
+
+    def test_long_step_settings_pin_footer_and_scroll_card_body(self):
+        """Laptop-height XML settings should scroll inside the card body only."""
+        validator = ValidatorFactory(validation_type=ValidationType.XML_SCHEMA)
+        ruleset = RulesetFactory(
+            org=self.org,
+            ruleset_type=RulesetType.XML_SCHEMA,
+        )
+        step = WorkflowStepFactory(
+            workflow=self.workflow,
+            validator=validator,
+            ruleset=ruleset,
+        )
+        settings_url = reverse(
+            "workflows:workflow_step_settings",
+            args=[self.workflow.pk, step.pk],
+        )
+        original_size = self.driver.get_window_size()
+        try:
+            self.driver.set_window_size(1440, 800)
+            self.driver.get(f"{self.live_server_url}{settings_url}")
+            self.wait.until(
+                ec.presence_of_element_located((By.CSS_SELECTOR, ".editor-card")),
+            )
+
+            metrics = self.driver.execute_script(
+                """
+                const footer = document.querySelector('.editor-card > .card-footer');
+                const body = document.querySelector('.editor-card__scroll');
+                return {
+                  pageOverflow: getComputedStyle(document.body).overflow,
+                  footerBottom: footer.getBoundingClientRect().bottom,
+                  viewportHeight: window.innerHeight,
+                  bodyClientHeight: body.clientHeight,
+                  bodyScrollHeight: body.scrollHeight,
+                  bodyOverflowY: getComputedStyle(body).overflowY,
+                };
+                """,
+            )
+
+            self.assertEqual(metrics["pageOverflow"], "hidden")
+            self.assertLessEqual(
+                metrics["footerBottom"],
+                metrics["viewportHeight"] + 1,
+            )
+            self.assertEqual(metrics["bodyOverflowY"], "auto")
+            self.assertGreater(
+                metrics["bodyScrollHeight"],
+                metrics["bodyClientHeight"],
+            )
+        finally:
+            self.driver.set_window_size(
+                original_size["width"],
+                original_size["height"],
+            )
 
     def _layout_geometry(self, path):
         """Return the rendered panel ratio and divider space for one editor."""

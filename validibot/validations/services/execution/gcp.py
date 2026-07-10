@@ -144,7 +144,9 @@ class GCPExecutionBackend(ExecutionBackend):
             in (
                 ExecutionStatus.SUCCEEDED,
                 ExecutionStatus.FAILED,
+                ExecutionStatus.CANCELLED,
             ),
+            execution_status=info.status,
             error_message=info.error_message,
         )
 

@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from validibot.submissions.models import Submission
     from validibot.validations.models import ValidationRun
     from validibot.validations.models import Validator
+    from validibot.validations.services.runners.base import ExecutionStatus
     from validibot.workflows.models import WorkflowStep
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,16 @@ class ExecutionResponse:
     Trust ADR Phase 5 Session A — sync backends populate this from
     the runner's :class:`ExecutionResult`; async backends persist it
     on the step run directly at launch time and leave this ``None``.
+    """
+
+    execution_status: ExecutionStatus | None = None
+    """Provider-neutral execution state.
+
+    Callers must use this field, rather than the presence of human-readable
+    error text, when deciding whether a completed execution succeeded.
+    ``None`` remains available for legacy responses during the compatibility
+    window. It is appended to preserve the positional constructor used by any
+    older integration.
     """
 
 

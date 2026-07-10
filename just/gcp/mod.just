@@ -86,6 +86,10 @@ gcp_cloud_run_request_timeout := env_var_or_default("GCP_CLOUD_RUN_TIMEOUT", "36
 # prod data migration, e.g. GCP_MIGRATE_TIMEOUT=1800s just gcp deploy-all prod
 gcp_migrate_task_timeout := env_var_or_default("GCP_MIGRATE_TIMEOUT", "300s")
 
+# Outer validator Job timeout. The Django watchdog reads the same setting and
+# only fences a run once this provider budget has elapsed.
+gcp_validator_task_timeout := env_var_or_default("VALIDATOR_TIMEOUT_SECONDS", "3600")
+
 # Cloud Scheduler timezone for cron jobs
 gcp_scheduler_timezone := env_var_or_default("GCP_SCHEDULER_TIMEZONE", "UTC")
 
@@ -3579,7 +3583,7 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
         --region {{gcp_region}} \
         --service-account "$VALIDATOR_SA" \
         --max-retries 0 \
-        --task-timeout 3600 \
+        --task-timeout {{gcp_validator_task_timeout}} \
         --execution-environment gen2 \
         --network default \
         --subnet default \

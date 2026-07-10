@@ -15,13 +15,18 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
+from django.test import override_settings
 from django.utils import timezone
 
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.management.commands.cleanup_stuck_runs import Command
+from validibot.validations.management.commands.cleanup_stuck_runs import (
+    get_default_timeout_minutes,
+)
 from validibot.validations.services.execution.base import ExecutionResponse
+from validibot.validations.services.runners.base import ExecutionStatus
 
 CMD_PATH = "validibot.validations.management.commands.cleanup_stuck_runs"
 
@@ -30,6 +35,20 @@ GCP_BACKEND_PATH = "validibot.validations.services.execution.gcp.GCPExecutionBac
 CALLBACK_SVC_PATH = (
     "validibot.validations.services.validation_callback.ValidationCallbackService"
 )
+
+
+class TestWatchdogTimeoutConfiguration(SimpleTestCase):
+    """Keep the watchdog deadline aligned with the outer runtime budget."""
+
+    @override_settings(VALIDATOR_TIMEOUT_SECONDS=3601)
+    def test_configured_seconds_round_up_to_a_safe_minute_deadline(self):
+        """The watchdog must never fence a run before its provider timeout.
+
+        The command accepts minutes while the shared runtime setting uses
+        seconds. Rounding down would create a window where valid provider work
+        is canceled before the configured outer execution budget expires.
+        """
+        assert get_default_timeout_minutes() == 61  # noqa: PLR2004
 
 
 def _mock_run(*, step_output=None, minutes_ago=45, status=ValidationRunStatus.RUNNING):
@@ -147,6 +166,7 @@ class TestReconcileMarksFailed(SimpleTestCase):
         mock_backend.check_status.return_value = ExecutionResponse(
             execution_id="projects/p/locations/r/jobs/j/executions/e",
             is_complete=True,
+            execution_status=ExecutionStatus.FAILED,
             error_message="Container OOM killed",
         )
         mock_backend_cls.return_value = mock_backend
@@ -168,6 +188,51 @@ class TestReconcileMarksFailed(SimpleTestCase):
 
         assert result == "reconciled"
         mock_mark_failed.assert_called_once_with(run, "Container OOM killed")
+
+    @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=True)
+    @patch(GCP_BACKEND_PATH)
+    def test_reconcile_preserves_failed_job_without_message(
+        self,
+        mock_backend_cls,
+        mock_is_gcp,
+    ):
+        """An empty provider diagnostic must never turn failure into success.
+
+        Cloud Run can report a terminal FAILED condition without useful text.
+        Reconciliation must use the explicit state and a bounded fallback
+        message, never attempt to download a nonexistent successful output.
+        """
+        mock_backend = MagicMock()
+        mock_backend.check_status.return_value = ExecutionResponse(
+            execution_id="projects/p/locations/r/jobs/j/executions/e",
+            is_complete=True,
+            execution_status=ExecutionStatus.FAILED,
+            error_message=None,
+        )
+        mock_backend_cls.return_value = mock_backend
+
+        run = _mock_run()
+        step_run = _mock_step_run(
+            output={
+                "execution_name": "projects/p/locations/r/jobs/j/executions/e",
+                "execution_bundle_uri": "gs://bucket/runs/org/run-id",
+            }
+        )
+
+        cmd = Command()
+        with (
+            patch.object(cmd, "_get_active_step_run", return_value=step_run),
+            patch.object(cmd, "_mark_run_failed_from_gcp") as mock_mark_failed,
+            patch.object(cmd, "_recover_lost_callback") as mock_recover,
+        ):
+            result = cmd._try_reconcile_gcp_run(run)
+
+        assert result == "reconciled"
+        mock_mark_failed.assert_called_once_with(
+            run,
+            "Cloud Run reported a failed execution without diagnostic details",
+        )
+        mock_recover.assert_not_called()
 
 
 class TestMarkRunFailedFromGCP(SimpleTestCase):
@@ -515,14 +580,27 @@ class TestCommandHandle(SimpleTestCase):
     @patch(f"{CMD_PATH}.ValidationRun")
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=True)
     @patch(GCP_BACKEND_PATH)
-    def test_command_skips_still_running_jobs(
-        self, mock_backend_cls, mock_is_gcp, mock_run_model
+    @patch(f"{CMD_PATH}.transaction")
+    @patch(f"{CMD_PATH}.cancel_active_execution")
+    def test_command_fences_and_cancels_still_running_jobs_after_deadline(
+        self,
+        mock_cancel,
+        mock_transaction,
+        mock_backend_cls,
+        mock_is_gcp,
+        mock_run_model,
     ):
-        """Still-running GCP jobs should be skipped (not timed out)."""
+        """Known-running provider work must be stopped after its outer deadline.
+
+        Skipping a provider that remains RUNNING after the configured maximum
+        leaves unbounded compute and a run that can never become terminal. The
+        watchdog first commits TIMED_OUT, then requests provider cancellation.
+        """
         mock_backend = MagicMock()
         mock_backend.check_status.return_value = ExecutionResponse(
             execution_id="projects/p/locations/r/jobs/j/executions/e",
             is_complete=False,
+            execution_status=ExecutionStatus.RUNNING,
         )
         mock_backend_cls.return_value = mock_backend
 
@@ -539,6 +617,15 @@ class TestCommandHandle(SimpleTestCase):
         mock_qs.__iter__ = MagicMock(return_value=iter([run]))
         _wire_stuck_runs_qs(mock_run_model, mock_qs)
 
+        locked_run = MagicMock()
+        locked_run.status = ValidationRunStatus.RUNNING
+        locked_run.started_at = run.started_at
+        mock_run_model.objects.select_for_update.return_value.get.return_value = (
+            locked_run
+        )
+        mock_transaction.atomic.return_value.__enter__ = MagicMock(return_value=None)
+        mock_transaction.atomic.return_value.__exit__ = MagicMock(return_value=False)
+
         out = StringIO()
         cmd = Command()
         cmd.stdout = out
@@ -550,13 +637,20 @@ class TestCommandHandle(SimpleTestCase):
             cmd.handle(timeout_minutes=30, dry_run=False, batch_size=100)
 
         output = out.getvalue()
-        assert "still running" in output.lower()
+        assert locked_run.status == ValidationRunStatus.TIMED_OUT
+        assert "Marked 1 stuck run(s) as TIMED_OUT" in output
+        mock_cancel.assert_called_once_with(locked_run)
 
     @patch(f"{CMD_PATH}.ValidationRun")
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=False)
     @patch(f"{CMD_PATH}.transaction")
+    @patch(f"{CMD_PATH}.cancel_active_execution")
     def test_non_gcp_runs_are_timed_out(
-        self, mock_transaction, mock_is_gcp, mock_run_model
+        self,
+        mock_cancel,
+        mock_transaction,
+        mock_is_gcp,
+        mock_run_model,
     ):
         """Non-GCP runs should be timed out as before (no reconciliation)."""
         run = _mock_run()
@@ -589,6 +683,7 @@ class TestCommandHandle(SimpleTestCase):
         assert locked_run.status == ValidationRunStatus.TIMED_OUT
         assert locked_run.error_category == ValidationRunErrorCategory.TIMEOUT
         locked_run.save.assert_called_once()
+        mock_cancel.assert_called_once_with(locked_run)
 
     @patch(f"{CMD_PATH}.ValidationRun")
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=False)

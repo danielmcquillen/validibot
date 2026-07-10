@@ -229,6 +229,21 @@ class TestExecutionResponse:
         assert response.is_complete is False
         assert response.output_envelope is None
         assert response.error_message is None
+        assert response.execution_status is None
+
+    def test_execution_status_addition_preserves_legacy_positional_arguments(self):
+        """Older integrations must not reinterpret their third argument.
+
+        ``execution_status`` is an additive reader-first field. Appending it to
+        the dataclass keeps a positional ``output_envelope`` argument in its
+        historical slot instead of silently treating the envelope as a status.
+        """
+        envelope = object()
+
+        response = ExecutionResponse("exec-legacy", True, envelope)  # noqa: FBT003
+
+        assert response.output_envelope is envelope
+        assert response.execution_status is None
 
 
 # ==============================================================================

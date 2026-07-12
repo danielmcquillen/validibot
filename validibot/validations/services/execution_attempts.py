@@ -11,8 +11,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from django.db import transaction
+from django.db.models import Max
 from django.utils import timezone
 
 from validibot.core.textsafety import sanitize_plain_text
@@ -24,7 +26,6 @@ from validibot.validations.services.runtime_profiles import get_runtime_profile_
 
 if TYPE_CHECKING:
     from datetime import datetime
-    from uuid import UUID
 
     from validibot.validations.models import ExecutionAttempt
     from validibot.validations.models import ValidationStepRun
@@ -46,10 +47,91 @@ class ProviderExecutionIdentity:
     attempt: ExecutionAttempt | None
 
 
+ATTEMPT_CALLBACK_PREFIX = "execution-attempt-"
+
+
+def build_attempt_callback_id(attempt: ExecutionAttempt) -> str:
+    """Return the opaque callback id that binds delivery to one attempt."""
+    return f"{ATTEMPT_CALLBACK_PREFIX}{attempt.pk}"
+
+
+def resolve_callback_attempt(
+    callback_id: str | None,
+    *,
+    run_id: UUID | str,
+) -> ExecutionAttempt | None:
+    """Resolve an attempt-mode callback without trusting its run identifier.
+
+    The callback id is an opaque idempotency key in the shared envelope
+    contract. Attempt-mode writers encode the attempt UUID in that key, while
+    this reader verifies the database relationship back to ``run_id``. Legacy
+    ``step-run-*`` callback ids intentionally return ``None``.
+    """
+    from validibot.validations.models import ExecutionAttempt
+
+    if not callback_id or not callback_id.startswith(ATTEMPT_CALLBACK_PREFIX):
+        return None
+    raw_attempt_id = callback_id.removeprefix(ATTEMPT_CALLBACK_PREFIX)
+    try:
+        attempt_id = UUID(raw_attempt_id)
+    except ValueError:
+        return None
+    return (
+        ExecutionAttempt.objects.select_related("step_run__validation_run")
+        .filter(pk=attempt_id, step_run__validation_run_id=run_id)
+        .first()
+    )
+
+
+def get_or_create_execution_attempt(
+    step_run: ValidationStepRun,
+    *,
+    runner_type: str,
+) -> tuple[ExecutionAttempt | None, bool]:
+    """Return the active attempt, creating it for an attempt-mode run.
+
+    Locking the logical step makes attempt-number allocation deterministic and
+    complements the partial unique constraint that permits only one active
+    attempt. Legacy runs return ``(None, False)`` so callers can keep their
+    established behavior during the compatibility window.
+    """
+    from validibot.validations.models import ExecutionAttempt
+    from validibot.validations.models import ValidationStepRun
+
+    with transaction.atomic():
+        locked_step = (
+            ValidationStepRun.objects.select_for_update()
+            .select_related("validation_run")
+            .get(pk=step_run.pk)
+        )
+        policy = get_runtime_profile_policy(locked_step.validation_run.runtime_profile)
+        if not policy.uses_execution_attempts:
+            return None, False
+
+        active = get_active_execution_attempt(locked_step, for_update=True)
+        if active is not None:
+            return active, False
+
+        last_number = (
+            locked_step.execution_attempts.aggregate(value=Max("attempt_number"))[
+                "value"
+            ]
+            or 0
+        )
+        attempt = ExecutionAttempt.objects.create(
+            step_run=locked_step,
+            attempt_number=last_number + 1,
+            runner_type=runner_type[:64],
+            contract_version=policy.contract_version,
+        )
+        return attempt, True
+
+
 _ALLOWED_TRANSITIONS = {
     ExecutionAttemptState.PENDING: frozenset(
         {
             ExecutionAttemptState.DISPATCHING,
+            ExecutionAttemptState.FAILED,
             ExecutionAttemptState.CANCELED,
         }
     ),
@@ -128,6 +210,11 @@ def resolve_provider_execution_identity(
     policy = get_runtime_profile_policy(step_run.validation_run.runtime_profile)
     if policy.uses_execution_attempts:
         attempt = get_active_execution_attempt(step_run)
+        if attempt is None:
+            # Terminal fencing deliberately happens before best-effort provider
+            # cancellation. Retain the latest attempt's provider address so
+            # the external cancel request can run after the DB commit.
+            attempt = step_run.execution_attempts.order_by("-attempt_number").first()
         if attempt is None or not attempt.provider_execution_id:
             return None
         return ProviderExecutionIdentity(
@@ -158,6 +245,11 @@ def transition_execution_attempt(
     last_error: str | None = None,
     provider_started_at: datetime | None = None,
     provider_finished_at: datetime | None = None,
+    provider_job_name: str | None = None,
+    provider_execution_id: str | None = None,
+    execution_bundle_uri: str | None = None,
+    input_envelope_uri: str | None = None,
+    backend_image_digest: str | None = None,
 ) -> tuple[ExecutionAttempt, bool]:
     """Lock and monotonically transition one attempt.
 
@@ -225,6 +317,25 @@ def transition_execution_attempt(
             ),
             "provider_started_at": provider_started_at,
             "provider_finished_at": provider_finished_at,
+            "provider_job_name": (
+                provider_job_name[:512] if provider_job_name is not None else None
+            ),
+            "provider_execution_id": (
+                provider_execution_id[:512]
+                if provider_execution_id is not None
+                else None
+            ),
+            "execution_bundle_uri": (
+                execution_bundle_uri[:2048]
+                if execution_bundle_uri is not None
+                else None
+            ),
+            "input_envelope_uri": (
+                input_envelope_uri[:2048] if input_envelope_uri is not None else None
+            ),
+            "backend_image_digest": (
+                backend_image_digest[:256] if backend_image_digest is not None else None
+            ),
         }
         for field_name, value in optional_updates.items():
             if value is not None:

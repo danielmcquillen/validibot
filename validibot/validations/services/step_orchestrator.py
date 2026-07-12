@@ -154,7 +154,10 @@ class StepOrchestrator:
 
         if not ensure_runtime_profile_supported(
             validation_run,
-            supported_profiles=(ValidationRuntimeProfile.LEGACY,),
+            supported_profiles=(
+                ValidationRuntimeProfile.LEGACY,
+                ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
+            ),
             operation="execute_workflow_steps",
             sender=self.__class__,
         ):
@@ -615,7 +618,27 @@ class StepOrchestrator:
                     )
                     return step_run, False
 
-                # Step is RUNNING - this is a retry (see docstring).
+                # An attempt-mode RUNNING step can represent live or
+                # acceptance-ambiguous provider work. Never reinterpret it as
+                # a crashed task and launch a second provider execution.
+                from validibot.validations.services.runtime_profiles import (
+                    get_runtime_profile_policy,
+                )
+
+                if (
+                    get_runtime_profile_policy(
+                        validation_run.runtime_profile
+                    ).uses_execution_attempts
+                    and step_run.execution_attempts.exists()
+                ):
+                    logger.info(
+                        "Step run %s already has execution-attempt history; "
+                        "automatic task redelivery cannot relaunch it",
+                        step_run.id,
+                    )
+                    return step_run, False
+
+                # Legacy RUNNING steps retain the established retry behavior.
                 # Reset timing and clear partial findings before
                 # re-executing.
                 logger.info(
@@ -890,7 +913,10 @@ class StepOrchestrator:
         """
         if not ensure_runtime_profile_supported(
             validation_run,
-            supported_profiles=(ValidationRuntimeProfile.LEGACY,),
+            supported_profiles=(
+                ValidationRuntimeProfile.LEGACY,
+                ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
+            ),
             operation="execute_workflow_step",
             sender=self.__class__,
         ):

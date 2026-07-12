@@ -1,10 +1,9 @@
-"""Integration tests for reader-first runtime-profile routing at worker edges.
+"""Integration tests for attempt-lifecycle routing at worker edges.
 
-Stage 1 does not create attempt-mode runs, but a rolling deployment or bad
-downgrade could deliver one to a legacy worker.  These tests prove execution,
-callbacks, watchdog reconciliation, and cancellation either reject that mode
-before reading legacy metadata or use the additive attempt identity where the
-operation is already safe.
+The writer release accepts the lifecycle profile while strict-I/O profiles
+remain fenced. These tests prove attempt callbacks require durable identity,
+watchdog recovery reads attempt state, and cancellation fences the attempt
+before asking the provider to stop.
 """
 
 import uuid
@@ -16,7 +15,6 @@ from rest_framework import status
 
 from validibot.validations.constants import ExecutionAttemptState
 from validibot.validations.constants import StepStatus
-from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.management.commands.cleanup_stuck_runs import Command
@@ -33,14 +31,14 @@ RUNNER_FACTORY_PATH = "validibot.validations.services.runners.get_validator_runn
 
 @pytest.mark.django_db
 class TestRuntimeProfileRouting:
-    """Fence attempt-mode work at every legacy execution entry point."""
+    """Route attempt-mode work without falling back to legacy metadata."""
 
     @patch("validibot.validations.signals.validation_run_finalized.send_robust")
-    def test_orchestrator_rejects_attempt_profile_before_starting_steps(
+    def test_orchestrator_accepts_attempt_profile(
         self,
         mock_finalized,
     ):
-        """A legacy worker must not dispatch an attempt run using legacy metadata."""
+        """The writer release must execute lifecycle-profile runs normally."""
         run = ValidationRunFactory(
             runtime_profile=ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
             status=ValidationRunStatus.PENDING,
@@ -49,15 +47,14 @@ class TestRuntimeProfileRouting:
         result = StepOrchestrator().execute_workflow_steps(run.id, run.user_id)
 
         run.refresh_from_db()
-        assert result.status == ValidationRunStatus.FAILED
-        assert run.status == ValidationRunStatus.FAILED
-        assert run.error_category == ValidationRunErrorCategory.SYSTEM_ERROR
+        assert result.status == ValidationRunStatus.SUCCEEDED
+        assert run.status == ValidationRunStatus.SUCCEEDED
         assert run.step_runs.count() == 0
         mock_finalized.assert_called_once()
 
     @patch("validibot.validations.signals.validation_run_finalized.send_robust")
-    def test_direct_step_dispatch_cannot_bypass_profile_guard(self, mock_finalized):
-        """The compatibility facade must not offer an unguarded legacy side door."""
+    def test_direct_step_dispatch_accepts_lifecycle_profile(self, mock_finalized):
+        """The compatibility facade must route the completed profile rung."""
         run = ValidationRunFactory(
             runtime_profile=ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
             status=ValidationRunStatus.RUNNING,
@@ -67,18 +64,18 @@ class TestRuntimeProfileRouting:
 
         run.refresh_from_db()
         assert result.passed is False
-        assert result.stats == {"runtime_profile_rejected": True}
-        assert run.status == ValidationRunStatus.FAILED
-        mock_finalized.assert_called_once()
+        assert result.stats == {}
+        assert run.status == ValidationRunStatus.RUNNING
+        mock_finalized.assert_not_called()
 
     @patch("validibot.validations.signals.validation_run_finalized.send_robust")
     @patch("validibot.validations.services.validation_callback.download_envelope")
-    def test_callback_rejects_attempt_profile_before_storage_read(
+    def test_callback_rejects_unbound_attempt_id_before_storage_read(
         self,
         mock_download,
         mock_finalized,
     ):
-        """An old callback handler must not parse strict output as a legacy envelope."""
+        """Attempt-mode output must identify the concrete launch that produced it."""
         run = ValidationRunFactory(
             runtime_profile=ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
             status=ValidationRunStatus.RUNNING,
@@ -95,19 +92,18 @@ class TestRuntimeProfileRouting:
         )
 
         run.refresh_from_db()
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data["runtime_profile_rejected"] is True
-        assert run.status == ValidationRunStatus.FAILED
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert run.status == ValidationRunStatus.RUNNING
         assert not CallbackReceipt.objects.filter(callback_id=callback_id).exists()
         mock_download.assert_not_called()
-        mock_finalized.assert_called_once()
+        mock_finalized.assert_not_called()
 
     @patch("validibot.validations.signals.validation_run_finalized.send_robust")
-    def test_watchdog_dry_run_reports_without_mutating_then_real_run_fences(
+    def test_watchdog_accepts_attempt_profile_without_provider_identity(
         self,
         mock_finalized,
     ):
-        """Dry-run remains truthful while the real legacy watchdog fails closed."""
+        """A not-yet-addressable attempt remains for timeout/operator handling."""
         run = ValidationRunFactory(
             runtime_profile=ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
             status=ValidationRunStatus.RUNNING,
@@ -116,15 +112,15 @@ class TestRuntimeProfileRouting:
 
         dry_result = command._try_reconcile_gcp_run(run, dry_run=True)
         run.refresh_from_db()
-        assert dry_result == "profile_rejected"
+        assert dry_result == "not_applicable"
         assert run.status == ValidationRunStatus.RUNNING
         mock_finalized.assert_not_called()
 
         real_result = command._try_reconcile_gcp_run(run)
         run.refresh_from_db()
-        assert real_result == "profile_rejected"
-        assert run.status == ValidationRunStatus.FAILED
-        mock_finalized.assert_called_once()
+        assert real_result == "not_applicable"
+        assert run.status == ValidationRunStatus.RUNNING
+        mock_finalized.assert_not_called()
 
     @patch(RUNNER_FACTORY_PATH)
     def test_cancellation_reads_provider_identity_from_attempt(self, mock_get_runner):
@@ -151,5 +147,7 @@ class TestRuntimeProfileRouting:
 
         assert canceled is True
         updated_run.refresh_from_db()
+        attempt.refresh_from_db()
         assert updated_run.status == ValidationRunStatus.CANCELED
+        assert attempt.state == ExecutionAttemptState.CANCELED
         runner.cancel.assert_called_once_with(attempt.provider_execution_id)

@@ -93,7 +93,12 @@ _PROFILE_POLICIES = {
 # Stage 1 is intentionally reader-first.  Later stages expand this set only
 # after every callback, task, watchdog, and reconciliation instance can handle
 # the next profile.
-WRITER_ENABLED_RUNTIME_PROFILES = frozenset({ValidationRuntimeProfile.LEGACY})
+WRITER_ENABLED_RUNTIME_PROFILES = frozenset(
+    {
+        ValidationRuntimeProfile.LEGACY,
+        ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
+    }
+)
 
 
 def get_runtime_profile_policy(

@@ -103,10 +103,13 @@ class TestRuntimeProfilePolicy:
                 expected = target_index in {current_index, current_index + 1}
                 assert can_advance_runtime_profile(current, target) is expected
 
-    def test_reader_first_release_enables_only_legacy_writers(self):
-        """Schema support must not accidentally activate attempt creation."""
+    def test_lifecycle_release_enables_only_completed_writer_rungs(self):
+        """Strict-I/O profiles remain reader-only until their ADRs complete."""
         assert is_runtime_profile_writer_enabled(ValidationRuntimeProfile.LEGACY)
-        for profile in list(ValidationRuntimeProfile)[1:]:
+        assert is_runtime_profile_writer_enabled(
+            ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
+        )
+        for profile in list(ValidationRuntimeProfile)[2:]:
             assert not is_runtime_profile_writer_enabled(profile)
 
     def test_unknown_profile_is_rejected(self):

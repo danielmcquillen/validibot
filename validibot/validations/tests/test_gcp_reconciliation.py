@@ -73,6 +73,7 @@ def _mock_step_run(*, output=None):
     step_run = MagicMock()
     step_run.output = output or {}
     step_run.status = StepStatus.RUNNING
+    step_run.validation_run.runtime_profile = ValidationRuntimeProfile.LEGACY
     return step_run
 
 
@@ -621,6 +622,7 @@ class TestCommandHandle(SimpleTestCase):
 
         locked_run = MagicMock()
         locked_run.status = ValidationRunStatus.RUNNING
+        locked_run.runtime_profile = ValidationRuntimeProfile.LEGACY
         locked_run.started_at = run.started_at
         mock_run_model.objects.select_for_update.return_value.get.return_value = (
             locked_run
@@ -665,6 +667,7 @@ class TestCommandHandle(SimpleTestCase):
         # Mock the atomic block and select_for_update
         locked_run = MagicMock()
         locked_run.status = ValidationRunStatus.RUNNING
+        locked_run.runtime_profile = ValidationRuntimeProfile.LEGACY
         locked_run.started_at = run.started_at
         mock_run_model.objects.select_for_update.return_value.get.return_value = (
             locked_run

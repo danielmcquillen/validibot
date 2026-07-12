@@ -26,6 +26,7 @@ import os
 from typing import TYPE_CHECKING
 
 from django.conf import settings
+from django.utils import timezone
 
 from validibot.validations.constants import CloudRunJobStatus
 from validibot.validations.constants import Severity
@@ -196,6 +197,142 @@ def _mark_step_run_running(step_run, *, image_digest: str | None = None) -> None
     step_run.save(update_fields=update_fields)
 
 
+class ProviderDispatchAmbiguousError(RuntimeError):
+    """The provider call may have been accepted but returned no identity."""
+
+
+def _callback_id_for_step(step_run) -> str:
+    """Bind attempt-mode callbacks to one launch, retaining legacy ids."""
+    from validibot.validations.services.execution_attempts import (
+        build_attempt_callback_id,
+    )
+    from validibot.validations.services.execution_attempts import (
+        get_active_execution_attempt,
+    )
+
+    attempt = get_active_execution_attempt(step_run)
+    if attempt is not None:
+        return build_attempt_callback_id(attempt)
+    return f"step-run-{step_run.id}"
+
+
+def _run_validator_job_safely(
+    *,
+    step_run,
+    project_id: str,
+    region: str,
+    job_name: str,
+    input_uri: str,
+    execution_bundle_uri: str,
+) -> str:
+    """Launch once and preserve provider-acceptance ambiguity explicitly.
+
+    Legacy runs retain their existing direct call. Attempt-mode runs claim the
+    durable row immediately before the external API. If the call raises, the
+    attempt becomes UNKNOWN and no delivery is allowed to launch it again.
+    """
+    from validibot.validations.constants import ExecutionAttemptState
+    from validibot.validations.services.execution_attempts import (
+        get_active_execution_attempt,
+    )
+    from validibot.validations.services.execution_attempts import (
+        transition_execution_attempt,
+    )
+
+    attempt = get_active_execution_attempt(step_run)
+    if attempt is None:
+        return run_validator_job(
+            project_id=project_id,
+            region=region,
+            job_name=job_name,
+            input_uri=input_uri,
+        )
+
+    if attempt.state != ExecutionAttemptState.PENDING:
+        if attempt.state == ExecutionAttemptState.RUNNING and (
+            attempt.provider_execution_id
+        ):
+            return attempt.provider_execution_id
+        raise ProviderDispatchAmbiguousError(
+            f"Execution attempt {attempt.pk} was already claimed"
+        )
+
+    attempt, claimed = transition_execution_attempt(
+        attempt.pk,
+        ExecutionAttemptState.DISPATCHING,
+        provider_job_name=job_name,
+        execution_bundle_uri=execution_bundle_uri,
+        input_envelope_uri=input_uri,
+    )
+    if not claimed:
+        if attempt.state == ExecutionAttemptState.RUNNING and (
+            attempt.provider_execution_id
+        ):
+            return attempt.provider_execution_id
+        raise ProviderDispatchAmbiguousError(
+            f"Execution attempt {attempt.pk} was already claimed"
+        )
+
+    try:
+        execution_name = run_validator_job(
+            project_id=project_id,
+            region=region,
+            job_name=job_name,
+            input_uri=input_uri,
+        )
+    except Exception as exc:
+        transition_execution_attempt(
+            attempt.pk,
+            ExecutionAttemptState.UNKNOWN,
+            last_error_code="provider_acceptance_unknown",
+            last_error="Provider dispatch raised before returning execution identity.",
+        )
+        raise ProviderDispatchAmbiguousError(
+            f"Provider acceptance is unknown for execution attempt {attempt.pk}"
+        ) from exc
+
+    transition_execution_attempt(
+        attempt.pk,
+        ExecutionAttemptState.RUNNING,
+        provider_execution_id=execution_name,
+        provider_started_at=timezone.now(),
+    )
+    return execution_name
+
+
+def _ambiguous_dispatch_result() -> ValidationResult:
+    """Keep the workflow pending until reconciliation or operator action."""
+    return ValidationResult(
+        passed=None,
+        issues=[],
+        stats={
+            "job_status": CloudRunJobStatus.PENDING,
+            "dispatch_state": "UNKNOWN",
+        },
+    )
+
+
+def _attempt_requires_reconciliation(step_run) -> bool:
+    """Return whether provider work was claimed before a later local error."""
+    if step_run is None:
+        return False
+    from validibot.validations.constants import ExecutionAttemptState
+    from validibot.validations.services.execution_attempts import (
+        get_active_execution_attempt,
+    )
+
+    attempt = get_active_execution_attempt(step_run)
+    return bool(
+        attempt
+        and attempt.state
+        in {
+            ExecutionAttemptState.DISPATCHING,
+            ExecutionAttemptState.RUNNING,
+            ExecutionAttemptState.UNKNOWN,
+        }
+    )
+
+
 def launch_energyplus_validation(
     *,
     run: ValidationRun,
@@ -234,6 +371,7 @@ def launch_energyplus_validation(
         ValueError: If required config is missing (e.g., weather_file)
         Exception: If GCS upload or job trigger fails
     """
+    current_step_run = None
     try:
         # 0. Idempotency check
         current_step_run = run.current_step_run
@@ -274,7 +412,7 @@ def launch_energyplus_validation(
 
         # 3. Build callback URL and idempotency key
         callback_url = build_validation_callback_url()
-        callback_id = f"step-run-{current_step_run.id}"
+        callback_id = _callback_id_for_step(current_step_run)
 
         # 4. Build typed input envelope
         step_config = step.config or {}
@@ -368,11 +506,13 @@ def launch_energyplus_validation(
                 raise RuntimeError(msg)  # noqa: TRY301
 
         logger.info("Triggering Cloud Run Job: %s", job_name)
-        execution_name = run_validator_job(
+        execution_name = _run_validator_job_safely(
+            step_run=current_step_run,
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
             job_name=job_name,
             input_uri=input_envelope_uri,
+            execution_bundle_uri=execution_bundle_uri,
         )
 
         # 6.5. Resolve validator backend image digest from the
@@ -406,7 +546,20 @@ def launch_energyplus_validation(
             stats=stats,
         )
 
+    except ProviderDispatchAmbiguousError:
+        logger.warning(
+            "Cloud Run acceptance is unknown for EnergyPlus run %s; "
+            "waiting for reconciliation or callback",
+            run.id,
+        )
+        return _ambiguous_dispatch_result()
     except Exception:
+        if _attempt_requires_reconciliation(current_step_run):
+            logger.exception(
+                "EnergyPlus launch follow-up failed after provider claim; "
+                "preserving attempt for reconciliation"
+            )
+            return _ambiguous_dispatch_result()
         logger.exception("Failed to launch EnergyPlus Cloud Run Job for run %s", run.id)
         issues = [
             ValidationIssue(
@@ -436,6 +589,7 @@ def launch_fmu_validation(
     an FMU input envelope, uploads it, triggers the Cloud Run Job, and returns
     a pending ValidationResult.
     """
+    current_step_run = None
     try:
         # 0. Idempotency check
         current_step_run = run.current_step_run
@@ -474,7 +628,7 @@ def launch_fmu_validation(
         # allowing the callback receipt fencing to correctly identify and handle
         # duplicate callbacks. Note: Job launch idempotency is handled by the
         # check at step 0 above (checking step_run.output for existing job_name).
-        callback_id = f"step-run-{current_step_run.id}"
+        callback_id = _callback_id_for_step(current_step_run)
 
         # Build envelope via the shared builder. This gets signal-aware
         # input resolution (StepInputBinding + resolve_path), proper
@@ -543,11 +697,13 @@ def launch_fmu_validation(
                 )
                 raise RuntimeError(msg)  # noqa: TRY301
 
-        execution_name = run_validator_job(
+        execution_name = _run_validator_job_safely(
+            step_run=current_step_run,
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
             job_name=job_name,
             input_uri=input_envelope_uri,
+            execution_bundle_uri=execution_bundle_uri,
         )
 
         # Resolve validator backend image digest from the Execution's
@@ -574,7 +730,20 @@ def launch_fmu_validation(
         }
         return ValidationResult(passed=None, issues=[], stats=stats)
 
+    except ProviderDispatchAmbiguousError:
+        logger.warning(
+            "Cloud Run acceptance is unknown for FMU run %s; "
+            "waiting for reconciliation or callback",
+            run.id,
+        )
+        return _ambiguous_dispatch_result()
     except Exception:
+        if _attempt_requires_reconciliation(current_step_run):
+            logger.exception(
+                "FMU launch follow-up failed after provider claim; "
+                "preserving attempt for reconciliation"
+            )
+            return _ambiguous_dispatch_result()
         logger.exception("Failed to launch FMU Cloud Run Job for run %s", run.id)
         issues = [
             ValidationIssue(
@@ -605,6 +774,7 @@ def launch_shacl_validation(
     (which resolves shapes/ontology/settings/SPARQL-ASK assertions from the DB),
     triggers the Cloud Run Job, and returns a pending ValidationResult.
     """
+    current_step_run = None
     try:
         # 0. Idempotency check.
         current_step_run = run.current_step_run
@@ -656,7 +826,7 @@ def launch_shacl_validation(
 
         # 2. Callback + idempotency key.
         callback_url = build_validation_callback_url()
-        callback_id = f"step-run-{current_step_run.id}"
+        callback_id = _callback_id_for_step(current_step_run)
 
         # 3. Build the typed envelope via the shared builder (SHACL branch reads
         # primary_file_uri from input_file_uris and resolves rulesets/assertions).
@@ -718,11 +888,13 @@ def launch_shacl_validation(
                 )
                 raise RuntimeError(msg)  # noqa: TRY301
 
-        execution_name = run_validator_job(
+        execution_name = _run_validator_job_safely(
+            step_run=current_step_run,
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
             job_name=job_name,
             input_uri=input_envelope_uri,
+            execution_bundle_uri=execution_bundle_uri,
         )
 
         backend_image_digest = get_execution_image_digest(execution_name)
@@ -738,7 +910,20 @@ def launch_shacl_validation(
         }
         return ValidationResult(passed=None, issues=[], stats=stats)
 
+    except ProviderDispatchAmbiguousError:
+        logger.warning(
+            "Cloud Run acceptance is unknown for SHACL run %s; "
+            "waiting for reconciliation or callback",
+            run.id,
+        )
+        return _ambiguous_dispatch_result()
     except Exception:
+        if _attempt_requires_reconciliation(current_step_run):
+            logger.exception(
+                "SHACL launch follow-up failed after provider claim; "
+                "preserving attempt for reconciliation"
+            )
+            return _ambiguous_dispatch_result()
         logger.exception("Failed to launch SHACL Cloud Run Job for run %s", run.id)
         issues = [
             ValidationIssue(
@@ -779,6 +964,7 @@ def launch_schematron_validation(
     )
     from validibot.validations.validators.schematron.validator import CODE_RULES_INVALID
 
+    current_step_run = None
     try:
         # 0. Idempotency check.
         current_step_run = run.current_step_run
@@ -830,7 +1016,7 @@ def launch_schematron_validation(
 
         # 2. Callback + idempotency key.
         callback_url = build_validation_callback_url()
-        callback_id = f"step-run-{current_step_run.id}"
+        callback_id = _callback_id_for_step(current_step_run)
 
         # 3. Build the typed envelope via the shared builder (the SCHEMATRON
         # branch resolves the rules text from the step's ruleset and ships
@@ -892,11 +1078,13 @@ def launch_schematron_validation(
                 )
                 raise RuntimeError(msg)  # noqa: TRY301
 
-        execution_name = run_validator_job(
+        execution_name = _run_validator_job_safely(
+            step_run=current_step_run,
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
             job_name=job_name,
             input_uri=input_envelope_uri,
+            execution_bundle_uri=execution_bundle_uri,
         )
 
         backend_image_digest = get_execution_image_digest(execution_name)
@@ -915,6 +1103,13 @@ def launch_schematron_validation(
         }
         return ValidationResult(passed=None, issues=[], stats=stats)
 
+    except ProviderDispatchAmbiguousError:
+        logger.warning(
+            "Cloud Run acceptance is unknown for Schematron run %s; "
+            "waiting for reconciliation or callback",
+            run.id,
+        )
+        return _ambiguous_dispatch_result()
     except SchematronRulesResolutionError as exc:
         # D9: a step with no resolvable rules is an authoring problem — the
         # rules were never run, and this must not read as "your document
@@ -934,6 +1129,12 @@ def launch_schematron_validation(
         ]
         return ValidationResult(passed=False, issues=issues, stats={})
     except Exception:
+        if _attempt_requires_reconciliation(current_step_run):
+            logger.exception(
+                "Schematron launch follow-up failed after provider claim; "
+                "preserving attempt for reconciliation"
+            )
+            return _ambiguous_dispatch_result()
         logger.exception(
             "Failed to launch Schematron Cloud Run Job for run %s",
             run.id,

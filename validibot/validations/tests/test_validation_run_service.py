@@ -1,3 +1,10 @@
+"""Tests for validation-run launch, orchestration, and summary behavior.
+
+The launch tests pin transaction ordering and immutable runtime-profile
+selection; the remaining tests protect the service facade's established run
+and finding behavior while lifecycle internals evolve behind it.
+"""
+
 from collections import Counter
 
 import pytest
@@ -32,7 +39,7 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 
 @pytest.mark.django_db
 def test_launch_commits_run_before_enqueue(monkeypatch):
-    """A Stage 1 launch must persist a legacy-profile run before dispatch."""
+    """A launch must persist its immutable profile before task dispatch."""
     org = OrganizationFactory()
     user = UserFactory()
     grant_role(user, org, RoleCode.EXECUTOR)
@@ -67,8 +74,8 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_launch_refuses_reader_only_attempt_profile():
-    """Additive attempt schema must not activate a production writer early."""
+def test_launch_accepts_completed_attempt_lifecycle_profile():
+    """The completed writer rung can be selected explicitly per new run."""
     org = OrganizationFactory()
     user = UserFactory()
     grant_role(user, org, RoleCode.EXECUTOR)
@@ -83,17 +90,20 @@ def test_launch_refuses_reader_only_attempt_profile():
     request = APIRequestFactory().post("/api/v1/workflows/start/")
     request.user = user
 
-    with pytest.raises(ValueError, match="reader-only"):
-        ValidationRunService().launch(
-            request=request,
-            org=org,
-            workflow=workflow,
-            submission=submission,
-            user_id=user.id,
-            extra={"runtime_profile": (ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1)},
-        )
+    response = ValidationRunService().launch(
+        request=request,
+        org=org,
+        workflow=workflow,
+        submission=submission,
+        user_id=user.id,
+        extra={"runtime_profile": (ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1)},
+    )
 
-    assert not ValidationRun.objects.filter(submission=submission).exists()
+    response.validation_run.refresh_from_db()
+    assert (
+        response.validation_run.runtime_profile
+        == ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
+    )
 
 
 @pytest.mark.django_db

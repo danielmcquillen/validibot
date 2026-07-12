@@ -449,6 +449,21 @@ and the resolved audience or allowlist (after applying fallbacks) is
 empty. Misconfiguration surfaces in the deploy log, not in production
 traffic.
 
+### Task delivery bounds
+
+Validibot treats both supported task transports as at-least-once delivery.
+PostgreSQL run/attempt state provides idempotency; these settings bound how
+quickly the transport decides a delivery was lost:
+
+| Setting | Default | Deployment | Purpose |
+|---|---:|---|---|
+| `CELERY_VISIBILITY_TIMEOUT_SECONDS` | `3600` | Self-hosted Redis | Must exceed `CELERY_TASK_TIME_LIMIT` (1800 seconds), otherwise Redis can deliver a healthy long task to another worker. |
+| `CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS` | `600` | GCP | Bounds the short worker HTTP orchestration request; accepted range is 15–1800 seconds. Validator compute runs separately in Cloud Run Jobs. |
+| `VALIDATION_RUNTIME_PROFILE` | `LEGACY` | All | Selects immutable semantics for newly created runs. Enable `ATTEMPT_LIFECYCLE_V1` only after all web/worker instances have the compatible release. |
+
+Transport retries never authorize a second provider launch after an attempt
+has reached `DISPATCHING`, `RUNNING`, or `UNKNOWN`.
+
 **Audience contract.** Cloud Tasks and Cloud Scheduler sign tokens
 with `aud = <service URL origin>` — path and query are NOT included.
 Django's strict verification enforces exact match. Validator

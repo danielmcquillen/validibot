@@ -53,6 +53,7 @@ from validibot.validations.services.runtime_profiles import (
 )
 from validibot.validations.services.runtime_profiles import is_runtime_profile_supported
 from validibot.validations.services.validation_run import cancel_active_execution
+from validibot.validations.services.validation_run import fence_active_execution_attempt
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +194,14 @@ class Command(BaseCommand):
                         "duration_ms",
                     ]
                 )
+                from validibot.validations.constants import ExecutionAttemptState
+
+                fence_active_execution_attempt(
+                    locked,
+                    target=ExecutionAttemptState.TIMED_OUT,
+                    error_code="run_timed_out",
+                    error_message=error_message,
+                )
                 timed_out_ids.append(str(locked.id))
 
                 workflow_id = locked.workflow_id
@@ -292,8 +301,11 @@ class Command(BaseCommand):
             - "not_applicable": Not a GCP run or missing metadata
             - "error": GCP API call failed (fall through to timeout)
         """
-        legacy_profiles = (ValidationRuntimeProfile.LEGACY,)
-        if not is_runtime_profile_supported(run.runtime_profile, legacy_profiles):
+        supported_profiles = (
+            ValidationRuntimeProfile.LEGACY,
+            ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
+        )
+        if not is_runtime_profile_supported(run.runtime_profile, supported_profiles):
             if dry_run:
                 self.stdout.write(
                     f"  [PROFILE-REJECT] {run.id}: runtime profile "
@@ -302,7 +314,7 @@ class Command(BaseCommand):
             else:
                 ensure_runtime_profile_supported(
                     run,
-                    supported_profiles=legacy_profiles,
+                    supported_profiles=supported_profiles,
                     operation="cleanup_stuck_runs",
                     sender=self.__class__,
                 )
@@ -317,10 +329,15 @@ class Command(BaseCommand):
         if not step_run:
             return "not_applicable"
 
-        step_output = step_run.output or {}
-        execution_name = step_output.get("execution_name")
-        if not execution_name:
+        from validibot.validations.services.execution_attempts import (
+            resolve_provider_execution_identity,
+        )
+
+        identity = resolve_provider_execution_identity(step_run)
+        if identity is None:
             return "not_applicable"
+        execution_name = identity.execution_id
+        step_output = step_run.output or {}
 
         # 3. Query Cloud Run Job status via backend
         try:
@@ -384,7 +401,13 @@ class Command(BaseCommand):
             )
             return "reconciled"
 
-        return self._recover_lost_callback(run, step_run, step_output)
+        return self._recover_lost_callback(
+            run,
+            step_run,
+            step_output,
+            execution_bundle_uri=identity.execution_bundle_uri,
+            attempt=identity.attempt,
+        )
 
     def _is_gcp_deployment(self) -> bool:
         """Check if the current deployment target is GCP."""
@@ -417,6 +440,20 @@ class Command(BaseCommand):
     ) -> None:
         """Mark a run as failed based on GCP Cloud Run Job failure."""
         error_message = error_message or PROVIDER_FAILURE_WITHOUT_DETAILS
+        attempt = None
+        from validibot.validations.services.runtime_profiles import (
+            get_runtime_profile_policy,
+        )
+
+        if get_runtime_profile_policy(run.runtime_profile).uses_execution_attempts:
+            step_run = self._get_active_step_run(run)
+            from validibot.validations.services.execution_attempts import (
+                get_active_execution_attempt,
+            )
+
+            if step_run is not None:
+                attempt = get_active_execution_attempt(step_run)
+
         with transaction.atomic():
             locked = ValidationRun.objects.select_for_update().get(pk=run.pk)
             if locked.status != ValidationRunStatus.RUNNING:
@@ -454,6 +491,20 @@ class Command(BaseCommand):
                 },
             )
 
+        if attempt is not None:
+            from validibot.validations.constants import ExecutionAttemptState
+            from validibot.validations.services.execution_attempts import (
+                transition_execution_attempt,
+            )
+
+            transition_execution_attempt(
+                attempt.pk,
+                ExecutionAttemptState.FAILED,
+                provider_finished_at=timezone.now(),
+                last_error_code="provider_failed",
+                last_error=error_message,
+            )
+
         from validibot.validations.signals import validation_run_finalized
 
         validation_run_finalized.send_robust(
@@ -466,6 +517,9 @@ class Command(BaseCommand):
         run: ValidationRun,
         step_run: ValidationStepRun,
         step_output: dict,
+        *,
+        execution_bundle_uri: str = "",
+        attempt=None,
     ) -> str:
         """
         Recover a completed GCP run by processing a synthetic callback.
@@ -486,7 +540,9 @@ class Command(BaseCommand):
         Returns:
             "reconciled" on success, "error" on failure.
         """
-        execution_bundle_uri = step_output.get("execution_bundle_uri", "")
+        execution_bundle_uri = execution_bundle_uri or step_output.get(
+            "execution_bundle_uri", ""
+        )
         if not execution_bundle_uri:
             logger.warning(
                 "Cannot recover run %s: no execution_bundle_uri in step output",
@@ -500,9 +556,17 @@ class Command(BaseCommand):
         # Build a synthetic callback payload
         from validibot_shared.validations.envelopes import ValidationStatus
 
+        callback_id = f"reconciliation-{run.id}"
+        if attempt is not None:
+            from validibot.validations.services.execution_attempts import (
+                build_attempt_callback_id,
+            )
+
+            callback_id = build_attempt_callback_id(attempt)
+
         callback_payload = {
             "run_id": str(run.id),
-            "callback_id": f"reconciliation-{run.id}",
+            "callback_id": callback_id,
             "status": ValidationStatus.SUCCESS,
             "result_uri": result_uri,
         }

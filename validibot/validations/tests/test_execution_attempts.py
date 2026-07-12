@@ -165,6 +165,7 @@ class TestExecutionAttemptTransitions:
             ExecutionAttemptState.PENDING: {
                 ExecutionAttemptState.PENDING,
                 ExecutionAttemptState.DISPATCHING,
+                ExecutionAttemptState.FAILED,
                 ExecutionAttemptState.CANCELED,
             },
             ExecutionAttemptState.DISPATCHING: {

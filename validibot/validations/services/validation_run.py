@@ -42,6 +42,7 @@ from typing import Any
 
 from attr import dataclass
 from attr import field
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -108,12 +109,40 @@ def cancel_active_execution(run: ValidationRun) -> bool | None:
     if not step_run:
         return None
 
+    from validibot.validations.constants import ExecutionAttemptState
+    from validibot.validations.services.execution_attempts import (
+        get_active_execution_attempt,
+    )
     from validibot.validations.services.execution_attempts import (
         resolve_provider_execution_identity,
+    )
+    from validibot.validations.services.execution_attempts import (
+        transition_execution_attempt,
     )
     from validibot.validations.services.runtime_profiles import execution_log_context
 
     identity = resolve_provider_execution_identity(step_run)
+    attempt = get_active_execution_attempt(step_run)
+    if attempt is not None:
+        attempt_target = (
+            ExecutionAttemptState.TIMED_OUT
+            if run.status == ValidationRunStatus.TIMED_OUT
+            else ExecutionAttemptState.CANCELED
+        )
+        transition_execution_attempt(
+            attempt.pk,
+            attempt_target,
+            last_error_code=(
+                "run_timed_out"
+                if attempt_target == ExecutionAttemptState.TIMED_OUT
+                else "user_canceled"
+            ),
+            last_error=(
+                str(run.error)
+                if attempt_target == ExecutionAttemptState.TIMED_OUT
+                else str(RUN_CANCELED_MESSAGE)
+            ),
+        )
     if identity is None:
         return None
     execution_id = identity.execution_id
@@ -164,6 +193,49 @@ class ValidationRunLaunchResults:
     validation_run: ValidationRun
     data: dict[str, Any] = field(factory=dict)
     status: int | None = None
+
+
+def fence_active_execution_attempt(
+    run: ValidationRun,
+    *,
+    target,
+    error_code: str,
+    error_message: str,
+) -> None:
+    """Terminally fence an attempt inside the caller's run transaction."""
+    from validibot.validations.services.runtime_profiles import (
+        get_runtime_profile_policy,
+    )
+
+    if not get_runtime_profile_policy(run.runtime_profile).uses_execution_attempts:
+        return
+
+    step_run = (
+        ValidationStepRun.objects.filter(
+            validation_run=run,
+            status__in=[StepStatus.RUNNING, StepStatus.PENDING],
+        )
+        .order_by("step_order")
+        .first()
+    )
+    if step_run is None:
+        return
+
+    from validibot.validations.services.execution_attempts import (
+        get_active_execution_attempt,
+    )
+    from validibot.validations.services.execution_attempts import (
+        transition_execution_attempt,
+    )
+
+    attempt = get_active_execution_attempt(step_run, for_update=True)
+    if attempt is not None:
+        transition_execution_attempt(
+            attempt.pk,
+            target,
+            last_error_code=error_code,
+            last_error=error_message,
+        )
 
 
 class ValidationRunService:
@@ -309,7 +381,11 @@ class ValidationRunService:
         run_extra = dict(extra or {})
         requested_profile = run_extra.pop(
             "runtime_profile",
-            ValidationRuntimeProfile.LEGACY,
+            getattr(
+                settings,
+                "VALIDATION_RUNTIME_PROFILE",
+                ValidationRuntimeProfile.LEGACY,
+            ),
         )
         from validibot.validations.services.runtime_profiles import (
             is_runtime_profile_writer_enabled,
@@ -331,7 +407,7 @@ class ValidationRunService:
                 or getattr(workflow, "project", None),
                 user=run_user,
                 status=ValidationRunStatus.PENDING,
-                runtime_profile=ValidationRuntimeProfile.LEGACY,
+                runtime_profile=requested_profile,
                 source=source,
                 output_retention_policy=output_retention_policy,
                 output_expires_at=output_expires_at,
@@ -502,6 +578,15 @@ class ValidationRunService:
             if not locked_run.error:
                 locked_run.error = RUN_CANCELED_MESSAGE
             locked_run.save(update_fields=["status", "ended_at", "error"])
+
+            from validibot.validations.constants import ExecutionAttemptState
+
+            fence_active_execution_attempt(
+                locked_run,
+                target=ExecutionAttemptState.CANCELED,
+                error_code="user_canceled",
+                error_message=str(RUN_CANCELED_MESSAGE),
+            )
 
         # External work stays outside the database transaction. The terminal
         # decision is authoritative even if the provider is unavailable.

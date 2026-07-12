@@ -11,12 +11,16 @@ import json
 import logging
 
 from django.conf import settings
+from google.protobuf import duration_pb2
 
 from validibot.core.tasks.dispatch.base import TaskDispatcher
 from validibot.core.tasks.dispatch.base import TaskDispatchRequest
 from validibot.core.tasks.dispatch.base import TaskDispatchResponse
 
 logger = logging.getLogger(__name__)
+
+MIN_DISPATCH_DEADLINE_SECONDS = 15
+MAX_DISPATCH_DEADLINE_SECONDS = 30 * 60
 
 
 class GoogleCloudTasksDispatcher(TaskDispatcher):
@@ -131,6 +135,9 @@ class GoogleCloudTasksDispatcher(TaskDispatcher):
                     audience=worker_url,
                 ),
             ),
+            dispatch_deadline=duration_pb2.Duration(
+                seconds=self._get_dispatch_deadline_seconds()
+            ),
         )
 
         create_request = tasks_v2.CreateTaskRequest(
@@ -186,3 +193,16 @@ class GoogleCloudTasksDispatcher(TaskDispatcher):
                 "(e.g. validibot-cloudrun-prod@PROJECT.iam.gserviceaccount.com).",
             )
         return service_account
+
+    @staticmethod
+    def _get_dispatch_deadline_seconds() -> int:
+        """Return a valid Cloud Tasks HTTP deadline for orchestration work."""
+        deadline = int(getattr(settings, "CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS", 600))
+        if not (
+            MIN_DISPATCH_DEADLINE_SECONDS <= deadline <= MAX_DISPATCH_DEADLINE_SECONDS
+        ):
+            raise ValueError(
+                "CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS must be between "
+                "15 and 1800 seconds."
+            )
+        return deadline

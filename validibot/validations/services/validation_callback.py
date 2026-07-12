@@ -27,6 +27,7 @@ from typing import Any
 from django.conf import settings
 from django.db import DatabaseError
 from django.db import transaction
+from django.utils import timezone
 from pydantic import ValidationError
 from rest_framework import status
 from rest_framework.response import Response
@@ -202,7 +203,10 @@ class ValidationCallbackService:
                 run.status not in VALIDATION_RUN_TERMINAL_STATUSES
                 and not ensure_runtime_profile_supported(
                     run,
-                    supported_profiles=(ValidationRuntimeProfile.LEGACY,),
+                    supported_profiles=(
+                        ValidationRuntimeProfile.LEGACY,
+                        ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
+                    ),
                     operation="process_validation_callback",
                     sender=self.__class__,
                 )
@@ -279,6 +283,34 @@ class ValidationCallbackService:
         5. Lock contention (another request holds the row lock) → return
            409 so Cloud Tasks retries later.
         """
+        from validibot.validations.services.execution_attempts import (
+            resolve_callback_attempt,
+        )
+        from validibot.validations.services.runtime_profiles import (
+            get_runtime_profile_policy,
+        )
+
+        attempt = None
+        if get_runtime_profile_policy(run.runtime_profile).uses_execution_attempts:
+            attempt = resolve_callback_attempt(
+                callback.callback_id,
+                run_id=run.pk,
+            )
+            if attempt is None:
+                logger.warning(
+                    "Rejected callback that was not bound to an execution attempt",
+                    extra={"run_id": str(run.pk)},
+                )
+                return Response(
+                    {"error": "Callback does not identify a valid execution attempt"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if attempt.is_terminal:
+                return self._late_callback_response(callback, run)
+            current_step = run.current_step_run
+            if current_step is None or current_step.pk != attempt.step_run_id:
+                return self._late_callback_response(callback, run)
+
         if not callback.callback_id:
             run.refresh_from_db(fields=["status"])
             if run.status in VALIDATION_RUN_TERMINAL_STATUSES:
@@ -287,6 +319,7 @@ class ValidationCallbackService:
                 callback=callback,
                 run=run,
                 receipt=None,
+                attempt=attempt,
             )
 
         try:
@@ -294,9 +327,26 @@ class ValidationCallbackService:
                 receipt, receipt_created = self._get_or_create_receipt(
                     callback,
                     run,
+                    attempt,
                 )
 
                 if not receipt_created:
+                    if (
+                        attempt is not None
+                        and receipt.execution_attempt_id != attempt.pk
+                    ):
+                        logger.error(
+                            "Callback receipt attempt binding mismatch",
+                            extra={
+                                "run_id": str(run.pk),
+                                "attempt_id": str(attempt.pk),
+                                "receipt_id": receipt.pk,
+                            },
+                        )
+                        return Response(
+                            {"error": "Callback receipt identity conflict"},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
                     if receipt.status != CallbackReceiptStatus.PROCESSING:
                         was_rejected = receipt.status == CallbackReceiptStatus.REJECTED
                         logger.info(
@@ -348,6 +398,7 @@ class ValidationCallbackService:
                     callback=callback,
                     run=run,
                     receipt=receipt,
+                    attempt=attempt,
                 )
 
         except DatabaseError:
@@ -369,6 +420,7 @@ class ValidationCallbackService:
     def _get_or_create_receipt(
         callback: ValidationCallback,
         run: ValidationRun,
+        attempt=None,
     ) -> tuple[CallbackReceipt, bool]:
         """
         Fetch an existing receipt under a row lock, or create a new one.
@@ -384,6 +436,7 @@ class ValidationCallbackService:
             receipt = CallbackReceipt.objects.create(
                 callback_id=callback.callback_id,
                 validation_run=run,
+                execution_attempt=attempt,
                 status=CallbackReceiptStatus.PROCESSING,
                 result_uri=callback.result_uri or "",
             )
@@ -399,6 +452,7 @@ class ValidationCallbackService:
         callback: ValidationCallback,
         run: ValidationRun,
         receipt: CallbackReceipt | None,
+        attempt=None,
     ) -> Response:
         """
         Orchestrate the callback processing pipeline.
@@ -433,9 +487,33 @@ class ValidationCallbackService:
             # are left PROCESSING so the retry can re-attempt.
             if status.is_client_error(exc.status_code):
                 self._mark_receipt_rejected(callback, receipt, run)
+                if attempt is not None:
+                    from validibot.validations.constants import ExecutionAttemptState
+                    from validibot.validations.services.execution_attempts import (
+                        transition_execution_attempt,
+                    )
+
+                    transition_execution_attempt(
+                        attempt.pk,
+                        ExecutionAttemptState.FAILED,
+                        last_error_code="callback_rejected",
+                        last_error=str(exc.detail),
+                    )
             return Response(
                 {"error": exc.detail},
                 status=exc.status_code,
+            )
+
+        if attempt is not None:
+            from validibot.validations.constants import ExecutionAttemptState
+            from validibot.validations.services.execution_attempts import (
+                transition_execution_attempt,
+            )
+
+            transition_execution_attempt(
+                attempt.pk,
+                ExecutionAttemptState.COMPLETED,
+                provider_finished_at=timezone.now(),
             )
 
         self._mark_receipt_completed(callback, receipt, run)

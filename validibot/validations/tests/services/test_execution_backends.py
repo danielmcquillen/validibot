@@ -48,7 +48,9 @@ from validibot_shared.validations.envelopes import SupportedMimeType
 
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.tests.factories import OrganizationFactory
+from validibot.validations.constants import ExecutionAttemptState
 from validibot.validations.constants import Severity
+from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,
@@ -61,6 +63,7 @@ from validibot.validations.services.execution.docker_compose import (
 from validibot.validations.services.execution.gcp import GCPExecutionBackend
 from validibot.validations.services.execution.registry import clear_backend_cache
 from validibot.validations.services.execution.registry import get_execution_backend
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
@@ -74,7 +77,10 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 # ==============================================================================
 
 
-def _make_execution_request() -> ExecutionRequest:
+def _make_execution_request(
+    *,
+    runtime_profile: ValidationRuntimeProfile = ValidationRuntimeProfile.LEGACY,
+) -> ExecutionRequest:
     """Build an ExecutionRequest from real Django model instances.
 
     Creates the full model graph (Org → Workflow → ValidationRun → Step)
@@ -100,6 +106,7 @@ def _make_execution_request() -> ExecutionRequest:
         submission=submission,
         workflow=workflow,
         org=org,
+        runtime_profile=runtime_profile,
     )
     # Also create a step run so validation_run.current_step_run works
     ValidationStepRunFactory(
@@ -592,6 +599,49 @@ class TestDockerComposeExecutionBackend:
 
         assert response.is_complete is True
         assert "not available" in response.error_message
+
+    @pytest.mark.django_db
+    def test_exception_after_dispatch_becomes_unknown_not_failed(self):
+        """A lost Docker response must not authorize automatic container replay.
+
+        Even though self-hosted execution is normally synchronous, the worker
+        can lose contact after Docker accepted the container. Returning a
+        pending response keeps the run available to the watchdog while the
+        durable attempt prevents task redelivery from starting another copy.
+        """
+        request = _make_execution_request(
+            runtime_profile=ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
+        )
+        attempt = ExecutionAttemptFactory(
+            step_run=request.run.current_step_run,
+            state=ExecutionAttemptState.PENDING,
+        )
+        workspace = MagicMock()
+        workspace.execution_bundle_container_uri = "file:///bundle"
+        workspace.input_envelope_container_uri = "file:///bundle/input.json"
+        workspace.output_envelope_container_uri = "file:///bundle/output.json"
+        envelope = MagicMock()
+        envelope.model_dump_json.return_value = "{}"
+
+        backend = DockerComposeExecutionBackend()
+        backend._runner = MagicMock()
+        backend._runner.is_available.return_value = True
+        backend._runner.run.side_effect = ConnectionError("docker response lost")
+
+        with (
+            patch.object(
+                backend,
+                "_build_workspace_and_envelope_kwargs",
+                return_value=(workspace, {}, {}),
+            ),
+            patch.object(backend, "build_input_envelope", return_value=envelope),
+        ):
+            response = backend.execute(request)
+
+        attempt.refresh_from_db()
+        assert response.is_complete is False
+        assert response.error_message is None
+        assert attempt.state == ExecutionAttemptState.UNKNOWN
 
     def test_check_status_exists(self):
         """Docker Compose backend should expose a ``check_status`` method.

@@ -11,6 +11,7 @@ import logging
 from collections import Counter
 from typing import Any
 
+from validibot.validations.constants import ExecutionAttemptState
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.models import ValidationFinding
@@ -88,6 +89,39 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
         run_context = self._build_run_context()
 
+        # Attempt-mode runs create their durable identity before any provider
+        # work. A redelivery that observes an already-claimed attempt must not
+        # call the provider again; reconciliation owns that case.
+        from validibot.validations.services.execution import get_execution_backend
+        from validibot.validations.services.execution_attempts import (
+            get_or_create_execution_attempt,
+        )
+
+        backend = get_execution_backend()
+        attempt, attempt_created = get_or_create_execution_attempt(
+            self.step_run,
+            runner_type=backend.backend_name,
+        )
+        if (
+            attempt is not None
+            and not attempt_created
+            and attempt.state != ExecutionAttemptState.PENDING
+        ):
+            logger.info(
+                "Execution attempt %s is already %s; skipping provider relaunch",
+                attempt.pk,
+                attempt.state,
+            )
+            existing_counts = self._get_existing_finding_counts()
+            return StepProcessingResult(
+                passed=None,
+                step_run=self.step_run,
+                severity_counts=existing_counts,
+                total_findings=sum(existing_counts.values()),
+                assertion_failures=0,
+                assertion_total=0,
+            )
+
         try:
             # Call validator.validate() - this:
             # - Evaluates input-stage assertions
@@ -105,10 +139,41 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
                 "Error executing advanced validation step %s",
                 self.step_run.id,
             )
+            if attempt is not None:
+                attempt.refresh_from_db(fields=["state"])
+                if attempt.state == ExecutionAttemptState.PENDING:
+                    from validibot.validations.services.execution_attempts import (
+                        transition_execution_attempt,
+                    )
+
+                    transition_execution_attempt(
+                        attempt.pk,
+                        ExecutionAttemptState.FAILED,
+                        last_error_code="validator_preparation_failed",
+                        last_error=str(e),
+                    )
             return self._handle_error(e)
 
         # Persist input-stage findings (from assertions evaluated in validate())
         severity_counts, assertion_failures = self.persist_findings(result.issues)
+
+        if attempt is not None and result.passed is False:
+            # A provider that accepted work moves the attempt out of PENDING
+            # inside its backend. Therefore a definitive failure that leaves
+            # PENDING occurred before launch and is safe to mark FAILED.
+            attempt.refresh_from_db(fields=["state"])
+            if attempt.state == ExecutionAttemptState.PENDING:
+                from validibot.validations.services.execution_attempts import (
+                    transition_execution_attempt,
+                )
+
+                target = (
+                    ExecutionAttemptState.CANCELED
+                    if (result.stats or {}).get("dispatch_skipped")
+                    == "input_stage_assertion_failed"
+                    else ExecutionAttemptState.FAILED
+                )
+                transition_execution_attempt(attempt.pk, target)
 
         # Handle sync vs async completion
         if result.passed is None:

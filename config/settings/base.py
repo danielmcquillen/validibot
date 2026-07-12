@@ -17,6 +17,7 @@ from pathlib import Path
 
 import environ
 from csp.constants import NONCE
+from django.core.exceptions import ImproperlyConfigured
 from django.utils.translation import gettext_lazy as _
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,14 @@ DEBUG = env.bool("DJANGO_DEBUG", False)
 #
 # If not set, auto-detection is used based on other settings.
 DEPLOYMENT_TARGET = env("DEPLOYMENT_TARGET", default=None)
+
+# Immutable execution semantics recorded on each new ValidationRun. The
+# attempt lifecycle is implemented as an opt-in rollout; existing deployments
+# remain on LEGACY until every web/worker instance has the reader release.
+VALIDATION_RUNTIME_PROFILE = env(
+    "VALIDATION_RUNTIME_PROFILE",
+    default="LEGACY",
+)
 
 # App role (web vs worker). Worker instances expose internal APIs only.
 # Default to "web" for local development; production sets APP_ROLE explicitly.
@@ -1144,6 +1153,23 @@ SIGNING_KEY_PATH = env("SIGNING_KEY_PATH", default="")
 GCP_KMS_SIGNING_KEY = env("GCP_KMS_SIGNING_KEY", default="")
 SIGNING_ALGORITHM = env("SIGNING_ALGORITHM", default="ES256")
 CLOUD_TASKS_SERVICE_ACCOUNT = env("CLOUD_TASKS_SERVICE_ACCOUNT", default="")
+# HTTP delivery is only the short Django orchestration request; validator
+# compute runs separately. Keep this comfortably below Cloud Tasks' 30-minute
+# maximum so a wedged worker is retried promptly.
+CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS = env.int(
+    "CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS",
+    default=10 * 60,
+)
+_CLOUD_TASKS_MIN_DEADLINE_SECONDS = 15
+_CLOUD_TASKS_MAX_DEADLINE_SECONDS = 30 * 60
+if not (
+    _CLOUD_TASKS_MIN_DEADLINE_SECONDS
+    <= CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS
+    <= _CLOUD_TASKS_MAX_DEADLINE_SECONDS
+):
+    raise ImproperlyConfigured(
+        "CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS must be between 15 and 1800."
+    )
 
 # Shared secret for authenticating requests to worker-only API endpoints.
 # Required for Docker Compose deployments (all services share the same key).
@@ -1468,3 +1494,18 @@ CELERY_TASK_ACKS_LATE = True
 
 # Reject on worker lost - requeue task if worker dies unexpectedly
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
+
+# Redis restores an unacknowledged Celery message after this visibility
+# window. It must exceed the hard task limit or a healthy long validation can
+# be delivered to a second worker while the first is still running.
+CELERY_VISIBILITY_TIMEOUT_SECONDS = env.int(
+    "CELERY_VISIBILITY_TIMEOUT_SECONDS",
+    default=60 * 60,
+)
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "visibility_timeout": CELERY_VISIBILITY_TIMEOUT_SECONDS,
+}
+if CELERY_VISIBILITY_TIMEOUT_SECONDS <= CELERY_TASK_TIME_LIMIT:
+    raise ImproperlyConfigured(
+        "CELERY_VISIBILITY_TIMEOUT_SECONDS must exceed CELERY_TASK_TIME_LIMIT."
+    )

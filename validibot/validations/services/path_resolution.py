@@ -250,7 +250,7 @@ def resolve_input_signal(
     *,
     submission_data: dict[str, Any] | None = None,
     submission_metadata: dict[str, Any] | None = None,
-    upstream_signals: dict[str, dict[str, Any]] | None = None,
+    upstream_steps: dict[str, dict[str, Any]] | None = None,
     workflow_signals: dict[str, Any] | None = None,
 ) -> ResolvedSignal:
     """Resolve a single input signal from its binding configuration.
@@ -264,8 +264,9 @@ def resolve_input_signal(
         binding: The ``StepInputBinding`` to resolve.
         submission_data: The submission payload dict (for SUBMISSION_PAYLOAD scope).
         submission_metadata: Submission metadata dict (for SUBMISSION_METADATA scope).
-        upstream_signals: Dict of ``{step_key: {"signals": {...}}}`` from prior
-            steps (for UPSTREAM_STEP scope).
+        upstream_steps: Canonical ``{step_key: {"input": {...}, "output":
+            {...}}}`` values from completed prior steps (for UPSTREAM_STEP
+            scope).
         workflow_signals: Dict of resolved workflow-level signals (for SIGNAL scope).
             These are the ``s.`` namespace values resolved by
             ``resolve_workflow_signals()``.
@@ -301,13 +302,14 @@ def resolve_input_signal(
     elif scope == BindingSourceScope.SUBMISSION_METADATA:
         source = submission_metadata or {}
     elif scope == BindingSourceScope.UPSTREAM_STEP:
-        # Upstream outputs are stored at:
-        #   run.summary["steps"][step_key]["output"][name]
+        # Upstream outputs are exposed from canonical
+        # ``ValidationStepRun.output_values`` records as:
+        #   upstream_steps[step_key]["output"][name]
         # The effective_path should be "step_key.name", which
         # resolve_path navigates as: upstream[step_key]["name"].
         # We flatten the nesting by building a dict of
         #   {step_key: {name: value, ...}} from the raw shape.
-        raw = upstream_signals or {}
+        raw = upstream_steps or {}
         source = {
             k: v.get("output", {}) if isinstance(v, dict) else {}
             for k, v in raw.items()
@@ -375,7 +377,7 @@ def resolve_step_input_signals(
     *,
     submission_data: dict[str, Any] | None = None,
     submission_metadata: dict[str, Any] | None = None,
-    upstream_signals: dict[str, dict[str, Any]] | None = None,
+    upstream_steps: dict[str, dict[str, Any]] | None = None,
     workflow_signals: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[ResolvedInputTrace]]:
     """Batch-resolve all input signal bindings for a workflow step.
@@ -420,7 +422,7 @@ def resolve_step_input_signals(
             binding,
             submission_data=submission_data,
             submission_metadata=submission_metadata,
-            upstream_signals=upstream_signals,
+            upstream_steps=upstream_steps,
             workflow_signals=workflow_signals,
         )
 

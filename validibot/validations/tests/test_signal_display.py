@@ -4,7 +4,7 @@ Tests for the output signal display helper (Phase 6).
 This module verifies that ``build_display_step_outputs()`` and
 ``build_template_params_display()`` correctly:
 
-- Extract raw signals from ``step_run.output["signals"]``
+- Extract raw signals from ``step_run.output_values``
 - Filter signals by the author's ``display_step_outputs`` selection.
   **Empty list means show NONE** — authors opt in to each signal
   they want surfaced. Tests that need to verify formatting,
@@ -17,7 +17,7 @@ This module verifies that ``build_display_step_outputs()`` and
 - Build template parameter display data enriched with variable metadata
 
 The signal display system is a **cross-validator capability** — any
-validator type that populates ``step_run.output["signals"]`` gets signal
+validator type that populates ``step_run.output_values`` gets signal
 display automatically.  These tests verify that invariant by exercising
 both EnergyPlus and non-EnergyPlus validators.
 """
@@ -50,7 +50,7 @@ def _make_energyplus_step_run(
     """Create a ValidationStepRun backed by an EnergyPlus step.
 
     Args:
-        output: The ``step_run.output`` JSONField value.
+        output: Test data containing optional ``signals`` plus diagnostic keys.
         display_step_outputs: Author-selected signal slugs.  When None,
             the ``display_step_outputs`` key is omitted from the step
             config, which (with the opt-in default) results in NO
@@ -78,9 +78,12 @@ def _make_energyplus_step_run(
         config=config,
         display_settings=display_settings,
     )
+    output_data = dict(output or {})
+    output_values = output_data.pop("signals", {})
     return ValidationStepRunFactory(
         workflow_step=step,
-        output=output or {},
+        output=output_data,
+        output_values=output_values,
     )
 
 
@@ -94,9 +97,12 @@ def _make_fmu_step_run(output: dict | None = None):
     """
     validator = ValidatorFactory(validation_type=ValidationType.FMU)
     step = WorkflowStepFactory(validator=validator, config={})
+    output_data = dict(output or {})
+    output_values = output_data.pop("signals", {})
     return ValidationStepRunFactory(
         workflow_step=step,
-        output=output or {},
+        output=output_data,
+        output_values=output_values,
     )
 
 
@@ -109,15 +115,14 @@ class TestBuildDisplaySignals:
     """Tests for ``build_display_step_outputs()`` — signal enrichment."""
 
     def test_returns_empty_for_step_without_signals(self):
-        """Step runs with no ``output["signals"]`` should return an
+        """Step runs with no canonical output values should return an
         empty list.  This is the common case for non-simulation
         validators like JSON Schema."""
         sr = _make_energyplus_step_run(output={})
         assert build_display_step_outputs(sr) == []
 
     def test_no_signals_key_in_output(self):
-        """If ``step_run.output`` exists but has no ``signals`` key,
-        returns an empty list rather than raising a KeyError."""
+        """Diagnostic output without canonical values returns an empty list."""
         sr = _make_energyplus_step_run(output={"some_other_key": 42})
         assert build_display_step_outputs(sr) == []
 
@@ -188,7 +193,7 @@ class TestBuildDisplaySignals:
         )
         sr = ValidationStepRunFactory(
             workflow_step=step,
-            output={"signals": {"electricity_kwh": 12345.6}},
+            output_values={"electricity_kwh": 12345.6},
         )
         result = build_display_step_outputs(sr)
         assert len(result) == 1
@@ -271,7 +276,7 @@ class TestBuildDisplaySignals:
         )
         sr = ValidationStepRunFactory(
             workflow_step=step,
-            output={"signals": {"beta": 2.0, "alpha": 1.0}},
+            output_values={"beta": 2.0, "alpha": 1.0},
         )
         result = build_display_step_outputs(sr)
         assert [s.slug for s in result] == ["alpha", "beta"]
@@ -314,7 +319,7 @@ class TestBuildDisplaySignals:
 
     def test_display_step_outputs_with_nonexistent_slug(self):
         """If ``display_step_outputs`` references a slug not present in the
-        actual ``output["signals"]``, that slug is silently skipped.
+        actual ``output_values``, that slug is silently skipped.
         This handles the case where the author configured signals before
         any run produced them."""
         sr = _make_energyplus_step_run(

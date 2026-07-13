@@ -3,7 +3,7 @@ Output signal display helpers for validation run results.
 
 Provides shared enrichment logic used by both the web UI
 (``ValidationRunDetailView``) and the API (``ValidationRunSerializer``).
-Given a ``ValidationStepRun`` whose ``output`` contains raw signal data,
+Given a ``ValidationStepRun`` whose ``output_values`` contains contract data,
 these helpers:
 
 1. Filter signals by the author's ``display_step_outputs`` selection.
@@ -17,7 +17,7 @@ these helpers:
    decimal precision.
 
 This is a **cross-validator capability** — any validator type that
-populates ``step_run.output["signals"]`` gets signal display
+populates ``step_run.output_values`` gets signal display
 automatically.  The ``display_step_outputs`` filter is read via
 ``getattr(typed_config, "display_step_outputs", [])`` so validators whose
 config model lacks that field simply surface no signals (consistent
@@ -26,7 +26,7 @@ with the opt-in default).
 See Also:
     - ``EnergyPlusStepConfig.display_step_outputs`` (``workflows/step_configs.py``)
     - ``StepIODefinition`` (``validations/models.py``)
-    - ``AdvancedValidationProcessor.store_signals()`` (persists signals)
+    - ``ValidationStepProcessor.store_output_values()`` (persists values)
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ class DisplaySignal:
         slug: Machine name matching the signal's contract_key (e.g.,
             ``"site_electricity_kwh"``).
         label: Human-readable label (e.g., ``"Site Electricity"``).
-        value: Raw signal value as stored in ``step_run.output``.
+        value: Raw signal value as stored in ``step_run.output_values``.
         formatted_value: Pre-formatted string for UI display (e.g.,
             ``"12,345.60"``).
         units: Display units (e.g., ``"kWh"``).  Empty string when
@@ -83,7 +83,7 @@ def build_display_step_outputs(step_run: ValidationStepRun) -> list[DisplaySigna
     """Build display-ready signals for a single step run.
 
     Steps:
-        1. Read raw signals from ``step_run.output["signals"]``.
+        1. Read raw values from ``step_run.output_values``.
         2. Determine which signals to show using the step config's
            ``display_step_outputs`` list (empty = show all).
         3. Batch-fetch ``StepIODefinition`` records for enrichment
@@ -92,8 +92,7 @@ def build_display_step_outputs(step_run: ValidationStepRun) -> list[DisplaySigna
 
     Returns an empty list if the step has no signal data.
     """
-    output = step_run.output or {}
-    raw_signals: dict[str, Any] = output.get("signals", {})
+    raw_signals: dict[str, Any] = step_run.output_values or {}
     if not raw_signals:
         return []
 
@@ -273,7 +272,7 @@ def _build_signal_map(
     loaded every signal_definition for the step. The viewsets
     pre-fetch ``workflow_step__signal_definitions`` and
     ``workflow_step__validator__signal_definitions`` so listing
-    runs with populated ``output["signals"]`` stays O(1) in step
+    runs with populated ``output_values`` stays O(1) in step
     count.
 
     See refactor-step item ``[review-#5]`` (amendment for

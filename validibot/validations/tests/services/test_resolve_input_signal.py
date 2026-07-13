@@ -256,9 +256,9 @@ class ResolveInputSignalTests(TestCase):
 
     # ── Upstream step output resolution ──────────────────────────────
     #
-    # Upstream outputs are stored at run.summary["steps"][step_key]["output"].
-    # The path format is "step_key.output_name" — the resolver flattens
-    # the intermediate "output" key so this path works naturally.
+    # Upstream outputs come from ValidationStepRun.output_values and are exposed
+    # as upstream_steps[step_key]["output"]. The path format is
+    # "step_key.output_name" — the resolver flattens the namespace level.
 
     def test_upstream_step_signal_resolution(self):
         """Upstream step outputs should resolve via dotted path
@@ -280,7 +280,7 @@ class ResolveInputSignalTests(TestCase):
         }
         result = resolve_input_signal(
             binding,
-            upstream_signals=upstream,
+            upstream_steps=upstream,
         )
         self.assertTrue(result.resolved)
         self.assertEqual(result.value, 85.3)
@@ -303,7 +303,7 @@ class ResolveInputSignalTests(TestCase):
         }
         result = resolve_input_signal(
             binding,
-            upstream_signals=upstream,
+            upstream_steps=upstream,
         )
         self.assertTrue(result.resolved)
         self.assertEqual(result.upstream_step_key, "simulation")
@@ -325,7 +325,7 @@ class ResolveInputSignalTests(TestCase):
         }
         result = resolve_input_signal(
             binding,
-            upstream_signals=upstream,
+            upstream_steps=upstream,
         )
         self.assertFalse(result.resolved)
         self.assertIn(
@@ -508,7 +508,7 @@ class ResolveStepInputSignalsTests(TestCase):
             step,
             step_run,
             submission_data={},
-            upstream_signals=upstream,
+            upstream_steps=upstream,
         )
 
         self.assertEqual(input_values, {"target_eui": 85.3})

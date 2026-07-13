@@ -26,8 +26,12 @@ StepOrchestrator
 ├── _finalize_step_run()            — persist status, duration, output
 ├── _record_step_result()           — persist findings (action steps only)
 ├── _execute_validator_step()       — call step processor
-├── _extract_downstream_signals()   — collect cross-step signals
 └── _resolve_run_actor()            — resolve the initiating user
+
+RunContextBuilder
+├── build()                         — compose the context for one step
+├── build_upstream_steps()          — read canonical completed step values
+└── _resolve_workflow_signals()     — resolve workflow-scoped signals
 
 SummaryBuilder
 ├── rebuild_run_summary_record()    — idempotent public entry point
@@ -62,30 +66,13 @@ methods call each other and share the same execution context.
 Each module was extracted as a standalone step and tested before proceeding.
 This minimises risk when refactoring a critical code path.
 
-### Runtime profiles make rolling deployments explicit
+### One execution architecture
 
-Every `ValidationRun` records an immutable `runtime_profile`. The profile is
-chosen when the run is created and remains authoritative for its lifetime; a
-worker never infers execution behavior from nullable fields or deployment
-settings.
-
-The accepted progression is:
-
-```text
-ATTEMPT_LIFECYCLE_V1
-  -> ATTEMPT_STRICT_V1
-  -> ATTEMPT_CONTEXT_V1
-```
-
-`runtime_profiles.py` is the single table describing which capabilities each
-rung adds and which I/O contract it requires. Application releases may remain
-on a rung or advance by one rung only. Operators do not select a profile.
-
-Every new run uses `ATTEMPT_LIFECYCLE_V1`. The older execution path was removed
-before production adoption, so dispatch, callbacks, cancellation, and
-reconciliation all use durable attempt identity. Profile guards remain only to
-protect future rolling deployments when strict I/O or canonical context is
-introduced.
+Validibot is pre-release, so the service does not carry runtime modes or legacy
+readers. Every run uses durable attempt identity and canonical step-run values.
+When an execution contract changes before public adoption, the application and
+database migration move forward together instead of maintaining parallel
+engines.
 
 ### Execution attempts identify concrete provider work
 
@@ -207,7 +194,8 @@ mismatches at save time rather than at runtime.
 
 ```
 validations/services/
-├── runtime_profiles.py        # Runtime-profile policy and mixed-version guards
+├── run_context.py             # Canonical runtime namespace construction
+├── execution_logging.py       # Structured run/step/attempt log correlation
 ├── execution_attempts.py      # Attempt selectors and monotonic transitions
 ├── validation_run.py          # Public facade (launch, cancel, delegation)
 ├── step_orchestrator.py       # Worker-side step execution loop

@@ -1,8 +1,8 @@
 """Tests for validation-run launch, orchestration, and summary behavior.
 
-The launch tests pin transaction ordering and immutable runtime-profile
-selection; the remaining tests protect the service facade's established run
-and finding behavior while lifecycle internals evolve behind it.
+The launch tests pin transaction ordering; the remaining tests protect the
+service facade's established run and finding behavior while lifecycle
+internals evolve behind it.
 """
 
 from collections import Counter
@@ -22,7 +22,6 @@ from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
-from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
@@ -39,7 +38,7 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 
 @pytest.mark.django_db
 def test_launch_commits_run_before_enqueue(monkeypatch):
-    """A launch must persist its immutable profile before task dispatch."""
+    """A launch must persist its run row before task dispatch."""
     org = OrganizationFactory()
     user = UserFactory()
     grant_role(user, org, RoleCode.EXECUTOR)
@@ -69,38 +68,7 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
     validation_run = response.validation_run
     validation_run.refresh_from_db()
     assert validation_run.pk
-    assert (
-        validation_run.runtime_profile == ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
-    )
     assert response.status in {status.HTTP_202_ACCEPTED, status.HTTP_201_CREATED}
-
-
-@pytest.mark.django_db
-def test_launch_does_not_allow_callers_to_select_runtime_profile():
-    """Caller metadata must not restore a second execution architecture."""
-    org = OrganizationFactory()
-    user = UserFactory()
-    grant_role(user, org, RoleCode.EXECUTOR)
-    workflow = WorkflowFactory(org=org, user=user, is_active=True)
-    WorkflowStepFactory(workflow=workflow)
-    submission = SubmissionFactory(
-        org=org,
-        project=workflow.project,
-        user=user,
-        workflow=workflow,
-    )
-    request = APIRequestFactory().post("/api/v1/workflows/start/")
-    request.user = user
-
-    with pytest.raises(ValueError, match="selected by the application"):
-        ValidationRunService().launch(
-            request=request,
-            org=org,
-            workflow=workflow,
-            submission=submission,
-            user_id=user.id,
-            extra={"runtime_profile": ValidationRuntimeProfile.ATTEMPT_STRICT_V1},
-        )
 
 
 @pytest.mark.django_db

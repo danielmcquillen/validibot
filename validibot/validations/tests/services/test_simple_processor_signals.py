@@ -16,8 +16,8 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 class SimpleProcessorSignalsTests(TestCase):
     """Tests for signal persistence in the simple validation processor."""
 
-    def test_simple_processor_stores_signals_in_step_and_summary(self):
-        """Signals from simple validators should persist to step output and summary."""
+    def test_simple_processor_stores_canonical_output_values(self):
+        """Simple-validator outputs must persist on the step's canonical field."""
         run = ValidationRunFactory()
         step = WorkflowStepFactory(workflow=run.workflow)
         step_run = ValidationStepRunFactory(
@@ -51,17 +51,8 @@ class SimpleProcessorSignalsTests(TestCase):
             processor.execute()
 
         step_run.refresh_from_db()
-        run.refresh_from_db()
 
-        self.assertEqual(step_run.output.get("signals"), signals)
-        # Validator outputs are namespaced under the stable step_key
-        # slug (not the ephemeral step_run UUID) and stored under the
-        # "output" key so downstream CEL expressions can reference
-        # them via steps.<step_key>.output.<name>.
-        self.assertEqual(
-            run.summary.get("steps", {}).get(step.step_key, {}).get("output"),
-            signals,
-        )
+        self.assertEqual(step_run.output_values, signals)
 
 
 class ProcessorRunContextConstantsTests(TestCase):

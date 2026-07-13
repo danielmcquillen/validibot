@@ -1,7 +1,7 @@
 """Tests for StepOrchestrator internal methods.
 
-Covers step lifecycle (_start_step_run) idempotency and
-the _record_step_result normalization precondition.
+Covers step lifecycle (_start_step_run) idempotency and canonical persistence
+of action results by _record_step_result.
 """
 
 from __future__ import annotations
@@ -32,7 +32,10 @@ from validibot.validations.services.step_processor.result import StepProcessingR
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.base import ValidationResult
 from validibot.workflows.tests.factories import WorkflowStepFactory
+
+DELIVERY_MS = 12
 
 # ---------- _start_step_run ----------
 
@@ -161,6 +164,38 @@ class TestStartStepRun:
             ).count()
             == 1
         )
+
+
+@pytest.mark.django_db
+class TestRecordActionStepResult:
+    """Verify action values are durable execution state, separate from stats."""
+
+    def test_action_output_values_are_persisted_canonically(self):
+        """Handler outputs must survive for downstream steps and audit hashes."""
+        orchestrator = StepOrchestrator()
+        run = ValidationRunFactory()
+        step = WorkflowStepFactory(workflow=run.workflow)
+        step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+            status=StepStatus.RUNNING,
+        )
+
+        orchestrator._record_step_result(
+            validation_run=run,
+            step_run=step_run,
+            validation_result=ValidationResult(
+                passed=True,
+                issues=[],
+                signals={"credential_id": "credential-123"},
+                stats={"delivery_ms": DELIVERY_MS},
+            ),
+        )
+
+        step_run.refresh_from_db()
+        assert step_run.output_values == {"credential_id": "credential-123"}
+        assert step_run.output["delivery_ms"] == DELIVERY_MS
+        assert "signals" not in step_run.output
 
 
 @pytest.mark.django_db

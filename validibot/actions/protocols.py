@@ -27,9 +27,10 @@ class RunContext:
     Attributes:
         validation_run: The ValidationRun model instance being executed.
         step: The WorkflowStep model instance being processed.
-        downstream_signals: Validator outputs from previous workflow steps,
-            keyed by step slug. Each entry is ``{"output": {...}}``.
-            Used for CEL cross-step assertions via
+        upstream_steps: Canonical input and output values from completed
+            workflow steps, keyed by stable step key. Each entry contains
+            ``{"input": {...}, "output": {...}}`` and is used for CEL
+            cross-step assertions such as
             ``steps.<step_key>.output.<name>``.
         workflow_signals: Author-defined signals resolved from the
             workflow-level signal mapping configuration. Populated once
@@ -55,7 +56,7 @@ class RunContext:
 
     validation_run: ValidationRun | None = None
     step: WorkflowStep | None = None
-    downstream_signals: dict[str, Any] = field(default_factory=dict)
+    upstream_steps: dict[str, Any] = field(default_factory=dict)
     workflow_signals: dict[str, Any] = field(default_factory=dict)
     workflow_constants: dict[str, Any] = field(default_factory=dict)
     step_input_contract_values: dict[str, Any] = field(default_factory=dict)
@@ -63,14 +64,12 @@ class RunContext:
 
 @dataclass
 class StepResult:
-    """Standardized result from any step execution (Validator or Action)."""
+    """Standardized result from any step execution (validator or action)."""
 
     passed: bool | None  # None = Async Pending
     issues: list[Any] = field(default_factory=list)  # ValidationIssue list
     stats: dict[str, Any] = field(default_factory=dict)
-
-    # Optional: Handler-specific outputs that aren't stats
-    outputs: dict[str, Any] = field(default_factory=dict)
+    output_values: dict[str, Any] = field(default_factory=dict)
 
 
 class StepHandler(Protocol):

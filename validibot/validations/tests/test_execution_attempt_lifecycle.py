@@ -1,4 +1,4 @@
-"""End-to-end unit tests for the minimal execution-attempt writer.
+"""End-to-end tests for the minimal execution-attempt lifecycle.
 
 The lifecycle writer exists to close two costly failure windows without
 introducing a generic durable-work framework: duplicate delivery must reuse one
@@ -43,9 +43,7 @@ class TestExecutionAttemptWriter:
 
     def test_duplicate_preparation_reuses_the_active_attempt(self):
         """Two task deliveries must converge before either can launch compute."""
-        step_run = ValidationStepRunFactory(
-            validation_run__runtime_profile="ATTEMPT_LIFECYCLE_V1"
-        )
+        step_run = ValidationStepRunFactory()
 
         first, first_created = get_or_create_execution_attempt(
             step_run,
@@ -92,7 +90,7 @@ class TestExecutionAttemptWriter:
         """An opaque callback key cannot be replayed against another tenant run."""
         attempt = ExecutionAttemptFactory(state=ExecutionAttemptState.RUNNING)
         callback_id = build_attempt_callback_id(attempt)
-        other_run = ValidationRunFactory(runtime_profile="ATTEMPT_LIFECYCLE_V1")
+        other_run = ValidationRunFactory()
 
         assert (
             resolve_callback_attempt(

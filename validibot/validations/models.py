@@ -37,7 +37,6 @@ from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import ExecutionAttemptState
-from validibot.validations.constants import ExecutionContractVersion
 from validibot.validations.constants import FMUProbeStatus
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ResourceFileType
@@ -50,7 +49,6 @@ from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
-from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.constants import ValidatorReleaseState
@@ -2750,16 +2748,6 @@ class ValidationRun(TimeStampedModel):
         default=ValidationRunStatus.PENDING,
     )
 
-    runtime_profile = models.CharField(
-        max_length=32,
-        choices=ValidationRuntimeProfile.choices,
-        default=ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
-        editable=False,
-        help_text=_(
-            "Immutable execution semantics selected when this run was created."
-        ),
-    )
-
     short_description = models.CharField(
         max_length=VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH,
         blank=True,
@@ -2772,8 +2760,6 @@ class ValidationRun(TimeStampedModel):
     ended_at = models.DateTimeField(null=True, blank=True)
 
     duration_ms = models.BigIntegerField(default=0)
-
-    summary = models.JSONField(default=dict, blank=True)  # counts, pass/fail, etc.
 
     error = models.TextField(
         blank=True,
@@ -2833,35 +2819,6 @@ class ValidationRun(TimeStampedModel):
             "final run outcome."
         ),
     )
-
-    def save(self, *args, **kwargs):
-        """Persist the run without allowing its runtime profile to change.
-
-        The profile determines how callbacks and worker tasks interpret the
-        row, so changing it in place would reinterpret in-flight execution.
-        ``QuerySet.update()`` remains available to explicit data migrations;
-        normal model saves enforce immutability.
-        """
-        update_fields = kwargs.get("update_fields")
-        should_check_profile = update_fields is None or "runtime_profile" in set(
-            update_fields
-        )
-        if self.pk and not self._state.adding and should_check_profile:
-            stored_profile = (
-                type(self)
-                .objects.filter(pk=self.pk)
-                .values_list("runtime_profile", flat=True)
-                .first()
-            )
-            if stored_profile is not None and stored_profile != self.runtime_profile:
-                raise ValidationError(
-                    {
-                        "runtime_profile": _(
-                            "A validation run's runtime profile cannot be changed."
-                        )
-                    }
-                )
-        super().save(*args, **kwargs)
 
     def clean(self):
         super().clean()
@@ -3038,6 +2995,18 @@ class ValidationStepRun(TimeStampedModel):
         blank=True,
     )  # machine output (validator-specific)
 
+    input_values = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_("Canonical contract-keyed input values resolved for this step."),
+    )
+
+    output_values = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_("Canonical contract-keyed output values produced by this step."),
+    )
+
     error = models.TextField(blank=True, default="")
 
     # Trust ADR Phase 5 Session A — content-addressed identifier for
@@ -3168,12 +3137,6 @@ class ExecutionAttempt(TimeStampedModel):
         default=ExecutionAttemptState.PENDING,
     )
     runner_type = models.CharField(max_length=64)
-    contract_version = models.CharField(
-        max_length=32,
-        choices=ExecutionContractVersion.choices,
-        default=ExecutionContractVersion.LEGACY_URI_V1,
-    )
-
     provider_job_name = models.CharField(max_length=512, blank=True, default="")
     provider_execution_id = models.CharField(
         max_length=512,
@@ -3210,27 +3173,6 @@ class ExecutionAttempt(TimeStampedModel):
     def is_terminal(self) -> bool:
         """Return whether this attempt can no longer change state."""
         return self.state in EXECUTION_ATTEMPT_TERMINAL_STATES
-
-    def clean(self):
-        """Validate profile-derived fields that cannot be database constraints."""
-        super().clean()
-        if not self.step_run_id:
-            return
-
-        from validibot.validations.services.runtime_profiles import (
-            get_runtime_profile_policy,
-        )
-
-        policy = get_runtime_profile_policy(
-            self.step_run.validation_run.runtime_profile
-        )
-        errors = {}
-        if self.contract_version != policy.contract_version:
-            errors["contract_version"] = _(
-                "The attempt contract must match its run's runtime profile."
-            )
-        if errors:
-            raise ValidationError(errors)
 
     def __str__(self) -> str:
         """Show the logical step, attempt sequence, and current state."""

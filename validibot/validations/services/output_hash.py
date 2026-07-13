@@ -116,6 +116,7 @@ def _compute_fallback_output_hash(run: ValidationRun) -> str:
     """Compute the built-in community output hash."""
 
     summary = getattr(run, "summary_record", None)
+    step_values = build_step_value_records(run)
 
     canonical = {
         "run_id": str(run.id),
@@ -132,10 +133,33 @@ def _compute_fallback_output_hash(run: ValidationRun) -> str:
         "warning_count": summary.warning_count if summary else 0,
         "info_count": summary.info_count if summary else 0,
         "total_findings": summary.total_findings if summary else 0,
+        "steps": step_values,
     }
 
     payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def build_step_value_records(run: ValidationRun) -> list[dict[str, object]]:
+    """Build the canonical ordered step-value records used by output hashes.
+
+    Community and commercial hash providers share this function so signed
+    runs cannot accidentally cover less execution state than ordinary runs.
+    """
+    return [
+        {
+            "step_key": step_run.workflow_step.step_key,
+            "step_order": step_run.step_order,
+            "status": step_run.status,
+            "input_values": step_run.input_values or {},
+            "output_values": step_run.output_values or {},
+            "error": step_run.error or "",
+        }
+        for step_run in run.step_runs.select_related("workflow_step").order_by(
+            "step_order",
+            "pk",
+        )
+    ]
 
 
 def stamp_output_hash(run: ValidationRun) -> str:

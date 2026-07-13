@@ -98,7 +98,7 @@ class CallbackIdempotencyTestCase(TestCase):
         mock_envelope.messages = []
         mock_envelope.outputs = MagicMock()
         mock_envelope.outputs.output_values = {}
-        # model_dump returns JSON-serializable dict (stored in run.summary)
+        # model_dump returns the JSON-serializable callback receipt payload.
         mock_envelope.model_dump.return_value = {
             "status": "success",
             "run_id": str(self.run.id),

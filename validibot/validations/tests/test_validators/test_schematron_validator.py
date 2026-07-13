@@ -568,7 +568,7 @@ class TestSignalsFeedCelAssertions:
         )
         step = WorkflowStepFactory(validator=validator, ruleset=ruleset)
         run = ValidationRunFactory(workflow=step.workflow, submission=submission)
-        return RunContext(validation_run=run, step=step, downstream_signals={})
+        return RunContext(validation_run=run, step=step, upstream_steps={})
 
     def test_gate_passes_for_clean_envelope(self):
         """error_count == 0 → the CEL gate passes and the step passes."""

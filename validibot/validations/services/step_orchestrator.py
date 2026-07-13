@@ -46,7 +46,6 @@ from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
-from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
@@ -54,9 +53,7 @@ from validibot.validations.services.findings_persistence import normalize_issue
 from validibot.validations.services.findings_persistence import persist_findings
 from validibot.validations.services.models import ValidationRunTaskResult
 from validibot.validations.services.output_hash import safe_stamp_output_hash
-from validibot.validations.services.runtime_profiles import (
-    ensure_runtime_profile_supported,
-)
+from validibot.validations.services.run_context import RunContextBuilder
 from validibot.validations.services.step_processor.result import StepProcessingResult
 from validibot.validations.services.summary_builder import build_run_summary_record
 from validibot.validations.services.summary_builder import extract_assertion_total
@@ -150,19 +147,6 @@ class StepOrchestrator:
                 run_id=validation_run_id,
                 status=ValidationRunStatus.FAILED,
                 error=GENERIC_EXECUTION_ERROR,
-            )
-
-        if not ensure_runtime_profile_supported(
-            validation_run,
-            supported_profiles=(ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,),
-            operation="execute_workflow_steps",
-            sender=self.__class__,
-        ):
-            validation_run.refresh_from_db(fields=["status", "error"])
-            return ValidationRunTaskResult(
-                run_id=validation_run.id,
-                status=validation_run.status,
-                error=validation_run.error,
             )
 
         tracking_service = TrackingEventService()
@@ -388,14 +372,12 @@ class StepOrchestrator:
             validation_run.ended_at = timezone.now()
             validation_run.error = GENERIC_EXECUTION_ERROR
             validation_run.error_category = ValidationRunErrorCategory.RUNTIME_ERROR
-            validation_run.summary = {}
             validation_run.save(
                 update_fields=[
                     "status",
                     "ended_at",
                     "error",
                     "error_category",
-                    "summary",
                 ],
             )
             tracking_service.log_validation_run_status(
@@ -423,9 +405,8 @@ class StepOrchestrator:
             validation_run.error = validation_run.error or RUN_CANCELED_MESSAGE
             if not validation_run.ended_at:
                 validation_run.ended_at = timezone.now()
-            validation_run.summary = {}
             validation_run.save(
-                update_fields=["status", "error", "ended_at", "summary"],
+                update_fields=["status", "error", "ended_at"],
             )
             summary_record = build_run_summary_record(
                 validation_run=validation_run,
@@ -474,14 +455,12 @@ class StepOrchestrator:
             validation_run.error = ""
             validation_run.error_category = ""
         validation_run.ended_at = timezone.now()
-        validation_run.summary = {}
         validation_run.save(
             update_fields=[
                 "status",
                 "error",
                 "error_category",
                 "ended_at",
-                "summary",
             ],
         )
 
@@ -898,47 +877,12 @@ class StepOrchestrator:
             ValidationResult with passed=True/False for sync handlers, or
             passed=None for async handlers awaiting callback.
         """
-        if not ensure_runtime_profile_supported(
-            validation_run,
-            supported_profiles=(ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,),
-            operation="execute_workflow_step",
-            sender=self.__class__,
-        ):
-            return ValidationResult(
-                passed=False,
-                issues=[],
-                stats={"runtime_profile_rejected": True},
-            )
-
         # 1. Prepare Context
         from validibot.actions.handlers import ValidatorStepHandler
-        from validibot.actions.protocols import RunContext
         from validibot.actions.protocols import StepResult
         from validibot.actions.registry import get_action_handler
 
-        signals = self._extract_downstream_signals(validation_run)
-
-        # Resolve workflow-level signal mappings.  These are author-
-        # defined named values (s.<name>) resolved from submission data
-        # before each step.  The resolution result is cached on the
-        # validation_run to avoid re-resolving on every step.
-        workflow_signals = self._resolve_workflow_signals(
-            validation_run,
-            step,
-        )
-
-        # Workflow Constants (the c.* namespace) — a literal map from the
-        # workflow definition. Unlike signals these need no submission data and
-        # never fail to resolve (ADR-2026-06-18).
-        workflow_constants = self._resolve_workflow_constants(step)
-
-        context = RunContext(
-            validation_run=validation_run,
-            step=step,
-            downstream_signals=signals,
-            workflow_signals=workflow_signals,
-            workflow_constants=workflow_constants,
-        )
+        context = RunContextBuilder(validation_run, step).build()
 
         # 2. Resolve Handler
         handler = None
@@ -984,6 +928,7 @@ class StepOrchestrator:
             return ValidationResult(
                 passed=step_result.passed,
                 issues=[normalize_issue(i) for i in step_result.issues],
+                signals=step_result.output_values,
                 stats=step_result.stats,
             )
 
@@ -996,6 +941,7 @@ class StepOrchestrator:
         validation_result = ValidationResult(
             passed=step_result.passed,
             issues=[normalize_issue(i) for i in step_result.issues],
+            signals=step_result.output_values,
             stats=step_result.stats,
         )
         validation_result.workflow_step_name = step.name
@@ -1027,8 +973,8 @@ class StepOrchestrator:
 
         After a handler returns, this method:
         1. Persists issues as ValidationFinding rows.
-        2. Extracts any validator outputs from stats and stores them in run.summary
-           for downstream assertions to access.
+        2. Persists any outputs on the canonical step-run value field for
+           downstream assertions to access.
         3. For sync results (passed=True/False): finalizes the step_run.
         4. For async results (passed=None): keeps step_run as RUNNING.
 
@@ -1049,19 +995,10 @@ class StepOrchestrator:
         # step_run.output. This is needed for build_run_summary_record()
         # to calculate totals correctly in resume scenarios.
         stats["assertion_failures"] = assertion_failures
-        # Persist validator outputs for downstream steps in a namespaced
-        # structure.  Uses the stable step_key (from WorkflowStep) as the
-        # namespace so cross-step CEL expressions can reference outputs by
-        # a stable author-visible identifier (``steps.<key>.output.<name>``)
-        # rather than an ephemeral step_run UUID.
-        if "signals" in stats:
-            summary_steps = validation_run.summary.get("steps", {})
-            ns_key = step_run.workflow_step.step_key or str(step_run.id)
-            summary_steps[ns_key] = {
-                "output": stats.get("signals", {}),
-            }
-            validation_run.summary["steps"] = summary_steps
-            validation_run.save(update_fields=["summary"])
+        # Persist action outputs on their canonical step-run field. The context
+        # builder applies the stable step_key namespace when a later step runs.
+        step_run.output_values = dict(validation_result.signals or {})
+        step_run.save(update_fields=["output_values"])
         if validation_result.passed is None:
             # Async validator still running; keep status as RUNNING and
             # persist any interim stats for observability.
@@ -1115,113 +1052,6 @@ class StepOrchestrator:
         return processor.execute()
 
     # ---------- Helpers ----------
-
-    def _resolve_workflow_signals(
-        self,
-        validation_run: ValidationRun | None,
-        step: WorkflowStep | None,
-    ) -> dict[str, Any]:
-        """Resolve workflow-level signal mappings for the CEL s namespace.
-
-        Reads ``WorkflowSignalMapping`` rows from the step's workflow and
-        resolves them against the submission data.  The result is the
-        ``s`` / ``signal`` namespace dict injected into the CEL context.
-
-        If no mappings exist, returns an empty dict (no-op).
-        If a required mapping fails, raises ``SignalResolutionError``
-        which the caller should surface as a run-level failure.
-        """
-        if not step or not validation_run:
-            return {}
-
-        workflow = getattr(step, "workflow", None)
-        workflow_pk = getattr(workflow, "pk", None)
-        if not workflow or not isinstance(workflow_pk, int):
-            return {}
-
-        # Check if any mappings exist before doing the work
-        from validibot.workflows.models import WorkflowSignalMapping
-
-        if not WorkflowSignalMapping.objects.filter(workflow=workflow).exists():
-            return {}
-
-        # Get submission data for resolution
-        submission = getattr(validation_run, "submission", None)
-        if not submission:
-            return {}
-
-        import json
-
-        try:
-            raw_content = submission.get_content()
-            submission_data = json.loads(raw_content) if raw_content else {}
-        except (json.JSONDecodeError, TypeError):
-            return {}
-
-        from validibot.validations.services.signal_resolution import (
-            resolve_workflow_signals,
-        )
-
-        result = resolve_workflow_signals(workflow, submission_data)
-        return result.signals
-
-    def _resolve_workflow_constants(
-        self,
-        step: WorkflowStep | None,
-    ) -> dict[str, Any]:
-        """Build the ``c.*`` / ``const.*`` namespace map for the step's workflow.
-
-        A constant is workflow-definition-derived, so this is a pure read of the
-        workflow's ``WorkflowConstant`` rows — no submission data, no resolution,
-        no failure mode (contrast ``_resolve_workflow_signals``). Returns an
-        empty dict when there are no constants. Numeric constants are coerced to
-        their CEL-ready (``double``) form by the service; exact storage stays on
-        the model.
-        """
-        if not step:
-            return {}
-        workflow = getattr(step, "workflow", None)
-        if not workflow:
-            return {}
-
-        from validibot.workflows.services.constants import (
-            build_workflow_constants_context,
-        )
-
-        return build_workflow_constants_context(workflow)
-
-    def _extract_downstream_signals(
-        self,
-        validation_run: ValidationRun | None,
-    ) -> dict[str, Any]:
-        """
-        Collect validator outputs from completed steps for cross-step CEL.
-
-        When a validator emits outputs (e.g., EnergyPlus zone_temp), they
-        are stored in ``validation_run.summary["steps"][step_key]["output"]``.
-        This method extracts them into the ``steps`` namespace structure
-        that downstream CEL expressions access via
-        ``steps.<step_key>.output.<name>``.
-
-        Returns:
-            Dict mapping step_key to ``{"output": {...}}`` for each
-            completed step that produced outputs.
-        """
-        if not validation_run:
-            return {}
-        summary = getattr(validation_run, "summary", None) or {}
-        if not isinstance(summary, dict):
-            return {}
-        steps = summary.get("steps", {}) or {}
-        if not isinstance(steps, dict):
-            return {}
-        scoped: dict[str, Any] = {}
-        for key, value in steps.items():
-            if isinstance(value, dict):
-                scoped[str(key)] = {
-                    "output": value.get("output", {}) or {},
-                }
-        return scoped
 
     def _resolve_run_actor(
         self,

@@ -973,7 +973,7 @@ class ValidationRunViewSetTestCase(TestCase):
             self.assertEqual(len(response.data["results"]), 5)
 
     def test_run_list_query_count_stable_with_signal_bearing_outputs(self):
-        """Runs whose step_runs have populated ``output["signals"]``
+        """Runs whose step runs have populated ``output_values``
         must not issue proportionally more queries than bare runs.
 
         This is the sneaky N+1 case the original ``[review-#5]`` fix
@@ -986,7 +986,7 @@ class ValidationRunViewSetTestCase(TestCase):
         against signal_definitions on top of the base queryset.
 
         The test constructs a realistic shape — each step produces
-        ``signals.eui`` and ``signals.total_cost`` as output signals
+        ``eui`` and ``total_cost`` as output values
         and has matching ``StepIODefinition`` rows declared on the
         validator — and compares 1-run vs 5-run query counts. If the
         N+1 ever regresses, the 5-run count grows by ~4 × the per-run
@@ -1032,11 +1032,9 @@ class ValidationRunViewSetTestCase(TestCase):
             ValidationStepRunFactory(
                 validation_run=run,
                 workflow_step=target_workflow_step,
-                output={
-                    "signals": {
-                        "eui": 42.0,
-                        "total_cost": 1234.56,
-                    },
+                output_values={
+                    "eui": 42.0,
+                    "total_cost": 1234.56,
                 },
             )
             return run

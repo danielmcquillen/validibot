@@ -2,9 +2,10 @@
 Tests for the output-hash service — tamper-evident seals on validation runs.
 
 The output hash is a SHA-256 digest computed over a canonical JSON document
-built from a completed validation run's immutable fields (run_id, content_hash,
-user_id, status, timing, finding counts).  Once stamped, the hash serves as a
-tamper-evident seal: any modification to the covered fields will cause a mismatch.
+built from a completed validation run's immutable fields (run identity, input
+hash, status, timing, finding counts, and canonical step inputs/outputs). Once
+stamped, the hash serves as a tamper-evident seal: any modification to a covered
+field causes a mismatch.
 
 These tests verify:
 
@@ -31,6 +32,8 @@ from validibot.validations.services.output_hash import register_output_hash_prov
 from validibot.validations.services.output_hash import reset_output_hash_provider
 from validibot.validations.services.output_hash import stamp_output_hash
 from validibot.validations.tests.factories import ValidationRunFactory
+from validibot.validations.tests.factories import ValidationStepRunFactory
+from validibot.workflows.tests.factories import WorkflowStepFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -100,6 +103,23 @@ class TestComputeOutputHash:
         hash_different_user = compute_output_hash(run)
 
         assert hash_original != hash_different_user
+
+    def test_different_canonical_step_output_produces_different_hash(self):
+        """Changing a workflow output must invalidate the tamper-evident seal."""
+        run = ValidationRunFactory()
+        step = WorkflowStepFactory(workflow=run.workflow, order=10)
+        step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+            step_order=step.order,
+            output_values={"site_eui": 80.0},
+        )
+        original_hash = compute_output_hash(run)
+
+        step_run.output_values = {"site_eui": 81.0}
+        step_run.save(update_fields=["output_values"])
+
+        assert compute_output_hash(run) != original_hash
 
     def test_handles_null_submission(self):
         """Runs with ``submission=None`` should not crash.  This can

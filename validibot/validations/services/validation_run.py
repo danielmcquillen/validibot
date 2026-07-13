@@ -117,7 +117,7 @@ def cancel_active_execution(run: ValidationRun) -> bool | None:
     from validibot.validations.services.execution_attempts import (
         transition_execution_attempt,
     )
-    from validibot.validations.services.runtime_profiles import execution_log_context
+    from validibot.validations.services.execution_logging import execution_log_context
 
     identity = resolve_provider_execution_identity(step_run)
     attempt = get_active_execution_attempt(step_run)
@@ -370,16 +370,6 @@ class ValidationRunService:
             output_expires_at = timezone.now() + retention_delta
 
         run_extra = dict(extra or {})
-        # Runtime semantics are application-owned, not caller- or
-        # operator-selectable. Reject an override explicitly rather than
-        # silently hiding a caller that is trying to restore a second engine.
-        if "runtime_profile" in run_extra:
-            msg = "runtime_profile is selected by the application"
-            raise ValueError(msg)
-        from validibot.validations.services.runtime_profiles import (
-            NEW_RUN_RUNTIME_PROFILE,
-        )
-
         with transaction.atomic():
             validation_run = ValidationRun.objects.create(
                 org=org,
@@ -389,7 +379,6 @@ class ValidationRunService:
                 or getattr(workflow, "project", None),
                 user=run_user,
                 status=ValidationRunStatus.PENDING,
-                runtime_profile=NEW_RUN_RUNTIME_PROFILE,
                 source=source,
                 output_retention_policy=output_retention_policy,
                 output_expires_at=output_expires_at,

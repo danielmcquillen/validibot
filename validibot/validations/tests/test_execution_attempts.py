@@ -2,8 +2,8 @@
 
 An attempt is the durable identity for one concrete provider launch.  These
 tests focus on its core invariants: one active attempt per logical step, unique
-provider identities, profile-bound contracts, monotonic terminal state, and
-provider identity lookup that never falls back to mutable step output.
+provider identities, monotonic terminal state, and provider identity lookup
+that never falls back to mutable step output.
 """
 
 from itertools import product
@@ -14,7 +14,6 @@ from django.db import IntegrityError
 from django.db import transaction
 
 from validibot.validations.constants import ExecutionAttemptState
-from validibot.validations.constants import ExecutionContractVersion
 from validibot.validations.models import CallbackReceipt
 from validibot.validations.models import ExecutionAttempt
 from validibot.validations.services.execution_attempts import (
@@ -95,14 +94,6 @@ class TestExecutionAttemptModel:
                 provider_job_name=first.provider_job_name,
                 provider_execution_id=first.provider_execution_id,
             )
-
-    def test_attempt_contract_must_match_run_profile(self):
-        """Attempt I/O verification cannot be toggled independently of its run."""
-        attempt = ExecutionAttemptFactory()
-        attempt.contract_version = ExecutionContractVersion.STRICT_CONTENT_V1
-
-        with pytest.raises(ValidationError, match="contract must match"):
-            attempt.full_clean()
 
     def test_callback_receipt_requires_attempt_identity(self):
         """Every accepted callback must remain attributable to its provider work."""

@@ -428,6 +428,29 @@ def test_basic_submission_is_authoritative_over_payload_key():
     assert enriched["submission"]["metadata"]["deliverable"] == "handover"
 
 
+def test_basic_payload_merges_bound_and_parser_input_values(monkeypatch):
+    """Payload enrichment must not discard parser-derived canonical inputs.
+
+    Advanced validators may combine implicit parser facts with explicit author
+    bindings. Updating the BASIC assertion view must preserve both sources on
+    the run context so later persistence and assertion paths see one contract.
+    """
+    validator = _basic_validator_with_submission()
+    validator.run_context.step_input_contract_values = {"zone_count": 3}
+    monkeypatch.setattr(
+        validator,
+        "_resolve_bound_input_context",
+        lambda _payload: {"weather_file": "melbourne.epw"},
+    )
+
+    validator._enrich_basic_payload({"building": {}}, stage="input")
+
+    assert validator.run_context.step_input_contract_values == {
+        "zone_count": 3,
+        "weather_file": "melbourne.epw",
+    }
+
+
 # ── Stage classification (RulesetAssertion.resolved_run_stage) ───────────
 # The envelope is fixed at submission time, so a submission-only assertion is
 # an early INPUT-stage gate; one that also needs outputs stays OUTPUT. These

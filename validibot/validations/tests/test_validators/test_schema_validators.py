@@ -32,7 +32,7 @@ def _run_context_for(validator, submission):
     """
     step = WorkflowStepFactory(validator=validator)
     run = ValidationRunFactory(workflow=step.workflow, submission=submission)
-    return RunContext(validation_run=run, step=step, downstream_signals={})
+    return RunContext(validation_run=run, step=step, upstream_steps={})
 
 
 def test_json_schema_validator_runs_step_assertions_after_schema_validation(db):

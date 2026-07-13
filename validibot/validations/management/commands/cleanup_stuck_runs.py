@@ -44,14 +44,9 @@ from django.utils import timezone
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
-from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.services.runners.base import ExecutionStatus
-from validibot.validations.services.runtime_profiles import (
-    ensure_runtime_profile_supported,
-)
-from validibot.validations.services.runtime_profiles import is_runtime_profile_supported
 from validibot.validations.services.validation_run import cancel_active_execution
 from validibot.validations.services.validation_run import fence_active_execution_attempt
 
@@ -297,26 +292,9 @@ class Command(BaseCommand):
             - "reconciled": Run was recovered or marked failed based on GCP status
             - "still_running": Job is still executing on GCP; the caller
               applies the configured timeout fence and requests cancellation
-            - "profile_rejected": This deployment cannot interpret the run profile
             - "not_applicable": Not a GCP run or missing metadata
             - "error": GCP API call failed (fall through to timeout)
         """
-        supported_profiles = (ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,)
-        if not is_runtime_profile_supported(run.runtime_profile, supported_profiles):
-            if dry_run:
-                self.stdout.write(
-                    f"  [PROFILE-REJECT] {run.id}: runtime profile "
-                    f"{run.runtime_profile!r} is not supported by this handler"
-                )
-            else:
-                ensure_runtime_profile_supported(
-                    run,
-                    supported_profiles=supported_profiles,
-                    operation="cleanup_stuck_runs",
-                    sender=self.__class__,
-                )
-            return "profile_rejected"
-
         # 1. Check if deployment is GCP
         if not self._is_gcp_deployment():
             return "not_applicable"

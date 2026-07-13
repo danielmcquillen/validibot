@@ -21,7 +21,6 @@ from django.utils import timezone
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
-from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.management.commands.cleanup_stuck_runs import Command
 from validibot.validations.management.commands.cleanup_stuck_runs import (
     get_default_timeout_minutes,
@@ -58,7 +57,6 @@ def _mock_run(*, step_output=None, minutes_ago=45, status=ValidationRunStatus.RU
     run.id = uuid.uuid4()
     run.pk = run.id
     run.status = status
-    run.runtime_profile = ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
     run.started_at = timezone.now() - timedelta(minutes=minutes_ago)
     run.ended_at = None
     run.duration_ms = None
@@ -74,9 +72,6 @@ def _mock_step_run(*, output=None):
     step_run = MagicMock()
     step_run.output = {}
     step_run.status = StepStatus.RUNNING
-    step_run.validation_run.runtime_profile = (
-        ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
-    )
     attempt = MagicMock()
     attempt.pk = uuid.uuid4()
     attempt.provider_execution_id = provider_data.get("execution_name", "")
@@ -669,7 +664,6 @@ class TestCommandHandle(SimpleTestCase):
 
         locked_run = MagicMock()
         locked_run.status = ValidationRunStatus.RUNNING
-        locked_run.runtime_profile = ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
         locked_run.started_at = run.started_at
         mock_run_model.objects.select_for_update.return_value.get.return_value = (
             locked_run
@@ -718,7 +712,6 @@ class TestCommandHandle(SimpleTestCase):
         # Mock the atomic block and select_for_update
         locked_run = MagicMock()
         locked_run.status = ValidationRunStatus.RUNNING
-        locked_run.runtime_profile = ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
         locked_run.started_at = run.started_at
         mock_run_model.objects.select_for_update.return_value.get.return_value = (
             locked_run

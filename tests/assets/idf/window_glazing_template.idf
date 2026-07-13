@@ -446,7 +446,7 @@ ZoneControl:Thermostat,
 ! ── Output Requests ───────────────────────────────────────────────────
 ! These output variables map to the catalog entries defined in the
 ! EnergyPlus validator config.  The runner extracts these from
-! eplusout.sql and populates step_run.output["signals"].
+! eplusout.sql and populates ValidationStepRun.output_values.
 
 Output:Variable,*,Zone Ideal Loads Zone Total Heating Energy,RunPeriod;
 Output:Variable,*,Zone Ideal Loads Zone Total Cooling Energy,RunPeriod;

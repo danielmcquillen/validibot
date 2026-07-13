@@ -195,7 +195,7 @@ class BaseValidator(ABC):
     The validate() method accepts an optional run_context argument containing:
         - validation_run: The ValidationRun model instance
         - step: The WorkflowStep model instance
-        - downstream_signals: Signals from previous workflow steps (for CEL)
+        - upstream_steps: Canonical values from completed workflow steps (for CEL)
 
     Advanced validators (EnergyPlus, FMU) require run_context for job tracking.
     Simple validators (XML, JSON, Basic, AI, THERM) typically don't need it,
@@ -506,30 +506,25 @@ class BaseValidator(ABC):
                 for key, value in parsed.items():
                     inputs_dict.setdefault(key, value)
 
+        if self.run_context is not None and stage == "input":
+            self.run_context.step_input_contract_values = inputs_dict
+
         # ── Steps namespace (upstream step inputs and outputs) ───────
-        steps_context: dict[str, Any] = {}
-        run_summary = getattr(
-            getattr(self, "run_context", None),
-            "validation_run",
-            None,
+        steps_context = (
+            getattr(
+                getattr(self, "run_context", None),
+                "upstream_steps",
+                None,
+            )
+            or {}
         )
-        if isinstance(getattr(run_summary, "summary", None), dict):
-            steps_context = run_summary.summary.get("steps", {}) or {}
-        downstream_override = getattr(
-            getattr(self, "run_context", None),
-            "downstream_signals",
-            None,
-        )
-        if isinstance(downstream_override, dict) and downstream_override:
-            steps_context = downstream_override
 
         # ── Promoted step inputs and outputs ─────────────────────────
         # Step inputs/outputs with a non-empty promoted_signal_name
         # (in-row for step-owned definitions OR overlay row for
         # validator-owned ones) are surfaced in the s namespace.
-        # Reconstructed from completed upstream step inputs/outputs
-        # in the run summary; handles both directions per
-        # ADR-2026-05-22b's symmetric promotion.
+        # Reconstructed from canonical completed step-run values; handles
+        # both directions per ADR-2026-05-22b's symmetric promotion.
         if steps_context:
             self._inject_promotions(signals_dict, steps_context)
 
@@ -611,17 +606,17 @@ class BaseValidator(ABC):
            (``WorkflowStepIOPromotion`` rows keyed on
            ``(workflow_step, signal_definition)``).
 
-        Both sources read from completed upstream steps in
-        ``run.summary["steps"]``, but the **direction** of the
-        promotion picks which subkey to read from:
+        Both sources read from completed upstream ``ValidationStepRun``
+        records, but the **direction** of the promotion picks which canonical
+        value field to read from:
 
         - INPUT-direction promotions read from
-          ``run.summary["steps"][step_key]["input"][contract_key]``
-          — populated by the producing step's input stage from
+          ``step_run.input_values[contract_key]`` — populated by the producing
+          step's input stage from
           parser facts and resolved bindings.
         - OUTPUT-direction promotions read from
-          ``run.summary["steps"][step_key]["output"][contract_key]``
-          — populated after the producing step's container or
+          ``step_run.output_values[contract_key]`` — populated after the
+          producing step's container or
           inline work completes.
 
         Per ADR-2026-05-22b's symmetric promotion this handles INPUT
@@ -657,8 +652,8 @@ class BaseValidator(ABC):
         # execution after the producing step completes its relevant
         # stage. Without this filter, a step could see its own
         # promoted input via s.<name> during its own assertion
-        # evaluation — because i.* is persisted to run.summary during
-        # the producing step's input stage, and this query would
+        # evaluation — because i.* is persisted on the step run during the
+        # producing step's input stage, and this query would
         # match the producing step's promoted definitions. That would
         # violate the ADR's "inside the producing step use i./o.;
         # downstream use s." rule. The order__lt filter restricts
@@ -738,21 +733,13 @@ class BaseValidator(ABC):
             if not step_key or step_key not in steps_context:
                 continue
             step_data = steps_context.get(step_key, {})
-            # Per ADR-2026-05-22, run.summary["steps"][key] holds both
-            # "input" (step inputs from extract_input_signals + bindings)
-            # and "output" (step outputs from extract_output_signals).
-            # Read from the subkey that matches the promoted signal's
-            # direction. The legacy flat-dict format is treated as
-            # output for backward compatibility with pre-ADR runs.
+            # The context builder exposes canonical ``input_values`` and
+            # ``output_values`` under their author-facing namespace names.
             if isinstance(step_data, dict):
                 if direction == SignalDirection.INPUT:
                     values = step_data.get("input", {})
-                elif "output" in step_data:
-                    values = step_data["output"]
                 else:
-                    # Legacy flat-dict format from before ADR-2026-05-22
-                    # — treat it as output.
-                    values = step_data
+                    values = step_data.get("output", {})
             else:
                 values = {}
             if isinstance(values, dict) and contract_key in values:
@@ -785,10 +772,10 @@ class BaseValidator(ABC):
         )
         submission = getattr(submission, "submission", None)
         submission_metadata = getattr(submission, "metadata", None) or {}
-        upstream_signals = (
+        upstream_steps = (
             getattr(
                 getattr(self, "run_context", None),
-                "downstream_signals",
+                "upstream_steps",
                 None,
             )
             or {}
@@ -830,7 +817,7 @@ class BaseValidator(ABC):
                 binding,
                 submission_data=submission_data,
                 submission_metadata=submission_metadata,
-                upstream_signals=upstream_signals,
+                upstream_steps=upstream_steps,
                 workflow_signals=workflow_signals,
             )
             context[binding.signal_definition.contract_key] = (
@@ -946,6 +933,17 @@ class BaseValidator(ABC):
                 bound = {}
             for key, value in bound.items():
                 enriched.setdefault(key, value)
+            if self.run_context is not None:
+                contract_values = dict(
+                    getattr(
+                        self.run_context,
+                        "step_input_contract_values",
+                        {},
+                    )
+                    or {},
+                )
+                contract_values.update(bound)
+                self.run_context.step_input_contract_values = contract_values
 
         # Output signals — o.* values from extract_output_signals.
         # Only at output stage.

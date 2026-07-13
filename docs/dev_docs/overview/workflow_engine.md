@@ -95,11 +95,15 @@ class StepHandler(Protocol):
         ...
 ```
 
-- **RunContext**: Contains the `ValidationRun`, `WorkflowStep`, and shared signals.
-- **StepResult**: Standardized output indicating pass/fail, issues, and statistics.
+- **RunContext**: Contains the run, current step, workflow namespaces, and
+  canonical values from completed upstream steps.
+- **StepResult**: Standardized output indicating pass/fail, issues, operational
+  statistics, and contract-keyed `output_values`. The orchestrator persists
+  those values on `ValidationStepRun.output_values`; action outputs never hide
+  inside the statistics mapping.
 
 #### 2. Dispatcher (`ValidationRunService`)
-For action steps, the service:
+For action steps, `StepOrchestrator`:
 - Resolves the appropriate implementation (`Action` subclass)
 - Looks up the registered `StepHandler`
 - Invokes `handler.execute(context)`
@@ -260,7 +264,7 @@ from both storage paths -- in-row `promoted_signal_name` on step-owned
 validator-owned ones. Promotion is symmetric per ADR-2026-05-22b: both
 INPUT- and OUTPUT-direction definitions can promote, and the direction
 picks whether the value is read from the producing step's `input` or
-`output` entry in the run summary.
+`output` values on its `ValidationStepRun`.
 
 This means promoted values from step N are available as
 `s.<promoted_signal_name>` in step N+1, N+2, and so on -- but not in step N
@@ -268,10 +272,10 @@ itself (the producing step accesses its own output via `o.<contract_key>`).
 
 ### Phase 4: Cross-step output access via `steps`
 
-After each step completes, `store_signals()` persists its output dict at
-`run.summary["steps"][step_key]["output"]`. Before the next step runs,
-`_extract_downstream_signals()` reads the summary and builds the `steps`
-namespace:
+After each step completes, the processor persists its contract values on
+`ValidationStepRun.input_values` and `ValidationStepRun.output_values`. Before
+the next step runs, `RunContextBuilder` reads completed earlier step rows and
+builds the `steps` namespace:
 
 ```json
 {
@@ -324,9 +328,8 @@ promoted outputs -- the `steps` namespace provides the raw access path while
      steps: {}           steps: {step1}     steps: {step1, step2}
      p: raw payload      p: raw payload     p: raw payload
             |               |               |
-     store_signals()     store_signals()    store_signals()
-     summary.steps.      summary.steps.     summary.steps.
-       step1.output        step2.output       step3.output
+   output_values       output_values      output_values
+     on step run         on step run        on step run
 ```
 
 ### Key implementation files
@@ -334,10 +337,10 @@ promoted outputs -- the `steps` namespace provides the raw access path while
 | File | Responsibility |
 |------|----------------|
 | `validations/services/signal_resolution.py` | `resolve_workflow_signals()` -- pre-step resolution |
-| `validations/services/step_orchestrator.py` | `_resolve_workflow_signals()` and `_extract_downstream_signals()` |
+| `validations/services/run_context.py` | Build workflow signals and canonical upstream step values |
 | `validations/validators/base/base.py` | `_build_cel_context()` and `_inject_promotions()` |
-| `validations/services/step_processor/base.py` | `store_signals()` -- persist outputs to run summary |
-| `actions/protocols.py` | `RunContext` dataclass with `workflow_signals` and `downstream_signals` |
+| `validations/services/step_processor/base.py` | Persist canonical step input/output values |
+| `actions/protocols.py` | `RunContext` dataclass with `workflow_signals` and `upstream_steps` |
 
 For the full signal model reference, see [Signals](../data-model/signals.md).
 

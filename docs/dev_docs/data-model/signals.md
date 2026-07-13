@@ -898,9 +898,9 @@ catalog's `on_missing` policy applies:
 
 ### Persistence
 
-Resolved `i.*` values are persisted to the run summary under
-`run.summary["steps"][step_key]["input"]` so they're available to
-downstream steps via `steps.<key>.input.*`.
+Resolved `i.*` values are persisted to
+`ValidationStepRun.input_values` so they're available to downstream steps via
+`steps.<key>.input.*`.
 
 ## Promoted signals reconstruction: `_inject_promotions()`
 
@@ -1015,8 +1015,7 @@ python manage.py sync_validators
    └─ WorkflowSignalMapping       Django model rows (workflow-level)
 
 2. WORKFLOW RUN STARTS            StepOrchestrator.execute_workflow_steps()
-   ├─ resolve_workflow_signals()  Resolve WorkflowSignalMapping → s namespace
-   └─ _extract_downstream_signals() Collect prior step inputs/outputs → steps namespace
+   └─ RunContextBuilder           Resolve s.* and read prior step values → steps.*
 
 3. EACH STEP EXECUTES             validate() + post_execute_validate()
 
@@ -1024,7 +1023,7 @@ python manage.py sync_validators
        ├─ preprocess_submission() Template-mode IDF substitution
        ├─ extract_input_signals() Parse facts from (resolved) payload → i namespace
        ├─ Resolve StepInputBindings    → i namespace
-       ├─ store input dict to run summary
+       ├─ store input dict on ValidationStepRun.input_values
        ├─ _build_cel_context(stage="input")
        │     p, s, i, steps namespaces populated; o is empty
        ├─ _inject_promotions()   Promotions visible from completed upstreams
@@ -1035,15 +1034,15 @@ python manage.py sync_validators
 
    3c. OUTPUT STAGE
        ├─ extract_output_signals()  → o namespace
-       ├─ store output dict to run summary
+       ├─ store output dict on ValidationStepRun.output_values
        ├─ _build_cel_context(stage="output")
        │     all namespaces populated
        ├─ _inject_promotions()
        └─ Evaluate output-stage assertions
 
-4. RUN SUMMARY STORAGE
-   ├─ run.summary["steps"][step_key]["input"] = i dict
-   └─ run.summary["steps"][step_key]["output"] = o dict
+4. CANONICAL STEP STORAGE
+   ├─ step_run.input_values = i dict
+   └─ step_run.output_values = o dict
      Both available downstream as steps.<step_key>.input.* / .output.*
 ```
 
@@ -1058,9 +1057,8 @@ python manage.py sync_validators
    the validator implements it). Resolved StepInputBindings are
    collected. The merged dict becomes `i.*`.
 
-3. **Input persistence.** The `i.*` dict is stored to the run summary
-   under `run.summary["steps"][step_key]["input"]` so downstream steps
-   can reach it.
+3. **Input persistence.** The `i.*` dict is stored on
+   `ValidationStepRun.input_values` so downstream steps can reach it.
 
 4. **CEL context building (input stage).** `_build_cel_context()`
    assembles the namespaces: `p`/`payload` (raw data), `s`/`signal`
@@ -1082,38 +1080,32 @@ python manage.py sync_validators
 8. **Output-stage assertion evaluation.** CEL expressions reference
    output values via `o.*` and may freely reference any other namespace.
 
-9. **Output persistence.** The `o.*` dict is stored to the run summary
-   under `run.summary["steps"][step_key]["output"]`.
+9. **Output persistence.** The `o.*` dict is stored on
+   `ValidationStepRun.output_values`.
 
 ### Across steps (cross-step communication)
 
 Inputs and outputs from earlier steps are available to later steps in the
 same run:
 
-1. **Storage.** When step N completes, both its inputs and outputs are
-   saved to `validation_run.summary`:
+1. **Storage.** When step N completes, its inputs and outputs are saved on
+   the corresponding `ValidationStepRun`:
 
    ```json
-   {
-     "steps": {
-       "preflight": {
-         "input": {"idf_version": "25.1", "zone_count": 12},
-         "output": {"warning_count": 3, "fatal_count": 0}
-       },
-       "energyplus_step": {
-         "input": {"idf_version": "25.1", "zone_count": 12, "north_axis_deg": 0.0},
-         "output": {"site_eui_kwh_m2": 87.5, "site_electricity_kwh": 12500}
-       }
-     }
-   }
+   ValidationStepRun(step_key="preflight")
+     input_values={"idf_version": "25.1", "zone_count": 12}
+     output_values={"warning_count": 3, "fatal_count": 0}
+
+   ValidationStepRun(step_key="energyplus_step")
+     input_values={"idf_version": "25.1", "zone_count": 12, "north_axis_deg": 0.0}
+     output_values={"site_eui_kwh_m2": 87.5, "site_electricity_kwh": 12500}
    ```
 
-2. **Collection.** Before step N+1 runs,
-   `StepOrchestrator._extract_downstream_signals()` reads the summary and
-   collects inputs and outputs from all prior steps.
+2. **Collection.** Before step N+1 runs, `RunContextBuilder` reads canonical
+   inputs and outputs from completed prior step rows.
 
 3. **Context injection.** The collected data is passed to the validator
-   via `RunContext.downstream_signals`, then exposed in the CEL context
+   via `RunContext.upstream_steps`, then exposed in the CEL context
    under the `steps` namespace:
 
    ```cel
@@ -1169,9 +1161,8 @@ def _build_cel_context(
    validator output payload is used. At the input stage, `o.*` is empty
    (or null-defaulted) — the container hasn't run.
 
-4. **Builds the `steps` namespace** from `RunContext.downstream_signals`
-   or the run summary, including both `input` and `output` sub-dicts per
-   completed step.
+4. **Builds the `steps` namespace** from `RunContext.upstream_steps`, including
+   both `input` and `output` sub-dicts per completed step.
 
 5. **Assembles the final context** with all namespace keys: `p`,
    `payload`, `s`, `signal`, `i`, `input`, `o`, `output`, `steps`. All
@@ -1195,10 +1186,10 @@ contains the final time-step values of each output variable:
 {"T_room": 296.63, "Q_cooling_actual": 5172.83}
 ```
 
-This method is called in `AdvancedValidator.post_execute_validate()`
-after the container completes. The extracted dict is stored in
-`ValidationResult.signals` and later persisted to `run.summary` by the
-processor's `store_signals()` method.
+This method is called in `AdvancedValidator.post_execute_validate()` after the
+container completes. The extracted dict is stored in
+`ValidationResult.signals` and later persisted to
+`ValidationStepRun.output_values` by the processor.
 
 ### Stage 2: Payload merging
 
@@ -1279,37 +1270,18 @@ assertions to reference.
 
 ## Storage
 
-Signals are not stored in a dedicated table. They live in the `summary`
-JSONField on `ValidationRun`, nested under
-`steps.<step_key>.input` and `steps.<step_key>.output`. This keeps signal
-storage lightweight (no extra rows per signal per run) and naturally
-scoped to the run lifecycle.
-
-The `store_signals()` method on `ValidationStepProcessor`
-(`validibot/validations/services/step_processor/base.py`) handles
-persistence:
+Step contract values are stored as two JSON fields on their existing
+`ValidationStepRun` row: `input_values` and `output_values`. This remains
+lightweight without turning presentation JSON into a source of execution
+truth. `ValidationStepProcessor` owns persistence:
 
 ```python
-def store_signals(
-    self,
-    signals: dict[str, Any],
-    *,
-    stage: str,
-) -> None:
-    if not signals:
-        return
-    summary = self.validation_run.summary or {}
-    steps = summary.setdefault("steps", {})
-    step_key = self.step_run.workflow_step.step_key or str(self.step_run.id)
-    step_data = steps.setdefault(step_key, {})
-    step_data[stage] = signals  # stage is "input" or "output"
-    self.validation_run.summary = summary
-    self.validation_run.save(update_fields=["summary"])
+def store_output_values(self, values: dict[str, Any]) -> None:
+    self.step_run.output_values = dict(values)
+    self.step_run.save(update_fields=["output_values"])
 ```
 
-The `_extract_downstream_signals()` method on `StepOrchestrator`
-(`validibot/validations/services/step_orchestrator.py`) reads these
-stored values back for downstream steps, structuring them as
+`RunContextBuilder` reads these stored values for downstream steps, structuring them as
 `{step_key: {"input": {...}, "output": {...}}}`.
 
 ## Path resolution
@@ -1334,13 +1306,12 @@ Supported syntax:
 | `validate_signal_name()` | `services/signal_resolution.py` | Validate signal name is a valid CEL identifier and not reserved |
 | `validate_signal_name_unique()` | `services/signal_resolution.py` | Cross-table uniqueness check (both models, any direction) |
 | `_build_cel_context()` | `validators/base/base.py` | Build the namespaced CEL context for assertion evaluation |
-| `_inject_promoted_outputs()` | `validators/base/base.py` | Inject promoted input and output values into the `s` namespace (method retains legacy name) |
+| `_inject_promotions()` | `validators/base/base.py` | Inject promoted input and output values into the `s` namespace |
 | `_resolve_bound_input_context()` | `validators/base/base.py` | Resolve step-bound input signals from submission data |
 | `_resolve_path()` | `validators/base/base.py` | Wrapper for shared path resolution |
 | `resolve_path()` | `services/path_resolution.py` | Shared dotted/bracket path resolution |
-| `store_signals()` | `services/step_processor/base.py` | Persist input/output signals to run summary |
-| `_extract_downstream_signals()` | `services/step_orchestrator.py` | Collect inputs and outputs from prior steps for the `steps` namespace |
-| `_resolve_workflow_signals()` | `services/step_orchestrator.py` | Orchestrator-level call to `resolve_workflow_signals` |
+| `store_input_values()` / `store_output_values()` | `services/step_processor/base.py` | Persist canonical step values |
+| `RunContextBuilder` | `services/run_context.py` | Compose workflow signals and canonical upstream step values |
 | `extract_input_signals()` | `validators/base/advanced.py` (base) | Parse input-stage facts from the submission; overridden per validator |
 | `extract_output_signals()` | `validators/energyplus/validator.py` etc. | Extract signals from a validator's output envelope |
 | `sync_fmu_catalog()` | `services/fmu.py` | Create FMU `StepIODefinition` rows from model introspection |

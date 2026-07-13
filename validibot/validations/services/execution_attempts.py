@@ -20,8 +20,7 @@ from validibot.core.textsafety import sanitize_plain_text
 from validibot.validations.constants import EXECUTION_ATTEMPT_ACTIVE_STATES
 from validibot.validations.constants import EXECUTION_ATTEMPT_TERMINAL_STATES
 from validibot.validations.constants import ExecutionAttemptState
-from validibot.validations.services.runtime_profiles import execution_log_context
-from validibot.validations.services.runtime_profiles import get_runtime_profile_policy
+from validibot.validations.services.execution_logging import execution_log_context
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -101,8 +100,6 @@ def get_or_create_execution_attempt(
             .select_related("validation_run")
             .get(pk=step_run.pk)
         )
-        policy = get_runtime_profile_policy(locked_step.validation_run.runtime_profile)
-
         active = get_active_execution_attempt(locked_step, for_update=True)
         if active is not None:
             return active, False
@@ -117,7 +114,6 @@ def get_or_create_execution_attempt(
             step_run=locked_step,
             attempt_number=last_number + 1,
             runner_type=runner_type[:64],
-            contract_version=policy.contract_version,
         )
         return attempt, True
 

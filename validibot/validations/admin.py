@@ -208,14 +208,12 @@ class ValidationRunAdmin(admin.ModelAdmin):
         "workflow_name",
         "org",
         "status",
-        "runtime_profile",
         "error_category",
         "duration_display",
         "created",
     )
     list_filter = (
         "status",
-        "runtime_profile",
         "error_category",
         "source",
         "org",
@@ -237,7 +235,6 @@ class ValidationRunAdmin(admin.ModelAdmin):
         "user",
         "submission",
         "status",
-        "runtime_profile",
         "error_category",
         "error",
         "user_friendly_error",
@@ -255,7 +252,6 @@ class ValidationRunAdmin(admin.ModelAdmin):
                 "fields": (
                     "id",
                     "status",
-                    "runtime_profile",
                     "error_category",
                     "user_friendly_error",
                 ),
@@ -357,7 +353,7 @@ class ExecutionAttemptAdmin(admin.ModelAdmin):
         "provider_execution_id",
         "created",
     )
-    list_filter = ("state", "runner_type", "contract_version", "created")
+    list_filter = ("state", "runner_type", "created")
     search_fields = (
         "id",
         "step_run__validation_run__id",

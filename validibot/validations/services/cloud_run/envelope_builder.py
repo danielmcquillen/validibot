@@ -481,8 +481,11 @@ def build_input_envelope(
                 # (e.g., EnergyPlus expected_floor_area_m2).
                 submission_metadata = run.submission.metadata or {}
 
-            # Upstream signals for cross-step resolution.
-            upstream = (run.summary or {}).get("steps", {})
+            # Canonical upstream values for cross-step resolution. These come
+            # from completed step-run records, never from presentation JSON.
+            from validibot.validations.services.run_context import RunContextBuilder
+
+            upstream = RunContextBuilder(run, step).build_upstream_steps()
 
             # Resolve workflow-level signals so SIGNAL-scoped bindings
             # can look up values from the workflow's signal namespace.
@@ -507,7 +510,7 @@ def build_input_envelope(
                     current_step_run,
                     submission_data=submission_data,
                     submission_metadata=submission_metadata,
-                    upstream_signals=upstream,
+                    upstream_steps=upstream,
                     workflow_signals=workflow_signals_dict,
                 )
                 if traces:

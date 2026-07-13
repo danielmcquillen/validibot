@@ -51,7 +51,7 @@ def _mock_run_context() -> RunContext:
     return RunContext(
         validation_run=MagicMock(id=1),
         step=MagicMock(id=1),
-        downstream_signals={},
+        upstream_steps={},
     )
 
 

@@ -21,42 +21,6 @@ class ValidationRunStatus(TextChoices):
     TIMED_OUT = "TIMED_OUT", _("Timed Out")
 
 
-class ValidationRuntimeProfile(TextChoices):
-    """Immutable execution contract selected when a validation run is created.
-
-    Profiles advance in one direction across releases.  Keeping the complete
-    profile on the run prevents a rolling deployment from inferring behavior
-    from nullable attempt rows or from whichever settings happen to be loaded
-    by the worker that receives a task or callback.
-    """
-
-    ATTEMPT_LIFECYCLE_V1 = (
-        "ATTEMPT_LIFECYCLE_V1",
-        _("Execution attempt lifecycle v1"),
-    )
-    ATTEMPT_STRICT_V1 = (
-        "ATTEMPT_STRICT_V1",
-        _("Strict execution attempt I/O v1"),
-    )
-    ATTEMPT_CONTEXT_V1 = (
-        "ATTEMPT_CONTEXT_V1",
-        _("Canonical run context v1"),
-    )
-
-
-class ExecutionContractVersion(TextChoices):
-    """Provider-neutral I/O verification mode recorded on an attempt.
-
-    These values describe execution semantics rather than the Pydantic
-    envelope's own schema version.  Both legacy profiles currently use the
-    existing URI-based ``validibot.input.v1`` envelopes; strict profiles add
-    content-addressed verification in a later program stage.
-    """
-
-    LEGACY_URI_V1 = "LEGACY_URI_V1", _("Legacy URI envelope v1")
-    STRICT_CONTENT_V1 = "STRICT_CONTENT_V1", _("Strict content-addressed v1")
-
-
 class ExecutionAttemptState(TextChoices):
     """Monotonic lifecycle states for one concrete provider launch."""
 

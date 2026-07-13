@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import random
 from datetime import timedelta
-from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
@@ -112,9 +111,6 @@ class Command(BaseCommand):
                     else None
                 )
 
-            # Create realistic summary data
-            summary = self._create_realistic_summary(status, i)
-
             # Create dummy submission
             submission = Submission.objects.create(
                 org=workflow.org,
@@ -133,7 +129,6 @@ class Command(BaseCommand):
                 started_at=started_at,
                 ended_at=ended_at,
                 duration_ms=duration_ms,
-                summary=summary,
                 error=self._create_error_message(status)
                 if status == ValidationRunStatus.FAILED
                 else None,
@@ -184,115 +179,6 @@ class Command(BaseCommand):
             products.append(product)
 
         return f'{{"products": {products}}}'.replace("'", '"')
-
-    def _create_realistic_summary(
-        self,
-        status: ValidationRunStatus,
-        index: int,
-    ) -> dict[str, Any]:
-        """Create realistic summary data based on status."""
-        steps = []
-
-        if status == ValidationRunStatus.PENDING:
-            # No steps for pending runs
-            pass
-        elif status == ValidationRunStatus.RUNNING:
-            # Some completed steps, one in progress
-            steps.append(
-                {
-                    "step_id": 1,
-                    "name": "JSON Schema Validation",
-                    "status": "COMPLETED",
-                    "issues": [],
-                    "error": None,
-                },
-            )
-            steps.append(
-                {
-                    "step_id": 2,
-                    "name": "Business Rules Check",
-                    "status": "RUNNING",
-                    "issues": [],
-                    "error": None,
-                },
-            )
-        elif status == ValidationRunStatus.SUCCEEDED:
-            # All steps completed successfully
-            steps.extend(
-                [
-                    {
-                        "step_id": 1,
-                        "name": "JSON Schema Validation",
-                        "status": "COMPLETED",
-                        "issues": [],
-                        "error": None,
-                    },
-                    {
-                        "step_id": 2,
-                        "name": "Business Rules Check",
-                        "status": "COMPLETED",
-                        "issues": [],
-                        "error": None,
-                    },
-                ],
-            )
-        elif status == ValidationRunStatus.FAILED:
-            # Steps with validation issues
-            issue_count = random.randint(1, 5)  # noqa: S311
-            issues = []
-            for j in range(issue_count):
-                item = {
-                    "path": f"$.products[{j}]",
-                    "message": random.choice(  # noqa: S311
-                        [
-                            "Field 'price' is required",
-                            "Value exceeds maximum allowed",
-                            "Invalid format for email address",
-                            "Date must be in the future",
-                            "String length exceeds limit",
-                        ],
-                    ),
-                    "severity": "ERROR",
-                    "code": f"VALIDATION_ERROR_{j + 1}",
-                }
-                issues.append(item)
-
-            steps.extend(
-                [
-                    {
-                        "step_id": 1,
-                        "name": "JSON Schema Validation",
-                        "status": "FAILED",
-                        "issues": issues,
-                        "error": None,
-                    },
-                    {
-                        "step_id": 2,
-                        "name": "Business Rules Check",
-                        "status": "SKIPPED",
-                        "issues": [],
-                        "error": None,
-                    },
-                ],
-            )
-        elif status == ValidationRunStatus.ERROR:
-            # System error during processing
-            steps.append(
-                {
-                    "step_id": 1,
-                    "name": "JSON Schema Validation",
-                    "status": "ERROR",
-                    "issues": [],
-                    "error": "Failed to parse JSON schema",
-                },
-            )
-
-        return {
-            "total_steps": len(steps),
-            "completed_steps": len([s for s in steps if s["status"] == "COMPLETED"]),
-            "total_issues": sum(len(s.get("issues", [])) for s in steps),
-            "steps": steps,
-        }
 
     def _create_error_message(self, status: ValidationRunStatus) -> str | None:
         """Create realistic error messages for failed runs."""

@@ -352,8 +352,8 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         # Merge severity counts
         severity_counts = existing_severity_counts + output_counts
 
-        # Store signals for downstream steps (using typed field)
-        self.store_signals(post_result.signals or {})
+        # Store canonical values for downstream steps.
+        self.store_output_values(post_result.signals or {})
 
         # Calculate total assertion counts (input + output stages)
         input_stats = self._get_stored_assertion_stats()
@@ -381,8 +381,6 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
         # Include full envelope in step output (JSON-safe serialization)
         stats = self._serialize_envelope(output_envelope)
-        if isinstance(stats, dict):
-            stats["signals"] = post_result.signals or {}
         if success_with_container_errors:
             warnings = stats.get("warnings", []) if isinstance(stats, dict) else []
             warnings.append(note_msg)

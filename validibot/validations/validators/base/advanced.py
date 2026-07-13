@@ -326,14 +326,14 @@ class AdvancedValidator(BaseValidator):
         run: Any,
         step: Any,
     ) -> ValidationResult | None:
-        """Evaluate input-stage assertions and persist i.* to the run summary.
+        """Evaluate input-stage assertions and persist canonical step inputs.
 
         Per ADR-2026-05-22:
           1. Call ``extract_input_signals()`` against the (resolved)
              submission to produce the contract-keyed step input dict.
-          2. Persist that dict to ``run.summary["steps"][step_key]["input"]``
-             so downstream steps can read via ``steps.<key>.input.*`` and
-             promoted-input injection can find values for ``s.<name>``.
+          2. Expose that dict on ``RunContext`` so the processor persists it
+             to ``ValidationStepRun.input_values`` for downstream steps and
+             promoted-input injection.
           3. Evaluate input-stage assertions against the resolved
              submission via ``evaluate_assertions_for_stage(stage="input")``.
              The CEL context builder reads ``i.*`` from the parser result
@@ -402,14 +402,13 @@ class AdvancedValidator(BaseValidator):
         if self.run_context is not None:
             self.run_context.step_input_contract_values = contract_inputs
 
-        # Persist to run.summary so downstream steps see them via
-        # steps.<key>.input.* and so promoted-input injection works.
-        if contract_inputs:
-            self._persist_step_inputs_to_run_summary(
-                run=run,
-                step=step,
-                inputs=contract_inputs,
-            )
+        # Persist before provider dispatch so a worker crash cannot lose the
+        # values that defined the launched execution.
+        self._persist_step_inputs(
+            run=run,
+            step=step,
+            inputs=contract_inputs,
+        )
 
         # Evaluate input-stage assertions. We ALWAYS return a
         # ValidationResult when assertions were evaluated (even if
@@ -494,22 +493,34 @@ class AdvancedValidator(BaseValidator):
         this, input-stage failures/totals would disappear once the
         container dispatch happens.
 
-        Best-effort: if the StepRun for this run+step doesn't exist
-        yet (rare — should be created by the orchestrator before
-        validate() runs), this silently no-ops rather than blocking
-        the validation pipeline.
+        The step run must already exist because it is the durable identity of
+        this execution. Persistence errors deliberately propagate: launching
+        external compute without durable assertion state would make callback
+        completion nondeterministic.
         """
-        try:
-            step_run = run.step_runs.filter(workflow_step=step).first()
-        except Exception:
-            step_run = None
-        if step_run is None:
-            return
+        step_run = run.step_runs.get(workflow_step=step)
         output = step_run.output or {}
         output["assertion_total"] = total
         output["assertion_failures"] = failures
         step_run.output = output
         step_run.save(update_fields=["output"])
+
+    def _persist_step_inputs(
+        self,
+        *,
+        run: Any,
+        step: Any,
+        inputs: dict[str, Any],
+    ) -> None:
+        """Persist canonical step inputs before external compute is launched.
+
+        The write is a dispatch precondition, not best-effort bookkeeping. A
+        missing step run or database error must stop execution before the
+        provider accepts work.
+        """
+        step_run = run.step_runs.get(workflow_step=step)
+        step_run.input_values = dict(inputs)
+        step_run.save(update_fields=["input_values"])
 
     def _resolve_input_stage_payload(self, submission: Submission) -> Any:
         """Return the payload to pass to extract_input_signals().
@@ -542,28 +553,6 @@ class AdvancedValidator(BaseValidator):
         input-stage assertion results.
         """
         return any(issue.severity == Severity.ERROR for issue in (result.issues or []))
-
-    def _persist_step_inputs_to_run_summary(
-        self,
-        *,
-        run: Any,
-        step: Any,
-        inputs: dict[str, Any],
-    ) -> None:
-        """Store the contract-keyed i.* dict under run.summary["steps"][key]["input"].
-
-        Mirrors the existing output persistence (``step_data["output"]``)
-        so cross-step access via ``steps.<key>.input.*`` works
-        symmetrically with ``steps.<key>.output.*``. Required by
-        ADR-2026-05-22b's symmetric promotion.
-        """
-        summary = run.summary or {}
-        steps = summary.setdefault("steps", {})
-        step_key = step.step_key or str(step.id)
-        step_data = steps.setdefault(step_key, {})
-        step_data["input"] = inputs
-        run.summary = summary
-        run.save(update_fields=["summary"])
 
     def post_execute_validate(
         self,

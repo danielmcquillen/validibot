@@ -11,8 +11,10 @@ import pytest
 from validibot.actions.handlers import ValidatorStepHandler
 from validibot.actions.protocols import RunContext
 from validibot.actions.protocols import StepResult
+from validibot.validations.constants import StepStatus
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.validations.tests.factories import ValidationRunFactory
+from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.base import ValidationResult
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -27,7 +29,7 @@ class TestValidatorStepHandler:
         context = RunContext(
             validation_run=MagicMock(),
             step=MagicMock(validator=None),
-            downstream_signals={},
+            upstream_steps={},
         )
 
         result = handler.execute(context)
@@ -51,7 +53,7 @@ class TestValidatorStepHandler:
         context = RunContext(
             validation_run=run,
             step=step,
-            downstream_signals={},
+            upstream_steps={},
         )
 
         result = handler.execute(context)
@@ -76,7 +78,7 @@ class TestValidatorStepHandler:
         context = RunContext(
             validation_run=run,
             step=step,
-            downstream_signals={},
+            upstream_steps={},
         )
 
         result = handler.execute(context)
@@ -94,13 +96,28 @@ class TestExecuteWorkflowStepDispatcher:
         self,
         monkeypatch,
     ):
-        """Should use ValidatorStepHandler when step has a validator."""
+        """Dispatcher handlers must receive the canonical upstream context."""
         run = ValidationRunFactory()
-        step = WorkflowStepFactory(workflow=run.workflow)
+        upstream_step = WorkflowStepFactory(workflow=run.workflow, order=10)
+        step = WorkflowStepFactory(workflow=run.workflow, order=20)
+        ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=upstream_step,
+            step_order=upstream_step.order,
+            status=StepStatus.PASSED,
+            output_values={"site_eui": 80.0},
+        )
 
-        mock_result = StepResult(passed=True, issues=[], stats={"test": True})
+        mock_result = StepResult(
+            passed=True,
+            issues=[],
+            stats={"test": True},
+            output_values={"action_receipt": "receipt-123"},
+        )
+        received_contexts = []
 
         def mock_execute(self, context):
+            received_contexts.append(context)
             return mock_result
 
         monkeypatch.setattr(ValidatorStepHandler, "execute", mock_execute)
@@ -111,6 +128,13 @@ class TestExecuteWorkflowStepDispatcher:
         assert isinstance(result, ValidationResult)
         assert result.passed is True
         assert result.stats.get("test") is True
+        assert result.signals == {"action_receipt": "receipt-123"}
+        assert received_contexts[0].upstream_steps == {
+            upstream_step.step_key: {
+                "input": {},
+                "output": {"site_eui": 80.0},
+            },
+        }
 
     @pytest.mark.django_db
     def test_returns_failed_result_when_step_has_no_handler(self):

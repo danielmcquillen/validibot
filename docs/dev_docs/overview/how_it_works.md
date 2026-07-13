@@ -212,7 +212,9 @@ The `ValidationStepProcessor` abstraction consolidates step lifecycle management
    - For sync validators: all findings are persisted at once
    - For async validators: input-stage findings are persisted on launch, output-stage findings are appended when callback arrives
 
-4. **Signal storage** – For advanced validators, metrics extracted from container output are stored in `run.summary` for downstream step assertions.
+4. **Value storage** – Contract-keyed inputs and outputs are stored on the
+   `ValidationStepRun` for downstream step assertions. Presentation summaries
+   are not execution inputs.
 
 5. **Step finalization** – `finalize_step()` sets `ended_at`, `duration_ms`, `status`, and `output` fields.
 

@@ -67,6 +67,8 @@ class SimpleValidationProcessor(ValidationStepProcessor):
             )
             return self._handle_error(e)
 
+        self.store_input_values(run_context.step_input_contract_values)
+
         # Persist findings from validator result
         severity_counts, assertion_failures = self.persist_findings(result.issues)
 
@@ -78,9 +80,7 @@ class SimpleValidationProcessor(ValidationStepProcessor):
 
         # Store any signals for downstream steps
         stats = dict(result.stats or {})
-        if result.signals:
-            self.store_signals(result.signals)
-            stats["signals"] = result.signals
+        self.store_output_values(result.signals or {})
 
         # Finalize the step
         status = StepStatus.PASSED if result.passed else StepStatus.FAILED

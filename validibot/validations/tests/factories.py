@@ -12,7 +12,6 @@ from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import ExecutionAttemptState
-from validibot.validations.constants import ExecutionContractVersion
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import RulesetType
@@ -20,7 +19,6 @@ from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
-from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.models import Artifact
@@ -213,7 +211,6 @@ class ValidationRunFactory(DjangoModelFactory):
     project = factory.LazyAttribute(lambda o: o.submission.project)
     user = factory.LazyAttribute(lambda o: o.submission.user)
     status = ValidationRunStatus.PENDING
-    runtime_profile = ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
     source = ValidationRunSource.LAUNCH_PAGE
 
 
@@ -239,12 +236,10 @@ class ExecutionAttemptFactory(DjangoModelFactory):
 
     step_run = factory.SubFactory(
         ValidationStepRunFactory,
-        validation_run__runtime_profile=(ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1),
     )
     attempt_number = 1
     state = ExecutionAttemptState.PENDING
     runner_type = "docker"
-    contract_version = ExecutionContractVersion.LEGACY_URI_V1
 
 
 class ValidationFindingFactory(DjangoModelFactory):

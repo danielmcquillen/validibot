@@ -1,9 +1,17 @@
+"""Integration tests for the EnergyPlus validator execution boundary.
+
+The suite concentrates on behavior that must hold before expensive external
+compute is launched: workflow context is mandatory, input assertions gate
+dispatch, and the canonical resolved inputs are durably recorded first.
+"""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from django.db import DatabaseError
 
 from validibot.actions.protocols import RunContext
 from validibot.submissions.tests.factories import SubmissionFactory
@@ -15,6 +23,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.services.execution.registry import clear_backend_cache
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
+from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.energyplus.validator import EnergyPlusValidator
 
@@ -79,7 +88,7 @@ def test_energyplus_validator_backend_not_available():
     run_context = RunContext(
         validation_run=MagicMock(id=1),
         step=MagicMock(id=1),
-        downstream_signals={},
+        upstream_steps={},
     )
 
     # Mock the backend to be unavailable
@@ -180,10 +189,15 @@ class TestInputStageAssertionGating:
 
         step = WorkflowStepFactory(validator=validator)
         run = ValidationRunFactory(workflow=step.workflow, submission=submission)
+        ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+            step_order=step.order,
+        )
         run_context = RunContext(
             validation_run=run,
             step=step,
-            downstream_signals={},
+            upstream_steps={},
         )
         engine = EnergyPlusValidator(config={})
         return engine, validator, submission, ruleset, run_context
@@ -243,6 +257,44 @@ class TestInputStageAssertionGating:
                 "only block dispatch when an ERROR-severity input-stage "
                 "assertion fails. Issues seen: " + repr(issue_summary)
             )
+
+        step_run = run_context.validation_run.step_runs.get(
+            workflow_step=run_context.step,
+        )
+        assert step_run.input_values == {"zone_count": 0}
+
+    def test_input_persistence_failure_blocks_dispatch(self):
+        """A failed canonical-input write must stop external execution.
+
+        A callback can only be interpreted correctly when the exact inputs
+        used for dispatch are durable. Continuing after a database failure
+        would create accepted provider work with incomplete local state.
+        """
+        engine, validator, submission, ruleset, run_context = self._build_fixture(
+            cel_expr="i.zone_count >= 0",
+        )
+        clear_backend_cache()
+        with (
+            patch(
+                "validibot.validations.services.execution.get_execution_backend",
+            ) as mock_get_backend,
+            patch(
+                "validibot.validations.models.ValidationStepRun.save",
+                side_effect=DatabaseError("database unavailable"),
+            ),
+        ):
+            mock_backend = self._mock_backend()
+            mock_get_backend.return_value = mock_backend
+
+            with pytest.raises(DatabaseError, match="database unavailable"):
+                engine.validate(
+                    validator=validator,
+                    submission=submission,
+                    ruleset=ruleset,
+                    run_context=run_context,
+                )
+
+        mock_backend.execute.assert_not_called()
 
     def test_failing_input_assertion_blocks_dispatch(self):
         """Why this matters: this is the headline feature.
@@ -420,7 +472,7 @@ class TestInputStageAssertionGating:
         run_context = RunContext(
             validation_run=run,
             step=step,
-            downstream_signals={},
+            upstream_steps={},
         )
 
         engine = EnergyPlusValidator(config={})
@@ -452,7 +504,7 @@ class TestInputStageAssertionGating:
 
         Without this guard, the producing step's own assertion
         evaluation could see its own promoted input via ``s.*`` —
-        because input persistence to ``run.summary["steps"][key]["input"]``
+        because canonical input persistence on ``ValidationStepRun.input_values``
         runs DURING the producing step's input stage, and a naive
         promoted-signals query would match the producing step's own
         rows. That would violate the temporal rule and confuse the

@@ -274,7 +274,7 @@ When running with Docker Compose, container execution blocks until complete.
          │◀───────────────────────┘
          │
          │ 7. persist_findings(output_stage_issues)
-         │ 8. store_signals(signals)
+         │ 8. store_output_values(signals)
          │ 9. store_assertion_counts(combined)
          │ 10. finalize_step(status, stats)
          │
@@ -371,7 +371,7 @@ When running on GCP, containers are launched asynchronously and report back via 
          │ 5. Get existing finding counts (INPUT-stage preserved!)
          │ 6. engine.post_execute_validate()
          │ 7. persist_findings(output_issues, append=True)  ◀─── APPEND, not replace!
-         │ 8. store_signals(signals)
+         │ 8. store_output_values(signals)
          │ 9. store_assertion_counts(combined)
          │ 10. finalize_step(status, stats)
          │
@@ -503,8 +503,8 @@ steps.energyplus_step.output.site_eui_kwh_m2 < 100
 
 1. **Extraction**: Validator extracts signals during `post_execute_validate()`
 2. **Return**: Validator returns signals in `ValidationResult.signals`
-3. **Storage**: Processor calls `store_signals()` to persist in `run.summary`
-4. **Access**: Downstream steps access via `run_context.downstream_signals`
+3. **Storage**: Processor persists values on `ValidationStepRun`
+4. **Access**: Downstream steps access them via `run_context.upstream_steps`
 
 ## File Structure
 
@@ -542,9 +542,10 @@ Shared methods used by both subclasses:
 | Method | Purpose |
 |--------|---------|
 | `_get_engine()` | Get validator instance from registry |
-| `_build_run_context()` | Build context with downstream signals |
+| `_build_run_context()` | Build the canonical workflow context |
 | `persist_findings()` | Save ValidationFinding records |
-| `store_signals()` | Store signals in run.summary |
+| `store_input_values()` | Store canonical contract-keyed inputs |
+| `store_output_values()` | Store canonical contract-keyed outputs |
 | `store_assertion_counts()` | Save assertion stats for run summary |
 | `finalize_step()` | Set ended_at, duration_ms, status, output |
 

@@ -16,7 +16,6 @@ from typing import Any
 
 from django.utils import timezone
 
-from validibot.actions.protocols import RunContext
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.models import ValidationFinding
@@ -24,6 +23,7 @@ from validibot.validations.validators.base import AssertionStats
 from validibot.validations.validators.base import ValidationIssue
 
 if TYPE_CHECKING:
+    from validibot.actions.protocols import RunContext
     from validibot.validations.models import ValidationRun
     from validibot.validations.models import ValidationStepRun
     from validibot.validations.services.step_processor.result import (
@@ -77,110 +77,13 @@ class ValidationStepProcessor(ABC):
         return validator_cls()
 
     def _build_run_context(self) -> RunContext:
-        """Build RunContext for validator calls.
+        """Build the canonical context shared by every execution path."""
+        from validibot.validations.services.run_context import RunContextBuilder
 
-        Populates the namespaces every validator step needs:
-
-        * ``s`` — workflow-level signals resolved from ``WorkflowSignalMapping``
-          against the submission data.
-        * ``c`` / ``const`` — workflow Constants (ADR-2026-06-18): a literal map
-          from the workflow definition (no submission data, never resolves).
-
-        Both MUST be built here, not only on the orchestrator's action/handler
-        path (``execute_workflow_step``): the main run loop routes *validator*
-        steps through the processor (``get_step_processor().execute()``), so a
-        context missing ``c.*`` here makes constant-referencing assertions
-        silently evaluate against ``{}`` in real runs while unit tests with
-        hand-built contexts pass.
-        """
-        return RunContext(
-            validation_run=self.validation_run,
-            step=self.workflow_step,
-            downstream_signals=self._get_downstream_signals(),
-            workflow_signals=self._resolve_workflow_signals(),
-            workflow_constants=self._resolve_workflow_constants(),
-        )
-
-    def _resolve_workflow_constants(self) -> dict[str, Any]:
-        """Build the ``c.*`` / ``const.*`` namespace map for the step's workflow.
-
-        A constant is workflow-definition-derived, so this is a pure read of the
-        workflow's ``WorkflowConstant`` rows — no submission data, no resolution,
-        no failure mode (contrast ``_resolve_workflow_signals``). Delegates to the
-        same community service the orchestrator's
-        ``_resolve_workflow_constants`` uses, so both execution paths agree on
-        the map.
-        """
-        from validibot.workflows.services.constants import (
-            build_workflow_constants_context,
-        )
-
-        workflow = getattr(self.workflow_step, "workflow", None)
-        return build_workflow_constants_context(workflow)
-
-    def _get_downstream_signals(self) -> dict[str, Any]:
-        """Extract validator outputs from prior steps for cross-step CEL.
-
-        Returns the ``steps`` dict from the run summary, which contains
-        ``steps.<key>.output.<name>`` for each completed step.
-        """
-        summary = self.validation_run.summary or {}
-        return summary.get("steps", {})
-
-    def _resolve_workflow_signals(self) -> dict[str, Any]:
-        """Resolve workflow-level signal mappings for the CEL s namespace.
-
-        Reads ``WorkflowSignalMapping`` rows from the workflow and
-        resolves them against the submission's parsed content.
-        Returns an empty dict if no mappings exist or the submission
-        content cannot be parsed.
-        """
-        workflow = getattr(self.workflow_step, "workflow", None)
-        workflow_pk = getattr(workflow, "pk", None)
-        if not workflow or not isinstance(workflow_pk, int):
-            return {}
-
-        from validibot.workflows.models import WorkflowSignalMapping
-
-        if not WorkflowSignalMapping.objects.filter(workflow=workflow).exists():
-            return {}
-
-        submission = getattr(self.validation_run, "submission", None)
-        if not submission:
-            return {}
-
-        # Parse the submission content into a dict.  Must handle both
-        # JSON and XML formats to match what the validators see.
-        import json
-
-        from validibot.submissions.constants import SubmissionFileType
-
-        raw = submission.get_content()
-        if not raw:
-            return {}
-
-        file_type = getattr(submission, "file_type", SubmissionFileType.JSON)
-        if file_type == SubmissionFileType.XML:
-            try:
-                from validibot.validations.xml_utils import xml_to_dict
-
-                submission_data = xml_to_dict(raw)
-            except Exception:
-                return {}
-        else:
-            try:
-                submission_data = json.loads(raw)
-            except (json.JSONDecodeError, TypeError):
-                return {}
-
-        from validibot.validations.services.signal_resolution import (
-            resolve_workflow_signals,
-        )
-
-        # Let SignalResolutionError propagate — fail-fast behaviour
-        # is the contract for on_missing=error signals.
-        result = resolve_workflow_signals(workflow, submission_data)
-        return result.signals
+        return RunContextBuilder(
+            self.validation_run,
+            self.workflow_step,
+        ).build()
 
     def persist_findings(
         self,
@@ -280,32 +183,15 @@ class ValidationStepProcessor(ABC):
             failures=output.get("assertion_failures", 0),
         )
 
-    def store_signals(self, signals: dict[str, Any]) -> None:
-        """
-        Store validator outputs in run.summary for downstream steps.
+    def store_input_values(self, values: dict[str, Any]) -> None:
+        """Persist canonical contract-keyed values resolved for this step."""
+        self.step_run.input_values = dict(values)
+        self.step_run.save(update_fields=["input_values"])
 
-        Outputs are already extracted by the validator (during assertion
-        evaluation) and passed here via ValidationResult.signals. The
-        processor persists them under the ``output`` key in the step's
-        summary namespace.
-
-        Persisted at: ``run.summary["steps"][step_key]["output"]``
-        where step_key is the stable ``WorkflowStep.step_key`` slug.
-
-        Downstream steps access these values in CEL expressions via
-        ``steps.<step_key>.output.<name>``.
-        """
-        if not signals:
-            return
-
-        summary = self.validation_run.summary or {}
-        steps = summary.setdefault("steps", {})
-        step_key = self.step_run.workflow_step.step_key or str(self.step_run.id)
-        step_data = steps.setdefault(step_key, {})
-        step_data["output"] = signals
-
-        self.validation_run.summary = summary
-        self.validation_run.save(update_fields=["summary"])
+    def store_output_values(self, values: dict[str, Any]) -> None:
+        """Persist canonical values produced by this step for later steps."""
+        self.step_run.output_values = dict(values)
+        self.step_run.save(update_fields=["output_values"])
 
     def finalize_step(
         self,

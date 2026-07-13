@@ -306,9 +306,7 @@ class TestMixedAssertionPartition:
         )
         step = WorkflowStepFactory(validator=validator, ruleset=ruleset)
         run = ValidationRunFactory(workflow=step.workflow, submission=submission)
-        return validator, RunContext(
-            validation_run=run, step=step, downstream_signals={}
-        )
+        return validator, RunContext(validation_run=run, step=step, upstream_steps={})
 
     def test_shacl_assertions_excluded_and_counts_fold(self):
         """One SHACL + one Basic assertion → container counts SHACL, Django the Basic.
@@ -422,7 +420,7 @@ class TestMixedAssertionPartition:
         run_context = RunContext(
             validation_run=run,
             step=step,
-            downstream_signals={},
+            upstream_steps={},
         )
 
         envelope = _envelope(

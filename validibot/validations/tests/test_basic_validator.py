@@ -351,7 +351,7 @@ class BasicValidatorNamespaceAwarenessTests(TestCase):
         run_context = RunContext(
             validation_run=MagicMock(id=1),
             step=MagicMock(id=1),
-            downstream_signals={},
+            upstream_steps={},
             workflow_signals={"temp_threshold": 72},
         )
 

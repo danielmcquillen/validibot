@@ -49,6 +49,7 @@ from django.test import TestCase
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import ENERGYPLUS_MODEL_TEMPLATE
 from validibot.validations.constants import ValidationType
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.tests.factories import ValidatorResourceFileFactory
@@ -2282,7 +2283,7 @@ def _make_launcher_fixtures(
         content=submission_content,
     )
 
-    # 6. ValidationRun + StepRun (PENDING)
+    # 6. ValidationRun + StepRun + durable attempt (all PENDING)
     step_run = ValidationStepRunFactory(
         validation_run__workflow=workflow,
         validation_run__org=workflow.org,
@@ -2290,6 +2291,7 @@ def _make_launcher_fixtures(
         workflow_step=step,
     )
     run = step_run.validation_run
+    attempt = ExecutionAttemptFactory(step_run=step_run)
 
     return {
         "run": run,
@@ -2297,6 +2299,7 @@ def _make_launcher_fixtures(
         "submission": submission,
         "step": step,
         "step_run": step_run,
+        "attempt": attempt,
     }
 
 

@@ -9,7 +9,6 @@ These tests cover correctness concerns beyond basic idempotency:
   callback request path (purge is queued for the scheduled purge worker).
 """
 
-import uuid
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -28,6 +27,8 @@ from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import ValidationRunSummary
+from validibot.validations.services.execution_attempts import build_attempt_callback_id
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationFindingFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
@@ -96,6 +97,11 @@ class CallbackCompletionTestCase(TestCase):
                 "execution_bundle_uri": "gs://bucket/runs/org/run",
             },
         )
+        self.attempt = ExecutionAttemptFactory(
+            step_run=self.step_run2,
+            state="RUNNING",
+            execution_bundle_uri="gs://bucket/runs/org/run",
+        )
 
         ValidationFindingFactory(
             validation_step_run=self.step_run1,
@@ -149,7 +155,7 @@ class CallbackCompletionTestCase(TestCase):
         """
         mock_download.return_value = self._make_mock_envelope()
 
-        callback_id = str(uuid.uuid4())
+        callback_id = build_attempt_callback_id(self.attempt)
         response = self.client.post(
             self.callback_url,
             data={

@@ -1,10 +1,9 @@
 """Runtime-profile policy and mixed-version execution guards.
 
-The validation-execution integrity program introduces execution behavior in
-reader-first releases.  This module is the single table that explains each
-accepted profile and the guard used by legacy handlers until attempt writers
-are enabled.  It deliberately avoids feature-flag inference: the immutable
-value stored on each run is authoritative for that run's lifetime.
+Every validation uses the durable execution-attempt lifecycle. Runtime
+profiles version additional semantics, such as strict I/O, without exposing an
+operator switch or maintaining parallel execution engines. The immutable value
+stored on each run remains authoritative for that run's lifetime.
 """
 
 from __future__ import annotations
@@ -47,58 +46,40 @@ class RuntimeProfilePolicy:
 
     profile: ValidationRuntimeProfile
     contract_version: ExecutionContractVersion
-    uses_execution_attempts: bool
     uses_strict_io: bool
     uses_canonical_context: bool
 
 
 _PROFILE_SEQUENCE = (
-    ValidationRuntimeProfile.LEGACY,
     ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
     ValidationRuntimeProfile.ATTEMPT_STRICT_V1,
     ValidationRuntimeProfile.ATTEMPT_CONTEXT_V1,
 )
 
 _PROFILE_POLICIES = {
-    ValidationRuntimeProfile.LEGACY: RuntimeProfilePolicy(
-        profile=ValidationRuntimeProfile.LEGACY,
-        contract_version=ExecutionContractVersion.LEGACY_URI_V1,
-        uses_execution_attempts=False,
-        uses_strict_io=False,
-        uses_canonical_context=False,
-    ),
     ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1: RuntimeProfilePolicy(
         profile=ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
         contract_version=ExecutionContractVersion.LEGACY_URI_V1,
-        uses_execution_attempts=True,
         uses_strict_io=False,
         uses_canonical_context=False,
     ),
     ValidationRuntimeProfile.ATTEMPT_STRICT_V1: RuntimeProfilePolicy(
         profile=ValidationRuntimeProfile.ATTEMPT_STRICT_V1,
         contract_version=ExecutionContractVersion.STRICT_CONTENT_V1,
-        uses_execution_attempts=True,
         uses_strict_io=True,
         uses_canonical_context=False,
     ),
     ValidationRuntimeProfile.ATTEMPT_CONTEXT_V1: RuntimeProfilePolicy(
         profile=ValidationRuntimeProfile.ATTEMPT_CONTEXT_V1,
         contract_version=ExecutionContractVersion.STRICT_CONTENT_V1,
-        uses_execution_attempts=True,
         uses_strict_io=True,
         uses_canonical_context=True,
     ),
 }
 
-# Stage 1 is intentionally reader-first.  Later stages expand this set only
-# after every callback, task, watchdog, and reconciliation instance can handle
-# the next profile.
-WRITER_ENABLED_RUNTIME_PROFILES = frozenset(
-    {
-        ValidationRuntimeProfile.LEGACY,
-        ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
-    }
-)
+# New runs use one application-selected profile. This is intentionally not a
+# deployment setting: operators should never choose between execution engines.
+NEW_RUN_RUNTIME_PROFILE = ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
 
 
 def get_runtime_profile_policy(
@@ -119,16 +100,21 @@ def get_runtime_profile_policy(
         raise UnsupportedRuntimeProfileError(
             f"Unsupported validation runtime profile: {profile!r}"
         ) from exc
-    return _PROFILE_POLICIES[normalized]
+    try:
+        return _PROFILE_POLICIES[normalized]
+    except KeyError as exc:
+        raise UnsupportedRuntimeProfileError(
+            f"Unsupported validation runtime profile: {profile!r}"
+        ) from exc
 
 
 def can_advance_runtime_profile(
     current: str | ValidationRuntimeProfile,
     target: str | ValidationRuntimeProfile,
 ) -> bool:
-    """Return whether a deployment default may move to the next profile rung.
+    """Return whether an application release may move to the next profile rung.
 
-    A deployment may remain on its current rung or advance by exactly one.
+    A release may remain on its current rung or advance by exactly one.
     Skipping a rung would bypass its mixed-version rollout gate; moving
     backwards could create runs that an older release misinterprets.
     """
@@ -137,15 +123,6 @@ def can_advance_runtime_profile(
     current_index = _PROFILE_SEQUENCE.index(current_policy.profile)
     target_index = _PROFILE_SEQUENCE.index(target_policy.profile)
     return target_index in {current_index, current_index + 1}
-
-
-def is_runtime_profile_writer_enabled(
-    profile: str | ValidationRuntimeProfile,
-) -> bool:
-    """Return whether this release is allowed to create runs in ``profile``."""
-    return (
-        get_runtime_profile_policy(profile).profile in WRITER_ENABLED_RUNTIME_PROFILES
-    )
 
 
 def is_runtime_profile_supported(
@@ -190,11 +167,9 @@ def ensure_runtime_profile_supported(
 ) -> bool:
     """Fence a run when a handler cannot safely interpret its profile.
 
-    Existing execution handlers call this before reading legacy step-output
-    metadata.  During Stage 1 they support ``LEGACY`` only.  If an attempt-mode
-    task reaches an old handler during a bad rollout or downgrade, the run is
-    terminally failed as a system error rather than silently processed as a
-    legacy run.
+    Execution handlers call this before interpreting profile-specific data. If
+    work reaches a handler that predates the stored profile during a bad
+    rollout or downgrade, the run is terminally failed as a system error.
 
     Returns:
         ``True`` when the caller may continue, otherwise ``False`` after the

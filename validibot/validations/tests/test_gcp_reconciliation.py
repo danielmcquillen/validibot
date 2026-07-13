@@ -58,7 +58,7 @@ def _mock_run(*, step_output=None, minutes_ago=45, status=ValidationRunStatus.RU
     run.id = uuid.uuid4()
     run.pk = run.id
     run.status = status
-    run.runtime_profile = ValidationRuntimeProfile.LEGACY
+    run.runtime_profile = ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
     run.started_at = timezone.now() - timedelta(minutes=minutes_ago)
     run.ended_at = None
     run.duration_ms = None
@@ -69,11 +69,28 @@ def _mock_run(*, step_output=None, minutes_ago=45, status=ValidationRunStatus.RU
 
 
 def _mock_step_run(*, output=None):
-    """Create a mock ValidationStepRun."""
+    """Create a step run whose provider identity lives on an attempt."""
+    provider_data = output or {}
     step_run = MagicMock()
-    step_run.output = output or {}
+    step_run.output = {}
     step_run.status = StepStatus.RUNNING
-    step_run.validation_run.runtime_profile = ValidationRuntimeProfile.LEGACY
+    step_run.validation_run.runtime_profile = (
+        ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
+    )
+    attempt = MagicMock()
+    attempt.pk = uuid.uuid4()
+    attempt.provider_execution_id = provider_data.get("execution_name", "")
+    attempt.execution_bundle_uri = provider_data.get("execution_bundle_uri", "")
+    attempt.runner_type = "google_cloud_run"
+    active_attempt = attempt if attempt.provider_execution_id else None
+    active_queryset = (
+        step_run.execution_attempts.filter.return_value.order_by.return_value
+    )
+    active_queryset.first.return_value = active_attempt
+    step_run.execution_attempts.order_by.return_value.first.return_value = (
+        active_attempt
+    )
+    step_run.attempt = attempt
     return step_run
 
 
@@ -139,6 +156,7 @@ class TestReconcileStillRunningJob(SimpleTestCase):
         mock_backend.check_status.return_value = ExecutionResponse(
             execution_id="projects/p/locations/r/jobs/j/executions/e",
             is_complete=False,
+            execution_status=ExecutionStatus.RUNNING,
         )
         mock_backend_cls.return_value = mock_backend
 
@@ -190,7 +208,11 @@ class TestReconcileMarksFailed(SimpleTestCase):
             result = cmd._try_reconcile_gcp_run(run)
 
         assert result == "reconciled"
-        mock_mark_failed.assert_called_once_with(run, "Container OOM killed")
+        mock_mark_failed.assert_called_once_with(
+            run,
+            "Container OOM killed",
+            attempt=step_run.attempt,
+        )
 
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=True)
     @patch(GCP_BACKEND_PATH)
@@ -234,6 +256,7 @@ class TestReconcileMarksFailed(SimpleTestCase):
         mock_mark_failed.assert_called_once_with(
             run,
             "Cloud Run reported a failed execution without diagnostic details",
+            attempt=step_run.attempt,
         )
         mock_recover.assert_not_called()
 
@@ -243,7 +266,15 @@ class TestMarkRunFailedFromGCP(SimpleTestCase):
 
     @patch(f"{CMD_PATH}.transaction")
     @patch(f"{CMD_PATH}.ValidationRun")
-    def test_marks_run_as_failed(self, mock_run_model, mock_transaction):
+    @patch(
+        "validibot.validations.services.execution_attempts.transition_execution_attempt"
+    )
+    def test_marks_run_as_failed(
+        self,
+        mock_transition,
+        mock_run_model,
+        mock_transaction,
+    ):
         """Should lock the run and set FAILED status with error details."""
         locked_run = MagicMock()
         locked_run.status = ValidationRunStatus.RUNNING
@@ -257,8 +288,13 @@ class TestMarkRunFailedFromGCP(SimpleTestCase):
         mock_transaction.atomic.return_value.__exit__ = MagicMock(return_value=False)
 
         run = _mock_run()
+        attempt = MagicMock()
         cmd = Command()
-        cmd._mark_run_failed_from_gcp(run, "Container OOM killed")
+        cmd._mark_run_failed_from_gcp(
+            run,
+            "Container OOM killed",
+            attempt=attempt,
+        )
 
         assert locked_run.status == ValidationRunStatus.FAILED
         assert locked_run.error_category == ValidationRunErrorCategory.RUNTIME_ERROR
@@ -267,6 +303,7 @@ class TestMarkRunFailedFromGCP(SimpleTestCase):
         assert locked_run.ended_at is not None
         assert locked_run.duration_ms is not None
         locked_run.save.assert_called_once()
+        mock_transition.assert_called_once()
 
     @patch(f"{CMD_PATH}.transaction")
     @patch(f"{CMD_PATH}.ValidationRun")
@@ -282,8 +319,13 @@ class TestMarkRunFailedFromGCP(SimpleTestCase):
         mock_transaction.atomic.return_value.__exit__ = MagicMock(return_value=False)
 
         run = _mock_run()
+        attempt = MagicMock()
         cmd = Command()
-        cmd._mark_run_failed_from_gcp(run, "Container OOM killed")
+        cmd._mark_run_failed_from_gcp(
+            run,
+            "Container OOM killed",
+            attempt=attempt,
+        )
 
         # Should not have been modified
         locked_run.save.assert_not_called()
@@ -304,7 +346,7 @@ class TestReconcileRecoversLostCallback(SimpleTestCase):
         mock_backend.check_status.return_value = ExecutionResponse(
             execution_id="projects/p/locations/r/jobs/j/executions/e",
             is_complete=True,
-            # No error_message = job succeeded
+            execution_status=ExecutionStatus.SUCCEEDED,
         )
         mock_backend_cls.return_value = mock_backend
 
@@ -332,7 +374,7 @@ class TestReconcileRecoversLostCallback(SimpleTestCase):
         call_kwargs = mock_service.process.call_args[1]
         payload = call_kwargs["payload"]
         assert payload["run_id"] == str(run.id)
-        assert payload["callback_id"] == f"reconciliation-{run.id}"
+        assert payload["callback_id"] == (f"execution-attempt-{step_run.attempt.pk}")
         assert payload["result_uri"] == "gs://bucket/runs/org/run-id/output.json"
 
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=True)
@@ -346,6 +388,7 @@ class TestReconcileRecoversLostCallback(SimpleTestCase):
         mock_backend.check_status.return_value = ExecutionResponse(
             execution_id="projects/p/locations/r/jobs/j/executions/e",
             is_complete=True,
+            execution_status=ExecutionStatus.SUCCEEDED,
         )
         mock_backend_cls.return_value = mock_backend
 
@@ -377,6 +420,7 @@ class TestReconcileRecoversLostCallback(SimpleTestCase):
         mock_backend.check_status.return_value = ExecutionResponse(
             execution_id="projects/p/locations/r/jobs/j/executions/e",
             is_complete=True,
+            execution_status=ExecutionStatus.SUCCEEDED,
         )
         mock_backend_cls.return_value = mock_backend
 
@@ -452,6 +496,7 @@ class TestReconcileDryRun(SimpleTestCase):
         mock_backend.check_status.return_value = ExecutionResponse(
             execution_id="projects/p/locations/r/jobs/j/executions/e",
             is_complete=True,
+            execution_status=ExecutionStatus.SUCCEEDED,
         )
         mock_backend_cls.return_value = mock_backend
 
@@ -480,6 +525,7 @@ class TestReconcileDryRun(SimpleTestCase):
         mock_backend.check_status.return_value = ExecutionResponse(
             execution_id="projects/p/locations/r/jobs/j/executions/e",
             is_complete=True,
+            execution_status=ExecutionStatus.FAILED,
             error_message="OOM killed",
         )
         mock_backend_cls.return_value = mock_backend
@@ -543,6 +589,7 @@ class TestCommandHandle(SimpleTestCase):
         mock_backend.check_status.return_value = ExecutionResponse(
             execution_id="projects/p/locations/r/jobs/j/executions/e",
             is_complete=True,
+            execution_status=ExecutionStatus.SUCCEEDED,
         )
         mock_backend_cls.return_value = mock_backend
 
@@ -622,7 +669,7 @@ class TestCommandHandle(SimpleTestCase):
 
         locked_run = MagicMock()
         locked_run.status = ValidationRunStatus.RUNNING
-        locked_run.runtime_profile = ValidationRuntimeProfile.LEGACY
+        locked_run.runtime_profile = ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
         locked_run.started_at = run.started_at
         mock_run_model.objects.select_for_update.return_value.get.return_value = (
             locked_run
@@ -637,12 +684,16 @@ class TestCommandHandle(SimpleTestCase):
         cmd.style.SUCCESS = lambda x: x
         cmd.style.WARNING = lambda x: x
 
-        with patch.object(cmd, "_get_active_step_run", return_value=step_run):
+        with (
+            patch.object(cmd, "_get_active_step_run", return_value=step_run),
+            patch(f"{CMD_PATH}.fence_active_execution_attempt") as mock_fence,
+        ):
             cmd.handle(timeout_minutes=30, dry_run=False, batch_size=100)
 
         output = out.getvalue()
         assert locked_run.status == ValidationRunStatus.TIMED_OUT
         assert "Marked 1 stuck run(s) as TIMED_OUT" in output
+        mock_fence.assert_called_once()
         mock_cancel.assert_called_once_with(locked_run)
 
     @patch(f"{CMD_PATH}.ValidationRun")
@@ -667,7 +718,7 @@ class TestCommandHandle(SimpleTestCase):
         # Mock the atomic block and select_for_update
         locked_run = MagicMock()
         locked_run.status = ValidationRunStatus.RUNNING
-        locked_run.runtime_profile = ValidationRuntimeProfile.LEGACY
+        locked_run.runtime_profile = ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
         locked_run.started_at = run.started_at
         mock_run_model.objects.select_for_update.return_value.get.return_value = (
             locked_run
@@ -682,12 +733,14 @@ class TestCommandHandle(SimpleTestCase):
         cmd.style.SUCCESS = lambda x: x
         cmd.style.WARNING = lambda x: x
 
-        cmd.handle(timeout_minutes=30, dry_run=False, batch_size=100)
+        with patch(f"{CMD_PATH}.fence_active_execution_attempt") as mock_fence:
+            cmd.handle(timeout_minutes=30, dry_run=False, batch_size=100)
 
         # The locked run should have been updated to TIMED_OUT
         assert locked_run.status == ValidationRunStatus.TIMED_OUT
         assert locked_run.error_category == ValidationRunErrorCategory.TIMEOUT
         locked_run.save.assert_called_once()
+        mock_fence.assert_called_once()
         mock_cancel.assert_called_once_with(locked_run)
 
     @patch(f"{CMD_PATH}.ValidationRun")

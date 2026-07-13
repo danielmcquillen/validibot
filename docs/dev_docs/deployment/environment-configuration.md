@@ -459,7 +459,6 @@ quickly the transport decides a delivery was lost:
 |---|---:|---|---|
 | `CELERY_VISIBILITY_TIMEOUT_SECONDS` | `3600` | Self-hosted Redis | Must exceed `CELERY_TASK_TIME_LIMIT` (1800 seconds), otherwise Redis can deliver a healthy long task to another worker. |
 | `CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS` | `600` | GCP | Bounds the short worker HTTP orchestration request; accepted range is 15–1800 seconds. Validator compute runs separately in Cloud Run Jobs. |
-| `VALIDATION_RUNTIME_PROFILE` | `LEGACY` | All | Selects immutable semantics for newly created runs. Enable `ATTEMPT_LIFECYCLE_V1` only after all web/worker instances have the compatible release. |
 
 Transport retries never authorize a second provider launch after an attempt
 has reached `DISPATCHING`, `RUNNING`, or `UNKNOWN`.

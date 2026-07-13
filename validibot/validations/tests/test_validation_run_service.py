@@ -69,13 +69,15 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
     validation_run = response.validation_run
     validation_run.refresh_from_db()
     assert validation_run.pk
-    assert validation_run.runtime_profile == ValidationRuntimeProfile.LEGACY
+    assert (
+        validation_run.runtime_profile == ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
+    )
     assert response.status in {status.HTTP_202_ACCEPTED, status.HTTP_201_CREATED}
 
 
 @pytest.mark.django_db
-def test_launch_accepts_completed_attempt_lifecycle_profile():
-    """The completed writer rung can be selected explicitly per new run."""
+def test_launch_does_not_allow_callers_to_select_runtime_profile():
+    """Caller metadata must not restore a second execution architecture."""
     org = OrganizationFactory()
     user = UserFactory()
     grant_role(user, org, RoleCode.EXECUTOR)
@@ -90,20 +92,15 @@ def test_launch_accepts_completed_attempt_lifecycle_profile():
     request = APIRequestFactory().post("/api/v1/workflows/start/")
     request.user = user
 
-    response = ValidationRunService().launch(
-        request=request,
-        org=org,
-        workflow=workflow,
-        submission=submission,
-        user_id=user.id,
-        extra={"runtime_profile": (ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1)},
-    )
-
-    response.validation_run.refresh_from_db()
-    assert (
-        response.validation_run.runtime_profile
-        == ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
-    )
+    with pytest.raises(ValueError, match="selected by the application"):
+        ValidationRunService().launch(
+            request=request,
+            org=org,
+            workflow=workflow,
+            submission=submission,
+            user_id=user.id,
+            extra={"runtime_profile": ValidationRuntimeProfile.ATTEMPT_STRICT_V1},
+        )
 
 
 @pytest.mark.django_db

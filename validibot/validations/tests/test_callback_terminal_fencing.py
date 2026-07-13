@@ -17,8 +17,11 @@ from validibot_shared.validations.envelopes import ValidationStatus
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import ValidationRun
+from validibot.validations.services.execution_attempts import build_attempt_callback_id
 from validibot.validations.services.validation_callback import ValidationCallbackService
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
+from validibot.validations.tests.factories import ValidationStepRunFactory
 
 
 @pytest.mark.django_db
@@ -40,13 +43,21 @@ class TestCallbackTerminalFencing:
         outcome and avoids trusting stale output after the deadline.
         """
         run = ValidationRunFactory(status=terminal_status)
+        step_run = ValidationStepRunFactory(
+            validation_run=run,
+            status=StepStatus.RUNNING,
+        )
+        attempt = ExecutionAttemptFactory(
+            step_run=step_run,
+            state="RUNNING",
+        )
         service = ValidationCallbackService()
 
         with patch.object(service, "_process_callback") as process:
             response = service.process(
                 payload={
                     "run_id": str(run.id),
-                    "callback_id": f"late-{run.id}",
+                    "callback_id": build_attempt_callback_id(attempt),
                     "status": "success",
                     "result_uri": "gs://bucket/output.json",
                 }

@@ -1,10 +1,9 @@
-"""Tests for immutable validation-run runtime profiles and rollout policy.
+"""Tests for immutable validation-run runtime profiles.
 
-Runtime profiles are the mixed-version boundary for the execution-integrity
-program.  These tests prove every accepted rung has one explicit policy, that
-writers remain legacy-only during the reader-first release, and that a handler
-which cannot interpret a run fences it instead of falling through to legacy
-execution.
+Runtime profiles version execution semantics without exposing an operator
+switch. These tests prove the application selects the attempt lifecycle for
+new runs, every active rung has one policy, and older handlers fence newer work
+instead of guessing how to interpret it.
 """
 
 from unittest.mock import patch
@@ -16,6 +15,7 @@ from validibot.validations.constants import ExecutionContractVersion
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationRuntimeProfile
+from validibot.validations.services.runtime_profiles import NEW_RUN_RUNTIME_PROFILE
 from validibot.validations.services.runtime_profiles import (
     UNSUPPORTED_RUNTIME_PROFILE_ERROR,
 )
@@ -27,14 +27,11 @@ from validibot.validations.services.runtime_profiles import (
     ensure_runtime_profile_supported,
 )
 from validibot.validations.services.runtime_profiles import get_runtime_profile_policy
-from validibot.validations.services.runtime_profiles import (
-    is_runtime_profile_writer_enabled,
-)
 from validibot.validations.tests.factories import ValidationRunFactory
 
 
 class TestRuntimeProfilePolicy:
-    """Keep the four-rung rollout policy explicit and table-driven."""
+    """Keep the execution-semantics ladder explicit and table-driven."""
 
     def test_every_declared_profile_has_exactly_one_policy(self):
         """A new enum value must not silently inherit another profile's behavior."""
@@ -46,19 +43,11 @@ class TestRuntimeProfilePolicy:
         assert resolved == set(ValidationRuntimeProfile)
 
     @pytest.mark.parametrize(
-        ("profile", "contract", "attempts", "strict_io", "canonical_context"),
+        ("profile", "contract", "strict_io", "canonical_context"),
         [
-            (
-                ValidationRuntimeProfile.LEGACY,
-                ExecutionContractVersion.LEGACY_URI_V1,
-                False,
-                False,
-                False,
-            ),
             (
                 ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
                 ExecutionContractVersion.LEGACY_URI_V1,
-                True,
                 False,
                 False,
             ),
@@ -66,13 +55,11 @@ class TestRuntimeProfilePolicy:
                 ValidationRuntimeProfile.ATTEMPT_STRICT_V1,
                 ExecutionContractVersion.STRICT_CONTENT_V1,
                 True,
-                True,
                 False,
             ),
             (
                 ValidationRuntimeProfile.ATTEMPT_CONTEXT_V1,
                 ExecutionContractVersion.STRICT_CONTENT_V1,
-                True,
                 True,
                 True,
             ),
@@ -82,7 +69,6 @@ class TestRuntimeProfilePolicy:
         self,
         profile,
         contract,
-        attempts,
         strict_io,
         canonical_context,
     ):
@@ -90,7 +76,6 @@ class TestRuntimeProfilePolicy:
         policy = get_runtime_profile_policy(profile)
 
         assert policy.contract_version == contract
-        assert policy.uses_execution_attempts is attempts
         assert policy.uses_strict_io is strict_io
         assert policy.uses_canonical_context is canonical_context
 
@@ -103,41 +88,41 @@ class TestRuntimeProfilePolicy:
                 expected = target_index in {current_index, current_index + 1}
                 assert can_advance_runtime_profile(current, target) is expected
 
-    def test_lifecycle_release_enables_only_completed_writer_rungs(self):
-        """Strict-I/O profiles remain reader-only until their ADRs complete."""
-        assert is_runtime_profile_writer_enabled(ValidationRuntimeProfile.LEGACY)
-        assert is_runtime_profile_writer_enabled(
-            ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
-        )
-        for profile in list(ValidationRuntimeProfile)[2:]:
-            assert not is_runtime_profile_writer_enabled(profile)
+    def test_application_selects_attempt_lifecycle_for_new_runs(self):
+        """Run semantics must come from code rather than operator configuration."""
+        assert NEW_RUN_RUNTIME_PROFILE == ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
 
     def test_unknown_profile_is_rejected(self):
         """Typos or newer unknown profiles must never be interpreted as legacy."""
         with pytest.raises(UnsupportedRuntimeProfileError):
             get_runtime_profile_policy("ATTEMPT_UNKNOWN_V9")
 
+    def test_retired_legacy_profile_is_rejected(self):
+        """Historical legacy rows must never re-enter the active execution path."""
+        with pytest.raises(UnsupportedRuntimeProfileError):
+            get_runtime_profile_policy("LEGACY")
+
 
 @pytest.mark.django_db
 class TestRuntimeProfilePersistence:
     """Protect a run's recorded execution semantics for its whole lifetime."""
 
-    def test_new_runs_default_to_legacy(self):
-        """The additive migration must leave existing production behavior unchanged."""
+    def test_new_runs_default_to_attempt_lifecycle(self):
+        """Direct model creation must use the one supported execution architecture."""
         run = ValidationRunFactory()
 
-        assert run.runtime_profile == ValidationRuntimeProfile.LEGACY
+        assert run.runtime_profile == ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
 
     def test_normal_model_save_cannot_reinterpret_an_existing_run(self):
         """Changing profile in place could route an in-flight callback incorrectly."""
         run = ValidationRunFactory()
-        run.runtime_profile = ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
+        run.runtime_profile = ValidationRuntimeProfile.ATTEMPT_STRICT_V1
 
         with pytest.raises(ValidationError, match="cannot be changed"):
             run.save(update_fields=["runtime_profile"])
 
         run.refresh_from_db()
-        assert run.runtime_profile == ValidationRuntimeProfile.LEGACY
+        assert run.runtime_profile == ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
 
     @patch("validibot.validations.signals.validation_run_finalized.send_robust")
     def test_unsupported_handler_fences_active_run_once(self, mock_finalized):
@@ -149,13 +134,13 @@ class TestRuntimeProfilePersistence:
 
         first_result = ensure_runtime_profile_supported(
             run,
-            supported_profiles=(ValidationRuntimeProfile.LEGACY,),
+            supported_profiles=(ValidationRuntimeProfile.ATTEMPT_STRICT_V1,),
             operation="test_handler",
             sender=self.__class__,
         )
         second_result = ensure_runtime_profile_supported(
             run,
-            supported_profiles=(ValidationRuntimeProfile.LEGACY,),
+            supported_profiles=(ValidationRuntimeProfile.ATTEMPT_STRICT_V1,),
             operation="test_handler",
             sender=self.__class__,
         )
@@ -171,12 +156,12 @@ class TestRuntimeProfilePersistence:
 
     @patch("validibot.validations.signals.validation_run_finalized.send_robust")
     def test_supported_handler_does_not_mutate_run(self, mock_finalized):
-        """The Stage 1 guard must be invisible to every normal legacy run."""
+        """The profile guard must be invisible to the current execution path."""
         run = ValidationRunFactory(status=ValidationRunStatus.RUNNING)
 
         supported = ensure_runtime_profile_supported(
             run,
-            supported_profiles=(ValidationRuntimeProfile.LEGACY,),
+            supported_profiles=(ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,),
             operation="test_handler",
             sender=self.__class__,
         )

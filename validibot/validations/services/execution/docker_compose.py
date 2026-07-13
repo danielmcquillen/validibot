@@ -236,7 +236,19 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         )
 
         step_run = request.run.current_step_run
-        attempt = get_active_execution_attempt(step_run) if step_run else None
+        if step_run is None:
+            return ExecutionResponse(
+                execution_id="",
+                is_complete=True,
+                error_message="Validation run has no active step",
+            )
+        attempt = get_active_execution_attempt(step_run)
+        if attempt is None:
+            return ExecutionResponse(
+                execution_id="",
+                is_complete=True,
+                error_message="Validation step has no active execution attempt",
+            )
 
         try:
             # 1. Build the per-run workspace and the envelope override
@@ -248,11 +260,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             # 2. Build callback URL and ID (unused for sync, but the
             # envelope schema still requires the fields).
             callback_url = self._get_callback_url()
-            callback_id = (
-                build_attempt_callback_id(attempt)
-                if attempt is not None
-                else f"step-run-{request.run.current_step_run.id}"
-            )
+            callback_id = build_attempt_callback_id(attempt)
 
             # 3. Build the envelope with container-visible URIs.
             envelope = self.build_input_envelope(
@@ -279,19 +287,18 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 workspace.host_input_envelope_path,
             )
 
-            if attempt is not None:
-                attempt, claimed = transition_execution_attempt(
-                    attempt.pk,
-                    ExecutionAttemptState.DISPATCHING,
-                    execution_bundle_uri=workspace.execution_bundle_container_uri,
-                    input_envelope_uri=workspace.input_envelope_container_uri,
+            attempt, claimed = transition_execution_attempt(
+                attempt.pk,
+                ExecutionAttemptState.DISPATCHING,
+                execution_bundle_uri=workspace.execution_bundle_container_uri,
+                input_envelope_uri=workspace.input_envelope_container_uri,
+            )
+            if not claimed:
+                return ExecutionResponse(
+                    execution_id=attempt.provider_execution_id,
+                    is_complete=False,
+                    execution_bundle_uri=attempt.execution_bundle_uri,
                 )
-                if not claimed:
-                    return ExecutionResponse(
-                        execution_id=attempt.provider_execution_id,
-                        is_complete=False,
-                        execution_bundle_uri=attempt.execution_bundle_uri,
-                    )
 
             # 5. Resolve container image.
             container_image = self.get_container_image(request.validator_type)
@@ -341,16 +348,15 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                     result.exit_code,
                     error_msg,
                 )
-                if attempt is not None:
-                    transition_execution_attempt(
-                        attempt.pk,
-                        ExecutionAttemptState.FAILED,
-                        provider_execution_id=result.execution_id or execution_id,
-                        provider_finished_at=timezone.now(),
-                        last_error_code="container_execution_failed",
-                        last_error=error_msg,
-                        backend_image_digest=result.validator_backend_image_digest,
-                    )
+                transition_execution_attempt(
+                    attempt.pk,
+                    ExecutionAttemptState.FAILED,
+                    provider_execution_id=result.execution_id or execution_id,
+                    provider_finished_at=timezone.now(),
+                    last_error_code="container_execution_failed",
+                    last_error=error_msg,
+                    backend_image_digest=result.validator_backend_image_digest,
+                )
                 return ExecutionResponse(
                     execution_id=result.execution_id or execution_id,
                     is_complete=True,
@@ -369,14 +375,19 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 workspace.host_output_envelope_path,
             )
 
-            if attempt is not None:
-                transition_execution_attempt(
-                    attempt.pk,
-                    ExecutionAttemptState.COMPLETED,
-                    provider_execution_id=result.execution_id or execution_id,
-                    provider_finished_at=timezone.now(),
-                    backend_image_digest=result.validator_backend_image_digest,
-                )
+            attempt, _ = transition_execution_attempt(
+                attempt.pk,
+                ExecutionAttemptState.RUNNING,
+                provider_execution_id=result.execution_id or execution_id,
+                provider_started_at=attempt.dispatch_started_at or timezone.now(),
+                backend_image_digest=result.validator_backend_image_digest,
+            )
+            transition_execution_attempt(
+                attempt.pk,
+                ExecutionAttemptState.COMPLETED,
+                provider_finished_at=timezone.now(),
+                backend_image_digest=result.validator_backend_image_digest,
+            )
 
             logger.info(
                 "Container execution completed for run %s in %.2fs",
@@ -397,14 +408,13 @@ class DockerComposeExecutionBackend(ExecutionBackend):
 
         except TimeoutError as e:
             logger.exception("Container execution timed out for run %s", request.run_id)
-            if attempt is not None:
-                transition_execution_attempt(
-                    attempt.pk,
-                    ExecutionAttemptState.TIMED_OUT,
-                    provider_finished_at=timezone.now(),
-                    last_error_code="container_timeout",
-                    last_error=str(e),
-                )
+            transition_execution_attempt(
+                attempt.pk,
+                ExecutionAttemptState.TIMED_OUT,
+                provider_finished_at=timezone.now(),
+                last_error_code="container_timeout",
+                last_error=str(e),
+            )
             return ExecutionResponse(
                 execution_id=execution_id,
                 is_complete=True,
@@ -414,23 +424,22 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         except Exception as e:
             logger.exception("Failed to execute validation for run %s", request.run_id)
             dispatch_is_ambiguous = False
-            if attempt is not None:
-                attempt.refresh_from_db(fields=["state"])
-                if attempt.state == ExecutionAttemptState.DISPATCHING:
-                    transition_execution_attempt(
-                        attempt.pk,
-                        ExecutionAttemptState.UNKNOWN,
-                        last_error_code="container_state_unknown",
-                        last_error=str(e),
-                    )
-                    dispatch_is_ambiguous = True
-                elif attempt.state == ExecutionAttemptState.PENDING:
-                    transition_execution_attempt(
-                        attempt.pk,
-                        ExecutionAttemptState.FAILED,
-                        last_error_code="container_preparation_failed",
-                        last_error=str(e),
-                    )
+            attempt.refresh_from_db(fields=["state"])
+            if attempt.state == ExecutionAttemptState.DISPATCHING:
+                transition_execution_attempt(
+                    attempt.pk,
+                    ExecutionAttemptState.UNKNOWN,
+                    last_error_code="container_state_unknown",
+                    last_error=str(e),
+                )
+                dispatch_is_ambiguous = True
+            elif attempt.state == ExecutionAttemptState.PENDING:
+                transition_execution_attempt(
+                    attempt.pk,
+                    ExecutionAttemptState.FAILED,
+                    last_error_code="container_preparation_failed",
+                    last_error=str(e),
+                )
             return ExecutionResponse(
                 execution_id=execution_id,
                 is_complete=not dispatch_is_ambiguous,

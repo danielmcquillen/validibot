@@ -154,10 +154,7 @@ class StepOrchestrator:
 
         if not ensure_runtime_profile_supported(
             validation_run,
-            supported_profiles=(
-                ValidationRuntimeProfile.LEGACY,
-                ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
-            ),
+            supported_profiles=(ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,),
             operation="execute_workflow_steps",
             sender=self.__class__,
         ):
@@ -618,19 +615,10 @@ class StepOrchestrator:
                     )
                     return step_run, False
 
-                # An attempt-mode RUNNING step can represent live or
+                # A RUNNING step with attempt history can represent live or
                 # acceptance-ambiguous provider work. Never reinterpret it as
                 # a crashed task and launch a second provider execution.
-                from validibot.validations.services.runtime_profiles import (
-                    get_runtime_profile_policy,
-                )
-
-                if (
-                    get_runtime_profile_policy(
-                        validation_run.runtime_profile
-                    ).uses_execution_attempts
-                    and step_run.execution_attempts.exists()
-                ):
+                if step_run.execution_attempts.exists():
                     logger.info(
                         "Step run %s already has execution-attempt history; "
                         "automatic task redelivery cannot relaunch it",
@@ -638,9 +626,8 @@ class StepOrchestrator:
                     )
                     return step_run, False
 
-                # Legacy RUNNING steps retain the established retry behavior.
-                # Reset timing and clear partial findings before
-                # re-executing.
+                # A step without attempt history failed before it could claim
+                # provider work, so resetting its local bookkeeping is safe.
                 logger.info(
                     "Step run %s is RUNNING (retry scenario), "
                     "clearing findings and resetting timer",
@@ -913,10 +900,7 @@ class StepOrchestrator:
         """
         if not ensure_runtime_profile_supported(
             validation_run,
-            supported_profiles=(
-                ValidationRuntimeProfile.LEGACY,
-                ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
-            ),
+            supported_profiles=(ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,),
             operation="execute_workflow_step",
             sender=self.__class__,
         ):

@@ -202,7 +202,7 @@ class ProviderDispatchAmbiguousError(RuntimeError):
 
 
 def _callback_id_for_step(step_run) -> str:
-    """Bind attempt-mode callbacks to one launch, retaining legacy ids."""
+    """Bind the callback to the step's one active execution attempt."""
     from validibot.validations.services.execution_attempts import (
         build_attempt_callback_id,
     )
@@ -211,9 +211,10 @@ def _callback_id_for_step(step_run) -> str:
     )
 
     attempt = get_active_execution_attempt(step_run)
-    if attempt is not None:
-        return build_attempt_callback_id(attempt)
-    return f"step-run-{step_run.id}"
+    if attempt is None:
+        msg = f"Validation step {step_run.pk} has no active execution attempt"
+        raise RuntimeError(msg)
+    return build_attempt_callback_id(attempt)
 
 
 def _run_validator_job_safely(
@@ -227,9 +228,8 @@ def _run_validator_job_safely(
 ) -> str:
     """Launch once and preserve provider-acceptance ambiguity explicitly.
 
-    Legacy runs retain their existing direct call. Attempt-mode runs claim the
-    durable row immediately before the external API. If the call raises, the
-    attempt becomes UNKNOWN and no delivery is allowed to launch it again.
+    The durable row is claimed immediately before the external API. If the call
+    raises, the attempt becomes UNKNOWN and no delivery may launch it again.
     """
     from validibot.validations.constants import ExecutionAttemptState
     from validibot.validations.services.execution_attempts import (
@@ -241,12 +241,8 @@ def _run_validator_job_safely(
 
     attempt = get_active_execution_attempt(step_run)
     if attempt is None:
-        return run_validator_job(
-            project_id=project_id,
-            region=region,
-            job_name=job_name,
-            input_uri=input_uri,
-        )
+        msg = f"Validation step {step_run.pk} has no active execution attempt"
+        raise RuntimeError(msg)
 
     if attempt.state != ExecutionAttemptState.PENDING:
         if attempt.state == ExecutionAttemptState.RUNNING and (

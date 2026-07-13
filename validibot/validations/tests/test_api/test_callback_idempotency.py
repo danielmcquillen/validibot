@@ -23,6 +23,8 @@ from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import CallbackReceipt
+from validibot.validations.services.execution_attempts import build_attempt_callback_id
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
@@ -62,6 +64,11 @@ class CallbackIdempotencyTestCase(TestCase):
             workflow_step=self.workflow_step,
             status=StepStatus.RUNNING,
         )
+        self.attempt = ExecutionAttemptFactory(
+            step_run=self.step_run,
+            state="RUNNING",
+        )
+        self.callback_id = build_attempt_callback_id(self.attempt)
 
         self.callback_url = "/api/v1/validation-callbacks/"
 
@@ -104,7 +111,7 @@ class CallbackIdempotencyTestCase(TestCase):
         """Test that the first callback with a callback_id is processed."""
         mock_download.return_value = self._make_mock_envelope()
 
-        callback_id = str(uuid.uuid4())
+        callback_id = self.callback_id
         payload = {
             "run_id": str(self.run.id),
             "callback_id": callback_id,
@@ -148,7 +155,7 @@ class CallbackIdempotencyTestCase(TestCase):
         mock_envelope.validator.id = str(uuid.uuid4())
         mock_download.return_value = mock_envelope
 
-        callback_id = str(uuid.uuid4())
+        callback_id = self.callback_id
         payload = {
             "run_id": str(self.run.id),
             "callback_id": callback_id,
@@ -168,17 +175,16 @@ class CallbackIdempotencyTestCase(TestCase):
     def test_rejected_callback_retry_short_circuits(self, mock_download):
         """A redelivery of a permanently REJECTED callback must NOT reprocess.
 
-        Once a callback is REJECTED (terminal), a Cloud Tasks redelivery should
-        hit the idempotency guard and return a cached 200 ("already rejected")
-        WITHOUT re-running processing — stopping the retry storm on a callback
-        that can never succeed. We prove no reprocessing by asserting
+        Once a callback is REJECTED (terminal), a Cloud Tasks redelivery hits
+        the receipt before terminal-attempt handling and returns a cached 200
+        without re-running processing. We prove that by asserting
         download_envelope is not called a second time.
         """
         mock_envelope = self._make_mock_envelope()
         mock_envelope.validator.id = str(uuid.uuid4())
         mock_download.return_value = mock_envelope
 
-        callback_id = str(uuid.uuid4())
+        callback_id = self.callback_id
         payload = {
             "run_id": str(self.run.id),
             "callback_id": callback_id,
@@ -208,7 +214,7 @@ class CallbackIdempotencyTestCase(TestCase):
         """Test that duplicate callbacks with same callback_id are not reprocessed."""
         mock_download.return_value = self._make_mock_envelope()
 
-        callback_id = str(uuid.uuid4())
+        callback_id = self.callback_id
         payload = {
             "run_id": str(self.run.id),
             "callback_id": callback_id,
@@ -250,8 +256,8 @@ class CallbackIdempotencyTestCase(TestCase):
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.services.validation_callback.download_envelope")
-    def test_callback_without_id_still_processed(self, mock_download):
-        """Test that callbacks without callback_id are processed (no idempotency)."""
+    def test_callback_without_attempt_id_is_rejected(self, mock_download):
+        """A callback without durable attempt identity must never mutate a run."""
         mock_download.return_value = self._make_mock_envelope()
 
         payload = {
@@ -267,24 +273,25 @@ class CallbackIdempotencyTestCase(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["message"], "Callback processed successfully")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["error"],
+            "Callback does not identify a valid execution attempt",
+        )
 
         # No receipt created when callback_id is missing
         self.assertEqual(CallbackReceipt.objects.count(), 0)
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.services.validation_callback.download_envelope")
-    def test_different_callback_ids_processed_separately(self, mock_download):
-        """Test that different callback_ids are processed independently.
+    def test_different_attempt_callbacks_are_processed_separately(self, mock_download):
+        """Callbacks for distinct attempts are processed independently.
 
-        Each callback_id creates its own receipt. Sending two callbacks with
-        different callback_ids should create two separate receipts, not trigger
-        idempotent replay.
+        Each provider launch has its own durable callback identity and receipt.
         """
         mock_download.return_value = self._make_mock_envelope()
 
-        callback_id_1 = str(uuid.uuid4())
+        callback_id_1 = self.callback_id
 
         # First callback
         payload1 = {
@@ -307,11 +314,12 @@ class CallbackIdempotencyTestCase(TestCase):
             workflow=run2.workflow,
             validator=self.validator,
         )
-        ValidationStepRunFactory(
+        step_run2 = ValidationStepRunFactory(
             validation_run=run2,
             workflow_step=workflow_step2,
             status=StepStatus.RUNNING,
         )
+        attempt2 = ExecutionAttemptFactory(step_run=step_run2, state="RUNNING")
 
         # Update mock envelope for run2
         mock_envelope2 = self._make_mock_envelope()
@@ -320,7 +328,7 @@ class CallbackIdempotencyTestCase(TestCase):
         mock_envelope2.workflow.step_id = str(workflow_step2.id)
         mock_download.return_value = mock_envelope2
 
-        callback_id_2 = str(uuid.uuid4())
+        callback_id_2 = build_attempt_callback_id(attempt2)
 
         # Second callback with different callback_id
         payload2 = {
@@ -379,7 +387,7 @@ class CallbackIdempotencyTestCase(TestCase):
         # First call: simulate processor failure by throwing exception
         mock_download.side_effect = Exception("Simulated GCS download failure")
 
-        callback_id = str(uuid.uuid4())
+        callback_id = self.callback_id
         payload = {
             "run_id": str(self.run.id),
             "callback_id": callback_id,
@@ -426,12 +434,12 @@ class CallbackIdempotencyTestCase(TestCase):
         Test that callbacks with terminal receipt status are NOT retried.
 
         Once a callback has been successfully processed (terminal status),
-        subsequent callbacks with the same callback_id should return the
-        idempotent_replayed response, not reprocess.
+        subsequent callbacks with the same callback_id return the cached
+        receipt response rather than reprocessing output.
         """
         mock_download.return_value = self._make_mock_envelope()
 
-        callback_id = str(uuid.uuid4())
+        callback_id = self.callback_id
         payload = {
             "run_id": str(self.run.id),
             "callback_id": callback_id,
@@ -455,7 +463,7 @@ class CallbackIdempotencyTestCase(TestCase):
         # Reset mock to track if it gets called
         mock_download.reset_mock()
 
-        # Second attempt - should return idempotent response without reprocessing
+        # Second attempt returns the cached receipt without reprocessing.
         response2 = self.client.post(
             self.callback_url,
             data=payload,
@@ -481,6 +489,10 @@ class CallbackReceiptModelTestCase(TestCase):
             user=self.user,
             status=ValidationRunStatus.RUNNING,
         )
+        self.attempt = ExecutionAttemptFactory(
+            step_run__validation_run=self.run,
+            state="RUNNING",
+        )
 
     def test_callback_id_unique_constraint(self):
         """Test that callback_id must be unique."""
@@ -493,6 +505,7 @@ class CallbackReceiptModelTestCase(TestCase):
         CallbackReceipt.objects.create(
             callback_id=callback_id,
             validation_run=self.run,
+            execution_attempt=self.attempt,
             status=CallbackReceiptStatus.COMPLETED,
         )
 
@@ -501,6 +514,7 @@ class CallbackReceiptModelTestCase(TestCase):
             CallbackReceipt.objects.create(
                 callback_id=callback_id,
                 validation_run=self.run,
+                execution_attempt=self.attempt,
                 status=CallbackReceiptStatus.COMPLETED,
             )
 
@@ -510,6 +524,7 @@ class CallbackReceiptModelTestCase(TestCase):
         receipt = CallbackReceipt.objects.create(
             callback_id=callback_id,
             validation_run=self.run,
+            execution_attempt=self.attempt,
             status=CallbackReceiptStatus.COMPLETED,
         )
 
@@ -524,6 +539,7 @@ class CallbackReceiptModelTestCase(TestCase):
         receipt = CallbackReceipt.objects.create(
             callback_id=callback_id,
             validation_run=self.run,
+            execution_attempt=self.attempt,
             status=CallbackReceiptStatus.COMPLETED,
             result_uri=result_uri,
         )

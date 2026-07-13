@@ -97,8 +97,8 @@ The `WorkflowViewSet.start_validation()` method processes the request:
    - Links the submission to the specific workflow version
    - Initializes with PENDING status
    - Records the user who triggered the validation
-   - Records an immutable runtime profile; the current reader-first release
-     creates `LEGACY` runs while preparing additive execution-attempt support
+   - Records the application-selected immutable runtime profile; every new run
+     uses the durable execution-attempt lifecycle
 
 #### 2.3 Execution Dispatch
 

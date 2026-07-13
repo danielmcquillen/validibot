@@ -297,14 +297,11 @@ class Command(BaseCommand):
             - "reconciled": Run was recovered or marked failed based on GCP status
             - "still_running": Job is still executing on GCP; the caller
               applies the configured timeout fence and requests cancellation
-            - "profile_rejected": This legacy watchdog fenced an attempt-mode run
+            - "profile_rejected": This deployment cannot interpret the run profile
             - "not_applicable": Not a GCP run or missing metadata
             - "error": GCP API call failed (fall through to timeout)
         """
-        supported_profiles = (
-            ValidationRuntimeProfile.LEGACY,
-            ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
-        )
+        supported_profiles = (ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,)
         if not is_runtime_profile_supported(run.runtime_profile, supported_profiles):
             if dry_run:
                 self.stdout.write(
@@ -337,8 +334,6 @@ class Command(BaseCommand):
         if identity is None:
             return "not_applicable"
         execution_name = identity.execution_id
-        step_output = step_run.output or {}
-
         # 3. Query Cloud Run Job status via backend
         try:
             from validibot.validations.services.execution.gcp import GCPExecutionBackend
@@ -359,10 +354,7 @@ class Command(BaseCommand):
         # 4. Act based on the explicit provider state. Human-readable messages
         # are diagnostics only and must never determine success versus failure.
         execution_status = status_response.execution_status
-        is_failed = execution_status == ExecutionStatus.FAILED or (
-            execution_status is None and bool(status_response.error_message)
-        )
-        if is_failed:
+        if execution_status == ExecutionStatus.FAILED:
             error_message = (
                 status_response.error_message or PROVIDER_FAILURE_WITHOUT_DETAILS
             )
@@ -373,7 +365,11 @@ class Command(BaseCommand):
                 )
                 return "reconciled"
 
-            self._mark_run_failed_from_gcp(run, error_message)
+            self._mark_run_failed_from_gcp(
+                run,
+                error_message,
+                attempt=identity.attempt,
+            )
             return "reconciled"
 
         if not status_response.is_complete:
@@ -385,7 +381,7 @@ class Command(BaseCommand):
             )
             return "still_running"
 
-        if execution_status not in {None, ExecutionStatus.SUCCEEDED}:
+        if execution_status != ExecutionStatus.SUCCEEDED:
             logger.warning(
                 "Cannot safely reconcile provider state %s for run %s",
                 execution_status,
@@ -403,8 +399,6 @@ class Command(BaseCommand):
 
         return self._recover_lost_callback(
             run,
-            step_run,
-            step_output,
             execution_bundle_uri=identity.execution_bundle_uri,
             attempt=identity.attempt,
         )
@@ -437,22 +431,11 @@ class Command(BaseCommand):
         self,
         run: ValidationRun,
         error_message: str,
+        *,
+        attempt,
     ) -> None:
         """Mark a run as failed based on GCP Cloud Run Job failure."""
         error_message = error_message or PROVIDER_FAILURE_WITHOUT_DETAILS
-        attempt = None
-        from validibot.validations.services.runtime_profiles import (
-            get_runtime_profile_policy,
-        )
-
-        if get_runtime_profile_policy(run.runtime_profile).uses_execution_attempts:
-            step_run = self._get_active_step_run(run)
-            from validibot.validations.services.execution_attempts import (
-                get_active_execution_attempt,
-            )
-
-            if step_run is not None:
-                attempt = get_active_execution_attempt(step_run)
 
         with transaction.atomic():
             locked = ValidationRun.objects.select_for_update().get(pk=run.pk)
@@ -491,19 +474,18 @@ class Command(BaseCommand):
                 },
             )
 
-        if attempt is not None:
-            from validibot.validations.constants import ExecutionAttemptState
-            from validibot.validations.services.execution_attempts import (
-                transition_execution_attempt,
-            )
+        from validibot.validations.constants import ExecutionAttemptState
+        from validibot.validations.services.execution_attempts import (
+            transition_execution_attempt,
+        )
 
-            transition_execution_attempt(
-                attempt.pk,
-                ExecutionAttemptState.FAILED,
-                provider_finished_at=timezone.now(),
-                last_error_code="provider_failed",
-                last_error=error_message,
-            )
+        transition_execution_attempt(
+            attempt.pk,
+            ExecutionAttemptState.FAILED,
+            provider_finished_at=timezone.now(),
+            last_error_code="provider_failed",
+            last_error=error_message,
+        )
 
         from validibot.validations.signals import validation_run_finalized
 
@@ -515,11 +497,9 @@ class Command(BaseCommand):
     def _recover_lost_callback(
         self,
         run: ValidationRun,
-        step_run: ValidationStepRun,
-        step_output: dict,
         *,
-        execution_bundle_uri: str = "",
-        attempt=None,
+        execution_bundle_uri: str,
+        attempt,
     ) -> str:
         """
         Recover a completed GCP run by processing a synthetic callback.
@@ -534,18 +514,15 @@ class Command(BaseCommand):
 
         Args:
             run: The stuck ValidationRun.
-            step_run: The active step run with GCP metadata.
-            step_output: The step_run.output dict containing execution metadata.
+            execution_bundle_uri: Durable bundle location recorded on the attempt.
+            attempt: The concrete provider execution being reconciled.
 
         Returns:
             "reconciled" on success, "error" on failure.
         """
-        execution_bundle_uri = execution_bundle_uri or step_output.get(
-            "execution_bundle_uri", ""
-        )
         if not execution_bundle_uri:
             logger.warning(
-                "Cannot recover run %s: no execution_bundle_uri in step output",
+                "Cannot recover run %s: its attempt has no execution bundle URI",
                 run.id,
             )
             return "error"
@@ -556,13 +533,11 @@ class Command(BaseCommand):
         # Build a synthetic callback payload
         from validibot_shared.validations.envelopes import ValidationStatus
 
-        callback_id = f"reconciliation-{run.id}"
-        if attempt is not None:
-            from validibot.validations.services.execution_attempts import (
-                build_attempt_callback_id,
-            )
+        from validibot.validations.services.execution_attempts import (
+            build_attempt_callback_id,
+        )
 
-            callback_id = build_attempt_callback_id(attempt)
+        callback_id = build_attempt_callback_id(attempt)
 
         callback_payload = {
             "run_id": str(run.id),

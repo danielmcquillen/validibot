@@ -89,9 +89,9 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
         run_context = self._build_run_context()
 
-        # Attempt-mode runs create their durable identity before any provider
-        # work. A redelivery that observes an already-claimed attempt must not
-        # call the provider again; reconciliation owns that case.
+        # Create durable identity before any provider work. A redelivery that
+        # observes an already-claimed attempt must not call the provider again;
+        # reconciliation owns that case.
         from validibot.validations.services.execution import get_execution_backend
         from validibot.validations.services.execution_attempts import (
             get_or_create_execution_attempt,
@@ -102,11 +102,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
             self.step_run,
             runner_type=backend.backend_name,
         )
-        if (
-            attempt is not None
-            and not attempt_created
-            and attempt.state != ExecutionAttemptState.PENDING
-        ):
+        if not attempt_created and attempt.state != ExecutionAttemptState.PENDING:
             logger.info(
                 "Execution attempt %s is already %s; skipping provider relaunch",
                 attempt.pk,
@@ -139,25 +135,24 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
                 "Error executing advanced validation step %s",
                 self.step_run.id,
             )
-            if attempt is not None:
-                attempt.refresh_from_db(fields=["state"])
-                if attempt.state == ExecutionAttemptState.PENDING:
-                    from validibot.validations.services.execution_attempts import (
-                        transition_execution_attempt,
-                    )
+            attempt.refresh_from_db(fields=["state"])
+            if attempt.state == ExecutionAttemptState.PENDING:
+                from validibot.validations.services.execution_attempts import (
+                    transition_execution_attempt,
+                )
 
-                    transition_execution_attempt(
-                        attempt.pk,
-                        ExecutionAttemptState.FAILED,
-                        last_error_code="validator_preparation_failed",
-                        last_error=str(e),
-                    )
+                transition_execution_attempt(
+                    attempt.pk,
+                    ExecutionAttemptState.FAILED,
+                    last_error_code="validator_preparation_failed",
+                    last_error=str(e),
+                )
             return self._handle_error(e)
 
         # Persist input-stage findings (from assertions evaluated in validate())
         severity_counts, assertion_failures = self.persist_findings(result.issues)
 
-        if attempt is not None and result.passed is False:
+        if result.passed is False:
             # A provider that accepted work moves the attempt out of PENDING
             # inside its backend. Therefore a definitive failure that leaves
             # PENDING occurred before launch and is safe to mark FAILED.

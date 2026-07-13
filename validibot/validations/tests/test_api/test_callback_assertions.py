@@ -11,7 +11,6 @@ These tests verify that:
 3. Failure messages are generated for failed assertions
 """
 
-import uuid
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -27,6 +26,8 @@ from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import ValidationFinding
+from validibot.validations.services.execution_attempts import build_attempt_callback_id
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
@@ -85,6 +86,11 @@ class CallbackAssertionEvaluationTests(TestCase):
             step_order=self.step.order,
             status=StepStatus.RUNNING,
         )
+        self.attempt = ExecutionAttemptFactory(
+            step_run=self.step_run,
+            state="RUNNING",
+        )
+        self.callback_id = build_attempt_callback_id(self.attempt)
 
     def _make_mock_envelope(
         self,
@@ -178,7 +184,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             metrics={"site_eui_kwh_m2": 75},
         )
 
-        callback_id = str(uuid.uuid4())
+        callback_id = self.callback_id
         response = self.client.post(
             self.callback_url,
             data={
@@ -229,7 +235,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             metrics={"site_eui_kwh_m2": 75},
         )
 
-        callback_id = str(uuid.uuid4())
+        callback_id = self.callback_id
         response = self.client.post(
             self.callback_url,
             data={
@@ -294,7 +300,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             messages=[mock_message],
         )
 
-        callback_id = str(uuid.uuid4())
+        callback_id = self.callback_id
         response = self.client.post(
             self.callback_url,
             data={
@@ -375,6 +381,10 @@ class CallbackAssertionEvaluationTests(TestCase):
             step_order=system_step.order,
             status=StepStatus.RUNNING,
         )
+        system_attempt = ExecutionAttemptFactory(
+            step_run=system_step_run,
+            state="RUNNING",
+        )
 
         mock_message = MagicMock()
         mock_message.text = "** Severe ** non-fatal EnergyPlus message"
@@ -388,7 +398,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             run_id=system_run.id,
         )
 
-        callback_id = str(uuid.uuid4())
+        callback_id = build_attempt_callback_id(system_attempt)
         response = self.client.post(
             self.callback_url,
             data={
@@ -444,7 +454,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             metrics={"site_eui_kwh_m2": 75},
         )
 
-        callback_id = str(uuid.uuid4())
+        callback_id = self.callback_id
         response = self.client.post(
             self.callback_url,
             data={
@@ -494,7 +504,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             metrics={"site_eui_kwh_m2": 75},
         )
 
-        callback_id = str(uuid.uuid4())
+        callback_id = self.callback_id
         response = self.client.post(
             self.callback_url,
             data={
@@ -551,7 +561,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             metrics={"site_eui_kwh_m2": 75},
         )
 
-        callback_id = str(uuid.uuid4())
+        callback_id = self.callback_id
         response = self.client.post(
             self.callback_url,
             data={

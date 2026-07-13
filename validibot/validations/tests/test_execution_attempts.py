@@ -1,10 +1,9 @@
-"""Tests for the reader-first execution-attempt aggregate and state graph.
+"""Tests for the execution-attempt aggregate and state graph.
 
 An attempt is the durable identity for one concrete provider launch.  These
-tests focus on invariants that must hold before production writers are enabled:
-one active attempt per logical step, unique provider identities, profile-bound
-contracts, monotonic terminal state, and profile-aware identity lookup that
-never falls back to stale legacy JSON.
+tests focus on its core invariants: one active attempt per logical step, unique
+provider identities, profile-bound contracts, monotonic terminal state, and
+provider identity lookup that never falls back to mutable step output.
 """
 
 from itertools import product
@@ -16,7 +15,6 @@ from django.db import transaction
 
 from validibot.validations.constants import ExecutionAttemptState
 from validibot.validations.constants import ExecutionContractVersion
-from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.models import CallbackReceipt
 from validibot.validations.models import ExecutionAttempt
 from validibot.validations.services.execution_attempts import (
@@ -36,7 +34,6 @@ from validibot.validations.services.execution_attempts import (
 )
 from validibot.validations.tests.factories import CallbackReceiptFactory
 from validibot.validations.tests.factories import ExecutionAttemptFactory
-from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 
 EXPECTED_ATTEMPT_COUNT = 2
@@ -107,28 +104,14 @@ class TestExecutionAttemptModel:
         with pytest.raises(ValidationError, match="contract must match"):
             attempt.full_clean()
 
-    def test_legacy_run_rejects_attempt_during_model_validation(self):
-        """A nullable attempt table must not become an implicit profile switch."""
-        legacy_step = ValidationStepRunFactory(
-            validation_run=ValidationRunFactory(
-                runtime_profile=ValidationRuntimeProfile.LEGACY
-            )
-        )
-        attempt = ExecutionAttemptFactory(step_run=legacy_step)
-
-        with pytest.raises(ValidationError, match="Legacy runs cannot contain"):
-            attempt.full_clean()
-
-    def test_callback_receipt_link_is_additive_for_legacy_and_attempt_modes(self):
-        """Legacy receipts stay valid while new receipts can bind to one attempt."""
-        legacy_receipt = CallbackReceiptFactory()
+    def test_callback_receipt_requires_attempt_identity(self):
+        """Every accepted callback must remain attributable to its provider work."""
         attempt = ExecutionAttemptFactory(state=ExecutionAttemptState.RUNNING)
         attempt_receipt = CallbackReceiptFactory(
             validation_run=attempt.step_run.validation_run,
             execution_attempt=attempt,
         )
 
-        assert legacy_receipt.execution_attempt_id is None
         assert attempt_receipt.execution_attempt_id == attempt.id
 
     def test_callback_receipt_attempt_must_belong_to_same_run(self):
@@ -254,26 +237,10 @@ class TestExecutionAttemptTransitions:
 
 @pytest.mark.django_db
 class TestProviderExecutionIdentity:
-    """Read provider identity only from the source selected by run profile."""
+    """Read provider identity only from durable execution-attempt columns."""
 
-    def test_legacy_profile_reads_existing_step_output(self):
-        """Stage 1 must preserve cancellation for every existing run."""
-        step_run = ValidationStepRunFactory(
-            output={
-                "execution_name": "legacy-execution",
-                "execution_bundle_uri": "gs://bucket/legacy",
-            }
-        )
-
-        identity = resolve_provider_execution_identity(step_run)
-
-        assert identity is not None
-        assert identity.execution_id == "legacy-execution"
-        assert identity.execution_bundle_uri == "gs://bucket/legacy"
-        assert identity.attempt is None
-
-    def test_attempt_profile_reads_attempt_row(self):
-        """Attempt-mode cancellation must use durable columns, not mutable JSON."""
+    def test_provider_identity_reads_attempt_row(self):
+        """Cancellation must use durable columns rather than mutable step JSON."""
         attempt = ExecutionAttemptFactory(
             state=ExecutionAttemptState.RUNNING,
             provider_execution_id="attempt-execution",
@@ -289,12 +256,9 @@ class TestProviderExecutionIdentity:
         assert identity.execution_bundle_uri == "gs://bucket/attempt"
         assert identity.attempt == attempt
 
-    def test_attempt_profile_never_falls_back_to_legacy_json(self):
-        """Missing attempt identity must not permit stale legacy fallback."""
+    def test_provider_identity_never_falls_back_to_step_output(self):
+        """Missing attempt identity must not permit stale JSON fallback."""
         step_run = ValidationStepRunFactory(
-            validation_run__runtime_profile=(
-                ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
-            ),
             output={"execution_name": "stale-legacy-execution"},
         )
 

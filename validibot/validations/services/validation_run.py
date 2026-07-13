@@ -42,7 +42,6 @@ from typing import Any
 
 from attr import dataclass
 from attr import field
-from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -54,7 +53,6 @@ from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
-from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.exceptions import OrgPolicyDeniedError
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationRunSummary
@@ -96,7 +94,7 @@ def cancel_active_execution(run: ValidationRun) -> bool | None:
     The caller must commit the run's logical terminal state before invoking
     this helper. Provider APIs and PostgreSQL cannot share a transaction, so a
     provider failure is logged and returned without reopening the run. ``None``
-    means the legacy run has no addressable execution identity.
+    means the active step has no addressable execution identity.
     """
     step_run = (
         ValidationStepRun.objects.filter(
@@ -203,13 +201,6 @@ def fence_active_execution_attempt(
     error_message: str,
 ) -> None:
     """Terminally fence an attempt inside the caller's run transaction."""
-    from validibot.validations.services.runtime_profiles import (
-        get_runtime_profile_policy,
-    )
-
-    if not get_runtime_profile_policy(run.runtime_profile).uses_execution_attempts:
-        return
-
     step_run = (
         ValidationStepRun.objects.filter(
             validation_run=run,
@@ -379,24 +370,15 @@ class ValidationRunService:
             output_expires_at = timezone.now() + retention_delta
 
         run_extra = dict(extra or {})
-        requested_profile = run_extra.pop(
-            "runtime_profile",
-            getattr(
-                settings,
-                "VALIDATION_RUNTIME_PROFILE",
-                ValidationRuntimeProfile.LEGACY,
-            ),
-        )
-        from validibot.validations.services.runtime_profiles import (
-            is_runtime_profile_writer_enabled,
-        )
-
-        if not is_runtime_profile_writer_enabled(requested_profile):
-            msg = (
-                "This release creates LEGACY validation runs only; "
-                f"runtime profile {requested_profile!r} is reader-only."
-            )
+        # Runtime semantics are application-owned, not caller- or
+        # operator-selectable. Reject an override explicitly rather than
+        # silently hiding a caller that is trying to restore a second engine.
+        if "runtime_profile" in run_extra:
+            msg = "runtime_profile is selected by the application"
             raise ValueError(msg)
+        from validibot.validations.services.runtime_profiles import (
+            NEW_RUN_RUNTIME_PROFILE,
+        )
 
         with transaction.atomic():
             validation_run = ValidationRun.objects.create(
@@ -407,7 +389,7 @@ class ValidationRunService:
                 or getattr(workflow, "project", None),
                 user=run_user,
                 status=ValidationRunStatus.PENDING,
-                runtime_profile=requested_profile,
+                runtime_profile=NEW_RUN_RUNTIME_PROFILE,
                 source=source,
                 output_retention_policy=output_retention_policy,
                 output_expires_at=output_expires_at,

@@ -84,7 +84,6 @@ The doctor command's VB001-VB099 range checks these.
 | `VALIDATOR_RETAIN_HOURS` | How long stopped validator containers are kept before `cleanup` removes them. Default: `24`. |
 | `VALIDATOR_TIMEOUT_SECONDS` | Outer per-validator timeout and stuck-run watchdog deadline. Validators can request shorter via their manifest. |
 | `CELERY_VISIBILITY_TIMEOUT_SECONDS` | Redis redelivery window. Default: `3600`; it must remain greater than Celery's 30-minute hard task limit so a healthy long task is not delivered twice. |
-| `VALIDATION_RUNTIME_PROFILE` | Immutable semantics for newly created runs. Keep the default `LEGACY` during mixed-version deployment; use `ATTEMPT_LIFECYCLE_V1` only after every web and worker instance has the lifecycle writer release. |
 
 ### 7. Pro and signing
 

@@ -2753,7 +2753,7 @@ class ValidationRun(TimeStampedModel):
     runtime_profile = models.CharField(
         max_length=32,
         choices=ValidationRuntimeProfile.choices,
-        default=ValidationRuntimeProfile.LEGACY,
+        default=ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
         editable=False,
         help_text=_(
             "Immutable execution semantics selected when this run was created."
@@ -3102,8 +3102,7 @@ class ExecutionAttempt(TimeStampedModel):
     The step run remains the workflow-level unit.  This row gives each actual
     container or cloud job a durable identity so retries, callbacks,
     reconciliation, cancellation, evidence, and billing can all refer to the
-    same launch.  Stage 1 adds this reader-first schema but does not create
-    attempts in production; attempt writers are enabled in a later stage.
+    same launch.
     """
 
     class Meta:
@@ -3226,8 +3225,6 @@ class ExecutionAttempt(TimeStampedModel):
             self.step_run.validation_run.runtime_profile
         )
         errors = {}
-        if not policy.uses_execution_attempts:
-            errors["step_run"] = _("Legacy runs cannot contain execution attempts.")
         if self.contract_version != policy.contract_version:
             errors["contract_version"] = _(
                 "The attempt contract must match its run's runtime profile."
@@ -3521,13 +3518,8 @@ class CallbackReceipt(models.Model):
     execution_attempt = models.ForeignKey(
         ExecutionAttempt,
         on_delete=models.RESTRICT,
-        null=True,
-        blank=True,
         related_name="callback_receipts",
-        help_text=_(
-            "The concrete execution that produced this callback. "
-            "Null only for legacy callbacks during migration."
-        ),
+        help_text=_("The concrete execution that produced this callback."),
     )
 
     received_at = models.DateTimeField(

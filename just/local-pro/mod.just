@@ -47,9 +47,9 @@ compose_env_args := `bash -lc 'if [ -f ".envs/.local/.build" ]; then printf -- "
 # variable reference. Setting a knob inline (``ENABLE_MCP_SERVER=true
 # just local-pro up``) still works and wins over the file.
 #
-# Rebuilds the venv volume when --build is passed so new dependencies
-# from pro (authlib, cryptography) are picked up cleanly — mirrors the
-# behaviour of ``just local-cloud up --build``.
+# Stops the stack and rebuilds the venv volume when --build is passed so new
+# dependencies from pro (authlib, cryptography) are picked up cleanly — mirrors
+# the behaviour of ``just local-cloud up --build``.
 [no-cd]
 up *args:
     #!/usr/bin/env bash
@@ -64,14 +64,18 @@ up *args:
         set +a
     fi
     args="{{args}}"
-    if [[ "$args" == *"--build"* ]]; then
-        docker volume rm validibot_validibot_local_venv 2>/dev/null || true
-    fi
     if [[ "${ENABLE_MCP_SERVER:-false}" == "true" || \
           "${ENABLE_MCP_SERVER:-false}" == "1" || \
           "${ENABLE_MCP_SERVER:-false}" == "yes" ]]; then
         export COMPOSE_PROFILES="${COMPOSE_PROFILES:+${COMPOSE_PROFILES},}mcp"
         echo "ENABLE_MCP_SERVER is set — including the MCP container (profile: mcp)"
+    fi
+    if [[ "$args" == *"--build"* ]]; then
+        docker compose {{compose_env_args}} \
+            -f "{{base_compose}}" \
+            -f "{{overlay_compose}}" \
+            down
+        docker volume rm validibot_validibot_local_venv 2>/dev/null || true
     fi
     docker compose {{compose_env_args}} \
         -f "{{base_compose}}" \

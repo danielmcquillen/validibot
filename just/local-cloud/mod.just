@@ -40,8 +40,8 @@ _db_url := 'DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POS
 # (``ENABLE_MCP_SERVER=true just local-cloud up``) still works and
 # wins over the file.
 #
-# When --build is passed, the venv volume is removed first so that
-# `uv sync` installs dependencies from the updated lockfile.
+# When --build is passed, the stack is stopped and the venv volume is removed
+# first so that `uv sync` installs dependencies from the updated lockfile.
 # Without this, the persisted volume can serve a stale venv that
 # is missing newly added packages.
 [no-cd]
@@ -98,9 +98,6 @@ up *args:
         fi
         echo "Mapping web to http://localhost:${WEB_PORT} (container still serves on 8000)."
     fi
-    if [[ "$args" == *"--build"* ]]; then
-        docker volume rm validibot_validibot_local_venv 2>/dev/null || true
-    fi
     # ENABLE_MCP_SERVER=true activates the "mcp" Compose profile so the
     # standalone FastMCP container is built and started alongside the
     # rest of the stack. The MCP service definition lives in
@@ -112,6 +109,10 @@ up *args:
           "${ENABLE_MCP_SERVER:-false}" == "yes" ]]; then
         export COMPOSE_PROFILES="${COMPOSE_PROFILES:+${COMPOSE_PROFILES},}mcp"
         echo "ENABLE_MCP_SERVER is set — including the MCP container (profile: mcp)"
+    fi
+    if [[ "$args" == *"--build"* ]]; then
+        docker compose -f "{{cloud_compose}}" down
+        docker volume rm validibot_validibot_local_venv 2>/dev/null || true
     fi
     docker compose -f "{{cloud_compose}}" up -d $args
 

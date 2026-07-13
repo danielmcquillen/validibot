@@ -20,6 +20,7 @@ Every CEL expression runs in a context where your data is organized into clear n
 | `i.name` | `input.name` | This step's inputs — values the validator has at the start of the step (parser facts, resolved bindings, template variables) |
 | `o.name` | `output.name` | This step's outputs — values produced by the validator after it runs |
 | `steps.step_key.input.name` / `steps.step_key.output.name` | | An earlier step's inputs or outputs |
+| `c.name` | `const.name` | Workflow constants — fixed values defined by the workflow author |
 | `submission.field` (e.g. `submission.metadata.deliverable`, `submission.uploaded_at`) | | The submission *envelope* — the submitter's metadata plus server-stamped facts (file type, size, upload time). Available for **any** file type, even when the file isn't JSON. Long-only (no short form). See [Using submission metadata](#using-submission-metadata). |
 
 ### The teaching analogy
@@ -29,6 +30,7 @@ Think of each step as a function in a program.
 - **Inputs (`i.*`)** are the function's parameters — values handed to it at the start.
 - **Outputs (`o.*`)** are what the function returns.
 - **The workflow vocabulary (`s.*`)** is module-level state shared across functions.
+- **Constants (`c.*`)** are named literals written into the workflow definition itself.
 - **The submission file (`p.*`)** is the raw data the program started with, always available.
 - **The submission envelope (`submission.*`)** is the metadata *about* that data — who/when/what-named/how-big, plus any key-value tags attached at upload. It sits beside the file, not inside it, so it works the same for every format.
 
@@ -43,6 +45,22 @@ Just like in a program, you can lift a function-local value (an input or an outp
 2. **Promotion from a step** — take an input or output of a particular step, click "Copy to Signal", give it a workflow-wide name. From that point on, every step can reference it as `s.<your_name>`.
 
 Use `s.*` for values you want to use in multiple steps, or values whose source might change and you don't want every assertion to know the details.
+
+**`c.*` / `const.*` — workflow constants.** Fixed values the workflow author defines once on the workflow's **Constants** screen, next to **Signals**. Constants are best for thresholds, allow-lists, reference values, and other literals that should be part of the workflow contract: `c.energy_price`, `c.allowed_currencies`, `c.max_unmet_hours`.
+
+Constants are known before any run starts. The workflow page can therefore show both the name and the actual value, unlike signals, which depend on each submitted file. Constant names are case-sensitive: a constant named `bubba` is `c.bubba`, not `c.Bubba`.
+
+Basic structured assertions can use `c.<name>` as a target path. Comparing a payload value to a constant, or checking membership in a constant list, is CEL-only in this version:
+
+```
+p.currency in c.allowed_currencies
+```
+
+Assertion failure messages can also include constants:
+
+```
+Expected {{ c.energy_price }} but received {{ p.energy_price }}
+```
 
 **`i.*` — this step's inputs.** Values the validator can see at the start of this step, before its main work runs. For an EnergyPlus step this includes parser-extracted facts about the submitted IDF (`i.zone_count`, `i.idf_version`). For an FMU step it includes the resolved model input variables. For a step with author-supplied template variables, the resolved variable values appear here too.
 
@@ -67,6 +85,7 @@ Use `s.*` for values you want to use in multiple steps, or values whose source m
 |---|---|---|
 | What did the user submit? | `p.*` | `p.metadata.client_id` |
 | What named value does the workflow define? | `s.*` | `s.target_eui` |
+| What fixed reference value did the author define? | `c.*` / `const.*` | `c.energy_price` |
 | What can this step's validator see at the start? | `i.*` | `i.zone_count`, `i.idf_version` |
 | What did this step's validator produce? | `o.*` | `o.site_eui_kwh_m2` |
 | What did an earlier step produce? | `steps.<key>.output.*` | `steps.preflight.output.warning_count` |
@@ -177,6 +196,7 @@ Here are some examples of CEL expressions. The example names are highlighted in 
 
 - **Payload check**: <code><span class="target-signal-name">p.price</span></code> ` > 0`
 - **Signal check**: <code><span class="target-signal-name">s.target_eui</span></code> ` <= 60`
+- **Constant threshold**: <code><span class="target-signal-name">p.energy_price</span></code> ` <= ` <code><span class="target-signal-name">c.energy_price</span></code>
 - **Input-stage check (before validator runs)**: <code><span class="target-signal-name">i.zone_count</span></code> ` >= 4 && ` <code><span class="target-signal-name">i.idf_version</span></code> `.startsWith("25.")`
 - **Output-stage check (after validator runs)**: <code><span class="target-signal-name">o.site_eui_kwh_m2</span></code> ` <= ` <code><span class="target-signal-name">s.target_eui</span></code>
 - **Compare input to output**: `abs(` <code><span class="target-signal-name">i.expected_floor_area</span></code> ` - ` <code><span class="target-signal-name">o.floor_area_m2</span></code>`) < 5.0`
@@ -231,6 +251,7 @@ See the [Signals](/app/help/validators/signals/) guide for a worked example, and
 - Default assertions always run for the validator before step-level assertions.
 - **Input vs. output assertions are different stages.** Input-stage assertions can reference `p.*`, `s.*`, `i.*`, and earlier steps via `steps.<key>.*`. They **cannot** reference this step's `o.*` because the validator hasn't run yet. Output-stage assertions can reference everything, including this step's `o.*` and `i.*`. The assertion editor's variable picker is filtered by stage to prevent confusion.
 - **Use the namespace prefix** (`p.`, `s.`, `i.`, `o.`) to make it clear where your data comes from. In the UI we color the target portion to help you distinguish it from the rest of the expression.
+- **Use constants** (`c.*`) for fixed thresholds and allow-lists that should be visible on the workflow contract. Define them from the workflow's Constants page.
 - **Promote any step-local value to a signal** if you want to reference it from multiple steps. "Copy to Signal" works on both inputs (`i.*`) and outputs (`o.*`) — pick a workflow-wide name and the value becomes available as `s.<your_name>` everywhere downstream.
 
 For more syntax details, visit the CEL specification at <https://github.com/google/cel-spec>.

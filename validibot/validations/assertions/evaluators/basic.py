@@ -7,7 +7,6 @@ methods for each operator type (equality, comparison, membership, string ops, et
 
 from __future__ import annotations
 
-import logging
 import re
 from typing import TYPE_CHECKING
 from typing import Any
@@ -16,6 +15,12 @@ from django.utils.html import strip_tags
 from django.utils.translation import gettext as _
 
 from validibot.validations.assertions.evaluators.registry import register_evaluator
+from validibot.validations.assertions.message_templates import (
+    MessageTemplateRenderError,
+)
+from validibot.validations.assertions.message_templates import (
+    render_assertion_message_template,
+)
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.regex_safety import UnsafeOrInvalidPatternError
@@ -25,15 +30,6 @@ from validibot.validations.validators.base import ValidationIssue
 if TYPE_CHECKING:
     from validibot.validations.assertions.evaluators.base import AssertionContext
     from validibot.validations.models import RulesetAssertion
-
-logger = logging.getLogger(__name__)
-
-_TEMPLATE_PATTERN = re.compile(r"{{\s*(?P<expr>.*?)\s*}}")
-_FILTER_PATTERN = re.compile(r"^(?P<name>\w+)(?:\((?P<args>.*)\))?$")
-
-
-class MessageTemplateRenderError(Exception):
-    """Raised when an assertion message template fails to render."""
 
 
 @register_evaluator(AssertionType.BASIC)
@@ -96,6 +92,7 @@ class BasicAssertionEvaluator:
             actual=actual,
             rhs=assertion.rhs or {},
             options=options,
+            enriched_payload=enriched_payload,
         )
 
         if not passed:
@@ -114,7 +111,10 @@ class BasicAssertionEvaluator:
             ]
 
         # Assertion passed - emit success issue if configured
-        success_issue = context.engine._maybe_success_issue(assertion)
+        success_issue = context.engine._maybe_success_issue(
+            assertion,
+            template_context=template_context,
+        )
         if success_issue:
             return [success_issue]
 
@@ -594,7 +594,7 @@ class BasicAssertionEvaluator:
         message: str | None = None
         if template:
             try:
-                rendered = self._render_message_template(template, context)
+                rendered = render_assertion_message_template(template, context)
             except MessageTemplateRenderError:
                 message = _("Message template error - falling back to default output.")
             else:
@@ -612,8 +612,16 @@ class BasicAssertionEvaluator:
         actual: Any,
         rhs: dict[str, Any],
         options: dict[str, Any],
+        enriched_payload: Any,
     ) -> dict[str, Any]:
         """Build a context dict for message template rendering."""
+        constants = {}
+        payload_context = {}
+        submission_context = {}
+        if isinstance(enriched_payload, dict):
+            constants = enriched_payload.get("c") or {}
+            payload_context = enriched_payload
+            submission_context = enriched_payload.get("submission") or {}
         context: dict[str, Any] = {
             "field": assertion.target_display or path or "",
             "target": assertion.target_display or path or "",
@@ -633,6 +641,11 @@ class BasicAssertionEvaluator:
             "when": assertion.when_expression,
             "rhs": rhs,
             "options": options,
+            "p": payload_context,
+            "payload": payload_context,
+            "c": constants,
+            "const": constants,
+            "submission": submission_context,
         }
         self._add_target_alias(context, assertion, actual)
         return context
@@ -661,87 +674,3 @@ class BasicAssertionEvaluator:
         sanitized = re.sub(r"\W+", "_", last_segment).strip("_")
         if sanitized and sanitized not in context:
             context[sanitized] = actual
-
-    def _render_message_template(
-        self,
-        template: str,
-        context: dict[str, Any],
-    ) -> str:
-        """Render a message template with variable substitution and filters."""
-
-        def _replace(match: re.Match) -> str:
-            expr = match.group("expr")
-            try:
-                value = self._resolve_template_expression(expr, context)
-            except Exception as exc:
-                logger.exception(
-                    "Failed to render assertion message template expression '%s'.",
-                    expr,
-                )
-                raise MessageTemplateRenderError from exc
-            if value is None:
-                return match.group(0)
-            return str(value)
-
-        return _TEMPLATE_PATTERN.sub(_replace, template)
-
-    def _resolve_template_expression(
-        self,
-        expr: str,
-        context: dict[str, Any],
-    ) -> Any:
-        """Resolve a template expression with optional filters."""
-        parts = [part.strip() for part in expr.split("|") if part.strip()]
-        if not parts:
-            return ""
-        key = parts[0]
-        value = context.get(key)
-        for spec in parts[1:]:
-            value = self._apply_template_filter(value, spec)
-        return value
-
-    def _apply_template_filter(self, value: Any, spec: str) -> Any:
-        """Apply a template filter to a value."""
-        if spec == "":
-            return value
-        match = _FILTER_PATTERN.match(spec)
-        if not match:
-            return value
-        name = match.group("name")
-        args = self._parse_filter_args(match.group("args"))
-        if name == "round":
-            digits = 0
-            if args:
-                try:
-                    digits = int(float(args[0]))
-                except (TypeError, ValueError):
-                    digits = 0
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                return value
-            rounded = round(number, digits)
-            if digits == 0:
-                if rounded.is_integer():
-                    return int(rounded)
-                return rounded
-            return rounded
-        if name == "upper":
-            return str(value).upper()
-        if name == "lower":
-            return str(value).lower()
-        if name == "default":
-            return value if value not in (None, "") else (args[0] if args else "")
-        return value
-
-    def _parse_filter_args(self, args: str | None) -> list[str]:
-        """Parse filter arguments from a filter specification."""
-        if not args:
-            return []
-        parsed: list[str] = []
-        for raw in args.split(","):
-            val = raw.strip()
-            if len(val) >= 2 and val[0] in {'"', "'"} and val[-1] == val[0]:  # noqa: PLR2004
-                val = val[1:-1]
-            parsed.append(val)
-        return parsed

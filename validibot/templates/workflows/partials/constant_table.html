@@ -63,32 +63,6 @@ VALUE — they are the one namespace whose values are known at authoring time
                     <i class="bi bi-pencil-square"></i>
                   </button>
                   <button type="button"
-                          class="btn btn-outline-secondary"
-                          hx-post="{% url 'workflows:workflow_constant_move' workflow.pk c.pk %}"
-                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                          hx-vals='{"direction": "up"}'
-                          hx-swap="none"
-                          hx-disabled-elt="this"
-                          title="{% trans 'Move up' %}"
-                          {% if forloop.first %}
-                            disabled
-                          {% endif %}>
-                    <i class="bi bi-arrow-up"></i>
-                  </button>
-                  <button type="button"
-                          class="btn btn-outline-secondary"
-                          hx-post="{% url 'workflows:workflow_constant_move' workflow.pk c.pk %}"
-                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                          hx-vals='{"direction": "down"}'
-                          hx-swap="none"
-                          hx-disabled-elt="this"
-                          title="{% trans 'Move down' %}"
-                          {% if forloop.last %}
-                            disabled
-                          {% endif %}>
-                    <i class="bi bi-arrow-down"></i>
-                  </button>
-                  <button type="button"
                           class="btn btn-outline-danger"
                           hx-post="{% url 'workflows:workflow_constant_delete' workflow.pk c.pk %}"
                           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'

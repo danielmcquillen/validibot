@@ -23,7 +23,7 @@
             novalidate>
         <div class="modal-body">
           {% csrf_token %}
-          {{ default_assertion_create_form|crispy }}
+          {% crispy default_assertion_create_form %}
         </div>
         <div class="modal-footer">
           <button type="button"

@@ -9,14 +9,11 @@ from typing import Any
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import HTML
 from crispy_forms.layout import Column
+from crispy_forms.layout import Field
 from crispy_forms.layout import Layout
 from crispy_forms.layout import Row
 from django import forms
 from django.core.exceptions import ValidationError
-from django.template.loader import render_to_string
-from django.utils.html import format_html
-from django.utils.safestring import SafeString
-from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
@@ -285,27 +282,6 @@ def _parse_bracket_key(
         return None, start
 
     return "".join(chars), i + 1
-
-
-class CelHelpLabelMixin:
-    """Provide a helper to append the CEL help tooltip to field labels."""
-
-    @staticmethod
-    def _cel_help_markup() -> SafeString:
-        # Template content is developer-controlled, so mark_safe is appropriate here.
-        return mark_safe(render_to_string("shared/cel_help_tooltip.html").strip())  # noqa: S308
-
-    def _append_cel_help_to_label(self, field_name: str = "cel_expression") -> None:
-        field = self.fields.get(field_name)
-        if not field:
-            return
-        # Use format_html to safely escape the label while allowing our HTML wrapper.
-        # _cel_help_markup() returns SafeString so format_html won't escape it.
-        field.label = format_html(
-            "<div class='d-flex flex-row justify-content-between'>{}{}</div>",
-            field.label,
-            self._cel_help_markup(),
-        )
 
 
 class ShaclLibraryValidatorCreateForm(ShaclConfigMixin, forms.Form):
@@ -687,7 +663,7 @@ class _LiteralValue:
     source: str
 
 
-class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
+class RulesetAssertionForm(forms.Form):
     """Form for creating/updating catalog-backed assertions."""
 
     assertion_type = forms.ChoiceField(
@@ -1073,7 +1049,10 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 Column("assertion_type", css_class="col-12 col-lg-3"),
             ),
             "cel_description",
-            "cel_expression",
+            Field(
+                "cel_expression",
+                template="shared/cel_help_field.html",
+            ),
             "report_max_examples",
             Row(
                 Column("shacl_description", css_class="col-12 col-lg-4"),
@@ -1117,7 +1096,6 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             "success_message",
             "notes",
         )
-        self._append_cel_help_to_label("cel_expression")
 
     def clean(self):
         cleaned = super().clean()
@@ -2522,7 +2500,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         return initial
 
 
-class ValidatorRuleForm(CelHelpLabelMixin, forms.Form):
+class ValidatorRuleForm(forms.Form):
     """Form for creating/updating validator-level default assertions (CEL only)."""
 
     name = forms.CharField(
@@ -2576,14 +2554,10 @@ class ValidatorRuleForm(CelHelpLabelMixin, forms.Form):
             "description",
             "rule_type",
             "signals",
-            "cel_expression",
-        )
-        self._append_cel_help_to_label("cel_expression")
-        cel_label = self.fields["cel_expression"].label
-        # Use format_html to safely escape the label
-        self.fields["cel_expression"].label = format_html(
-            '<span class="w-100 d-block">{}</span>',
-            cel_label,
+            Field(
+                "cel_expression",
+                template="shared/cel_help_field.html",
+            ),
         )
 
     def clean_rule_type(self):

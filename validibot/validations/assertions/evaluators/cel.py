@@ -12,6 +12,12 @@ from typing import Any
 from django.utils.translation import gettext as _
 
 from validibot.validations.assertions.evaluators.registry import register_evaluator
+from validibot.validations.assertions.message_templates import (
+    MessageTemplateRenderError,
+)
+from validibot.validations.assertions.message_templates import (
+    render_assertion_message_template,
+)
 from validibot.validations.cel_eval import evaluate_cel_expression
 from validibot.validations.constants import CEL_MAX_CONTEXT_SYMBOLS
 from validibot.validations.constants import CEL_MAX_EVAL_TIMEOUT_MS
@@ -136,10 +142,18 @@ class CelAssertionEvaluator:
                 ),
             ]
 
+        template_context = self._build_template_context(
+            assertion=assertion,
+            cel_context=cel_context,
+            expr=expr,
+            when_expr=when_expr,
+        )
+
         if not bool(result.value):
             # Expression evaluated to false - assertion failed
-            failure_message = assertion.message_template or _(
-                "CEL assertion evaluated to false.",
+            failure_message = self._render_failure_message(
+                assertion=assertion,
+                template_context=template_context,
             )
             return [
                 self._issue_from_assertion(
@@ -150,11 +164,52 @@ class CelAssertionEvaluator:
             ]
 
         # Assertion passed - emit success issue if configured
-        success_issue = context.engine._maybe_success_issue(assertion)
+        success_issue = context.engine._maybe_success_issue(
+            assertion,
+            template_context=template_context,
+        )
         if success_issue:
             return [success_issue]
 
         return []
+
+    def _build_template_context(
+        self,
+        *,
+        assertion: RulesetAssertion,
+        cel_context: dict[str, Any],
+        expr: str,
+        when_expr: str,
+    ) -> dict[str, Any]:
+        """Build the message-template context for CEL success/failure findings."""
+        template_context = dict(cel_context)
+        template_context.update(
+            {
+                "expr": expr,
+                "when": when_expr,
+                "rhs": assertion.rhs or {},
+                "options": assertion.options or {},
+                "severity": assertion.severity,
+            },
+        )
+        return template_context
+
+    def _render_failure_message(
+        self,
+        *,
+        assertion: RulesetAssertion,
+        template_context: dict[str, Any],
+    ) -> str:
+        """Render the configured CEL failure message against the CEL context."""
+        template = (assertion.message_template or "").strip()
+        if not template:
+            return _("CEL assertion evaluated to false.")
+
+        try:
+            rendered = render_assertion_message_template(template, template_context)
+        except MessageTemplateRenderError:
+            return template
+        return rendered or template
 
     def _issue_from_assertion(
         self,

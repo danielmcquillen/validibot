@@ -70,6 +70,16 @@ Assertions use CEL (Common Expression Language) for custom logic. See [CEL Expre
 
 ---
 
+## Constant
+
+A fixed value defined on a workflow and reused in assertions. Authors add them from the workflow page using the **Constants** button next to **Signals**.
+
+Use constants for thresholds, allowed value lists, or agreed reference values that should be visible as part of the workflow contract. In CEL expressions and assertion messages, reference them with `c.<name>` or `const.<name>`, for example `p.currency in c.allowed_currencies`.
+
+Constant names are case-sensitive. A constant named `bubba` is referenced as `c.bubba`, not `c.Bubba`.
+
+---
+
 ## Submission
 
 The file or content you upload for validation. Validibot supports JSON, XML, YAML, CSV, and plain text. The submission's file type must match what the workflow's validators support.

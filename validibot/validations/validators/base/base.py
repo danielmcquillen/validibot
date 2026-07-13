@@ -1017,7 +1017,12 @@ class BaseValidator(ABC):
             return False
         return bool(getattr(self.run_context.step, "show_success_messages", False))
 
-    def _maybe_success_issue(self, assertion) -> ValidationIssue | None:
+    def _maybe_success_issue(
+        self,
+        assertion,
+        *,
+        template_context: dict[str, Any] | None = None,
+    ) -> ValidationIssue | None:
         """
         Create a success issue if the assertion has a success_message or
         the step has show_success_messages enabled.
@@ -1031,6 +1036,23 @@ class BaseValidator(ABC):
 
         if has_custom_message:
             message = success_message.strip()
+            if template_context is not None:
+                from validibot.validations.assertions.message_templates import (
+                    MessageTemplateRenderError,
+                )
+                from validibot.validations.assertions.message_templates import (
+                    render_assertion_message_template,
+                )
+
+                try:
+                    rendered = render_assertion_message_template(
+                        message,
+                        template_context,
+                    )
+                except MessageTemplateRenderError:
+                    rendered = ""
+                if rendered:
+                    message = rendered
         else:
             # Generate default success message
             target = getattr(assertion, "target_display", "") or ""

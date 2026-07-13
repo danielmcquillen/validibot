@@ -1,0 +1,45 @@
+{% load crispy_forms_field %}
+
+{% if field.is_hidden %}
+  {{ field }}
+{% else %}
+  <div id="div_{{ field.auto_id }}"
+       class="mb-3
+              {% if 'form-horizontal' in form_class %}
+                row
+              {% endif %}
+              {% if wrapper_class %}
+                {{ wrapper_class }}
+              {% endif %}
+              {% if field.css_classes %}
+                {{ field.css_classes }}
+              {% endif %}">
+    {% if field.label and form_show_labels %}
+      <div class="d-flex flex-row justify-content-between align-items-center mb-2">
+        <label {% if field.id_for_label %}
+                 for="{{ field.id_for_label }}"
+               {% endif %}
+               class="form-label mb-0
+                      {% if label_class %}
+                        {{ label_class }}
+                      {% endif %}
+                      {% if field.field.required %}
+                        requiredField
+                      {% endif %}">
+          {{ field.label }}
+          {% if field.field.required %}
+            <span class="asteriskField">*</span>
+          {% endif %}
+        </label>
+        {% include "shared/cel_help_tooltip.html" %}
+      </div>
+    {% endif %}
+
+    {% if field.errors %}
+      {% crispy_field field 'class' 'form-control is-invalid' %}
+    {% else %}
+      {% crispy_field field 'class' 'form-control' %}
+    {% endif %}
+    {% include "bootstrap5/layout/help_text_and_errors.html" %}
+  </div>
+{% endif %}

@@ -322,14 +322,36 @@ def test_workflow_detail_toolbar_orders_launch_actions_and_delete(client):
     body = response.content.decode()
     launch_url = reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk})
     json_url = reverse("workflows:workflow_json", kwargs={"pk": workflow.pk})
+    signals_url = reverse(
+        "workflows:workflow_signal_mapping",
+        kwargs={"pk": workflow.pk},
+    )
+    constants_url = reverse("workflows:workflow_constants", kwargs={"pk": workflow.pk})
     settings_url = reverse("workflows:workflow_update", kwargs={"pk": workflow.pk})
     delete_url = reverse("workflows:workflow_delete", kwargs={"pk": workflow.pk})
     launch_index = body.find(f'href="{launch_url}"')
     json_index = body.find(f'href="{json_url}"')
+    signals_index = body.find(f'href="{signals_url}"')
+    constants_index = body.find(f'href="{constants_url}"')
     settings_index = body.find(f'href="{settings_url}"')
     delete_index = body.find(f'hx-delete="{delete_url}"')
-    assert -1 not in {launch_index, json_index, settings_index, delete_index}
-    assert launch_index < json_index < settings_index < delete_index
+    assert -1 not in {
+        launch_index,
+        json_index,
+        signals_index,
+        constants_index,
+        settings_index,
+        delete_index,
+    }
+    assert (
+        launch_index
+        < json_index
+        < signals_index
+        < constants_index
+        < settings_index
+        < delete_index
+    )
+    assert 'title="Configure workflow-level constants (c.name)"' in body
     # The grey-actions and destructive-actions divs both carry the
     # ``d-flex flex-wrap gap-2 ms-5`` class set when a launch action
     # is present (the ms-5 conditionally adds a leftward gap so the

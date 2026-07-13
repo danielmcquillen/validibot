@@ -23,7 +23,7 @@
             novalidate>
         <div class="modal-body">
           {% csrf_token %}
-          {{ form|crispy }}
+          {% crispy form %}
         </div>
         <div class="modal-footer">
           <button type="button"

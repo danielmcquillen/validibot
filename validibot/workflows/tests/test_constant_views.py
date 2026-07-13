@@ -84,6 +84,46 @@ class TestConstantEditorPage(TestCase):
         assert response.status_code == HTTPStatus.OK
         self.assertTemplateUsed(response, "workflows/partials/constant_table.html")
 
+    def test_table_rows_do_not_render_move_controls(self):
+        """Constants rows expose edit/delete only, not arbitrary ordering controls.
+
+        Constants are a small reference list whose semantic identity is name +
+        value, so up/down row controls add noise without improving the authoring
+        flow. The move endpoint can remain internal, but the table should not
+        show move arrows beside every constant.
+        """
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        constant = WorkflowConstant.objects.create(
+            workflow=workflow,
+            name="energy_price",
+            data_type=WorkflowConstantType.NUMBER,
+            value="0.40",
+        )
+        url = reverse("workflows:workflow_constants", kwargs={"pk": workflow.pk})
+
+        response = self.client.get(url)
+
+        assert response.status_code == HTTPStatus.OK
+        body = response.content.decode()
+        edit_url = reverse(
+            "workflows:workflow_constant_edit",
+            kwargs={"pk": workflow.pk, "constant_id": constant.pk},
+        )
+        delete_url = reverse(
+            "workflows:workflow_constant_delete",
+            kwargs={"pk": workflow.pk, "constant_id": constant.pk},
+        )
+        move_url = reverse(
+            "workflows:workflow_constant_move",
+            kwargs={"pk": workflow.pk, "constant_id": constant.pk},
+        )
+        assert edit_url in body
+        assert delete_url in body
+        assert move_url not in body
+        assert "Move up" not in body
+        assert "Move down" not in body
+
     def test_non_manager_is_forbidden(self):
         """A user without manage permission cannot view the editor.
 

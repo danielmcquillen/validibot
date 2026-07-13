@@ -38,11 +38,11 @@ Each `RulesetAssertion` row stores:
 - `rhs` — operator payload (single value, min/max bounds, regex, etc.).
 - `options` — operator metadata (inclusive bounds, case folding, tolerance units, etc.).
 - `cel_cache` — read-only CEL preview rendered from the operator payload for auditability.
-- `message_template` — templated string rendered when the assertion **fails** (e.g., `{{value | round(1)}}`). Supported filters today are:
+- `message_template` — templated string rendered when the assertion **fails** (e.g., `{{value | round(1)}}`). Variables can be flat context names (`{{actual}}`) or namespace paths (`{{c.energy_price}}`, `{{p.price}}`). Supported filters today are:
   - `round(digits)` — rounds numeric values (defaults to `0` digits).
   - `upper` / `lower` — coercion to uppercase or lowercase.
   - `default("fallback")` — substitute the provided fallback when the value is blank/`None`.
-- `success_message` — optional message displayed when the assertion **passes**. When set, a SUCCESS severity finding is created for passed assertions. Useful for providing positive feedback to users.
+- `success_message` — optional templated message displayed when the assertion **passes**. When set, a SUCCESS severity finding is created for passed assertions using the same template renderer as `message_template`. Useful for providing positive feedback to users.
 - `notes` — internal, author-facing notes on the rationale behind the assertion (max 5000 chars). Never shown to data submitters and never affects evaluation — purely documentation for workflow authors.
 
 ### Assertion targeting
@@ -57,16 +57,19 @@ checks. The form's "Target Path" field accepts these prefixes:
 | `i.` | `input.` | Input + Output | Step input (parser facts, resolved bindings) | `i.zone_count` |
 | `o.` | `output.` | **Output only** | Step output | `o.site_eui_kwh_m2` |
 | `steps.<key>.input.` / `steps.<key>.output.` | — | Input + Output | Earlier step's inputs/outputs | `steps.preflight.output.warning_count` |
+| `c.` | `const.` | Input + Output | Workflow constant: fixed author-defined value | `c.energy_price` |
 | `submission.` | — | Input + Output | Submission envelope: metadata + server facts (any file type) | `submission.metadata.deliverable` |
 
 **Stage-aware availability.** Step outputs (`o.*`) only exist after the
 step's validator runs, so they should not be referenced in input-stage
 assertions — at runtime such references silently resolve to null. The
 `submission.*` envelope is available at **both** stages (it is fixed at
-submission time); a basic `submission.*` target classifies as INPUT, and a CEL
-expression that reads `submission.*` classifies INPUT unless it also reads
-`o.*`/`output.*` (which genuinely needs results). String-keyed brackets address
-non-identifier metadata keys, e.g. `submission.metadata["deliverable-type"]`.
+submission time). `c.*` constants are also available at both stages because
+they are workflow-definition facts, not run-derived values. A basic
+`submission.*` or `c.*` target classifies as INPUT, and a CEL expression that
+reads either namespace classifies INPUT unless it also reads `o.*`/`output.*`
+(which genuinely needs results). String-keyed brackets address non-identifier
+metadata keys, e.g. `submission.metadata["deliverable-type"]`.
 
 **The prefixes above apply to BASIC and CEL assertions only — not SPARQL.**
 `AssertionType` has three kinds. `BASIC` and `CEL_EXPRESSION` both evaluate

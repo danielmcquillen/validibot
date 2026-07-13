@@ -354,6 +354,62 @@ class CelBasicValidatorTests(TestCase):
 
         self.assertTrue(result.passed)
 
+    def test_failure_message_template_interpolates_workflow_constants(self):
+        """CEL finding messages render constants from the same ``c.*`` context.
+
+        Constants are most useful in CEL expressions, so a failure message that
+        explains the failed threshold must be able to display the same constant
+        value that the expression evaluated.
+        """
+        RulesetAssertionFactory(
+            ruleset=self.ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            rhs={"expr": "p.name == c.bubba"},
+            message_template="Not the same as bubba's value {{ c.bubba }}",
+        )
+        submission = self._submission({"name": "not-bubba"})
+        engine = BasicValidator()
+        run_context = RunContext(workflow_constants={"bubba": "dance"})
+
+        result = engine.validate(
+            self.validator,
+            submission,
+            self.ruleset,
+            run_context=run_context,
+        )
+
+        self.assertFalse(result.passed)
+        self.assertEqual(len(result.issues), 1)
+        self.assertEqual(
+            result.issues[0].message,
+            "Not the same as bubba's value dance",
+        )
+
+    def test_success_message_template_interpolates_workflow_constants(self):
+        """CEL success findings render constants from the same ``c.*`` context."""
+        RulesetAssertionFactory(
+            ruleset=self.ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            rhs={"expr": "p.name == c.bubba"},
+            success_message="Matched bubba's value {{ c.bubba }}",
+        )
+        submission = self._submission({"name": "dance"})
+        engine = BasicValidator()
+        run_context = RunContext(workflow_constants={"bubba": "dance"})
+
+        result = engine.validate(
+            self.validator,
+            submission,
+            self.ruleset,
+            run_context=run_context,
+        )
+
+        self.assertTrue(result.passed)
+        self.assertEqual(len(result.issues), 1)
+        self.assertEqual(result.issues[0].message, "Matched bubba's value dance")
+
     def test_simple_math(self):
         RulesetAssertionFactory(
             ruleset=self.ruleset,

@@ -4,6 +4,7 @@ import json
 
 from django.test import TestCase
 
+from validibot.actions.protocols import RunContext
 from validibot.projects.tests.factories import ProjectFactory
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.tests.factories import OrganizationFactory
@@ -67,3 +68,73 @@ class BasicValidatorComparisonTests(TestCase):
         issue = result.issues[0]
         self.assertEqual(issue.path, "price")
         self.assertEqual(issue.message, "Price 25 exceeds 20")
+
+    def test_failure_message_template_interpolates_workflow_constants(self):
+        """BASIC finding messages can reference workflow constants as ``c.*``.
+
+        The runtime already injects constants so BASIC targets like ``c.name``
+        can resolve. This test protects the separate rendering path that turns
+        ``message_template`` into the persisted finding message.
+        """
+        RulesetAssertionFactory(
+            ruleset=self.ruleset,
+            operator=AssertionOperator.EQ,
+            target_data_path="name",
+            rhs={"value": "bubba"},
+            message_template=(
+                "Submitted {{ p.name }}; not the same as bubba's value {{ c.bubba }}"
+            ),
+        )
+        submission = SubmissionFactory(
+            org=self.org,
+            project=self.project,
+            user=self.user,
+        )
+        submission.content = json.dumps({"name": "not-bubba"})
+        submission.save(update_fields=["content"])
+        run_context = RunContext(workflow_constants={"bubba": "dance"})
+        engine = BasicValidator()
+
+        result = engine.validate(
+            self.validator,
+            submission,
+            self.ruleset,
+            run_context=run_context,
+        )
+
+        self.assertFalse(result.passed)
+        self.assertEqual(len(result.issues), 1)
+        self.assertEqual(
+            result.issues[0].message,
+            "Submitted not-bubba; not the same as bubba's value dance",
+        )
+
+    def test_success_message_template_interpolates_workflow_constants(self):
+        """BASIC success findings render constants with the same template context."""
+        RulesetAssertionFactory(
+            ruleset=self.ruleset,
+            operator=AssertionOperator.EQ,
+            target_data_path="name",
+            rhs={"value": "bubba"},
+            success_message="Matched bubba's value {{ c.bubba }}",
+        )
+        submission = SubmissionFactory(
+            org=self.org,
+            project=self.project,
+            user=self.user,
+        )
+        submission.content = json.dumps({"name": "bubba"})
+        submission.save(update_fields=["content"])
+        run_context = RunContext(workflow_constants={"bubba": "dance"})
+        engine = BasicValidator()
+
+        result = engine.validate(
+            self.validator,
+            submission,
+            self.ruleset,
+            run_context=run_context,
+        )
+
+        self.assertTrue(result.passed)
+        self.assertEqual(len(result.issues), 1)
+        self.assertEqual(result.issues[0].message, "Matched bubba's value dance")

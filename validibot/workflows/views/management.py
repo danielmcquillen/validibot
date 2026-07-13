@@ -218,6 +218,17 @@ def _workflow_detail_toolbar_context(
                     ),
                 },
                 {
+                    "kind": "link",
+                    "button_class": "btn btn-light text-dark",
+                    "icon_class": "bi-hash",
+                    "title": _("Configure workflow-level constants (c.name)"),
+                    "url": reverse_with_org(
+                        "workflows:workflow_constants",
+                        request=request,
+                        kwargs={"pk": workflow.pk},
+                    ),
+                },
+                {
                     "kind": "form",
                     "button_class": "btn btn-light text-dark",
                     "confirm": _(

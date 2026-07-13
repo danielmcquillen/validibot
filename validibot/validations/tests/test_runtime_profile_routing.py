@@ -31,7 +31,7 @@ RUNNER_FACTORY_PATH = "validibot.validations.services.runners.get_validator_runn
 
 @pytest.mark.django_db
 class TestRuntimeProfileRouting:
-    """Route attempt-mode work without falling back to legacy metadata."""
+    """Route execution work exclusively through durable attempt identity."""
 
     @patch("validibot.validations.signals.validation_run_finalized.send_robust")
     def test_orchestrator_accepts_attempt_profile(

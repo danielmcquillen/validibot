@@ -14,6 +14,7 @@ import pytest
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.services.validation_run import ValidationRunService
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 
@@ -37,10 +38,14 @@ class TestValidationRunCancellation:
         """
         execution_id = "projects/p/locations/r/jobs/j/executions/e"
         run = ValidationRunFactory(status=ValidationRunStatus.RUNNING)
-        ValidationStepRunFactory(
+        step_run = ValidationStepRunFactory(
             validation_run=run,
             status=StepStatus.RUNNING,
-            output={"execution_name": execution_id},
+        )
+        attempt = ExecutionAttemptFactory(
+            step_run=step_run,
+            state="RUNNING",
+            provider_execution_id=execution_id,
         )
         runner = MagicMock()
         runner.cancel.return_value = True
@@ -50,7 +55,9 @@ class TestValidationRunCancellation:
 
         assert canceled is True
         updated_run.refresh_from_db()
+        attempt.refresh_from_db()
         assert updated_run.status == ValidationRunStatus.CANCELED
+        assert attempt.state == "CANCELED"
         runner.cancel.assert_called_once_with(execution_id)
 
     @patch(RUNNER_FACTORY_PATH)
@@ -65,10 +72,14 @@ class TestValidationRunCancellation:
         failure as observable cleanup work rather than reopening the run.
         """
         run = ValidationRunFactory(status=ValidationRunStatus.RUNNING)
-        ValidationStepRunFactory(
+        step_run = ValidationStepRunFactory(
             validation_run=run,
             status=StepStatus.RUNNING,
-            output={"execution_name": "execution-123"},
+        )
+        attempt = ExecutionAttemptFactory(
+            step_run=step_run,
+            state="RUNNING",
+            provider_execution_id="execution-123",
         )
         runner = MagicMock()
         runner.cancel.return_value = False
@@ -78,4 +89,7 @@ class TestValidationRunCancellation:
 
         assert canceled is True
         run.refresh_from_db()
+        attempt.refresh_from_db()
         assert run.status == ValidationRunStatus.CANCELED
+        assert attempt.state == "CANCELED"
+        runner.cancel.assert_called_once_with("execution-123")

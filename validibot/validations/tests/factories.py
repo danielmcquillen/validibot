@@ -213,7 +213,7 @@ class ValidationRunFactory(DjangoModelFactory):
     project = factory.LazyAttribute(lambda o: o.submission.project)
     user = factory.LazyAttribute(lambda o: o.submission.user)
     status = ValidationRunStatus.PENDING
-    runtime_profile = ValidationRuntimeProfile.LEGACY
+    runtime_profile = ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
     source = ValidationRunSource.LAUNCH_PAGE
 
 
@@ -232,7 +232,7 @@ class ValidationStepRunFactory(DjangoModelFactory):
 
 
 class ExecutionAttemptFactory(DjangoModelFactory):
-    """Build an attempt attached to an attempt-profile run for lifecycle tests."""
+    """Build a durable attempt attached to its validation step run."""
 
     class Meta:
         model = ExecutionAttempt
@@ -301,6 +301,12 @@ class CallbackReceiptFactory(DjangoModelFactory):
 
     callback_id = factory.Sequence(lambda n: f"cb-uuid-{n}")
     validation_run = factory.SubFactory(ValidationRunFactory)
+    execution_attempt = factory.LazyAttribute(
+        lambda obj: ExecutionAttemptFactory(
+            step_run__validation_run=obj.validation_run,
+            state=ExecutionAttemptState.COMPLETED,
+        ),
+    )
     status = CallbackReceiptStatus.COMPLETED
     result_uri = factory.LazyAttribute(
         lambda o: f"gs://bucket/runs/{o.validation_run.id}/output.json"

@@ -1,8 +1,7 @@
-"""Reader-first selectors and monotonic transitions for execution attempts.
+"""Allocation, lookup, and monotonic transitions for execution attempts.
 
-Stage 1 introduces the attempt aggregate without enabling production attempt
-creation.  Keeping its small transition graph and provider-identity lookup in
-one module prevents callbacks, cancellation, reconciliation, and future
+Keeping the attempt aggregate's small transition graph and provider-identity
+lookup in one module prevents callbacks, cancellation, reconciliation, and
 dispatch code from inventing subtly different lifecycle rules.
 """
 
@@ -39,12 +38,12 @@ class InvalidExecutionAttemptTransitionError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class ProviderExecutionIdentity:
-    """Provider address and workspace resolved from legacy or attempt storage."""
+    """Provider address and workspace resolved from durable attempt storage."""
 
     execution_id: str
     execution_bundle_uri: str
     runner_type: str
-    attempt: ExecutionAttempt | None
+    attempt: ExecutionAttempt
 
 
 ATTEMPT_CALLBACK_PREFIX = "execution-attempt-"
@@ -60,12 +59,11 @@ def resolve_callback_attempt(
     *,
     run_id: UUID | str,
 ) -> ExecutionAttempt | None:
-    """Resolve an attempt-mode callback without trusting its run identifier.
+    """Resolve an attempt-bound callback without trusting its run identifier.
 
     The callback id is an opaque idempotency key in the shared envelope
     contract. Attempt-mode writers encode the attempt UUID in that key, while
-    this reader verifies the database relationship back to ``run_id``. Legacy
-    ``step-run-*`` callback ids intentionally return ``None``.
+    this reader verifies the database relationship back to ``run_id``.
     """
     from validibot.validations.models import ExecutionAttempt
 
@@ -87,13 +85,12 @@ def get_or_create_execution_attempt(
     step_run: ValidationStepRun,
     *,
     runner_type: str,
-) -> tuple[ExecutionAttempt | None, bool]:
-    """Return the active attempt, creating it for an attempt-mode run.
+) -> tuple[ExecutionAttempt, bool]:
+    """Return the active attempt, creating it before provider work begins.
 
     Locking the logical step makes attempt-number allocation deterministic and
     complements the partial unique constraint that permits only one active
-    attempt. Legacy runs return ``(None, False)`` so callers can keep their
-    established behavior during the compatibility window.
+    attempt.
     """
     from validibot.validations.models import ExecutionAttempt
     from validibot.validations.models import ValidationStepRun
@@ -105,8 +102,6 @@ def get_or_create_execution_attempt(
             .get(pk=step_run.pk)
         )
         policy = get_runtime_profile_policy(locked_step.validation_run.runtime_profile)
-        if not policy.uses_execution_attempts:
-            return None, False
 
         active = get_active_execution_attempt(locked_step, for_update=True)
         if active is not None:
@@ -201,38 +196,20 @@ def get_active_execution_attempt(
 def resolve_provider_execution_identity(
     step_run: ValidationStepRun,
 ) -> ProviderExecutionIdentity | None:
-    """Read provider identity from the source selected by the run profile.
-
-    Legacy runs continue reading coordination metadata from ``step_run.output``.
-    Attempt profiles read the active attempt row and never fall back to legacy
-    JSON, which prevents mixed-version code from silently using stale identity.
-    """
-    policy = get_runtime_profile_policy(step_run.validation_run.runtime_profile)
-    if policy.uses_execution_attempts:
-        attempt = get_active_execution_attempt(step_run)
-        if attempt is None:
-            # Terminal fencing deliberately happens before best-effort provider
-            # cancellation. Retain the latest attempt's provider address so
-            # the external cancel request can run after the DB commit.
-            attempt = step_run.execution_attempts.order_by("-attempt_number").first()
-        if attempt is None or not attempt.provider_execution_id:
-            return None
-        return ProviderExecutionIdentity(
-            execution_id=attempt.provider_execution_id,
-            execution_bundle_uri=attempt.execution_bundle_uri,
-            runner_type=attempt.runner_type,
-            attempt=attempt,
-        )
-
-    step_output = step_run.output or {}
-    execution_id = step_output.get("execution_name") or step_output.get("execution_id")
-    if not execution_id:
+    """Read provider identity exclusively from durable attempt storage."""
+    attempt = get_active_execution_attempt(step_run)
+    if attempt is None:
+        # Terminal fencing deliberately happens before best-effort provider
+        # cancellation. Retain the latest attempt's provider address so the
+        # external cancel request can run after the DB commit.
+        attempt = step_run.execution_attempts.order_by("-attempt_number").first()
+    if attempt is None or not attempt.provider_execution_id:
         return None
     return ProviderExecutionIdentity(
-        execution_id=str(execution_id),
-        execution_bundle_uri=str(step_output.get("execution_bundle_uri", "")),
-        runner_type="",
-        attempt=None,
+        execution_id=attempt.provider_execution_id,
+        execution_bundle_uri=attempt.execution_bundle_uri,
+        runner_type=attempt.runner_type,
+        attempt=attempt,
     )
 
 

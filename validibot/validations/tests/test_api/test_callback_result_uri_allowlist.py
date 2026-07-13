@@ -35,6 +35,8 @@ from validibot.users.tests.factories import UserFactory
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
+from validibot.validations.services.execution_attempts import build_attempt_callback_id
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
@@ -87,6 +89,11 @@ class CallbackResultUriAllowlistTestCase(TestCase):
             step_order=self.step.order,
             status=StepStatus.RUNNING,
         )
+        self.attempt = ExecutionAttemptFactory(
+            step_run=self.step_run,
+            state="RUNNING",
+        )
+        self.callback_id = build_attempt_callback_id(self.attempt)
 
         # The deterministic, per-run prefix the launcher writes bundles under.
         self.run_prefix = f"runs/{self.run.org_id}/{self.run.id}"
@@ -125,6 +132,7 @@ class CallbackResultUriAllowlistTestCase(TestCase):
             self.callback_url,
             data={
                 "run_id": str(self.run.id),
+                "callback_id": self.callback_id,
                 "status": "success",
                 "result_uri": hostile_uri,
             },
@@ -154,6 +162,7 @@ class CallbackResultUriAllowlistTestCase(TestCase):
             self.callback_url,
             data={
                 "run_id": str(self.run.id),
+                "callback_id": self.callback_id,
                 "status": "success",
                 "result_uri": legit_uri,
             },

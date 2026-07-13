@@ -131,9 +131,8 @@ class ExecutionResponse:
 
     Callers must use this field, rather than the presence of human-readable
     error text, when deciding whether a completed execution succeeded.
-    ``None`` remains available for legacy responses during the compatibility
-    window. It is appended to preserve the positional constructor used by any
-    older integration.
+    ``None`` is used for launch responses that do not represent a provider
+    status observation.
     """
 
 

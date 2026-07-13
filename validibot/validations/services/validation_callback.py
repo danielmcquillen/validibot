@@ -203,10 +203,7 @@ class ValidationCallbackService:
                 run.status not in VALIDATION_RUN_TERMINAL_STATUSES
                 and not ensure_runtime_profile_supported(
                     run,
-                    supported_profiles=(
-                        ValidationRuntimeProfile.LEGACY,
-                        ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,
-                    ),
+                    supported_profiles=(ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1,),
                     operation="process_validation_callback",
                     sender=self.__class__,
                 )
@@ -266,14 +263,14 @@ class ValidationCallbackService:
         run: ValidationRun,
     ) -> Response:
         """
-        Ensure exactly-once processing for callbacks with a callback_id.
+        Ensure idempotent processing for an attempt-bound callback.
 
         Cloud Tasks (and most message queues) guarantee at-least-once delivery,
         so duplicate callbacks are expected. This method uses a CallbackReceipt
         table as an idempotency ledger:
 
-        1. No callback_id → skip idempotency, process immediately.
-        2. New callback_id → create a PROCESSING receipt, process under a
+        1. Resolve the callback's execution attempt.
+        2. A new callback_id creates a PROCESSING receipt under a
            row-level lock so no concurrent request can duplicate the work.
         3. Existing receipt still PROCESSING → previous attempt crashed
            mid-flight (or hit a transient error), so retry.
@@ -286,42 +283,20 @@ class ValidationCallbackService:
         from validibot.validations.services.execution_attempts import (
             resolve_callback_attempt,
         )
-        from validibot.validations.services.runtime_profiles import (
-            get_runtime_profile_policy,
+
+        attempt = resolve_callback_attempt(
+            callback.callback_id,
+            run_id=run.pk,
         )
-
-        attempt = None
-        if get_runtime_profile_policy(run.runtime_profile).uses_execution_attempts:
-            attempt = resolve_callback_attempt(
-                callback.callback_id,
-                run_id=run.pk,
+        if attempt is None:
+            logger.warning(
+                "Rejected callback that was not bound to an execution attempt",
+                extra={"run_id": str(run.pk)},
             )
-            if attempt is None:
-                logger.warning(
-                    "Rejected callback that was not bound to an execution attempt",
-                    extra={"run_id": str(run.pk)},
-                )
-                return Response(
-                    {"error": "Callback does not identify a valid execution attempt"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if attempt.is_terminal:
-                return self._late_callback_response(callback, run)
-            current_step = run.current_step_run
-            if current_step is None or current_step.pk != attempt.step_run_id:
-                return self._late_callback_response(callback, run)
-
-        if not callback.callback_id:
-            run.refresh_from_db(fields=["status"])
-            if run.status in VALIDATION_RUN_TERMINAL_STATUSES:
-                return self._late_callback_response(callback, run)
-            return self._process_callback(
-                callback=callback,
-                run=run,
-                receipt=None,
-                attempt=attempt,
+            return Response(
+                {"error": "Callback does not identify a valid execution attempt"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-
         try:
             with transaction.atomic():
                 receipt, receipt_created = self._get_or_create_receipt(
@@ -331,10 +306,7 @@ class ValidationCallbackService:
                 )
 
                 if not receipt_created:
-                    if (
-                        attempt is not None
-                        and receipt.execution_attempt_id != attempt.pk
-                    ):
+                    if receipt.execution_attempt_id != attempt.pk:
                         logger.error(
                             "Callback receipt attempt binding mismatch",
                             extra={
@@ -382,6 +354,18 @@ class ValidationCallbackService:
                         callback.callback_id,
                     )
 
+                # A crash can leave a PROCESSING receipt after the attempt or
+                # logical step became terminal. Close that receipt and
+                # acknowledge the late delivery without touching output.
+                current_step = run.current_step_run
+                if (
+                    attempt.is_terminal
+                    or current_step is None
+                    or current_step.pk != attempt.step_run_id
+                ):
+                    self._mark_receipt_completed(callback, receipt, run)
+                    return self._late_callback_response(callback, run)
+
                 # Preserve the existing idempotent response above for a true
                 # duplicate receipt. For a new/dangling receipt, refresh the
                 # authoritative run before any storage read; if cancellation,
@@ -420,7 +404,7 @@ class ValidationCallbackService:
     def _get_or_create_receipt(
         callback: ValidationCallback,
         run: ValidationRun,
-        attempt=None,
+        attempt,
     ) -> tuple[CallbackReceipt, bool]:
         """
         Fetch an existing receipt under a row lock, or create a new one.
@@ -451,8 +435,8 @@ class ValidationCallbackService:
         *,
         callback: ValidationCallback,
         run: ValidationRun,
-        receipt: CallbackReceipt | None,
-        attempt=None,
+        receipt: CallbackReceipt,
+        attempt,
     ) -> Response:
         """
         Orchestrate the callback processing pipeline.
@@ -487,34 +471,32 @@ class ValidationCallbackService:
             # are left PROCESSING so the retry can re-attempt.
             if status.is_client_error(exc.status_code):
                 self._mark_receipt_rejected(callback, receipt, run)
-                if attempt is not None:
-                    from validibot.validations.constants import ExecutionAttemptState
-                    from validibot.validations.services.execution_attempts import (
-                        transition_execution_attempt,
-                    )
+                from validibot.validations.constants import ExecutionAttemptState
+                from validibot.validations.services.execution_attempts import (
+                    transition_execution_attempt,
+                )
 
-                    transition_execution_attempt(
-                        attempt.pk,
-                        ExecutionAttemptState.FAILED,
-                        last_error_code="callback_rejected",
-                        last_error=str(exc.detail),
-                    )
+                transition_execution_attempt(
+                    attempt.pk,
+                    ExecutionAttemptState.FAILED,
+                    last_error_code="callback_rejected",
+                    last_error=str(exc.detail),
+                )
             return Response(
                 {"error": exc.detail},
                 status=exc.status_code,
             )
 
-        if attempt is not None:
-            from validibot.validations.constants import ExecutionAttemptState
-            from validibot.validations.services.execution_attempts import (
-                transition_execution_attempt,
-            )
+        from validibot.validations.constants import ExecutionAttemptState
+        from validibot.validations.services.execution_attempts import (
+            transition_execution_attempt,
+        )
 
-            transition_execution_attempt(
-                attempt.pk,
-                ExecutionAttemptState.COMPLETED,
-                provider_finished_at=timezone.now(),
-            )
+        transition_execution_attempt(
+            attempt.pk,
+            ExecutionAttemptState.COMPLETED,
+            provider_finished_at=timezone.now(),
+        )
 
         self._mark_receipt_completed(callback, receipt, run)
 
@@ -1001,7 +983,7 @@ class ValidationCallbackService:
     @staticmethod
     def _mark_receipt_completed(
         callback: ValidationCallback,
-        receipt: CallbackReceipt | None,
+        receipt: CallbackReceipt,
         run: ValidationRun,
     ) -> None:
         """
@@ -1011,9 +993,6 @@ class ValidationCallbackService:
         A failure here is logged but does not fail the request — the run
         is already in a consistent state.
         """
-        if not callback.callback_id or not receipt:
-            return
-
         try:
             receipt.status = CallbackReceiptStatus.COMPLETED
             receipt.validation_run = run
@@ -1033,7 +1012,7 @@ class ValidationCallbackService:
     @staticmethod
     def _mark_receipt_rejected(
         callback: ValidationCallback,
-        receipt: CallbackReceipt | None,
+        receipt: CallbackReceipt,
         run: ValidationRun,
     ) -> None:
         """
@@ -1045,9 +1024,6 @@ class ValidationCallbackService:
         doomed processing. A failure to update the receipt is logged but does
         not change the response — the error status is already being returned.
         """
-        if not callback.callback_id or not receipt:
-            return
-
         try:
             receipt.status = CallbackReceiptStatus.REJECTED
             receipt.validation_run = run

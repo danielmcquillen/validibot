@@ -30,7 +30,6 @@ class ValidationRuntimeProfile(TextChoices):
     by the worker that receives a task or callback.
     """
 
-    LEGACY = "LEGACY", _("Legacy execution")
     ATTEMPT_LIFECYCLE_V1 = (
         "ATTEMPT_LIFECYCLE_V1",
         _("Execution attempt lifecycle v1"),

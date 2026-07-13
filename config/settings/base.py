@@ -56,14 +56,6 @@ DEBUG = env.bool("DJANGO_DEBUG", False)
 # If not set, auto-detection is used based on other settings.
 DEPLOYMENT_TARGET = env("DEPLOYMENT_TARGET", default=None)
 
-# Immutable execution semantics recorded on each new ValidationRun. The
-# attempt lifecycle is implemented as an opt-in rollout; existing deployments
-# remain on LEGACY until every web/worker instance has the reader release.
-VALIDATION_RUNTIME_PROFILE = env(
-    "VALIDATION_RUNTIME_PROFILE",
-    default="LEGACY",
-)
-
 # App role (web vs worker). Worker instances expose internal APIs only.
 # Default to "web" for local development; production sets APP_ROLE explicitly.
 APP_ROLE = env(

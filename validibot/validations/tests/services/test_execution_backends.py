@@ -50,7 +50,6 @@ from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.validations.constants import ExecutionAttemptState
 from validibot.validations.constants import Severity
-from validibot.validations.constants import ValidationRuntimeProfile
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,
@@ -77,10 +76,7 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 # ==============================================================================
 
 
-def _make_execution_request(
-    *,
-    runtime_profile: ValidationRuntimeProfile = ValidationRuntimeProfile.LEGACY,
-) -> ExecutionRequest:
+def _make_execution_request() -> ExecutionRequest:
     """Build an ExecutionRequest from real Django model instances.
 
     Creates the full model graph (Org → Workflow → ValidationRun → Step)
@@ -106,7 +102,6 @@ def _make_execution_request(
         submission=submission,
         workflow=workflow,
         org=org,
-        runtime_profile=runtime_profile,
     )
     # Also create a step run so validation_run.current_step_run works
     ValidationStepRunFactory(
@@ -238,16 +233,15 @@ class TestExecutionResponse:
         assert response.error_message is None
         assert response.execution_status is None
 
-    def test_execution_status_addition_preserves_legacy_positional_arguments(self):
-        """Older integrations must not reinterpret their third argument.
+    def test_execution_status_preserves_positional_field_order(self):
+        """The third positional argument must remain the output envelope.
 
-        ``execution_status`` is an additive reader-first field. Appending it to
-        the dataclass keeps a positional ``output_envelope`` argument in its
-        historical slot instead of silently treating the envelope as a status.
+        Keeping ``execution_status`` after ``output_envelope`` prevents a
+        positional envelope argument from being interpreted as a status.
         """
         envelope = object()
 
-        response = ExecutionResponse("exec-legacy", True, envelope)  # noqa: FBT003
+        response = ExecutionResponse("exec-positional", True, envelope)  # noqa: FBT003
 
         assert response.output_envelope is envelope
         assert response.execution_status is None
@@ -609,9 +603,7 @@ class TestDockerComposeExecutionBackend:
         pending response keeps the run available to the watchdog while the
         durable attempt prevents task redelivery from starting another copy.
         """
-        request = _make_execution_request(
-            runtime_profile=ValidationRuntimeProfile.ATTEMPT_LIFECYCLE_V1
-        )
+        request = _make_execution_request()
         attempt = ExecutionAttemptFactory(
             step_run=request.run.current_step_run,
             state=ExecutionAttemptState.PENDING,

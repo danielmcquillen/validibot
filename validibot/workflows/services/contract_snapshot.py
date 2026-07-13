@@ -12,8 +12,8 @@ distinct" caution):
   minimal projection of validation *semantics* (identity, constants, signal
   mapping definitions, and per-step validator + effective-ruleset + assertions).
   This is the only input to the hash.
-* :func:`compute_workflow_definition_hash` — ``sha256`` over the canonical JSON
-  of that preimage.
+* :func:`compute_workflow_definition_hash` — ``sha256`` over RFC 8785 / JCS
+  canonical JSON for that preimage.
 * :func:`build_workflow_contract_snapshot` — the broader **evidence object**: a
   ``validibot_shared.evidence.WorkflowContractSnapshot`` carrying the launch
   contract PLUS the constants, signal-mapping definitions, and the definition
@@ -37,21 +37,19 @@ Design rules encoded here (each is an ADR decision):
 * **Constants store exact values.** A ``NUMBER`` constant's decimal string
   (``"0.40"``) is hashed verbatim, preserving attested precision.
 
-Canonicalization: this module hashes with sorted-key JSON (the same scheme the
-manifest *envelope* already uses), so the community manifest and the Pro
-credential share one byte-for-byte identical hash by both calling
-:func:`compute_workflow_definition_hash`. Moving the canonicalizer to RFC 8785 /
-JCS in ``validibot-shared`` (for third-party verifier portability) is a possible
-future enhancement; it would change the hash *bytes* but not the "single
-projection, no drift" guarantee, since both consumers would swap together.
+Canonicalization: this module hashes with the shared RFC 8785 / JCS helper in
+``validibot-shared``. Pro re-exports that helper for compatibility, but the
+community projection owns the workflow-definition hash so the evidence manifest
+and signed credential cannot drift.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
 from typing import TYPE_CHECKING
 from typing import Any
+
+from validibot_shared.canonicalization import canonicalize_dict
+from validibot_shared.canonicalization import sha256_hex_for_dict
 
 if TYPE_CHECKING:
     from validibot_shared.evidence import WorkflowContractSnapshot
@@ -78,13 +76,13 @@ def build_workflow_definition_contract(workflow: Workflow) -> dict[str, Any]:
 
 
 def compute_workflow_definition_hash(workflow: Workflow) -> str:
-    """Return ``sha256:<hex>`` over the canonical JSON of the definition contract."""
+    """Return ``sha256:<hex>`` over the JCS bytes of the definition contract."""
     return _hash_preimage(build_workflow_definition_contract(workflow))
 
 
 def _hash_preimage(preimage: dict[str, Any]) -> str:
-    """Return ``sha256:<hex>`` of a preimage's canonical JSON bytes."""
-    return f"sha256:{hashlib.sha256(_canonical_bytes(preimage)).hexdigest()}"
+    """Return ``sha256:<hex>`` of a preimage's RFC 8785 / JCS bytes."""
+    return f"sha256:{sha256_hex_for_dict(preimage)}"
 
 
 def build_workflow_contract_snapshot(workflow: Workflow) -> WorkflowContractSnapshot:
@@ -127,19 +125,8 @@ def build_workflow_contract_snapshot(workflow: Workflow) -> WorkflowContractSnap
 
 
 def _canonical_bytes(data: dict[str, Any]) -> bytes:
-    """Serialize to canonical JSON bytes (sorted keys, compact separators).
-
-    Hash stability comes from this canonical form, NOT from the in-code field
-    ordering above (which is for readability). ``default=str`` defends against a
-    stray non-JSON scalar (e.g. a ``Decimal``) rather than raising.
-    """
-    return json.dumps(
-        data,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        default=str,
-    ).encode("utf-8")
+    """Serialize to shared RFC 8785 / JCS bytes for deterministic sorting."""
+    return canonicalize_dict(data)
 
 
 # ── Projections ──────────────────────────────────────────────────────────────

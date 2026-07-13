@@ -112,7 +112,10 @@ dependencies = [
   # engine-status taxonomy + SVRL summary, and the canonical SVRL parser
   # (``validibot_shared.schematron.svrl``) lives here so Django and the
   # container backend parse SVRL identically.
-  "validibot-shared==0.12.0",
+  # 0.12.1 adds the shared RFC 8785 / JCS canonicalization helper used by
+  # workflow-definition contract hashes, keeping community evidence and Pro
+  # credentials on the same portable byte contract.
+  "validibot-shared==0.12.1",
   "django-csp==4.0",
   "django-permissions-policy==4.32.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in

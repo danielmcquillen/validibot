@@ -13,7 +13,12 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.test import override_settings
 
+from validibot.submissions.constants import SubmissionDataFormat
+from validibot.validations.constants import ArtifactKind
+from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.models import Derivation
@@ -165,6 +170,69 @@ class SyncValidatorsCommandTests(TestCase):
         self.assertEqual(
             signal.provider_binding,
             {"metric_key": "site_eui_kwh_m2"},
+        )
+
+    def test_command_syncs_energyplus_artifact_ports(self):
+        """EnergyPlus file dependencies must round-trip into StepIODefinition.
+
+        The workflow engine should be able to discover the submitted model and
+        selected weather file as typed artifact ports, not as EnergyPlus-only
+        config keys. This pins the catalog-to-DB sync path for the first
+        artifact-port vertical slice.
+        """
+        self.call_command()
+
+        validator = Validator.objects.get(slug="energyplus-idf-validator")
+
+        primary_model = StepIODefinition.objects.get(
+            validator=validator,
+            contract_key="primary_model",
+            direction="input",
+        )
+        self.assertEqual(primary_model.io_medium, StepIOMedium.ARTIFACT)
+        self.assertEqual(primary_model.data_type, CatalogValueType.ARTIFACT_REF)
+        self.assertEqual(primary_model.artifact_kind, ArtifactKind.FILE)
+        self.assertEqual(primary_model.role, "primary-model")
+        self.assertEqual(primary_model.data_format, SubmissionDataFormat.ENERGYPLUS_IDF)
+        self.assertEqual(primary_model.media_type, "application/vnd.energyplus.idf")
+        self.assertEqual(primary_model.min_items, 1)
+        self.assertEqual(primary_model.max_items, 1)
+        self.assertFalse(primary_model.is_collection)
+        self.assertEqual(
+            primary_model.provider_binding,
+            {
+                "source": "input_file",
+                "role": "primary-model",
+            },
+        )
+        self.assertEqual(
+            primary_model.metadata["accepted_data_formats"],
+            [
+                SubmissionDataFormat.ENERGYPLUS_IDF,
+                SubmissionDataFormat.ENERGYPLUS_EPJSON,
+            ],
+        )
+
+        weather_file = StepIODefinition.objects.get(
+            validator=validator,
+            contract_key="weather_file",
+            direction="input",
+        )
+        self.assertEqual(weather_file.io_medium, StepIOMedium.ARTIFACT)
+        self.assertEqual(weather_file.data_type, CatalogValueType.ARTIFACT_REF)
+        self.assertEqual(weather_file.artifact_kind, ArtifactKind.FILE)
+        self.assertEqual(weather_file.role, "weather")
+        self.assertEqual(weather_file.data_format, ResourceFileType.ENERGYPLUS_WEATHER)
+        self.assertEqual(weather_file.media_type, "application/vnd.energyplus.epw")
+        self.assertEqual(weather_file.min_items, 1)
+        self.assertEqual(weather_file.max_items, 1)
+        self.assertFalse(weather_file.is_collection)
+        self.assertEqual(
+            weather_file.provider_binding,
+            {
+                "source": "resource_file",
+                "type": ResourceFileType.ENERGYPLUS_WEATHER,
+            },
         )
 
     def test_command_creates_derivations(self):
@@ -338,11 +406,13 @@ class SyncValidatorsCommandTests(TestCase):
     # These tests verify that the sync command correctly persists the
     # new source metadata fields from CatalogEntrySpec to StepIODefinition.
 
-    def test_energyplus_input_signals_are_internal_and_not_editable(self):
-        """EnergyPlus input signals should be INTERNAL + non-editable.
+    def test_energyplus_value_input_signals_are_internal_and_not_editable(self):
+        """EnergyPlus parser value inputs should be INTERNAL + non-editable.
 
-        The validator controls where its inputs come from (fixed submission
-        metadata paths). Authors should not be able to change these paths.
+        Parser-derived facts such as ``idf_version`` are computed internally
+        after the model file is resolved. Artifact ports are separate input
+        definitions that describe file dependencies, so this assertion filters
+        to value-carried input signals only.
         """
         self.call_command()
 
@@ -350,6 +420,7 @@ class SyncValidatorsCommandTests(TestCase):
         input_sigs = StepIODefinition.objects.filter(
             validator=validator,
             direction="input",
+            io_medium=StepIOMedium.VALUE,
         )
 
         self.assertTrue(input_sigs.exists())
@@ -574,6 +645,38 @@ class DiscoverConfigsTests(TestCase):
         self.assertIn("energyplus_idf", ep_config.supported_data_formats)
         self.assertIn("idf", ep_config.allowed_extensions)
         self.assertIn("energyplus_weather", ep_config.resource_types)
+
+    def test_energyplus_declares_artifact_ports(self):
+        """EnergyPlus config declares its model and weather file contracts.
+
+        The workflow engine should learn file dependencies from validator
+        catalog metadata, so the source config must include the primary model
+        and weather file before any sync command touches the database.
+        """
+        configs = discover_configs()
+        ep_config = next(c for c in configs if c.slug == "energyplus-idf-validator")
+
+        artifact_ports = {
+            entry.slug: entry
+            for entry in ep_config.catalog_entries
+            if entry.io_medium == StepIOMedium.ARTIFACT
+        }
+
+        self.assertEqual(set(artifact_ports), {"primary_model", "weather_file"})
+        self.assertEqual(artifact_ports["primary_model"].role, "primary-model")
+        self.assertEqual(
+            artifact_ports["primary_model"].data_type,
+            CatalogValueType.ARTIFACT_REF,
+        )
+        self.assertEqual(
+            artifact_ports["primary_model"].data_format,
+            SubmissionDataFormat.ENERGYPLUS_IDF,
+        )
+        self.assertEqual(artifact_ports["weather_file"].role, "weather")
+        self.assertEqual(
+            artifact_ports["weather_file"].data_format,
+            ResourceFileType.ENERGYPLUS_WEATHER,
+        )
 
     def test_configs_have_display_metadata(self):
         """All discovered configs have icon and card_image set."""

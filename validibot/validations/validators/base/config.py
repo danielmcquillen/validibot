@@ -66,6 +66,18 @@ class CatalogEntrySpec(BaseModel):
     source_kind: str = "payload_path"
     is_path_editable: bool = True
 
+    # Artifact-port metadata. Value signals keep these defaults; validators
+    # that consume or emit files/directories set io_medium="artifact" and
+    # persist the role/format contract into StepIODefinition.
+    io_medium: str = "value"
+    artifact_kind: str = ""
+    media_type: str = ""
+    data_format: str = ""
+    role: str = ""
+    is_collection: bool = False
+    min_items: int = 0
+    max_items: int | None = None
+
     # Per ADR-2026-05-22: behaviour when this catalog entry's value
     # cannot be resolved at runtime.
     #

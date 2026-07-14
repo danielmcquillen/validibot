@@ -8,12 +8,14 @@ the container validator populates after running the simulation.
 
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.constants import ArtifactKind
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import CatalogEntrySpec
 from validibot.validations.validators.base.config import ValidatorConfig
@@ -70,6 +72,86 @@ config = ValidatorConfig(
     icon="bi-lightning-charge-fill",
     card_image="ENERGYPLUS_card_img_small.png",
     catalog_entries=[
+        # ==================================================================
+        # ARTIFACT PORTS - files required by the EnergyPlus runtime.
+        #
+        # These entries declare the file contract that already exists at the
+        # envelope boundary: the submitted model rides in input_files with role
+        # "primary-model"; the selected EPW rides in resource_files with type
+        # "energyplus_weather". Keeping these as StepIODefinition rows lets the
+        # workflow engine reason about file dependencies without hard-coding
+        # EnergyPlus-specific config keys.
+        # ==================================================================
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            slug="primary_model",
+            label="Primary Model",
+            data_type=CatalogValueType.ARTIFACT_REF,
+            description=(
+                "Resolved EnergyPlus model file passed to the backend as "
+                "the primary input file. Accepts IDF and epJSON models."
+            ),
+            binding_config={
+                "source": "input_file",
+                "role": "primary-model",
+            },
+            metadata={
+                "accepted_data_formats": [
+                    SubmissionDataFormat.ENERGYPLUS_IDF,
+                    SubmissionDataFormat.ENERGYPLUS_EPJSON,
+                ],
+                "accepted_extensions": ["idf", "epjson", "json"],
+                "accepted_media_types": [
+                    "application/vnd.energyplus.idf",
+                    "application/vnd.energyplus.epjson",
+                ],
+            },
+            is_required=True,
+            on_missing="error",
+            order=1,
+            source_kind=SignalSourceKind.PAYLOAD_PATH,
+            is_path_editable=False,
+            io_medium=StepIOMedium.ARTIFACT,
+            artifact_kind=ArtifactKind.FILE,
+            media_type="application/vnd.energyplus.idf",
+            data_format=SubmissionDataFormat.ENERGYPLUS_IDF,
+            role="primary-model",
+            min_items=1,
+            max_items=1,
+        ),
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            slug="weather_file",
+            label="Weather File",
+            data_type=CatalogValueType.ARTIFACT_REF,
+            description=(
+                "EnergyPlus EPW weather file selected from validator "
+                "resource files and passed to the backend as a resource file."
+            ),
+            binding_config={
+                "source": "resource_file",
+                "type": ResourceFileType.ENERGYPLUS_WEATHER,
+            },
+            metadata={
+                "accepted_data_formats": [ResourceFileType.ENERGYPLUS_WEATHER],
+                "accepted_extensions": ["epw"],
+                "accepted_media_types": ["application/vnd.energyplus.epw"],
+            },
+            is_required=True,
+            on_missing="error",
+            order=2,
+            source_kind=SignalSourceKind.PAYLOAD_PATH,
+            is_path_editable=False,
+            io_medium=StepIOMedium.ARTIFACT,
+            artifact_kind=ArtifactKind.FILE,
+            media_type="application/vnd.energyplus.epw",
+            data_format=ResourceFileType.ENERGYPLUS_WEATHER,
+            role="weather",
+            min_items=1,
+            max_items=1,
+        ),
         # ==================================================================
         # STEP INPUTS \u2014 parser-extracted facts from the (resolved) IDF.
         #

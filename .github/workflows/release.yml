@@ -106,7 +106,7 @@ jobs:
           python-version-file: '.python-version'
 
       - name: Install dependencies
-        run: uv sync --group dev --frozen
+        run: uv sync --group dev --frozen --no-sources-package validibot-shared
 
       - name: Generate CycloneDX SBOM (JSON)
         run: |

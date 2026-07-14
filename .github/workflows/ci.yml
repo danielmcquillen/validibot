@@ -106,7 +106,7 @@ jobs:
         # uv.lock, so --frozen still resolves). The trust-tier runner tests
         # patch docker.from_env, which requires the module to be importable;
         # without the extra they error with ModuleNotFoundError: docker.
-        run: uv sync --group dev --extra docker-runner --frozen
+        run: uv sync --group dev --extra docker-runner --frozen --no-sources-package validibot-shared
 
       - name: Audit dependencies
         run: uvx pip-audit

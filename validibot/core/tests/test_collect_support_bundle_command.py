@@ -96,19 +96,22 @@ class TestRedactionInOutput:
 
     @override_settings(
         SECRET_KEY="this-is-a-secret-do-not-leak",  # noqa: S106 — synthetic value for redaction test
+        API_KEY_DIGEST_KEY="this-api-digest-secret-must-not-leak",
         EMAIL_HOST_PASSWORD="not-the-real-password",  # noqa: S106 — synthetic value for redaction test
         DEBUG=False,
         ALLOWED_HOSTS=["example.com", "validibot.example.com"],
     )
-    def test_secret_key_is_redacted(self):
-        """The DJANGO_SECRET_KEY value never appears in the bundle."""
+    def test_secret_keys_are_redacted(self):
+        """Django and API-key digest secrets never appear in the bundle."""
         out = StringIO()
         call_command("collect_support_bundle", stdout=out)
         body = out.getvalue()
 
         # The value must NEVER appear; the key name MUST appear.
         assert "this-is-a-secret-do-not-leak" not in body
+        assert "this-api-digest-secret-must-not-leak" not in body
         assert "SECRET_KEY" in body
+        assert "API_KEY_DIGEST_KEY" in body
         # The redaction sentinel must appear next to it.
         assert REDACTED_SENTINEL in body
 

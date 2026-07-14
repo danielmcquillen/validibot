@@ -526,6 +526,70 @@ class User(AbstractUser):
         return reverse("users:detail", kwargs={"username": self.username})
 
 
+class ValidibotAPIKey(TimeStampedModel):
+    """Hashed personal API key issued to a user.
+
+    The plaintext secret is shown only once by the issuing service. This
+    model stores a keyed digest plus a public identifier so authentication
+    can perform a narrow lookup before doing a constant-time comparison.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="api_keys",
+    )
+    public_id = models.CharField(max_length=64, unique=True, db_index=True)
+    label = models.CharField(max_length=120, default="Personal API key")
+    format_version = models.PositiveSmallIntegerField(default=1)
+    digest_version = models.PositiveSmallIntegerField(default=1)
+    secret_digest = models.CharField(max_length=64)
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    revoked_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    rotated_from = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="rotations",
+    )
+
+    class Meta:
+        ordering = ["-created"]
+        indexes = [
+            models.Index(fields=["user", "revoked_at", "expires_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["format_version", "digest_version", "secret_digest"],
+                name="uq_vb_api_key_digest",
+            ),
+        ]
+
+    @property
+    def redacted_key(self) -> str:
+        """Return a non-secret display form for UI/admin surfaces."""
+
+        return f"vbk_{self.format_version}_{self.public_id}_..."
+
+    @property
+    def is_usable(self) -> bool:
+        """Return whether this key may currently authenticate a request."""
+
+        if self.revoked_at is not None:
+            return False
+        if self.expires_at is not None and self.expires_at <= timezone.now():
+            return False
+        return self.user.is_active
+
+    def __str__(self) -> str:
+        """Describe the key without exposing any secret material."""
+
+        return f"{self.label} for {self.user}"
+
+
 class Membership(TimeStampedModel):
     """
     Many-to-many through table. A user can belong to multiple orgs with roles.

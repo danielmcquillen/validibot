@@ -333,6 +333,22 @@ class EnvTemplateShapeTests(SimpleTestCase):
         self.assertIn("DEPLOYMENT_TARGET=self_hosted", django_env)
         self.assertNotIn("DEPLOYMENT_TARGET=docker_compose", django_env)
 
+    def test_django_template_includes_required_secret_settings(self):
+        """The production template must name every startup-critical secret.
+
+        Operators copy this file before first boot. If a production-only
+        secret is required by settings but absent here, the service fails
+        at startup with no visible template guidance.
+        """
+        django_env = (ENVS_EXAMPLE_ROOT / ".django").read_text(encoding="utf-8")
+        for setting_name in (
+            "DJANGO_SECRET_KEY",
+            "DJANGO_API_KEY_DIGEST_KEY",
+            "DJANGO_MFA_ENCRYPTION_KEY",
+            "WORKER_API_KEY",
+        ):
+            self.assertIn(setting_name, django_env)
+
     def test_django_template_has_eight_adr_groups(self):
         """The .django template must include all eight comment groups.
 

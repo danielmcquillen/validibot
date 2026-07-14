@@ -462,6 +462,22 @@ class CatalogValueType(TextChoices):
     STRING = "string", _("String")
     BOOLEAN = "boolean", _("Boolean")
     OBJECT = "object", _("Object")
+    ARTIFACT_REF = "artifact_ref", _("Artifact reference")
+
+
+class StepIOMedium(TextChoices):
+    VALUE = "value", _("Value")
+    ARTIFACT = "artifact", _("Artifact")
+
+
+class ArtifactKind(TextChoices):
+    FILE = "file", _("File")
+    DIRECTORY = "directory", _("Directory")
+    ARCHIVE = "archive", _("Archive")
+    DATASET = "dataset", _("Dataset")
+    REPORT = "report", _("Report")
+    LOG = "log", _("Log")
+    OTHER = "other", _("Other")
 
 
 class SignalDirection(TextChoices):
@@ -483,8 +499,12 @@ class SignalSourceKind(TextChoices):
 class BindingSourceScope(TextChoices):
     SUBMISSION_PAYLOAD = "submission_payload", _("Submission Payload")
     SUBMISSION_METADATA = "submission_metadata", _("Submission Metadata")
+    SUBMISSION_FILE = "submission_file", _("Submission File")
     UPSTREAM_STEP = "upstream_step", _("Upstream Step")
+    UPSTREAM_ARTIFACT = "upstream_artifact", _("Upstream Step Artifact")
     SIGNAL = "signal", _("Workflow Signal")
+    CONSTANT = "constant", _("Workflow Constant")
+    WORKFLOW_RESOURCE = "workflow_resource", _("Workflow Resource")
     SYSTEM = "system", _("System")
 
 

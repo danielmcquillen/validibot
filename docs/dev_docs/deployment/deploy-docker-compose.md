@@ -69,6 +69,7 @@ you opt in:
    Make sure you set:
 
 	   - `DJANGO_SECRET_KEY`
+	   - `DJANGO_API_KEY_DIGEST_KEY`
 	   - `DJANGO_ALLOWED_HOSTS`
 	   - `SITE_URL`
 	   - `DJANGO_MFA_ENCRYPTION_KEY`

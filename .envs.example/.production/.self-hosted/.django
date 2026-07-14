@@ -48,6 +48,17 @@ DEPLOYMENT_TARGET=self_hosted
 # sessions and password-reset tokens.
 DJANGO_SECRET_KEY=your-secret-key-here-change-this
 
+# API key digest key. User/API bearer tokens are stored as HMAC digests,
+# not plaintext. This key must be separate from DJANGO_SECRET_KEY so API-key
+# digest rotation is independent of Django session/signing key rotation.
+#
+# Generate a fresh one with:
+#
+#   python -c "import secrets; print(secrets.token_urlsafe(32))"
+#
+# DO NOT reuse DJANGO_SECRET_KEY. DO NOT commit a real key to git.
+DJANGO_API_KEY_DIGEST_KEY=replace-with-generated-api-key-digest-key
+
 # Comma-separated list of host headers Django will accept. Add every
 # public hostname that resolves to this server.
 DJANGO_ALLOWED_HOSTS=validibot.example.com,localhost

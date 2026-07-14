@@ -39,6 +39,7 @@ touch Django models (``TestExecutionResponse``, ``TestBackendFactory``,
 most of ``TestDockerComposeExecutionBackend``) remain DB-free for speed.
 """
 
+import json
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -655,6 +656,92 @@ class TestDockerComposeExecutionBackend:
         from validibot.validations.services.execution.base import ExecutionBackend
 
         assert not hasattr(ExecutionBackend, "get_execution_status")
+
+
+@pytest.mark.django_db
+class TestDockerOutputEnvelopeReader:
+    """Tests for trusted output-envelope parsing in the sync Docker path."""
+
+    def _write_energyplus_output(
+        self,
+        tmp_path,
+        request: ExecutionRequest,
+        *,
+        validator_type: str = "ENERGYPLUS",
+        validator_id: str | None = None,
+        run_id: str | None = None,
+    ):
+        """Write a minimal EnergyPlus output envelope JSON file."""
+        output_path = tmp_path / "output.json"
+        output_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "validibot.output.v1",
+                    "run_id": run_id or str(request.run.id),
+                    "validator": {
+                        "id": validator_id or str(request.validator.id),
+                        "type": validator_type,
+                        "version": str(request.validator.version),
+                    },
+                    "status": "success",
+                    "timing": {},
+                    "outputs": {
+                        "energyplus_returncode": 0,
+                        "execution_seconds": 1.0,
+                        "invocation_mode": "cli",
+                    },
+                },
+            ),
+            encoding="utf-8",
+        )
+        return output_path
+
+    def test_reads_output_with_trusted_validator_class(self, tmp_path):
+        """Valid output should parse through the validator's configured class."""
+        request = _make_execution_request()
+        output_path = self._write_energyplus_output(tmp_path, request)
+
+        envelope = DockerComposeExecutionBackend()._read_output_envelope_from_host(
+            output_path,
+            expected_run=request.run,
+            expected_validator=request.validator,
+        )
+
+        assert envelope is not None
+        assert envelope.validator.id == str(request.validator.id)
+        assert envelope.outputs.energyplus_returncode == 0
+
+    def test_rejects_output_validator_type_mismatch(self, tmp_path):
+        """The output document must not choose its own parser via validator.type."""
+        request = _make_execution_request()
+        output_path = self._write_energyplus_output(
+            tmp_path,
+            request,
+            validator_type="FMU",
+        )
+
+        envelope = DockerComposeExecutionBackend()._read_output_envelope_from_host(
+            output_path,
+            expected_run=request.run,
+            expected_validator=request.validator,
+        )
+
+        assert envelope is None
+
+    def test_rejects_oversized_output_before_reading(self, tmp_path, settings):
+        """Local Docker output parsing must enforce the result-size cap too."""
+        request = _make_execution_request()
+        output_path = self._write_energyplus_output(tmp_path, request)
+        output_path.write_bytes(b"x" * 128)
+        settings.VALIDATION_RESULT_MAX_BYTES = 64
+
+        envelope = DockerComposeExecutionBackend()._read_output_envelope_from_host(
+            output_path,
+            expected_run=request.run,
+            expected_validator=request.validator,
+        )
+
+        assert envelope is None
 
 
 # ==============================================================================

@@ -438,16 +438,10 @@ def build_input_envelope(
             if val is not None:
                 sim_kwargs[key] = val
 
-        # Resolve FMU input values and output variable names.
-        #
-        # New path: when the step has StepInputBinding rows (from Phase 3
-        # FMU signal sync), resolve inputs via the binding's source_data_path
-        # against the submission payload. This enables nested path resolution
-        # (e.g., "building.envelope.panel_area") and audit tracing.
-        #
-        # Fallback: when no bindings exist (pre-migration steps or library
-        # validators without step-owned signals), use the legacy approach
-        # of passing the entire submission JSON as flat input_values.
+        # Resolve FMU input values from explicit StepInputBinding rows only.
+        # There is no raw-submission fallback: bindings are the contract that
+        # makes input identity, defaults, traces, and cross-step references
+        # auditable.
         input_values: dict = {}
         has_bindings = step.signal_bindings.filter(
             signal_definition__direction="input",
@@ -524,28 +518,30 @@ def build_input_envelope(
                     ResolvedInputTrace.objects.bulk_create(exc.traces)
                 raise
 
-            # Persist the fully-resolved input values (with defaults and
-            # nested-path resolution applied) on step_run.output so that
-            # output-stage assertions see the same values the validator
-            # launch used — not the raw submission JSON.
+            # Persist the fully-resolved input values twice, with different
+            # keys for different consumers:
+            #
+            # * ``input_values`` uses Validibot contract keys for downstream
+            #   ``steps.<key>.input.*`` access.
+            # * ``output["resolved_inputs"]`` preserves native/provider keys
+            #   because FMU start values and output-stage assertion payloads
+            #   historically use the provider variable names.
             if current_step_run:
+                current_step_run.input_values = {
+                    trace.signal_contract_key: trace.value_snapshot
+                    for trace in traces
+                    if trace.resolved
+                }
                 output = dict(current_step_run.output or {})
                 output["resolved_inputs"] = input_values
                 current_step_run.output = output
-                current_step_run.save(update_fields=["output"])
-        # Legacy fallback: entire submission JSON as flat input_values
-        elif run.submission:
-            try:
-                content = run.submission.get_content()
-                if content:
-                    parsed = json.loads(content)
-                    if isinstance(parsed, dict):
-                        input_values = parsed
-            except (json.JSONDecodeError, Exception):
-                logger.warning(
-                    "Could not parse submission content as JSON for run %s",
-                    run.id,
-                )
+                current_step_run.save(update_fields=["input_values", "output"])
+        elif _fmu_step_declares_inputs(step):
+            msg = (
+                f"Step {step.id} declares FMU input signals but has no "
+                "StepInputBinding rows. Configure input bindings before launch."
+            )
+            raise ValueError(msg)
 
         # Extract output variable names: prefer StepIODefinition rows,
         # fall back to step config JSON.
@@ -678,3 +674,33 @@ def build_input_envelope(
 
     msg = f"Unsupported validator type: {validator.validation_type}"
     raise ValueError(msg)
+
+
+def _fmu_step_declares_inputs(step) -> bool:
+    """Return whether this FMU step has declared input signals.
+
+    Step-owned FMU uploads attach signals to ``workflow_step``. Library FMU
+    validators may attach them to the reusable validator. Either form means
+    launch requires explicit ``StepInputBinding`` rows.
+    """
+    from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import SignalOriginKind
+    from validibot.validations.models import StepIODefinition
+
+    step_owned_inputs = StepIODefinition.objects.filter(
+        workflow_step=step,
+        direction=SignalDirection.INPUT,
+        origin_kind=SignalOriginKind.FMU,
+    ).exists()
+    if step_owned_inputs:
+        return True
+
+    validator_id = getattr(step, "validator_id", None)
+    if validator_id is None:
+        return False
+
+    return StepIODefinition.objects.filter(
+        validator_id=validator_id,
+        direction=SignalDirection.INPUT,
+        origin_kind=SignalOriginKind.FMU,
+    ).exists()

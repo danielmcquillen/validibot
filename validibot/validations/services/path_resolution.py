@@ -265,8 +265,8 @@ def resolve_input_signal(
         submission_data: The submission payload dict (for SUBMISSION_PAYLOAD scope).
         submission_metadata: Submission metadata dict (for SUBMISSION_METADATA scope).
         upstream_steps: Canonical ``{step_key: {"input": {...}, "output":
-            {...}}}`` values from completed prior steps (for UPSTREAM_STEP
-            scope).
+            {...}, "artifact": {...}}}`` values from completed prior steps
+            (for UPSTREAM_STEP and UPSTREAM_ARTIFACT scope).
         workflow_signals: Dict of resolved workflow-level signals (for SIGNAL scope).
             These are the ``s.`` namespace values resolved by
             ``resolve_workflow_signals()``.
@@ -317,6 +317,18 @@ def resolve_input_signal(
         # Extract the upstream step_key from the first path segment
         # (e.g., "simulation.site_eui" → step_key="simulation") for
         # the audit trace.
+        if "." in effective_path:
+            result.upstream_step_key = effective_path.split(".", 1)[0]
+    elif scope == BindingSourceScope.UPSTREAM_ARTIFACT:
+        # Upstream artifacts are exposed separately from small output
+        # values so file-like data-plane references are not confused with
+        # scalar output signals:
+        #   upstream_steps[step_key]["artifact"][contract_key]
+        raw = upstream_steps or {}
+        source = {
+            k: v.get("artifact", {}) if isinstance(v, dict) else {}
+            for k, v in raw.items()
+        }
         if "." in effective_path:
             result.upstream_step_key = effective_path.split(".", 1)[0]
     elif scope == BindingSourceScope.SIGNAL:

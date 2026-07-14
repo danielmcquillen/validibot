@@ -69,6 +69,13 @@ if DEPLOYMENT_TARGET == "aws":
 DEBUG = False
 # https://docs.djangoproject.com/en/dev/ref/settings/#secret-key
 SECRET_KEY = env("DJANGO_SECRET_KEY")
+API_KEY_DIGEST_KEY = env("DJANGO_API_KEY_DIGEST_KEY", default="")
+if not API_KEY_DIGEST_KEY:
+    raise ImproperlyConfigured(
+        "DJANGO_API_KEY_DIGEST_KEY is required in production. Generate one "
+        'with: python -c "import secrets; print(secrets.token_urlsafe(32))" '
+        "and store it in Secret Manager alongside DJANGO_SECRET_KEY.",
+    )
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 

@@ -588,6 +588,17 @@ MFA_ADAPTER = "validibot.users.mfa_adapter.ValidibotMFAAdapter"
 # when needed.
 MFA_ENCRYPTION_KEY = env("DJANGO_MFA_ENCRYPTION_KEY", default=None)
 
+# Hashed personal API keys. Production requires a dedicated digest key in
+# ``production.py``; local/test may fall back to ``SECRET_KEY`` in the service
+# so developers are not blocked by extra one-off configuration.
+API_KEY_DIGEST_KEY = env("DJANGO_API_KEY_DIGEST_KEY", default="")
+API_KEY_DIGEST_VERSION = env.int("DJANGO_API_KEY_DIGEST_VERSION", default=1)
+API_KEY_DEFAULT_EXPIRY_DAYS = env.int("API_KEY_DEFAULT_EXPIRY_DAYS", default=365)
+API_KEY_LAST_USED_UPDATE_INTERVAL_SECONDS = env.int(
+    "API_KEY_LAST_USED_UPDATE_INTERVAL_SECONDS",
+    default=3600,
+)
+
 # django-rest-framework
 # -------------------------------------------------------------------------------
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/

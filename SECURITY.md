@@ -81,10 +81,11 @@ When deploying Validibot in production:
    ```bash
    python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
    ```
-3. **Restrict `DJANGO_ALLOWED_HOSTS`** to your specific domain(s)
-4. **Use environment variables** or a secrets manager for all credentials
-5. **Never commit `.envs/` files** to version control (they are gitignored by default)
-6. **Keep dependencies updated** - run `uv lock --upgrade` regularly
+3. **Set a separate `DJANGO_API_KEY_DIGEST_KEY`** - generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"` and never reuse `DJANGO_SECRET_KEY`
+4. **Restrict `DJANGO_ALLOWED_HOSTS`** to your specific domain(s)
+5. **Use environment variables** or a secrets manager for all credentials
+6. **Never commit `.envs/` files** to version control (they are gitignored by default)
+7. **Keep dependencies updated** - run `uv lock --upgrade` regularly
 
 ## Disclaimer
 

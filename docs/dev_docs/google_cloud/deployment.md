@@ -115,9 +115,19 @@ DATABASE_URL=postgres://validibot_user:<url-encoded-password>@/validibot?host=/c
 Where `<db-instance>` is `$GCP_APP_NAME-db-dev`, `$GCP_APP_NAME-db-staging`, or `$GCP_APP_NAME-db` (for prod).
 
 While you're in the env file, also generate and set
-`DJANGO_MFA_ENCRYPTION_KEY` — the app refuses to start without it, and
-validates the format at import time so malformed values fail the deploy
-rather than showing up as mysterious errors during MFA enrolment.
+`DJANGO_API_KEY_DIGEST_KEY` and `DJANGO_MFA_ENCRYPTION_KEY`. The API-key
+digest key must be separate from `DJANGO_SECRET_KEY`; production refuses
+to start without it so bearer tokens are never stored using Django's
+session/signing key as a fallback.
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Paste the output as `DJANGO_API_KEY_DIGEST_KEY=<value>`. Then generate the
+Fernet key for MFA secret material; the app validates the format at import
+time so malformed values fail the deploy rather than showing up as mysterious
+errors during MFA enrolment.
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

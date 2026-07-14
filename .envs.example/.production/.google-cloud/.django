@@ -17,6 +17,7 @@ DJANGO_SETTINGS_MODULE=config.settings.production
 DEPLOYMENT_TARGET=gcp
 DJANGO_DEBUG=False
 DJANGO_SECRET_KEY=your-secret-key-here-change-this
+DJANGO_API_KEY_DIGEST_KEY=replace-with-generated-api-key-digest-key
 # IMPORTANT: Change to a random URL to prevent automated attacks on /admin/.
 # Generate with: python -c "import secrets; print(secrets.token_urlsafe(16))"
 DJANGO_ADMIN_URL=admin/
@@ -25,6 +26,9 @@ DJANGO_ADMIN_URL=admin/
 DJANGO_ALLOWED_HOSTS=your-service-name.region.run.app,your-subdomain.example.com
 # Generate a secret key with:
 # python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+# Generate an API key digest key with:
+# python -c "import secrets; print(secrets.token_urlsafe(32))"
+# Keep it separate from DJANGO_SECRET_KEY.
 
 # Production security headers (SECURE_PROXY_SSL_HEADER, SSL redirect, HSTS,
 # secure cookies) are hardcoded in config/settings/production.py — they are

@@ -25,7 +25,6 @@ from django.views.generic import FormView
 from django.views.generic import RedirectView
 from django.views.generic import TemplateView
 from django.views.generic import UpdateView
-from rest_framework.authtoken.models import Token
 
 from validibot.core.features import CommercialFeature
 from validibot.core.mixins import BreadcrumbMixin
@@ -41,6 +40,8 @@ from validibot.users.models import Membership
 from validibot.users.models import Organization
 from validibot.users.models import User
 from validibot.users.models import ensure_default_project
+from validibot.users.services.api_keys import get_active_api_key
+from validibot.users.services.api_keys import rotate_user_api_key
 
 
 class UserDetailView(BreadcrumbMixin, LoginRequiredMixin, DetailView):
@@ -119,25 +120,36 @@ class UserRedirectView(LoginRequiredMixin, RedirectView):
 user_redirect_view = UserRedirectView.as_view()
 
 
+def _api_key_breadcrumbs(request):
+    return [
+        {
+            "name": _("User Settings"),
+            "url": reverse_with_org("users:profile", request=request),
+        },
+        {"name": _("API Key"), "url": ""},
+    ]
+
+
 @login_required
 @require_POST
 def user_api_key_rotate_view(request):
-    """Regenerate the authenticated user's API token."""
+    """Regenerate the authenticated user's personal API key."""
 
-    Token.objects.filter(user=request.user).delete()
-    token = Token.objects.create(user=request.user)
+    issued = rotate_user_api_key(user=request.user)
+    context = {"api_key": issued.api_key, "new_api_key": issued.full_key}
 
     if request.headers.get("HX-Request"):
         response = render(
             request,
             "users/partial/api_key_panel.html",
-            {"api_token": token},
+            context,
         )
         response["HX-Trigger"] = "apiKeyRotated"
         return response
 
-    messages.success(request, _("Generated a new API key."))
-    return HttpResponseRedirect(reverse_with_org("users:api-key", request=request))
+    messages.success(request, _("Generated a new API key. Copy it now."))
+    context["breadcrumbs"] = _api_key_breadcrumbs(request)
+    return render(request, "users/api_key.html", context)
 
 
 class UserEmailView(
@@ -172,18 +184,11 @@ class UserApiKeyView(
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        token, _ = Token.objects.get_or_create(user=self.request.user)
-        context["api_token"] = token
+        context["api_key"] = get_active_api_key(self.request.user)
         return context
 
     def get_breadcrumbs(self):
-        return [
-            {
-                "name": _("User Settings"),
-                "url": reverse_with_org("users:profile", request=self.request),
-            },
-            {"name": _("API Key"), "url": ""},
-        ]
+        return _api_key_breadcrumbs(self.request)
 
 
 user_api_key_view = UserApiKeyView.as_view()

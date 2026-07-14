@@ -373,6 +373,8 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             # 8. Read the output envelope from the workspace.
             output_envelope = self._read_output_envelope_from_host(
                 workspace.host_output_envelope_path,
+                expected_run=request.run,
+                expected_validator=request.validator,
             )
 
             attempt, _ = transition_execution_attempt(
@@ -584,6 +586,9 @@ class DockerComposeExecutionBackend(ExecutionBackend):
     def _read_output_envelope_from_host(
         self,
         host_path,
+        *,
+        expected_run,
+        expected_validator,
     ) -> ValidationOutputEnvelope | None:
         """Read and parse the output envelope from a host path.
 
@@ -594,9 +599,8 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         — going through the storage layer would require translating
         the host path back to a storage-relative path for no benefit.
 
-        Returns ``None`` if the file is missing (which the
-        run-completion contract treats as "container died
-        unexpectedly") or the envelope is unparseable.
+        Returns ``None`` if the file is missing, too large, unparseable,
+        or mismatched against the trusted run/validator identity.
         """
 
         try:
@@ -604,32 +608,72 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 logger.error("Output envelope not found at %s", host_path)
                 return None
 
+            max_bytes = getattr(settings, "VALIDATION_RESULT_MAX_BYTES", None)
+            if max_bytes is not None and host_path.stat().st_size > max_bytes:
+                logger.error(
+                    "Output envelope at %s exceeds VALIDATION_RESULT_MAX_BYTES",
+                    host_path,
+                )
+                return None
+
             output_data = host_path.read_bytes()
 
             output_dict = json.loads(output_data.decode("utf-8"))
 
-            # Look up the output envelope class from the registry using the
-            # validator type embedded in the envelope JSON.
+            # Select the output class from trusted validator configuration,
+            # never from the output document. A compromised container must not
+            # be able to choose its own parser by editing validator.type.
             from validibot.validations.validators.base.config import (
                 get_output_envelope_class,
             )
 
-            validator_type = output_dict.get("validator", {}).get("type", "").upper()
-            envelope_class = get_output_envelope_class(validator_type)
-
+            envelope_class = get_output_envelope_class(
+                expected_validator.validation_type,
+            )
             if envelope_class is None:
-                # Fall back to the generic base envelope for unknown types.
-                from validibot_shared.validations.envelopes import (
-                    ValidationOutputEnvelope,
+                logger.error(
+                    "No output envelope class registered for validator type: %s",
+                    expected_validator.validation_type,
                 )
+                return None
 
-                envelope_class = ValidationOutputEnvelope
+            output_envelope = envelope_class.model_validate(output_dict)
 
-            return envelope_class.model_validate(output_dict)
+            actual_validator_type = getattr(
+                output_envelope.validator.type,
+                "value",
+                output_envelope.validator.type,
+            )
+            expected_validator_type = str(expected_validator.validation_type)
+            if str(actual_validator_type).upper() != expected_validator_type.upper():
+                logger.warning(
+                    "Output envelope validator type mismatch: envelope=%s expected=%s",
+                    actual_validator_type,
+                    expected_validator_type,
+                )
+                return None
+
+            if str(output_envelope.validator.id) != str(expected_validator.id):
+                logger.warning(
+                    "Output envelope validator mismatch: envelope=%s expected=%s",
+                    output_envelope.validator.id,
+                    expected_validator.id,
+                )
+                return None
+
+            if str(getattr(output_envelope, "run_id", "")) != str(expected_run.id):
+                logger.warning(
+                    "Output envelope run mismatch: envelope=%s expected=%s",
+                    getattr(output_envelope, "run_id", ""),
+                    expected_run.id,
+                )
+                return None
 
         except Exception:
             logger.exception("Failed to read output envelope from %s", host_path)
             return None
+        else:
+            return output_envelope
 
     def _get_callback_url(self) -> str:
         """

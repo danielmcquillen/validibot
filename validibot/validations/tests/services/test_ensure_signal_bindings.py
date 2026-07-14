@@ -3,8 +3,8 @@ Tests for ensure_step_signal_bindings().
 
 This function creates default StepInputBinding rows for validator-owned
 input signals that don't already have bindings on a given step. This
-ensures the signal resolution engine activates instead of falling back
-to legacy mode.
+ensures the signal resolution engine has the explicit contract it needs
+before launch.
 
 The function is called after step creation/update in save_workflow_step().
 It only handles CATALOG-origin signals — FMU and TEMPLATE signals have
@@ -39,7 +39,7 @@ class TestEnsureStepInputBindings(TestCase):
     def test_creates_bindings_for_input_signals(self):
         """CATALOG input signals owned by the validator should each get a
         StepInputBinding so the resolution engine can map submission
-        data to validator inputs instead of using the legacy fallback.
+        data to validator inputs through explicit, traceable bindings.
         """
         validator = ValidatorFactory()
         sig_a = StepIODefinitionFactory(

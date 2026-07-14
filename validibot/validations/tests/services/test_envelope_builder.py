@@ -20,15 +20,29 @@ UUID fields, validation type normalization, and other real model behavior.
 """
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
 from validibot_shared.validations.envelopes import ResourceFileItem
 from validibot_shared.validations.envelopes import ValidatorType
 
+from validibot.submissions.tests.factories import SubmissionFactory
+from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import SignalOriginKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,
 )
+from validibot.validations.services.cloud_run.envelope_builder import (
+    build_input_envelope,
+)
+from validibot.validations.tests.factories import StepInputBindingFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
+from validibot.validations.tests.factories import ValidationRunFactory
+from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.workflows.models import WorkflowStepResource
+from validibot.workflows.tests.factories import WorkflowStepFactory
+from validibot.workflows.tests.factories import WorkflowStepResourceFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -79,6 +93,36 @@ def _build_envelope(validator=None, **overrides) -> EnergyPlusInputEnvelope:
     }
     defaults.update(overrides)
     return build_energyplus_input_envelope(**defaults)
+
+
+def _build_fmu_run(*, submission_content: str = "{}"):
+    """Create a runnable FMU step graph for envelope-builder tests."""
+    validator = ValidatorFactory(validation_type=ValidationType.FMU)
+    step = WorkflowStepFactory(validator=validator)
+    WorkflowStepResourceFactory(
+        step=step,
+        role=WorkflowStepResource.FMU_MODEL,
+        validator_resource_file=None,
+        step_resource_file=SimpleUploadedFile("model.fmu", b"fmu-bytes"),
+        filename="model.fmu",
+        resource_type="fmu",
+    )
+    submission = SubmissionFactory(
+        workflow=step.workflow,
+        org=step.workflow.org,
+        content=submission_content,
+    )
+    run = ValidationRunFactory(
+        workflow=step.workflow,
+        org=step.workflow.org,
+        submission=submission,
+    )
+    ValidationStepRunFactory(
+        validation_run=run,
+        workflow_step=step,
+        step_order=step.order,
+    )
+    return run, step
 
 
 # ==============================================================================
@@ -272,3 +316,88 @@ class TestMultipleResourceFiles:
         assert len(envelope.resource_files) == 2  # noqa: PLR2004
         assert envelope.resource_files[0].type == "energyplus_weather"
         assert envelope.resource_files[1].type == "energyplus_library"
+
+
+# ==============================================================================
+# FMU input bindings
+# ==============================================================================
+# FMU envelopes must receive values through explicit StepInputBinding rows.
+# Passing the whole submission JSON when bindings are missing would reintroduce
+# a second execution contract and hide missing author wiring.
+# ==============================================================================
+
+
+class TestFMUInputBindings:
+    """Tests for FMU input-value construction in ``build_input_envelope()``."""
+
+    def test_no_declared_fmu_inputs_produces_empty_input_values(self):
+        """A step with no declared FMU inputs should launch with an empty map."""
+        run, _step = _build_fmu_run(
+            submission_content='{"accidental": "must-not-enter-envelope"}',
+        )
+
+        envelope = build_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+            input_file_uris={"fmu_model_uri": "file:///validibot/input/model.fmu"},
+        )
+
+        assert envelope.inputs.input_values == {}
+
+    def test_declared_fmu_input_without_binding_fails_closed(self):
+        """Declared inputs require bindings; raw submission JSON is not a fallback."""
+        run, step = _build_fmu_run(submission_content='{"panel_area": 150.0}')
+        StepIODefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            contract_key="panel_area",
+            native_name="Panel.Area",
+            direction=SignalDirection.INPUT,
+            origin_kind=SignalOriginKind.FMU,
+        )
+
+        with pytest.raises(ValueError, match="StepInputBinding"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+                input_file_uris={"fmu_model_uri": "file:///validibot/input/model.fmu"},
+            )
+
+    def test_declared_fmu_input_uses_binding_not_entire_submission(self):
+        """Only bound values should reach envelope and canonical step state."""
+        run, step = _build_fmu_run(
+            submission_content=(
+                '{"building": {"panel_area": 150.0}, '
+                '"accidental": "must-not-enter-envelope"}'
+            ),
+        )
+        signal = StepIODefinitionFactory(
+            workflow_step=step,
+            validator=None,
+            contract_key="panel_area",
+            native_name="Panel.Area",
+            direction=SignalDirection.INPUT,
+            origin_kind=SignalOriginKind.FMU,
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=signal,
+            source_data_path="building.panel_area",
+        )
+
+        envelope = build_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+            input_file_uris={"fmu_model_uri": "file:///validibot/input/model.fmu"},
+        )
+
+        assert envelope.inputs.input_values == {"Panel.Area": 150.0}
+        step_run = run.step_runs.get(workflow_step=step)
+        assert step_run.input_values == {"panel_area": 150.0}
+        assert step_run.output["resolved_inputs"] == {"Panel.Area": 150.0}

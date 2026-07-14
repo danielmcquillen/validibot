@@ -34,6 +34,8 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.authtoken.models import Token
 from rest_framework.exceptions import AuthenticationFailed
 
+from validibot.users.services.api_keys import verify_api_key
+
 logger = logging.getLogger(__name__)
 
 
@@ -230,9 +232,17 @@ class MCPUserRouteAuthentication(MCPServiceAuthentication):
 
         api_token = request.headers.get("X-Validibot-Api-Token", "").strip()
         if api_token:
+            api_key = verify_api_key(api_token)
+            if api_key is not None:
+                context = MCPAuthenticatedUserContext(
+                    user_identifier=api_key.redacted_key,
+                    auth_kind="api_key",
+                )
+                return (api_key.user, context)
+
             token = Token.objects.select_related("user").filter(key=api_token).first()
             if token is None or not token.user.is_active:
-                raise AuthenticationFailed("Unknown or inactive legacy API token.")
+                raise AuthenticationFailed("Unknown or inactive API token.")
             context = MCPAuthenticatedUserContext(
                 user_identifier=token.key,
                 auth_kind="legacy_api_token",

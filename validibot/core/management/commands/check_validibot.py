@@ -1314,6 +1314,34 @@ class Command(BaseCommand):
                 ),
             )
 
+        # VB008 — API key digest secret missing or coupled to SECRET_KEY
+        api_key_digest_key = getattr(settings, "API_KEY_DIGEST_KEY", "")
+        if not settings.DEBUG and not api_key_digest_key:
+            findings.append(
+                (
+                    "VB008",
+                    True,
+                    "DJANGO_API_KEY_DIGEST_KEY is not set",
+                    "Generate a separate digest key with: "
+                    'python -c "import secrets; print(secrets.token_urlsafe(32))"',
+                ),
+            )
+        elif (
+            not settings.DEBUG
+            and api_key_digest_key
+            and api_key_digest_key == secret_key
+        ):
+            findings.append(
+                (
+                    "VB008",
+                    True,
+                    "DJANGO_API_KEY_DIGEST_KEY reuses SECRET_KEY",
+                    "Set DJANGO_API_KEY_DIGEST_KEY to a separate random value "
+                    "so API-key digest rotation is independent of Django "
+                    "session/signing key rotation.",
+                ),
+            )
+
         if findings:
             for finding_id, _present, issue, fix in findings:
                 # In DEBUG mode (dev), security findings are warnings

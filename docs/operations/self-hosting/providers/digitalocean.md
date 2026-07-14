@@ -351,6 +351,7 @@ The `.django` file is organised into eight sections. The required settings for a
 SITE_URL=https://validibot.example.org
 DJANGO_ALLOWED_HOSTS=validibot.example.org
 DJANGO_SECRET_KEY=<see below>
+DJANGO_API_KEY_DIGEST_KEY=<see below>
 DJANGO_MFA_ENCRYPTION_KEY=<see below>
 WORKER_API_KEY=<see below>
 
@@ -382,6 +383,10 @@ Generate the core Django secrets:
 # DJANGO_SECRET_KEY
 docker run --rm python:3.13-alpine python -c \
   "from secrets import token_urlsafe; print(token_urlsafe(50))"
+
+# DJANGO_API_KEY_DIGEST_KEY
+docker run --rm python:3.13-alpine python -c \
+  "from secrets import token_urlsafe; print(token_urlsafe(32))"
 
 # DJANGO_MFA_ENCRYPTION_KEY (must be Fernet-format)
 docker run --rm python:3.13-alpine sh -c \

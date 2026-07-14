@@ -55,6 +55,7 @@ from django.test import override_settings
 from validibot.core.management.commands.check_validibot import DOCTOR_SCHEMA_VERSION
 from validibot.core.management.commands.check_validibot import CheckResult
 from validibot.core.management.commands.check_validibot import CheckStatus
+from validibot.core.management.commands.check_validibot import Command
 
 # Severity values that must appear in the JSON summary even when their
 # count is zero, so integrations have a predictable shape to read.
@@ -360,6 +361,50 @@ class DoctorCheckResultDataclassTests(TestCase):
             message="ok",
         )
         self.assertTrue(result.id.startswith("VB"))
+
+
+class DoctorSecurityCheckTests(TestCase):
+    """Security checks must catch production secret misconfiguration."""
+
+    @override_settings(
+        DEBUG=False,
+        SECRET_KEY="django-secret-key-" + "a" * 64,
+        API_KEY_DIGEST_KEY="",
+        ALLOWED_HOSTS=["app.example.com"],
+        CSRF_TRUSTED_ORIGINS=["https://app.example.com"],
+        ADMIN_URL="not-admin/",
+        SECURE_SSL_REDIRECT=True,
+        SESSION_COOKIE_SECURE=True,
+    )
+    def test_api_key_digest_key_missing_emits_vb008(self):
+        """Production must not fall back to SECRET_KEY for API-key digests."""
+
+        command = Command()
+        command._check_security()
+
+        checks = {result.id: result for result in command.results}
+        self.assertEqual(checks["VB008"].status, CheckStatus.ERROR)
+        self.assertIn("DJANGO_API_KEY_DIGEST_KEY is not set", checks["VB008"].message)
+
+    @override_settings(
+        DEBUG=False,
+        SECRET_KEY="shared-secret-key-" + "b" * 64,
+        API_KEY_DIGEST_KEY="shared-secret-key-" + "b" * 64,
+        ALLOWED_HOSTS=["app.example.com"],
+        CSRF_TRUSTED_ORIGINS=["https://app.example.com"],
+        ADMIN_URL="not-admin/",
+        SECURE_SSL_REDIRECT=True,
+        SESSION_COOKIE_SECURE=True,
+    )
+    def test_api_key_digest_key_reusing_secret_key_emits_vb008(self):
+        """Digest-key rotation must be independent from Django SECRET_KEY."""
+
+        command = Command()
+        command._check_security()
+
+        checks = {result.id: result for result in command.results}
+        self.assertEqual(checks["VB008"].status, CheckStatus.ERROR)
+        self.assertIn("reuses SECRET_KEY", checks["VB008"].message)
 
 
 class DoctorSeverityCountingTests(TestCase):

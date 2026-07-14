@@ -381,6 +381,14 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
         # Include full envelope in step output (JSON-safe serialization)
         stats = self._serialize_envelope(output_envelope)
+        from validibot.validations.services.artifacts import register_output_artifacts
+
+        artifact_refs = register_output_artifacts(
+            step_run=self.step_run,
+            output_envelope=output_envelope,
+        )
+        if artifact_refs:
+            stats["artifact_refs"] = artifact_refs
         if success_with_container_errors:
             warnings = stats.get("warnings", []) if isinstance(stats, dict) else []
             warnings.append(note_msg)

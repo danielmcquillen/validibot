@@ -9,23 +9,58 @@
     <p class="text-muted small mb-3">
       {% trans "Use this key to authenticate API requests with the application API." %}
     </p>
+    {% if new_api_key %}
+      <div class="alert alert-warning small" role="alert">
+        {% trans "Copy this key now. For security, it will not be shown again." %}
+      </div>
+    {% endif %}
     <label class="form-label fw-semibold" for="api-key-value">
       {% trans "API key" %}
     </label>
     <div class="input-group mb-3">
-      <input id="api-key-value"
-             type="text"
-             class="form-control font-monospace"
-             value="{{ api_token.key }}"
-             readonly />
-      <button type="button"
-              class="btn btn-secondary"
-              data-copy-target="#api-key-value"
-              data-copy-timeout="1600"
-              data-copied-label="{% trans "Copied" %}">
-        {% trans "Copy" %}
-      </button>
+      {% if new_api_key %}
+        <input id="api-key-value"
+               type="text"
+               class="form-control font-monospace"
+               value="{{ new_api_key }}"
+               readonly />
+        <button type="button"
+                class="btn btn-secondary"
+                data-copy-target="#api-key-value"
+                data-copy-timeout="1600"
+                data-copied-label="{% trans "Copied" %}">
+          {% trans "Copy" %}
+        </button>
+      {% elif api_key %}
+        <input id="api-key-value"
+               type="text"
+               class="form-control font-monospace"
+               value="{{ api_key.redacted_key }}"
+               readonly />
+      {% else %}
+        <input id="api-key-value"
+               type="text"
+               class="form-control"
+               value="{% trans "No active API key" %}"
+               readonly />
+      {% endif %}
     </div>
+    {% if api_key %}
+      <dl class="row small text-muted mb-3">
+        <dt class="col-sm-3">{% trans "Created" %}</dt>
+        <dd class="col-sm-9 mb-1">
+          {{ api_key.created|date:"Y-m-d H:i" }}
+        </dd>
+        <dt class="col-sm-3">{% trans "Expires" %}</dt>
+        <dd class="col-sm-9 mb-0">
+          {% if api_key.expires_at %}
+            {{ api_key.expires_at|date:"Y-m-d H:i" }}
+          {% else %}
+            {% trans "Never" %}
+          {% endif %}
+        </dd>
+      </dl>
+    {% endif %}
     <div class="d-grid d-sm-flex gap-2">
       <button type="button"
               class="btn btn-sm btn-danger"
@@ -33,11 +68,15 @@
               hx-target="#api-key-panel"
               hx-swap="outerHTML">
         <i class="bi bi-arrow-repeat me-1"></i>
-        {% trans "Generate new key" %}
+        {% if api_key %}
+          {% trans "Generate new key" %}
+        {% else %}
+          {% trans "Generate key" %}
+        {% endif %}
       </button>
     </div>
     <p class="text-muted small mt-3 mb-0">
-      {% trans "Generating a new key immediately invalidates the previous key. Update any clients that use the API." %}
+      {% trans "Generating a new key immediately invalidates previous Validibot API keys. Update any clients that use the API." %}
     </p>
   </div>
 </div>

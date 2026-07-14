@@ -39,17 +39,17 @@ sections below.
 
 ## VB0xx — Settings and security
 
-### `VB001` Weak SECRET_KEY
+### `VB001` DEBUG mode enabled
+**Severity:** error in production, warn in DEBUG mode
+**Trigger:** `DEBUG=True` in production settings.
+**Fix:** Set `DEBUG=False` in `.envs/.production/.self-hosted/.django`.
+
+### `VB002` Weak SECRET_KEY
 **Severity:** error in production, warn in DEBUG mode
 **Trigger:** `DJANGO_SECRET_KEY` is missing, contains "changeme", or is shorter than 32 characters.
 **Fix:** Generate a strong secret with
 `python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'`,
 then set it in `.envs/.production/.self-hosted/.django` and restart.
-
-### `VB002` DEBUG mode enabled
-**Severity:** error in production, warn in DEBUG mode
-**Trigger:** `DEBUG=True` in production settings.
-**Fix:** Set `DEBUG=False` in `.envs/.production/.self-hosted/.django`.
 
 ### `VB003` ALLOWED_HOSTS misconfigured
 **Severity:** error in production
@@ -82,6 +82,15 @@ already terminates TLS and strips proxy headers, also set
 **Trigger:** `SESSION_COOKIE_SECURE=False` in production.
 **Fix:** Set `SESSION_COOKIE_SECURE=True` and `CSRF_COOKIE_SECURE=True`
 together. Both default to True in the production settings module.
+
+### `VB008` API key digest key missing or coupled
+**Severity:** error in production
+**Trigger:** `DJANGO_API_KEY_DIGEST_KEY` is missing, or it reuses the same value as `DJANGO_SECRET_KEY`.
+**Fix:** Generate a separate digest key with
+`python -c "import secrets; print(secrets.token_urlsafe(32))"`,
+set `DJANGO_API_KEY_DIGEST_KEY=` in `.envs/.production/.self-hosted/.django`,
+and restart. Do not reuse `DJANGO_SECRET_KEY`; API-token digest rotation must be
+independent from Django session/signing key rotation.
 
 ### `VB030` OS version
 **Severity:** error in self-hosted production, info on other targets, skipped on non-Linux

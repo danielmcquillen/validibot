@@ -4,7 +4,8 @@ signals on a workflow step.
 
 Called after step creation/update so that the signal resolution
 engine and envelope builder have bindings to work with. Without
-bindings, the envelope builder falls back to legacy mode.
+bindings, launch fails closed for validators that declare external
+inputs.
 """
 
 from __future__ import annotations

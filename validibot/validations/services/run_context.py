@@ -10,10 +10,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from django.db.models import Prefetch
+
 from validibot.actions.protocols import RunContext
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import StepStatus
+from validibot.validations.models import Artifact
 from validibot.validations.models import ValidationStepRun
+from validibot.validations.services.artifacts import build_step_artifact_refs
 from validibot.validations.services.signal_resolution import resolve_workflow_signals
 from validibot.workflows.services.constants import build_workflow_constants_context
 
@@ -69,6 +73,16 @@ class RunContextBuilder:
                 ),
             )
             .select_related("workflow_step")
+            .prefetch_related(
+                Prefetch(
+                    "artifacts",
+                    queryset=Artifact.objects.order_by(
+                        "contract_key",
+                        "item_key",
+                        "pk",
+                    ),
+                ),
+            )
             .order_by("step_order", "pk")
         )
 
@@ -86,6 +100,7 @@ class RunContextBuilder:
             upstream_steps[step_key] = {
                 "input": step_run.input_values or {},
                 "output": step_run.output_values or {},
+                "artifact": build_step_artifact_refs(step_run),
             }
         return upstream_steps
 

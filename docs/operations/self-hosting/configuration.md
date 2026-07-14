@@ -28,6 +28,7 @@ Settings that must be set before the app starts.
 |---|---|
 | `SITE_URL` | The public URL of your Validibot instance (e.g. `https://validibot.example.org`). Used everywhere — emails, OIDC, callback URLs, evidence verification URLs. |
 | `DJANGO_SECRET_KEY` | Django's signing key. Generate with `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`. |
+| `DJANGO_API_KEY_DIGEST_KEY` | HMAC key for stored API/user bearer-token digests. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"` and keep it separate from `DJANGO_SECRET_KEY`. |
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated list of domain names this instance serves. Must include the host portion of `SITE_URL`. |
 | `DJANGO_MFA_ENCRYPTION_KEY` | Fernet key for encrypting TOTP secrets. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. |
 | `WORKER_API_KEY` | Shared secret used by the web and worker containers for internal worker API calls. Generate a high-entropy value with `openssl rand -base64 48`. |

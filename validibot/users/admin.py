@@ -14,6 +14,7 @@ from validibot.users.models import MembershipRole
 from validibot.users.models import Organization
 from validibot.users.models import Role
 from validibot.users.models import User
+from validibot.users.models import ValidibotAPIKey
 
 if settings.DJANGO_ADMIN_FORCE_ALLAUTH:
     # Force the `admin` sign in process to go through the `django-allauth` workflow:
@@ -163,6 +164,32 @@ class MembershipAdmin(admin.ModelAdmin):
     list_display = ["user", "org", "is_active"]
     list_filter = ["is_active", "roles"]
     search_fields = ["user__username", "user__name", "org__name"]
+
+
+@admin.register(ValidibotAPIKey)
+class ValidibotAPIKeyAdmin(admin.ModelAdmin):
+    list_display = [
+        "redacted_key",
+        "user",
+        "label",
+        "created",
+        "expires_at",
+        "revoked_at",
+        "last_used_at",
+    ]
+    list_filter = ["revoked_at", "expires_at", "created"]
+    search_fields = ["public_id", "user__username", "user__email", "label"]
+    exclude = ["secret_digest"]
+    readonly_fields = [
+        "id",
+        "public_id",
+        "redacted_key",
+        "format_version",
+        "digest_version",
+        "created",
+        "modified",
+        "last_used_at",
+    ]
 
 
 @admin.register(Organization)

@@ -222,6 +222,7 @@ no-op cleanly where the stack does not need it.
 | ------------------------ | ---------------------------------------------------- | ----------------------- | --------------- |
 | `DJANGO_SETTINGS_MODULE` | Settings module path                                 | `config.settings.local` | Yes             |
 | `DJANGO_SECRET_KEY`      | Secret key for cryptographic signing                 | -                       | Production only |
+| `DJANGO_API_KEY_DIGEST_KEY` | HMAC key used to store API/user bearer tokens as digests. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"` and never reuse `DJANGO_SECRET_KEY`. | - | Production only |
 | `DJANGO_DEBUG`           | Enable debug mode                                    | `True` (local)          | No              |
 | `DJANGO_ALLOWED_HOSTS`   | Comma-separated list of allowed hosts                | `*` (local)             | Production only |
 | `DJANGO_ADMIN_URL`       | Admin URL path (randomize for production!)           | `admin/`                | No              |
@@ -297,7 +298,7 @@ If no email provider is configured, emails are printed to the console.
 ## Important Notes
 
 1. **NEVER commit `.envs/` to version control** - This folder contains your real secrets and is gitignored. Committing it to a public repository would expose passwords, API keys, and other sensitive credentials.
-2. **Generate real secrets** - Use the commands below to generate `DJANGO_SECRET_KEY` and passwords for production
+2. **Generate real secrets** - Use the commands below to generate `DJANGO_SECRET_KEY`, `DJANGO_API_KEY_DIGEST_KEY`, and passwords for production
 3. **Platform-specific settings** - Each template includes only settings relevant to that deployment target
 4. **Placeholder values** - Replace all `!!!SET...!!!` placeholders with actual values before running
 5. **DATABASE_URL** - Automatically constructed by entrypoint; don't set manually for Docker Compose deployments
@@ -310,6 +311,14 @@ If no email provider is configured, emails are printed to the console.
 ```bash
 python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
 ```
+
+### API Key Digest Key
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Use a different value from `DJANGO_SECRET_KEY`.
 
 ### Admin URL Path
 

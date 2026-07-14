@@ -59,7 +59,7 @@ $EDITOR .envs/.production/.self-hosted/.django
 
 The `.django` file has eight grouped sections you'll need to customise:
 
-1. **Required** — `SITE_URL`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_SECRET_KEY`, `DJANGO_MFA_ENCRYPTION_KEY`, `WORKER_API_KEY`;
+1. **Required** — `SITE_URL`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_SECRET_KEY`, `DJANGO_API_KEY_DIGEST_KEY`, `DJANGO_MFA_ENCRYPTION_KEY`, `WORKER_API_KEY`;
 2. **URLs/security** — `DJANGO_CSRF_TRUSTED_ORIGINS`, secure cookies, HSTS;
 3. **Database/cache** — usually defaults;
 4. **Storage** — default Compose uses `/app/storage/private` backed by the `validibot_storage` Docker named volume;
@@ -73,6 +73,9 @@ Generate secrets:
 ```bash
 # DJANGO_SECRET_KEY
 python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+
+# DJANGO_API_KEY_DIGEST_KEY
+python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 # DJANGO_MFA_ENCRYPTION_KEY (must be Fernet-format)
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

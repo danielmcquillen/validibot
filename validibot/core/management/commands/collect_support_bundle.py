@@ -105,6 +105,8 @@ CAPTURED_SETTING_NAMES: tuple[str, ...] = (
     "EMAIL_HOST_PASSWORD",  # name-redacted
     # Security
     "SECRET_KEY",  # name-redacted
+    "API_KEY_DIGEST_KEY",  # name-redacted
+    "API_KEY_DIGEST_VERSION",
     "CSRF_TRUSTED_ORIGINS",
     "SECURE_SSL_REDIRECT",
     "SECURE_PROXY_SSL_HEADER",

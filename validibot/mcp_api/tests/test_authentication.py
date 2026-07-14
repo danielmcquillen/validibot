@@ -1,4 +1,4 @@
-"""Tests for :class:`MCPServiceAuthentication`'s OIDC allowlist.
+"""Tests for MCP service identity and forwarded user authentication.
 
 The MCP helper API trusts forwarded user headers *after* the service
 identity is verified. Any gap in the service-identity verification
@@ -21,10 +21,14 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+from django.test import RequestFactory
 from django.test import SimpleTestCase
 from django.test import override_settings
 
 from validibot.mcp_api.authentication import MCPServiceAuthentication
+from validibot.mcp_api.authentication import MCPUserRouteAuthentication
+from validibot.users.services.api_keys import issue_api_key
 
 
 def _verify_returning(claims: dict):
@@ -171,3 +175,25 @@ class OIDCAllowlistTests(SimpleTestCase):
             "email_verified": True,
         }
         self.assertTrue(self._run(claims))
+
+
+@pytest.mark.django_db
+class TestMCPUserRouteAuthentication:
+    """Forwarded end-user headers must resolve through trusted credentials."""
+
+    @override_settings(MCP_SERVICE_KEY="test-mcp-service-key")
+    def test_forwarded_hashed_api_key_resolves_user(self, user):
+        """New ``vbk_`` keys work for MCP routes without DRF Token storage."""
+
+        issued = issue_api_key(user=user)
+        request = RequestFactory().get(
+            "/mcp/fake/",
+            HTTP_X_MCP_SERVICE_KEY="test-mcp-service-key",
+            HTTP_X_VALIDIBOT_API_TOKEN=issued.full_key,
+        )
+
+        resolved_user, context = MCPUserRouteAuthentication().authenticate(request)
+
+        assert resolved_user == user
+        assert context.auth_kind == "api_key"
+        assert context.user_identifier == issued.api_key.redacted_key

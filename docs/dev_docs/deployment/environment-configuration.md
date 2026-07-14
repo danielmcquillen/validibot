@@ -110,7 +110,7 @@ Each deployment environment uses two files:
 | File | Purpose | Example Variables |
 |------|---------|-------------------|
 | `.postgres` | Database credentials only | `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD` |
-| `.django` | Everything else | `DJANGO_SECRET_KEY`, `REDIS_URL`, `SITE_URL` |
+| `.django` | Everything else | `DJANGO_SECRET_KEY`, `DJANGO_API_KEY_DIGEST_KEY`, `REDIS_URL`, `SITE_URL` |
 
 This separation keeps database credentials isolated and makes it clear which variables configure which service.
 
@@ -203,7 +203,7 @@ The quick version of "where does each variable go":
 
 | Variable | File | Why |
 |---|---|---|
-| `DJANGO_SECRET_KEY`, `DATABASE_URL`, `SITE_URL` | `.django` | Read by Django at process startup |
+| `DJANGO_SECRET_KEY`, `DJANGO_API_KEY_DIGEST_KEY`, `DATABASE_URL`, `SITE_URL` | `.django` | Read by Django at process startup |
 | `IDP_OIDC_PRIVATE_KEY_B64` | `.django` | Signs JWT access tokens |
 | `IDP_OIDC_MCP_SERVER_CLIENT_SECRET` | `.django` | Paired OAuth client secret; Django verifies it when MCP exchanges codes for tokens |
 | `VALIDIBOT_MCP_BASE_URL` | `.build` on GCP; `.django`/`.mcp` for local/self-hosted runtime files | Public MCP URL. GCP stamps one `.build` value into both services; local/self-hosted compose still passes it through runtime env files. |
@@ -481,7 +481,7 @@ account. These are diagnosable from worker logs alone.
 !!! danger "Never Commit Secrets"
     The `.envs/` folder must **NEVER** be committed to version control, especially public repositories. This folder is gitignored for a reason - it contains passwords, API keys, database credentials, and other sensitive data. Committing these files could expose your entire deployment to attackers.
 
-1. **Generate proper secrets for production** - Use the commands in `.envs.example/README.md` to generate `DJANGO_SECRET_KEY` and passwords.
+1. **Generate proper secrets for production** - Use the commands in `.envs.example/README.md` to generate `DJANGO_SECRET_KEY`, `DJANGO_API_KEY_DIGEST_KEY`, and passwords.
 
 2. **Randomize the admin URL** - Change `DJANGO_ADMIN_URL` from the default `admin/` to a random path. This prevents automated scanners from finding your admin login page. Generate one with: `python -c "import secrets; print(secrets.token_urlsafe(16))"`.
 

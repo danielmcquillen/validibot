@@ -41,6 +41,9 @@ If you bring your own proxy:
 # DJANGO_SECRET_KEY
 python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 
+# DJANGO_API_KEY_DIGEST_KEY
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
 # DJANGO_MFA_ENCRYPTION_KEY (must be Fernet-format)
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 
@@ -48,7 +51,9 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 openssl rand -base64 48
 ```
 
-The doctor command (`VB001` family) checks for missing or development-default secrets.
+The doctor command (`VB001`-`VB008`) checks for missing, development-default,
+or coupled secrets. `DJANGO_API_KEY_DIGEST_KEY` must be different from
+`DJANGO_SECRET_KEY`.
 
 ### 3. Keep Postgres and Redis private to the Compose network
 

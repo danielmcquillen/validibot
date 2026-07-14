@@ -54,6 +54,8 @@ class TestIsSensitiveSetting:
         [
             "DJANGO_SECRET_KEY",
             "SECRET_KEY",
+            "DJANGO_API_KEY_DIGEST_KEY",
+            "API_KEY_DIGEST_KEY",
             "DATABASE_PASSWORD",
             "POSTGRES_PASSWORD",
             "OIDC_CLIENT_SECRET",

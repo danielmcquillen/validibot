@@ -6,7 +6,8 @@ This page captures the common operator issues and how to diagnose them. The firs
 
 The doctor command's check IDs are documented at [doctor-check-ids.md](doctor-check-ids.md). Each ID has a stable meaning, a severity, and a suggested fix. Examples:
 
-- `VB001 SECRET_KEY missing` — set `DJANGO_SECRET_KEY` in `.envs/.production/.self-hosted/.django`.
+- `VB002 SECRET_KEY weak or missing` — set `DJANGO_SECRET_KEY` in `.envs/.production/.self-hosted/.django`.
+- `VB008 API key digest key missing or coupled` — set `DJANGO_API_KEY_DIGEST_KEY` in `.envs/.production/.self-hosted/.django` to a separate generated value.
 - `VB201 storage root not writable` — inspect the path doctor prints inside the `web` container; on the default stack it should be `/app/storage/private` backed by the `validibot_storage` Docker volume.
 - `VB411 backups configured but no restore test recorded` — run a restore drill (see [restore.md](restore.md)).
 - `VB320 Docker version below minimum` — upgrade Docker Engine.

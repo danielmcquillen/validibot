@@ -62,7 +62,7 @@ The `check_validibot` command verifies:
 | **Background Tasks** | Celery broker connectivity, schedules |
 | **Docker** | Docker availability, validator images |
 | **Email** | SMTP server reachability |
-| **Security** | DEBUG mode, SECRET_KEY, ALLOWED_HOSTS, HTTPS settings |
+| **Security** | DEBUG mode, SECRET_KEY, API-key digest key, ALLOWED_HOSTS, HTTPS settings |
 
 This is similar to GitLab's `gitlab:check` rake task or Zulip's health check plugins.
 

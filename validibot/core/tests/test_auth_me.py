@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
+from validibot.users.services.api_keys import issue_api_key
 from validibot.users.tests.factories import UserFactory
 
 
@@ -38,8 +39,24 @@ class TestAuthMeEndpoint:
         user,
         auth_token,
     ):
-        """Test that authenticated users receive their email and name."""
+        """Legacy DRF tokens remain accepted during API-key migration."""
         api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {auth_token.key}")
+
+        response = api_client.get("/api/v1/auth/me/")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["email"] == "test@example.com"
+        assert response.data["name"] == "Test User"
+
+    def test_returns_user_info_for_hashed_api_key(
+        self,
+        api_client: APIClient,
+        user,
+    ):
+        """Hashed ``vbk_`` API keys authenticate through the public API."""
+
+        issued = issue_api_key(user=user)
+        api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {issued.full_key}")
 
         response = api_client.get("/api/v1/auth/me/")
 

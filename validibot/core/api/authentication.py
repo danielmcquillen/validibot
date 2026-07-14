@@ -1,33 +1,58 @@
-"""
-Custom authentication classes for Validibot API.
+"""Bearer API-key authentication for the Validibot API."""
 
-This module provides authentication backends that follow modern API conventions,
-specifically using the "Bearer" keyword in Authorization headers instead of the
-non-standard "Token" keyword.
+from __future__ import annotations
 
-Usage:
-    Authorization: Bearer <api_token>
+from django.utils.translation import gettext_lazy as _
+from rest_framework.authentication import BaseAuthentication
+from rest_framework.authentication import get_authorization_header
+from rest_framework.authtoken.models import Token
+from rest_framework.exceptions import AuthenticationFailed
 
-This is the OAuth 2.0 standard and what most developers expect when working
-with APIs.
-"""
+from validibot.users.services.api_keys import verify_api_key
 
-from rest_framework.authentication import TokenAuthentication
+AUTH_HEADER_PARTS = 2
 
 
-class BearerAuthentication(TokenAuthentication):
-    """
-    Token authentication using the Bearer keyword.
+class BearerAuthentication(BaseAuthentication):
+    """Authenticate ``Authorization: Bearer ...`` API credentials.
 
-    This is a simple subclass of DRF's TokenAuthentication that changes
-    the Authorization header keyword from "Token" to "Bearer", following
-    the OAuth 2.0 Bearer Token specification (RFC 6750).
-
-    Example header:
-        Authorization: Bearer vb_abc123def456
-
-    The underlying token storage and validation remains the same as
-    DRF's built-in TokenAuthentication.
+    New Validibot API keys use hashed ``vbk_...`` storage. Legacy DRF
+    authtokens remain accepted for compatibility with existing clients and
+    setup scripts until those callers have rotated onto the hashed format.
     """
 
-    keyword = "Bearer"
+    keyword = b"Bearer"
+
+    def authenticate(self, request):
+        """Resolve a bearer credential to ``(user, auth)`` or fail closed."""
+
+        auth = get_authorization_header(request).split()
+        if not auth:
+            return None
+
+        if auth[0].lower() != self.keyword.lower():
+            return None
+
+        if len(auth) != AUTH_HEADER_PARTS:
+            raise AuthenticationFailed(_("Invalid bearer header."))
+
+        try:
+            raw_key = auth[1].decode()
+        except UnicodeError as exc:
+            raise AuthenticationFailed(_("Invalid bearer header.")) from exc
+
+        if raw_key.startswith("vbk_"):
+            api_key = verify_api_key(raw_key)
+            if api_key is None:
+                raise AuthenticationFailed(_("Invalid API key."))
+            return (api_key.user, api_key)
+
+        token = Token.objects.select_related("user").filter(key=raw_key).first()
+        if token is None or not token.user.is_active:
+            raise AuthenticationFailed(_("Invalid API key."))
+        return (token.user, token)
+
+    def authenticate_header(self, request) -> str:
+        """Advertise the Bearer challenge for unauthenticated API callers."""
+
+        return "Bearer"

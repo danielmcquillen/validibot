@@ -259,6 +259,7 @@ The tradeoff is less granular access control (all-or-nothing), but for a single-
 First, update `.envs/.production/.google-cloud/.django` with production values:
 
 - `DJANGO_SECRET_KEY` - Generate with `python3 -c "import secrets; print(secrets.token_urlsafe(50))"`
+- `DJANGO_API_KEY_DIGEST_KEY` - Generate with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` and keep it separate from `DJANGO_SECRET_KEY`
 - `DJANGO_ALLOWED_HOSTS` - `.run.app,.validibot.com`
 - `SITE_URL` - Public base URL (typically `https://validibot.com` once the load balancer + DNS is set up)
 - `WORKER_URL` - Worker service `*.run.app` URL (used for validator callbacks and scheduled tasks)

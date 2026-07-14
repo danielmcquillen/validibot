@@ -29,6 +29,7 @@ from validibot.users.models import User
 from validibot.validations.constants import EXECUTION_ATTEMPT_TERMINAL_STATES
 from validibot.validations.constants import RULESET_ASSERTION_NOTES_MAX_LENGTH
 from validibot.validations.constants import VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH
+from validibot.validations.constants import ArtifactKind
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import BindingSourceScope
@@ -45,6 +46,7 @@ from validibot.validations.constants import Severity
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
 from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunSource
@@ -1887,6 +1889,53 @@ class StepIODefinition(TimeStampedModel):
         default=CatalogValueType.NUMBER,
         help_text="The data type of the signal value.",
     )
+    io_medium = models.CharField(
+        max_length=20,
+        choices=StepIOMedium.choices,
+        default=StepIOMedium.VALUE,
+        help_text=(
+            "Whether this step I/O definition carries a small JSON value or "
+            "a storage-backed artifact reference."
+        ),
+    )
+    artifact_kind = models.CharField(
+        max_length=32,
+        choices=ArtifactKind.choices,
+        blank=True,
+        default="",
+        help_text="Artifact kind when io_medium is artifact.",
+    )
+    media_type = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text="Expected media type for artifact ports.",
+    )
+    data_format = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="Domain data format for artifact ports.",
+    )
+    role = models.CharField(
+        max_length=80,
+        blank=True,
+        default="",
+        help_text="Validator-facing role for artifact ports.",
+    )
+    is_collection = models.BooleanField(
+        default=False,
+        help_text="Whether this port accepts or emits multiple artifact refs.",
+    )
+    min_items = models.PositiveIntegerField(
+        default=0,
+        help_text="Minimum artifact count for artifact ports.",
+    )
+    max_items = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Maximum artifact count for artifact ports; null means unbounded.",
+    )
     origin_kind = models.CharField(
         max_length=20,
         choices=SignalOriginKind.choices,
@@ -2066,6 +2115,27 @@ class StepIODefinition(TimeStampedModel):
         )
 
         return EnergyPlusProviderBinding(**(self.provider_binding or {}))
+
+    def clean(self):
+        """Validate value-vs-artifact port metadata when model validation runs."""
+        super().clean()
+        if self.io_medium == StepIOMedium.ARTIFACT:
+            if self.data_type != CatalogValueType.ARTIFACT_REF:
+                raise ValidationError(
+                    {
+                        "data_type": _(
+                            "Artifact ports must use the artifact_ref data type."
+                        ),
+                    },
+                )
+            if self.max_items is not None and self.max_items < self.min_items:
+                raise ValidationError(
+                    {
+                        "max_items": _(
+                            "Maximum item count cannot be less than minimum count."
+                        ),
+                    },
+                )
 
     def __str__(self):
         owner = self.validator or self.workflow_step
@@ -3383,7 +3453,30 @@ class Artifact(TimeStampedModel):
     """
 
     class Meta:
-        indexes = [models.Index(fields=["validation_run", "created"])]
+        indexes = [
+            models.Index(fields=["validation_run", "created"]),
+            models.Index(fields=["step_run", "contract_key"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["validation_run", "workflow_step", "contract_key"],
+                condition=(
+                    Q(workflow_step__isnull=False)
+                    & ~Q(contract_key="")
+                    & Q(item_key="")
+                ),
+                name="uq_artifact_run_step_key",
+            ),
+            models.UniqueConstraint(
+                fields=["validation_run", "workflow_step", "contract_key", "item_key"],
+                condition=(
+                    Q(workflow_step__isnull=False)
+                    & ~Q(contract_key="")
+                    & ~Q(item_key="")
+                ),
+                name="uq_artifact_run_step_item",
+            ),
+        ]
 
     org = models.ForeignKey(
         Organization,
@@ -3397,6 +3490,24 @@ class Artifact(TimeStampedModel):
         related_name="artifacts",
     )
 
+    step_run = models.ForeignKey(
+        ValidationStepRun,
+        on_delete=models.CASCADE,
+        related_name="artifacts",
+        null=True,
+        blank=True,
+        help_text=_("Step run that produced this artifact, if step-scoped."),
+    )
+
+    workflow_step = models.ForeignKey(
+        WorkflowStep,
+        on_delete=models.PROTECT,
+        related_name="artifacts",
+        null=True,
+        blank=True,
+        help_text=_("Workflow step that produced this artifact, if step-scoped."),
+    )
+
     label = models.CharField(max_length=120)
 
     content_type = models.CharField(max_length=128, blank=True, default="")
@@ -3406,7 +3517,58 @@ class Artifact(TimeStampedModel):
         max_length=500,
     )
 
+    contract_key = models.SlugField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=_("Stable artifact output name used in steps.<step_key>.artifact.*."),
+    )
+
+    item_key = models.SlugField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=_("Stable item key for collection artifact outputs."),
+    )
+
+    role = models.CharField(max_length=80, blank=True, default="")
+
+    kind = models.CharField(
+        max_length=32,
+        choices=ArtifactKind.choices,
+        default=ArtifactKind.FILE,
+    )
+
+    data_format = models.CharField(max_length=64, blank=True, default="")
+
+    storage_uri = models.CharField(
+        max_length=1000,
+        blank=True,
+        default="",
+        help_text=_("Internal storage URI; never a public signed URL."),
+    )
+
     size_bytes = models.BigIntegerField(default=0)
+
+    sha256 = models.CharField(max_length=64, blank=True, default="")
+
+    manifest_uri = models.CharField(max_length=1000, blank=True, default="")
+
+    manifest_sha256 = models.CharField(max_length=64, blank=True, default="")
+
+    producer_validator_type = models.CharField(max_length=80, blank=True, default="")
+
+    producer_validator_version = models.CharField(max_length=32, blank=True, default="")
+
+    producer_backend_image_digest = models.CharField(
+        max_length=256,
+        blank=True,
+        default="",
+    )
+
+    retention_class = models.CharField(max_length=64, blank=True, default="")
+
+    metadata = models.JSONField(default=dict, blank=True)
 
     def __str__(self) -> str:  # pragma: no cover - display helper
         return f"{self.label} (run {self.validation_run_id})"
@@ -3419,6 +3581,26 @@ class Artifact(TimeStampedModel):
             and self.org_id != self.validation_run.org_id
         ):
             raise ValidationError({"org": _("Artifact org must match run org.")})
+        if (
+            self.step_run_id
+            and self.validation_run_id
+            and self.step_run.validation_run_id != self.validation_run_id
+        ):
+            raise ValidationError(
+                {"step_run": _("Artifact step run must belong to the same run.")}
+            )
+        if (
+            self.workflow_step_id
+            and self.validation_run_id
+            and self.workflow_step.workflow_id != self.validation_run.workflow_id
+        ):
+            raise ValidationError(
+                {
+                    "workflow_step": _(
+                        "Artifact workflow step must belong to the run workflow."
+                    ),
+                }
+            )
 
 
 class CallbackReceipt(models.Model):

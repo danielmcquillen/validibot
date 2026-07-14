@@ -143,6 +143,8 @@ Each production env file must set:
 ```bash
 DJANGO_SETTINGS_MODULE=config.settings.production
 DEPLOYMENT_TARGET=self_hosted  # or gcp, aws
+DJANGO_SECRET_KEY=<generated django signing key>
+DJANGO_API_KEY_DIGEST_KEY=<separate generated API-key digest key>
 ```
 
 ## Why This Structure?

@@ -113,6 +113,9 @@ Before `just gcp secrets dev`, make sure `.envs/.production/.google-cloud/.djang
 defines:
 
 - `DJANGO_SECRET_KEY` — Django session / signed-cookie key.
+- `DJANGO_API_KEY_DIGEST_KEY` — HMAC key for stored API/user bearer-token
+  digests. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+  and keep it separate from `DJANGO_SECRET_KEY`.
 - `DJANGO_MFA_ENCRYPTION_KEY` — Fernet key for MFA secret material. The
   app refuses to start without this, and the startup check validates
   the format (not just presence). Generate with:

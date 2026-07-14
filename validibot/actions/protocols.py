@@ -29,9 +29,10 @@ class RunContext:
         step: The WorkflowStep model instance being processed.
         upstream_steps: Canonical input and output values from completed
             workflow steps, keyed by stable step key. Each entry contains
-            ``{"input": {...}, "output": {...}}`` and is used for CEL
-            cross-step assertions such as
-            ``steps.<step_key>.output.<name>``.
+            ``{"input": {...}, "output": {...}, "artifact": {...}}`` and is
+            used for CEL cross-step assertions such as
+            ``steps.<step_key>.output.<name>`` and data-plane references such
+            as ``steps.<step_key>.artifact.<contract_key>``.
         workflow_signals: Author-defined signals resolved from the
             workflow-level signal mapping configuration. Populated once
             at run start from ``WorkflowSignalMapping`` rows resolved

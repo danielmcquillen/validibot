@@ -1,9 +1,9 @@
 """Tests for canonical run-context construction and CEL exposure.
 
 Cross-step execution must read ``ValidationStepRun.input_values`` and
-``output_values`` directly. These tests guard the boundary that keeps workflow
-execution independent from presentation summaries and ensures only completed,
-earlier steps enter the ``steps.*`` namespace.
+``output_values`` and step artifact references directly. These tests guard the
+boundary that keeps workflow execution independent from presentation summaries
+and ensures only completed, earlier steps enter the ``steps.*`` namespace.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ PANEL_AREA = 50.0
 
 @pytest.mark.django_db
 def test_builder_reads_completed_upstream_step_values(django_assert_num_queries):
-    """Earlier completed values must load through one bounded ORM query."""
+    """Earlier completed values/artifacts must load through bounded ORM work."""
     run = ValidationRunFactory()
     first_step = WorkflowStepFactory(
         workflow=run.workflow,
@@ -71,19 +71,21 @@ def test_builder_reads_completed_upstream_step_values(django_assert_num_queries)
         status=StepStatus.SKIPPED,
     )
 
-    with django_assert_num_queries(1):
+    with django_assert_num_queries(2):
         context = RunContextBuilder(run, current_step).build_upstream_steps()
 
     assert context == {
         first_step.step_key: {
             "input": {"floor_area": 125.0},
             "output": {"warning_count": 2},
+            "artifact": {},
         },
         failed_step.step_key: {
             "input": {},
             "output": {"advisory_failure": True},
+            "artifact": {},
         },
-        skipped_step.step_key: {"input": {}, "output": {}},
+        skipped_step.step_key: {"input": {}, "output": {}, "artifact": {}},
     }
 
 

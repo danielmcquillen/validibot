@@ -337,22 +337,62 @@ def _resolve_energyplus_file_port_items(
                 f"Required artifact port '{contract_key}' on step {step.id} "
                 "has no StepInputBinding."
             )
+            _record_artifact_input_trace(
+                run=run,
+                port=port,
+                source_scope="",
+                source_data_path="",
+                resolved=False,
+                error_message=msg,
+            )
             raise ValueError(msg)
 
-        _validate_artifact_port_source_scope(port, binding.source_scope)
+        try:
+            _validate_artifact_port_source_scope(port, binding.source_scope)
+        except ValueError as exc:
+            _record_artifact_input_trace(
+                run=run,
+                port=port,
+                source_scope=binding.source_scope,
+                source_data_path=binding.source_data_path,
+                resolved=False,
+                error_message=str(exc),
+            )
+            raise
         if port.envelope_channel == EnvelopeChannel.RESOURCE_FILES:
             if binding.source_scope == BindingSourceScope.WORKFLOW_RESOURCE:
-                resource_files.extend(
-                    _resolve_workflow_resource_port(
+                try:
+                    resolved_resources = _resolve_workflow_resource_port(
                         step=step,
                         port=port,
                         binding=binding,
                         resource_uri_overrides=resource_uri_overrides,
-                    ),
+                    )
+                except ValueError as exc:
+                    _record_artifact_input_trace(
+                        run=run,
+                        port=port,
+                        source_scope=binding.source_scope,
+                        source_data_path=binding.source_data_path,
+                        resolved=False,
+                        error_message=str(exc),
+                    )
+                    raise
+                resource_files.extend(resolved_resources)
+                _record_artifact_input_trace(
+                    run=run,
+                    port=port,
+                    source_scope=binding.source_scope,
+                    source_data_path=binding.source_data_path,
+                    resolved=True,
+                    value_snapshot=[
+                        _resource_file_item_snapshot(item)
+                        for item in resolved_resources
+                    ],
                 )
                 continue
 
-            uri = _resolve_artifact_or_submission_file_uri(
+            uri, value_snapshot = _resolve_artifact_or_submission_file_uri_with_trace(
                 run=run,
                 step=step,
                 step_config=step_config,
@@ -367,9 +407,17 @@ def _resolve_energyplus_file_port_items(
                     role=port.role or "weather",
                 ),
             )
+            _record_artifact_input_trace(
+                run=run,
+                port=port,
+                source_scope=binding.source_scope,
+                source_data_path=binding.source_data_path,
+                resolved=True,
+                value_snapshot=value_snapshot,
+            )
             continue
 
-        uri = _resolve_artifact_or_submission_file_uri(
+        uri, value_snapshot = _resolve_artifact_or_submission_file_uri_with_trace(
             run=run,
             step=step,
             step_config=step_config,
@@ -383,6 +431,14 @@ def _resolve_energyplus_file_port_items(
                 uri,
                 role=port.role or "primary-model",
             ),
+        )
+        _record_artifact_input_trace(
+            run=run,
+            port=port,
+            source_scope=binding.source_scope,
+            source_data_path=binding.source_data_path,
+            resolved=True,
+            value_snapshot=value_snapshot,
         )
 
     return input_files, resource_files
@@ -433,7 +489,7 @@ def _resolve_workflow_resource_port(
     return matches
 
 
-def _resolve_artifact_or_submission_file_uri(
+def _resolve_artifact_or_submission_file_uri_with_trace(
     *,
     run,
     step,
@@ -441,46 +497,241 @@ def _resolve_artifact_or_submission_file_uri(
     input_file_uris: dict[str, str] | None,
     port,
     binding,
-) -> str:
-    """Resolve submitted-file or upstream-artifact binding to a storage URI."""
+) -> tuple[str, dict]:
+    """Resolve submitted/upstream artifact ports and return an audit snapshot."""
 
     if binding.source_scope == BindingSourceScope.SUBMISSION_FILE:
-        return _resolve_submission_file_uri(
-            step_config=step_config,
-            input_file_uris=input_file_uris,
-            port=port,
-            binding=binding,
-        )
+        try:
+            uri = _resolve_submission_file_uri(
+                step_config=step_config,
+                input_file_uris=input_file_uris,
+                port=port,
+                binding=binding,
+            )
+            _validate_file_uri_matches_port(port=port, uri=uri)
+        except ValueError as exc:
+            _record_and_raise_artifact_resolution_error(
+                run=run,
+                port=port,
+                binding=binding,
+                error_message=str(exc),
+            )
+
+        return uri, {
+            "source": BindingSourceScope.SUBMISSION_FILE,
+            "port_key": port.contract_key,
+            "role": port.role or "",
+            "uri": uri,
+        }
 
     if binding.source_scope == BindingSourceScope.UPSTREAM_ARTIFACT:
-        from validibot.validations.services.path_resolution import resolve_input_signal
-        from validibot.validations.services.run_context import RunContextBuilder
+        try:
+            artifact_ref = _resolve_upstream_artifact_ref(
+                run=run,
+                step=step,
+                port=port,
+                binding=binding,
+            )
+            _validate_upstream_artifact_ref(
+                run=run,
+                port=port,
+                artifact_ref=artifact_ref,
+            )
+            uri = _uri_from_artifact_ref(port=port, artifact_ref=artifact_ref)
+            _validate_file_uri_matches_port(port=port, uri=uri)
+        except ValueError as exc:
+            _record_and_raise_artifact_resolution_error(
+                run=run,
+                port=port,
+                binding=binding,
+                error_message=str(exc),
+            )
 
-        context = RunContextBuilder(run, step).build()
-        resolved = resolve_input_signal(
-            binding,
-            upstream_steps=context.upstream_steps,
-        )
-        if not resolved.resolved or not isinstance(resolved.value, dict):
-            msg = (
-                f"Artifact port '{port.contract_key}' could not resolve upstream "
-                f"artifact '{binding.source_data_path}'."
-            )
-            raise ValueError(msg)
-        uri = str(resolved.value.get("uri") or "")
-        if not uri:
-            msg = (
-                f"Artifact port '{port.contract_key}' resolved an artifact "
-                "without a storage URI."
-            )
-            raise ValueError(msg)
-        return uri
+        return uri, {
+            "source": BindingSourceScope.UPSTREAM_ARTIFACT,
+            "port_key": port.contract_key,
+            "source_data_path": binding.source_data_path,
+            "artifact": artifact_ref,
+        }
 
     msg = (
         f"Artifact port '{port.contract_key}' source scope "
         f"'{binding.source_scope}' is not materializable for EnergyPlus yet."
     )
+    _record_and_raise_artifact_resolution_error(
+        run=run,
+        port=port,
+        binding=binding,
+        error_message=msg,
+    )
+    raise AssertionError("unreachable")
+
+
+def _resolve_upstream_artifact_ref(*, run, step, port, binding) -> dict:
+    """Resolve and type-check an upstream artifact reference."""
+
+    from validibot.validations.services.path_resolution import resolve_input_signal
+    from validibot.validations.services.run_context import RunContextBuilder
+
+    context = RunContextBuilder(run, step).build()
+    resolved = resolve_input_signal(
+        binding,
+        upstream_steps=context.upstream_steps,
+    )
+    if resolved.resolved and isinstance(resolved.value, dict):
+        return resolved.value
+
+    msg = (
+        f"Artifact port '{port.contract_key}' could not resolve upstream "
+        f"artifact '{binding.source_data_path}'."
+    )
     raise ValueError(msg)
+
+
+def _uri_from_artifact_ref(*, port, artifact_ref: dict) -> str:
+    """Return the storage URI from an artifact ref or raise a port error."""
+
+    uri = str(artifact_ref.get("uri") or "")
+    if uri:
+        return uri
+
+    msg = (
+        f"Artifact port '{port.contract_key}' resolved an artifact "
+        "without a storage URI."
+    )
+    raise ValueError(msg)
+
+
+def _validate_upstream_artifact_ref(*, run, port, artifact_ref: dict) -> None:
+    """Fail closed when an upstream artifact reference cannot belong to this run."""
+
+    run_id = str(artifact_ref.get("run_id") or "")
+    if run_id and run_id != str(run.id):
+        msg = (
+            f"Artifact port '{port.contract_key}' resolved artifact from run "
+            f"{run_id}, but the current run is {run.id}."
+        )
+        raise ValueError(msg)
+
+    producer_step_key = str(artifact_ref.get("producer_step_key") or "")
+    if producer_step_key:
+        current_step_run = run.current_step_run
+        upstream_keys = {
+            step.step_key
+            for step in run.workflow.steps.filter(order__lt=current_step_run.step_order)
+        }
+        if producer_step_key not in upstream_keys:
+            msg = (
+                f"Artifact port '{port.contract_key}' resolved artifact from "
+                f"non-upstream step '{producer_step_key}'."
+            )
+            raise ValueError(msg)
+
+
+def _validate_file_uri_matches_port(*, port, uri: str) -> None:
+    """Validate a submitted/upstream file URI against declared port extensions."""
+
+    accepted = _accepted_extensions_for_port(port)
+    if not accepted:
+        return
+    extension = _extension_from_uri(uri)
+    if extension in accepted:
+        return
+    msg = (
+        f"Artifact port '{port.contract_key}' expected one of "
+        f"{', '.join(f'.{ext}' for ext in accepted)} but got "
+        f"'{uri or '<empty>'}'."
+    )
+    raise ValueError(msg)
+
+
+def _accepted_extensions_for_port(port) -> tuple[str, ...]:
+    """Return accepted file extensions declared on the artifact port."""
+
+    metadata = port.metadata or {}
+    raw_extensions = metadata.get("accepted_extensions") or []
+    normalized: list[str] = []
+    for ext in raw_extensions:
+        value = str(ext or "").strip().lower().lstrip(".")
+        if value:
+            normalized.append(value)
+    return tuple(dict.fromkeys(normalized))
+
+
+def _extension_from_uri(uri: str) -> str:
+    """Return a URI's lowercase file extension without the dot."""
+
+    filename = _filename_from_uri(uri)
+    suffix = Path(filename).suffix.lower()
+    return suffix[1:] if suffix.startswith(".") else suffix
+
+
+def _resource_file_item_snapshot(item: ResourceFileItem) -> dict:
+    """Return JSON-safe audit metadata for a resolved resource file."""
+
+    return {
+        "source": BindingSourceScope.WORKFLOW_RESOURCE,
+        "id": item.id,
+        "type": item.type,
+        "port_key": item.port_key,
+        "uri": item.uri,
+    }
+
+
+def _record_artifact_input_trace(
+    *,
+    run,
+    port,
+    source_scope: str,
+    source_data_path: str,
+    resolved: bool,
+    value_snapshot=None,
+    error_message: str = "",
+) -> None:
+    """Persist a ``ResolvedInputTrace`` row for an artifact input port."""
+
+    current_step_run = run.current_step_run
+    if current_step_run is None:
+        return
+
+    from validibot.validations.models import ResolvedInputTrace
+
+    upstream_step_key = ""
+    if source_scope == BindingSourceScope.UPSTREAM_ARTIFACT and "." in source_data_path:
+        upstream_step_key = source_data_path.split(".", 1)[0]
+
+    ResolvedInputTrace.objects.create(
+        step_run=current_step_run,
+        signal_definition=port,
+        signal_contract_key=port.contract_key,
+        source_scope_used=source_scope,
+        source_data_path_used=source_data_path or port.contract_key,
+        upstream_step_key=upstream_step_key,
+        resolved=resolved,
+        used_default=False,
+        value_snapshot=value_snapshot if resolved else None,
+        error_message=error_message,
+    )
+
+
+def _record_and_raise_artifact_resolution_error(
+    *,
+    run,
+    port,
+    binding,
+    error_message: str,
+) -> None:
+    """Persist a failed artifact trace, then raise the user-facing error."""
+
+    _record_artifact_input_trace(
+        run=run,
+        port=port,
+        source_scope=binding.source_scope,
+        source_data_path=binding.source_data_path,
+        resolved=False,
+        error_message=error_message,
+    )
+    raise ValueError(error_message)
 
 
 def _resolve_submission_file_uri(

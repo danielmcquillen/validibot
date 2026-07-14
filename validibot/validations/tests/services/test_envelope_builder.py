@@ -40,6 +40,7 @@ from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationType
+from validibot.validations.models import ResolvedInputTrace
 from validibot.validations.services.artifacts import register_output_artifacts
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,
@@ -179,6 +180,7 @@ def _build_energyplus_file_port_run():
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
+        metadata={"accepted_extensions": ["idf", "epjson", "json"]},
         envelope_channel=EnvelopeChannel.INPUT_FILES,
         role="primary-model",
         min_items=1,
@@ -199,6 +201,7 @@ def _build_energyplus_file_port_run():
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
+        metadata={"accepted_extensions": ["epw"]},
         envelope_channel=EnvelopeChannel.RESOURCE_FILES,
         resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
         role="weather",
@@ -613,6 +616,132 @@ class TestEnergyPlusFilePortMaterialization:
         assert weather_item.name == "weather.epw"
         assert weather_item.uri == "file:///validibot/input/resources/weather.epw"
         assert envelope.resource_files == []
+
+    def test_submitted_weather_file_records_artifact_input_traces(self):
+        """File-port resolution should leave auditable input trace rows.
+
+        The envelope proves what the backend receives; the trace table proves
+        why that file was selected for this step. This is the bridge evidence
+        and credentials need later.
+        """
+        run, step, primary_port, weather_port, _weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="primary_file_uri",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="",
+        )
+
+        build_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+            input_file_uris={
+                "primary_file_uri": "file:///validibot/input/model.idf",
+                "weather_file": "file:///validibot/input/resources/weather.epw",
+            },
+        )
+
+        traces = {
+            trace.signal_contract_key: trace
+            for trace in ResolvedInputTrace.objects.filter(
+                step_run=run.current_step_run,
+            )
+        }
+        assert traces["primary_model"].resolved is True
+        assert traces["primary_model"].value_snapshot["uri"].endswith("model.idf")
+        assert traces["weather_file"].resolved is True
+        assert traces["weather_file"].source_scope_used == (
+            BindingSourceScope.SUBMISSION_FILE
+        )
+        assert traces["weather_file"].value_snapshot == {
+            "source": BindingSourceScope.SUBMISSION_FILE,
+            "port_key": "weather_file",
+            "role": "weather",
+            "uri": "file:///validibot/input/resources/weather.epw",
+        }
+
+    def test_missing_weather_file_records_failed_artifact_input_trace(self):
+        """Missing artifact files should fail with a persisted port trace."""
+        run, step, primary_port, weather_port, _weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="primary_file_uri",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="",
+        )
+
+        with pytest.raises(ValueError, match="weather_file"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+                input_file_uris={
+                    "primary_file_uri": "file:///validibot/input/model.idf",
+                },
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="weather_file",
+        )
+        assert trace.resolved is False
+        assert "submitted file URI" in trace.error_message
+
+    def test_wrong_weather_extension_fails_before_dispatch_with_trace(self):
+        """Wrong file formats should fail before the backend is launched."""
+        run, step, primary_port, weather_port, _weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="primary_file_uri",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="",
+        )
+
+        with pytest.raises(ValueError, match=r"expected one of \.epw"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+                input_file_uris={
+                    "primary_file_uri": "file:///validibot/input/model.idf",
+                    "weather_file": "file:///validibot/input/resources/weather.txt",
+                },
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="weather_file",
+        )
+        assert trace.resolved is False
+        assert "expected one of .epw" in trace.error_message
 
 
 # ==============================================================================

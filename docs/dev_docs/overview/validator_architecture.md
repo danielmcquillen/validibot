@@ -213,6 +213,11 @@ builder under the port key, for example `{"weather_file": "gs://..."}`. The
 primary submitted payload keeps using the historical `Submission` content/file
 fields and the `primary_file_uri` compatibility key.
 
+Artifact-port resolution writes `ResolvedInputTrace` rows just like scalar input
+resolution. The snapshot records the selected submitted file, workflow
+resource, or upstream artifact reference, and failed pre-dispatch validation
+writes a failed trace before raising.
+
 Do not make a new validator assume "whatever is in `input_files[0]`" unless
 the declared port contract has exactly one compatible file and the backend
 still validates that assumption defensively.

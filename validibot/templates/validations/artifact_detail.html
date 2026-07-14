@@ -1,0 +1,150 @@
+{% extends "app_base.html" %}
+
+{% load i18n humanize %}
+
+{% block title %}
+  {% blocktrans with filename=artifact_item.filename %}{{ filename }} · Artifact · Validibot{% endblocktrans %}
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div class="container-fluid" id="artifact-detail">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 col-lg-8">
+        <h1 class="app-page-title">
+          {% trans "Generated File" %}
+        </h1>
+      </div>
+      <div class="col-12 col-lg-4 d-flex flex-wrap justify-content-lg-end align-items-center gap-2 app-page-actions">
+        <a class="btn btn-secondary btn-sm"
+           href="{% url 'validations:validation_detail' run.pk %}">
+          <i class="bi-arrow-left me-1"></i>{% trans "Back to run" %}
+        </a>
+        {% if artifact_item.download_available %}
+          <a class="btn btn-primary btn-sm"
+             href="{{ artifact_item.download_url }}">
+            <i class="bi-download me-1"></i>{% trans "Download" %}
+          </a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="row">
+      <div class="col-12 col-xl-8">
+        <div class="card app-card validation-info-card mb-3">
+          <div class="card-header">
+            <div class="card-title">
+              <i class="bi-file-earmark me-1"></i>{{ artifact_item.filename }}
+            </div>
+          </div>
+          <div class="card-body">
+            <dl class="row mb-0">
+              <dt class="col-12 col-md-4">{% trans "Label" %}</dt>
+              <dd class="col-12 col-md-8 text-break">
+                {{ artifact.label }}
+              </dd>
+              <dt class="col-12 col-md-4">{% trans "Producer step" %}</dt>
+              <dd class="col-12 col-md-8">
+                {{ artifact_item.producer_step }}
+              </dd>
+              <dt class="col-12 col-md-4">{% trans "Role" %}</dt>
+              <dd class="col-12 col-md-8">
+                {% if artifact_item.role %}
+                  <span class="font-monospace">{{ artifact_item.role }}</span>
+                {% else %}
+                  <span class="text-muted">{% trans "Not specified" %}</span>
+                {% endif %}
+              </dd>
+              <dt class="col-12 col-md-4">{% trans "Type" %}</dt>
+              <dd class="col-12 col-md-8">
+                {{ artifact_item.kind }}
+              </dd>
+              <dt class="col-12 col-md-4">{% trans "Size" %}</dt>
+              <dd class="col-12 col-md-8">
+                {% if artifact_item.size_bytes %}
+                  {{ artifact_item.size_bytes|filesizeformat }}
+                {% else %}
+                  <span class="text-muted">{% trans "Unknown" %}</span>
+                {% endif %}
+              </dd>
+              <dt class="col-12 col-md-4">{% trans "SHA-256" %}</dt>
+              <dd class="col-12 col-md-8">
+                {% if artifact_item.sha256 %}
+                  <span class="font-monospace small text-break">{{ artifact_item.sha256 }}</span>
+                {% else %}
+                  <span class="text-muted">{% trans "Not captured" %}</span>
+                {% endif %}
+              </dd>
+              <dt class="col-12 col-md-4">{% trans "Media type" %}</dt>
+              <dd class="col-12 col-md-8">
+                {% if artifact_item.content_type %}
+                  <span class="font-monospace">{{ artifact_item.content_type }}</span>
+                {% else %}
+                  <span class="text-muted">{% trans "Not specified" %}</span>
+                {% endif %}
+              </dd>
+              <dt class="col-12 col-md-4">{% trans "Data format" %}</dt>
+              <dd class="col-12 col-md-8">
+                {% if artifact_item.data_format %}
+                  <span class="font-monospace">{{ artifact_item.data_format }}</span>
+                {% else %}
+                  <span class="text-muted">{% trans "Not specified" %}</span>
+                {% endif %}
+              </dd>
+              <dt class="col-12 col-md-4">{% trans "Retention class" %}</dt>
+              <dd class="col-12 col-md-8">
+                {% if artifact_item.retention_class %}
+                  <span class="font-monospace">{{ artifact_item.retention_class }}</span>
+                {% else %}
+                  <span class="text-muted">{% trans "Not specified" %}</span>
+                {% endif %}
+              </dd>
+            </dl>
+          </div>
+          <div class="card-footer d-flex flex-wrap justify-content-end gap-2">
+            {% if artifact_item.download_available %}
+              <a class="btn btn-primary" href="{{ artifact_item.download_url }}">
+                <i class="bi-download me-1"></i>{% trans "Download File" %}
+              </a>
+            {% else %}
+              <span class="text-muted small">
+                {% trans "Direct download is not available for this artifact yet." %}
+              </span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-xl-4">
+        <div class="card app-card validation-info-card mb-3">
+          <div class="card-header">
+            <div class="card-title">
+              {% trans "Run" %}
+            </div>
+          </div>
+          <div class="card-body">
+            <dl class="row small mb-0">
+              <dt class="col-5">{% trans "Run" %}</dt>
+              <dd class="col-7">
+                <a href="{% url 'validations:validation_detail' run.pk %}">
+                  #{{ run.pk }}
+                </a>
+              </dd>
+              <dt class="col-5">{% trans "Workflow" %}</dt>
+              <dd class="col-7 text-break">
+                {{ run.workflow.name }}
+              </dd>
+              <dt class="col-5">{% trans "Status" %}</dt>
+              <dd class="col-7">
+                {{ run.get_status_display }}
+              </dd>
+              <dt class="col-5">{% trans "Created" %}</dt>
+              <dd class="col-7">
+                {{ artifact.created|date:"M j, Y g:i a" }}
+              </dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

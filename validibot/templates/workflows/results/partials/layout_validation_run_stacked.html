@@ -20,8 +20,9 @@ Selected by ``validation_detail.html`` by default. The original two-column
 design lives in ``layout_validation_run_classic.html`` for a future toggle.
 
 Context variables: run, step_runs, step_signals, step_params,
-step_template_warnings, issued_credential, credential_download_url,
-evidence_artifact (all forwarded from the run detail view).
+step_template_warnings, artifact_items, issued_credential,
+credential_download_url, evidence_artifact (all forwarded from the run detail
+view).
 {% endcomment %}
 <div class="row">
   <div class="col-12">
@@ -76,9 +77,10 @@ evidence_artifact (all forwarded from the run detail view).
     </div>
     {% comment %}
       Auxiliary audit cards. Each renders only when its data exists
-      (signed credential / evidence manifest), so they are silent on
-      runs that have neither.
+      (generated files / signed credential / evidence manifest), so they are
+      silent on runs that have none of them.
     {% endcomment %}
+    {% include "workflows/results/partials/block_validation_run_artifacts.html" with artifact_items=artifact_items %}
     {% include "workflows/results/partials/block_validation_run_credential.html" with issued_credential=issued_credential credential_download_url=credential_download_url %}
     {% include "workflows/results/partials/block_validation_run_evidence.html" with run=run evidence_artifact=evidence_artifact %}
   </div>

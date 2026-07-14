@@ -56,13 +56,19 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import unquote
+from urllib.parse import urlparse
 
 from django.core.files.base import ContentFile
 from django.db import transaction
 from validibot_shared.evidence import SCHEMA_VERSION
 from validibot_shared.evidence import EvidenceManifest
+from validibot_shared.evidence import ManifestArtifactInputBinding
+from validibot_shared.evidence import ManifestArtifactLineageEdge
 from validibot_shared.evidence import ManifestPayloadDigests
+from validibot_shared.evidence import ManifestProducedArtifact
 from validibot_shared.evidence import ManifestRetentionInfo
 from validibot_shared.evidence import StepValidatorRecord
 
@@ -77,6 +83,380 @@ if TYPE_CHECKING:
     from validibot.validations.models import ValidationRun
 
 logger = logging.getLogger(__name__)
+
+
+def _build_produced_artifact_records(
+    run: ValidationRun,
+) -> list[ManifestProducedArtifact]:
+    """Project run artifacts into evidence-safe public metadata.
+
+    The ``Artifact`` model has internal storage fields. This projection keeps
+    stable identifiers, hashes, producer coordinates, and file descriptors while
+    deliberately omitting raw storage URIs.
+    """
+
+    records: list[ManifestProducedArtifact] = []
+    artifacts = run.artifacts.select_related("step_run", "workflow_step").order_by(
+        "workflow_step__order", "contract_key", "item_key", "pk"
+    )
+    for artifact in artifacts:
+        step = artifact.workflow_step
+        records.append(
+            ManifestProducedArtifact(
+                artifact_id=str(artifact.pk),
+                run_id=str(artifact.validation_run_id),
+                step_run_id=str(artifact.step_run_id) if artifact.step_run_id else None,
+                producer_step_id=artifact.workflow_step_id,
+                producer_step_key=(step.step_key if step else ""),
+                producer_step_name=(step.name if step else ""),
+                contract_key=artifact.contract_key,
+                item_key=artifact.item_key,
+                filename=_artifact_filename(artifact),
+                label=artifact.label,
+                role=artifact.role,
+                kind=artifact.kind,
+                media_type=artifact.content_type,
+                data_format=artifact.data_format,
+                size_bytes=artifact.size_bytes if artifact.size_bytes >= 0 else None,
+                sha256=artifact.sha256,
+                manifest_sha256=artifact.manifest_sha256,
+                producer_validator_type=artifact.producer_validator_type,
+                producer_validator_version=artifact.producer_validator_version,
+                producer_backend_image_digest=artifact.producer_backend_image_digest,
+                retention_class=artifact.retention_class,
+            ),
+        )
+    return records
+
+
+def _build_artifact_input_lineage_records(
+    run: ValidationRun,
+) -> tuple[list[ManifestArtifactInputBinding], list[ManifestArtifactLineageEdge]]:
+    """Project artifact input traces into evidence-safe binding + edge records."""
+
+    from validibot.validations.constants import BindingSourceScope
+    from validibot.validations.constants import StepIOMedium
+    from validibot.validations.models import ResolvedInputTrace
+    from validibot.workflows.models import WorkflowStepResource
+
+    artifact_by_id = {
+        str(artifact.pk): artifact
+        for artifact in run.artifacts.select_related("workflow_step", "step_run")
+    }
+    submission_file_by_step_port = _submission_file_index(run)
+    resource_by_trace_id = _workflow_resource_index(run, WorkflowStepResource)
+
+    bindings: list[ManifestArtifactInputBinding] = []
+    edges: list[ManifestArtifactLineageEdge] = []
+    traces = (
+        ResolvedInputTrace.objects.filter(
+            step_run__validation_run=run,
+            signal_definition__io_medium=StepIOMedium.ARTIFACT,
+        )
+        .select_related(
+            "signal_definition",
+            "step_run",
+            "step_run__workflow_step",
+        )
+        .order_by("step_run__step_order", "signal_contract_key", "pk")
+    )
+
+    for trace in traces:
+        snapshots = _trace_source_snapshots(trace)
+        for snapshot in snapshots:
+            binding = _artifact_input_binding_from_trace(
+                run=run,
+                trace=trace,
+                snapshot=snapshot,
+                artifact_by_id=artifact_by_id,
+                submission_file_by_step_port=submission_file_by_step_port,
+                resource_by_trace_id=resource_by_trace_id,
+            )
+            bindings.append(binding)
+            if (
+                binding.resolved
+                and binding.source_scope == BindingSourceScope.UPSTREAM_ARTIFACT
+                and binding.source_artifact_id
+            ):
+                edges.append(
+                    ManifestArtifactLineageEdge(
+                        source_artifact_id=binding.source_artifact_id,
+                        source_step_key=binding.producer_step_key,
+                        source_contract_key=binding.producer_contract_key,
+                        source_sha256=binding.source_sha256,
+                        target_step_key=binding.target_step_key,
+                        target_port_key=binding.target_port_key,
+                        target_step_run_id=binding.target_step_run_id,
+                    ),
+                )
+
+    return bindings, edges
+
+
+def _artifact_input_binding_from_trace(
+    *,
+    run: ValidationRun,
+    trace,
+    snapshot,
+    artifact_by_id,
+    submission_file_by_step_port,
+    resource_by_trace_id,
+) -> ManifestArtifactInputBinding:
+    """Build one binding record from a trace and one resolved source snapshot."""
+
+    from validibot.validations.constants import BindingSourceScope
+
+    step_run = trace.step_run
+    step = step_run.workflow_step
+    port = trace.signal_definition
+    target_port_key = trace.signal_contract_key or getattr(port, "contract_key", "")
+    source_scope = trace.source_scope_used or ""
+    source_data = _source_details(
+        run=run,
+        trace=trace,
+        snapshot=snapshot,
+        target_step_id=step.pk,
+        target_port_key=target_port_key,
+        artifact_by_id=artifact_by_id,
+        submission_file_by_step_port=submission_file_by_step_port,
+        resource_by_trace_id=resource_by_trace_id,
+    )
+    if source_scope != BindingSourceScope.UPSTREAM_ARTIFACT:
+        source_data.setdefault("producer_step_key", "")
+        source_data.setdefault("producer_contract_key", "")
+
+    return ManifestArtifactInputBinding(
+        target_step_id=step.pk,
+        target_step_key=step.step_key or "",
+        target_step_name=step.name or "",
+        target_step_run_id=str(step_run.pk),
+        target_port_key=target_port_key,
+        target_port_role=getattr(port, "role", "") if port else "",
+        target_envelope_channel=getattr(port, "envelope_channel", "") if port else "",
+        source_scope=source_scope,
+        source_data_path=trace.source_data_path_used or "",
+        resolved=bool(trace.resolved),
+        used_default=bool(trace.used_default),
+        error_message=trace.error_message or "",
+        **source_data,
+    )
+
+
+def _source_details(
+    *,
+    run: ValidationRun,
+    trace,
+    snapshot,
+    target_step_id: int,
+    target_port_key: str,
+    artifact_by_id,
+    submission_file_by_step_port,
+    resource_by_trace_id,
+) -> dict:
+    """Return evidence-safe source metadata for an artifact input trace."""
+
+    from validibot.validations.constants import BindingSourceScope
+
+    details = {
+        "source_artifact_id": "",
+        "source_submission_file_id": "",
+        "source_submission_id": "",
+        "source_resource_id": "",
+        "source_filename": "",
+        "source_media_type": "",
+        "source_data_format": "",
+        "source_size_bytes": None,
+        "source_sha256": "",
+        "producer_step_key": "",
+        "producer_contract_key": "",
+    }
+    if not trace.resolved:
+        return details
+
+    if trace.source_scope_used == BindingSourceScope.SUBMISSION_FILE:
+        submitted_file = submission_file_by_step_port.get(
+            (target_step_id, target_port_key),
+        )
+        if submitted_file is not None:
+            details.update(
+                {
+                    "source_submission_file_id": str(submitted_file.pk),
+                    "source_submission_id": str(submitted_file.submission_id),
+                    "source_filename": submitted_file.original_filename
+                    or _filename_from_uri(_snapshot_uri(snapshot)),
+                    "source_media_type": submitted_file.content_type,
+                    "source_size_bytes": submitted_file.size_bytes,
+                    "source_sha256": submitted_file.checksum_sha256,
+                },
+            )
+        else:
+            submission = run.submission
+            details.update(
+                {
+                    "source_submission_id": str(submission.pk) if submission else "",
+                    "source_filename": (
+                        submission.original_filename
+                        if submission and submission.original_filename
+                        else _filename_from_uri(_snapshot_uri(snapshot))
+                    ),
+                    "source_media_type": _submission_file_type(submission),
+                    "source_size_bytes": _submission_size_bytes(submission),
+                    "source_sha256": (
+                        submission.checksum_sha256
+                        if submission and submission.checksum_sha256
+                        else ""
+                    ),
+                },
+            )
+        return details
+
+    if trace.source_scope_used == BindingSourceScope.WORKFLOW_RESOURCE:
+        resource_id = str((snapshot or {}).get("id") or "")
+        resource = resource_by_trace_id.get(resource_id)
+        details["source_resource_id"] = resource_id
+        if resource is None:
+            details.update(
+                {
+                    "source_filename": _filename_from_uri(_snapshot_uri(snapshot)),
+                    "source_data_format": str((snapshot or {}).get("type") or ""),
+                },
+            )
+            return details
+
+        if resource.is_catalog_reference:
+            catalog = resource.validator_resource_file
+            details.update(
+                {
+                    "source_filename": catalog.filename,
+                    "source_data_format": catalog.resource_type,
+                    "source_sha256": catalog.content_hash,
+                },
+            )
+        else:
+            details.update(
+                {
+                    "source_filename": resource.filename,
+                    "source_data_format": resource.resource_type,
+                    "source_sha256": resource.content_hash,
+                },
+            )
+        return details
+
+    if trace.source_scope_used == BindingSourceScope.UPSTREAM_ARTIFACT:
+        artifact_ref = (snapshot or {}).get("artifact") or {}
+        artifact_id = str(artifact_ref.get("artifact_id") or "")
+        artifact = artifact_by_id.get(artifact_id)
+        details["source_artifact_id"] = artifact_id
+        if artifact is not None:
+            step = artifact.workflow_step
+            details.update(
+                {
+                    "source_filename": _artifact_filename(artifact),
+                    "source_media_type": artifact.content_type,
+                    "source_data_format": artifact.data_format,
+                    "source_size_bytes": (
+                        artifact.size_bytes if artifact.size_bytes >= 0 else None
+                    ),
+                    "source_sha256": artifact.sha256,
+                    "producer_step_key": step.step_key if step else "",
+                    "producer_contract_key": artifact.contract_key,
+                },
+            )
+        else:
+            details.update(
+                {
+                    "source_filename": str(artifact_ref.get("filename") or ""),
+                    "source_media_type": str(artifact_ref.get("media_type") or ""),
+                    "source_data_format": str(artifact_ref.get("data_format") or ""),
+                    "source_size_bytes": artifact_ref.get("size_bytes"),
+                    "source_sha256": str(artifact_ref.get("sha256") or ""),
+                    "producer_step_key": str(
+                        artifact_ref.get("producer_step_key") or "",
+                    ),
+                    "producer_contract_key": str(
+                        artifact_ref.get("contract_key") or "",
+                    ),
+                },
+            )
+        return details
+
+    return details
+
+
+def _submission_file_type(submission) -> str:
+    """Return the primary submission's file type without branching in dicts."""
+
+    return submission.file_type if submission and submission.file_type else ""
+
+
+def _submission_size_bytes(submission) -> int | None:
+    """Return the primary submission size when it was retained as metadata."""
+
+    if not submission or not submission.size_bytes:
+        return None
+    return submission.size_bytes
+
+
+def _submission_file_index(run: ValidationRun) -> dict[tuple[int, str], object]:
+    """Return submitted artifact-port files keyed by consumer step + port."""
+
+    if not run.submission_id:
+        return {}
+    return {
+        (item.workflow_step_id, item.port_key): item
+        for item in run.submission.input_files.all()
+        if item.workflow_step_id and item.port_key
+    }
+
+
+def _workflow_resource_index(run: ValidationRun, workflow_resource_model) -> dict:
+    """Return workflow resources keyed by the IDs runtime traces use."""
+
+    index: dict[str, object] = {}
+    resources = workflow_resource_model.objects.filter(
+        step__workflow=run.workflow,
+    ).select_related("validator_resource_file", "step")
+    for resource in resources:
+        index[str(resource.pk)] = resource
+        if resource.validator_resource_file_id:
+            index[str(resource.validator_resource_file_id)] = resource
+    return index
+
+
+def _trace_source_snapshots(trace) -> list[dict | None]:
+    """Return one snapshot per materialized source for a trace."""
+
+    snapshot = trace.value_snapshot
+    if isinstance(snapshot, list):
+        return snapshot or [None]
+    if isinstance(snapshot, dict):
+        return [snapshot]
+    return [None]
+
+
+def _artifact_filename(artifact) -> str:
+    """Return an artifact filename without exposing its storage URI."""
+
+    uri_or_name = artifact.storage_uri or getattr(artifact.file, "name", "")
+    return _filename_from_uri(uri_or_name) or artifact.label
+
+
+def _snapshot_uri(snapshot) -> str:
+    """Read a private runtime URI from a trace snapshot without exporting it."""
+
+    if not isinstance(snapshot, dict):
+        return ""
+    return str(snapshot.get("uri") or "")
+
+
+def _filename_from_uri(uri: str) -> str:
+    """Return a URI/path basename for evidence-safe display."""
+
+    if not uri:
+        return ""
+    parsed = urlparse(uri)
+    path = parsed.path if parsed.scheme else uri
+    return Path(unquote(path)).name
 
 
 class EvidenceManifestBuilder:
@@ -179,6 +559,10 @@ class EvidenceManifestBuilder:
             input_sha256=input_hash or None,
             output_envelope_sha256=output_hash or None,
         )
+        produced_artifacts = _build_produced_artifact_records(run)
+        artifact_input_bindings, artifact_lineage_edges = (
+            _build_artifact_input_lineage_records(run)
+        )
 
         # The schema's ``executed_at`` is a string (ISO 8601 UTC) so
         # the canonical-JSON byte sequence is stable across Python
@@ -223,6 +607,12 @@ class EvidenceManifestBuilder:
         }
         if "source" in EvidenceManifest.model_fields:
             manifest_kwargs["source"] = (run.source or None) or None
+        if "produced_artifacts" in EvidenceManifest.model_fields:
+            manifest_kwargs["produced_artifacts"] = produced_artifacts
+        if "artifact_input_bindings" in EvidenceManifest.model_fields:
+            manifest_kwargs["artifact_input_bindings"] = artifact_input_bindings
+        if "artifact_lineage_edges" in EvidenceManifest.model_fields:
+            manifest_kwargs["artifact_lineage_edges"] = artifact_lineage_edges
 
         return EvidenceManifest(**manifest_kwargs)
 

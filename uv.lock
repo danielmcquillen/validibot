@@ -3292,7 +3292,7 @@ wheels = [
 
 [[package]]
 name = "validibot"
-version = "0.10.0"
+version = "0.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "argon2-cffi" },
@@ -3462,7 +3462,7 @@ docs = [{ name = "zensical", specifier = "==0.0.50" }]
 
 [[package]]
 name = "validibot-shared"
-version = "0.13.0"
+version = "0.14.0"
 source = { editable = "../validibot-shared" }
 dependencies = [
     { name = "defusedxml" },

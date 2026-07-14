@@ -9,7 +9,7 @@ allow-direct-references = true
 
 [project]
 name = "validibot"
-version = "0.10.0"
+version = "0.11.0"
 description = "Open-source data validation platform for energy models, simulations, and structured data"
 requires-python = ">=3.13"
 license = { text = "AGPL-3.0-only" }
@@ -118,7 +118,7 @@ dependencies = [
   # 0.13.0 adds shared ArtifactRef/FilePortContract schemas and optional
   # port_key fields on envelope file/resource items for the artifact-port
   # workflow-engine slice.
-  "validibot-shared==0.13.0",
+  "validibot-shared==0.14.0",
   "django-csp==4.0",
   "django-permissions-policy==4.32.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in

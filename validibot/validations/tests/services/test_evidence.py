@@ -36,14 +36,31 @@ from validibot_shared.evidence import EvidenceManifest
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.constants import SubmissionRetention
+from validibot.submissions.models import SubmissionInputFile
+from validibot.submissions.tests.factories import SubmissionFactory
+from validibot.validations.constants import BindingSourceScope
+from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import EnvelopeChannel
+from validibot.validations.constants import ResourceFileType
+from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.constants import ValidationType
+from validibot.validations.models import ResolvedInputTrace
 from validibot.validations.models import RunEvidenceArtifact
 from validibot.validations.models import RunEvidenceArtifactAvailability
 from validibot.validations.services.evidence import EvidenceManifestBuilder
 from validibot.validations.services.evidence import stamp_evidence_manifest
+from validibot.validations.tests.factories import ArtifactFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidationRunFactory
+from validibot.validations.tests.factories import ValidationStepRunFactory
+from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.tests.factories import ValidatorResourceFileFactory
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
+from validibot.workflows.tests.factories import WorkflowStepResourceFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -60,6 +77,15 @@ def _completed_run(workflow=None, **run_overrides):
             input_retention=SubmissionRetention.STORE_30_DAYS,
         )
         WorkflowStepFactory(workflow=workflow)
+    run_overrides.setdefault(
+        "submission",
+        SubmissionFactory(
+            workflow=workflow,
+            org=workflow.org,
+            project=workflow.project,
+            user=workflow.user,
+        ),
+    )
 
     defaults = {
         "workflow": workflow,
@@ -68,6 +94,79 @@ def _completed_run(workflow=None, **run_overrides):
     }
     defaults.update(run_overrides)
     return ValidationRunFactory(**defaults)
+
+
+def _artifact_port(validator, *, contract_key, role, envelope_channel, data_format):
+    """Create a validator-owned artifact input port for evidence tests."""
+
+    return StepIODefinitionFactory(
+        validator=validator,
+        workflow_step=None,
+        contract_key=contract_key,
+        native_name=contract_key,
+        direction=SignalDirection.INPUT,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        io_medium=StepIOMedium.ARTIFACT,
+        envelope_channel=envelope_channel,
+        role=role,
+        data_format=data_format,
+    )
+
+
+def _energyplus_run_with_ports():
+    """Build an EnergyPlus run with primary-model and weather file ports."""
+
+    validator = ValidatorFactory(
+        validation_type=ValidationType.ENERGYPLUS,
+        version=2,
+    )
+    workflow = WorkflowFactory(
+        allowed_file_types=[SubmissionFileType.TEXT],
+        input_retention=SubmissionRetention.STORE_30_DAYS,
+    )
+    step = WorkflowStepFactory(
+        workflow=workflow,
+        validator=validator,
+        name="Simulate Model",
+        step_key="simulate",
+        order=10,
+    )
+    primary_port = _artifact_port(
+        validator,
+        contract_key="primary_model",
+        role="primary-model",
+        envelope_channel=EnvelopeChannel.INPUT_FILES,
+        data_format="energyplus_idf",
+    )
+    weather_port = _artifact_port(
+        validator,
+        contract_key="weather_file",
+        role="weather",
+        envelope_channel=EnvelopeChannel.RESOURCE_FILES,
+        data_format=ResourceFileType.ENERGYPLUS_WEATHER,
+    )
+    run = _completed_run(workflow=workflow)
+    run.submission.original_filename = "model.idf"
+    run.submission.file_type = SubmissionFileType.TEXT
+    run.submission.size_bytes = 123
+    run.submission.checksum_sha256 = "1" * 64
+    run.submission.save(
+        update_fields=[
+            "original_filename",
+            "file_type",
+            "size_bytes",
+            "checksum_sha256",
+            "modified",
+        ],
+    )
+    step_run = ValidationStepRunFactory(
+        validation_run=run,
+        workflow_step=step,
+        step_order=step.order,
+        status=StepStatus.PASSED,
+        validator_backend_image_digest="repo/eplus@sha256:" + "e" * 64,
+    )
+    return run, step, step_run, primary_port, weather_port
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -218,6 +317,259 @@ class TestBuildManifest:
 
         manifest = EvidenceManifestBuilder.build(run)
         assert manifest.source == ValidationRunSource.API.value
+
+
+class TestBuildManifestArtifactLineage:
+    """Artifact lineage evidence records runtime file-port provenance."""
+
+    def test_build_records_primary_model_and_weather_resource_bindings(self):
+        """EnergyPlus file ports appear without leaking private runtime URIs."""
+        run, step, step_run, primary_port, weather_port = _energyplus_run_with_ports()
+        weather_file = ValidatorResourceFileFactory(
+            validator=step.validator,
+            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+            filename="weather.epw",
+        )
+        weather_resource = WorkflowStepResourceFactory(
+            step=step,
+            role="WEATHER_FILE",
+            validator_resource_file=weather_file,
+        )
+        private_model_uri = "file:///private/workspace/input/model.idf"
+        private_weather_uri = "gs://validibot-private/resources/weather.epw"
+        ResolvedInputTrace.objects.create(
+            step_run=step_run,
+            signal_definition=primary_port,
+            signal_contract_key="primary_model",
+            source_scope_used=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path_used="primary_file_uri",
+            resolved=True,
+            used_default=False,
+            value_snapshot={
+                "source": BindingSourceScope.SUBMISSION_FILE,
+                "port_key": "primary_model",
+                "role": "primary-model",
+                "uri": private_model_uri,
+            },
+        )
+        ResolvedInputTrace.objects.create(
+            step_run=step_run,
+            signal_definition=weather_port,
+            signal_contract_key="weather_file",
+            source_scope_used=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path_used=ResourceFileType.ENERGYPLUS_WEATHER,
+            resolved=True,
+            used_default=False,
+            value_snapshot=[
+                {
+                    "source": BindingSourceScope.WORKFLOW_RESOURCE,
+                    "id": str(weather_resource.validator_resource_file_id),
+                    "type": ResourceFileType.ENERGYPLUS_WEATHER,
+                    "port_key": "weather_file",
+                    "uri": private_weather_uri,
+                },
+            ],
+        )
+
+        manifest = EvidenceManifestBuilder.build(run)
+
+        bindings = {b.target_port_key: b for b in manifest.artifact_input_bindings}
+        assert set(bindings) == {"primary_model", "weather_file"}
+        assert (
+            bindings["primary_model"].source_scope == BindingSourceScope.SUBMISSION_FILE
+        )
+        assert bindings["primary_model"].source_submission_id == str(run.submission_id)
+        assert bindings["primary_model"].source_filename == "model.idf"
+        assert bindings["primary_model"].source_sha256 == "1" * 64
+        assert (
+            bindings["weather_file"].source_scope
+            == BindingSourceScope.WORKFLOW_RESOURCE
+        )
+        assert bindings["weather_file"].source_resource_id == str(weather_file.pk)
+        assert bindings["weather_file"].source_filename == "weather.epw"
+        assert bindings["weather_file"].source_data_format == (
+            ResourceFileType.ENERGYPLUS_WEATHER
+        )
+        raw = EvidenceManifestBuilder.serialise(manifest).decode("ascii")
+        assert private_model_uri not in raw
+        assert private_weather_uri not in raw
+
+    def test_build_records_submitted_artifact_port_file_metadata(self):
+        """Submitted files beyond the primary payload keep their own file id/hash."""
+        run, step, step_run, _primary_port, weather_port = _energyplus_run_with_ports()
+        submitted = SubmissionInputFile.objects.create(
+            submission=run.submission,
+            workflow_step=step,
+            port_key="weather_file",
+            original_filename="submitted-weather.epw",
+            content_type="text/plain",
+            size_bytes=99,
+            checksum_sha256="2" * 64,
+        )
+        private_weather_uri = "file:///private/workspace/input/submitted-weather.epw"
+        ResolvedInputTrace.objects.create(
+            step_run=step_run,
+            signal_definition=weather_port,
+            signal_contract_key="weather_file",
+            source_scope_used=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path_used="",
+            resolved=True,
+            used_default=False,
+            value_snapshot={
+                "source": BindingSourceScope.SUBMISSION_FILE,
+                "port_key": "weather_file",
+                "role": "weather",
+                "uri": private_weather_uri,
+            },
+        )
+
+        manifest = EvidenceManifestBuilder.build(run)
+
+        binding = manifest.artifact_input_bindings[0]
+        assert binding.source_submission_file_id == str(submitted.pk)
+        assert binding.source_submission_id == str(run.submission_id)
+        assert binding.source_filename == "submitted-weather.epw"
+        assert binding.source_size_bytes == 99  # noqa: PLR2004
+        assert binding.source_sha256 == "2" * 64
+        raw = EvidenceManifestBuilder.serialise(manifest).decode("ascii")
+        assert private_weather_uri not in raw
+
+    def test_build_records_upstream_artifact_edge(self):
+        """An upstream artifact input becomes an explicit producer→consumer edge."""
+        run, step, step_run, primary_port, _weather_port = _energyplus_run_with_ports()
+        upstream_step = WorkflowStepFactory(
+            workflow=run.workflow,
+            validator=step.validator,
+            name="Build Model",
+            step_key="build_model",
+            order=5,
+        )
+        upstream_step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=upstream_step,
+            step_order=upstream_step.order,
+            status=StepStatus.PASSED,
+        )
+        artifact = ArtifactFactory(
+            validation_run=run,
+            step_run=upstream_step_run,
+            workflow_step=upstream_step,
+            contract_key="generated_model",
+            label="model.epjson",
+            content_type="application/json",
+            storage_uri="gs://validibot-private/runs/run-1/model.epjson",
+            size_bytes=456,
+            sha256="a" * 64,
+            role="generated-model",
+            data_format="energyplus_epjson",
+        )
+        ResolvedInputTrace.objects.create(
+            step_run=step_run,
+            signal_definition=primary_port,
+            signal_contract_key="primary_model",
+            source_scope_used=BindingSourceScope.UPSTREAM_ARTIFACT,
+            source_data_path_used="build_model.generated_model",
+            upstream_step_key="build_model",
+            resolved=True,
+            used_default=False,
+            value_snapshot={
+                "source": BindingSourceScope.UPSTREAM_ARTIFACT,
+                "port_key": "primary_model",
+                "source_data_path": "build_model.generated_model",
+                "artifact": {
+                    "artifact_id": str(artifact.pk),
+                    "run_id": str(run.pk),
+                    "producer_step_key": "build_model",
+                    "contract_key": "generated_model",
+                    "filename": "model.epjson",
+                    "uri": artifact.storage_uri,
+                    "sha256": "a" * 64,
+                },
+            },
+        )
+
+        manifest = EvidenceManifestBuilder.build(run)
+
+        produced = manifest.produced_artifacts[0]
+        assert produced.artifact_id == str(artifact.pk)
+        assert produced.producer_step_key == "build_model"
+        assert produced.contract_key == "generated_model"
+        assert produced.sha256 == "a" * 64
+        binding = manifest.artifact_input_bindings[0]
+        assert binding.source_artifact_id == str(artifact.pk)
+        assert binding.producer_step_key == "build_model"
+        assert binding.producer_contract_key == "generated_model"
+        edge = manifest.artifact_lineage_edges[0]
+        assert edge.source_artifact_id == str(artifact.pk)
+        assert edge.source_step_key == "build_model"
+        assert edge.target_step_key == "simulate"
+        assert edge.target_port_key == "primary_model"
+        raw = EvidenceManifestBuilder.serialise(manifest).decode("ascii")
+        assert artifact.storage_uri not in raw
+
+    def test_lineage_survives_artifact_byte_purge(self):
+        """Evidence uses retained hashes/provenance after storage pointers clear."""
+        run, step, step_run, primary_port, _weather_port = _energyplus_run_with_ports()
+        upstream_step = WorkflowStepFactory(
+            workflow=run.workflow,
+            validator=step.validator,
+            name="Build Model",
+            step_key="build_model",
+            order=5,
+        )
+        upstream_step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=upstream_step,
+            step_order=upstream_step.order,
+            status=StepStatus.PASSED,
+        )
+        private_uri = "gs://validibot-private/runs/run-1/purged-model.epjson"
+        artifact = ArtifactFactory(
+            validation_run=run,
+            step_run=upstream_step_run,
+            workflow_step=upstream_step,
+            contract_key="generated_model",
+            label="purged-model.epjson",
+            content_type="application/json",
+            storage_uri=private_uri,
+            size_bytes=456,
+            sha256="c" * 64,
+            role="generated-model",
+        )
+        ResolvedInputTrace.objects.create(
+            step_run=step_run,
+            signal_definition=primary_port,
+            signal_contract_key="primary_model",
+            source_scope_used=BindingSourceScope.UPSTREAM_ARTIFACT,
+            source_data_path_used="build_model.generated_model",
+            upstream_step_key="build_model",
+            resolved=True,
+            used_default=False,
+            value_snapshot={
+                "source": BindingSourceScope.UPSTREAM_ARTIFACT,
+                "port_key": "primary_model",
+                "artifact": {
+                    "artifact_id": str(artifact.pk),
+                    "run_id": str(run.pk),
+                    "producer_step_key": "build_model",
+                    "contract_key": "generated_model",
+                    "filename": "purged-model.epjson",
+                    "uri": private_uri,
+                    "sha256": "c" * 64,
+                },
+            },
+        )
+        artifact.storage_uri = ""
+        artifact.file = ""
+        artifact.save(update_fields=["storage_uri", "file", "modified"])
+
+        manifest = EvidenceManifestBuilder.build(run)
+
+        assert manifest.produced_artifacts[0].sha256 == "c" * 64
+        assert manifest.produced_artifacts[0].filename == "purged-model.epjson"
+        assert manifest.artifact_lineage_edges[0].source_sha256 == "c" * 64
+        raw = EvidenceManifestBuilder.serialise(manifest).decode("ascii")
+        assert private_uri not in raw
 
 
 # ──────────────────────────────────────────────────────────────────────

@@ -40,10 +40,9 @@ class ValidationRunSerializer(serializers.ModelSerializer):
 
     workflow = PrimaryKeyRelatedField(read_only=True)
 
-    workflow_slug = SlugRelatedField(
-        source="workflow",
+    workflow_slug = serializers.CharField(
+        source="workflow.slug",
         read_only=True,
-        slug_field="slug",
     )
 
     org = SlugRelatedField(

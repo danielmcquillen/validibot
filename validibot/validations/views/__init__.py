@@ -28,6 +28,8 @@ from validibot.validations.views.rules import ValidatorRuleListView
 from validibot.validations.views.rules import ValidatorRuleMixin
 from validibot.validations.views.rules import ValidatorRuleMoveView
 from validibot.validations.views.rules import ValidatorRuleUpdateView
+from validibot.validations.views.runs import ArtifactDetailView
+from validibot.validations.views.runs import ArtifactDownloadView
 from validibot.validations.views.runs import CredentialDownloadView
 from validibot.validations.views.runs import GuestValidationRunListView
 from validibot.validations.views.runs import ValidationRunAccessMixin
@@ -52,6 +54,8 @@ from validibot.validations.views.validators import ShaclLibraryValidatorDeleteVi
 from validibot.validations.views.validators import ShaclLibraryValidatorUpdateView
 
 __all__ = [
+    "ArtifactDetailView",
+    "ArtifactDownloadView",
     "CatalogEntryDetailView",
     "CredentialDownloadView",
     "CustomValidatorCreateView",

@@ -9,9 +9,11 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db import models
 from django.db.models import Prefetch
+from django.http import FileResponse
 from django.http import Http404
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
+from django.shortcuts import get_object_or_404
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import DetailView
 from django.views.generic import ListView
@@ -28,9 +30,16 @@ from validibot.validations.credential_utils import (
     extract_signed_credential_resource_label,
 )
 from validibot.validations.credential_utils import get_signed_credential_display_context
+from validibot.validations.models import Artifact
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
+from validibot.validations.services.artifact_display import (
+    ArtifactDownloadUnavailableError,
+)
+from validibot.validations.services.artifact_display import build_artifact_display_item
+from validibot.validations.services.artifact_display import build_artifact_display_items
+from validibot.validations.services.artifact_display import open_artifact_download
 from validibot.validations.services.report_layout import resolve_report_layout
 from validibot.workflows.models import Workflow
 
@@ -283,6 +292,10 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
                 "submission_content": submission_content,
                 "submission_content_can_be_viewed": submission_content_can_be_viewed,
                 "evidence_artifact": evidence_artifact,
+                "artifact_items": build_artifact_display_items(
+                    run=run,
+                    request=self.request,
+                ),
             },
         )
         context.update(
@@ -424,6 +437,93 @@ class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
         if request.method == "DELETE":
             return HttpResponse(status=204)
         return HttpResponseRedirect(success_url)
+
+
+# Artifact Detail and Download
+# ------------------------------------------------------------------------------
+
+
+class ValidationRunArtifactMixin(ValidationRunAccessMixin):
+    """Resolve artifacts through the same access boundary as their parent run."""
+
+    artifact_url_kwarg = "artifact_pk"
+
+    def get_queryset(self):
+        return self.get_base_queryset()
+
+    def get_artifact(self, run: ValidationRun) -> Artifact:
+        """Return the requested artifact only when it belongs to ``run``."""
+
+        return get_object_or_404(
+            Artifact.objects.select_related("workflow_step", "step_run"),
+            pk=self.kwargs[self.artifact_url_kwarg],
+            validation_run=run,
+        )
+
+
+class ArtifactDetailView(ValidationRunArtifactMixin, DetailView):
+    """Show template-safe metadata for one artifact emitted by a run."""
+
+    template_name = "validations/artifact_detail.html"
+    context_object_name = "run"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        artifact = self.get_artifact(context["run"])
+        context["artifact"] = artifact
+        context["artifact_item"] = build_artifact_display_item(
+            artifact=artifact,
+            request=self.request,
+        )
+        return context
+
+    def get_breadcrumbs(self):
+        run = getattr(self, "object", None) or self.get_object()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Validations"),
+                "url": reverse_with_org(
+                    "validations:validation_list",
+                    request=self.request,
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": _("Run #%(pk)s") % {"pk": run.pk},
+                "url": reverse_with_org(
+                    "validations:validation_detail",
+                    request=self.request,
+                    kwargs={"pk": run.pk},
+                ),
+            },
+        )
+        breadcrumbs.append({"name": _("Generated file"), "url": ""})
+        return breadcrumbs
+
+
+class ArtifactDownloadView(ValidationRunArtifactMixin, DetailView):
+    """Download one artifact when it has a directly supported byte source."""
+
+    def get(self, request, *args, **kwargs):
+        run = self.get_object()
+        artifact = self.get_artifact(run)
+        try:
+            source = open_artifact_download(artifact)
+        except ArtifactDownloadUnavailableError as exc:
+            raise Http404(_("Artifact bytes are not available.")) from exc
+
+        response = FileResponse(
+            source.fileobj,
+            as_attachment=True,
+            filename=source.filename,
+            content_type=source.content_type,
+        )
+        response["Cache-Control"] = "no-store"
+        if source.sha256:
+            response["X-Validibot-Artifact-Sha256"] = source.sha256
+        return response
 
 
 # Guest Validation Views

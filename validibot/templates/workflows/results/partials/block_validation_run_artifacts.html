@@ -1,0 +1,87 @@
+{% load i18n humanize %}
+
+{% comment %}
+Generated artifact card shared by standalone validation detail and launch-run
+reports. The view passes ``artifact_items`` from
+``validations.services.artifact_display`` so this template never sees raw
+storage URIs.
+{% endcomment %}
+{% if artifact_items %}
+  <div class="card validation-info-card mt-3">
+    <div class="card-header d-flex align-items-center justify-content-between gap-2">
+      <div class="card-title mb-0">
+        <i class="bi-folder2-open me-1"></i>{% trans "Generated Files" %}
+      </div>
+      <span class="badge text-bg-secondary">{{ artifact_items|length }}</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th scope="col">{% trans "File" %}</th>
+              <th scope="col">{% trans "Producer" %}</th>
+              <th scope="col">{% trans "Role / Type" %}</th>
+              <th scope="col">{% trans "Size" %}</th>
+              <th scope="col">{% trans "SHA-256" %}</th>
+              <th scope="col" class="text-end">{% trans "Actions" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in artifact_items %}
+              <tr>
+                <td class="text-break">
+                  <a href="{{ item.detail_url }}" class="fw-semibold">
+                    {{ item.filename }}
+                  </a>
+                  {% if item.artifact.label and item.artifact.label != item.filename %}
+                    <div class="small text-muted">{{ item.artifact.label }}</div>
+                  {% endif %}
+                </td>
+                <td class="small text-muted">
+                  {{ item.producer_step }}
+                </td>
+                <td>
+                  {% if item.role %}
+                    <span class="font-monospace small">{{ item.role }}</span>
+                  {% endif %}
+                  <div class="small text-muted">{{ item.kind }}</div>
+                </td>
+                <td class="small text-muted">
+                  {% if item.size_bytes %}
+                    {{ item.size_bytes|filesizeformat }}
+                  {% else %}
+                    {% trans "Unknown" %}
+                  {% endif %}
+                </td>
+                <td class="font-monospace small text-muted">
+                  {% if item.sha256 %}
+                    <span title="{{ item.sha256 }}">{{ item.sha256_short }}</span>
+                  {% else %}
+                    {% trans "Not captured" %}
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  <div class="btn-group btn-group-sm" role="group">
+                    <a class="btn btn-outline-secondary"
+                       href="{{ item.detail_url }}"
+                       title="{% trans "View artifact details" %}">
+                      <i class="bi-info-circle"></i>
+                    </a>
+                    {% if item.download_available %}
+                      <a class="btn btn-outline-primary"
+                         href="{{ item.download_url }}"
+                         title="{% trans "Download artifact" %}">
+                        <i class="bi-download"></i>
+                      </a>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endif %}

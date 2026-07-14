@@ -21,6 +21,7 @@ from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.credential_utils import get_signed_credential_display_context
 from validibot.validations.models import Ruleset
 from validibot.validations.models import ValidationRun
+from validibot.validations.services.artifact_display import build_artifact_display_items
 from validibot.validations.services.report_layout import resolve_report_layout
 from validibot.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 from validibot.workflows.forms import WorkflowForm
@@ -742,10 +743,15 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "credential_download_name": None,
             "credential_resource_label": None,
         }
+        artifact_items = []
         if active_run and not run_in_progress:
             credential_context = get_signed_credential_display_context(
                 request=self.request,
                 run=active_run,
+            )
+            artifact_items = build_artifact_display_items(
+                run=active_run,
+                request=self.request,
             )
 
         context = {
@@ -767,6 +773,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "all_signals": all_signals,
             "step_params": step_params,
             "step_template_warnings": step_template_warnings,
+            "artifact_items": artifact_items,
         }
         context.update(credential_context)
         return context
@@ -829,6 +836,9 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
                 "step_runs",
                 "step_runs__workflow_step",
                 "step_runs__findings",
+                "artifacts",
+                "artifacts__workflow_step",
+                "artifacts__step_run",
                 "findings",
                 "findings__ruleset_assertion",
             )

@@ -98,7 +98,7 @@ Context:
 {% endwith %}
 
 {# -- Available Signals card (workflow-level signals) -- #}
-{% if uses_tabular_stages or available_signals or available_constants or upstream_outputs %}
+{% if uses_tabular_stages or available_signals or available_constants or upstream_outputs or upstream_artifacts %}
   <div class="card app-card">
     <div class="card-header">
       <div class="d-flex justify-content-between align-items-center w-100">
@@ -194,7 +194,20 @@ Context:
           {% endfor %}
         {% endfor %}
       {% endif %}
-      {% if not available_signals and not available_constants and not upstream_outputs %}
+      {% if upstream_artifacts %}
+        <h6 class="text-muted small mb-2">
+          {% trans "Generated Files From Earlier Steps" %}
+        </h6>
+        {% for step_info in upstream_artifacts %}
+          <div class="mb-1">
+            <span class="badge text-bg-light">{{ step_info.step_name }}</span>
+          </div>
+          {% for path in step_info.artifacts %}
+            <code class="small d-block ms-2 mb-1">{{ path }}</code>
+          {% endfor %}
+        {% endfor %}
+      {% endif %}
+      {% if not available_signals and not available_constants and not upstream_outputs and not upstream_artifacts %}
         <p class="text-muted small mb-0">
           {% trans "No signals or constants defined. Configure them on the workflow's Signals and Constants pages, or use p.key to reference raw submission data directly." %}
         </p>

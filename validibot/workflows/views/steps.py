@@ -1207,6 +1207,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         else:
             # Pass org and validator for forms that need them (e.g., EnergyPlus)
             workflow = self.get_workflow()
+            kwargs["workflow"] = workflow
             kwargs["org"] = workflow.org
             kwargs["validator"] = self.get_validator()
         return kwargs
@@ -1841,11 +1842,13 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
             WorkflowConstant.objects.filter(workflow=workflow).order_by("position"),
         )
 
-        # Upstream step outputs — shown so authors know what
-        # steps.<key>.output.<name> paths are available.
+        # Upstream step outputs and generated files — shown so authors know
+        # what steps.<key>.output.<name> and steps.<key>.artifact.<name> paths
+        # are available.
         from validibot.workflows.models import WorkflowStep
 
         upstream_outputs = []
+        upstream_artifacts = []
         for ws in (
             WorkflowStep.objects.filter(
                 workflow=workflow,
@@ -1855,21 +1858,21 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
             .order_by("order")
         ):
             from validibot.validations.constants import SignalDirection
+            from validibot.validations.constants import StepIOMedium
             from validibot.validations.models import StepIODefinition
 
-            outputs = list(
-                StepIODefinition.objects.filter(
-                    workflow_step=ws,
-                    direction=SignalDirection.OUTPUT,
-                )
-                .union(
+            output_query = StepIODefinition.objects.filter(
+                workflow_step=ws,
+                direction=SignalDirection.OUTPUT,
+            ).exclude(io_medium=StepIOMedium.ARTIFACT)
+            if ws.validator_id:
+                output_query = output_query.union(
                     StepIODefinition.objects.filter(
                         validator=ws.validator,
                         direction=SignalDirection.OUTPUT,
-                    )
+                    ).exclude(io_medium=StepIOMedium.ARTIFACT),
                 )
-                .values_list("contract_key", flat=True),
-            )
+            outputs = list(output_query.values_list("contract_key", flat=True))
             if outputs:
                 step_key = ws.step_key or str(ws.pk)
                 upstream_outputs.append(
@@ -1878,6 +1881,32 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                         "step_key": step_key,
                         "outputs": [
                             f"steps.{step_key}.output.{name}" for name in outputs
+                        ],
+                    },
+                )
+            artifact_query = StepIODefinition.objects.filter(
+                workflow_step=ws,
+                direction=SignalDirection.OUTPUT,
+                io_medium=StepIOMedium.ARTIFACT,
+            )
+            if ws.validator_id:
+                artifact_query = artifact_query.union(
+                    StepIODefinition.objects.filter(
+                        validator=ws.validator,
+                        direction=SignalDirection.OUTPUT,
+                        io_medium=StepIOMedium.ARTIFACT,
+                    ),
+                )
+            artifact_ports = list(artifact_query.values_list("contract_key", flat=True))
+            if artifact_ports:
+                step_key = ws.step_key or str(ws.pk)
+                upstream_artifacts.append(
+                    {
+                        "step_name": ws.name,
+                        "step_key": step_key,
+                        "artifacts": [
+                            f"steps.{step_key}.artifact.{name}"
+                            for name in artifact_ports
                         ],
                     },
                 )
@@ -1928,6 +1957,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "available_signals": available_signals,
                 "available_constants": available_constants,
                 "upstream_outputs": upstream_outputs,
+                "upstream_artifacts": upstream_artifacts,
             },
         )
         context.update(

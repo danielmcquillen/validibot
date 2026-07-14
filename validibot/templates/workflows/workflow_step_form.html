@@ -58,7 +58,7 @@
         {% csrf_token %}
         {{ form.media }}
         {% include "core/partial/_form_errors_summary.html" %}
-        {% if form.has_weather_files is False %}
+        {% if form.has_weather_files is False and not form.file_port_bindings_enabled %}
           <div class="alert alert-warning d-flex gap-2" role="alert">
             <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
             <div>
@@ -103,7 +103,7 @@
           {% endif %}
           <button type="submit"
                   class="btn btn-primary"
-                  {% if form.has_weather_files is False %}
+                  {% if form.has_weather_files is False and not form.file_port_bindings_enabled %}
                     disabled aria-disabled="true"
                   {% endif %}>
             {% if is_create %}

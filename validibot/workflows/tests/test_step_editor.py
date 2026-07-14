@@ -29,11 +29,19 @@ from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
 from validibot.users.tests.utils import ensure_all_roles_exist
 from validibot.validations.constants import AssertionType
+from validibot.validations.constants import BindingSourceScope
+from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import JSONSchemaVersion
+from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
+from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import RulesetAssertion
+from validibot.validations.models import StepInputBinding
 from validibot.validations.models import Validator
 from validibot.validations.tests.factories import CustomValidatorFactory
 from validibot.validations.tests.factories import RulesetFactory
@@ -63,6 +71,48 @@ def ensure_validator(validation_type: str, slug: str, name: str) -> Validator:
         slug=slug,
         defaults={"name": name, "description": name},
     )[0]
+
+
+def create_energyplus_file_ports(validator: Validator) -> None:
+    """Declare the EnergyPlus file ports that drive source-picker rendering."""
+    StepIODefinitionFactory(
+        validator=validator,
+        contract_key="primary_model",
+        native_name="primary_model",
+        label="Model file",
+        direction=SignalDirection.INPUT,
+        origin_kind=SignalOriginKind.CATALOG,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        io_medium=StepIOMedium.ARTIFACT,
+        envelope_channel=EnvelopeChannel.INPUT_FILES,
+        role="primary-model",
+        allowed_source_scopes=[
+            BindingSourceScope.SUBMISSION_FILE,
+            BindingSourceScope.UPSTREAM_ARTIFACT,
+        ],
+        min_items=1,
+        max_items=1,
+    )
+    StepIODefinitionFactory(
+        validator=validator,
+        contract_key="weather_file",
+        native_name="weather_file",
+        label="Weather file",
+        direction=SignalDirection.INPUT,
+        origin_kind=SignalOriginKind.CATALOG,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        io_medium=StepIOMedium.ARTIFACT,
+        envelope_channel=EnvelopeChannel.RESOURCE_FILES,
+        role="weather",
+        resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+        allowed_source_scopes=[
+            BindingSourceScope.WORKFLOW_RESOURCE,
+            BindingSourceScope.SUBMISSION_FILE,
+            BindingSourceScope.UPSTREAM_ARTIFACT,
+        ],
+        min_items=1,
+        max_items=1,
+    )
 
 
 def make_action_definition(
@@ -765,6 +815,196 @@ def test_create_energyplus_step_with_idf_checks(client):
     ).first()
     assert weather_sr is not None
     assert weather_sr.validator_resource_file_id == weather_resource.id
+
+
+def test_energyplus_file_source_picker_renders_for_declared_ports(client):
+    """EnergyPlus file ports should render as author-facing source choices."""
+    from validibot.validations.models import ValidatorResourceFile
+
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ensure_validator(ValidationType.ENERGYPLUS, "energyplus", "EnergyPlus")
+    create_energyplus_file_ports(validator)
+    ValidatorResourceFile.objects.create(
+        validator=validator,
+        org=None,
+        resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+        name="San Francisco, CA (TMY3)",
+        filename="USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
+        is_default=True,
+    )
+
+    response = client.get(_select_validator(client, workflow, validator))
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert 'name="primary_model_source"' in html
+    assert 'name="weather_file_source"' in html
+    assert "Model file" in html
+    assert "Weather file" in html
+    assert "Submitted file" in html
+    assert "Workflow resource" in html
+    assert "Earlier step output" in html
+    assert "SUBMISSION_FILE" not in html
+    assert "WORKFLOW_RESOURCE" not in html
+    assert "UPSTREAM_ARTIFACT" not in html
+
+
+def test_energyplus_file_source_picker_saves_default_bindings(client):
+    """Source picker submissions should persist StepInputBinding rows."""
+    from validibot.validations.models import ValidatorResourceFile
+
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ensure_validator(ValidationType.ENERGYPLUS, "energyplus", "EnergyPlus")
+    create_energyplus_file_ports(validator)
+    weather_resource = ValidatorResourceFile.objects.create(
+        validator=validator,
+        org=None,
+        resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+        name="San Francisco, CA (TMY3)",
+        filename="USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
+        is_default=True,
+    )
+
+    response = client.post(
+        _select_validator(client, workflow, validator),
+        data={
+            "name": "EnergyPlus QA",
+            "validation_mode": "direct",
+            "primary_model_source": BindingSourceScope.SUBMISSION_FILE,
+            "weather_file_source": BindingSourceScope.WORKFLOW_RESOURCE,
+            "weather_file": str(weather_resource.id),
+            "run_simulation": "on",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    step = workflow.steps.get()
+    bindings = {
+        binding.signal_definition.contract_key: binding
+        for binding in StepInputBinding.objects.filter(
+            workflow_step=step
+        ).select_related("signal_definition")
+    }
+    assert bindings["primary_model"].source_scope == BindingSourceScope.SUBMISSION_FILE
+    assert bindings["primary_model"].source_data_path == "primary-model"
+    assert bindings["weather_file"].source_scope == BindingSourceScope.WORKFLOW_RESOURCE
+    assert (
+        bindings["weather_file"].source_data_path == ResourceFileType.ENERGYPLUS_WEATHER
+    )
+
+
+def test_energyplus_file_source_picker_saves_upstream_artifact_binding(client):
+    """Earlier-step generated files should persist as upstream artifact paths."""
+    from validibot.validations.models import ValidatorResourceFile
+
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    upstream_step = WorkflowStepFactory(
+        workflow=workflow,
+        name="Build Model",
+        order=10,
+    )
+    StepIODefinitionFactory(
+        workflow_step=upstream_step,
+        validator=None,
+        contract_key="generated_model",
+        native_name="generated_model",
+        label="Generated model",
+        direction=SignalDirection.OUTPUT,
+        origin_kind=SignalOriginKind.CATALOG,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        io_medium=StepIOMedium.ARTIFACT,
+        envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
+    )
+    validator = ensure_validator(ValidationType.ENERGYPLUS, "energyplus", "EnergyPlus")
+    create_energyplus_file_ports(validator)
+    weather_resource = ValidatorResourceFile.objects.create(
+        validator=validator,
+        org=None,
+        resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+        name="San Francisco, CA (TMY3)",
+        filename="USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
+        is_default=True,
+    )
+
+    response = client.post(
+        _select_validator(client, workflow, validator),
+        data={
+            "name": "EnergyPlus QA",
+            "validation_mode": "direct",
+            "primary_model_source": BindingSourceScope.UPSTREAM_ARTIFACT,
+            "primary_model_upstream_artifact": (
+                f"{upstream_step.step_key}.generated_model"
+            ),
+            "weather_file_source": BindingSourceScope.WORKFLOW_RESOURCE,
+            "weather_file": str(weather_resource.id),
+            "run_simulation": "on",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    step = workflow.steps.exclude(pk=upstream_step.pk).get()
+    binding = StepInputBinding.objects.get(
+        workflow_step=step,
+        signal_definition__contract_key="primary_model",
+    )
+    assert binding.source_scope == BindingSourceScope.UPSTREAM_ARTIFACT
+    assert binding.source_data_path == f"{upstream_step.step_key}.generated_model"
+
+
+def test_file_source_picker_is_hidden_without_declared_file_ports(client):
+    """Validators without artifact input ports should keep the existing form."""
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ensure_validator(ValidationType.BASIC, "basic", "Basic")
+
+    response = client.get(_select_validator(client, workflow, validator))
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    assert 'name="primary_model_source"' not in html
+    assert 'name="weather_file_source"' not in html
+
+
+def test_step_detail_lists_generated_files_separately_from_outputs(client):
+    """Generated file paths should appear in the file-specific data section."""
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    upstream_step = WorkflowStepFactory(
+        workflow=workflow,
+        name="Build Model",
+        order=10,
+    )
+    StepIODefinitionFactory(
+        workflow_step=upstream_step,
+        validator=None,
+        contract_key="generated_model",
+        native_name="generated_model",
+        label="Generated model",
+        direction=SignalDirection.OUTPUT,
+        origin_kind=SignalOriginKind.CATALOG,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        io_medium=StepIOMedium.ARTIFACT,
+        envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
+    )
+    downstream_step = WorkflowStepFactory(
+        workflow=workflow,
+        name="Run Simulation",
+        order=20,
+    )
+
+    response = client.get(
+        reverse("workflows:workflow_step_edit", args=[workflow.pk, downstream_step.pk]),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    artifact_path = f"steps.{upstream_step.step_key}.artifact.generated_model"
+    assert "Generated Files From Earlier Steps" in html
+    assert artifact_path in html
+    assert "Upstream Step Outputs" not in html
 
 
 def test_step_settings_does_not_expose_validator_selector(client):

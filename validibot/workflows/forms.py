@@ -31,7 +31,10 @@ from validibot.validations.cel_columns import referenced_column_aggregates
 from validibot.validations.cel_columns import referenced_column_metrics
 from validibot.validations.cel_columns import referenced_row_columns
 from validibot.validations.constants import VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH
+from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import JSONSchemaVersion
+from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.regex_safety import UnsafeOrInvalidPatternError
@@ -1851,8 +1854,17 @@ class BaseStepConfigForm(forms.Form):
         ),
     )
 
-    def __init__(self, *args, step=None, org=None, validator=None, **kwargs):
+    def __init__(
+        self,
+        *args,
+        step=None,
+        workflow=None,
+        org=None,
+        validator=None,
+        **kwargs,
+    ):
         self.step = step
+        self.workflow = workflow or getattr(step, "workflow", None)
         self.org = org
         self.validator = validator
         super().__init__(*args, **kwargs)
@@ -2722,9 +2734,35 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         ),
     )
 
+    # ── File-port source fields ───────────────────────────────────
+    # These are enabled only when the selected EnergyPlus validator has
+    # artifact input ports synced into StepIODefinition.
+    primary_model_source = forms.ChoiceField(
+        label=_("Model file"),
+        required=False,
+        choices=[],
+        help_text=_("Choose where the EnergyPlus model file comes from."),
+    )
+    primary_model_upstream_artifact = forms.ChoiceField(
+        label=_("Earlier step output"),
+        required=False,
+        choices=[],
+    )
+    weather_file_source = forms.ChoiceField(
+        label=_("Weather file"),
+        required=False,
+        choices=[],
+        help_text=_("Choose where the EnergyPlus weather file comes from."),
+    )
+    weather_file_upstream_artifact = forms.ChoiceField(
+        label=_("Earlier step output"),
+        required=False,
+        choices=[],
+    )
+
     # ── Shared fields ─────────────────────────────────────────────
     weather_file = forms.ChoiceField(
-        label=_("Weather file"),
+        label=_("Workflow resource"),
         choices=[],
         help_text=_(
             "Weather file (EPW) used for EnergyPlus simulations. "
@@ -2787,6 +2825,10 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
 
         # Populate weather file choices from ValidatorResourceFile
         self._populate_weather_file_choices(org, validator)
+        self.file_input_ports = self._get_file_input_ports(validator)
+        self.file_port_bindings_enabled = bool(self.file_input_ports)
+        self.file_port_binding_map: dict[str, Any] = {}
+        self._configure_file_port_fields(step)
 
         # ── Template state (for template display in the form) ─────
         # These flags tell the template whether to show "upload" or
@@ -2847,6 +2889,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             default_rf = self._get_default_resource_file(org, validator)
             if default_rf:
                 self.initial["weather_file"] = str(default_rf.id)
+                self.fields["weather_file"].initial = str(default_rf.id)
 
         # ── Crispy Layout ─────────────────────────────────────────
         # Groups fields by validation mode.  Client-side JS toggles
@@ -2854,28 +2897,45 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         # the author changes the radio selection.  Template variable
         # annotations are now edited via a separate plugin card on
         # the step detail page (see TemplateVariableAnnotationForm).
-        self.helper.layout = Layout(
+        layout_items = [
             "name",
             "description",
             "show_success_messages",
             "validation_mode",
-            "weather_file",
-            "show_energyplus_warnings",
-            Div(
-                "idf_checks",
-                "run_simulation",
-                css_class="energyplus-mode-direct",
-                data_mode="direct",
-            ),
-            Div(
-                "template_file",
-                "case_sensitive",
-                "remove_template",
-                css_class="energyplus-mode-template",
-                data_mode="template",
-            ),
-            "notes",
+        ]
+        if self.file_port_bindings_enabled:
+            layout_items.extend(
+                [
+                    HTML("<hr class='my-4'><h3 class='h6 mb-3'>Files</h3>"),
+                    "primary_model_source",
+                    "primary_model_upstream_artifact",
+                    "weather_file_source",
+                    "weather_file",
+                    "weather_file_upstream_artifact",
+                ],
+            )
+        else:
+            layout_items.append("weather_file")
+        layout_items.extend(
+            [
+                "show_energyplus_warnings",
+                Div(
+                    "idf_checks",
+                    "run_simulation",
+                    css_class="energyplus-mode-direct",
+                    data_mode="direct",
+                ),
+                Div(
+                    "template_file",
+                    "case_sensitive",
+                    "remove_template",
+                    css_class="energyplus-mode-template",
+                    data_mode="template",
+                ),
+                "notes",
+            ],
         )
+        self.helper.layout = Layout(*layout_items)
 
     def _populate_weather_file_choices(self, org, validator):
         """Populate weather file dropdown from ValidatorResourceFile."""
@@ -2912,6 +2972,237 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         # Expose to template so we can show a warning when no files are available.
         # len==1 means only the empty placeholder choice was added.
         self.has_weather_files = len(choices) > 1
+
+    def _get_file_input_ports(self, validator) -> dict[str, Any]:
+        """Return artifact input ports declared by this validator."""
+        if not validator:
+            return {}
+
+        from validibot.validations.models import StepIODefinition
+
+        ports = StepIODefinition.objects.filter(
+            validator=validator,
+            direction=SignalDirection.INPUT,
+            io_medium=StepIOMedium.ARTIFACT,
+        ).order_by("order", "pk")
+        return {port.contract_key: port for port in ports}
+
+    def _configure_file_port_fields(self, step) -> None:
+        """Configure source fields only for declared EnergyPlus file ports."""
+        file_port_field_names = [
+            "primary_model_source",
+            "primary_model_upstream_artifact",
+            "weather_file_source",
+            "weather_file_upstream_artifact",
+        ]
+        if not self.file_port_bindings_enabled:
+            for field_name in file_port_field_names:
+                self.fields.pop(field_name, None)
+            return
+
+        self.fields["weather_file"].required = False
+        upstream_choices = self._build_upstream_artifact_choices(step)
+        binding_map = self._existing_file_port_bindings(step)
+        self.file_port_binding_map = binding_map
+
+        for contract_key, port in self.file_input_ports.items():
+            source_field = f"{contract_key}_source"
+            upstream_field = f"{contract_key}_upstream_artifact"
+            if source_field not in self.fields:
+                continue
+
+            source_choices = self._source_choices_for_file_port(port)
+            if not source_choices:
+                self.fields.pop(source_field, None)
+                self.fields.pop(upstream_field, None)
+                continue
+
+            self.fields[source_field].choices = source_choices
+            self.fields[source_field].initial = self._initial_source_for_file_port(
+                port,
+                binding_map.get(contract_key),
+            )
+            if upstream_field in self.fields:
+                self.fields[upstream_field].choices = upstream_choices
+                binding = binding_map.get(contract_key)
+                if (
+                    binding
+                    and binding.source_scope == BindingSourceScope.UPSTREAM_ARTIFACT
+                ):
+                    self.fields[upstream_field].initial = binding.source_data_path
+
+        for contract_key in ("primary_model", "weather_file"):
+            if contract_key not in self.file_input_ports:
+                self.fields.pop(f"{contract_key}_source", None)
+                self.fields.pop(f"{contract_key}_upstream_artifact", None)
+
+    def _source_choices_for_file_port(self, port) -> list[tuple[str, Any]]:
+        """Map materializable source scopes to user-facing labels."""
+        labels = {
+            BindingSourceScope.SUBMISSION_FILE: _("Submitted file"),
+            BindingSourceScope.WORKFLOW_RESOURCE: _("Workflow resource"),
+            BindingSourceScope.UPSTREAM_ARTIFACT: _("Earlier step output"),
+        }
+        return [
+            (scope, labels[scope])
+            for scope in (port.allowed_source_scopes or [])
+            if scope in labels
+        ]
+
+    def _initial_source_for_file_port(self, port, binding) -> str:
+        """Pick the compact default source shown in the editor."""
+        allowed = {value for value, _label in self._source_choices_for_file_port(port)}
+        if binding and binding.source_scope in allowed:
+            return binding.source_scope
+        if (
+            port.contract_key == "weather_file"
+            and BindingSourceScope.WORKFLOW_RESOURCE in allowed
+            and self.has_weather_files
+        ):
+            return BindingSourceScope.WORKFLOW_RESOURCE
+        if BindingSourceScope.SUBMISSION_FILE in allowed:
+            return BindingSourceScope.SUBMISSION_FILE
+        return next(iter(allowed), "")
+
+    def _existing_file_port_bindings(self, step) -> dict[str, Any]:
+        """Return existing StepInputBinding rows for declared file ports."""
+        if not step or not self.file_input_ports:
+            return {}
+
+        from validibot.validations.models import StepInputBinding
+
+        return {
+            binding.signal_definition.contract_key: binding
+            for binding in StepInputBinding.objects.filter(
+                workflow_step=step,
+                signal_definition__in=self.file_input_ports.values(),
+            ).select_related("signal_definition")
+        }
+
+    def _build_upstream_artifact_choices(self, step) -> list[tuple[str, Any]]:
+        """Build choices for artifacts produced by earlier workflow steps."""
+        workflow = self.workflow
+        choices: list[tuple[str, Any]] = [("", _("— Select generated file —"))]
+        if not workflow:
+            return choices
+
+        from validibot.validations.models import StepIODefinition
+        from validibot.workflows.models import WorkflowStep
+
+        steps = WorkflowStep.objects.filter(workflow=workflow).order_by("order", "pk")
+        if step and step.pk:
+            steps = steps.filter(order__lt=step.order).exclude(pk=step.pk)
+
+        seen: set[tuple[str, str]] = set()
+        for upstream_step in steps.select_related("validator"):
+            step_key = upstream_step.step_key or str(upstream_step.pk)
+            output_ports = list(
+                StepIODefinition.objects.filter(
+                    workflow_step=upstream_step,
+                    direction=SignalDirection.OUTPUT,
+                    io_medium=StepIOMedium.ARTIFACT,
+                ).order_by("order", "pk"),
+            )
+            if upstream_step.validator_id:
+                output_ports.extend(
+                    StepIODefinition.objects.filter(
+                        validator=upstream_step.validator,
+                        direction=SignalDirection.OUTPUT,
+                        io_medium=StepIOMedium.ARTIFACT,
+                    ).order_by("order", "pk"),
+                )
+            for port in output_ports:
+                key = (step_key, port.contract_key)
+                if key in seen:
+                    continue
+                seen.add(key)
+                label = port.label or port.contract_key
+                choices.append(
+                    (
+                        f"{step_key}.{port.contract_key}",
+                        f"{upstream_step.name} · {label}",
+                    ),
+                )
+        return choices
+
+    def clean(self):
+        cleaned = super().clean()
+        if not self.file_port_bindings_enabled:
+            return cleaned
+
+        for contract_key, port in self.file_input_ports.items():
+            source_field = f"{contract_key}_source"
+            if source_field not in self.fields:
+                continue
+
+            source = cleaned.get(source_field) or self._initial_source_for_file_port(
+                port,
+                self.file_port_binding_map.get(contract_key),
+            )
+            cleaned[source_field] = source
+            allowed = {value for value, _label in self.fields[source_field].choices}
+            if source and source not in allowed:
+                self.add_error(source_field, _("Choose an allowed file source."))
+                continue
+
+            if (
+                contract_key == "weather_file"
+                and source == BindingSourceScope.WORKFLOW_RESOURCE
+                and not cleaned.get("weather_file")
+            ):
+                self.add_error(
+                    "weather_file",
+                    _("Choose the workflow resource for this weather file."),
+                )
+
+            upstream_field = f"{contract_key}_upstream_artifact"
+            if (
+                source == BindingSourceScope.UPSTREAM_ARTIFACT
+                and upstream_field in self.fields
+                and not cleaned.get(upstream_field)
+            ):
+                self.add_error(
+                    upstream_field,
+                    _("Choose the generated file from an earlier step."),
+                )
+
+        return cleaned
+
+    def build_file_port_binding_updates(self) -> list[dict[str, Any]]:
+        """Return StepInputBinding updates for declared EnergyPlus file ports."""
+        updates: list[dict[str, Any]] = []
+        if not self.file_port_bindings_enabled:
+            return updates
+
+        for contract_key, port in self.file_input_ports.items():
+            source = self.cleaned_data.get(
+                f"{contract_key}_source",
+            ) or self._initial_source_for_file_port(
+                port,
+                self.file_port_binding_map.get(contract_key),
+            )
+            if not source:
+                continue
+
+            if source == BindingSourceScope.UPSTREAM_ARTIFACT:
+                source_data_path = self.cleaned_data.get(
+                    f"{contract_key}_upstream_artifact",
+                    "",
+                )
+            elif source == BindingSourceScope.WORKFLOW_RESOURCE:
+                source_data_path = port.resource_type or port.data_format
+            else:
+                source_data_path = port.role or port.contract_key
+
+            updates.append(
+                {
+                    "signal_definition": port,
+                    "source_scope": source,
+                    "source_data_path": source_data_path,
+                    "is_required": port.min_items > 0,
+                },
+            )
+        return updates
 
     def _get_default_resource_file(self, org, validator):
         """Return the first default resource file for pre-selection on new steps."""

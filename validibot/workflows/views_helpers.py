@@ -1196,6 +1196,7 @@ def build_unified_signals_from_definitions(
         has_outputs: Whether any output signals exist.
     """
     from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import StepIOMedium
     from validibot.validations.constants import ValidationType
     from validibot.validations.models import StepInputBinding
     from validibot.validations.models import StepIODefinition
@@ -1307,6 +1308,8 @@ def build_unified_signals_from_definitions(
     for sig in step_sigs:
         if sig.direction != SignalDirection.INPUT:
             continue
+        if sig.io_medium == StepIOMedium.ARTIFACT:
+            continue
         input_signals.append(_build_input_row(sig, prefer_native_label=True))
         seen_input_keys.add(sig.contract_key)
 
@@ -1317,6 +1320,8 @@ def build_unified_signals_from_definitions(
     # variables already populated input_signals.
     for sig in validator_sigs:
         if sig.direction != SignalDirection.INPUT:
+            continue
+        if sig.io_medium == StepIOMedium.ARTIFACT:
             continue
         if sig.contract_key in seen_input_keys:
             continue
@@ -1356,6 +1361,8 @@ def build_unified_signals_from_definitions(
     for sig in step_sigs:
         if sig.direction != SignalDirection.OUTPUT:
             continue
+        if sig.io_medium == StepIOMedium.ARTIFACT:
+            continue
         show = _is_signal_shown(sig.contract_key, display_step_outputs)
         output_signals.append(
             {
@@ -1369,6 +1376,8 @@ def build_unified_signals_from_definitions(
 
     for sig in validator_sigs:
         if sig.direction != SignalDirection.OUTPUT:
+            continue
+        if sig.io_medium == StepIOMedium.ARTIFACT:
             continue
         show = _is_signal_shown(sig.contract_key, display_step_outputs)
         output_signals.append(
@@ -1418,13 +1427,21 @@ def _sync_energyplus_resources(
       ``WorkflowStepResource`` via ``step_resource_file``.
     """
     from validibot.validations.constants import ENERGYPLUS_MODEL_TEMPLATE
+    from validibot.validations.constants import BindingSourceScope
     from validibot.validations.models import ValidatorResourceFile
 
     # ── Weather file ────────────────────────────────────────────────
     weather_file_id = form.cleaned_data.get("weather_file", "")
+    weather_file_source = form.cleaned_data.get("weather_file_source")
 
     # Remove existing weather file resources for this step
     step.step_resources.filter(role=WorkflowStepResource.WEATHER_FILE).delete()
+
+    if (
+        weather_file_source
+        and weather_file_source != BindingSourceScope.WORKFLOW_RESOURCE
+    ):
+        weather_file_id = ""
 
     # Create new one if a weather file was selected
     if weather_file_id:
@@ -1468,6 +1485,28 @@ def _sync_energyplus_resources(
             step_resource_file=template_file,
             filename=template_file.name,
             resource_type=ENERGYPLUS_MODEL_TEMPLATE,
+        )
+
+
+def _sync_step_file_port_bindings(step: WorkflowStep, form: forms.Form) -> None:
+    """Persist author-selected file-port sources into StepInputBinding rows."""
+    build_updates = getattr(form, "build_file_port_binding_updates", None)
+    if not callable(build_updates):
+        return
+
+    from validibot.validations.models import StepInputBinding
+
+    for update in build_updates():
+        signal_definition = update["signal_definition"]
+        StepInputBinding.objects.update_or_create(
+            workflow_step=step,
+            signal_definition=signal_definition,
+            defaults={
+                "source_scope": update["source_scope"],
+                "source_data_path": update["source_data_path"],
+                "is_required": update["is_required"],
+                "default_value": None,
+            },
         )
 
 
@@ -1847,6 +1886,7 @@ def save_workflow_step(
     # after step.save() gives us a PK for new steps.
     if vtype == ValidationType.ENERGYPLUS:
         _sync_energyplus_resources(step, form)
+        _sync_step_file_port_bindings(step, form)
         _sync_template_signals(step, template_vars)
     elif vtype == ValidationType.FMU and getattr(form, "is_system_validator", False):
         _sync_fmu_resources(step, form)

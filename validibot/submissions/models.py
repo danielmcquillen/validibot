@@ -69,6 +69,42 @@ def submission_input_file_upload_to(instance: Submission, filename: str) -> str:
     return p
 
 
+def submission_port_file_upload_to(instance, filename: str) -> str:
+    """Generate an upload path for additional submitted artifact-port files."""
+
+    if not instance:
+        err_msg = "Instance must be provided for upload path generation."
+        raise ValueError(err_msg)
+    submission = getattr(instance, "submission", None)
+    if not submission:
+        err_msg = "SubmissionInputFile must be associated with a submission."
+        raise ValueError(err_msg)
+    if not getattr(submission, "org_id", None):
+        err_msg = "Submission must be associated with an organization."
+        raise ValueError(err_msg)
+    if not filename:
+        err_msg = "Filename must be provided for upload path generation."
+        raise ValueError(err_msg)
+
+    org_part = f"o{submission.org_id}"
+    proj_slug = submission.project.slug if submission.project_id else "none"
+    proj_part = f"p{proj_slug[:16]}"
+    user_part = f"u{submission.user_id}" if submission.user_id else "uanon"
+    date_part = now().strftime("%Y%m%d")
+    port_part = slugify(getattr(instance, "port_key", "") or "port")[:40] or "port"
+
+    name_path = Path(filename)
+    ext = name_path.suffix.lower()
+    safe_stem = slugify(name_path.stem)[:50] or "file"
+    safe_name = f"{safe_stem}{ext}"
+
+    unique = uuid.uuid4().hex[:12]
+    return (
+        f"submissions/{org_part}/{proj_part}/{user_part}/{date_part}/"
+        f"ports/{port_part}/{unique}_{safe_name}"
+    )
+
+
 class Submission(TimeStampedModel):
     """
     The actual content sent by a user for validation.
@@ -614,6 +650,9 @@ class Submission(TimeStampedModel):
                 )
                 raise
 
+        for port_file in self.input_files.all():
+            port_file.purge_file()
+
         # Clear content
         self.content = ""
         self.input_file = None
@@ -630,6 +669,165 @@ class Submission(TimeStampedModel):
                 "retention_policy": self.retention_policy,
             },
         )
+
+
+class SubmissionInputFile(TimeStampedModel):
+    """Additional file supplied for a declared artifact input port.
+
+    ``Submission`` keeps the historical single primary payload/file contract.
+    This model stores extra submitted files, such as an EnergyPlus EPW weather
+    file, that populate explicit workflow artifact ports at launch time.
+    """
+
+    submission = models.ForeignKey(
+        Submission,
+        on_delete=models.CASCADE,
+        related_name="input_files",
+    )
+    workflow_step = models.ForeignKey(
+        "workflows.WorkflowStep",
+        on_delete=models.SET_NULL,
+        related_name="+",
+        null=True,
+        blank=True,
+        help_text=_("Workflow step whose artifact port consumes this file."),
+    )
+    port_key = models.SlugField(
+        max_length=255,
+        help_text=_("Artifact input port this submitted file satisfies."),
+    )
+    input_file = models.FileField(
+        upload_to=submission_port_file_upload_to,
+        null=True,
+        blank=True,
+        help_text=_("Submitted file for a workflow artifact input port."),
+    )
+    original_filename = models.CharField(max_length=512, blank=True, default="")
+    content_type = models.CharField(max_length=255, blank=True, default="")
+    size_bytes = models.BigIntegerField(default=0)
+    checksum_sha256 = models.CharField(max_length=64, blank=True, default="")
+    file_purged_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_("When this port file was purged for retention."),
+    )
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["submission", "workflow_step", "port_key"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["submission", "workflow_step", "port_key"],
+                name="uniq_submission_step_port_file",
+            ),
+        ]
+        ordering = ["submission_id", "workflow_step_id", "port_key"]
+
+    def set_file(self, *, uploaded_file: UploadedFile | File, filename: str | None):
+        """Store one uploaded artifact-port file without saving the model."""
+
+        final_name = filename or getattr(uploaded_file, "name", "") or "upload"
+        final_name = Path(final_name).name
+        with contextlib.suppress(Exception):
+            uploaded_file.seek(0)
+
+        if self.input_file:
+            with contextlib.suppress(Exception):
+                self.input_file.delete(save=False)
+
+        self.input_file.save(final_name, uploaded_file, save=False)
+        self.original_filename = final_name
+        self.content_type = getattr(uploaded_file, "content_type", "") or ""
+        self.size_bytes = getattr(uploaded_file, "size", 0)
+        if not self.size_bytes:
+            with contextlib.suppress(Exception):
+                self.size_bytes = self.input_file.size or 0
+        self.checksum_sha256 = ""
+        self.file_purged_at = None
+
+    @property
+    def materialized_filename(self) -> str:
+        """Return a flat, safe filename for per-run materialization."""
+
+        name = Path(self.original_filename or self.input_file.name or "input").name
+        path = Path(name)
+        ext = path.suffix.lower()
+        stem = slugify(path.stem)[:50] or slugify(self.port_key) or "input"
+        port = slugify(self.port_key)[:40] or "port"
+        return f"{port}-{stem}{ext}"
+
+    def read_bytes(self) -> bytes:
+        """Read the stored port file as bytes."""
+
+        if not self.input_file:
+            return b""
+        with self.input_file.open("rb") as fh:
+            with contextlib.suppress(Exception):
+                fh.seek(0)
+            data = fh.read()
+        return data if isinstance(data, bytes) else str(data).encode("utf-8")
+
+    def purge_file(self) -> None:
+        """Delete the stored file while preserving metadata for audit."""
+
+        if self.file_purged_at:
+            return
+        if self.input_file:
+            try:
+                self.input_file.delete(save=False)
+            except Exception:
+                logger.exception(
+                    "Failed to delete submission port file",
+                    extra={
+                        "id": str(self.id),
+                        "submission_id": str(self.submission_id),
+                    },
+                )
+                raise
+        self.input_file = None
+        self.file_purged_at = now()
+        self.save(update_fields=["input_file", "file_purged_at", "modified"])
+
+    def clean(self, *args, **kwargs):
+        errors = {}
+        if (
+            self.submission_id
+            and self.workflow_step_id
+            and self.workflow_step.workflow_id != self.submission.workflow_id
+        ):
+            errors["workflow_step"] = _(
+                "Workflow step must belong to the submission workflow."
+            )
+        if errors:
+            raise ValidationError(errors)
+        super().clean()
+
+    def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        if self.input_file and not self.checksum_sha256:
+            try:
+                self.checksum_sha256 = self.submission._compute_checksum_filelike(
+                    self.input_file,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to compute submitted port-file checksum",
+                    extra={
+                        "id": str(self.id),
+                        "submission_id": str(self.submission_id),
+                    },
+                )
+            else:
+                if update_fields is not None:
+                    kwargs["update_fields"] = set(update_fields) | {
+                        "checksum_sha256",
+                    }
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.submission_id}:{self.port_key}:{self.original_filename}"
 
 
 def _delete_run_files(run) -> None:

@@ -44,6 +44,9 @@ from validibot.validations.services.cloud_run.job_client import run_validator_jo
 from validibot.validations.services.image_policy import ValidatorBackendImagePolicy
 from validibot.validations.services.image_policy import enforce_image_policy
 from validibot.validations.services.image_policy import get_current_policy
+from validibot.validations.services.submission_file_ports import (
+    upload_submitted_input_files_to_gcs,
+)
 from validibot.validations.validators.base import ValidationIssue
 from validibot.validations.validators.base import ValidationResult
 from validibot.validations.validators.base.config import get_config
@@ -410,12 +413,20 @@ def launch_energyplus_validation(
         # 4. Build typed input envelope. The shared builder resolves declared
         # file ports when present and falls back to the historical
         # primary_file_uri/resource_files path for unsynced dev rows.
+        input_file_uris = {"primary_file_uri": model_file_uri}
+        input_file_uris.update(
+            upload_submitted_input_files_to_gcs(
+                submission=submission,
+                step=step,
+                execution_bundle_uri=execution_bundle_uri,
+            )
+        )
         envelope = build_input_envelope(
             run=run,
             callback_url=callback_url,
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
-            input_file_uris={"primary_file_uri": model_file_uri},
+            input_file_uris=input_file_uris,
         )
 
         # 5. Upload envelope to GCS

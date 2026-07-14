@@ -21,6 +21,7 @@ from validibot.submissions.constants import SubmissionRetention
 from validibot.submissions.ingest import prepare_inline_text
 from validibot.submissions.ingest import prepare_uploaded_file
 from validibot.submissions.models import Submission
+from validibot.submissions.models import SubmissionInputFile
 from validibot.users.models import User
 from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import ValidationRunSource
@@ -35,6 +36,9 @@ from validibot.workflows.models import Workflow
 from validibot.workflows.request_utils import SubmissionRequestMode
 from validibot.workflows.request_utils import detect_mode
 from validibot.workflows.request_utils import extract_request_basics
+from validibot.workflows.services.submitted_file_ports import (
+    submitted_file_port_requirements,
+)
 from validibot.workflows.views_helpers import describe_workflow_file_type_violation
 from validibot.workflows.views_helpers import resolve_submission_file_type
 
@@ -707,6 +711,21 @@ def build_submission_from_form(
     with transaction.atomic():
         submission.full_clean()
         submission.save()
+        for req in submitted_file_port_requirements(workflow):
+            uploaded = cleaned_data.get(req.field_name)
+            if not uploaded:
+                continue
+            port_file = SubmissionInputFile(
+                submission=submission,
+                workflow_step_id=req.workflow_step_id,
+                port_key=req.port_key,
+            )
+            port_file.set_file(
+                uploaded_file=uploaded,
+                filename=getattr(uploaded, "name", "") or req.label,
+            )
+            port_file.full_clean()
+            port_file.save()
     return SubmissionBuild(submission=submission, metadata=metadata, extra=run_kwargs)
 
 

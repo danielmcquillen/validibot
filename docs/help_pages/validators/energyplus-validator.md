@@ -115,6 +115,10 @@ peak_electric_demand_w < 500000.0
 
 The EnergyPlus Validator accepts IDF (Input Data File) and epJSON files.
 
+EnergyPlus also needs an EPW weather file. Workflow authors can configure the
+weather file as a workflow resource, or they can set the Weather File source to
+Submitted file so the launch page asks for an EPW alongside the model upload.
+
 ---
 
 ## Template support

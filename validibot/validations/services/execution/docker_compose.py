@@ -483,6 +483,18 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         from validibot.validations.constants import ValidationType
         from validibot.validations.services.run_workspace import ResourceFileSpec
         from validibot.validations.services.run_workspace import RunWorkspaceBuilder
+        from validibot.validations.services.submission_file_ports import (
+            port_key_from_submitted_file_resource_id,
+        )
+        from validibot.validations.services.submission_file_ports import (
+            submitted_file_resource_id,
+        )
+        from validibot.validations.services.submission_file_ports import (
+            submitted_file_source_path,
+        )
+        from validibot.validations.services.submission_file_ports import (
+            submitted_input_files_for_step,
+        )
         from validibot.workflows.models import WorkflowStepResource
 
         step = request.run.current_step_run.workflow_step
@@ -536,6 +548,15 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             ):
                 fmu_resource_id = resource_id
 
+        for port_file in submitted_input_files_for_step(request.submission, step):
+            resource_specs.append(
+                ResourceFileSpec(
+                    filename=port_file.materialized_filename,
+                    source_path=submitted_file_source_path(port_file),
+                    resource_id=submitted_file_resource_id(port_file.port_key),
+                ),
+            )
+
         # NOTE: Schematron needs no workspace staging here — the author's
         # rules travel INLINE in the typed envelope (SchematronInputs.
         # schematron_text, resolved from the step's ruleset by the envelope
@@ -568,6 +589,13 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         input_file_uris: dict[str, str] = {
             "primary_file_uri": workspace.primary_file.container_uri,
         }
+
+        for materialized in workspace.resource_files:
+            port_key = port_key_from_submitted_file_resource_id(
+                materialized.resource_id,
+            )
+            if port_key:
+                input_file_uris[port_key] = materialized.container_uri
 
         if fmu_resource_id is not None:
             fmu_container_uri = next(

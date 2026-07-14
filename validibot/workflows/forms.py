@@ -16,6 +16,7 @@ from crispy_forms.layout import Field
 from crispy_forms.layout import Layout
 from crispy_forms.layout import Row
 from django import forms
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.template.defaultfilters import filesizeformat
 from django.template.loader import render_to_string
@@ -62,6 +63,10 @@ from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowPublicInfo
 from validibot.workflows.models import WorkflowSignalMapping
+from validibot.workflows.services.submitted_file_ports import (
+    submitted_file_port_requirements,
+)
+from validibot.workflows.services.submitted_file_ports import uploaded_file_extension
 
 if TYPE_CHECKING:
     from validibot.users.models import User
@@ -1647,6 +1652,10 @@ class WorkflowLaunchForm(forms.Form):
         self.workflow = workflow
         self.user = user
         super().__init__(*args, **kwargs)
+        self.submitted_file_port_requirements = submitted_file_port_requirements(
+            workflow,
+        )
+        self._configure_submitted_file_port_fields()
         self._apply_bootstrap_styles()
         self.single_file_type_label: str | None = None
         self._configure_file_type_field()
@@ -1693,6 +1702,33 @@ class WorkflowLaunchForm(forms.Form):
             if name in {"filename", "metadata", "short_description"}:
                 widget.attrs["data-launch-extra-field"] = name
 
+    @property
+    def submitted_file_port_bound_fields(self):
+        """Bound fields for extra submitted artifact-port uploads."""
+
+        return [
+            self[req.field_name]
+            for req in getattr(self, "submitted_file_port_requirements", [])
+        ]
+
+    def _configure_submitted_file_port_fields(self) -> None:
+        """Add upload fields for non-primary submitted artifact ports."""
+
+        for req in self.submitted_file_port_requirements:
+            help_text = _("Upload the %(label)s used by %(step)s.") % {
+                "label": req.label,
+                "step": req.workflow_step_name,
+            }
+            if req.accepted_extensions:
+                help_text = f"{help_text} " + _(
+                    "Accepted extensions: %(extensions)s."
+                ) % {"extensions": req.accepted_extensions_display}
+            self.fields[req.field_name] = forms.FileField(
+                label=req.label,
+                required=False,
+                help_text=help_text,
+            )
+
     def clean(self):
         cleaned = super().clean()
         payload = (cleaned.get("payload") or "").strip()
@@ -1736,6 +1772,38 @@ class WorkflowLaunchForm(forms.Form):
                     )
                     % {"ext": ext, "allowed": ext_list},
                 )
+
+        for req in self.submitted_file_port_requirements:
+            uploaded = cleaned.get(req.field_name)
+            if req.required and not uploaded:
+                self.add_error(
+                    req.field_name,
+                    _("%(label)s is required for this workflow.")
+                    % {"label": req.label},
+                )
+                continue
+            if uploaded and getattr(uploaded, "size", 0) > int(
+                settings.SUBMISSION_FILE_MAX_BYTES
+            ):
+                self.add_error(
+                    req.field_name,
+                    _("File too large."),
+                )
+                continue
+            if uploaded and req.accepted_extensions:
+                ext = uploaded_file_extension(uploaded)
+                if ext not in req.accepted_extensions:
+                    self.add_error(
+                        req.field_name,
+                        _(
+                            "File extension '.%(ext)s' is not allowed. "
+                            "Accepted extensions: %(allowed)s"
+                        )
+                        % {
+                            "ext": ext or "",
+                            "allowed": req.accepted_extensions_display,
+                        },
+                    )
 
         cleaned["payload"] = payload
 

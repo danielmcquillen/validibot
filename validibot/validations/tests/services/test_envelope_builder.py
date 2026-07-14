@@ -570,6 +570,50 @@ class TestEnergyPlusFilePortMaterialization:
                 },
             )
 
+    def test_submitted_weather_file_materializes_as_input_file(self):
+        """Submitted EPW files should populate the weather artifact port.
+
+        Managed weather resources stay in ``resource_files``. When the author
+        chooses "Submitted file" for the weather port, the EPW is a launch-time
+        input and must ride in ``input_files`` with the declared port key.
+        """
+        run, step, primary_port, weather_port, _weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="primary_file_uri",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="",
+        )
+
+        envelope = build_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+            input_file_uris={
+                "primary_file_uri": "file:///validibot/input/model.idf",
+                "weather_file": "file:///validibot/input/resources/weather.epw",
+            },
+        )
+
+        assert [item.port_key for item in envelope.input_files] == [
+            "primary_model",
+            "weather_file",
+        ]
+        weather_item = envelope.input_files[1]
+        assert weather_item.role == "weather"
+        assert weather_item.name == "weather.epw"
+        assert weather_item.uri == "file:///validibot/input/resources/weather.epw"
+        assert envelope.resource_files == []
+
 
 # ==============================================================================
 # FMU input bindings

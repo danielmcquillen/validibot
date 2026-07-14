@@ -206,6 +206,13 @@ The file-port contract lives above that envelope rendering. It lets Django
 validate cardinality, choose simple defaults, present a clean UI, and bind a
 future upstream artifact without mutating the original payload.
 
+When a non-primary file port is bound to a submitted file, Django stores it as a
+`SubmissionInputFile` row keyed by workflow step and port. Dispatch then copies
+that file into the run bundle and passes the resulting URI to the envelope
+builder under the port key, for example `{"weather_file": "gs://..."}`. The
+primary submitted payload keeps using the historical `Submission` content/file
+fields and the `primary_file_uri` compatibility key.
+
 Do not make a new validator assume "whatever is in `input_files[0]`" unless
 the declared port contract has exactly one compatible file and the backend
 still validates that assumption defensively.

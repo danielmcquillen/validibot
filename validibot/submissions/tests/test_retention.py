@@ -22,6 +22,7 @@ from django.utils import timezone
 from validibot.submissions.constants import SubmissionRetention
 from validibot.submissions.models import PurgeRetry
 from validibot.submissions.models import Submission
+from validibot.submissions.models import SubmissionInputFile
 from validibot.submissions.models import queue_submission_purge
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.validations.models import ValidationRun
@@ -98,6 +99,36 @@ class TestSubmissionPurgeContent:
         submission.purge_content()
 
         assert submission.is_content_available is False
+
+    def test_purge_content_clears_submitted_port_files(self, tmp_path):
+        """Purging should delete extra artifact-port files too.
+
+        Multi-file EnergyPlus launches can store a submitted EPW alongside the
+        primary model. Retention guarantees apply to both files; otherwise a
+        DO_NOT_STORE submission would still leave launch-time auxiliary inputs
+        behind after purge.
+        """
+        with override_settings(MEDIA_ROOT=str(tmp_path)):
+            submission = SubmissionFactory(content='{"test": "data"}')
+            port_file = SubmissionInputFile(
+                submission=submission,
+                port_key="weather_file",
+            )
+            port_file.set_file(
+                uploaded_file=ContentFile(b"LOCATION,Test Weather"),
+                filename="weather.epw",
+            )
+            port_file.full_clean()
+            port_file.save()
+            checksum = port_file.checksum_sha256
+
+            submission.purge_content()
+            port_file.refresh_from_db()
+
+        assert not port_file.input_file
+        assert port_file.file_purged_at is not None
+        assert port_file.original_filename == "weather.epw"
+        assert port_file.checksum_sha256 == checksum
 
     @patch("validibot.submissions.models._delete_run_files")
     def test_purge_content_deletes_run_files(self, mock_delete):

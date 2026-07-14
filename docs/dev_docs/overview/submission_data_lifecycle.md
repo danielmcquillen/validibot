@@ -12,10 +12,18 @@ Every advanced validation run creates an **execution bundle** — a directory in
 runs/{org_id}/{run_id}/
 ├── input.json           # Input envelope (validator config, file URIs, callback info)
 ├── <submission file>    # Copy of the submission content (see below)
+├── submitted/           # Extra submitted artifact-port files, keyed by port
 └── output.json          # Written by the container after execution
 ```
 
 The submission file name and format depend on the validator type. For example, an EnergyPlus run might contain `model.epjson` or `model.idf`, while an FMU run references the FMU model via URI in the envelope rather than copying it into the bundle. Each validator's launcher determines what gets written here.
+
+Some validators also have declared file ports beyond the primary submission.
+For EnergyPlus, the primary model stays in `Submission.content` /
+`Submission.input_file`, while a launch-time EPW weather upload is stored as a
+`SubmissionInputFile` keyed to the `weather_file` port. Dispatch copies that
+extra file into the execution bundle and passes the bundle URI to the envelope
+builder by port key.
 
 The bundle path uses the org ID prefix for multi-tenant isolation. Both Docker Compose (`file://`) and GCP (`gs://`) backends follow this same structure.
 

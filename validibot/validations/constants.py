@@ -470,6 +470,30 @@ class StepIOMedium(TextChoices):
     ARTIFACT = "artifact", _("Artifact")
 
 
+class EnvelopeChannel(TextChoices):
+    INPUT_FILES = "input_files", _("Input files")
+    RESOURCE_FILES = "resource_files", _("Resource files")
+    OUTPUT_ARTIFACTS = "output_artifacts", _("Output artifacts")
+
+
+class DefaultSourceStrategy(TextChoices):
+    SUBMITTED_FILE_FIRST = "submitted_file_first", _("Submitted file first")
+    SUBMITTED_FILE_THEN_DEFAULT_RESOURCE = (
+        "submitted_file_then_default_resource",
+        _("Submitted file then default resource"),
+    )
+    WORKFLOW_RESOURCE_DEFAULT = (
+        "workflow_resource_default",
+        _("Workflow resource default"),
+    )
+    UPSTREAM_ARTIFACT_SUGGESTION = (
+        "upstream_artifact_suggestion",
+        _("Upstream artifact suggestion"),
+    )
+    MANUAL = "manual", _("Manual")
+    NONE = "none", _("None")
+
+
 class ArtifactKind(TextChoices):
     FILE = "file", _("File")
     DIRECTORY = "directory", _("Directory")

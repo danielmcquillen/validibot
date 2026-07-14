@@ -9,10 +9,13 @@ the container validator populates after running the simulation.
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import ArtifactKind
+from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ComputeTier
+from validibot.validations.constants import DefaultSourceStrategy
+from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import StepIOMedium
@@ -93,20 +96,10 @@ config = ValidatorConfig(
                 "the primary input file. Accepts IDF and epJSON models."
             ),
             binding_config={
-                "source": "input_file",
+                "envelope_channel": EnvelopeChannel.INPUT_FILES,
                 "role": "primary-model",
             },
-            metadata={
-                "accepted_data_formats": [
-                    SubmissionDataFormat.ENERGYPLUS_IDF,
-                    SubmissionDataFormat.ENERGYPLUS_EPJSON,
-                ],
-                "accepted_extensions": ["idf", "epjson", "json"],
-                "accepted_media_types": [
-                    "application/vnd.energyplus.idf",
-                    "application/vnd.energyplus.epjson",
-                ],
-            },
+            metadata={"accepted_extensions": ["idf", "epjson", "json"]},
             is_required=True,
             on_missing="error",
             order=1,
@@ -116,6 +109,21 @@ config = ValidatorConfig(
             artifact_kind=ArtifactKind.FILE,
             media_type="application/vnd.energyplus.idf",
             data_format=SubmissionDataFormat.ENERGYPLUS_IDF,
+            accepted_data_formats=[
+                SubmissionDataFormat.ENERGYPLUS_IDF,
+                SubmissionDataFormat.ENERGYPLUS_EPJSON,
+            ],
+            accepted_media_types=[
+                "application/vnd.energyplus.idf",
+                "application/vnd.energyplus.epjson",
+            ],
+            allowed_source_scopes=[
+                BindingSourceScope.SUBMISSION_FILE,
+                BindingSourceScope.UPSTREAM_ARTIFACT,
+                BindingSourceScope.SIGNAL,
+            ],
+            default_source_strategy=DefaultSourceStrategy.SUBMITTED_FILE_FIRST,
+            envelope_channel=EnvelopeChannel.INPUT_FILES,
             role="primary-model",
             min_items=1,
             max_items=1,
@@ -131,14 +139,10 @@ config = ValidatorConfig(
                 "resource files and passed to the backend as a resource file."
             ),
             binding_config={
-                "source": "resource_file",
-                "type": ResourceFileType.ENERGYPLUS_WEATHER,
+                "envelope_channel": EnvelopeChannel.RESOURCE_FILES,
+                "resource_type": ResourceFileType.ENERGYPLUS_WEATHER,
             },
-            metadata={
-                "accepted_data_formats": [ResourceFileType.ENERGYPLUS_WEATHER],
-                "accepted_extensions": ["epw"],
-                "accepted_media_types": ["application/vnd.energyplus.epw"],
-            },
+            metadata={"accepted_extensions": ["epw"]},
             is_required=True,
             on_missing="error",
             order=2,
@@ -148,6 +152,18 @@ config = ValidatorConfig(
             artifact_kind=ArtifactKind.FILE,
             media_type="application/vnd.energyplus.epw",
             data_format=ResourceFileType.ENERGYPLUS_WEATHER,
+            accepted_data_formats=[ResourceFileType.ENERGYPLUS_WEATHER],
+            accepted_media_types=["application/vnd.energyplus.epw"],
+            allowed_source_scopes=[
+                BindingSourceScope.WORKFLOW_RESOURCE,
+                BindingSourceScope.SUBMISSION_FILE,
+                BindingSourceScope.UPSTREAM_ARTIFACT,
+            ],
+            default_source_strategy=(
+                DefaultSourceStrategy.SUBMITTED_FILE_THEN_DEFAULT_RESOURCE
+            ),
+            envelope_channel=EnvelopeChannel.RESOURCE_FILES,
+            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
             role="weather",
             min_items=1,
             max_items=1,

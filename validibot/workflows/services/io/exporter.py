@@ -195,8 +195,10 @@ def _export_signal_definitions(step: WorkflowStep) -> list[dict[str, Any]]:
         row = {
             field: getattr(signal, field) for field in schema.SIGNAL_DEFINITION_FIELDS
         }
-        for json_field in schema.SIGNAL_DEFINITION_JSON_FIELDS:
+        for json_field in schema.SIGNAL_DEFINITION_JSON_DICT_FIELDS:
             row[json_field] = deepcopy(getattr(signal, json_field)) or {}
+        for json_field in schema.SIGNAL_DEFINITION_JSON_LIST_FIELDS:
+            row[json_field] = deepcopy(getattr(signal, json_field)) or []
         rows.append(row)
     return rows
 

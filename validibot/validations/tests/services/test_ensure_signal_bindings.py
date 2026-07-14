@@ -17,8 +17,10 @@ from django.core.management import call_command
 from django.test import TestCase
 
 from validibot.validations.constants import BindingSourceScope
+from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.models import StepInputBinding
 from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
@@ -115,6 +117,61 @@ class TestEnsureStepInputBindings(TestCase):
         # values directly, so author-supplied source paths don't apply.
         self.assertEqual(signal.source_kind, "internal")
         self.assertFalse(signal.is_path_editable)
+
+    def test_artifact_input_uses_submission_file_scope_by_default(self):
+        """Artifact ports should not be wired as payload-path value inputs."""
+        validator = ValidatorFactory()
+        sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="primary_model",
+            direction=SignalDirection.INPUT,
+            origin_kind=SignalOriginKind.CATALOG,
+            data_type=CatalogValueType.ARTIFACT_REF,
+            io_medium=StepIOMedium.ARTIFACT,
+            role="primary-model",
+            min_items=1,
+            max_items=1,
+        )
+        step = WorkflowStepFactory(validator=validator)
+
+        count = ensure_step_signal_bindings(step)
+
+        self.assertEqual(count, 1)
+        binding = StepInputBinding.objects.get(
+            workflow_step=step,
+            signal_definition=sig,
+        )
+        self.assertEqual(binding.source_scope, BindingSourceScope.SUBMISSION_FILE)
+        self.assertEqual(binding.source_data_path, "primary-model")
+        self.assertTrue(binding.is_required)
+
+    def test_resource_artifact_input_uses_workflow_resource_scope_by_default(self):
+        """Resource-backed artifact ports should bind to workflow resources."""
+        validator = ValidatorFactory()
+        sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="weather_file",
+            direction=SignalDirection.INPUT,
+            origin_kind=SignalOriginKind.CATALOG,
+            data_type=CatalogValueType.ARTIFACT_REF,
+            io_medium=StepIOMedium.ARTIFACT,
+            role="weather",
+            resource_type="energyplus_weather",
+            min_items=1,
+            max_items=1,
+        )
+        step = WorkflowStepFactory(validator=validator)
+
+        count = ensure_step_signal_bindings(step)
+
+        self.assertEqual(count, 1)
+        binding = StepInputBinding.objects.get(
+            workflow_step=step,
+            signal_definition=sig,
+        )
+        self.assertEqual(binding.source_scope, BindingSourceScope.WORKFLOW_RESOURCE)
+        self.assertEqual(binding.source_data_path, "energyplus_weather")
+        self.assertTrue(binding.is_required)
 
 
 # ── Filtering: only the right signals get bindings ───────────────────

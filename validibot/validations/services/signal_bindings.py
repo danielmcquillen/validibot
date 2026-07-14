@@ -13,8 +13,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.models import StepInputBinding
 from validibot.validations.models import StepIODefinition
 from validibot.validations.services.catalog_entry_normalization import (
@@ -87,14 +89,17 @@ def ensure_step_signal_bindings(step: WorkflowStep) -> int:
         if entry and (entry.binding_config or {}).get("source") == "parser":
             continue
 
-        fallback_path = ""
-        if entry:
+        if sig.io_medium == StepIOMedium.ARTIFACT:
+            defaults = _build_artifact_binding_defaults(sig)
+        elif entry:
+            fallback_path = ""
             defaults = build_step_binding_defaults_from_mapping(
                 entry.binding_config,
                 fallback_path=fallback_path,
                 default_required=entry.is_required,
             )
         else:
+            fallback_path = ""
             defaults = build_step_binding_defaults_from_mapping(
                 sig.provider_binding,
                 fallback_path=fallback_path,
@@ -145,4 +150,22 @@ def _build_validator_catalog_entry_map(
         (entry.slug, entry.run_stage): entry
         for entry in cfg.catalog_entries
         if entry.entry_type == "signal"
+    }
+
+
+def _build_artifact_binding_defaults(sig: StepIODefinition) -> dict[str, object]:
+    """Return default binding values for a declared artifact input port."""
+
+    if sig.resource_type:
+        source_scope = BindingSourceScope.WORKFLOW_RESOURCE
+        source_data_path = sig.resource_type
+    else:
+        source_scope = BindingSourceScope.SUBMISSION_FILE
+        source_data_path = sig.role or sig.contract_key
+
+    return {
+        "source_scope": source_scope,
+        "source_data_path": source_data_path,
+        "default_value": None,
+        "is_required": sig.min_items > 0,
     }

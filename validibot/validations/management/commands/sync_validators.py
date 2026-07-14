@@ -229,6 +229,14 @@ class Command(BaseCommand):
                                 "artifact_kind": entry.artifact_kind,
                                 "media_type": entry.media_type,
                                 "data_format": entry.data_format,
+                                "accepted_data_formats": entry.accepted_data_formats,
+                                "accepted_media_types": entry.accepted_media_types,
+                                "allowed_source_scopes": entry.allowed_source_scopes,
+                                "default_source_strategy": (
+                                    entry.default_source_strategy
+                                ),
+                                "envelope_channel": entry.envelope_channel,
+                                "resource_type": entry.resource_type,
                                 "role": entry.role,
                                 "is_collection": entry.is_collection,
                                 "min_items": entry.min_items,

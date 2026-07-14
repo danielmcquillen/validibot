@@ -19,16 +19,28 @@ instances (not hand-rolled mocks), ensuring the builder correctly handles
 UUID fields, validation type normalization, and other real model behavior.
 """
 
+from types import SimpleNamespace
+
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
 from validibot_shared.validations.envelopes import ResourceFileItem
+from validibot_shared.validations.envelopes import ValidationArtifact
 from validibot_shared.validations.envelopes import ValidatorType
 
 from validibot.submissions.tests.factories import SubmissionFactory
+from validibot.validations.constants import ArtifactKind
+from validibot.validations.constants import BindingSourceScope
+from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import EnvelopeChannel
+from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationType
+from validibot.validations.services.artifacts import register_output_artifacts
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,
 )
@@ -40,6 +52,7 @@ from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.tests.factories import ValidatorResourceFileFactory
 from validibot.workflows.models import WorkflowStepResource
 from validibot.workflows.tests.factories import WorkflowStepFactory
 from validibot.workflows.tests.factories import WorkflowStepResourceFactory
@@ -123,6 +136,89 @@ def _build_fmu_run(*, submission_content: str = "{}"):
         step_order=step.order,
     )
     return run, step
+
+
+def _build_energyplus_file_port_run():
+    """Create an EnergyPlus run with declared model/weather artifact ports.
+
+    The helper mirrors the post-``sync_validators`` shape: file ports are
+    validator-owned ``StepIODefinition`` rows and per-step bindings decide where
+    each file comes from.
+    """
+    validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
+    step = WorkflowStepFactory(
+        validator=validator,
+        name="Run Simulation",
+        config={"timestep_per_hour": 6},
+    )
+    submission = SubmissionFactory(
+        workflow=step.workflow,
+        org=step.workflow.org,
+        content="Version,25.1;",
+    )
+    run = ValidationRunFactory(
+        workflow=step.workflow,
+        org=step.workflow.org,
+        submission=submission,
+    )
+    ValidationStepRunFactory(
+        validation_run=run,
+        workflow_step=step,
+        step_order=step.order,
+        status=StepStatus.PENDING,
+    )
+
+    primary_port = StepIODefinitionFactory(
+        validator=validator,
+        workflow_step=None,
+        contract_key="primary_model",
+        native_name="primary_model",
+        direction=SignalDirection.INPUT,
+        origin_kind=SignalOriginKind.CATALOG,
+        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        io_medium=StepIOMedium.ARTIFACT,
+        artifact_kind=ArtifactKind.FILE,
+        envelope_channel=EnvelopeChannel.INPUT_FILES,
+        role="primary-model",
+        min_items=1,
+        max_items=1,
+        allowed_source_scopes=[
+            BindingSourceScope.SUBMISSION_FILE,
+            BindingSourceScope.UPSTREAM_ARTIFACT,
+        ],
+    )
+    weather_port = StepIODefinitionFactory(
+        validator=validator,
+        workflow_step=None,
+        contract_key="weather_file",
+        native_name="weather_file",
+        direction=SignalDirection.INPUT,
+        origin_kind=SignalOriginKind.CATALOG,
+        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        io_medium=StepIOMedium.ARTIFACT,
+        artifact_kind=ArtifactKind.FILE,
+        envelope_channel=EnvelopeChannel.RESOURCE_FILES,
+        resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+        role="weather",
+        min_items=1,
+        max_items=1,
+        allowed_source_scopes=[
+            BindingSourceScope.WORKFLOW_RESOURCE,
+            BindingSourceScope.SUBMISSION_FILE,
+            BindingSourceScope.UPSTREAM_ARTIFACT,
+        ],
+    )
+    weather_resource = WorkflowStepResourceFactory(
+        step=step,
+        role=WorkflowStepResource.WEATHER_FILE,
+        validator_resource_file=ValidatorResourceFileFactory(
+            validator=validator,
+            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+        ),
+    )
+    return run, step, primary_port, weather_port, weather_resource
 
 
 # ==============================================================================
@@ -316,6 +412,163 @@ class TestMultipleResourceFiles:
         assert len(envelope.resource_files) == 2  # noqa: PLR2004
         assert envelope.resource_files[0].type == "energyplus_weather"
         assert envelope.resource_files[1].type == "energyplus_library"
+
+
+# ==============================================================================
+# EnergyPlus file-port materialization
+# ==============================================================================
+# Declared artifact ports are the workflow-engine contract; the backend envelope
+# remains the wire protocol.  These tests prove that the launch builder bridges
+# those layers without reintroducing hard-coded config-only file handling.
+# ==============================================================================
+
+
+class TestEnergyPlusFilePortMaterialization:
+    """Tests for declared EnergyPlus artifact ports in ``build_input_envelope()``."""
+
+    def test_submitted_model_and_workflow_weather_resource_materialize(self):
+        """Default file-port bindings should produce backend envelope items.
+
+        The primary model is a submitted runtime file and the weather file is a
+        workflow resource.  The envelope keeps the existing backend shape while
+        adding ``port_key`` so the item is traceable to the declared contract.
+        """
+        run, _step, primary_port, weather_port, weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        StepInputBindingFactory(
+            workflow_step=_step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="primary_file_uri",
+        )
+        StepInputBindingFactory(
+            workflow_step=_step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+
+        envelope = build_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+            input_file_uris={
+                "primary_file_uri": "file:///validibot/input/model.idf",
+            },
+            resource_uri_overrides={
+                str(weather_resource.validator_resource_file_id): (
+                    "file:///validibot/input/resources/weather.epw"
+                ),
+            },
+        )
+
+        assert len(envelope.input_files) == 1
+        assert envelope.input_files[0].port_key == "primary_model"
+        assert envelope.input_files[0].role == "primary-model"
+        assert envelope.input_files[0].uri == "file:///validibot/input/model.idf"
+        assert len(envelope.resource_files) == 1
+        assert envelope.resource_files[0].port_key == "weather_file"
+        assert envelope.resource_files[0].type == ResourceFileType.ENERGYPLUS_WEATHER
+        assert envelope.resource_files[0].uri.endswith("/weather.epw")
+        assert envelope.inputs.timestep_per_hour == 6  # noqa: PLR2004
+
+    def test_upstream_model_artifact_materializes_as_primary_input_file(self):
+        """An upstream ArtifactRef can satisfy the primary model file port.
+
+        This guards the handoff between artifact references and file-port
+        materialization, which is the core compatibility point with the
+        cross-step data binding ADR.
+        """
+        run, step, primary_port, weather_port, weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        upstream_step = WorkflowStepFactory(
+            workflow=step.workflow,
+            name="Build Model",
+            order=step.order - 5,
+        )
+        upstream_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=upstream_step,
+            step_order=upstream_step.order,
+            status=StepStatus.PASSED,
+        )
+        register_output_artifacts(
+            step_run=upstream_run,
+            output_envelope=SimpleNamespace(
+                artifacts=[
+                    ValidationArtifact(
+                        name="model.epjson",
+                        type="generated-model",
+                        mime_type="application/json",
+                        uri="gs://validibot/runs/run-1/model.epjson",
+                        size_bytes=456,
+                    ),
+                ],
+                raw_outputs=None,
+            ),
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
+            source_data_path=f"{upstream_step.step_key}.generated_model",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+
+        envelope = build_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+            resource_uri_overrides={
+                str(weather_resource.validator_resource_file_id): (
+                    "file:///validibot/input/resources/weather.epw"
+                ),
+            },
+        )
+
+        assert envelope.input_files[0].port_key == "primary_model"
+        assert envelope.input_files[0].name == "model.epjson"
+        assert envelope.input_files[0].uri == "gs://validibot/runs/run-1/model.epjson"
+        assert envelope.resource_files[0].port_key == "weather_file"
+
+    def test_missing_weather_resource_fails_with_port_specific_error(self):
+        """A declared weather port should fail before launching without a file."""
+        run, step, primary_port, weather_port, weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        weather_resource.delete()
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="primary_file_uri",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+
+        with pytest.raises(ValueError, match="weather_file"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+                input_file_uris={
+                    "primary_file_uri": "file:///validibot/input/model.idf",
+                },
+            )
 
 
 # ==============================================================================

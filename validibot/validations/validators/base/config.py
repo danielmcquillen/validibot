@@ -73,6 +73,12 @@ class CatalogEntrySpec(BaseModel):
     artifact_kind: str = ""
     media_type: str = ""
     data_format: str = ""
+    accepted_data_formats: list[str] = Field(default_factory=list)
+    accepted_media_types: list[str] = Field(default_factory=list)
+    allowed_source_scopes: list[str] = Field(default_factory=list)
+    default_source_strategy: str = "none"
+    envelope_channel: str = ""
+    resource_type: str = ""
     role: str = ""
     is_collection: bool = False
     min_items: int = 0

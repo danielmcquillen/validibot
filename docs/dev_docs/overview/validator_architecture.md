@@ -58,11 +58,19 @@ class InputFileItem(BaseModel):
     uri: str                     # Where to download the file
     mime_type: str               # MIME type for format detection
     role: str                    # Semantic role (e.g., "primary-model", "weather")
+    port_key: str | None         # Declared Validibot file port, if any
+
+class ResourceFileItem(BaseModel):
+    """An auxiliary resource file needed by the validator."""
+    id: str                      # Resource UUID
+    type: str                    # Resource type (e.g., "energyplus_weather")
+    uri: str                     # Where to download the resource
+    port_key: str | None         # Declared Validibot file port, if any
 
 class ValidatorInfo(BaseModel):
     """Information about the validator being run."""
     id: str                      # Validator UUID
-    type: str                    # Validator type (e.g., "energyplus", "fmu")
+    type: str                    # Validator type (e.g., "ENERGYPLUS", "FMU")
     version: str                 # Validator version
 
 class ExecutionContext(BaseModel):
@@ -76,6 +84,7 @@ class ValidationInputEnvelope(BaseModel):
     """Base input envelope - extend for your validator."""
     run_id: str                  # Validation run UUID
     input_files: list[InputFileItem]
+    resource_files: list[ResourceFileItem]
     validator: ValidatorInfo
     context: ExecutionContext
 ```
@@ -113,7 +122,7 @@ class FMUInputEnvelope(ValidationInputEnvelope):
   "run_id": "550e8400-e29b-41d4-a716-446655440000",
   "validator": {
     "id": "123e4567-e89b-12d3-a456-426614174000",
-    "type": "energyplus",
+    "type": "ENERGYPLUS",
     "version": "24.2.0"
   },
   "input_files": [
@@ -121,13 +130,16 @@ class FMUInputEnvelope(ValidationInputEnvelope):
       "name": "model.idf",
       "uri": "file:///data/files/model.idf",
       "mime_type": "application/vnd.energyplus.idf",
-      "role": "primary-model"
-    },
+      "role": "primary-model",
+      "port_key": "primary_model"
+    }
+  ],
+  "resource_files": [
     {
-      "name": "weather.epw",
+      "id": "weather-resource-uuid",
+      "type": "energyplus_weather",
       "uri": "file:///data/files/weather.epw",
-      "mime_type": "application/vnd.energyplus.epw",
-      "role": "weather"
+      "port_key": "weather_file"
     }
   ],
   "inputs": {
@@ -263,7 +275,7 @@ class EnergyPlusOutputEnvelope(ValidationOutputEnvelope):
   "run_id": "550e8400-e29b-41d4-a716-446655440000",
   "validator": {
     "id": "123e4567-e89b-12d3-a456-426614174000",
-    "type": "energyplus",
+    "type": "ENERGYPLUS",
     "version": "24.2.0"
   },
   "status": "success",

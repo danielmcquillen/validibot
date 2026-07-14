@@ -42,10 +42,16 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.constants import SubmissionRetention
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
+from validibot.validations.constants import ArtifactKind
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
+from validibot.validations.constants import BindingSourceScope
+from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import DefaultSourceStrategy
+from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import DerivationFactory
 from validibot.validations.tests.factories import RulesetAssertionFactory
@@ -69,6 +75,8 @@ from validibot.workflows.version_utils import compare_workflow_versions
 from validibot.workflows.version_utils import parse_workflow_version
 
 pytestmark = pytest.mark.django_db
+
+EXPECTED_CONTRACT_TREE_SIGNAL_DEFINITIONS = 2
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -624,6 +632,25 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             contract_key="shacl_total_count",
             direction=SignalDirection.OUTPUT,
         )
+        StepIODefinitionFactory(
+            validator=None,
+            workflow_step=step,
+            contract_key="validation_report",
+            direction=SignalDirection.OUTPUT,
+            data_type=CatalogValueType.ARTIFACT_REF,
+            io_medium=StepIOMedium.ARTIFACT,
+            artifact_kind=ArtifactKind.REPORT,
+            media_type="text/html",
+            data_format="html",
+            accepted_data_formats=["html"],
+            accepted_media_types=["text/html"],
+            allowed_source_scopes=[BindingSourceScope.UPSTREAM_ARTIFACT],
+            default_source_strategy=DefaultSourceStrategy.MANUAL,
+            envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
+            role="report",
+            min_items=1,
+            max_items=1,
+        )
         StepInputBindingFactory(
             workflow_step=step,
             signal_definition=signal,
@@ -650,11 +677,21 @@ class WorkflowVersioningServiceCloneTests(TestCase):
         new_workflow = Workflow.objects.get(pk=report.new_workflow_id)
         new_step = new_workflow.steps.get()
         new_signal = new_step.signal_definitions.get(contract_key="shacl_total_count")
+        new_artifact_signal = new_step.signal_definitions.get(
+            contract_key="validation_report",
+        )
         new_assertion = new_step.ruleset.assertions.get()
 
         assert new_step.pk != step.pk
         assert new_step.ruleset_id != ruleset.pk
         assert new_signal.pk != signal.pk
+        assert new_artifact_signal.io_medium == StepIOMedium.ARTIFACT
+        assert new_artifact_signal.artifact_kind == ArtifactKind.REPORT
+        assert new_artifact_signal.envelope_channel == EnvelopeChannel.OUTPUT_ARTIFACTS
+        assert new_artifact_signal.accepted_data_formats == ["html"]
+        assert new_artifact_signal.allowed_source_scopes == [
+            BindingSourceScope.UPSTREAM_ARTIFACT,
+        ]
         assert new_assertion.target_signal_definition_id == new_signal.pk
         # Author rationale is non-semantic but part of the copied contract, so a
         # new version carries the reasoning forward rather than dropping it.
@@ -663,7 +700,10 @@ class WorkflowVersioningServiceCloneTests(TestCase):
         assert new_step.derivations.get(contract_key="has_findings").pk is not None
         assert report.components_copied["rulesets"] == 1
         assert report.components_copied["assertions"] == 1
-        assert report.components_copied["signal_definitions"] == 1
+        assert (
+            report.components_copied["signal_definitions"]
+            == EXPECTED_CONTRACT_TREE_SIGNAL_DEFINITIONS
+        )
         assert report.components_copied["signal_bindings"] == 1
         assert report.components_copied["derivations"] == 1
 

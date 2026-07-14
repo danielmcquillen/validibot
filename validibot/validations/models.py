@@ -37,6 +37,8 @@ from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import CustomValidatorType
+from validibot.validations.constants import DefaultSourceStrategy
+from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ExecutionAttemptState
 from validibot.validations.constants import FMUProbeStatus
 from validibot.validations.constants import JSONSchemaVersion
@@ -1916,6 +1918,41 @@ class StepIODefinition(TimeStampedModel):
         blank=True,
         default="",
         help_text="Domain data format for artifact ports.",
+    )
+    accepted_data_formats = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Accepted domain data formats for artifact ports.",
+    )
+    accepted_media_types = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Accepted media/MIME types for artifact ports.",
+    )
+    allowed_source_scopes = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Binding source scopes allowed for artifact ports.",
+    )
+    default_source_strategy = models.CharField(
+        max_length=64,
+        choices=DefaultSourceStrategy.choices,
+        blank=True,
+        default=DefaultSourceStrategy.NONE,
+        help_text="Default source-selection strategy for artifact input ports.",
+    )
+    envelope_channel = models.CharField(
+        max_length=32,
+        choices=EnvelopeChannel.choices,
+        blank=True,
+        default="",
+        help_text="Envelope channel this artifact port renders into.",
+    )
+    resource_type = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="Resource type for artifact ports rendered as resource_files.",
     )
     role = models.CharField(
         max_length=80,

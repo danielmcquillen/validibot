@@ -371,8 +371,10 @@ def _import_signal_definitions(
         for field_name in schema.SIGNAL_DEFINITION_FIELDS:
             if field_name in row:
                 setattr(signal, field_name, row[field_name])
-        for json_field in schema.SIGNAL_DEFINITION_JSON_FIELDS:
+        for json_field in schema.SIGNAL_DEFINITION_JSON_DICT_FIELDS:
             setattr(signal, json_field, deepcopy(row.get(json_field) or {}))
+        for json_field in schema.SIGNAL_DEFINITION_JSON_LIST_FIELDS:
+            setattr(signal, json_field, deepcopy(row.get(json_field) or []))
         signal.full_clean()
         signal.save()
         index[(signal.contract_key, signal.direction)] = signal

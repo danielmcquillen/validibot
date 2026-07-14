@@ -62,6 +62,17 @@ SIGNAL_DEFINITION_FIELDS: tuple[str, ...] = (
     "description",
     "direction",
     "data_type",
+    "io_medium",
+    "artifact_kind",
+    "media_type",
+    "data_format",
+    "default_source_strategy",
+    "envelope_channel",
+    "resource_type",
+    "role",
+    "is_collection",
+    "min_items",
+    "max_items",
     "origin_kind",
     "source_kind",
     "is_path_editable",
@@ -70,7 +81,19 @@ SIGNAL_DEFINITION_FIELDS: tuple[str, ...] = (
     "unit",
     "promoted_signal_name",
 )
-SIGNAL_DEFINITION_JSON_FIELDS: tuple[str, ...] = ("provider_binding", "metadata")
+SIGNAL_DEFINITION_JSON_DICT_FIELDS: tuple[str, ...] = (
+    "provider_binding",
+    "metadata",
+)
+SIGNAL_DEFINITION_JSON_LIST_FIELDS: tuple[str, ...] = (
+    "accepted_data_formats",
+    "accepted_media_types",
+    "allowed_source_scopes",
+)
+SIGNAL_DEFINITION_JSON_FIELDS: tuple[str, ...] = (
+    *SIGNAL_DEFINITION_JSON_DICT_FIELDS,
+    *SIGNAL_DEFINITION_JSON_LIST_FIELDS,
+)
 
 # StepInputBinding fields (signal reference handled separately).
 SIGNAL_BINDING_FIELDS: tuple[str, ...] = (

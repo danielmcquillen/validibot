@@ -31,10 +31,7 @@ from django.utils import timezone
 from validibot.validations.constants import CloudRunJobStatus
 from validibot.validations.constants import Severity
 from validibot.validations.services.cloud_run.envelope_builder import (
-    build_energyplus_input_envelope,
-)
-from validibot.validations.services.cloud_run.envelope_builder import (
-    resolve_step_resources,
+    build_input_envelope,
 )
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope_local
@@ -410,36 +407,15 @@ def launch_energyplus_validation(
         callback_url = build_validation_callback_url()
         callback_id = _callback_id_for_step(current_step_run)
 
-        # 4. Build typed input envelope
-        step_config = step.config or {}
-        timestep_per_hour = step_config.get("timestep_per_hour", 4)
-
-        # Use the WorkflowStepResource.WEATHER_FILE constant rather than a bare
-        # "WEATHER_FILE" string so the launcher stays in sync with the envelope
-        # builder (which consumes the same constant) if the role value ever
-        # changes. Imported locally to match envelope_builder's
-        # cycle-avoidance pattern for workflows.models.
-        from validibot.workflows.models import WorkflowStepResource
-
-        resource_files = resolve_step_resources(
-            step,
-            role=WorkflowStepResource.WEATHER_FILE,
-        )
-
-        envelope = build_energyplus_input_envelope(
-            run_id=run_id,
-            validator=validator,
-            org_id=org_id,
-            org_name=run.org.name,
-            workflow_id=str(run.workflow.id),
-            step_id=str(step.id),
-            step_name=step.name,
-            model_file_uri=model_file_uri,
-            resource_files=resource_files,
+        # 4. Build typed input envelope. The shared builder resolves declared
+        # file ports when present and falls back to the historical
+        # primary_file_uri/resource_files path for unsynced dev rows.
+        envelope = build_input_envelope(
+            run=run,
             callback_url=callback_url,
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
-            timestep_per_hour=timestep_per_hour,
+            input_file_uris={"primary_file_uri": model_file_uri},
         )
 
         # 5. Upload envelope to GCS

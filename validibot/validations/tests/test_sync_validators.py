@@ -15,7 +15,10 @@ from django.test import override_settings
 
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.validations.constants import ArtifactKind
+from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import DefaultSourceStrategy
+from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import StepIOMedium
@@ -195,22 +198,43 @@ class SyncValidatorsCommandTests(TestCase):
         self.assertEqual(primary_model.role, "primary-model")
         self.assertEqual(primary_model.data_format, SubmissionDataFormat.ENERGYPLUS_IDF)
         self.assertEqual(primary_model.media_type, "application/vnd.energyplus.idf")
+        self.assertEqual(primary_model.envelope_channel, EnvelopeChannel.INPUT_FILES)
+        self.assertEqual(primary_model.resource_type, "")
+        self.assertEqual(
+            primary_model.accepted_data_formats,
+            [
+                SubmissionDataFormat.ENERGYPLUS_IDF,
+                SubmissionDataFormat.ENERGYPLUS_EPJSON,
+            ],
+        )
+        self.assertEqual(
+            primary_model.accepted_media_types,
+            [
+                "application/vnd.energyplus.idf",
+                "application/vnd.energyplus.epjson",
+            ],
+        )
+        self.assertEqual(
+            primary_model.allowed_source_scopes,
+            [
+                BindingSourceScope.SUBMISSION_FILE,
+                BindingSourceScope.UPSTREAM_ARTIFACT,
+                BindingSourceScope.SIGNAL,
+            ],
+        )
+        self.assertEqual(
+            primary_model.default_source_strategy,
+            DefaultSourceStrategy.SUBMITTED_FILE_FIRST,
+        )
         self.assertEqual(primary_model.min_items, 1)
         self.assertEqual(primary_model.max_items, 1)
         self.assertFalse(primary_model.is_collection)
         self.assertEqual(
             primary_model.provider_binding,
             {
-                "source": "input_file",
+                "envelope_channel": EnvelopeChannel.INPUT_FILES,
                 "role": "primary-model",
             },
-        )
-        self.assertEqual(
-            primary_model.metadata["accepted_data_formats"],
-            [
-                SubmissionDataFormat.ENERGYPLUS_IDF,
-                SubmissionDataFormat.ENERGYPLUS_EPJSON,
-            ],
         )
 
         weather_file = StepIODefinition.objects.get(
@@ -224,14 +248,39 @@ class SyncValidatorsCommandTests(TestCase):
         self.assertEqual(weather_file.role, "weather")
         self.assertEqual(weather_file.data_format, ResourceFileType.ENERGYPLUS_WEATHER)
         self.assertEqual(weather_file.media_type, "application/vnd.energyplus.epw")
+        self.assertEqual(weather_file.envelope_channel, EnvelopeChannel.RESOURCE_FILES)
+        self.assertEqual(
+            weather_file.resource_type,
+            ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+        self.assertEqual(
+            weather_file.accepted_data_formats,
+            [ResourceFileType.ENERGYPLUS_WEATHER],
+        )
+        self.assertEqual(
+            weather_file.accepted_media_types,
+            ["application/vnd.energyplus.epw"],
+        )
+        self.assertEqual(
+            weather_file.allowed_source_scopes,
+            [
+                BindingSourceScope.WORKFLOW_RESOURCE,
+                BindingSourceScope.SUBMISSION_FILE,
+                BindingSourceScope.UPSTREAM_ARTIFACT,
+            ],
+        )
+        self.assertEqual(
+            weather_file.default_source_strategy,
+            DefaultSourceStrategy.SUBMITTED_FILE_THEN_DEFAULT_RESOURCE,
+        )
         self.assertEqual(weather_file.min_items, 1)
         self.assertEqual(weather_file.max_items, 1)
         self.assertFalse(weather_file.is_collection)
         self.assertEqual(
             weather_file.provider_binding,
             {
-                "source": "resource_file",
-                "type": ResourceFileType.ENERGYPLUS_WEATHER,
+                "envelope_channel": EnvelopeChannel.RESOURCE_FILES,
+                "resource_type": ResourceFileType.ENERGYPLUS_WEATHER,
             },
         )
 
@@ -672,10 +721,34 @@ class DiscoverConfigsTests(TestCase):
             artifact_ports["primary_model"].data_format,
             SubmissionDataFormat.ENERGYPLUS_IDF,
         )
+        self.assertEqual(
+            artifact_ports["primary_model"].envelope_channel,
+            EnvelopeChannel.INPUT_FILES,
+        )
+        self.assertEqual(
+            artifact_ports["primary_model"].allowed_source_scopes,
+            [
+                BindingSourceScope.SUBMISSION_FILE,
+                BindingSourceScope.UPSTREAM_ARTIFACT,
+                BindingSourceScope.SIGNAL,
+            ],
+        )
         self.assertEqual(artifact_ports["weather_file"].role, "weather")
         self.assertEqual(
             artifact_ports["weather_file"].data_format,
             ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+        self.assertEqual(
+            artifact_ports["weather_file"].envelope_channel,
+            EnvelopeChannel.RESOURCE_FILES,
+        )
+        self.assertEqual(
+            artifact_ports["weather_file"].allowed_source_scopes,
+            [
+                BindingSourceScope.WORKFLOW_RESOURCE,
+                BindingSourceScope.SUBMISSION_FILE,
+                BindingSourceScope.UPSTREAM_ARTIFACT,
+            ],
         )
 
     def test_configs_have_display_metadata(self):

@@ -408,6 +408,15 @@ class WorkflowVersioningService:
                 old_signal.validator = None
                 old_signal.provider_binding = deepcopy(old_signal.provider_binding)
                 old_signal.metadata = deepcopy(old_signal.metadata)
+                old_signal.accepted_data_formats = deepcopy(
+                    old_signal.accepted_data_formats
+                )
+                old_signal.accepted_media_types = deepcopy(
+                    old_signal.accepted_media_types
+                )
+                old_signal.allowed_source_scopes = deepcopy(
+                    old_signal.allowed_source_scopes
+                )
                 old_signal.save()
                 signal_clone_map[old_signal_pk] = old_signal
                 signal_count += 1

@@ -20,13 +20,22 @@ from django.core.files.base import ContentFile
 
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
+from validibot.validations.constants import ArtifactKind
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
+from validibot.validations.constants import BindingSourceScope
+from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import DefaultSourceStrategy
+from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
+from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
+from validibot.validations.tests.factories import StepInputBindingFactory
+from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.base.step_serializer import WorkflowImportError
 from validibot.workflows.services.io.exporter import export_definition
@@ -187,6 +196,72 @@ def test_both_step_config_buckets_survive_export_import():
         "has_header": True,
     }
     assert imported.display_settings == {"delimiter_label": "Comma", "column_count": 2}
+
+
+def test_step_owned_artifact_port_survives_export_import():
+    """A portable workflow must retain step-owned file-port contracts.
+
+    Validator-owned ports are resolved from the target validator catalog on
+    import, but user/plugin-authored step-owned ports travel in the VAF itself.
+    This guards the artifact-port fields and binding source scope together.
+    """
+    src_org, src_user = _org_and_user()
+    validator = _tabular_validator()
+    workflow = WorkflowFactory(org=src_org, user=src_user)
+    step = WorkflowStepFactory(workflow=workflow, validator=validator)
+    signal = StepIODefinitionFactory(
+        workflow_step=step,
+        validator=None,
+        contract_key="generated_model",
+        native_name="generated-model",
+        direction=SignalDirection.INPUT,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        io_medium=StepIOMedium.ARTIFACT,
+        artifact_kind=ArtifactKind.FILE,
+        media_type="application/vnd.energyplus.epjson",
+        data_format="energyplus_epjson",
+        accepted_data_formats=["energyplus_epjson"],
+        accepted_media_types=["application/vnd.energyplus.epjson"],
+        allowed_source_scopes=[BindingSourceScope.UPSTREAM_ARTIFACT],
+        default_source_strategy=DefaultSourceStrategy.MANUAL,
+        envelope_channel=EnvelopeChannel.INPUT_FILES,
+        role="primary-model",
+        min_items=1,
+        max_items=1,
+    )
+    StepInputBindingFactory(
+        workflow_step=step,
+        signal_definition=signal,
+        source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
+        source_data_path="build_model.generated_model",
+    )
+
+    definition, files = export_definition(workflow)
+    exported_signal = definition["steps"][0]["signal_definitions"][0]
+    assert exported_signal["io_medium"] == StepIOMedium.ARTIFACT
+    assert exported_signal["envelope_channel"] == EnvelopeChannel.INPUT_FILES
+    assert exported_signal["allowed_source_scopes"] == [
+        BindingSourceScope.UPSTREAM_ARTIFACT,
+    ]
+
+    dst_org, dst_user = _org_and_user()
+    result = import_definition(definition, files=files, org=dst_org, user=dst_user)
+
+    imported_step = result.workflow.steps.get()
+    imported_signal = imported_step.signal_definitions.get(
+        contract_key="generated_model",
+    )
+    assert imported_signal.io_medium == StepIOMedium.ARTIFACT
+    assert imported_signal.data_type == CatalogValueType.ARTIFACT_REF
+    assert imported_signal.envelope_channel == EnvelopeChannel.INPUT_FILES
+    assert imported_signal.accepted_data_formats == ["energyplus_epjson"]
+    assert imported_signal.allowed_source_scopes == [
+        BindingSourceScope.UPSTREAM_ARTIFACT,
+    ]
+    imported_binding = imported_step.signal_bindings.get()
+    assert imported_binding.signal_definition_id == imported_signal.pk
+    assert imported_binding.source_scope == BindingSourceScope.UPSTREAM_ARTIFACT
+    assert imported_binding.source_data_path == "build_model.generated_model"
 
 
 def test_import_binds_workflow_to_importing_orgs_default_project():

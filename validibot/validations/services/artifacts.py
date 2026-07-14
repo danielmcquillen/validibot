@@ -10,53 +10,20 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import asdict
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 from urllib.parse import urlparse
 
+from validibot_shared.validations.artifacts import ARTIFACT_REF_SCHEMA_VERSION
+from validibot_shared.validations.artifacts import ArtifactRef
+
 from validibot.validations.constants import ArtifactKind
 from validibot.validations.models import Artifact
 from validibot.validations.models import ValidationStepRun
 
-ARTIFACT_REF_SCHEMA_VERSION = "validibot.artifact_ref.v1"
 SHA256_CHUNK_SIZE = 1024 * 1024
 CONTRACT_KEY_PATTERN = re.compile(r"[^a-z0-9_]+")
-
-
-@dataclass(frozen=True)
-class ArtifactRef:
-    """Small JSON-safe pointer to a run-scoped artifact."""
-
-    schema_version: str
-    artifact_id: str
-    run_id: str
-    step_run_id: str
-    producer_step_key: str
-    contract_key: str
-    name: str
-    role: str
-    kind: str
-    media_type: str
-    data_format: str
-    filename: str
-    size_bytes: int | None
-    sha256: str
-    uri: str
-    manifest_uri: str
-    manifest_sha256: str
-    producer_validator_type: str
-    producer_validator_version: str
-    producer_backend_image_digest: str
-    retention_class: str
-    metadata: dict[str, Any]
-
-    def as_dict(self) -> dict[str, Any]:
-        """Return a plain dictionary for CEL/context JSON surfaces."""
-
-        return asdict(self)
 
 
 def register_output_artifacts(
@@ -123,7 +90,7 @@ def register_output_artifacts(
                 },
             },
         )
-        refs.append(build_artifact_ref(artifact).as_dict())
+        refs.append(build_artifact_ref(artifact).model_dump(mode="json"))
 
     return refs
 
@@ -139,7 +106,7 @@ def build_step_artifact_refs(step_run: ValidationStepRun) -> dict[str, Any]:
     for artifact in artifacts:
         if not artifact.contract_key:
             continue
-        ref = build_artifact_ref(artifact).as_dict()
+        ref = build_artifact_ref(artifact).model_dump(mode="json")
         if artifact.item_key:
             refs.setdefault(artifact.contract_key, {})[artifact.item_key] = ref
         else:

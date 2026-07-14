@@ -115,7 +115,10 @@ dependencies = [
   # 0.12.1 adds the shared RFC 8785 / JCS canonicalization helper used by
   # workflow-definition contract hashes, keeping community evidence and Pro
   # credentials on the same portable byte contract.
-  "validibot-shared==0.12.1",
+  # 0.13.0 adds shared ArtifactRef/FilePortContract schemas and optional
+  # port_key fields on envelope file/resource items for the artifact-port
+  # workflow-engine slice.
+  "validibot-shared==0.13.0",
   "django-csp==4.0",
   "django-permissions-policy==4.32.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in
@@ -149,6 +152,11 @@ docker-runner = ["docker==7.2.0"]
 Homepage = "https://validibot.com"
 Documentation = "https://validibot.com/resources/docs/"
 Repository = "https://github.com/danielmcquillen/validibot"
+
+[tool.uv.sources]
+# validibot-shared: Prefer the sibling checkout during coordinated local
+# development so community tests run against the current shared contract.
+validibot-shared = { path = "../validibot-shared", editable = true }
 
 # ==== pytest ====
 [tool.pytest.ini_options]

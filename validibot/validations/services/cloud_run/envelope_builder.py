@@ -10,7 +10,10 @@ builder function. This keeps the code straightforward and easy to test.
 
 import json
 import logging
+from pathlib import Path
 from typing import Protocol
+from urllib.parse import unquote
+from urllib.parse import urlparse
 
 from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
 from validibot_shared.energyplus.envelopes import EnergyPlusInputs
@@ -28,6 +31,8 @@ from validibot_shared.validations.envelopes import ValidatorInfo
 from validibot_shared.validations.envelopes import ValidatorType
 from validibot_shared.validations.envelopes import WorkflowInfo
 
+from validibot.validations.constants import BindingSourceScope
+from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import ValidationType
 
@@ -51,13 +56,14 @@ def build_energyplus_input_envelope(
     workflow_id: str,
     step_id: str,
     step_name: str | None,
-    model_file_uri: str,
+    model_file_uri: str | None,
     resource_files: list[ResourceFileItem],
     callback_url: str,
     callback_id: str | None,
     execution_bundle_uri: str,
     timestep_per_hour: int = 4,
     skip_callback: bool = False,
+    input_files: list[InputFileItem] | None = None,
 ) -> EnergyPlusInputEnvelope:
     """
     Build an EnergyPlusInputEnvelope from Django validation run data.
@@ -134,25 +140,13 @@ def build_energyplus_input_envelope(
         step_name=step_name,
     )
 
-    # Build input files list (only the model file; weather comes via resource_files).
-    # The file extension determines the envelope metadata — the runner uses
-    # file_item.name as the local filename, and EnergyPlus uses the extension
-    # to decide IDF vs epJSON parsing mode.
-    if model_file_uri.lower().endswith(".epjson"):
-        model_name = "model.epjson"
-        model_mime = SupportedMimeType.ENERGYPLUS_EPJSON
-    else:
-        model_name = "model.idf"
-        model_mime = SupportedMimeType.ENERGYPLUS_IDF
-
-    input_files = [
-        InputFileItem(
-            name=model_name,
-            mime_type=model_mime,
-            role="primary-model",
-            uri=model_file_uri,
-        ),
-    ]
+    if input_files is None:
+        if not model_file_uri:
+            msg = "EnergyPlus envelope requires a model_file_uri or input_files"
+            raise ValueError(msg)
+        input_files = [
+            _build_energyplus_input_file_item("primary_model", model_file_uri),
+        ]
 
     # Build EnergyPlus-specific inputs
     energyplus_inputs = EnergyPlusInputs(
@@ -180,6 +174,42 @@ def build_energyplus_input_envelope(
     )
 
     return envelope
+
+
+def _build_energyplus_input_file_item(
+    port_key: str,
+    uri: str,
+    *,
+    role: str = "primary-model",
+) -> InputFileItem:
+    """Build an EnergyPlus ``InputFileItem`` from a resolved file-port URI."""
+
+    lowered_uri = uri.lower()
+    if lowered_uri.endswith((".epjson", ".json")):
+        name = "model.epjson" if role == "primary-model" else _filename_from_uri(uri)
+        mime_type = SupportedMimeType.ENERGYPLUS_EPJSON
+    elif lowered_uri.endswith(".epw"):
+        name = _filename_from_uri(uri) or "weather.epw"
+        mime_type = SupportedMimeType.ENERGYPLUS_EPW
+    else:
+        name = "model.idf" if role == "primary-model" else _filename_from_uri(uri)
+        mime_type = SupportedMimeType.ENERGYPLUS_IDF
+
+    return InputFileItem(
+        name=name or "input-file",
+        mime_type=mime_type,
+        role=role,
+        port_key=port_key,
+        uri=uri,
+    )
+
+
+def _filename_from_uri(uri: str) -> str:
+    """Return the final path component from a storage URI."""
+
+    parsed = urlparse(uri)
+    path = parsed.path or uri
+    return Path(unquote(path)).name
 
 
 def resolve_step_resources(
@@ -255,6 +285,233 @@ def resolve_step_resources(
             )
         )
     return items
+
+
+def _resolve_energyplus_file_port_items(
+    *,
+    run,
+    step,
+    step_config: dict,
+    input_file_uris: dict[str, str] | None,
+    resource_uri_overrides: dict[str, str] | None,
+) -> tuple[list[InputFileItem], list[ResourceFileItem]] | None:
+    """Resolve declared EnergyPlus artifact input ports into envelope items.
+
+    Returns ``None`` when the validator has no declared artifact input ports,
+    allowing unsynced tests/dev databases to keep using the legacy path.
+    """
+
+    from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import StepIOMedium
+    from validibot.validations.models import StepInputBinding
+    from validibot.validations.models import StepIODefinition
+
+    ports = {
+        port.contract_key: port
+        for port in StepIODefinition.objects.filter(
+            validator_id=step.validator_id,
+            direction=SignalDirection.INPUT,
+            io_medium=StepIOMedium.ARTIFACT,
+        )
+    }
+    if not ports:
+        return None
+
+    bindings = {
+        binding.signal_definition.contract_key: binding
+        for binding in StepInputBinding.objects.filter(
+            workflow_step=step,
+            signal_definition__in=ports.values(),
+        ).select_related("signal_definition")
+    }
+
+    input_files: list[InputFileItem] = []
+    resource_files: list[ResourceFileItem] = []
+    for contract_key in ("primary_model", "weather_file"):
+        port = ports.get(contract_key)
+        if port is None:
+            continue
+        binding = bindings.get(contract_key)
+        if binding is None:
+            msg = (
+                f"Required artifact port '{contract_key}' on step {step.id} "
+                "has no StepInputBinding."
+            )
+            raise ValueError(msg)
+
+        _validate_artifact_port_source_scope(port, binding.source_scope)
+        if port.envelope_channel == EnvelopeChannel.RESOURCE_FILES:
+            if binding.source_scope == BindingSourceScope.WORKFLOW_RESOURCE:
+                resource_files.extend(
+                    _resolve_workflow_resource_port(
+                        step=step,
+                        port=port,
+                        binding=binding,
+                        resource_uri_overrides=resource_uri_overrides,
+                    ),
+                )
+                continue
+
+            uri = _resolve_artifact_or_submission_file_uri(
+                run=run,
+                step=step,
+                step_config=step_config,
+                input_file_uris=input_file_uris,
+                port=port,
+                binding=binding,
+            )
+            input_files.append(
+                _build_energyplus_input_file_item(
+                    port.contract_key,
+                    uri,
+                    role=port.role or "weather",
+                ),
+            )
+            continue
+
+        uri = _resolve_artifact_or_submission_file_uri(
+            run=run,
+            step=step,
+            step_config=step_config,
+            input_file_uris=input_file_uris,
+            port=port,
+            binding=binding,
+        )
+        input_files.append(
+            _build_energyplus_input_file_item(
+                port.contract_key,
+                uri,
+                role=port.role or "primary-model",
+            ),
+        )
+
+    return input_files, resource_files
+
+
+def _validate_artifact_port_source_scope(port, source_scope: str) -> None:
+    """Fail closed when a binding uses a source scope the port did not allow."""
+
+    allowed = list(port.allowed_source_scopes or [])
+    if allowed and source_scope not in allowed:
+        msg = (
+            f"Artifact port '{port.contract_key}' does not allow source scope "
+            f"'{source_scope}'. Allowed scopes: {', '.join(allowed)}."
+        )
+        raise ValueError(msg)
+
+
+def _resolve_workflow_resource_port(
+    *,
+    step,
+    port,
+    binding,
+    resource_uri_overrides: dict[str, str] | None,
+) -> list[ResourceFileItem]:
+    """Resolve a workflow-resource artifact port to resource_files items."""
+
+    expected_type = binding.source_data_path or port.resource_type or port.data_format
+    resources = resolve_step_resources(
+        step,
+        resource_uri_overrides=resource_uri_overrides,
+    )
+    matches = [item for item in resources if item.type == expected_type]
+    if not matches:
+        msg = (
+            f"Required artifact port '{port.contract_key}' could not find "
+            f"workflow resource type '{expected_type}' on step {step.id}."
+        )
+        raise ValueError(msg)
+    if port.max_items == 1 and len(matches) > 1:
+        msg = (
+            f"Artifact port '{port.contract_key}' expected one resource but "
+            f"found {len(matches)} matching '{expected_type}' resources."
+        )
+        raise ValueError(msg)
+
+    for item in matches:
+        item.port_key = port.contract_key
+    return matches
+
+
+def _resolve_artifact_or_submission_file_uri(
+    *,
+    run,
+    step,
+    step_config: dict,
+    input_file_uris: dict[str, str] | None,
+    port,
+    binding,
+) -> str:
+    """Resolve submitted-file or upstream-artifact binding to a storage URI."""
+
+    if binding.source_scope == BindingSourceScope.SUBMISSION_FILE:
+        return _resolve_submission_file_uri(
+            step_config=step_config,
+            input_file_uris=input_file_uris,
+            port=port,
+            binding=binding,
+        )
+
+    if binding.source_scope == BindingSourceScope.UPSTREAM_ARTIFACT:
+        from validibot.validations.services.path_resolution import resolve_input_signal
+        from validibot.validations.services.run_context import RunContextBuilder
+
+        context = RunContextBuilder(run, step).build()
+        resolved = resolve_input_signal(
+            binding,
+            upstream_steps=context.upstream_steps,
+        )
+        if not resolved.resolved or not isinstance(resolved.value, dict):
+            msg = (
+                f"Artifact port '{port.contract_key}' could not resolve upstream "
+                f"artifact '{binding.source_data_path}'."
+            )
+            raise ValueError(msg)
+        uri = str(resolved.value.get("uri") or "")
+        if not uri:
+            msg = (
+                f"Artifact port '{port.contract_key}' resolved an artifact "
+                "without a storage URI."
+            )
+            raise ValueError(msg)
+        return uri
+
+    msg = (
+        f"Artifact port '{port.contract_key}' source scope "
+        f"'{binding.source_scope}' is not materializable for EnergyPlus yet."
+    )
+    raise ValueError(msg)
+
+
+def _resolve_submission_file_uri(
+    *,
+    step_config: dict,
+    input_file_uris: dict[str, str] | None,
+    port,
+    binding,
+) -> str:
+    """Resolve a submitted-file port from runtime overrides or step config."""
+
+    candidates = [
+        binding.source_data_path,
+        port.role,
+        port.contract_key,
+        f"{port.contract_key}_uri",
+    ]
+    if port.contract_key == "primary_model":
+        candidates.append("primary_file_uri")
+
+    sources = [input_file_uris or {}, step_config or {}]
+    for source in sources:
+        for key in candidates:
+            if key and source.get(key):
+                return source[key]
+
+    msg = (
+        f"Required artifact port '{port.contract_key}' could not resolve a "
+        f"submitted file URI from {', '.join(k for k in candidates if k)}."
+    )
+    raise ValueError(msg)
 
 
 def build_input_envelope(
@@ -337,6 +594,44 @@ def build_input_envelope(
     }
 
     if validator.validation_type == ValidationType.ENERGYPLUS:
+        resolved_file_ports = _resolve_energyplus_file_port_items(
+            run=run,
+            step=step,
+            step_config=step_config,
+            input_file_uris=input_file_uris,
+            resource_uri_overrides=resource_uri_overrides,
+        )
+        if resolved_file_ports is not None:
+            input_files, resource_files = resolved_file_ports
+            if not any(item.port_key == "primary_model" for item in input_files):
+                msg = f"Step {step.id} has no primary_model file port resolved"
+                raise ValueError(msg)
+            if not any(
+                item.port_key == "weather_file"
+                for item in [*input_files, *resource_files]
+            ):
+                msg = f"Step {step.id} has no weather_file port resolved"
+                raise ValueError(msg)
+
+            timestep_per_hour = step_config.get("timestep_per_hour", 4)
+            return build_energyplus_input_envelope(
+                run_id=str(run.id),
+                validator=validator,
+                org_id=str(run.org.id),
+                org_name=run.org.name,
+                workflow_id=str(run.workflow.id),
+                step_id=str(step.id),
+                step_name=step.name,
+                model_file_uri=None,
+                input_files=input_files,
+                resource_files=resource_files,
+                callback_url=callback_url,
+                callback_id=callback_id,
+                execution_bundle_uri=execution_bundle_uri,
+                timestep_per_hour=timestep_per_hour,
+                skip_callback=skip_callback,
+            )
+
         # Get model file URI (primary file from the workflow step or input_file_uris)
         model_file_uri = step_config.get("primary_file_uri")
         if not model_file_uri:

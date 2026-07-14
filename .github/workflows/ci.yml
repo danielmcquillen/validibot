@@ -76,6 +76,14 @@ jobs:
       - name: Checkout Code Repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
+      - name: Checkout validibot-shared dependency
+        run: |
+          git clone --depth 1 --branch v0.13.0 \
+            https://github.com/danielmcquillen/validibot-shared.git \
+            ../validibot-shared
+          test "$(git -C ../validibot-shared rev-parse HEAD)" = \
+            "6ffee76a8b4ff52e54ac9bb0eb80e6f65348381d"
+
       - name: Checkout SHACL validator backend
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
@@ -106,7 +114,7 @@ jobs:
         # uv.lock, so --frozen still resolves). The trust-tier runner tests
         # patch docker.from_env, which requires the module to be importable;
         # without the extra they error with ModuleNotFoundError: docker.
-        run: uv sync --group dev --extra docker-runner --frozen --no-sources-package validibot-shared
+        run: uv sync --group dev --extra docker-runner --frozen
 
       - name: Audit dependencies
         run: uvx pip-audit

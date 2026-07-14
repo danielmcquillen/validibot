@@ -5,6 +5,7 @@ import * as bootstrap from 'bootstrap';
 import { Chart, registerables } from 'chart.js';
 import htmx from 'htmx.org';
 import { initAppFeatures } from './app';
+import { initCopyControls } from './features/copyControls';
 import { initAppLeftNavToggle } from './leftNav';
 import { initTableSorting } from './tableSorting';
 
@@ -213,6 +214,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     initializeCharts(document);
     initAppFeatures(document);
+    initCopyControls();
     initTableSorting(document);
     initRolePickers(document);
 

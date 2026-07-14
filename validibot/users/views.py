@@ -17,6 +17,7 @@ from django.shortcuts import redirect
 from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 from django.views import View
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 from django.views.generic import CreateView
 from django.views.generic import DeleteView
@@ -132,6 +133,7 @@ def _api_key_breadcrumbs(request):
 
 @login_required
 @require_POST
+@never_cache
 def user_api_key_rotate_view(request):
     """Regenerate the authenticated user's personal API key."""
 

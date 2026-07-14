@@ -3,7 +3,6 @@
 <div id="api-key-panel" class="card shadow-sm h-100">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span class="fw-semibold">{% trans "API" %}</span>
-    <span class="badge text-bg-light text-uppercase small">{% trans "Personal" %}</span>
   </div>
   <div class="card-body">
     <p class="text-muted small mb-3">
@@ -37,6 +36,9 @@
                class="form-control font-monospace"
                value="{{ api_key.redacted_key }}"
                readonly />
+        <div class="small text-muted">
+          {% trans "Only part of your key is shown here, for your reference. Validibot will only show you the whole key when you first create it. Please create a new key if you need a full one." %}
+        </div>
       {% else %}
         <input id="api-key-value"
                type="text"
@@ -44,9 +46,10 @@
                value="{% trans "No active API key" %}"
                readonly />
       {% endif %}
+
     </div>
     {% if api_key %}
-      <dl class="row small text-muted mb-3">
+      <dl class="row small text-muted mb-5">
         <dt class="col-sm-3">{% trans "Created" %}</dt>
         <dd class="col-sm-9 mb-1">
           {{ api_key.created|date:"Y-m-d H:i" }}
@@ -80,84 +83,3 @@
     </p>
   </div>
 </div>
-<script nonce="{{ CSP_NONCE }}">
-  (function() {
-    const FLAG = '__svCopyHandlerBound';
-    if (window[FLAG]) {
-      return;
-    }
-    window[FLAG] = true;
-
-    const copyWithFallback = (value) => {
-      if (typeof document.execCommand !== 'function') {
-        return false;
-      }
-      const temporaryField = document.createElement('textarea');
-      temporaryField.value = value;
-      temporaryField.setAttribute('readonly', '');
-      temporaryField.style.position = 'absolute';
-      temporaryField.style.left = '-9999px';
-      document.body.appendChild(temporaryField);
-      temporaryField.select();
-      let success = false;
-      try {
-        success = document.execCommand('copy');
-      } catch (error) {
-        success = false;
-      }
-      document.body.removeChild(temporaryField);
-      return success;
-    };
-
-    const copyValue = async (value) => {
-      if (!value) {
-        return false;
-      }
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        try {
-          await navigator.clipboard.writeText(value);
-          return true;
-        } catch (error) {
-          // fall through to fallback
-        }
-      }
-      return copyWithFallback(value);
-    };
-
-    document.addEventListener('click', async (event) => {
-      const trigger = event.target.closest('[data-copy-target]');
-      if (!trigger) {
-        return;
-      }
-      const selector = trigger.getAttribute('data-copy-target');
-      if (!selector) {
-        return;
-      }
-      const field = document.querySelector(selector);
-      if (!field) {
-        return;
-      }
-      const rawValue = field.value !== undefined ? field.value : field.textContent;
-      const value = (rawValue || '').toString();
-      if (!value.trim()) {
-        return;
-      }
-
-      if (!trigger.dataset.defaultLabel) {
-        trigger.dataset.defaultLabel = trigger.textContent;
-      }
-
-      const timeout = Number.parseInt(trigger.getAttribute('data-copy-timeout') || '1600', 10);
-      const copiedLabel = trigger.getAttribute('data-copied-label') || 'Copied';
-      const success = await copyValue(value);
-      if (!success) {
-        return;
-      }
-
-      trigger.textContent = copiedLabel;
-      window.setTimeout(() => {
-        trigger.textContent = trigger.dataset.defaultLabel || '';
-      }, Number.isNaN(timeout) ? 1600 : timeout);
-    });
-  })();
-</script>

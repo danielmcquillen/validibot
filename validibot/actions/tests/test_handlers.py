@@ -133,6 +133,7 @@ class TestExecuteWorkflowStepDispatcher:
             upstream_step.step_key: {
                 "input": {},
                 "output": {"site_eui": 80.0},
+                "artifact": {},
             },
         }
 

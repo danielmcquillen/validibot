@@ -863,9 +863,9 @@ class StepOrchestrator:
         Dispatch a single workflow step to its handler.
 
         Routes steps to the correct handler:
-        1. Builds a RunContext with the validation_run, step, and any signals
+        1. Resolves the handler (ValidatorStepHandler or action handler).
+        2. Builds a RunContext with the validation_run, step, and any signals
            from prior steps (for cross-step assertions).
-        2. Resolves the handler (ValidatorStepHandler or action handler).
         3. Calls handler.execute(run_context) and maps the StepResult back to
            ValidationResult for backwards compatibility.
 
@@ -877,14 +877,12 @@ class StepOrchestrator:
             ValidationResult with passed=True/False for sync handlers, or
             passed=None for async handlers awaiting callback.
         """
-        # 1. Prepare Context
         from validibot.actions.handlers import ValidatorStepHandler
         from validibot.actions.protocols import StepResult
         from validibot.actions.registry import get_action_handler
 
-        context = RunContextBuilder(validation_run, step).build()
-
-        # 2. Resolve Handler
+        # 1. Resolve handler before building context. Missing-handler errors
+        # should not require a valid step order or upstream database query.
         handler = None
 
         if step.validator:
@@ -932,10 +930,13 @@ class StepOrchestrator:
                 stats=step_result.stats,
             )
 
-        # 4. Execute Handler
+        # 2. Prepare context only once we know something can execute.
+        context = RunContextBuilder(validation_run, step).build()
+
+        # 3. Execute Handler
         step_result = handler.execute(context)
 
-        # 5. Map StepResult → ValidationResult
+        # 4. Map StepResult → ValidationResult
         # _record_step_result() expects a ValidationResult so it can
         # persist findings and convert to StepProcessingResult.
         validation_result = ValidationResult(

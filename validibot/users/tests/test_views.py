@@ -107,6 +107,14 @@ class TestUserDetailView:
 class TestUserApiKeyRotateView:
     """Rotation view tests lock in one-time-display API-key behavior."""
 
+    def assert_one_time_key_response_is_not_cacheable(self, response):
+        """Plaintext API-key responses must not be stored by browsers or proxies."""
+        cache_control = response.headers.get("Cache-Control", "")
+        assert "no-store" in cache_control
+        assert "no-cache" in cache_control
+        assert "max-age=0" in cache_control
+        assert response.headers.get("Expires") is not None
+
     def test_rotates_key_with_htmx(self, client, user):
         """HTMX rotation returns the only copyable plaintext key."""
 
@@ -128,6 +136,7 @@ class TestUserApiKeyRotateView:
         assert "vbk_1_" in content
         assert new_key.secret_digest not in content
         assert "Copy this key now" in content
+        self.assert_one_time_key_response_is_not_cacheable(response)
 
     def test_rotates_key_without_htmx(self, client, user):
         """Plain POST renders the one-time key instead of redirect-losing it."""
@@ -144,6 +153,7 @@ class TestUserApiKeyRotateView:
         assert original.revoked_at is not None
         assert new_key.public_id in content
         assert "vbk_1_" in content
+        self.assert_one_time_key_response_is_not_cacheable(response)
 
 
 class TestUserApiKeyView:
@@ -178,14 +188,14 @@ class TestUserApiKeyView:
         assert issued.api_key.secret_digest not in content
         assert 'data-copy-target="#api-key-value"' not in content
 
-    def test_api_key_panel_contains_copy_script(self, client, user):
-        """The copy handler exists, but copy controls appear only on issuance."""
+    def test_api_key_panel_marks_copy_control_only_on_issuance(self, client, user):
+        """The template stays declarative; copy controls appear only on issuance."""
 
         client.force_login(user)
 
         response = client.get(reverse("users:api-key"))
         content = response.content.decode()
-        assert "__svCopyHandlerBound" in content
+        assert "__svCopyHandlerBound" not in content
         assert 'data-copy-target="#api-key-value"' not in content
 
         hx_response = client.post(
@@ -193,5 +203,5 @@ class TestUserApiKeyView:
             HTTP_HX_REQUEST="true",
         )
         hx_content = hx_response.content.decode()
-        assert "__svCopyHandlerBound" in hx_content
+        assert "__svCopyHandlerBound" not in hx_content
         assert 'data-copy-target="#api-key-value"' in hx_content

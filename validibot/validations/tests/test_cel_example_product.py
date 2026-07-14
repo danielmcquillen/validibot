@@ -1,3 +1,9 @@
+"""Example-product CEL tests for author-facing assertion behavior.
+
+These tests exercise a small JSON product ruleset with CEL assertions, including
+how custom failure messages are rendered when the expression fails.
+"""
+
 from __future__ import annotations
 
 import json
@@ -43,11 +49,12 @@ class TestExampleProductWithCEL(TestCase):
             direction="input",
         )
         cls.expression = 'p.price > 0 && p.rating >= 90 && "mini" in p.tags'
-        cls.error_message = (
+        cls.message_template = (
             " Your prices has to be greater than 0 AND rating greater "
             'than 90 AND "mini" '
             "has to be in the tags!!!"
         )
+        cls.rendered_error_message = cls.message_template.strip()
 
     def setUp(self):
         """Create fresh ruleset for each test to avoid assertion accumulation."""
@@ -65,7 +72,7 @@ class TestExampleProductWithCEL(TestCase):
             # Required: must be empty when signal definition is set
             target_data_path="",
             rhs={"expr": self.expression},
-            message_template=self.error_message,
+            message_template=self.message_template,
         )
 
     def _engine_validate(self, payload: dict):
@@ -86,10 +93,11 @@ class TestExampleProductWithCEL(TestCase):
         self.assertEqual(len(issues), 0)
 
     def test_price_must_be_positive(self):
+        """A failing CEL price check should surface the custom message."""
         payload = {**self.payload, "price": 0}
         issues = self._engine_validate(payload)
         self.assertEqual(len(issues), 1)
-        self.assertIn(self.error_message, issues[0].message)
+        self.assertIn(self.rendered_error_message, issues[0].message)
 
     def test_missing_signal_reports_evaluation_error(self):
         """Accessing a signal that doesn't exist in the s namespace
@@ -121,13 +129,15 @@ class TestExampleProductWithCEL(TestCase):
         self.assertIn("CEL evaluation failed", result.issues[0].message)
 
     def test_rating_must_be_high_enough(self):
+        """A failing CEL rating check should surface the custom message."""
         payload = {**self.payload, "rating": 80}
         issues = self._engine_validate(payload)
         self.assertEqual(len(issues), 1)
-        self.assertIn(self.error_message, issues[0].message)
+        self.assertIn(self.rendered_error_message, issues[0].message)
 
     def test_mini_must_be_in_tags(self):
+        """A failing CEL list-membership check should surface the custom message."""
         payload = {**self.payload, "tags": ["gadgets"]}
         issues = self._engine_validate(payload)
         self.assertEqual(len(issues), 1)
-        self.assertIn(self.error_message, issues[0].message)
+        self.assertIn(self.rendered_error_message, issues[0].message)

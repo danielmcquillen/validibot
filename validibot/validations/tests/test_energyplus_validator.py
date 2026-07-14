@@ -261,7 +261,19 @@ class TestInputStageAssertionGating:
         step_run = run_context.validation_run.step_runs.get(
             workflow_step=run_context.step,
         )
-        assert step_run.input_values == {"zone_count": 0}
+        assert step_run.input_values == {
+            "idf_version": "25.1",
+            "building_name": "EmptyBuilding",
+            "north_axis_deg": 0.0,
+            "terrain": "Suburbs",
+            "solar_distribution": "FullExterior",
+            "zone_count": 0,
+            "surface_count": 0,
+            "window_count": 0,
+            "construction_count": 0,
+            "run_period_count": 0,
+            "has_hvac": False,
+        }
 
     def test_input_persistence_failure_blocks_dispatch(self):
         """A failed canonical-input write must stop external execution.

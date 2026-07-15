@@ -28,6 +28,7 @@ from validibot_shared.validations.envelopes import ResourceFileItem
 from validibot_shared.validations.envelopes import ValidationArtifact
 from validibot_shared.validations.envelopes import ValidatorType
 
+from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.validations.constants import ArtifactKind
 from validibot.validations.constants import BindingSourceScope
@@ -40,6 +41,7 @@ from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationType
+from validibot.validations.models import Artifact
 from validibot.validations.models import ResolvedInputTrace
 from validibot.validations.services.artifacts import register_output_artifacts
 from validibot.validations.services.cloud_run.envelope_builder import (
@@ -180,6 +182,16 @@ def _build_energyplus_file_port_run():
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
+        media_type="application/vnd.energyplus.idf",
+        data_format=SubmissionDataFormat.ENERGYPLUS_IDF,
+        accepted_data_formats=[
+            SubmissionDataFormat.ENERGYPLUS_IDF,
+            SubmissionDataFormat.ENERGYPLUS_EPJSON,
+        ],
+        accepted_media_types=[
+            "application/vnd.energyplus.idf",
+            "application/vnd.energyplus.epjson",
+        ],
         metadata={"accepted_extensions": ["idf", "epjson", "json"]},
         envelope_channel=EnvelopeChannel.INPUT_FILES,
         role="primary-model",
@@ -201,6 +213,10 @@ def _build_energyplus_file_port_run():
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
+        media_type="application/vnd.energyplus.epw",
+        data_format=ResourceFileType.ENERGYPLUS_WEATHER,
+        accepted_data_formats=[ResourceFileType.ENERGYPLUS_WEATHER],
+        accepted_media_types=["application/vnd.energyplus.epw"],
         metadata={"accepted_extensions": ["epw"]},
         envelope_channel=EnvelopeChannel.RESOURCE_FILES,
         resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
@@ -543,6 +559,134 @@ class TestEnergyPlusFilePortMaterialization:
         assert envelope.input_files[0].uri == "gs://validibot/runs/run-1/model.epjson"
         assert envelope.resource_files[0].port_key == "weather_file"
 
+    def test_upstream_model_rejects_unaccepted_data_format_with_trace(self):
+        """Upstream ArtifactRefs must satisfy the consumer port data format.
+
+        The binding path proves where the artifact came from. The artifact
+        metadata still has to match the file-port contract before dispatch.
+        """
+        run, step, primary_port, weather_port, _weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        upstream_step = WorkflowStepFactory(
+            workflow=step.workflow,
+            name="Build Model",
+            order=step.order - 5,
+        )
+        upstream_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=upstream_step,
+            step_order=upstream_step.order,
+            status=StepStatus.PASSED,
+        )
+        register_output_artifacts(
+            step_run=upstream_run,
+            output_envelope=SimpleNamespace(
+                artifacts=[
+                    ValidationArtifact(
+                        name="model.epjson",
+                        type="generated-model",
+                        mime_type="application/json",
+                        uri="gs://validibot/runs/run-1/model.epjson",
+                    ),
+                ],
+                raw_outputs=None,
+            ),
+        )
+        Artifact.objects.filter(step_run=upstream_run).update(
+            data_format=SubmissionDataFormat.CSV,
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
+            source_data_path=f"{upstream_step.step_key}.generated_model",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+
+        with pytest.raises(ValueError, match="does not accept data format"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="primary_model",
+        )
+        assert trace.resolved is False
+        assert "csv" in trace.error_message
+
+    def test_upstream_model_rejects_wrong_media_type_with_trace(self):
+        """Explicitly wrong upstream artifact media types are not ignored.
+
+        Generic JSON is accepted for legacy epJSON artifacts, but a clearly
+        unrelated MIME type should fail even when the filename extension looks
+        plausible.
+        """
+        run, step, primary_port, weather_port, _weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        upstream_step = WorkflowStepFactory(
+            workflow=step.workflow,
+            name="Build Model",
+            order=step.order - 5,
+        )
+        upstream_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=upstream_step,
+            step_order=upstream_step.order,
+            status=StepStatus.PASSED,
+        )
+        register_output_artifacts(
+            step_run=upstream_run,
+            output_envelope=SimpleNamespace(
+                artifacts=[
+                    ValidationArtifact(
+                        name="model.epjson",
+                        type="generated-model",
+                        mime_type="application/pdf",
+                        uri="gs://validibot/runs/run-1/model.epjson",
+                    ),
+                ],
+                raw_outputs=None,
+            ),
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
+            source_data_path=f"{upstream_step.step_key}.generated_model",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+
+        with pytest.raises(ValueError, match="does not accept media type"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="primary_model",
+        )
+        assert trace.resolved is False
+        assert "application/pdf" in trace.error_message
+
     def test_missing_weather_resource_fails_with_port_specific_error(self):
         """A declared weather port should fail before launching without a file."""
         run, step, primary_port, weather_port, weather_resource = (
@@ -733,6 +877,227 @@ class TestEnergyPlusFilePortMaterialization:
                 input_file_uris={
                     "primary_file_uri": "file:///validibot/input/model.idf",
                     "weather_file": "file:///validibot/input/resources/weather.txt",
+                },
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="weather_file",
+        )
+        assert trace.resolved is False
+        assert "expected one of .epw" in trace.error_message
+
+    def test_disallowed_artifact_source_scope_fails_with_trace(self):
+        """Bindings must use a source scope declared by the artifact port.
+
+        This protects the workflow contract from accidental UI/API drift: a
+        submitted file cannot satisfy a port that was narrowed to upstream
+        artifacts only.
+        """
+        run, step, primary_port, weather_port, _weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        primary_port.allowed_source_scopes = [BindingSourceScope.UPSTREAM_ARTIFACT]
+        primary_port.save(update_fields=["allowed_source_scopes"])
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="primary_file_uri",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+
+        with pytest.raises(ValueError, match="does not allow source scope"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+                input_file_uris={
+                    "primary_file_uri": "file:///validibot/input/model.idf",
+                },
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="primary_model",
+        )
+        assert trace.resolved is False
+        assert "does not allow source scope" in trace.error_message
+
+    def test_submitted_model_rejects_unaccepted_data_format_with_trace(self):
+        """Accepted data formats are enforced after URI resolution.
+
+        Extension checks alone are not enough once ports declare semantic data
+        formats. An epJSON file should fail when the port is narrowed to IDF.
+        """
+        run, step, primary_port, weather_port, _weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        primary_port.accepted_data_formats = [SubmissionDataFormat.ENERGYPLUS_IDF]
+        primary_port.save(update_fields=["accepted_data_formats"])
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="primary_file_uri",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+
+        with pytest.raises(ValueError, match="does not accept data format"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+                input_file_uris={
+                    "primary_file_uri": "file:///validibot/input/model.epjson",
+                },
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="primary_model",
+        )
+        assert trace.resolved is False
+        assert "energyplus_epjson" in trace.error_message
+
+    def test_submitted_model_rejects_unaccepted_media_type_with_trace(self):
+        """Accepted media types are enforced separately from data formats.
+
+        A port may accept the epJSON data format only when it is carried with
+        an accepted MIME type. This prevents generic file acceptance from
+        bypassing the declared backend contract.
+        """
+        run, step, primary_port, weather_port, _weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        primary_port.accepted_media_types = ["application/vnd.energyplus.idf"]
+        primary_port.save(update_fields=["accepted_media_types"])
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="primary_file_uri",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+
+        with pytest.raises(ValueError, match="does not accept media type"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+                input_file_uris={
+                    "primary_file_uri": "file:///validibot/input/model.epjson",
+                },
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="primary_model",
+        )
+        assert trace.resolved is False
+        assert "application/vnd.energyplus.epjson" in trace.error_message
+
+    def test_duplicate_weather_resources_fail_cardinality_with_trace(self):
+        """Workflow resources must satisfy the port's declared cardinality.
+
+        EnergyPlus weather accepts one EPW file. If two matching resources are
+        attached, launch should fail before the backend has to guess.
+        """
+        run, step, primary_port, weather_port, _weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        WorkflowStepResourceFactory(
+            step=step,
+            role=WorkflowStepResource.WEATHER_FILE,
+            validator_resource_file=ValidatorResourceFileFactory(
+                validator=step.validator,
+                resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+            ),
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="primary_file_uri",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+
+        with pytest.raises(ValueError, match="accepts at most 1"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+                input_file_uris={
+                    "primary_file_uri": "file:///validibot/input/model.idf",
+                },
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="weather_file",
+        )
+        assert trace.resolved is False
+        assert "accepts at most 1" in trace.error_message
+
+    def test_workflow_weather_resource_rejects_wrong_extension_with_trace(self):
+        """Managed workflow resources are validated like submitted files.
+
+        The resource table tells us the intended type, but the dispatch URI
+        still needs to match the concrete backend file contract.
+        """
+        run, step, primary_port, weather_port, weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=primary_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="primary_file_uri",
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=weather_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+
+        with pytest.raises(ValueError, match=r"expected one of \.epw"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+                input_file_uris={
+                    "primary_file_uri": "file:///validibot/input/model.idf",
+                },
+                resource_uri_overrides={
+                    str(weather_resource.validator_resource_file_id): (
+                        "file:///validibot/input/resources/weather.txt"
+                    ),
                 },
             )
 

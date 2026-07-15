@@ -153,11 +153,6 @@ Homepage = "https://validibot.com"
 Documentation = "https://validibot.com/resources/docs/"
 Repository = "https://github.com/danielmcquillen/validibot"
 
-[tool.uv.sources]
-# validibot-shared: Prefer the sibling checkout during coordinated local
-# development so community tests run against the current shared contract.
-validibot-shared = { path = "../validibot-shared", editable = true }
-
 # ==== pytest ====
 [tool.pytest.ini_options]
 minversion = "6.0"

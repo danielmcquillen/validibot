@@ -38,8 +38,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy dependency files first for better caching
 COPY pyproject.toml uv.lock ${APP_HOME}/
-COPY --from=validibot_shared / /validibot-shared/
-RUN chmod -R a+rX /validibot-shared
 COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/install-commercial-package
 
 # Install dependencies with dev group for local work
@@ -50,8 +48,6 @@ COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/ins
 # mounted Docker socket. Without it DockerValidatorRunner.is_available() returns
 # False and every advanced validator reports "Validation backend is not
 # available." This mirrors the CI install (.github/workflows/ci.yml).
-# Provide ../validibot-shared via a named build context so the frozen lockfile's
-# editable source resolves inside Docker as /validibot-shared.
 RUN uv sync --group dev --extra docker-runner --frozen --no-install-project
 RUN install-commercial-package ${APP_HOME}/.venv/bin/python
 

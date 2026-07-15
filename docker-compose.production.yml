@@ -51,8 +51,6 @@ services:
     build:
       context: .
       dockerfile: compose/production/django/Dockerfile
-      additional_contexts:
-        validibot_shared: ../validibot-shared
       args:
         VALIDIBOT_COMMERCIAL_PACKAGE: ${VALIDIBOT_COMMERCIAL_PACKAGE:-}
         VALIDIBOT_PRIVATE_INDEX_URL: ${VALIDIBOT_PRIVATE_INDEX_URL:-}

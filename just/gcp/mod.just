@@ -425,7 +425,6 @@ build: _require-gcp-config
     # override mechanism — symmetry that's easy to verify.
     docker build --platform linux/amd64 --provenance=false $CACHE_FLAG \
         -f "$DOCKERFILE" \
-        --build-context validibot_shared=../validibot-shared \
         --build-arg EXTRA_UV_EXTRAS="${EXTRA_UV_EXTRAS}" \
         --build-arg VALIDIBOT_VERSION="${VALIDIBOT_VERSION:-{{validibot_version}}}" \
         --build-arg VALIDIBOT_REVISION="${VALIDIBOT_REVISION:-{{git_sha}}}" \

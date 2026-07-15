@@ -48,7 +48,9 @@ COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/ins
 # mounted Docker socket. Without it DockerValidatorRunner.is_available() returns
 # False and every advanced validator reports "Validation backend is not
 # available." This mirrors the CI install (.github/workflows/ci.yml).
-RUN uv sync --group dev --extra docker-runner --frozen --no-install-project
+# UV_NO_SOURCES ignores host-only sibling source overrides such as
+# ../validibot-shared, which are not present inside the Docker build context.
+RUN UV_NO_SOURCES=1 uv sync --group dev --extra docker-runner --frozen --no-install-project
 RUN install-commercial-package ${APP_HOME}/.venv/bin/python
 
 # Copy the rest of the project

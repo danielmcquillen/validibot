@@ -192,10 +192,11 @@ then `just local up` rebuilds from scratch. See also
 XML Schema, Tabular, etc.) run inside the Django process and work the moment the
 stack is up.
 
-Heavyweight validators — **EnergyPlus**, **FMU**, and **SHACL** — run as separate
-sibling containers that the `worker` launches on demand. The matching image must
-already exist on your Docker host. They live in a separate repo and build with one
-command — no registry, login, or push needed for local use:
+Heavyweight validators — **EnergyPlus**, **FMU**, **SHACL**, and **Schematron** —
+run as separate sibling containers that the `worker` launches on demand. The
+matching image must already exist on your Docker host. They live in a separate
+repo and build with one command — no registry, login, or push needed for local
+use:
 
 ```bash
 git clone https://github.com/danielmcquillen/validibot-validator-backends.git
@@ -204,9 +205,9 @@ just build-all          # or build one: just build energyplus
 ```
 
 This produces images named `validibot-validator-backend-<slug>:latest` (slugs:
-`energyplus`, `fmu`, `shacl`). The worker finds each one **by that name
-automatically** — there's nothing to configure. By default these containers run
-with **no network access** for safety (they exchange files through a shared
+`energyplus`, `fmu`, `shacl`, `schematron`). The worker finds each one **by that
+name automatically** — there's nothing to configure. By default these containers
+run with **no network access** for safety (they exchange files through a shared
 storage volume); uncomment `VALIDATOR_NETWORK` in the compose file only if a
 validator genuinely needs the internet.
 

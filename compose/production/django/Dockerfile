@@ -96,9 +96,11 @@ COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/ins
 # EXTRA_UV_EXTRAS is a space-separated list of pyproject.toml extras
 # to include. Empty → no --extra flags; "foo" → --extra foo;
 # "foo bar" → --extra foo --extra bar.
+# UV_NO_SOURCES ignores host-only sibling source overrides such as
+# ../validibot-shared, which are not present inside the Docker build context.
 RUN EXTRA_FLAGS=""; \
     for extra in ${EXTRA_UV_EXTRAS}; do EXTRA_FLAGS="${EXTRA_FLAGS} --extra ${extra}"; done; \
-    uv sync --no-dev --no-install-project --frozen ${EXTRA_FLAGS} \
+    UV_NO_SOURCES=1 uv sync --no-dev --no-install-project --frozen ${EXTRA_FLAGS} \
     && install-commercial-package ${APP_HOME}/.venv/bin/python \
     && rm -rf /tmp/uv-cache
 

@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy dependency files first for better caching
 COPY pyproject.toml uv.lock ${APP_HOME}/
 COPY --from=validibot_shared / /validibot-shared/
+RUN chmod -R a+rX /validibot-shared
 COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/install-commercial-package
 
 # Install dependencies with dev group for local work

@@ -19,8 +19,13 @@ from validibot_shared.validations.artifacts import ARTIFACT_REF_SCHEMA_VERSION
 from validibot_shared.validations.artifacts import ArtifactRef
 
 from validibot.validations.constants import ArtifactKind
+from validibot.validations.constants import EnvelopeChannel
+from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.models import Artifact
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import ValidationStepRun
+from validibot.validations.services import artifact_ports
 
 SHA256_CHUNK_SIZE = 1024 * 1024
 CONTRACT_KEY_PATTERN = re.compile(r"[^a-z0-9_]+")
@@ -43,6 +48,11 @@ def register_output_artifacts(
         return []
 
     validator = step_run.workflow_step.validator
+    declared_ports = _output_artifact_ports_for_step_run(step_run)
+    _validate_declared_output_artifact_counts(
+        ports=declared_ports,
+        envelope_artifacts=envelope_artifacts,
+    )
     raw_outputs = getattr(output_envelope, "raw_outputs", None)
     manifest_uri = getattr(raw_outputs, "manifest_uri", "") if raw_outputs else ""
 
@@ -54,11 +64,32 @@ def register_output_artifacts(
         media_type = str(getattr(envelope_artifact, "mime_type", "") or "")
         uri = str(getattr(envelope_artifact, "uri", "") or "")
         size_bytes = getattr(envelope_artifact, "size_bytes", None)
-
-        contract_key = _dedup_contract_key(
-            _contract_key_from(role or name, fallback=f"artifact_{position}"),
-            seen,
+        port = _match_declared_output_port(
+            ports=declared_ports,
+            envelope_artifact=envelope_artifact,
         )
+
+        if port:
+            artifact_ports.validate_output_artifact(
+                port=port,
+                artifact=envelope_artifact,
+            )
+            contract_key = port.contract_key
+            seen.add(contract_key)
+            role = port.role or role
+            media_type = media_type or port.media_type
+            data_format = port.data_format
+            artifact_kind = port.artifact_kind or ArtifactKind.FILE
+            metadata_source = "declared_output_port"
+        else:
+            contract_key = _dedup_contract_key(
+                _contract_key_from(role or name, fallback=f"artifact_{position}"),
+                seen,
+            )
+            data_format = ""
+            artifact_kind = _infer_kind(role=role, media_type=media_type, name=name)
+            metadata_source = "output_envelope"
+
         sha256 = _sha256_for_uri(uri)
         artifact, _created = Artifact.objects.update_or_create(
             validation_run=step_run.validation_run,
@@ -72,8 +103,8 @@ def register_output_artifacts(
                 "content_type": media_type,
                 "file": "",
                 "role": role,
-                "kind": _infer_kind(role=role, media_type=media_type, name=name),
-                "data_format": "",
+                "kind": artifact_kind,
+                "data_format": data_format,
                 "storage_uri": uri,
                 "size_bytes": size_bytes or 0,
                 "sha256": sha256,
@@ -85,14 +116,87 @@ def register_output_artifacts(
                 ),
                 "retention_class": step_run.validation_run.output_retention_policy,
                 "metadata": {
-                    "source": "output_envelope",
+                    "source": metadata_source,
                     "envelope_artifact_name": name,
+                    "envelope_artifact_type": str(
+                        getattr(envelope_artifact, "type", "") or "",
+                    ),
                 },
             },
         )
         refs.append(build_artifact_ref(artifact).model_dump(mode="json"))
 
     return refs
+
+
+def _output_artifact_ports_for_step_run(
+    step_run: ValidationStepRun,
+) -> list[StepIODefinition]:
+    """Return declared output artifact ports for this concrete workflow step."""
+
+    step = step_run.workflow_step
+    ports = list(
+        step.signal_definitions.filter(
+            direction=SignalDirection.OUTPUT,
+            io_medium=StepIOMedium.ARTIFACT,
+            envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
+        ),
+    )
+    ports.extend(
+        step.validator.signal_definitions.filter(
+            direction=SignalDirection.OUTPUT,
+            io_medium=StepIOMedium.ARTIFACT,
+            envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
+        ),
+    )
+    return ports
+
+
+def _match_declared_output_port(
+    *,
+    ports: list[StepIODefinition],
+    envelope_artifact,
+) -> StepIODefinition | None:
+    """Find the declared output port that corresponds to an envelope artifact."""
+
+    role = str(getattr(envelope_artifact, "type", "") or "")
+    name = str(getattr(envelope_artifact, "name", "") or "")
+    normalized_role = _contract_key_from(role, fallback="")
+    normalized_name = _contract_key_from(name, fallback="")
+
+    for port in ports:
+        if port.role and role == port.role:
+            return port
+
+    for port in ports:
+        if normalized_role and normalized_role == port.contract_key:
+            return port
+        if normalized_name and normalized_name == port.contract_key:
+            return port
+
+    return None
+
+
+def _validate_declared_output_artifact_counts(
+    *,
+    ports: list[StepIODefinition],
+    envelope_artifacts: list[Any],
+) -> None:
+    """Validate per-port output artifact counts before mutating the index."""
+
+    for port in ports:
+        count = sum(
+            1
+            for artifact in envelope_artifacts
+            if _match_declared_output_port(ports=[port], envelope_artifact=artifact)
+        )
+        if count == 0 and not port.min_items:
+            continue
+        artifact_ports.validate_cardinality(
+            port=port,
+            count=count,
+            source_description="output envelope artifacts",
+        )
 
 
 def build_step_artifact_refs(step_run: ValidationStepRun) -> dict[str, Any]:

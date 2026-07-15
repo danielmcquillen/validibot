@@ -7,6 +7,7 @@ case to Cloud Run envelope assembly or trace persistence.
 """
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -146,6 +147,24 @@ def _schematron_xml_document_port(**overrides) -> ArtifactPort:
     return ArtifactPort(**values)
 
 
+def _energyplus_sql_output_port(**overrides) -> ArtifactPort:
+    """Return an EnergyPlus SQL output artifact port with production defaults."""
+
+    values = {
+        "contract_key": "eplusout_sql",
+        "role": "simulation-db",
+        "data_format": "sqlite",
+        "media_type": "application/x-sqlite3",
+        "accepted_data_formats": ["sqlite"],
+        "accepted_media_types": ["application/x-sqlite3", "application/vnd.sqlite3"],
+        "metadata": {"accepted_extensions": ["sql"]},
+        "min_items": 0,
+        "max_items": 1,
+    }
+    values.update(overrides)
+    return ArtifactPort(**values)
+
+
 class TestArtifactPortContractValidation:
     """Coverage for the reusable artifact-port validation service."""
 
@@ -263,6 +282,33 @@ class TestArtifactPortContractValidation:
                     type="library",
                     port_key="weather_file",
                     uri="gs://validibot/resources/library.epw",
+                ),
+            )
+
+    def test_output_artifact_accepts_declared_energyplus_sql_contract(self):
+        """Declared output ports validate backend artifact role, MIME, and URI."""
+
+        artifact_ports.validate_output_artifact(
+            port=_energyplus_sql_output_port(),
+            artifact=SimpleNamespace(
+                name="eplusout.sql",
+                type="simulation-db",
+                mime_type="application/x-sqlite3",
+                uri="gs://validibot/runs/run-1/outputs/eplusout.sql",
+            ),
+        )
+
+    def test_output_artifact_rejects_wrong_role(self):
+        """Output ports should reject a backend artifact with the wrong role."""
+
+        with pytest.raises(ValueError, match="expected role 'simulation-db'"):
+            artifact_ports.validate_output_artifact(
+                port=_energyplus_sql_output_port(),
+                artifact=SimpleNamespace(
+                    name="eplusout.sql",
+                    type="timeseries-csv",
+                    mime_type="application/x-sqlite3",
+                    uri="gs://validibot/runs/run-1/outputs/eplusout.sql",
                 ),
             )
 

@@ -154,6 +154,33 @@ def validate_artifact_ref(
     )
 
 
+def validate_output_artifact(
+    *,
+    port: ArtifactPortLike,
+    artifact,
+) -> None:
+    """Validate a trusted output-envelope artifact against an output port."""
+
+    name = str(getattr(artifact, "name", "") or "")
+    uri = str(getattr(artifact, "uri", "") or "")
+    media_type = str(getattr(artifact, "mime_type", "") or "")
+    role = str(getattr(artifact, "type", "") or "")
+    source = f"output artifact '{uri or name or '<unknown>'}'"
+
+    validate_file_uri(port=port, uri=uri or name)
+    _validate_role(port=port, observed_role=role, source_description=source)
+    _validate_data_format(
+        port=port,
+        observed_data_format=_data_format_from_known_uri(uri or name),
+        source_description=source,
+    )
+    _validate_media_type(
+        port=port,
+        observed_media_type=media_type or _media_type_from_known_uri(uri or name),
+        source_description=source,
+    )
+
+
 def validate_file_uri(*, port: ArtifactPortLike, uri: str) -> None:
     """Validate a submitted/upstream file URI against declared port extensions."""
 
@@ -330,6 +357,7 @@ def _artifact_ref_media_type_matches_inference(
         SupportedMimeType.RDF_JSON_LD.value: {"application/json"},
         SupportedMimeType.RDF_N_TRIPLES.value: {"text/plain"},
         SupportedMimeType.RDF_N_QUADS.value: {"text/plain"},
+        "application/x-sqlite3": {"application/vnd.sqlite3"},
     }
     return normalized_media_type in aliases.get(normalized_inferred, set())
 
@@ -344,6 +372,12 @@ def _media_type_from_known_uri(uri: str) -> str:
         return SupportedMimeType.ENERGYPLUS_EPJSON.value
     if extension == "epw":
         return SupportedMimeType.ENERGYPLUS_EPW.value
+    if extension == "sql":
+        return "application/x-sqlite3"
+    if extension == "csv":
+        return "text/csv"
+    if extension in {"err", "eso", "log", "txt"}:
+        return "text/plain"
     if extension == "fmu":
         return SupportedMimeType.FMU.value
     if extension == "xml":
@@ -371,6 +405,14 @@ def _data_format_from_known_uri(uri: str) -> str:
         return SubmissionDataFormat.ENERGYPLUS_EPJSON
     if extension == "epw":
         return ResourceFileType.ENERGYPLUS_WEATHER
+    if extension == "sql":
+        return "sqlite"
+    if extension == "csv":
+        return "csv"
+    if extension in {"err", "log", "txt"}:
+        return "text"
+    if extension == "eso":
+        return "energyplus_eso"
     if extension == "fmu":
         return SubmissionDataFormat.FMU
     if extension == "xml":

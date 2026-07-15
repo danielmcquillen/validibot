@@ -23,6 +23,50 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import CatalogEntrySpec
 from validibot.validations.validators.base.config import ValidatorConfig
 
+
+def _energyplus_output_artifact(
+    *,
+    slug: str,
+    label: str,
+    role: str,
+    artifact_kind: str,
+    media_type: str,
+    data_format: str,
+    accepted_extensions: list[str],
+    accepted_media_types: list[str] | None = None,
+    order: int,
+) -> CatalogEntrySpec:
+    """Declare an EnergyPlus output file emitted by the backend."""
+
+    return CatalogEntrySpec(
+        entry_type=CatalogEntryType.SIGNAL,
+        run_stage=CatalogRunStage.OUTPUT,
+        slug=slug,
+        label=label,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        description=f"EnergyPlus output artifact '{label}' uploaded by the backend.",
+        binding_config={"source": "output_artifact", "role": role},
+        metadata={"accepted_extensions": accepted_extensions},
+        is_required=False,
+        on_missing="null",
+        order=order,
+        source_kind=SignalSourceKind.INTERNAL,
+        is_path_editable=False,
+        io_medium=StepIOMedium.ARTIFACT,
+        artifact_kind=artifact_kind,
+        media_type=media_type,
+        data_format=data_format,
+        accepted_data_formats=[data_format],
+        accepted_media_types=accepted_media_types or [media_type],
+        allowed_source_scopes=[],
+        default_source_strategy=DefaultSourceStrategy.NONE,
+        envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
+        role=role,
+        min_items=0,
+        max_items=1,
+    )
+
+
 config = ValidatorConfig(
     slug="energyplus-idf-validator",
     name="EnergyPlus\u2122 Validator",
@@ -54,11 +98,11 @@ config = ValidatorConfig(
     #   provenance clarity (lands with the validibot-shared 0.8.0
     #   release that ships the renamed Pydantic field).
     #
-    # NOTE: validator versions were reset to a clean v1 baseline — no workflows
-    # were pinned to the earlier revisions. The changelog above is kept as
-    # history; sync_validators still rejects later in-place semantic drift, so
-    # any future behavioural change must bump version again.
-    version=1,
+    # v2: ADR-2026-07-06 declares the concrete EnergyPlus output files uploaded
+    # by the backend as first-class output artifact ports. This is semantic
+    # catalog-contract drift, so it must create a new validator version instead
+    # of mutating v1.
+    version=2,
     order=10,
     has_processor=True,
     processor_name="EnergyPlus\u2122 Simulation",
@@ -167,6 +211,55 @@ config = ValidatorConfig(
             role="weather",
             min_items=1,
             max_items=1,
+        ),
+        # ==================================================================
+        # OUTPUT ARTIFACT PORTS - files uploaded by the EnergyPlus backend.
+        #
+        # The backend labels artifacts by role ("simulation-db",
+        # "timeseries-csv", etc.). These ports give workflow authors stable,
+        # file-specific keys under steps.<step>.artifact.* while preserving the
+        # backend-facing role mapping in the port contract.
+        # ==================================================================
+        _energyplus_output_artifact(
+            slug="eplusout_sql",
+            label="EnergyPlus SQL Output",
+            role="simulation-db",
+            artifact_kind=ArtifactKind.DATASET,
+            media_type="application/x-sqlite3",
+            data_format="sqlite",
+            accepted_extensions=["sql"],
+            accepted_media_types=["application/x-sqlite3", "application/vnd.sqlite3"],
+            order=90,
+        ),
+        _energyplus_output_artifact(
+            slug="eplusout_csv",
+            label="EnergyPlus CSV Output",
+            role="timeseries-csv",
+            artifact_kind=ArtifactKind.DATASET,
+            media_type="text/csv",
+            data_format="csv",
+            accepted_extensions=["csv"],
+            order=91,
+        ),
+        _energyplus_output_artifact(
+            slug="eplusout_err",
+            label="EnergyPlus Error Log",
+            role="err-log",
+            artifact_kind=ArtifactKind.LOG,
+            media_type="text/plain",
+            data_format="text",
+            accepted_extensions=["err"],
+            order=92,
+        ),
+        _energyplus_output_artifact(
+            slug="eplusout_eso",
+            label="EnergyPlus ESO Output",
+            role="eso",
+            artifact_kind=ArtifactKind.DATASET,
+            media_type="text/plain",
+            data_format="energyplus_eso",
+            accepted_extensions=["eso"],
+            order=93,
         ),
         # ==================================================================
         # STEP INPUTS \u2014 parser-extracted facts from the (resolved) IDF.

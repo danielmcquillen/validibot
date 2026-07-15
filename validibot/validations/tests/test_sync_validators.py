@@ -285,6 +285,34 @@ class SyncValidatorsCommandTests(TestCase):
             },
         )
 
+        eplusout_sql = StepIODefinition.objects.get(
+            validator=validator,
+            contract_key="eplusout_sql",
+            direction="output",
+        )
+        self.assertEqual(eplusout_sql.io_medium, StepIOMedium.ARTIFACT)
+        self.assertEqual(eplusout_sql.data_type, CatalogValueType.ARTIFACT_REF)
+        self.assertEqual(eplusout_sql.artifact_kind, ArtifactKind.DATASET)
+        self.assertEqual(eplusout_sql.role, "simulation-db")
+        self.assertEqual(eplusout_sql.data_format, "sqlite")
+        self.assertEqual(eplusout_sql.media_type, "application/x-sqlite3")
+        self.assertEqual(
+            eplusout_sql.envelope_channel,
+            EnvelopeChannel.OUTPUT_ARTIFACTS,
+        )
+        self.assertEqual(eplusout_sql.metadata["accepted_extensions"], ["sql"])
+        self.assertEqual(eplusout_sql.accepted_data_formats, ["sqlite"])
+        self.assertEqual(
+            eplusout_sql.accepted_media_types,
+            ["application/x-sqlite3", "application/vnd.sqlite3"],
+        )
+        self.assertEqual(eplusout_sql.min_items, 0)
+        self.assertEqual(eplusout_sql.max_items, 1)
+        self.assertEqual(
+            eplusout_sql.provider_binding,
+            {"source": "output_artifact", "role": "simulation-db"},
+        )
+
     def test_command_creates_derivations(self):
         """Test that derivation entries are created."""
         self.call_command()
@@ -370,16 +398,15 @@ class SyncValidatorsCommandTests(TestCase):
           surface_count, window_count, construction_count,
           run_period_count, has_hvac)
 
-        The catalogue versions were later reset to a clean v1 baseline (no
-        workflows were pinned to the earlier revisions), so the config now
-        advertises version 1 again — carrying the v3-era behaviour. The seed
-        row must match that advertised version (currently 1) to exercise the
-        update path rather than the create-new-row path.
+        The catalogue versions were later reset to a clean v1 baseline. The
+        artifact-port output slice then bumped the active contract to v2. The
+        seed row must match that advertised version to exercise the update path
+        rather than the create-new-row path.
         """
         # Create a validator with different name but matching (slug, version).
         Validator.objects.create(
             slug="energyplus-idf-validator",
-            version=1,
+            version=2,
             name="Old Name",
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,
@@ -565,6 +592,23 @@ class CreateDefaultValidatorsTests(TestCase):
                 f"{slug} should support assertions",
             )
 
+    def test_uses_registered_config_version_for_seeded_validators(self):
+        """create_default_validators should not recreate stale catalog versions.
+
+        ``reset_system`` and ``setup_validibot`` call this legacy seeder before
+        running config sync. If the seeder hard-codes an older version for a
+        config-managed validator, reset leaves duplicate rows and resource
+        seeding can hit slug-only lookup failures.
+        """
+        from validibot.validations.utils import create_default_validators
+        from validibot.validations.validators.base.config import get_config
+
+        create_default_validators()
+
+        cfg = get_config(ValidationType.ENERGYPLUS)
+        validator = Validator.objects.get(slug="energyplus-idf-validator")
+        self.assertEqual(validator.version, cfg.version)
+
 
 class SystemValidatorShortDescriptionTests(TestCase):
     """Regression coverage for the validator-card short-description fight.
@@ -734,7 +778,17 @@ class DiscoverConfigsTests(TestCase):
             if entry.io_medium == StepIOMedium.ARTIFACT
         }
 
-        self.assertEqual(set(artifact_ports), {"primary_model", "weather_file"})
+        self.assertEqual(
+            set(artifact_ports),
+            {
+                "primary_model",
+                "weather_file",
+                "eplusout_sql",
+                "eplusout_csv",
+                "eplusout_err",
+                "eplusout_eso",
+            },
+        )
         self.assertEqual(artifact_ports["primary_model"].role, "primary-model")
         self.assertEqual(
             artifact_ports["primary_model"].data_type,
@@ -773,6 +827,18 @@ class DiscoverConfigsTests(TestCase):
                 BindingSourceScope.UPSTREAM_ARTIFACT,
             ],
         )
+        self.assertEqual(artifact_ports["eplusout_sql"].role, "simulation-db")
+        self.assertEqual(
+            artifact_ports["eplusout_sql"].envelope_channel,
+            EnvelopeChannel.OUTPUT_ARTIFACTS,
+        )
+        self.assertEqual(
+            artifact_ports["eplusout_sql"].data_type,
+            CatalogValueType.ARTIFACT_REF,
+        )
+        self.assertEqual(artifact_ports["eplusout_sql"].data_format, "sqlite")
+        self.assertEqual(artifact_ports["eplusout_sql"].min_items, 0)
+        self.assertEqual(artifact_ports["eplusout_sql"].max_items, 1)
 
     def test_shacl_declares_data_graph_artifact_port(self):
         """SHACL config declares the submitted/upstream RDF graph contract.

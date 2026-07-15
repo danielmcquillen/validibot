@@ -12,8 +12,10 @@ from types import SimpleNamespace
 import pytest
 from validibot_shared.validations.envelopes import ValidationArtifact
 
+from validibot.validations.constants import ArtifactKind
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import StepStatus
@@ -116,6 +118,154 @@ class TestStepArtifactRegistration:
         assert artifact.contract_key == "report"
         assert artifact.storage_uri == "gs://bucket/new/report.html"
         assert artifact.size_bytes == UPDATED_REPORT_SIZE_BYTES
+
+    def test_declared_output_port_controls_artifact_ref_contract_key(self):
+        """Output artifact ports should own stable public artifact keys.
+
+        Backend envelopes use runner-facing roles such as ``simulation-db``.
+        The declared output port maps that role to the author-facing
+        ``eplusout_sql`` key used by ``steps.<step>.artifact.eplusout_sql``.
+        """
+
+        run = ValidationRunFactory()
+        step = WorkflowStepFactory(workflow=run.workflow, name="Simulate Model")
+        StepIODefinitionFactory(
+            validator=step.validator,
+            direction=SignalDirection.OUTPUT,
+            contract_key="eplusout_sql",
+            native_name="eplusout_sql",
+            data_type=CatalogValueType.ARTIFACT_REF,
+            io_medium=StepIOMedium.ARTIFACT,
+            artifact_kind=ArtifactKind.DATASET,
+            media_type="application/x-sqlite3",
+            data_format="sqlite",
+            accepted_data_formats=["sqlite"],
+            accepted_media_types=["application/x-sqlite3", "application/vnd.sqlite3"],
+            envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
+            role="simulation-db",
+            metadata={"accepted_extensions": ["sql"]},
+            min_items=0,
+            max_items=1,
+        )
+        step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+            step_order=step.order,
+            status=StepStatus.PASSED,
+        )
+
+        refs = register_output_artifacts(
+            step_run=step_run,
+            output_envelope=SimpleNamespace(
+                artifacts=[
+                    ValidationArtifact(
+                        name="eplusout.sql",
+                        type="simulation-db",
+                        mime_type="application/x-sqlite3",
+                        uri="gs://validibot/runs/run-1/outputs/eplusout.sql",
+                        size_bytes=123,
+                    ),
+                ],
+                raw_outputs=None,
+            ),
+        )
+
+        artifact = Artifact.objects.get(step_run=step_run)
+        assert artifact.contract_key == "eplusout_sql"
+        assert artifact.role == "simulation-db"
+        assert artifact.kind == ArtifactKind.DATASET
+        assert artifact.data_format == "sqlite"
+        assert artifact.metadata["source"] == "declared_output_port"
+        assert refs == [build_step_artifact_refs(step_run)["eplusout_sql"]]
+
+    def test_declared_output_port_rejects_wrong_artifact_extension(self):
+        """Declared output ports should fail before indexing incompatible files."""
+
+        step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
+        StepIODefinitionFactory(
+            validator=step_run.workflow_step.validator,
+            direction=SignalDirection.OUTPUT,
+            contract_key="eplusout_sql",
+            data_type=CatalogValueType.ARTIFACT_REF,
+            io_medium=StepIOMedium.ARTIFACT,
+            artifact_kind=ArtifactKind.DATASET,
+            media_type="application/x-sqlite3",
+            data_format="sqlite",
+            accepted_data_formats=["sqlite"],
+            accepted_media_types=["application/x-sqlite3"],
+            envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
+            role="simulation-db",
+            metadata={"accepted_extensions": ["sql"]},
+            min_items=0,
+            max_items=1,
+        )
+
+        with pytest.raises(ValueError, match=r"expected one of \.sql"):
+            register_output_artifacts(
+                step_run=step_run,
+                output_envelope=SimpleNamespace(
+                    artifacts=[
+                        ValidationArtifact(
+                            name="eplusout.csv",
+                            type="simulation-db",
+                            mime_type="text/csv",
+                            uri="gs://validibot/runs/run-1/outputs/eplusout.csv",
+                            size_bytes=123,
+                        ),
+                    ],
+                    raw_outputs=None,
+                ),
+            )
+
+        assert Artifact.objects.filter(step_run=step_run).count() == 0
+
+    def test_declared_output_port_enforces_scalar_cardinality(self):
+        """A scalar output port must not silently index duplicate artifacts."""
+
+        step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
+        StepIODefinitionFactory(
+            validator=step_run.workflow_step.validator,
+            direction=SignalDirection.OUTPUT,
+            contract_key="eplusout_sql",
+            data_type=CatalogValueType.ARTIFACT_REF,
+            io_medium=StepIOMedium.ARTIFACT,
+            artifact_kind=ArtifactKind.DATASET,
+            media_type="application/x-sqlite3",
+            data_format="sqlite",
+            accepted_data_formats=["sqlite"],
+            accepted_media_types=["application/x-sqlite3"],
+            envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
+            role="simulation-db",
+            metadata={"accepted_extensions": ["sql"]},
+            min_items=0,
+            max_items=1,
+        )
+
+        with pytest.raises(ValueError, match="accepts at most 1"):
+            register_output_artifacts(
+                step_run=step_run,
+                output_envelope=SimpleNamespace(
+                    artifacts=[
+                        ValidationArtifact(
+                            name="eplusout.sql",
+                            type="simulation-db",
+                            mime_type="application/x-sqlite3",
+                            uri="gs://bucket/outputs/eplusout.sql",
+                            size_bytes=100,
+                        ),
+                        ValidationArtifact(
+                            name="copy.sql",
+                            type="simulation-db",
+                            mime_type="application/x-sqlite3",
+                            uri="gs://bucket/outputs/copy.sql",
+                            size_bytes=100,
+                        ),
+                    ],
+                    raw_outputs=None,
+                ),
+            )
+
+        assert Artifact.objects.filter(step_run=step_run).count() == 0
 
 
 class TestStepArtifactRunContext:

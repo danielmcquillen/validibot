@@ -20,6 +20,7 @@ def create_default_validators():
         default_supported_data_formats_for_validation,
     )
     from validibot.validations.models import default_supported_file_types_for_validation
+    from validibot.validations.validators.base.config import get_all_configs
 
     default_validators = [
         {
@@ -183,21 +184,35 @@ def create_default_validators():
         },
     ]
 
+    config_by_slug = {cfg.slug: cfg for cfg in get_all_configs()}
     created = 0
     updated = 0
     for validator_data in default_validators:
+        config = config_by_slug.get(validator_data["slug"])
+        resolved_data = validator_data
+        if config:
+            resolved_data = {
+                **validator_data,
+                "name": config.name,
+                "short_description": config.short_description,
+                "description": config.description,
+                "version": config.version,
+                "order": config.order,
+                "has_processor": config.has_processor,
+                "supports_assertions": config.supports_assertions,
+            }
         defaults = {
-            **validator_data,
+            **resolved_data,
             "supported_data_formats": default_supported_data_formats_for_validation(
-                validator_data["validation_type"]
+                resolved_data["validation_type"]
             ),
             "supported_file_types": default_supported_file_types_for_validation(
-                validator_data["validation_type"]
+                resolved_data["validation_type"]
             ),
         }
         validator, was_created = Validator.objects.get_or_create(
-            slug=validator_data["slug"],
-            version=validator_data["version"],
+            slug=resolved_data["slug"],
+            version=resolved_data["version"],
             defaults=defaults,
         )
         if was_created:
@@ -207,12 +222,12 @@ def create_default_validators():
             updated += 1
 
         # Update order in case it has changed
-        validator.name = validator_data["name"]
-        validator.order = validator_data["order"]
+        validator.name = resolved_data["name"]
+        validator.order = resolved_data["order"]
         validator.is_system = True
         validator.org = None
-        validator.short_description = validator_data.get("short_description") or ""
-        validator.description = validator_data.get("description") or ""
+        validator.short_description = resolved_data.get("short_description") or ""
+        validator.description = resolved_data.get("description") or ""
         if not validator.supported_file_types:
             validator.supported_file_types = defaults["supported_file_types"]
         if not validator.supported_data_formats:

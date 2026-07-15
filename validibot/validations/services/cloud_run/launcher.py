@@ -1016,7 +1016,10 @@ def launch_schematron_validation(
             callback_url=callback_url,
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
-            input_file_uris={"primary_file_uri": submission_uri},
+            input_file_uris={
+                "xml_document": submission_uri,
+                "primary_file_uri": submission_uri,
+            },
         )
 
         # 4. Upload the input envelope.

@@ -812,7 +812,7 @@ def _resolve_submission_file_uri(
         port.contract_key,
         f"{port.contract_key}_uri",
     ]
-    if port.contract_key in {"primary_model", "data_graph"}:
+    if port.contract_key in {"primary_model", "data_graph", "xml_document"}:
         candidates.append("primary_file_uri")
 
     sources = [input_file_uris or {}, step_config or {}]
@@ -1070,6 +1070,18 @@ def _shacl_inputs_for_upstream_data_graph_uri(shacl_inputs, uri: str):
     if rdf_format == shacl_inputs.rdf_format:
         return shacl_inputs
     return shacl_inputs.model_copy(update={"rdf_format": rdf_format})
+
+
+def _build_schematron_input_file_item(port, uri: str) -> InputFileItem:
+    """Build a Schematron ``InputFileItem`` from an ``xml_document`` port."""
+
+    return InputFileItem(
+        name=_filename_from_uri(uri) or "submission.xml",
+        mime_type=SupportedMimeType.APPLICATION_XML,
+        role=port.role or "xml-document",
+        port_key=port.contract_key,
+        uri=uri,
+    )
 
 
 def build_input_envelope(
@@ -1541,11 +1553,6 @@ def build_input_envelope(
         # Imports are deliberately local: ``validibot_shared.schematron``
         # requires validibot-shared >= 0.12.0, and this branch is the only
         # part of the envelope builder that touches it.
-        submission_uri = step_config.get("primary_file_uri")
-        if not submission_uri:
-            msg = f"Step {step.id} has no primary_file_uri in config for Schematron"
-            raise ValueError(msg)
-
         from validibot_shared.schematron.envelopes import (
             build_schematron_input_envelope,
         )
@@ -1558,7 +1565,25 @@ def build_input_envelope(
             validator=validator,
             ruleset=step.ruleset,
         )
-        return build_schematron_input_envelope(
+        resolved_xml_document = _resolve_input_file_artifact_port_item(
+            run=run,
+            step=step,
+            step_config=step_config,
+            input_file_uris=input_file_uris,
+            contract_key="xml_document",
+            item_builder=_build_schematron_input_file_item,
+        )
+        xml_document_item = None
+        if resolved_xml_document is not None:
+            xml_document_item, _source_scope = resolved_xml_document
+            submission_uri = xml_document_item.uri
+        else:
+            submission_uri = step_config.get("primary_file_uri")
+            if not submission_uri:
+                msg = f"Step {step.id} has no primary_file_uri in config for Schematron"
+                raise ValueError(msg)
+
+        envelope = build_schematron_input_envelope(
             run_id=str(run.id),
             validator=validator,
             org_id=str(run.org.id),
@@ -1573,6 +1598,9 @@ def build_input_envelope(
             execution_bundle_uri=execution_bundle_uri,
             skip_callback=skip_callback,
         )
+        if xml_document_item is not None:
+            envelope.input_files = [xml_document_item]
+        return envelope
 
     msg = f"Unsupported validator type: {validator.validation_type}"
     raise ValueError(msg)

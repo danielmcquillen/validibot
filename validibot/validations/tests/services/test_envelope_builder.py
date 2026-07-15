@@ -24,6 +24,7 @@ from types import SimpleNamespace
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
+from validibot_shared.schematron.envelopes import SchematronInputEnvelope
 from validibot_shared.shacl.envelopes import SHACLInputEnvelope
 from validibot_shared.validations.envelopes import ResourceFileItem
 from validibot_shared.validations.envelopes import ValidationArtifact
@@ -260,6 +261,78 @@ def _build_shacl_data_graph_run(
     )
     data_graph_port = _make_shacl_data_graph_port(validator)
     return run, step, data_graph_port
+
+
+def _make_schematron_xml_document_port(validator):
+    """Create the declared Schematron XML document artifact input port."""
+
+    return StepIODefinitionFactory(
+        validator=validator,
+        workflow_step=None,
+        contract_key="xml_document",
+        native_name="xml_document",
+        direction=SignalDirection.INPUT,
+        origin_kind=SignalOriginKind.CATALOG,
+        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        io_medium=StepIOMedium.ARTIFACT,
+        artifact_kind=ArtifactKind.FILE,
+        media_type="application/xml",
+        data_format=SubmissionDataFormat.XML,
+        accepted_data_formats=[SubmissionDataFormat.XML],
+        accepted_media_types=["application/xml", "text/xml"],
+        metadata={"accepted_extensions": ["xml"]},
+        envelope_channel=EnvelopeChannel.INPUT_FILES,
+        role="xml-document",
+        min_items=1,
+        max_items=1,
+        allowed_source_scopes=[
+            BindingSourceScope.SUBMISSION_FILE,
+            BindingSourceScope.UPSTREAM_ARTIFACT,
+        ],
+    )
+
+
+def _build_schematron_xml_document_run():
+    """Create a Schematron run with an ``xml_document`` artifact input port."""
+
+    validator = ValidatorFactory(
+        validation_type=ValidationType.SCHEMATRON,
+        version=2,
+    )
+    ruleset = RulesetFactory(
+        org=validator.org,
+        ruleset_type=RulesetType.SCHEMATRON,
+        rules_text=(
+            "<schema xmlns='http://purl.oclc.org/dsdl/schematron'>"
+            "<pattern id='p'/></schema>"
+        ),
+    )
+    step = WorkflowStepFactory(
+        validator=validator,
+        name="Validate XML Rules",
+        ruleset=ruleset,
+    )
+    submission = SubmissionFactory(
+        workflow=step.workflow,
+        org=step.workflow.org,
+        content="<invoice/>",
+        file_type=SubmissionFileType.XML,
+        original_filename="invoice.xml",
+    )
+    run = ValidationRunFactory(
+        workflow=step.workflow,
+        org=step.workflow.org,
+        submission=submission,
+    )
+    ValidationStepRunFactory(
+        validation_run=run,
+        workflow_step=step,
+        step_order=step.order,
+        status=StepStatus.PENDING,
+    )
+    xml_document_port = _make_schematron_xml_document_port(validator)
+    return run, step, xml_document_port
 
 
 def _build_energyplus_file_port_run():
@@ -1380,6 +1453,146 @@ class TestSHACLDataGraphFilePortMaterialization:
         )
         assert trace.resolved is False
         assert "expected one of .ttl" in trace.error_message
+
+
+# ==============================================================================
+# Schematron XML document file-port materialization
+# ==============================================================================
+# Schematron rules intentionally remain inline in SchematronInputs for this
+# slice. The submitted XML document is the artifact port because it is the
+# data-plane object the backend downloads and validates.
+# ==============================================================================
+
+
+class TestSchematronXmlDocumentFilePortMaterialization:
+    """Tests for resolving Schematron's XML document through artifact ports."""
+
+    def test_submitted_xml_document_materializes_with_port_key(self):
+        """A submitted XML file should populate Schematron ``input_files``."""
+        run, step, xml_document_port = _build_schematron_xml_document_run()
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=xml_document_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="xml_document",
+        )
+
+        envelope = build_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+            input_file_uris={
+                "xml_document": "file:///validibot/input/invoice.xml",
+            },
+        )
+
+        assert isinstance(envelope, SchematronInputEnvelope)
+        assert envelope.input_files[0].port_key == "xml_document"
+        assert envelope.input_files[0].role == "xml-document"
+        assert envelope.input_files[0].name == "invoice.xml"
+        assert envelope.input_files[0].uri == "file:///validibot/input/invoice.xml"
+        assert envelope.input_files[0].mime_type == "application/xml"
+        assert "schematron" in envelope.inputs.schematron_text
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="xml_document",
+        )
+        assert trace.resolved is True
+        assert trace.source_scope_used == BindingSourceScope.SUBMISSION_FILE
+        assert trace.value_snapshot == {
+            "source": BindingSourceScope.SUBMISSION_FILE,
+            "port_key": "xml_document",
+            "role": "xml-document",
+            "uri": "file:///validibot/input/invoice.xml",
+        }
+
+    def test_upstream_xml_artifact_materializes_as_schematron_input_file(self):
+        """An upstream XML ArtifactRef can satisfy the XML document port."""
+        run, step, xml_document_port = _build_schematron_xml_document_run()
+        upstream_step = WorkflowStepFactory(
+            workflow=step.workflow,
+            name="Normalize XML",
+            order=step.order - 5,
+        )
+        upstream_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=upstream_step,
+            step_order=upstream_step.order,
+            status=StepStatus.PASSED,
+        )
+        register_output_artifacts(
+            step_run=upstream_run,
+            output_envelope=SimpleNamespace(
+                artifacts=[
+                    ValidationArtifact(
+                        name="normalized.xml",
+                        type="xml_document",
+                        mime_type="application/xml",
+                        uri="gs://validibot/runs/run-1/normalized.xml",
+                        size_bytes=321,
+                    ),
+                ],
+                raw_outputs=None,
+            ),
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=xml_document_port,
+            source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
+            source_data_path=f"{upstream_step.step_key}.xml_document",
+        )
+
+        envelope = build_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+        )
+
+        assert envelope.input_files[0].port_key == "xml_document"
+        assert envelope.input_files[0].role == "xml-document"
+        assert envelope.input_files[0].uri == (
+            "gs://validibot/runs/run-1/normalized.xml"
+        )
+        assert envelope.input_files[0].mime_type == "application/xml"
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="xml_document",
+        )
+        assert trace.resolved is True
+        assert trace.source_scope_used == BindingSourceScope.UPSTREAM_ARTIFACT
+        assert trace.upstream_step_key == upstream_step.step_key
+
+    def test_wrong_xml_document_extension_fails_before_dispatch_with_trace(self):
+        """Schematron should reject non-XML files before backend dispatch."""
+        run, step, xml_document_port = _build_schematron_xml_document_run()
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=xml_document_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="xml_document",
+        )
+
+        with pytest.raises(ValueError, match=r"expected one of \.xml"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+                input_file_uris={
+                    "xml_document": "file:///validibot/input/invoice.txt",
+                },
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="xml_document",
+        )
+        assert trace.resolved is False
+        assert "expected one of .xml" in trace.error_message
 
 
 # ==============================================================================

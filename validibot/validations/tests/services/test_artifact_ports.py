@@ -121,6 +121,31 @@ def _shacl_data_graph_port(**overrides) -> ArtifactPort:
     return ArtifactPort(**values)
 
 
+def _schematron_xml_document_port(**overrides) -> ArtifactPort:
+    """Return a Schematron XML document file port with production-like defaults."""
+
+    values = {
+        "contract_key": "xml_document",
+        "role": "xml-document",
+        "data_format": SubmissionDataFormat.XML,
+        "media_type": SupportedMimeType.APPLICATION_XML.value,
+        "accepted_data_formats": [SubmissionDataFormat.XML],
+        "accepted_media_types": [
+            SupportedMimeType.APPLICATION_XML.value,
+            SupportedMimeType.TEXT_XML.value,
+        ],
+        "allowed_source_scopes": [
+            BindingSourceScope.SUBMISSION_FILE,
+            BindingSourceScope.UPSTREAM_ARTIFACT,
+        ],
+        "metadata": {"accepted_extensions": ["xml"]},
+        "min_items": 1,
+        "max_items": 1,
+    }
+    values.update(overrides)
+    return ArtifactPort(**values)
+
+
 class TestArtifactPortContractValidation:
     """Coverage for the reusable artifact-port validation service."""
 
@@ -201,6 +226,20 @@ class TestArtifactPortContractValidation:
                 "data_format": SubmissionDataFormat.JSON,
                 "media_type": "application/json",
             },
+        )
+
+    def test_input_file_item_accepts_declared_xml_contract(self):
+        """Generic XML artifact ports should infer XML data format and MIME."""
+
+        artifact_ports.validate_input_file_item(
+            port=_schematron_xml_document_port(),
+            item=InputFileItem(
+                name="invoice.xml",
+                mime_type=SupportedMimeType.APPLICATION_XML,
+                role="xml-document",
+                port_key="xml_document",
+                uri="file:///validibot/input/invoice.xml",
+            ),
         )
 
     def test_resource_item_enforces_resource_type_and_file_contract(self):

@@ -834,6 +834,52 @@ class DiscoverConfigsTests(TestCase):
             ],
         )
 
+    def test_schematron_declares_xml_document_artifact_port(self):
+        """Schematron config declares the submitted/upstream XML document contract.
+
+        Schematron rules stay inline in ``SchematronInputs`` for this slice.
+        The submitted XML document is the file-like data-plane input and must be
+        discoverable from the validator catalog instead of hidden behind
+        ``primary_file_uri``.
+        """
+        configs = discover_configs()
+        schematron_config = next(c for c in configs if c.slug == "schematron-validator")
+
+        artifact_ports = {
+            entry.slug: entry
+            for entry in schematron_config.catalog_entries
+            if entry.io_medium == StepIOMedium.ARTIFACT
+        }
+
+        self.assertEqual(set(artifact_ports), {"xml_document"})
+        xml_document = artifact_ports["xml_document"]
+        self.assertEqual(xml_document.data_type, CatalogValueType.ARTIFACT_REF)
+        self.assertEqual(xml_document.artifact_kind, ArtifactKind.FILE)
+        self.assertEqual(xml_document.envelope_channel, EnvelopeChannel.INPUT_FILES)
+        self.assertEqual(xml_document.role, "xml-document")
+        self.assertEqual(xml_document.min_items, 1)
+        self.assertEqual(xml_document.max_items, 1)
+        self.assertEqual(
+            xml_document.default_source_strategy,
+            DefaultSourceStrategy.SUBMITTED_FILE_FIRST,
+        )
+        self.assertEqual(
+            xml_document.accepted_data_formats,
+            [SubmissionDataFormat.XML],
+        )
+        self.assertEqual(
+            xml_document.accepted_media_types,
+            ["application/xml", "text/xml"],
+        )
+        self.assertEqual(xml_document.metadata["accepted_extensions"], ["xml"])
+        self.assertEqual(
+            xml_document.allowed_source_scopes,
+            [
+                BindingSourceScope.SUBMISSION_FILE,
+                BindingSourceScope.UPSTREAM_ARTIFACT,
+            ],
+        )
+
     def test_configs_have_display_metadata(self):
         """All discovered configs have icon and card_image set."""
         for cfg in discover_configs():

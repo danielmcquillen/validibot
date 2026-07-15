@@ -26,11 +26,16 @@ startup fail loudly here rather than 400 later on the callback path.
 
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.constants import ArtifactKind
+from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ComputeTier
+from validibot.validations.constants import DefaultSourceStrategy
+from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import CatalogEntrySpec
 from validibot.validations.validators.base.config import ValidatorConfig
@@ -67,7 +72,11 @@ config = ValidatorConfig(
     image_name="validibot-validator-backend-schematron",
     has_processor=True,
     processor_name="Schematron Validation",
-    version=1,
+    # v2: ADR-2026-07-06 declares the XML document as the ``xml_document``
+    # artifact input port, rather than an implicit ``primary_file_uri`` envelope
+    # convention. Schematron rules remain inline in SchematronInputs for this
+    # slice; only the submitted XML document becomes a file-port contract.
+    version=2,
     order=3,
     supported_file_types=[SubmissionFileType.XML],
     supported_data_formats=[SubmissionDataFormat.XML],
@@ -81,6 +90,38 @@ config = ValidatorConfig(
     # All OUTPUT signals, populated from the container's SVRL summary
     # (INTERNAL source, non-editable path) — same shape as the SHACL config.
     catalog_entries=[
+        CatalogEntrySpec(
+            slug="xml_document",
+            label="XML Document",
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            data_type=CatalogValueType.ARTIFACT_REF,
+            description=(
+                "Resolved XML document passed to the Schematron backend as "
+                "the primary input file."
+            ),
+            metadata={"accepted_extensions": ["xml"]},
+            is_required=True,
+            on_missing="error",
+            order=1,
+            source_kind=SignalSourceKind.PAYLOAD_PATH,
+            is_path_editable=False,
+            io_medium=StepIOMedium.ARTIFACT,
+            artifact_kind=ArtifactKind.FILE,
+            media_type="application/xml",
+            data_format=SubmissionDataFormat.XML,
+            accepted_data_formats=[SubmissionDataFormat.XML],
+            accepted_media_types=["application/xml", "text/xml"],
+            allowed_source_scopes=[
+                BindingSourceScope.SUBMISSION_FILE,
+                BindingSourceScope.UPSTREAM_ARTIFACT,
+            ],
+            default_source_strategy=DefaultSourceStrategy.SUBMITTED_FILE_FIRST,
+            envelope_channel=EnvelopeChannel.INPUT_FILES,
+            role="xml-document",
+            min_items=1,
+            max_items=1,
+        ),
         CatalogEntrySpec(
             slug="passed",
             label="Passed",

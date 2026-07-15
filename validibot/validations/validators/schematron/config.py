@@ -72,11 +72,15 @@ config = ValidatorConfig(
     image_name="validibot-validator-backend-schematron",
     has_processor=True,
     processor_name="Schematron Validation",
+    # v3: ADR-2026-07-06 declares the uploaded SVRL report as the
+    # ``svrl_report`` output artifact port, giving the canonical report bytes
+    # a stable artifact reference in addition to parsed output signals.
+    #
     # v2: ADR-2026-07-06 declares the XML document as the ``xml_document``
     # artifact input port, rather than an implicit ``primary_file_uri`` envelope
     # convention. Schematron rules remain inline in SchematronInputs for this
     # slice; only the submitted XML document becomes a file-port contract.
-    version=2,
+    version=3,
     order=3,
     supported_file_types=[SubmissionFileType.XML],
     supported_data_formats=[SubmissionDataFormat.XML],
@@ -120,6 +124,37 @@ config = ValidatorConfig(
             envelope_channel=EnvelopeChannel.INPUT_FILES,
             role="xml-document",
             min_items=1,
+            max_items=1,
+        ),
+        CatalogEntrySpec(
+            slug="svrl_report",
+            label="SVRL Report",
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.OUTPUT,
+            data_type=CatalogValueType.ARTIFACT_REF,
+            description=(
+                "Schematron Validation Report Language (SVRL) XML report "
+                "uploaded by the backend for evidence and downstream artifact "
+                "references."
+            ),
+            binding_config={"source": "output_artifact", "role": "svrl-report"},
+            metadata={"accepted_extensions": ["svrl"]},
+            is_required=False,
+            on_missing="null",
+            order=5,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
+            io_medium=StepIOMedium.ARTIFACT,
+            artifact_kind=ArtifactKind.REPORT,
+            media_type="application/xml",
+            data_format=SubmissionDataFormat.XML,
+            accepted_data_formats=[SubmissionDataFormat.XML],
+            accepted_media_types=["application/xml", "text/xml"],
+            allowed_source_scopes=[],
+            default_source_strategy=DefaultSourceStrategy.NONE,
+            envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
+            role="svrl-report",
+            min_items=0,
             max_items=1,
         ),
         CatalogEntrySpec(

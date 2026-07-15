@@ -58,6 +58,10 @@ config = ValidatorConfig(
     image_name="validibot-validator-backend-shacl",
     has_processor=True,
     processor_name="SHACL Validation",
+    # v4: ADR-2026-07-06 declares the uploaded SHACL validation report as the
+    # ``shacl_report`` output artifact port, giving report bytes a stable
+    # workflow artifact reference in addition to the typed output field.
+    #
     # v3: ADR-2026-07-06 declares the RDF submission as the ``data_graph``
     # artifact input port, rather than an implicit ``primary_file_uri`` envelope
     # convention. This is semantic validator-contract drift, so it creates a new
@@ -68,7 +72,7 @@ config = ValidatorConfig(
     # never in the worker). The semantic digest changes with image_name /
     # output_envelope_class / has_processor, so the version MUST bump — see
     # services/validator_digest.py. compute_tier stays LOW: billing is unchanged.
-    version=3,
+    version=4,
     order=4,
     supported_file_types=[
         SubmissionFileType.TEXT,
@@ -123,6 +127,36 @@ config = ValidatorConfig(
             envelope_channel=EnvelopeChannel.INPUT_FILES,
             role="data-graph",
             min_items=1,
+            max_items=1,
+        ),
+        CatalogEntrySpec(
+            slug="shacl_report",
+            label="SHACL Report",
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.OUTPUT,
+            data_type=CatalogValueType.ARTIFACT_REF,
+            description=(
+                "Serialized SHACL validation report uploaded by the backend "
+                "as Turtle for evidence and downstream artifact references."
+            ),
+            binding_config={"source": "output_artifact", "role": "shacl-report"},
+            metadata={"accepted_extensions": ["ttl"]},
+            is_required=False,
+            on_missing="null",
+            order=5,
+            source_kind=SignalSourceKind.INTERNAL,
+            is_path_editable=False,
+            io_medium=StepIOMedium.ARTIFACT,
+            artifact_kind=ArtifactKind.REPORT,
+            media_type="text/turtle",
+            data_format=SubmissionDataFormat.TEXT,
+            accepted_data_formats=[SubmissionDataFormat.TEXT],
+            accepted_media_types=["text/turtle"],
+            allowed_source_scopes=[],
+            default_source_strategy=DefaultSourceStrategy.NONE,
+            envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
+            role="shacl-report",
+            min_items=0,
             max_items=1,
         ),
         CatalogEntrySpec(

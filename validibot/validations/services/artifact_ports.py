@@ -382,6 +382,8 @@ def _media_type_from_known_uri(uri: str) -> str:
         return SupportedMimeType.FMU.value
     if extension == "xml":
         return SupportedMimeType.APPLICATION_XML.value
+    if extension == "svrl":
+        return SupportedMimeType.APPLICATION_XML.value
     if extension == "ttl":
         return SupportedMimeType.RDF_TURTLE.value
     if extension == "rdf":
@@ -416,6 +418,8 @@ def _data_format_from_known_uri(uri: str) -> str:
     if extension == "fmu":
         return SubmissionDataFormat.FMU
     if extension == "xml":
+        return SubmissionDataFormat.XML
+    if extension == "svrl":
         return SubmissionDataFormat.XML
     if extension in {"ttl", "nt", "nq"}:
         return SubmissionDataFormat.TEXT

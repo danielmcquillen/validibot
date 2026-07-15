@@ -165,6 +165,27 @@ def _energyplus_sql_output_port(**overrides) -> ArtifactPort:
     return ArtifactPort(**values)
 
 
+def _schematron_svrl_report_port(**overrides) -> ArtifactPort:
+    """Return a Schematron SVRL report port with production-like defaults."""
+
+    values = {
+        "contract_key": "svrl_report",
+        "role": "svrl-report",
+        "data_format": SubmissionDataFormat.XML,
+        "media_type": SupportedMimeType.APPLICATION_XML.value,
+        "accepted_data_formats": [SubmissionDataFormat.XML],
+        "accepted_media_types": [
+            SupportedMimeType.APPLICATION_XML.value,
+            SupportedMimeType.TEXT_XML.value,
+        ],
+        "metadata": {"accepted_extensions": ["svrl"]},
+        "min_items": 0,
+        "max_items": 1,
+    }
+    values.update(overrides)
+    return ArtifactPort(**values)
+
+
 class TestArtifactPortContractValidation:
     """Coverage for the reusable artifact-port validation service."""
 
@@ -295,6 +316,19 @@ class TestArtifactPortContractValidation:
                 type="simulation-db",
                 mime_type="application/x-sqlite3",
                 uri="gs://validibot/runs/run-1/outputs/eplusout.sql",
+            ),
+        )
+
+    def test_output_artifact_accepts_declared_svrl_report_contract(self):
+        """Schematron SVRL reports should validate as XML report artifacts."""
+
+        artifact_ports.validate_output_artifact(
+            port=_schematron_svrl_report_port(),
+            artifact=SimpleNamespace(
+                name="report.svrl",
+                type="svrl-report",
+                mime_type=SupportedMimeType.APPLICATION_XML.value,
+                uri="gs://validibot/runs/run-1/outputs/report.svrl",
             ),
         )
 

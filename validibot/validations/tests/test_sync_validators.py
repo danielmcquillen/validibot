@@ -858,7 +858,7 @@ class DiscoverConfigsTests(TestCase):
             if entry.io_medium == StepIOMedium.ARTIFACT
         }
 
-        self.assertEqual(set(artifact_ports), {"data_graph"})
+        self.assertEqual(set(artifact_ports), {"data_graph", "shacl_report"})
         data_graph = artifact_ports["data_graph"]
         self.assertEqual(data_graph.data_type, CatalogValueType.ARTIFACT_REF)
         self.assertEqual(data_graph.artifact_kind, ArtifactKind.FILE)
@@ -899,6 +899,23 @@ class DiscoverConfigsTests(TestCase):
                 BindingSourceScope.UPSTREAM_ARTIFACT,
             ],
         )
+        shacl_report = artifact_ports["shacl_report"]
+        self.assertEqual(shacl_report.data_type, CatalogValueType.ARTIFACT_REF)
+        self.assertEqual(shacl_report.artifact_kind, ArtifactKind.REPORT)
+        self.assertEqual(
+            shacl_report.envelope_channel,
+            EnvelopeChannel.OUTPUT_ARTIFACTS,
+        )
+        self.assertEqual(shacl_report.role, "shacl-report")
+        self.assertEqual(shacl_report.min_items, 0)
+        self.assertEqual(shacl_report.max_items, 1)
+        self.assertEqual(shacl_report.data_format, SubmissionDataFormat.TEXT)
+        self.assertEqual(
+            shacl_report.accepted_data_formats,
+            [SubmissionDataFormat.TEXT],
+        )
+        self.assertEqual(shacl_report.accepted_media_types, ["text/turtle"])
+        self.assertEqual(shacl_report.metadata["accepted_extensions"], ["ttl"])
 
     def test_schematron_declares_xml_document_artifact_port(self):
         """Schematron config declares the submitted/upstream XML document contract.
@@ -917,7 +934,7 @@ class DiscoverConfigsTests(TestCase):
             if entry.io_medium == StepIOMedium.ARTIFACT
         }
 
-        self.assertEqual(set(artifact_ports), {"xml_document"})
+        self.assertEqual(set(artifact_ports), {"xml_document", "svrl_report"})
         xml_document = artifact_ports["xml_document"]
         self.assertEqual(xml_document.data_type, CatalogValueType.ARTIFACT_REF)
         self.assertEqual(xml_document.artifact_kind, ArtifactKind.FILE)
@@ -945,6 +962,20 @@ class DiscoverConfigsTests(TestCase):
                 BindingSourceScope.UPSTREAM_ARTIFACT,
             ],
         )
+        svrl_report = artifact_ports["svrl_report"]
+        self.assertEqual(svrl_report.data_type, CatalogValueType.ARTIFACT_REF)
+        self.assertEqual(svrl_report.artifact_kind, ArtifactKind.REPORT)
+        self.assertEqual(svrl_report.envelope_channel, EnvelopeChannel.OUTPUT_ARTIFACTS)
+        self.assertEqual(svrl_report.role, "svrl-report")
+        self.assertEqual(svrl_report.min_items, 0)
+        self.assertEqual(svrl_report.max_items, 1)
+        self.assertEqual(svrl_report.data_format, SubmissionDataFormat.XML)
+        self.assertEqual(svrl_report.accepted_data_formats, [SubmissionDataFormat.XML])
+        self.assertEqual(
+            svrl_report.accepted_media_types,
+            ["application/xml", "text/xml"],
+        )
+        self.assertEqual(svrl_report.metadata["accepted_extensions"], ["svrl"])
 
     def test_configs_have_display_metadata(self):
         """All discovered configs have icon and card_image set."""

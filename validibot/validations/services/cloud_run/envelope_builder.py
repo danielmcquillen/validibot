@@ -21,6 +21,7 @@ from validibot_shared.fmu.envelopes import FMUInputEnvelope
 from validibot_shared.fmu.envelopes import FMUInputs
 from validibot_shared.fmu.envelopes import FMUSimulationConfig
 from validibot_shared.shacl.envelopes import build_shacl_input_envelope
+from validibot_shared.shacl.envelopes import mime_type_for_rdf_format
 from validibot_shared.validations.envelopes import ExecutionContext
 from validibot_shared.validations.envelopes import InputFileItem
 from validibot_shared.validations.envelopes import OrganizationInfo
@@ -560,7 +561,8 @@ def _resolve_artifact_or_submission_file_uri_with_trace(
 
     msg = (
         f"Artifact port '{port.contract_key}' source scope "
-        f"'{binding.source_scope}' is not materializable for EnergyPlus yet."
+        f"'{binding.source_scope}' is not materializable for artifact input "
+        "files yet."
     )
     _record_and_raise_artifact_resolution_error(
         run=run,
@@ -569,6 +571,101 @@ def _resolve_artifact_or_submission_file_uri_with_trace(
         error_message=msg,
     )
     raise AssertionError("unreachable")
+
+
+def _resolve_input_file_artifact_port_item(
+    *,
+    run,
+    step,
+    step_config: dict,
+    input_file_uris: dict[str, str] | None,
+    contract_key: str,
+    item_builder,
+) -> tuple[InputFileItem, str] | None:
+    """Resolve one declared input-files artifact port into an envelope item."""
+
+    from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import StepIOMedium
+    from validibot.validations.models import StepInputBinding
+    from validibot.validations.models import StepIODefinition
+
+    port = (
+        StepIODefinition.objects.filter(
+            validator_id=step.validator_id,
+            direction=SignalDirection.INPUT,
+            io_medium=StepIOMedium.ARTIFACT,
+            contract_key=contract_key,
+        )
+        .order_by("pk")
+        .first()
+    )
+    if port is None:
+        return None
+
+    binding = (
+        StepInputBinding.objects.filter(
+            workflow_step=step,
+            signal_definition=port,
+        )
+        .select_related("signal_definition")
+        .first()
+    )
+    if binding is None:
+        msg = (
+            f"Required artifact port '{port.contract_key}' on step {step.id} "
+            "has no StepInputBinding."
+        )
+        _record_artifact_input_trace(
+            run=run,
+            port=port,
+            source_scope="",
+            source_data_path="",
+            resolved=False,
+            error_message=msg,
+        )
+        raise ValueError(msg)
+
+    try:
+        artifact_ports.validate_source_scope(port, binding.source_scope)
+    except ValueError as exc:
+        _record_artifact_input_trace(
+            run=run,
+            port=port,
+            source_scope=binding.source_scope,
+            source_data_path=binding.source_data_path,
+            resolved=False,
+            error_message=str(exc),
+        )
+        raise
+
+    uri, value_snapshot = _resolve_artifact_or_submission_file_uri_with_trace(
+        run=run,
+        step=step,
+        step_config=step_config,
+        input_file_uris=input_file_uris,
+        port=port,
+        binding=binding,
+    )
+    item = item_builder(port, uri)
+    try:
+        artifact_ports.validate_input_file_item(port=port, item=item)
+    except ValueError as exc:
+        _record_and_raise_artifact_resolution_error(
+            run=run,
+            port=port,
+            binding=binding,
+            error_message=str(exc),
+        )
+
+    _record_artifact_input_trace(
+        run=run,
+        port=port,
+        source_scope=binding.source_scope,
+        source_data_path=binding.source_data_path,
+        resolved=True,
+        value_snapshot=value_snapshot,
+    )
+    return item, binding.source_scope
 
 
 def _resolve_upstream_artifact_ref(*, run, step, port, binding) -> dict:
@@ -715,7 +812,7 @@ def _resolve_submission_file_uri(
         port.contract_key,
         f"{port.contract_key}_uri",
     ]
-    if port.contract_key == "primary_model":
+    if port.contract_key in {"primary_model", "data_graph"}:
         candidates.append("primary_file_uri")
 
     sources = [input_file_uris or {}, step_config or {}]
@@ -938,6 +1035,41 @@ def _resolve_fmu_system_port(
         "uri": uri,
         "sha256": fmu_model.checksum or "",
     }
+
+
+def _build_shacl_input_file_item(
+    port,
+    uri: str,
+    *,
+    rdf_format: str,
+) -> InputFileItem:
+    """Build a SHACL ``InputFileItem`` from a resolved ``data_graph`` port."""
+
+    return InputFileItem(
+        name=_filename_from_uri(uri) or "submission.rdf",
+        mime_type=mime_type_for_rdf_format(rdf_format),
+        role=port.role or "data-graph",
+        port_key=port.contract_key,
+        uri=uri,
+    )
+
+
+def _shacl_inputs_for_upstream_data_graph_uri(shacl_inputs, uri: str):
+    """Adjust SHACL auto-detection when the data graph is an upstream artifact."""
+
+    if shacl_inputs.submission_format != "auto":
+        return shacl_inputs
+
+    from validibot.validations.validators.shacl import engine
+
+    rdf_format = engine.detect_serialization(
+        file_name=_filename_from_uri(uri),
+        file_type=None,
+        explicit_format=None,
+    )
+    if rdf_format == shacl_inputs.rdf_format:
+        return shacl_inputs
+    return shacl_inputs.model_copy(update={"rdf_format": rdf_format})
 
 
 def build_input_envelope(
@@ -1341,11 +1473,6 @@ def build_input_envelope(
         # workspace materialiser sets ``primary_file_uri`` to the container path;
         # for async Cloud Run, ``launch_shacl_validation`` uploads the submission
         # to GCS and passes its gs:// URI here via ``input_file_uris``.
-        submission_uri = step_config.get("primary_file_uri")
-        if not submission_uri:
-            msg = f"Step {step.id} has no primary_file_uri in config for SHACL"
-            raise ValueError(msg)
-
         # Resolve shapes/ontology/settings/SPARQL-ASK assertions from the DB
         # (the container has none) and ship them in the typed inputs.
         from validibot.validations.validators.shacl.launch import resolve_shacl_inputs
@@ -1355,7 +1482,37 @@ def build_input_envelope(
             ruleset=step.ruleset,
             submission=run.submission,
         )
-        return build_shacl_input_envelope(
+        resolved_data_graph = _resolve_input_file_artifact_port_item(
+            run=run,
+            step=step,
+            step_config=step_config,
+            input_file_uris=input_file_uris,
+            contract_key="data_graph",
+            item_builder=lambda port, uri: _build_shacl_input_file_item(
+                port,
+                uri,
+                rdf_format=shacl_inputs.rdf_format,
+            ),
+        )
+        data_graph_item = None
+        if resolved_data_graph is not None:
+            data_graph_item, source_scope = resolved_data_graph
+            if source_scope == BindingSourceScope.UPSTREAM_ARTIFACT:
+                shacl_inputs = _shacl_inputs_for_upstream_data_graph_uri(
+                    shacl_inputs,
+                    data_graph_item.uri,
+                )
+                data_graph_item.mime_type = mime_type_for_rdf_format(
+                    shacl_inputs.rdf_format,
+                )
+            submission_uri = data_graph_item.uri
+        else:
+            submission_uri = step_config.get("primary_file_uri")
+            if not submission_uri:
+                msg = f"Step {step.id} has no primary_file_uri in config for SHACL"
+                raise ValueError(msg)
+
+        envelope = build_shacl_input_envelope(
             run_id=str(run.id),
             validator=validator,
             org_id=str(run.org.id),
@@ -1370,6 +1527,9 @@ def build_input_envelope(
             execution_bundle_uri=execution_bundle_uri,
             skip_callback=skip_callback,
         )
+        if data_graph_item is not None:
+            envelope.input_files = [data_graph_item]
+        return envelope
 
     if validator.validation_type == ValidationType.SCHEMATRON:
         # The XML submission is the primary file; the author's Schematron

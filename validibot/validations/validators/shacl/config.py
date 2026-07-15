@@ -22,10 +22,15 @@ definition.
 
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.constants import ArtifactKind
+from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import DefaultSourceStrategy
+from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import CatalogEntrySpec
 from validibot.validations.validators.base.config import ValidatorConfig
@@ -53,12 +58,17 @@ config = ValidatorConfig(
     image_name="validibot-validator-backend-shacl",
     has_processor=True,
     processor_name="SHACL Validation",
+    # v3: ADR-2026-07-06 declares the RDF submission as the ``data_graph``
+    # artifact input port, rather than an implicit ``primary_file_uri`` envelope
+    # convention. This is semantic validator-contract drift, so it creates a new
+    # validator version instead of mutating v2 in place.
+    #
     # v2: SHACL moved from in-process execution to the isolated container backend
     # (RDF parsing + author SPARQL now run in validibot-validator-backend-shacl,
     # never in the worker). The semantic digest changes with image_name /
     # output_envelope_class / has_processor, so the version MUST bump — see
     # services/validator_digest.py. compute_tier stays LOW: billing is unchanged.
-    version=2,
+    version=3,
     order=4,
     supported_file_types=[
         SubmissionFileType.TEXT,
@@ -73,6 +83,48 @@ config = ValidatorConfig(
     allowed_extensions=["ttl", "rdf", "jsonld", "nt", "nq"],
     supports_assertions=True,
     catalog_entries=[
+        CatalogEntrySpec(
+            slug="data_graph",
+            label="Data Graph",
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            data_type=CatalogValueType.ARTIFACT_REF,
+            description=(
+                "Resolved RDF data graph passed to the SHACL backend as the "
+                "primary submission file."
+            ),
+            metadata={"accepted_extensions": ["ttl", "rdf", "jsonld", "nt", "nq"]},
+            is_required=True,
+            on_missing="error",
+            order=1,
+            source_kind=SignalSourceKind.PAYLOAD_PATH,
+            is_path_editable=False,
+            io_medium=StepIOMedium.ARTIFACT,
+            artifact_kind=ArtifactKind.FILE,
+            media_type="text/turtle",
+            data_format=SubmissionDataFormat.TEXT,
+            accepted_data_formats=[
+                SubmissionDataFormat.TEXT,
+                SubmissionDataFormat.JSON,
+                SubmissionDataFormat.XML,
+            ],
+            accepted_media_types=[
+                "text/turtle",
+                "application/rdf+xml",
+                "application/ld+json",
+                "application/n-triples",
+                "application/n-quads",
+            ],
+            allowed_source_scopes=[
+                BindingSourceScope.SUBMISSION_FILE,
+                BindingSourceScope.UPSTREAM_ARTIFACT,
+            ],
+            default_source_strategy=DefaultSourceStrategy.SUBMITTED_FILE_FIRST,
+            envelope_channel=EnvelopeChannel.INPUT_FILES,
+            role="data-graph",
+            min_items=1,
+            max_items=1,
+        ),
         CatalogEntrySpec(
             slug="parse_ok",
             label="Parse OK",

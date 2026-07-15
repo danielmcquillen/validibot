@@ -89,6 +89,38 @@ def _weather_file_port(**overrides) -> ArtifactPort:
     return ArtifactPort(**values)
 
 
+def _shacl_data_graph_port(**overrides) -> ArtifactPort:
+    """Return a SHACL data-graph file port with production-like defaults."""
+
+    values = {
+        "contract_key": "data_graph",
+        "role": "data-graph",
+        "data_format": SubmissionDataFormat.TEXT,
+        "media_type": SupportedMimeType.RDF_TURTLE.value,
+        "accepted_data_formats": [
+            SubmissionDataFormat.TEXT,
+            SubmissionDataFormat.JSON,
+            SubmissionDataFormat.XML,
+        ],
+        "accepted_media_types": [
+            SupportedMimeType.RDF_TURTLE.value,
+            SupportedMimeType.RDF_XML.value,
+            SupportedMimeType.RDF_JSON_LD.value,
+            SupportedMimeType.RDF_N_TRIPLES.value,
+            SupportedMimeType.RDF_N_QUADS.value,
+        ],
+        "allowed_source_scopes": [
+            BindingSourceScope.SUBMISSION_FILE,
+            BindingSourceScope.UPSTREAM_ARTIFACT,
+        ],
+        "metadata": {"accepted_extensions": ["ttl", "rdf", "jsonld", "nt", "nq"]},
+        "min_items": 1,
+        "max_items": 1,
+    }
+    values.update(overrides)
+    return ArtifactPort(**values)
+
+
 class TestArtifactPortContractValidation:
     """Coverage for the reusable artifact-port validation service."""
 
@@ -158,6 +190,18 @@ class TestArtifactPortContractValidation:
                     "media_type": "application/pdf",
                 },
             )
+
+    def test_artifact_ref_accepts_generic_json_for_jsonld_uri(self):
+        """Legacy RDF artifacts may use generic JSON MIME for JSON-LD files."""
+
+        artifact_ports.validate_artifact_ref(
+            port=_shacl_data_graph_port(),
+            artifact_ref={
+                "uri": "gs://validibot/runs/run-1/graph.jsonld",
+                "data_format": SubmissionDataFormat.JSON,
+                "media_type": "application/json",
+            },
+        )
 
     def test_resource_item_enforces_resource_type_and_file_contract(self):
         """Workflow resources must match both domain type and file constraints."""

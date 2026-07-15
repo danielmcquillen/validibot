@@ -322,6 +322,14 @@ def _artifact_ref_media_type_matches_inference(
         SupportedMimeType.ENERGYPLUS_IDF.value: {"text/plain"},
         SupportedMimeType.ENERGYPLUS_EPW.value: {"text/plain"},
         SupportedMimeType.FMU.value: {"application/octet-stream"},
+        SupportedMimeType.RDF_TURTLE.value: {
+            "application/x-turtle",
+            "text/plain",
+        },
+        SupportedMimeType.RDF_XML.value: {"application/xml", "text/xml"},
+        SupportedMimeType.RDF_JSON_LD.value: {"application/json"},
+        SupportedMimeType.RDF_N_TRIPLES.value: {"text/plain"},
+        SupportedMimeType.RDF_N_QUADS.value: {"text/plain"},
     }
     return normalized_media_type in aliases.get(normalized_inferred, set())
 
@@ -338,6 +346,16 @@ def _media_type_from_known_uri(uri: str) -> str:
         return SupportedMimeType.ENERGYPLUS_EPW.value
     if extension == "fmu":
         return SupportedMimeType.FMU.value
+    if extension == "ttl":
+        return SupportedMimeType.RDF_TURTLE.value
+    if extension == "rdf":
+        return SupportedMimeType.RDF_XML.value
+    if extension == "jsonld":
+        return SupportedMimeType.RDF_JSON_LD.value
+    if extension == "nt":
+        return SupportedMimeType.RDF_N_TRIPLES.value
+    if extension == "nq":
+        return SupportedMimeType.RDF_N_QUADS.value
     return ""
 
 
@@ -353,6 +371,12 @@ def _data_format_from_known_uri(uri: str) -> str:
         return ResourceFileType.ENERGYPLUS_WEATHER
     if extension == "fmu":
         return SubmissionDataFormat.FMU
+    if extension in {"ttl", "nt", "nq"}:
+        return SubmissionDataFormat.TEXT
+    if extension == "rdf":
+        return SubmissionDataFormat.XML
+    if extension == "jsonld":
+        return SubmissionDataFormat.JSON
     return ""
 
 

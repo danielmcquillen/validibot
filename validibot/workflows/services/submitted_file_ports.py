@@ -12,7 +12,7 @@ from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import StepIOMedium
 
-PRIMARY_SUBMISSION_PORT_KEYS = frozenset({"primary_model"})
+PRIMARY_SUBMISSION_PORT_KEYS = frozenset({"primary_model", "data_graph"})
 
 
 @dataclass(frozen=True)

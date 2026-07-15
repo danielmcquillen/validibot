@@ -774,6 +774,66 @@ class DiscoverConfigsTests(TestCase):
             ],
         )
 
+    def test_shacl_declares_data_graph_artifact_port(self):
+        """SHACL config declares the submitted/upstream RDF graph contract.
+
+        The SHACL backend still receives an input file URI, but the workflow
+        engine should learn that dependency from the validator catalog as a
+        first-class ``data_graph`` artifact port. This keeps SHACL aligned with
+        EnergyPlus/FMU and prevents a regression back to the implicit
+        ``primary_file_uri`` convention.
+        """
+        configs = discover_configs()
+        shacl_config = next(c for c in configs if c.slug == "shacl-validator")
+
+        artifact_ports = {
+            entry.slug: entry
+            for entry in shacl_config.catalog_entries
+            if entry.io_medium == StepIOMedium.ARTIFACT
+        }
+
+        self.assertEqual(set(artifact_ports), {"data_graph"})
+        data_graph = artifact_ports["data_graph"]
+        self.assertEqual(data_graph.data_type, CatalogValueType.ARTIFACT_REF)
+        self.assertEqual(data_graph.artifact_kind, ArtifactKind.FILE)
+        self.assertEqual(data_graph.envelope_channel, EnvelopeChannel.INPUT_FILES)
+        self.assertEqual(data_graph.role, "data-graph")
+        self.assertEqual(data_graph.min_items, 1)
+        self.assertEqual(data_graph.max_items, 1)
+        self.assertEqual(
+            data_graph.default_source_strategy,
+            DefaultSourceStrategy.SUBMITTED_FILE_FIRST,
+        )
+        self.assertEqual(
+            data_graph.accepted_data_formats,
+            [
+                SubmissionDataFormat.TEXT,
+                SubmissionDataFormat.JSON,
+                SubmissionDataFormat.XML,
+            ],
+        )
+        self.assertEqual(
+            data_graph.accepted_media_types,
+            [
+                "text/turtle",
+                "application/rdf+xml",
+                "application/ld+json",
+                "application/n-triples",
+                "application/n-quads",
+            ],
+        )
+        self.assertEqual(
+            data_graph.metadata["accepted_extensions"],
+            ["ttl", "rdf", "jsonld", "nt", "nq"],
+        )
+        self.assertEqual(
+            data_graph.allowed_source_scopes,
+            [
+                BindingSourceScope.SUBMISSION_FILE,
+                BindingSourceScope.UPSTREAM_ARTIFACT,
+            ],
+        )
+
     def test_configs_have_display_metadata(self):
         """All discovered configs have icon and card_image set."""
         for cfg in discover_configs():

@@ -24,11 +24,13 @@ from types import SimpleNamespace
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
+from validibot_shared.shacl.envelopes import SHACLInputEnvelope
 from validibot_shared.validations.envelopes import ResourceFileItem
 from validibot_shared.validations.envelopes import ValidationArtifact
 from validibot_shared.validations.envelopes import ValidatorType
 
 from validibot.submissions.constants import SubmissionDataFormat
+from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.validations.constants import FMU_MODEL_RESOURCE
 from validibot.validations.constants import ArtifactKind
@@ -36,6 +38,7 @@ from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ResourceFileType
+from validibot.validations.constants import RulesetType
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
 from validibot.validations.constants import SignalSourceKind
@@ -52,6 +55,7 @@ from validibot.validations.services.cloud_run.envelope_builder import (
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_input_envelope,
 )
+from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import StepInputBindingFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidationRunFactory
@@ -172,6 +176,90 @@ def _make_fmu_model_port(validator):
             BindingSourceScope.SYSTEM,
         ],
     )
+
+
+def _make_shacl_data_graph_port(validator):
+    """Create the declared SHACL data graph artifact input port for tests."""
+
+    return StepIODefinitionFactory(
+        validator=validator,
+        workflow_step=None,
+        contract_key="data_graph",
+        native_name="data_graph",
+        direction=SignalDirection.INPUT,
+        origin_kind=SignalOriginKind.CATALOG,
+        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        io_medium=StepIOMedium.ARTIFACT,
+        artifact_kind=ArtifactKind.FILE,
+        media_type="text/turtle",
+        data_format=SubmissionDataFormat.TEXT,
+        accepted_data_formats=[
+            SubmissionDataFormat.TEXT,
+            SubmissionDataFormat.JSON,
+            SubmissionDataFormat.XML,
+        ],
+        accepted_media_types=[
+            "text/turtle",
+            "application/rdf+xml",
+            "application/ld+json",
+            "application/n-triples",
+            "application/n-quads",
+        ],
+        metadata={"accepted_extensions": ["ttl", "rdf", "jsonld", "nt", "nq"]},
+        envelope_channel=EnvelopeChannel.INPUT_FILES,
+        role="data-graph",
+        min_items=1,
+        max_items=1,
+        allowed_source_scopes=[
+            BindingSourceScope.SUBMISSION_FILE,
+            BindingSourceScope.UPSTREAM_ARTIFACT,
+        ],
+    )
+
+
+def _build_shacl_data_graph_run(
+    *,
+    original_filename: str = "submission.ttl",
+    file_type: str = SubmissionFileType.TEXT,
+):
+    """Create a SHACL run with a declared ``data_graph`` artifact input port."""
+
+    validator = ValidatorFactory(
+        validation_type=ValidationType.SHACL,
+        version=3,
+    )
+    ruleset = RulesetFactory(
+        org=validator.org,
+        ruleset_type=RulesetType.SHACL,
+        rules_text="@prefix sh: <http://www.w3.org/ns/shacl#> .",
+        metadata={"submission_format": "auto"},
+    )
+    step = WorkflowStepFactory(
+        validator=validator,
+        name="Validate RDF",
+        ruleset=ruleset,
+    )
+    submission = SubmissionFactory(
+        workflow=step.workflow,
+        org=step.workflow.org,
+        content="@prefix ex: <http://example.org/> . ex:a a ex:Thing .",
+        file_type=file_type,
+        original_filename=original_filename,
+    )
+    run = ValidationRunFactory(
+        workflow=step.workflow,
+        org=step.workflow.org,
+        submission=submission,
+    )
+    ValidationStepRunFactory(
+        validation_run=run,
+        workflow_step=step,
+        step_order=step.order,
+        status=StepStatus.PENDING,
+    )
+    data_graph_port = _make_shacl_data_graph_port(validator)
+    return run, step, data_graph_port
 
 
 def _build_energyplus_file_port_run():
@@ -1140,6 +1228,158 @@ class TestEnergyPlusFilePortMaterialization:
         )
         assert trace.resolved is False
         assert "expected one of .epw" in trace.error_message
+
+
+# ==============================================================================
+# SHACL data-graph file-port materialization
+# ==============================================================================
+# SHACL historically received the submitted RDF file through ``primary_file_uri``.
+# The artifact-port contract makes the conceptual input explicit as
+# ``data_graph`` while preserving the same backend envelope shape.
+# ==============================================================================
+
+
+class TestSHACLDataGraphFilePortMaterialization:
+    """Tests for resolving SHACL's RDF data graph through artifact ports."""
+
+    def test_submitted_rdf_data_graph_materializes_with_port_key(self):
+        """A submitted Turtle file should populate SHACL ``input_files``.
+
+        The backend still receives the first input file URI, but the envelope
+        now carries ``port_key=data_graph`` so traces, evidence, and future
+        binding UIs can identify the semantic input instead of relying on an
+        implicit SHACL-only convention.
+        """
+        run, step, data_graph_port = _build_shacl_data_graph_run()
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=data_graph_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="data_graph",
+        )
+
+        envelope = build_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+            input_file_uris={
+                "data_graph": "file:///validibot/input/submission.ttl",
+            },
+        )
+
+        assert isinstance(envelope, SHACLInputEnvelope)
+        assert envelope.input_files[0].port_key == "data_graph"
+        assert envelope.input_files[0].role == "data-graph"
+        assert envelope.input_files[0].name == "submission.ttl"
+        assert envelope.input_files[0].uri == "file:///validibot/input/submission.ttl"
+        assert envelope.input_files[0].mime_type == "text/turtle"
+        assert envelope.inputs.rdf_format == "turtle"
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="data_graph",
+        )
+        assert trace.resolved is True
+        assert trace.source_scope_used == BindingSourceScope.SUBMISSION_FILE
+        assert trace.value_snapshot == {
+            "source": BindingSourceScope.SUBMISSION_FILE,
+            "port_key": "data_graph",
+            "role": "data-graph",
+            "uri": "file:///validibot/input/submission.ttl",
+        }
+
+    def test_upstream_rdf_artifact_sets_auto_detected_format_from_artifact_uri(self):
+        """Upstream ArtifactRefs should drive SHACL auto-format detection.
+
+        If the original submission was Turtle but a previous step produced
+        JSON-LD, the SHACL backend must parse the upstream artifact as JSON-LD.
+        This pins the handoff to the artifact's URI rather than the original
+        submission filename.
+        """
+        run, step, data_graph_port = _build_shacl_data_graph_run(
+            original_filename="original.ttl",
+        )
+        upstream_step = WorkflowStepFactory(
+            workflow=step.workflow,
+            name="Build RDF",
+            order=step.order - 5,
+        )
+        upstream_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=upstream_step,
+            step_order=upstream_step.order,
+            status=StepStatus.PASSED,
+        )
+        register_output_artifacts(
+            step_run=upstream_run,
+            output_envelope=SimpleNamespace(
+                artifacts=[
+                    ValidationArtifact(
+                        name="graph.jsonld",
+                        type="data_graph",
+                        mime_type="application/json",
+                        uri="gs://validibot/runs/run-1/graph.jsonld",
+                        size_bytes=789,
+                    ),
+                ],
+                raw_outputs=None,
+            ),
+        )
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=data_graph_port,
+            source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
+            source_data_path=f"{upstream_step.step_key}.data_graph",
+        )
+
+        envelope = build_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+        )
+
+        assert envelope.input_files[0].port_key == "data_graph"
+        assert envelope.input_files[0].uri == "gs://validibot/runs/run-1/graph.jsonld"
+        assert envelope.input_files[0].mime_type == "application/ld+json"
+        assert envelope.inputs.rdf_format == "json-ld"
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="data_graph",
+        )
+        assert trace.resolved is True
+        assert trace.source_scope_used == BindingSourceScope.UPSTREAM_ARTIFACT
+        assert trace.upstream_step_key == upstream_step.step_key
+
+    def test_wrong_data_graph_extension_fails_before_dispatch_with_trace(self):
+        """SHACL should reject files outside the declared RDF extension set."""
+        run, step, data_graph_port = _build_shacl_data_graph_run()
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=data_graph_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="data_graph",
+        )
+
+        with pytest.raises(ValueError, match=r"expected one of \.ttl"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+                input_file_uris={
+                    "data_graph": "file:///validibot/input/submission.txt",
+                },
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="data_graph",
+        )
+        assert trace.resolved is False
+        assert "expected one of .ttl" in trace.error_message
 
 
 # ==============================================================================

@@ -119,6 +119,56 @@ def _energyplus_workflow_with_submitted_weather():
     return workflow, step
 
 
+def _shacl_workflow_with_primary_data_graph():
+    """Create a SHACL step whose data graph is the main launch submission."""
+
+    validator = ValidatorFactory(validation_type=ValidationType.SHACL)
+    workflow = WorkflowFactory(
+        allowed_file_types=[SubmissionFileType.TEXT],
+    )
+    workflow.user.set_current_org(workflow.org)
+    step = WorkflowStepFactory(
+        workflow=workflow,
+        validator=validator,
+        name="Validate RDF",
+    )
+    data_graph_port = StepIODefinitionFactory(
+        validator=validator,
+        workflow_step=None,
+        contract_key="data_graph",
+        native_name="data_graph",
+        label="Data Graph",
+        direction=SignalDirection.INPUT,
+        origin_kind=SignalOriginKind.CATALOG,
+        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        io_medium=StepIOMedium.ARTIFACT,
+        artifact_kind=ArtifactKind.FILE,
+        metadata={"accepted_extensions": ["ttl", "rdf", "jsonld", "nt", "nq"]},
+        envelope_channel=EnvelopeChannel.INPUT_FILES,
+        role="data-graph",
+        min_items=1,
+        max_items=1,
+        allowed_source_scopes=[
+            BindingSourceScope.SUBMISSION_FILE,
+            BindingSourceScope.UPSTREAM_ARTIFACT,
+        ],
+        accepted_data_formats=[
+            SubmissionDataFormat.TEXT,
+            SubmissionDataFormat.JSON,
+            SubmissionDataFormat.XML,
+        ],
+    )
+    StepInputBindingFactory(
+        workflow_step=step,
+        signal_definition=data_graph_port,
+        source_scope=BindingSourceScope.SUBMISSION_FILE,
+        source_data_path="data_graph",
+        is_required=True,
+    )
+    return workflow, step
+
+
 def _primary_model_upload() -> SimpleUploadedFile:
     """Return a minimal EnergyPlus model upload for launch-form tests."""
 
@@ -150,6 +200,17 @@ def test_launch_form_adds_extra_file_field_for_submitted_weather_port():
     assert field_name in form.fields
     assert form.fields[field_name].label == "Weather File"
     assert "Accepted extensions: .epw." in str(form.fields[field_name].help_text)
+
+
+def test_launch_form_uses_primary_upload_for_shacl_data_graph_port():
+    """SHACL's primary data graph should not render a duplicate upload field."""
+
+    workflow, step = _shacl_workflow_with_primary_data_graph()
+
+    form = WorkflowLaunchForm(workflow=workflow, user=workflow.user)
+
+    field_name = f"submitted_file_port__{step.pk}__data_graph"
+    assert field_name not in form.fields
 
 
 def test_launch_form_requires_submitted_weather_file():

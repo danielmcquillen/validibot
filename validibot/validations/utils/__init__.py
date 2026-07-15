@@ -135,7 +135,7 @@ def create_default_validators():
                 """
             ),
             "validation_type": ValidationType.FMU,
-            "version": 1,
+            "version": 2,
             "order": 4,
             "has_processor": True,
             "supports_assertions": True,

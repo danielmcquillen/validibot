@@ -31,9 +31,11 @@ from validibot_shared.validations.envelopes import ValidatorInfo
 from validibot_shared.validations.envelopes import ValidatorType
 from validibot_shared.validations.envelopes import WorkflowInfo
 
+from validibot.validations.constants import FMU_MODEL_RESOURCE
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ResourceFileType
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.services import artifact_ports
 
@@ -729,6 +731,215 @@ def _resolve_submission_file_uri(
     raise ValueError(msg)
 
 
+def _build_fmu_input_file_item(
+    port_key: str,
+    uri: str,
+    *,
+    role: str = "fmu",
+) -> InputFileItem:
+    """Build an FMU ``InputFileItem`` from a resolved file-port URI."""
+
+    return InputFileItem(
+        name=_filename_from_uri(uri) or "model.fmu",
+        mime_type=SupportedMimeType.FMU,
+        role=role,
+        port_key=port_key,
+        uri=uri,
+    )
+
+
+def _resolve_fmu_file_port_item(
+    *,
+    run,
+    step,
+    validator,
+    input_file_uris: dict[str, str] | None,
+    resource_uri_overrides: dict[str, str] | None,
+) -> tuple[InputFileItem, dict] | None:
+    """Resolve the declared FMU model artifact port into an input file item."""
+
+    from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import StepIOMedium
+    from validibot.validations.models import StepInputBinding
+    from validibot.validations.models import StepIODefinition
+
+    port = (
+        StepIODefinition.objects.filter(
+            validator_id=validator.id,
+            direction=SignalDirection.INPUT,
+            io_medium=StepIOMedium.ARTIFACT,
+            contract_key="fmu_model",
+        )
+        .order_by("pk")
+        .first()
+    )
+    if port is None:
+        return None
+
+    binding = (
+        StepInputBinding.objects.filter(
+            workflow_step=step,
+            signal_definition=port,
+        )
+        .select_related("signal_definition")
+        .first()
+    )
+    if binding is None:
+        msg = (
+            f"Required artifact port '{port.contract_key}' on step {step.id} "
+            "has no StepInputBinding."
+        )
+        _record_artifact_input_trace(
+            run=run,
+            port=port,
+            source_scope="",
+            source_data_path="",
+            resolved=False,
+            error_message=msg,
+        )
+        raise ValueError(msg)
+
+    try:
+        artifact_ports.validate_source_scope(port, binding.source_scope)
+    except ValueError as exc:
+        _record_artifact_input_trace(
+            run=run,
+            port=port,
+            source_scope=binding.source_scope,
+            source_data_path=binding.source_data_path,
+            resolved=False,
+            error_message=str(exc),
+        )
+        raise
+
+    if binding.source_scope not in {
+        BindingSourceScope.WORKFLOW_RESOURCE,
+        BindingSourceScope.SYSTEM,
+    }:
+        msg = (
+            f"Artifact port '{port.contract_key}' source scope "
+            f"'{binding.source_scope}' is not materializable for FMU yet."
+        )
+        _record_and_raise_artifact_resolution_error(
+            run=run,
+            port=port,
+            binding=binding,
+            error_message=msg,
+        )
+
+    try:
+        if binding.source_scope == BindingSourceScope.WORKFLOW_RESOURCE:
+            item, value_snapshot = _resolve_fmu_workflow_resource_port(
+                step=step,
+                port=port,
+                binding=binding,
+                input_file_uris=input_file_uris,
+                resource_uri_overrides=resource_uri_overrides,
+            )
+        else:
+            item, value_snapshot = _resolve_fmu_system_port(
+                validator=validator,
+                port=port,
+                input_file_uris=input_file_uris,
+            )
+    except ValueError as exc:
+        _record_and_raise_artifact_resolution_error(
+            run=run,
+            port=port,
+            binding=binding,
+            error_message=str(exc),
+        )
+
+    _record_artifact_input_trace(
+        run=run,
+        port=port,
+        source_scope=binding.source_scope,
+        source_data_path=binding.source_data_path,
+        resolved=True,
+        value_snapshot=value_snapshot,
+    )
+    return item, value_snapshot
+
+
+def _resolve_fmu_workflow_resource_port(
+    *,
+    step,
+    port,
+    binding,
+    input_file_uris: dict[str, str] | None,
+    resource_uri_overrides: dict[str, str] | None,
+) -> tuple[InputFileItem, dict]:
+    """Resolve a step-owned FMU resource through the declared file port."""
+
+    from validibot.workflows.models import WorkflowStepResource
+
+    expected_type = binding.source_data_path or port.resource_type or FMU_MODEL_RESOURCE
+    resources = resolve_step_resources(
+        step,
+        role=WorkflowStepResource.FMU_MODEL,
+        resource_uri_overrides=resource_uri_overrides,
+    )
+    matches = [item for item in resources if item.type == expected_type]
+    artifact_ports.validate_cardinality(
+        port=port,
+        count=len(matches),
+        source_description=f"FMU model resource on step {step.id}",
+    )
+
+    resource = matches[0]
+    uri = (input_file_uris or {}).get("fmu_model_uri") or resource.uri
+    item = _build_fmu_input_file_item(
+        port.contract_key,
+        uri,
+        role=port.role or "fmu",
+    )
+    artifact_ports.validate_input_file_item(port=port, item=item)
+    return item, {
+        "source": BindingSourceScope.WORKFLOW_RESOURCE,
+        "id": resource.id,
+        "type": resource.type,
+        "port_key": port.contract_key,
+        "uri": uri,
+    }
+
+
+def _resolve_fmu_system_port(
+    *,
+    validator,
+    port,
+    input_file_uris: dict[str, str] | None,
+) -> tuple[InputFileItem, dict]:
+    """Resolve a library FMU validator's attached model through the file port."""
+
+    fmu_model = getattr(validator, "fmu_model", None)
+    if not fmu_model:
+        msg = f"Validator {validator.id} has no FMU model attached"
+        raise ValueError(msg)
+
+    uri = (
+        (input_file_uris or {}).get("fmu_model_uri")
+        or fmu_model.gcs_uri
+        or getattr(fmu_model.file, "path", "")
+    )
+    if not uri:
+        msg = f"FMU model {fmu_model.id} has no storage URI or file path"
+        raise ValueError(msg)
+
+    item = _build_fmu_input_file_item(
+        port.contract_key,
+        uri,
+        role=port.role or "fmu",
+    )
+    artifact_ports.validate_input_file_item(port=port, item=item)
+    return item, {
+        "source": BindingSourceScope.SYSTEM,
+        "fmu_model_id": str(fmu_model.id),
+        "port_key": port.contract_key,
+        "uri": uri,
+        "sha256": fmu_model.checksum or "",
+    }
+
+
 def build_input_envelope(
     run,  # ValidationRun instance
     callback_url: str,
@@ -904,40 +1115,64 @@ def build_input_envelope(
     if validator.validation_type == ValidationType.FMU:
         from validibot.workflows.models import WorkflowStepResource
 
-        # Step-level FMU: check for a step-owned FMU resource first.
-        # Falls back to the library validator's FMU model.
-        fmu_resource = step.step_resources.filter(
-            role=WorkflowStepResource.FMU_MODEL,
-        ).first()
-
-        # Workspace-aware override: the local Docker dispatch passes
-        # the container-visible URI for the FMU model file via
-        # ``input_file_uris["fmu_model_uri"]``. When set, it wins over
-        # any model-derived URI. Cloud Run leaves this unset and falls
-        # through to the gs:// path.
-        overridden_fmu_uri = (input_file_uris or {}).get("fmu_model_uri")
-
-        if fmu_resource:
-            # Step-level upload — use get_storage_uri() which returns
-            # gs:// in production (GCS) or file:// locally, matching
-            # what the container runner expects.
-            fmu_uri = overridden_fmu_uri or fmu_resource.get_storage_uri()
-            sim_config = (step.config or {}).get("fmu_simulation") or {}
-        else:
-            # Library validator — existing behavior
-            fmu_model = validator.fmu_model
-            if not fmu_model:
-                msg = f"Validator {validator.id} has no FMU model attached"
-                raise ValueError(msg)
-            fmu_uri = (
-                overridden_fmu_uri
-                or fmu_model.gcs_uri
-                or getattr(fmu_model.file, "path", "")
+        resolved_fmu_port = _resolve_fmu_file_port_item(
+            run=run,
+            step=step,
+            validator=validator,
+            input_file_uris=input_file_uris,
+            resource_uri_overrides=resource_uri_overrides,
+        )
+        if resolved_fmu_port is not None:
+            fmu_file_item, fmu_value_snapshot = resolved_fmu_port
+            sim_config = (
+                (step.config or {}).get("fmu_simulation") or {}
+                if fmu_value_snapshot.get("source")
+                == BindingSourceScope.WORKFLOW_RESOURCE
+                else {}
             )
-            if not fmu_uri:
-                msg = f"FMU model {fmu_model.id} has no storage URI or file path"
-                raise ValueError(msg)
-            sim_config = {}
+        else:
+            # Legacy compatibility for unsynced dev/test databases: before
+            # ``fmu_model`` was a declared artifact port, the builder checked
+            # for a step-owned FMU resource first and then fell back to the
+            # library validator's attached FMU model.
+            fmu_resource = step.step_resources.filter(
+                role=WorkflowStepResource.FMU_MODEL,
+            ).first()
+
+            # Workspace-aware override: the local Docker dispatch passes
+            # the container-visible URI for the FMU model file via
+            # ``input_file_uris["fmu_model_uri"]``. When set, it wins over
+            # any model-derived URI. Cloud Run leaves this unset and falls
+            # through to the gs:// path.
+            overridden_fmu_uri = (input_file_uris or {}).get("fmu_model_uri")
+
+            if fmu_resource:
+                # Step-level upload — use get_storage_uri() which returns
+                # gs:// in production (GCS) or file:// locally, matching
+                # what the container runner expects.
+                fmu_uri = overridden_fmu_uri or fmu_resource.get_storage_uri()
+                sim_config = (step.config or {}).get("fmu_simulation") or {}
+            else:
+                # Library validator — existing behavior
+                fmu_model = validator.fmu_model
+                if not fmu_model:
+                    msg = f"Validator {validator.id} has no FMU model attached"
+                    raise ValueError(msg)
+                fmu_uri = (
+                    overridden_fmu_uri
+                    or fmu_model.gcs_uri
+                    or getattr(fmu_model.file, "path", "")
+                )
+                if not fmu_uri:
+                    msg = f"FMU model {fmu_model.id} has no storage URI or file path"
+                    raise ValueError(msg)
+                sim_config = {}
+            fmu_file_item = InputFileItem(
+                name="model.fmu",
+                mime_type=SupportedMimeType.FMU,
+                role="fmu",
+                uri=fmu_uri,
+            )
 
         # Build simulation config, only overriding fields that have values.
         # The shared FMUSimulationConfig has non-optional defaults for
@@ -953,9 +1188,13 @@ def build_input_envelope(
         # makes input identity, defaults, traces, and cross-step references
         # auditable.
         input_values: dict = {}
-        has_bindings = step.signal_bindings.filter(
-            signal_definition__direction="input",
-        ).exists()
+        has_bindings = (
+            step.signal_bindings.filter(
+                signal_definition__direction="input",
+            )
+            .exclude(signal_definition__io_medium=StepIOMedium.ARTIFACT)
+            .exists()
+        )
 
         if has_bindings and current_step_run:
             from validibot.validations.models import ResolvedInputTrace
@@ -1072,14 +1311,7 @@ def build_input_envelope(
             output_variables=output_variables,
         )
 
-        input_files = [
-            InputFileItem(
-                name="model.fmu",
-                mime_type=SupportedMimeType.FMU,
-                role="fmu",
-                uri=fmu_uri,
-            )
-        ]
+        input_files = [fmu_file_item]
         context = ExecutionContext(
             callback_id=callback_id,
             callback_url=callback_url,

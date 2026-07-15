@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from validibot.validations.constants import FMU_MODEL_RESOURCE
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
@@ -90,7 +91,7 @@ def ensure_step_signal_bindings(step: WorkflowStep) -> int:
             continue
 
         if sig.io_medium == StepIOMedium.ARTIFACT:
-            defaults = _build_artifact_binding_defaults(sig)
+            defaults = _build_artifact_binding_defaults(sig, step=step)
         elif entry:
             fallback_path = ""
             defaults = build_step_binding_defaults_from_mapping(
@@ -153,10 +154,26 @@ def _build_validator_catalog_entry_map(
     }
 
 
-def _build_artifact_binding_defaults(sig: StepIODefinition) -> dict[str, object]:
+def _build_artifact_binding_defaults(
+    sig: StepIODefinition,
+    *,
+    step: WorkflowStep,
+) -> dict[str, object]:
     """Return default binding values for a declared artifact input port."""
 
-    if sig.resource_type:
+    if sig.contract_key == "fmu_model":
+        from validibot.workflows.models import WorkflowStepResource
+
+        has_step_fmu = step.step_resources.filter(
+            role=WorkflowStepResource.FMU_MODEL,
+        ).exists()
+        if has_step_fmu or not getattr(sig.validator, "fmu_model_id", None):
+            source_scope = BindingSourceScope.WORKFLOW_RESOURCE
+            source_data_path = sig.resource_type or FMU_MODEL_RESOURCE
+        else:
+            source_scope = BindingSourceScope.SYSTEM
+            source_data_path = sig.contract_key
+    elif sig.resource_type:
         source_scope = BindingSourceScope.WORKFLOW_RESOURCE
         source_data_path = sig.resource_type
     else:

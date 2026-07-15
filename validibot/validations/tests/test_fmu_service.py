@@ -13,7 +13,8 @@ seven INPUT-direction rows (model_name, fmi_version, variable_count,
 input_variable_count, output_variable_count, parameter_count,
 has_simulation_defaults) so the ``i.*`` namespace is populated
 identically whether a workflow step is bound to the system FMU
-validator or a user-created one.
+validator or a user-created one. ADR-2026-07-06 adds one more
+INPUT-direction artifact port, ``fmu_model``, for the FMU file itself.
 """
 
 from __future__ import annotations
@@ -25,9 +26,12 @@ from django.test import TestCase
 
 from validibot.projects.tests.factories import ProjectFactory
 from validibot.users.tests.factories import OrganizationFactory
+from validibot.validations.constants import BindingSourceScope
+from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
 from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.fmu import create_fmu_validator
 from validibot.validations.services.fmu import run_fmu_probe
@@ -89,12 +93,13 @@ class FMUServiceTests(TestCase):
         # modelDescription.xml. Per Phase 6 we additionally seed seven
         # parser-fact INPUT signals (model_name, fmi_version, etc.) on
         # every user-created FMU validator so the i.* namespace matches
-        # the system FMU validator catalog regardless of binding.
+        # the system FMU validator catalog regardless of binding. The
+        # fmu_model artifact input port is an additional INPUT row.
         self.assertEqual(
             validator.signal_definitions.filter(
                 direction=SignalDirection.INPUT
             ).count(),
-            4 + len(PARSER_FACT_KEYS),
+            4 + len(PARSER_FACT_KEYS) + 1,
         )
         self.assertEqual(
             validator.signal_definitions.filter(
@@ -110,6 +115,19 @@ class FMUServiceTests(TestCase):
         self.assertTrue(fmu_model.file.name)
         self.assertTrue(fmu_model.file.storage.exists(fmu_model.file.name))
         self.assertEqual(fmu_model.gcs_uri, "")
+
+        fmu_port = validator.signal_definitions.get(
+            contract_key="fmu_model",
+            direction=SignalDirection.INPUT,
+        )
+        self.assertEqual(fmu_port.origin_kind, SignalOriginKind.CATALOG)
+        self.assertEqual(fmu_port.data_type, CatalogValueType.ARTIFACT_REF)
+        self.assertEqual(fmu_port.io_medium, StepIOMedium.ARTIFACT)
+        self.assertEqual(fmu_port.role, "fmu")
+        self.assertEqual(fmu_port.accepted_data_formats, ["fmu"])
+        self.assertEqual(fmu_port.accepted_media_types, ["application/vnd.fmi.fmu"])
+        self.assertEqual(fmu_port.metadata["accepted_extensions"], ["fmu"])
+        self.assertIn(BindingSourceScope.SYSTEM, fmu_port.allowed_source_scopes)
 
     def test_run_fmu_probe_refreshes_variables(self):
         """Probe parses modelDescription.xml in-process and refreshes catalog."""
@@ -137,7 +155,8 @@ class FMUServiceTests(TestCase):
         self.assertTrue(fmu_model.is_approved)
 
         # Signal definitions should still match: 4 FMU inputs +
-        # ``len(PARSER_FACT_KEYS)`` parser facts + 4 FMU outputs.
+        # ``len(PARSER_FACT_KEYS)`` parser facts + fmu_model port +
+        # 4 FMU outputs.
         # ``_refresh_variables_from_probe`` reconciles in-place via
         # ``_persist_variables`` (update_or_create on the
         # (validator, contract_key, direction) tuple), so surviving
@@ -148,7 +167,7 @@ class FMUServiceTests(TestCase):
             validator.signal_definitions.filter(
                 direction=SignalDirection.INPUT
             ).count(),
-            4 + len(PARSER_FACT_KEYS),
+            4 + len(PARSER_FACT_KEYS) + 1,
         )
         self.assertEqual(
             validator.signal_definitions.filter(

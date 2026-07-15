@@ -14,6 +14,7 @@ from django.test import TestCase
 from django.test import override_settings
 
 from validibot.submissions.constants import SubmissionDataFormat
+from validibot.validations.constants import FMU_MODEL_RESOURCE
 from validibot.validations.constants import ArtifactKind
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
@@ -663,27 +664,49 @@ class DiscoverConfigsTests(TestCase):
         self.assertIn("signal", entry_types)
         self.assertIn("derivation", entry_types)
 
-    def test_fmu_static_catalog_carries_only_parser_facts(self):
-        """FMU config holds the seven Phase 6 parser-fact INPUT entries.
+    def test_fmu_static_catalog_carries_file_port_and_parser_facts(self):
+        """FMU config holds the model file port and parser-fact INPUT entries.
 
         Per-variable signals (the actual FMU inputs/outputs) are still
         created dynamically per FMU upload via
-        ``services/fmu._persist_variables``. The only static catalog
-        entries on the system FMU validator are the Phase 6 parser
-        facts (model_name, fmi_version, variable counts, etc.) — all
-        INPUT-direction, all derived from modelDescription.xml at
-        upload time. If a future change adds dynamically-shaped
-        entries to this config it would break the upload-time
-        seeding, so the static catalog stays focused.
+        ``services/fmu._persist_variables``. The static catalog entries on
+        the system FMU validator are the ``fmu_model`` artifact input port
+        plus the Phase 6 parser facts (model_name, fmi_version, variable
+        counts, etc.). If a future change adds dynamically-shaped entries to
+        this config it would break the upload-time seeding, so the static
+        catalog stays focused.
         """
         configs = discover_configs()
         fmu_config = next(c for c in configs if c.slug == "fmu-validator")
 
-        # All seven static entries are INPUT-direction parser facts.
-        self.assertEqual(len(fmu_config.catalog_entries), 7)
-        for entry in fmu_config.catalog_entries:
+        parser_entries = [
+            entry
+            for entry in fmu_config.catalog_entries
+            if entry.binding_config.get("source") == "parser"
+        ]
+        self.assertEqual(len(parser_entries), 7)
+        for entry in parser_entries:
             self.assertEqual(entry.run_stage, "input")
-            self.assertEqual(entry.binding_config.get("source"), "parser")
+
+        fmu_model = next(
+            entry for entry in fmu_config.catalog_entries if entry.slug == "fmu_model"
+        )
+        self.assertEqual(fmu_model.data_type, CatalogValueType.ARTIFACT_REF)
+        self.assertEqual(fmu_model.io_medium, StepIOMedium.ARTIFACT)
+        self.assertEqual(fmu_model.artifact_kind, ArtifactKind.FILE)
+        self.assertEqual(fmu_model.envelope_channel, EnvelopeChannel.INPUT_FILES)
+        self.assertEqual(fmu_model.resource_type, FMU_MODEL_RESOURCE)
+        self.assertEqual(fmu_model.role, "fmu")
+        self.assertEqual(fmu_model.min_items, 1)
+        self.assertEqual(fmu_model.max_items, 1)
+        self.assertEqual(fmu_model.accepted_data_formats, [SubmissionDataFormat.FMU])
+        self.assertEqual(fmu_model.accepted_media_types, ["application/vnd.fmi.fmu"])
+        self.assertEqual(fmu_model.metadata["accepted_extensions"], ["fmu"])
+        self.assertIn(
+            BindingSourceScope.WORKFLOW_RESOURCE,
+            fmu_model.allowed_source_scopes,
+        )
+        self.assertIn(BindingSourceScope.SYSTEM, fmu_model.allowed_source_scopes)
 
     def test_energyplus_has_file_handling_fields(self):
         """EnergyPlus config has file type and extension fields populated."""

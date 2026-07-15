@@ -30,6 +30,7 @@ from validibot_shared.validations.envelopes import ValidatorType
 
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.tests.factories import SubmissionFactory
+from validibot.validations.constants import FMU_MODEL_RESOURCE
 from validibot.validations.constants import ArtifactKind
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
@@ -42,6 +43,7 @@ from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Artifact
+from validibot.validations.models import FMUModel
 from validibot.validations.models import ResolvedInputTrace
 from validibot.validations.services.artifacts import register_output_artifacts
 from validibot.validations.services.cloud_run.envelope_builder import (
@@ -139,6 +141,37 @@ def _build_fmu_run(*, submission_content: str = "{}"):
         step_order=step.order,
     )
     return run, step
+
+
+def _make_fmu_model_port(validator):
+    """Create the declared FMU model artifact input port for envelope tests."""
+
+    return StepIODefinitionFactory(
+        validator=validator,
+        workflow_step=None,
+        contract_key="fmu_model",
+        native_name="fmu_model",
+        direction=SignalDirection.INPUT,
+        origin_kind=SignalOriginKind.CATALOG,
+        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        data_type=CatalogValueType.ARTIFACT_REF,
+        io_medium=StepIOMedium.ARTIFACT,
+        artifact_kind=ArtifactKind.FILE,
+        media_type="application/vnd.fmi.fmu",
+        data_format=SubmissionDataFormat.FMU,
+        accepted_data_formats=[SubmissionDataFormat.FMU],
+        accepted_media_types=["application/vnd.fmi.fmu"],
+        metadata={"accepted_extensions": ["fmu"]},
+        envelope_channel=EnvelopeChannel.INPUT_FILES,
+        resource_type=FMU_MODEL_RESOURCE,
+        role="fmu",
+        min_items=1,
+        max_items=1,
+        allowed_source_scopes=[
+            BindingSourceScope.WORKFLOW_RESOURCE,
+            BindingSourceScope.SYSTEM,
+        ],
+    )
 
 
 def _build_energyplus_file_port_run():
@@ -1116,6 +1149,167 @@ class TestEnergyPlusFilePortMaterialization:
 # Passing the whole submission JSON when bindings are missing would reintroduce
 # a second execution contract and hide missing author wiring.
 # ==============================================================================
+
+
+class TestFMUFilePortMaterialization:
+    """Tests for resolving the FMU model file through artifact-port bindings."""
+
+    def test_step_owned_fmu_model_resolves_through_artifact_port(self):
+        """Step-level FMU uploads should materialize as ``fmu_model`` input files."""
+        run, step = _build_fmu_run()
+        fmu_port = _make_fmu_model_port(step.validator)
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=fmu_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=FMU_MODEL_RESOURCE,
+        )
+
+        envelope = build_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+            input_file_uris={"fmu_model_uri": "file:///validibot/input/model.fmu"},
+        )
+
+        assert envelope.input_files[0].port_key == "fmu_model"
+        assert envelope.input_files[0].role == "fmu"
+        assert envelope.input_files[0].name == "model.fmu"
+        assert envelope.input_files[0].uri == "file:///validibot/input/model.fmu"
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="fmu_model",
+        )
+        assert trace.resolved is True
+        assert trace.source_scope_used == BindingSourceScope.WORKFLOW_RESOURCE
+        assert trace.value_snapshot["type"] == FMU_MODEL_RESOURCE
+
+    def test_library_fmu_model_resolves_through_system_artifact_port(self):
+        """Library FMU validators should also use the same ``fmu_model`` port."""
+        fmu_model = FMUModel.objects.create(
+            org=None,
+            name="Library FMU",
+            file=SimpleUploadedFile("library.fmu", b"fmu-bytes"),
+            checksum="abc123",
+            gcs_uri="gs://validibot/fmus/library.fmu",
+        )
+        validator = ValidatorFactory(
+            validation_type=ValidationType.FMU,
+            fmu_model=fmu_model,
+        )
+        step = WorkflowStepFactory(validator=validator)
+        submission = SubmissionFactory(
+            workflow=step.workflow,
+            org=step.workflow.org,
+            content="{}",
+        )
+        run = ValidationRunFactory(
+            workflow=step.workflow,
+            org=step.workflow.org,
+            submission=submission,
+        )
+        ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+            step_order=step.order,
+        )
+        fmu_port = _make_fmu_model_port(validator)
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=fmu_port,
+            source_scope=BindingSourceScope.SYSTEM,
+            source_data_path="fmu_model",
+        )
+
+        envelope = build_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+        )
+
+        assert envelope.input_files[0].port_key == "fmu_model"
+        assert envelope.input_files[0].uri == "gs://validibot/fmus/library.fmu"
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="fmu_model",
+        )
+        assert trace.resolved is True
+        assert trace.source_scope_used == BindingSourceScope.SYSTEM
+        assert trace.value_snapshot["fmu_model_id"] == str(fmu_model.id)
+        assert trace.value_snapshot["sha256"] == "abc123"
+
+    def test_missing_step_owned_fmu_model_fails_with_port_trace(self):
+        """Missing FMU resources should fail before dispatch with a port trace."""
+        validator = ValidatorFactory(validation_type=ValidationType.FMU)
+        step = WorkflowStepFactory(validator=validator)
+        submission = SubmissionFactory(
+            workflow=step.workflow,
+            org=step.workflow.org,
+            content="{}",
+        )
+        run = ValidationRunFactory(
+            workflow=step.workflow,
+            org=step.workflow.org,
+            submission=submission,
+        )
+        ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+            step_order=step.order,
+        )
+        fmu_port = _make_fmu_model_port(validator)
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=fmu_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=FMU_MODEL_RESOURCE,
+        )
+
+        with pytest.raises(ValueError, match="fmu_model"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="fmu_model",
+        )
+        assert trace.resolved is False
+        assert "expected at least 1" in trace.error_message
+
+    def test_step_owned_fmu_model_rejects_wrong_extension_with_trace(self):
+        """The FMU file-port contract should reject non-FMU filenames."""
+        run, step = _build_fmu_run()
+        fmu_port = _make_fmu_model_port(step.validator)
+        StepInputBindingFactory(
+            workflow_step=step,
+            signal_definition=fmu_port,
+            source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
+            source_data_path=FMU_MODEL_RESOURCE,
+        )
+
+        with pytest.raises(ValueError, match=r"expected one of \.fmu"):
+            build_input_envelope(
+                run,
+                callback_url="http://localhost/callback/",
+                callback_id=None,
+                execution_bundle_uri="file:///validibot/output",
+                input_file_uris={"fmu_model_uri": "file:///validibot/input/model.txt"},
+            )
+
+        trace = ResolvedInputTrace.objects.get(
+            step_run=run.current_step_run,
+            signal_contract_key="fmu_model",
+        )
+        assert trace.resolved is False
+        assert "expected one of .fmu" in trace.error_message
 
 
 class TestFMUInputBindings:

@@ -20,11 +20,17 @@ from validibot_shared.fmu import FMUVariableMeta
 
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.constants import FMU_MODEL_RESOURCE
+from validibot.validations.constants import ArtifactKind
+from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import DefaultSourceStrategy
+from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import FMUProbeStatus
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
 from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import FMUModel
 from validibot.validations.models import FMUProbeResult
@@ -50,6 +56,7 @@ DISALLOWED_EXTENSIONS = {
     ".sh",
     ".cmd",
 }
+FMU_MODEL_PORT_KEY = "fmu_model"
 
 
 # ---------------------------------------------------------------------------
@@ -489,18 +496,59 @@ def _parser_fact_step_io_defaults(spec: FMUParserFactSpec) -> dict[str, Any]:
     }
 
 
-def _seed_parser_fact_signals(validator: Validator) -> None:
-    """Seed parser-fact StepIODefinition rows on a user-created FMU validator.
+def _fmu_model_port_step_io_defaults() -> dict[str, Any]:
+    """Return StepIODefinition defaults for a validator-owned FMU file port."""
 
-    These rows declare INPUT-direction catalog entries (one per spec
-    in ``PARSER_FACT_SPECS``) so the user's FMU validator advertises
-    the same ``i.*`` step inputs as the system FMU validator does via
-    its config.py catalog. Without this seeding, input-stage CEL
-    assertions targeting ``i.fmi_version`` etc. would resolve cleanly
-    on a workflow step bound to the system validator and silently
-    resolve to null when re-bound to a user-created FMU validator
-    that wraps the same FMU — a footgun for workflow authors who
-    organise reusable assertion logic.
+    return {
+        "native_name": FMU_MODEL_PORT_KEY,
+        "label": "FMU Model",
+        "description": (
+            "Resolved Functional Mock-up Unit file passed to the backend "
+            "as the FMU model input."
+        ),
+        "origin_kind": SignalOriginKind.CATALOG,
+        "source_kind": SignalSourceKind.PAYLOAD_PATH,
+        "is_path_editable": False,
+        "data_type": CatalogValueType.ARTIFACT_REF,
+        "io_medium": StepIOMedium.ARTIFACT,
+        "artifact_kind": ArtifactKind.FILE,
+        "media_type": "application/vnd.fmi.fmu",
+        "data_format": SubmissionDataFormat.FMU,
+        "accepted_data_formats": [SubmissionDataFormat.FMU],
+        "accepted_media_types": ["application/vnd.fmi.fmu"],
+        "allowed_source_scopes": [
+            BindingSourceScope.SYSTEM,
+            BindingSourceScope.WORKFLOW_RESOURCE,
+        ],
+        "default_source_strategy": DefaultSourceStrategy.WORKFLOW_RESOURCE_DEFAULT,
+        "envelope_channel": EnvelopeChannel.INPUT_FILES,
+        "resource_type": FMU_MODEL_RESOURCE,
+        "role": "fmu",
+        "is_collection": False,
+        "min_items": 1,
+        "max_items": 1,
+        "provider_binding": {
+            "envelope_channel": EnvelopeChannel.INPUT_FILES,
+            "role": "fmu",
+        },
+        "metadata": {"accepted_extensions": ["fmu"]},
+        "on_missing": "error",
+        "order": 1,
+    }
+
+
+def _seed_parser_fact_signals(validator: Validator) -> None:
+    """Seed parser-fact and file-port rows on a user-created FMU validator.
+
+    These rows declare the ``fmu_model`` artifact input port and
+    INPUT-direction parser facts (one per spec in ``PARSER_FACT_SPECS``) so
+    the user's FMU validator advertises the same file/input contract as the
+    system FMU validator does via its config.py catalog. Without this seeding,
+    input-stage CEL assertions targeting ``i.fmi_version`` etc. would resolve
+    cleanly on a workflow step bound to the system validator and silently
+    resolve to null when re-bound to a user-created FMU validator that wraps
+    the same FMU — a footgun for workflow authors who organise reusable
+    assertion logic.
 
     Identity-stable: keyed by ``(validator, contract_key, direction)``
     via ``update_or_create``. Probe refreshes
@@ -514,6 +562,13 @@ def _seed_parser_fact_signals(validator: Validator) -> None:
     themselves, and the caller separately records the
     (contract_key, INPUT) tuples it claimed.
     """
+    StepIODefinition.objects.update_or_create(
+        validator=validator,
+        contract_key=FMU_MODEL_PORT_KEY,
+        direction=SignalDirection.INPUT,
+        defaults=_fmu_model_port_step_io_defaults(),
+    )
+
     for spec in PARSER_FACT_SPECS:
         StepIODefinition.objects.update_or_create(
             validator=validator,
@@ -718,6 +773,7 @@ def _persist_variables(
     # input-stage CEL assertion would pass on one validator and silently
     # resolve to null on another.
     _seed_parser_fact_signals(validator)
+    survivors.add((FMU_MODEL_PORT_KEY, SignalDirection.INPUT))
     survivors.update(
         (spec.contract_key, SignalDirection.INPUT) for spec in PARSER_FACT_SPECS
     )

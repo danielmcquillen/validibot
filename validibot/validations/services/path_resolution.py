@@ -413,6 +413,7 @@ def resolve_step_input_signals(
             the first one encountered.
     """
     from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import StepIOMedium
     from validibot.validations.models import ResolvedInputTrace
     from validibot.validations.models import StepInputBinding
 
@@ -421,6 +422,7 @@ def resolve_step_input_signals(
             workflow_step=step,
             signal_definition__direction=SignalDirection.INPUT,
         )
+        .exclude(signal_definition__io_medium=StepIOMedium.ARTIFACT)
         .select_related("signal_definition")
         .order_by("signal_definition__order")
     )

@@ -3243,8 +3243,12 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             return updates
 
         for contract_key, port in self.file_input_ports.items():
+            source_field = f"{contract_key}_source"
+            if source_field not in self.fields:
+                continue
+
             source = self.cleaned_data.get(
-                f"{contract_key}_source",
+                source_field,
             ) or self._initial_source_for_file_port(
                 port,
                 self.file_port_binding_map.get(contract_key),

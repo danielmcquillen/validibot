@@ -321,6 +321,7 @@ def _artifact_ref_media_type_matches_inference(
         SupportedMimeType.ENERGYPLUS_EPJSON.value: {"application/json"},
         SupportedMimeType.ENERGYPLUS_IDF.value: {"text/plain"},
         SupportedMimeType.ENERGYPLUS_EPW.value: {"text/plain"},
+        SupportedMimeType.FMU.value: {"application/octet-stream"},
     }
     return normalized_media_type in aliases.get(normalized_inferred, set())
 
@@ -335,6 +336,8 @@ def _media_type_from_known_uri(uri: str) -> str:
         return SupportedMimeType.ENERGYPLUS_EPJSON.value
     if extension == "epw":
         return SupportedMimeType.ENERGYPLUS_EPW.value
+    if extension == "fmu":
+        return SupportedMimeType.FMU.value
     return ""
 
 
@@ -348,6 +351,8 @@ def _data_format_from_known_uri(uri: str) -> str:
         return SubmissionDataFormat.ENERGYPLUS_EPJSON
     if extension == "epw":
         return ResourceFileType.ENERGYPLUS_WEATHER
+    if extension == "fmu":
+        return SubmissionDataFormat.FMU
     return ""
 
 

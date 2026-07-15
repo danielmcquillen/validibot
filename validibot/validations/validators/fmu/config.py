@@ -21,10 +21,17 @@ fact only requires extending ``PARSER_FACT_SPECS``.
 
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.constants import FMU_MODEL_RESOURCE
+from validibot.validations.constants import ArtifactKind
+from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
+from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ComputeTier
+from validibot.validations.constants import DefaultSourceStrategy
+from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.fmu import PARSER_FACT_SPECS
 from validibot.validations.services.fmu import FMUParserFactSpec
@@ -69,13 +76,15 @@ config = ValidatorConfig(
     validator_class="validibot.validations.validators.fmu.validator.FMUValidator",
     output_envelope_class="validibot_shared.fmu.envelopes.FMUOutputEnvelope",
     image_name="validibot-validator-backend-fmu",
-    # Version bump to revision 2 per ADR-2026-05-22b Phase 6: seven parser-fact
+    # Version bump to revision 2 per ADR-2026-07-06: the FMU model itself is
+    # now a declared artifact input port (``fmu_model``), rather than an
+    # implicit envelope-builder convention. This is semantic validator-contract
+    # drift, so it must create a new validator version instead of mutating v1.
+    #
+    # Earlier history: ADR-2026-05-22b Phase 6 added seven parser-fact
     # step inputs derived from modelDescription.xml at upload/probe
     # time (model_name, fmi_version, variable counts, has_simulation_defaults).
-    # NOTE: validator versions were reset to a clean v1 baseline — no workflows
-    # were pinned to the earlier revisions. sync_validators still rejects later
-    # in-place semantic drift, so any future behavioural change must bump again.
-    version=1,
+    version=2,
     order=20,
     has_processor=True,
     processor_name="FMU Simulation",
@@ -95,5 +104,44 @@ config = ValidatorConfig(
     allowed_extensions=["fmu", "json"],
     icon="bi-cpu",
     card_image="FMU_card_img_small.png",
-    catalog_entries=[_spec_to_catalog_entry(spec) for spec in PARSER_FACT_SPECS],
+    catalog_entries=[
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.INPUT,
+            slug="fmu_model",
+            label="FMU Model",
+            data_type=CatalogValueType.ARTIFACT_REF,
+            description=(
+                "Resolved Functional Mock-up Unit file passed to the backend "
+                "as the FMU model input."
+            ),
+            binding_config={
+                "envelope_channel": EnvelopeChannel.INPUT_FILES,
+                "role": "fmu",
+            },
+            metadata={"accepted_extensions": ["fmu"]},
+            is_required=True,
+            on_missing="error",
+            order=1,
+            source_kind=SignalSourceKind.PAYLOAD_PATH,
+            is_path_editable=False,
+            io_medium=StepIOMedium.ARTIFACT,
+            artifact_kind=ArtifactKind.FILE,
+            media_type="application/vnd.fmi.fmu",
+            data_format=SubmissionDataFormat.FMU,
+            accepted_data_formats=[SubmissionDataFormat.FMU],
+            accepted_media_types=["application/vnd.fmi.fmu"],
+            allowed_source_scopes=[
+                BindingSourceScope.WORKFLOW_RESOURCE,
+                BindingSourceScope.SYSTEM,
+            ],
+            default_source_strategy=DefaultSourceStrategy.WORKFLOW_RESOURCE_DEFAULT,
+            envelope_channel=EnvelopeChannel.INPUT_FILES,
+            resource_type=FMU_MODEL_RESOURCE,
+            role="fmu",
+            min_items=1,
+            max_items=1,
+        ),
+        *[_spec_to_catalog_entry(spec) for spec in PARSER_FACT_SPECS],
+    ],
 )

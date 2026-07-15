@@ -13,14 +13,18 @@ their own dedicated sync functions.
 
 from __future__ import annotations
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase
 
+from validibot.validations.constants import FMU_MODEL_RESOURCE
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import SignalDirection
 from validibot.validations.constants import SignalOriginKind
 from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import ValidationType
+from validibot.validations.models import FMUModel
 from validibot.validations.models import StepInputBinding
 from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
@@ -171,6 +175,41 @@ class TestEnsureStepInputBindings(TestCase):
         )
         self.assertEqual(binding.source_scope, BindingSourceScope.WORKFLOW_RESOURCE)
         self.assertEqual(binding.source_data_path, "energyplus_weather")
+        self.assertTrue(binding.is_required)
+
+    def test_library_fmu_model_port_uses_system_scope_by_default(self):
+        """Library FMU validators should bind their attached FMU model directly."""
+        fmu_model = FMUModel.objects.create(
+            name="Library FMU",
+            file=SimpleUploadedFile("library.fmu", b"fmu-bytes"),
+        )
+        validator = ValidatorFactory(
+            validation_type=ValidationType.FMU,
+            fmu_model=fmu_model,
+        )
+        sig = StepIODefinitionFactory(
+            validator=validator,
+            contract_key="fmu_model",
+            direction=SignalDirection.INPUT,
+            origin_kind=SignalOriginKind.CATALOG,
+            data_type=CatalogValueType.ARTIFACT_REF,
+            io_medium=StepIOMedium.ARTIFACT,
+            role="fmu",
+            resource_type=FMU_MODEL_RESOURCE,
+            min_items=1,
+            max_items=1,
+        )
+        step = WorkflowStepFactory(validator=validator)
+
+        count = ensure_step_signal_bindings(step)
+
+        self.assertEqual(count, 1)
+        binding = StepInputBinding.objects.get(
+            workflow_step=step,
+            signal_definition=sig,
+        )
+        self.assertEqual(binding.source_scope, BindingSourceScope.SYSTEM)
+        self.assertEqual(binding.source_data_path, "fmu_model")
         self.assertTrue(binding.is_required)
 
 

@@ -627,6 +627,10 @@ ENERGYPLUS_MODEL_TEMPLATE = "energyplus_model_template"
 # author.  Used on ``WorkflowStepResource`` rows with
 # ``role=MODEL_TEMPLATE``.
 
+FMU_MODEL_RESOURCE = "fmu"
+# Resource type for a step-owned FMU uploaded by a workflow author. Used on
+# ``WorkflowStepResource`` rows with ``role=FMU_MODEL``.
+
 
 # ---------------------------------------------------------------------------
 # Resource file type configuration registry

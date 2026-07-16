@@ -100,8 +100,9 @@ The entities that make up Validibot:
 - **[Submissions](data-model/submissions.md)** — Content being validated
 - **[Runs](data-model/runs.md)** — Validation execution tracking
 - **[Steps](data-model/steps.md)** — Individual validation operations
-- **[Signals](data-model/signals.md)** — Concepts and terminology for declared signals and custom data paths
-- **[Signals Tutorial Example](data-model/signals-tutorial-example.md)** — End-to-end walkthrough of signal contracts, step bindings, derivations, and runtime traces
+- **[Workflow Data Architecture](overview/workflow_data_architecture.md)** — Scope, provenance, namespaces, signals, step I/O, and artifact boundaries
+- **[Workflow Signals and Step I/O Reference](data-model/signals.md)** — Detailed models, constraints, resolution, and runtime behavior
+- **[Step I/O Tutorial](data-model/signals-tutorial-example.md)** — End-to-end walkthrough of I/O contracts, bindings, promotions, derivations, and runtime traces
 - **[Results](data-model/results.md)** — Findings, artifacts, and summaries
 - **[Workflow Versioning](data-model/workflow-versioning.md)** — The trust contract: contract fields, validator semantic digests, ruleset/resource immutability, the `audit_workflow_versions` command, evidence manifests
 - **[Users & Roles](data-model/users_roles.md)** — Organization membership

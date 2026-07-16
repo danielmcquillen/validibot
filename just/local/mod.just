@@ -271,8 +271,7 @@ test-e2e-energyplus *args:
             echo ""
             echo "Error: Could not provision E2E workflow data."
             echo "Make sure Docker Compose is running ('just local up' or 'just local-cloud up --build')"
-            echo "and the app has been set up"
-            echo "(run 'just local manage setup_validibot' and 'just local manage seed_weather_files')."
+            echo "and check the web container logs for an automatic setup failure."
             echo ""
             exit 1
         fi

@@ -30,8 +30,12 @@ A reusable definition of what to validate and how. Each workflow:
 ### Steps
 Each step runs a validator or action. Steps execute in order from top to bottom. If a step produces an error, subsequent steps may still run (depending on configuration).
 
+Steps can consume and produce values or artifacts. See
+[How Data Flows Through a Workflow](/app/help/concepts/workflow-data/) for the
+prefixes used in assertions and the distinction between step I/O and signals.
+
 ### Validators
-The engines that check your data:
+The components that check your data:
 
 - **JSON Schema** — Structure validation
 - **XML Schema** — XSD validation

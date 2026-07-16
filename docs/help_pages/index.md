@@ -12,6 +12,7 @@ Quick answers while you work. This help center covers the Community edition of V
 | Understand how validation works | [How It Works](getting-started/how-it-works.md) |
 | Add steps to my workflow | [Workflows Overview](workflows/workflows-overview.md) |
 | Choose the right validator | [Validators Overview](validators/validators-overview.md) |
+| Understand workflow data and prefixes | [How Data Flows Through a Workflow](concepts/workflow-data.md) |
 | Write custom validation rules | [CEL Expressions](concepts/cel-expressions.md) |
 | Understand key terms | [Core Concepts](concepts/basic-concepts.md) |
 
@@ -39,6 +40,7 @@ Understand built-in validators and how to configure them.
 Core ideas and terminology.
 
 - [Basic Concepts](concepts/basic-concepts.md)
+- [How Data Flows Through a Workflow](concepts/workflow-data.md)
 - [CEL Expressions](concepts/cel-expressions.md)
 
 ---

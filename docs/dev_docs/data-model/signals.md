@@ -1,13 +1,18 @@
-# Signals
+# Workflow Signals and Step I/O Reference
 
-Signals (workflow vocabulary) and their step-local cousins (step inputs
-and step outputs) are how named values flow through a validation run.
-They let workflow authors write assertions that reference data by name
-rather than by hard-coded paths.
+This is the detailed model and runtime reference for workflow signals, step
+inputs, step outputs, bindings, and promotions. Start with
+[Workflow Data Architecture](../overview/workflow_data_architecture.md) for the
+architectural overview and the value-versus-artifact boundary.
+
+Signals (workflow vocabulary) and step-local values (step inputs and step
+outputs) are how named CEL/JSON values flow through a validation run. They let
+workflow authors write assertions that reference data by name rather than by
+hard-coded paths.
 
 This doc explains the mental model, the CEL context structure, the
 underlying Django models, and the runtime flow. For a worked example, see
-[Signals Tutorial Example](signals-tutorial-example.md). For the
+[Step I/O Tutorial](signals-tutorial-example.md). For the
 user-facing CEL reference, see
 [CEL Expressions](https://docs.validibot.com/concepts/cel-expressions/).
 
@@ -1314,7 +1319,8 @@ Supported syntax:
 
 ## Related documentation
 
-- [Signals Tutorial Example](signals-tutorial-example.md) — End-to-end worked example
+- [Workflow Data Architecture](../overview/workflow_data_architecture.md) — Architectural overview and value/artifact boundary
+- [Step I/O Tutorial](signals-tutorial-example.md) — End-to-end worked example
 - [Validators](validators.md) — Catalog model and seed data
 - [Assertions](assertions.md) — How signals, step inputs, and step outputs are referenced in rules
 - [Step Processor](../overview/step_processor.md) — Step input/output extraction and storage implementation

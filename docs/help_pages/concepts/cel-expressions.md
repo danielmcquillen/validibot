@@ -6,6 +6,10 @@ You can use CEL to perform simple assertion logic on your incoming data,
 or data produced by your validator (e.g. after the FMU Validator runs a submission through a simulation and produces output).
 Whenever you add an assertion to your workflow step, you can base it on a CEL expression.
 
+For the architectural overview—scope, lifecycle, signals versus step ports,
+constants, and the value/artifact boundary—start with
+[How Data Flows Through a Workflow](/app/help/concepts/workflow-data/).
+
 When the user submits data, each assertion runs. If the assertion has a CEL, and the CEL evaluates to false, the error message you provided in the
 assertion will be added to the messages returned to the user.
 
@@ -34,15 +38,15 @@ Think of each step as a function in a program.
 - **The submission file (`p.*`)** is the raw data the program started with, always available.
 - **The submission envelope (`submission.*`)** is the metadata *about* that data — who/when/what-named/how-big, plus any key-value tags attached at upload. It sits beside the file, not inside it, so it works the same for every format.
 
-Just like in a program, you can lift a function-local value (an input or an output) into module-level state when you want other functions to see it. In Validibot, that ceremony is called **promotion** — "Copy to Signal" lifts a step-local `i.*` or `o.*` into the workflow's `s.*` vocabulary.
+Just like in a program, you can lift a function-local value-port input or output into module-level state when you want downstream functions to see it. In Validibot, that ceremony is called **promotion** — "Copy to Signal" gives a step-local `i.*` or `o.*` value an additional name in the workflow's `s.*` vocabulary. Artifacts cannot be promoted.
 
 ### Each namespace in detail
 
-**`p.*` — the raw submission.** Always present. Whatever the submitter sent, exactly as they sent it. If the submission contains `{"price": 20.00}`, you reference it as `p.price`. For XML and other formats, see the format-specific sections later in this doc.
+**`p.*` — the raw submission.** The logical content the submitter sent. If the submission contains `{"price": 20.00}`, you reference it as `p.price`. Opaque binary files are processed by their validator rather than exposed as a useful traversable object under `p.*`. For XML and other formats, see the format-specific sections later in this doc.
 
-**`s.*` — the workflow's vocabulary.** Named values that any step in the workflow can reference. You create them two ways:
+**`s.*` — the workflow's vocabulary.** Author-named CEL/JSON values. You create them two ways:
 1. **Workflow signal mapping** (on the workflow's settings page) — pick a name like `target_eui`, point it at a path in the submission, and it's available everywhere as `s.target_eui`.
-2. **Promotion from a step** — take an input or output of a particular step, click "Copy to Signal", give it a workflow-wide name. From that point on, every step can reference it as `s.<your_name>`.
+2. **Promotion from a step** — take a value-port input or output of a particular step, click "Copy to Signal", and give it a workflow-wide name. It becomes available as `s.<your_name>` after that stage completes, for downstream execution.
 
 Use `s.*` for values you want to use in multiple steps, or values whose source might change and you don't want every assertion to know the details.
 
@@ -78,6 +82,10 @@ Expected {{ c.energy_price }} but received {{ p.energy_price }}
 - **Server-stamped** (trustworthy): `submission.file_type`, `submission.size` (bytes), `submission.uploaded_at` (a timestamp). Validibot sets these; a submitter can't forge them.
 
 `submission` is long-only — there's no single-letter alias, because `s` already means signals. It is *not* a copy of the file: the file's contents stay at `p.*`/`payload.*`, and there is deliberately no `submission.payload`.
+
+Artifacts such as FMUs, reports, logs, and transformed documents do not enter
+these CEL namespaces. They travel through artifact ports and bindings. A small
+fact about an artifact, such as `o.has_report`, can still be a normal value.
 
 ### Where do I find each kind of value?
 
@@ -252,7 +260,7 @@ See the [Signals](/app/help/validators/signals/) guide for a worked example, and
 - **Input vs. output assertions are different stages.** Input-stage assertions can reference `p.*`, `s.*`, `i.*`, and earlier steps via `steps.<key>.*`. They **cannot** reference this step's `o.*` because the validator hasn't run yet. Output-stage assertions can reference everything, including this step's `o.*` and `i.*`. The assertion editor's variable picker is filtered by stage to prevent confusion.
 - **Use the namespace prefix** (`p.`, `s.`, `i.`, `o.`) to make it clear where your data comes from. In the UI we color the target portion to help you distinguish it from the rest of the expression.
 - **Use constants** (`c.*`) for fixed thresholds and allow-lists that should be visible on the workflow contract. Define them from the workflow's Constants page.
-- **Promote any step-local value to a signal** if you want to reference it from multiple steps. "Copy to Signal" works on both inputs (`i.*`) and outputs (`o.*`) — pick a workflow-wide name and the value becomes available as `s.<your_name>` everywhere downstream.
+- **Promote a value-port step input or output to a signal** if you want to reference it from multiple downstream steps. "Copy to Signal" works on value inputs (`i.*`) and outputs (`o.*`)—pick a workflow-wide name and the value becomes available as `s.<your_name>` after its source stage completes. Artifacts cannot be promoted.
 
 For more syntax details, visit the CEL specification at <https://github.com/google/cel-spec>.
 

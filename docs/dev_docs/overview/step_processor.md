@@ -660,6 +660,7 @@ Full workflow tests verify end-to-end behavior:
 
 ## Related Documentation
 
+- [Workflow Data Architecture](workflow_data_architecture.md) - Namespace scope, step I/O, signals, and artifact boundaries
 - [Workflow Orchestration Architecture](workflow_engine.md) - Higher-level orchestration
 - [Validator Architecture](validator_architecture.md) - Execution backends and deployment
 - [How Validibot Works](how_it_works.md) - End-to-end system overview

@@ -84,7 +84,7 @@ Every catalog row is owned by exactly one of a `Validator` (shared by all steps 
 validator) or a `WorkflowStep` (per-step rows for FMU uploads, template scans, or
 author-customized inputs/outputs) — an XOR constraint enforced by the model. Centralising these
 definitions lets every ruleset reuse them without duplicating structure inside each assertion;
-see [Signals](signals.md) for the full ownership and promotion story and
+see [Workflow Signals and Step I/O Reference](signals.md) for the full ownership and promotion story and
 [Ruleset Assertions](assertions.md) for how assertions reference them.
 Basic validators intentionally skip catalog management; every assertion directly references the custom
 target path the author entered.

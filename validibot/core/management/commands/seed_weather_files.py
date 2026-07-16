@@ -64,8 +64,12 @@ class Command(BaseCommand):
         """Execute the command."""
         from validibot.validations.constants import ResourceFileType
         from validibot.validations.constants import ValidationType
+        from validibot.validations.constants import ValidatorAvailabilityState
         from validibot.validations.models import Validator
         from validibot.validations.models import ValidatorResourceFile
+        from validibot.validations.validators.energyplus.config import (
+            config as energyplus_config,
+        )
 
         source_dir = Path(options["source_dir"])
         force = options["force"]
@@ -79,16 +83,20 @@ class Command(BaseCommand):
             )
             return None
 
-        # Find the EnergyPlus validator
-        try:
-            energyplus_validator = Validator.objects.get(
-                validation_type=ValidationType.ENERGYPLUS,
-                is_system=True,
-            )
-        except Validator.DoesNotExist:
+        # Resolve the exact validator contract declared by the current code.
+        # Older versions remain in the database because existing workflows may
+        # still reference them, so validation_type alone is not unique.
+        energyplus_validator = Validator.objects.filter(
+            slug=energyplus_config.slug,
+            version=energyplus_config.version,
+            validation_type=ValidationType.ENERGYPLUS,
+            is_system=True,
+            availability_state=ValidatorAvailabilityState.AVAILABLE,
+        ).first()
+        if energyplus_validator is None:
             self.stderr.write(
                 self.style.ERROR(
-                    "EnergyPlus validator not found. Run sync_validators first."
+                    "Current EnergyPlus validator not found. Run sync_validators first."
                 )
             )
             return None

@@ -108,6 +108,7 @@ Do **not** introduce "engine" as a new architecture term. Older docs and tests s
 
 ## See also
 
+- [Workflow Data Architecture](workflow_data_architecture.md) — how namespaces, step I/O, signals, and artifacts fit together
 - [Validator Architecture](validator_architecture.md) — the input/output envelope contract
 - [Execution Backends](execution_backends.md) — how dispatch to Docker vs. Cloud Run is selected
 - [Trust Architecture](trust-architecture.md) — the four trust invariants and how they compose

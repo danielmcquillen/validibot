@@ -29,6 +29,12 @@ _db_url := 'DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POS
 #   just local-cloud up --port 8080     # web on http://localhost:8080 (-p works too)
 #   just local-cloud up --build         # rebuild image + refresh the venv volume
 #
+# The web container automatically applies migrations, initializes or refreshes
+# the system validator catalog, syncs help pages, and seeds bundled EnergyPlus
+# weather resources before it becomes healthy. No separate setup commands are
+# required after ``up``. Test-only users and workflows are still provisioned by
+# the E2E recipes, not by normal application startup.
+#
 # The --port / -p flag remaps only the host side of the web container's port
 # (the container still serves on 8000). It is consumed by this recipe and not
 # passed through to `docker compose`, which has no --port flag of its own.

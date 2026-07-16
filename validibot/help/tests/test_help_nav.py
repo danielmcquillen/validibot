@@ -1,3 +1,9 @@
+"""Tests for publishing and navigating the in-app Markdown help center.
+
+The suite verifies that synced FlatPages remain reachable, use the application
+layout, and expose fundamental workflow-data guidance from the help index.
+"""
+
 from __future__ import annotations
 
 from http import HTTPStatus
@@ -64,3 +70,26 @@ def test_help_page_includes_app_left_nav(client):
     response = client.get("/app/help/")
     assert response.status_code == HTTPStatus.OK
     assert 'id="app-left-nav"' in response.content.decode()
+
+
+@override_settings(ALLOWED_HOSTS=["testserver", "localhost"])
+def test_workflow_data_overview_is_discoverable_and_complete(client):
+    """Authors need an indexed overview of namespaces and artifact boundaries."""
+    org = OrganizationFactory(slug="help-org-workflow-data")
+    user = UserFactory(orgs=[org])
+    client.force_login(user)
+
+    call_command("sync_help", clear=True)
+
+    index_response = client.get("/app/help/")
+    assert index_response.status_code == HTTPStatus.OK
+    index_html = index_response.content.decode()
+    assert "How Data Flows Through a Workflow" in index_html
+    assert "/app/help/concepts/workflow-data/" in index_html
+
+    overview_response = client.get("/app/help/concepts/workflow-data/")
+    assert overview_response.status_code == HTTPStatus.OK
+    overview_html = overview_response.content.decode()
+    assert "workflow constants" in overview_html
+    assert "Values and artifacts are separate" in overview_html
+    assert "Promoted signals are" in overview_html

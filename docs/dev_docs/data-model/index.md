@@ -37,7 +37,7 @@ Submission (the data to validate)
 | **Project**           | Namespace within an org. Groups related workflows for organization and reporting.                            |
 | **Workflow**          | Ordered sequence of validation steps. Can be active, inactive, archived, or tombstoned for historical-only retention. |
 | **WorkflowStep**      | One step in a workflow. Points to a validator (or action) with optional configuration.                       |
-| **Validator**         | The validation class (JSON Schema, XML Schema, EnergyPlus, etc.). Defines signals and supported file types. |
+| **Validator**         | The validation class (JSON Schema, XML Schema, EnergyPlus, etc.). Defines step I/O contracts and supported file types. |
 | **Ruleset**           | Optional schema or rule file attached to a validator.                                                        |
 | **Submission**        | The content being validated (file upload or inline text).                                                    |
 | **ValidationRun**     | One execution of a submission through a workflow. Tracks status and timing.                                  |
@@ -92,7 +92,8 @@ Dive deeper into each entity:
 - **[Runs](runs.md)** — Execution tracking and status
 - **[Steps](steps.md)** — Step configuration and ordering
 - **[Results](results.md)** — Findings, artifacts, and summaries
-- **[Signals and Step I/O](signals.md)** — Workflow signals, step inputs/outputs, and promotion
+- **[Workflow Data Architecture](../overview/workflow_data_architecture.md)** — Scope, namespaces, provenance, lifecycle, and the value/artifact split
+- **[Workflow Signals and Step I/O Reference](signals.md)** — Detailed models for workflow signals, step inputs/outputs, bindings, and promotion
 - **[Step I/O Tutorial Example](signals-tutorial-example.md)** — Concrete example of validator-owned and step-owned I/O definitions, bindings, derivations, and traces
 - **[Users & Roles](users_roles.md)** — Membership and permissions
 - **[Deletions](deletions.md)** — Soft deletes and cascade behavior

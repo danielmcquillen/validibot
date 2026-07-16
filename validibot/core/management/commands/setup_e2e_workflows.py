@@ -44,11 +44,15 @@ from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
+from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorResourceFile
+from validibot.validations.validators.energyplus.config import (
+    config as energyplus_config,
+)
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
 from validibot.workflows.models import WorkflowStepResource
@@ -182,10 +186,15 @@ class Command(BaseCommand):
 
         Returns the Workflow, or None if prerequisites are missing.
         """
-        # Check for EnergyPlus validator
+        # Resolve the contract declared by the current code. Historical
+        # validator versions remain for workflows pinned to them and must not
+        # be used when provisioning a new E2E workflow.
         validator = Validator.objects.filter(
+            slug=energyplus_config.slug,
+            version=energyplus_config.version,
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,
+            availability_state=ValidatorAvailabilityState.AVAILABLE,
         ).first()
         if not validator:
             self.stderr.write(

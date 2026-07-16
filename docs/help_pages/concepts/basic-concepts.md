@@ -80,6 +80,18 @@ Constant names are case-sensitive. A constant named `bubba` is referenced as `c.
 
 ---
 
+## Workflow Data
+
+Validibot separates raw payload data, submission metadata, constants, workflow
+signals, step inputs, step outputs, and artifacts. The prefix on a CEL reference
+shows its scope and provenance; files remain in the artifact plane rather than
+becoming signals.
+
+See [How Data Flows Through a Workflow](workflow-data.md) for the complete
+mental model and namespace reference.
+
+---
+
 ## Submission
 
 The file or content you upload for validation. Validibot supports JSON, XML, YAML, CSV, and plain text. The submission's file type must match what the workflow's validators support.

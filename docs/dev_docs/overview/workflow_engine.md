@@ -339,11 +339,15 @@ promoted outputs -- the `steps` namespace provides the raw access path while
 | `validations/services/step_processor/base.py` | Persist canonical step input/output values |
 | `actions/protocols.py` | `RunContext` dataclass with `workflow_signals` and `upstream_steps` |
 
-For the full signal model reference, see [Signals](../data-model/signals.md).
+For the architectural model, see
+[Workflow Data Architecture](workflow_data_architecture.md). For the detailed
+models and resolution algorithms, see
+[Workflow Signals and Step I/O Reference](../data-model/signals.md).
 
 ## Related Documentation
 
 - [Validation Step Processor Architecture](step_processor.md) - Deep dive into processor pattern
 - [Validator Architecture](validator_architecture.md) - Execution backends and deployment
 - [How Validibot Works](how_it_works.md) - End-to-end system overview
-- [Signals](../data-model/signals.md) - Signal models, CEL namespaces, and resolution
+- [Workflow Data Architecture](workflow_data_architecture.md) - Scope, provenance, namespaces, and artifact boundaries
+- [Workflow Signals and Step I/O Reference](../data-model/signals.md) - Detailed models, CEL context, and resolution

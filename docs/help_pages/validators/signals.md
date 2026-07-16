@@ -5,10 +5,13 @@ concepts: **signals**, **step inputs**, and **step outputs**.
 Understanding the difference is key to writing clear workflows and
 assertions.
 
-This page is the user-friendly tour. For the underlying architecture,
-see [Signals (developer reference)](../../dev_docs/data-model/signals.md);
-the precise vocabulary decision is recorded in ADR-2026-05-22b
-("signals vs step IO terminology") in the project's internal ADRs.
+This page is the detailed authoring guide. Contributors can read the underlying
+[Workflow Data Architecture](https://dev.validibot.com/overview/workflow_data_architecture/)
+and its linked model reference.
+
+For the shorter overview of every namespace, lifecycle timing, constants, and
+the value/artifact boundary, start with
+[How Data Flows Through a Workflow](/app/help/concepts/workflow-data/).
 
 ---
 
@@ -26,8 +29,10 @@ step-local value to a signal when you want it visible across steps.
 
 ## Signals
 
-A **signal** is a named value in the workflow's vocabulary, accessible
-to every step as `s.<name>`. You create signals two ways:
+A **signal** is an author-named CEL/JSON value in the workflow's vocabulary,
+accessible as `s.<name>`. Mapped signals are available to every step; promoted
+signals become available after their source stage and are downstream-only. You
+create signals two ways:
 
 **Signal mapping** — on the workflow-level page, you define a signal by
 giving it a name and a data path. This maps a raw submission value to a
@@ -38,7 +43,7 @@ to the data path `building_metadata.geometry.total_floor_area_m2`.
 output) into the signal vocabulary by clicking "Copy to Signal" and
 choosing a workflow-wide name. If a step's parser extracts
 `i.zone_count = 12`, you can promote it to a signal called `zone_count`
-so that every other step can reference `s.zone_count`.
+so that later steps can reference `s.zone_count`.
 
 In CEL expressions you reference signals as `s.name` (or the long form
 `signal.name`).
@@ -213,8 +218,8 @@ as `s.<promoted_name>`.
 
 ## Promotion: lifting step values into the signal vocabulary
 
-If you want a step-local value (a step input or a step output) to be
-visible workflow-wide, you **promote** it. The "Copy to Signal" control
+If you want a step-local value-port input or output to become shared workflow
+vocabulary for downstream execution, you **promote** it. The "Copy to Signal" control
 on the inputs and outputs tables does this in one click — you give the
 value a workflow-wide name, and from that moment it's available as
 `s.<your_name>` everywhere downstream.
@@ -235,6 +240,11 @@ The original `i.<name>` or `o.<name>` continues to exist step-locally
 after promotion; the promoted value is an *additional* accessor in the
 workflow signal vocabulary.
 
+Artifacts cannot be promoted. Files, reports, FMUs, logs, and transformed
+documents travel through artifact ports and bindings because they carry
+storage, authorization, retention, and lineage concerns. A small value *about*
+an artifact, such as `o.has_report` or `o.row_count`, can still be promoted.
+
 ---
 
 ## The data namespace reference
@@ -244,6 +254,7 @@ Here is a quick reference for how to access data in CEL expressions:
 | Short form | Long form | What it accesses |
 |------------|-----------|------------------|
 | `p.key` | `payload.key` | Raw submission data |
+| `c.name` | `const.name` | Fixed workflow constants |
 | `s.name` | `signal.name` | Workflow signals (from signal mapping or promotion) |
 | `i.name` | `input.name` | This step's step inputs (parsed facts, resolved bindings) |
 | `o.name` | `output.name` | This step's step outputs (after the validator runs) |
@@ -262,7 +273,8 @@ Here is a quick reference for how to access data in CEL expressions:
 `submission.*` is the one namespace populated for **every** validator regardless
 of file format — it carries metadata and server facts that live beside the
 file, so it works even for non-JSON submissions (RDF `.ttl`, CSV) where `p.*`
-is opaque. `s.*` is likewise available everywhere when signals are defined. The
+is opaque. Initial mapped `s.*` values are likewise available everywhere;
+promoted signals are available downstream after their source stage. The
 only place `submission.*` is not bound is the Tabular per-row `row.*` loop,
 which is intentionally limited to `row`/`s`/`i` for performance.
 

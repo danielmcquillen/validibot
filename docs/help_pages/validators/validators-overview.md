@@ -1,6 +1,6 @@
 # Validators Overview
 
-Validators are the engines that check your data. Each workflow step uses one validator.
+Validators are the components that check your data. Each validator step uses one validator.
 
 ---
 
@@ -23,6 +23,11 @@ Advanced validators (available with Pro):
 |-----------|--------------|------------|
 | **EnergyPlus™** | Runs building energy simulations | IDF, epJSON |
 | **FMU** | Runs FMU simulations | FMU packages |
+
+Validators can declare value or artifact inputs and outputs. Those ports form
+the step contract; they are not automatically workflow signals. See
+[How Data Flows Through a Workflow](/app/help/concepts/workflow-data/) for the
+complete distinction.
 
 ---
 

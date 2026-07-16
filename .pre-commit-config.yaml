@@ -17,10 +17,10 @@ repos:
       - id: check-xml
       - id: check-yaml
         # mkdocs configs use pymdownx's `!!python/name:` YAML tag (for the
-        # mermaid custom fence), which a safe YAML load can't construct.
-        # `--unsafe` downgrades this hook to a syntax-only check for all
-        # YAML, so scope the exception to the mkdocs configs alone.
-        exclude: '^mkdocs.*\.yml$'
+        # mermaid custom fence), while the integration Compose override uses
+        # Compose's `!reset` merge tag. PyYAML cannot construct either custom
+        # tag, so their domain-specific parsers remain authoritative.
+        exclude: '^(mkdocs.*\.yml|compose/local/docker-compose\.integration\.yml)$'
       - id: debug-statements
       - id: check-builtin-literals
       - id: check-case-conflict

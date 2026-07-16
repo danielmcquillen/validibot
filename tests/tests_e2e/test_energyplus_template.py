@@ -191,7 +191,7 @@ class TestEnergyPlusParameterizedTemplate:
             payload,
         )
 
-        # Simulation completed but assertion(s) failed
+        # Simulation completed, then an output assertion failed validation.
         assert_run_failed_assertion(result)
 
         # Window heat loss should exceed the 800 kWh threshold

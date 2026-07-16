@@ -1951,8 +1951,8 @@ class PrefixBasedTargetResolutionTests(TestCase):
         """A bare dotted path is accepted when the validator enables
         custom assertion targets.
 
-        This provides backward compatibility for validators that
-        allow free-form data path targeting.
+        Custom validators may deliberately expose free-form data paths instead
+        of a fixed StepIODefinition catalog.
         """
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,

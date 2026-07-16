@@ -7,6 +7,7 @@ artifact metadata is indexed on the run, exposed through the canonical
 without mutating payload or ordinary output values.
 """
 
+import hashlib
 from types import SimpleNamespace
 
 import pytest
@@ -116,10 +117,62 @@ class TestStepArtifactRegistration:
         assert artifact.storage_uri == "gs://validibot/runs/run-1/outputs/eplusout.sql"
         assert artifact.manifest_uri.endswith("manifest.json")
         assert artifact.producer_validator_type == step.validator.validation_type
+        assert (
+            artifact.producer_backend_image_digest
+            == step_run.validator_backend_image_digest
+        )
         assert refs == [build_step_artifact_refs(step_run)["simulation_db"]]
         assert refs[0]["schema_version"] == "validibot.artifact_ref.v1"
         assert refs[0]["producer_step_key"] == step.step_key
         assert refs[0]["uri"] == artifact.storage_uri
+
+    def test_hashes_container_output_uri_through_run_workspace(
+        self,
+        settings,
+        tmp_path,
+    ):
+        """Local container URIs must produce durable evidence hashes.
+
+        Validator containers refer to their output mount as
+        ``/validibot/output``. Hashing matters because evidence manifests and
+        download responses rely on the indexed digest, not merely file size.
+        """
+
+        settings.DATA_STORAGE_ROOT = str(tmp_path)
+        step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
+        payload = b"validator report bytes"
+        report_path = (
+            tmp_path
+            / "runs"
+            / str(step_run.validation_run.org_id)
+            / str(step_run.validation_run_id)
+            / "output"
+            / "outputs"
+            / "report.txt"
+        )
+        report_path.parent.mkdir(parents=True)
+        report_path.write_bytes(payload)
+
+        refs = register_output_artifacts(
+            step_run=step_run,
+            output_envelope=SimpleNamespace(
+                artifacts=[
+                    ValidationArtifact(
+                        name="report.txt",
+                        type="report",
+                        mime_type="text/plain",
+                        uri="file:///validibot/output/outputs/report.txt",
+                        size_bytes=len(payload),
+                    ),
+                ],
+                raw_outputs=None,
+            ),
+        )
+
+        expected = hashlib.sha256(payload).hexdigest()
+        artifact = Artifact.objects.get(step_run=step_run)
+        assert artifact.sha256 == expected
+        assert refs[0]["sha256"] == expected
 
     def test_reregistering_same_artifact_updates_without_duplicates(self):
         """Callback retries must not duplicate the same step artifact output."""

@@ -92,6 +92,21 @@ def test_validator_accepts_plugin_validation_type_string(db):
     assert validator.get_validation_type_display() == "Cloud-only Validator"
 
 
+def test_validator_version_accepts_positive_integer():
+    """A positive revision keeps validator ordering deterministic."""
+    validator = ValidatorFactory.build(version=2)
+
+    validator.clean_fields()
+
+
+def test_validator_version_rejects_zero():
+    """Revision zero must not enter the current validator contract schema."""
+    validator = ValidatorFactory.build(version=0)
+
+    with pytest.raises(ValidationError, match="version"):
+        validator.clean_fields()
+
+
 def test_cel_assertion_with_long_expression_passes_full_clean(db):
     """A CEL assertion over 255 chars saves — ``target_data_path`` is a TextField.
 

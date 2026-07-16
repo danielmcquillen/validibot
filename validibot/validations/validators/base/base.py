@@ -770,6 +770,7 @@ class BaseValidator(ABC):
             return {}
 
         from validibot.validations.constants import StepIODirection
+        from validibot.validations.constants import StepIOMedium
         from validibot.validations.models import StepInputBinding
         from validibot.validations.services.path_resolution import resolve_step_input
 
@@ -809,6 +810,7 @@ class BaseValidator(ABC):
             StepInputBinding.objects.filter(
                 workflow_step=step,
                 io_definition__direction=StepIODirection.INPUT,
+                io_definition__io_medium=StepIOMedium.VALUE,
             )
             .select_related("io_definition")
             .order_by("io_definition__order", "io_definition__pk")
@@ -818,9 +820,14 @@ class BaseValidator(ABC):
             return {}
 
         submission_data = payload if isinstance(payload, (dict, list)) else {}
+        cached_values = dict(
+            getattr(self.run_context, "step_input_contract_values", {}) or {},
+        )
 
         context: dict[str, Any] = {}
         for binding in bindings:
+            if binding.io_definition.contract_key in cached_values:
+                continue
             resolved = resolve_step_input(
                 binding,
                 submission_data=submission_data,
@@ -865,7 +872,7 @@ class BaseValidator(ABC):
            should not be silently shadowed by a same-named binding.
         2. Workflow signals (``run_context.workflow_signals``).
         3. Resolved input bindings — only at input stage. Output
-           stage already has ``resolved_inputs`` merged by
+           stage already has canonical ``input_values`` merged by
            ``_build_assertion_payload`` on the advanced side; calling
            ``_resolve_bound_input_context`` again at output stage
            would be redundant.

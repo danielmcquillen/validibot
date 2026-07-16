@@ -1838,4 +1838,4 @@ class TestFMUInputBindings:
         assert envelope.inputs.input_values == {"Panel.Area": 150.0}
         step_run = run.step_runs.get(workflow_step=step)
         assert step_run.input_values == {"panel_area": 150.0}
-        assert step_run.output["resolved_inputs"] == {"Panel.Area": 150.0}
+        assert "resolved_inputs" not in step_run.output

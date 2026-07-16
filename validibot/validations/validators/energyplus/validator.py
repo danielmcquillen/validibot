@@ -148,6 +148,21 @@ class EnergyPlusValidator(AdvancedValidator):
         )
 
         result = preprocess_energyplus_submission(step=step, submission=submission)
+        if result.was_template and self.run_context is not None:
+            from validibot.validations.constants import StepIOOriginKind
+
+            parameters = result.template_metadata.get("template_parameters_used", {})
+            contract_values = dict(
+                getattr(self.run_context, "step_input_contract_values", {}) or {},
+            )
+            for io_definition in step.step_io_definitions.filter(
+                origin_kind=StepIOOriginKind.TEMPLATE,
+            ).only("contract_key", "native_name"):
+                if io_definition.native_name in parameters:
+                    contract_values[io_definition.contract_key] = parameters[
+                        io_definition.native_name
+                    ]
+            self.run_context.step_input_contract_values = contract_values
         return result.template_metadata
 
     def post_execute_validate(

@@ -258,7 +258,11 @@ class TestEnergyPlusTemplateE2E:
     """End-to-end tests for the EnergyPlus parameterized template pipeline."""
 
     @patch("validibot.validations.services.execution.get_execution_backend")
-    def test_template_happy_path_resolves_and_dispatches(self, mock_get_backend):
+    def test_template_happy_path_resolves_and_dispatches(
+        self,
+        mock_get_backend,
+        caplog,
+    ):
         """Submit valid parameters to a template step and verify:
 
         1. Preprocessing resolves the template — submission.content now
@@ -311,6 +315,15 @@ class TestEnergyPlusTemplateE2E:
         assert "template_parameters_used" in result.stats
         assert result.stats["template_parameters_used"]["U_FACTOR"] == "2.5"
         assert result.stats["template_parameters_used"]["SHGC"] == "0.4"
+
+        # Template bindings were resolved before the JSON submission was
+        # replaced by the concrete IDF. They must remain the canonical i.*
+        # values without a second, misleading lookup against IDF text.
+        step_run.refresh_from_db()
+        assert step_run.input_values["u_factor"] == "2.5"
+        assert step_run.input_values["shgc"] == "0.4"
+        assert step_run.input_values["visible_transmittance"] == "0.38"
+        assert "could not be resolved" not in caplog.text
 
     @patch("validibot.validations.services.execution.get_execution_backend")
     def test_template_with_demo_idf(self, mock_get_backend):
@@ -566,8 +579,8 @@ class TestEnergyPlusDirectModeE2E:
         """A step without a MODEL_TEMPLATE resource should pass the
         original submission content unchanged to the backend.
 
-        This verifies backward compatibility: existing workflows that
-        accept direct IDF uploads continue to work identically.
+        Direct IDF validation is a current first-class mode alongside
+        parameterized templates; it must pass submissions through unchanged.
         """
         captured = []
         mock_get_backend.return_value = _make_mock_backend(capture_request=captured)

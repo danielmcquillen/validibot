@@ -90,7 +90,6 @@ def register_output_artifacts(
             artifact_kind = _infer_kind(role=role, media_type=media_type, name=name)
             metadata_source = "output_envelope"
 
-        sha256 = _sha256_for_uri(uri)
         artifact, _created = Artifact.objects.update_or_create(
             validation_run=step_run.validation_run,
             workflow_step=step_run.workflow_step,
@@ -107,7 +106,7 @@ def register_output_artifacts(
                 "data_format": data_format,
                 "storage_uri": uri,
                 "size_bytes": size_bytes or 0,
-                "sha256": sha256,
+                "sha256": "",
                 "manifest_uri": manifest_uri,
                 "producer_validator_type": validator.validation_type,
                 "producer_validator_version": str(validator.version),
@@ -124,6 +123,10 @@ def register_output_artifacts(
                 },
             },
         )
+        sha256 = _sha256_for_artifact(artifact)
+        if sha256 != artifact.sha256:
+            artifact.sha256 = sha256
+            artifact.save(update_fields=["sha256", "modified"])
         refs.append(build_artifact_ref(artifact).model_dump(mode="json"))
 
     return refs
@@ -291,15 +294,21 @@ def _infer_kind(*, role: str, media_type: str, name: str) -> str:
     return ArtifactKind.FILE
 
 
-def _sha256_for_uri(uri: str) -> str:
-    """Compute SHA-256 for local file URIs; leave remote URIs blank for now."""
+def _sha256_for_artifact(artifact: Artifact) -> str:
+    """Compute SHA-256 when an artifact resolves to locally available bytes.
 
-    parsed = urlparse(uri)
-    if parsed.scheme != "file":
-        return ""
+    Local validator envelopes address outputs through their container mount
+    (``file:///validibot/output/...``). The web and worker processes see those
+    same bytes under the run workspace instead, so use the canonical download
+    resolver rather than treating the container URI as a host path.
+    """
 
-    path = Path(unquote(parsed.path))
-    if not path.is_file():
+    from validibot.validations.services.artifact_display import (
+        resolve_local_artifact_path,
+    )
+
+    path = resolve_local_artifact_path(artifact)
+    if path is None or not path.is_file():
         return ""
 
     digest = hashlib.sha256()

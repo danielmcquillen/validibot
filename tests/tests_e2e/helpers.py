@@ -235,16 +235,23 @@ def get_step_issues(
     ]
 
 
-def get_template_parameters_used(result: dict) -> dict:
-    """Extract template_parameters_used from the first step.
+def get_template_parameters_used(result: dict) -> dict[str, str]:
+    """Return first-step template parameter values keyed by native name.
 
-    Returns an empty dict if no template parameters metadata is present.
+    The public API exposes display-ready parameter records so clients also
+    receive labels and units.  E2E assertions only need the submitted values,
+    so this helper normalizes that list to ``{name: value}``.
     """
     steps = result.get("data", {}).get("steps", [])
     if not steps:
         return {}
 
-    return steps[0].get("template_parameters_used", {})
+    parameters = steps[0].get("template_parameters_used") or []
+    return {
+        parameter["name"]: parameter["value"]
+        for parameter in parameters
+        if parameter.get("name")
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -286,17 +293,26 @@ def assert_run_passed(result: dict) -> None:
 def assert_run_failed_assertion(result: dict) -> None:
     """Assert the simulation ran but an output assertion failed.
 
-    The run status is SUCCEEDED (simulation completed), but the result
-    is FAIL (one or more assertions did not pass).
+    A completed validation failure has terminal status ``FAILED`` and public
+    result ``FAIL``.  Output values prove the simulation reached extraction,
+    distinguishing this path from preprocessing rejection.
     """
     assert_submission_succeeded(result)
 
-    assert result["status"] == "SUCCEEDED", (
-        f"Expected SUCCEEDED (simulation ran) but got {result['status']}. "
+    assert result["status"] == "FAILED", (
+        f"Expected FAILED (validation failed) but got {result['status']}. "
         f"Data: {result['data']}"
     )
     assert result["result"] == "FAIL", (
         f"Expected result=FAIL (assertion failed) but got {result['result']}"
+    )
+    assert result["data"].get("error_category") == "VALIDATION_FAILED", (
+        "Expected output assertion failure to use error_category="
+        f"VALIDATION_FAILED, got {result['data'].get('error_category')}"
+    )
+    assert get_output_values(result), (
+        "Expected extracted outputs, which prove simulation completed before "
+        "the assertion failed"
     )
 
     errors = get_step_issues(result, severity="ERROR")

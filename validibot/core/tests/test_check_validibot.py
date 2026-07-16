@@ -31,10 +31,10 @@ on. Specifically:
    output verbatim, so support bundles, CI logs, and dashboards know
    which deployment the doctor ran against.
 
-These tests don't exercise the *check logic itself* (does the
-database actually respond?) — that's covered by integration testing
-on real environments. They lock in the public output contract so
-future check additions don't accidentally break callers.
+Most tests lock in the public output contract rather than probing live
+infrastructure. Focused unit tests also cover target-aware decisions and
+runner availability checks where a real container environment would otherwise
+produce misleading, host-dependent results.
 
 Why these tests matter: the JSON schema is consumed by the support
 bundle (Phase 6), CI pipelines that run ``--strict``, and any
@@ -46,7 +46,10 @@ schema regressions at PR-review time.
 from __future__ import annotations
 
 import json
+import tempfile
 from io import StringIO
+from unittest.mock import Mock
+from unittest.mock import patch
 
 from django.core.management import call_command
 from django.test import TestCase
@@ -619,6 +622,126 @@ class DoctorCompatibilityMatrixTests(TestCase):
         self.assertIn("database", gcp_categories)
 
 
+# Docker runner checks use the configured execution abstraction because the
+# application container talks to Docker through the SDK and mounted socket.
+@override_settings(VALIDATOR_RUNNER="docker")
+class DoctorDockerRunnerTests(TestCase):
+    """Verify doctor checks the Docker API path used by real validators.
+
+    Local Compose images intentionally omit the Docker CLI. These tests prevent
+    the old ``shutil.which('docker')`` implementation from returning and
+    ensure cloud runners do not receive irrelevant Docker warnings.
+    """
+
+    @patch(
+        "validibot.validations.services.runners.registry.get_validator_runner",
+    )
+    def test_sdk_runner_passes_without_docker_cli(self, get_validator_runner):
+        """A working Docker SDK connection passes when no CLI is installed.
+
+        This mirrors local-cloud exactly: docker-py and the socket are present
+        in the application container, while a ``docker`` executable is not.
+        Advanced validation readiness must follow the SDK result.
+        """
+        runner = Mock()
+        runner.get_runner_type.return_value = "docker"
+        runner.is_available.return_value = True
+        get_validator_runner.return_value = runner
+        command = Command()
+        command._check_validator_images = Mock()
+
+        with patch("shutil.which", return_value=None):
+            command._check_docker()
+
+        docker_check = next(
+            result for result in command.results if result.id == "VB302"
+        )
+        self.assertEqual(docker_check.status, CheckStatus.OK)
+        self.assertIn("Docker API", docker_check.message)
+        command._check_validator_images.assert_called_once_with()
+
+    @patch(
+        "validibot.validations.services.runners.registry.get_validator_runner",
+    )
+    def test_unreachable_sdk_runner_warns(self, get_validator_runner):
+        """An unavailable configured Docker runner remains actionable.
+
+        A missing socket, stopped daemon, or permissions problem prevents real
+        EnergyPlus and FMU execution, so doctor must retain a warning with a
+        socket-specific remediation rather than reporting a missing CLI.
+        """
+        runner = Mock()
+        runner.get_runner_type.return_value = "docker"
+        runner.is_available.return_value = False
+        get_validator_runner.return_value = runner
+        command = Command()
+
+        command._check_docker()
+
+        docker_check = next(
+            result for result in command.results if result.id == "VB302"
+        )
+        self.assertEqual(docker_check.status, CheckStatus.WARN)
+        self.assertIn("cannot reach Docker Engine", docker_check.message)
+        self.assertIn("docker.sock", docker_check.fix_hint)
+
+    @patch(
+        "validibot.validations.services.runners.registry.get_validator_runner",
+    )
+    def test_non_docker_runner_skips_docker_check(self, get_validator_runner):
+        """Cloud execution backends do not require a local Docker daemon.
+
+        This prevents GCP doctor jobs from warning about Docker even though
+        validators are deliberately dispatched to Cloud Run Jobs.
+        """
+        runner = Mock()
+        runner.get_runner_type.return_value = "google_cloud_run"
+        get_validator_runner.return_value = runner
+        command = Command()
+
+        command._check_docker()
+
+        docker_check = next(
+            result for result in command.results if result.id == "VB301"
+        )
+        self.assertEqual(docker_check.status, CheckStatus.SKIPPED)
+        runner.is_available.assert_not_called()
+
+
+class DoctorLocalComposeApplicabilityTests(TestCase):
+    """Keep host-operations findings out of disposable local Compose runs.
+
+    Doctor executes inside the application image, where the observed Debian
+    release is unrelated to the developer's host. Local data is also designed
+    to be deleted and recreated, so restore-drill readiness does not apply.
+    """
+
+    def test_local_compose_os_check_is_skipped(self):
+        """Container OS metadata is not treated as host compatibility data."""
+        command = Command()
+        command.target = "local_docker_compose"
+
+        command._check_os_version(CheckStatus.WARN)
+
+        os_check = next(result for result in command.results if result.id == "VB030")
+        self.assertEqual(os_check.status, CheckStatus.SKIPPED)
+        self.assertIn("local Docker Compose", os_check.message)
+
+    @override_settings(DATA_STORAGE_ROOT="/unused/local/storage")
+    def test_local_compose_restore_drill_is_skipped(self):
+        """Disposable local data never produces a missing-marker warning."""
+        command = Command()
+        command.target = "local_docker_compose"
+
+        command._check_restore_test()
+
+        restore_check = next(
+            result for result in command.results if result.id == "VB411"
+        )
+        self.assertEqual(restore_check.status, CheckStatus.SKIPPED)
+        self.assertIn("disposable local Compose data", restore_check.message)
+
+
 class DoctorRestoreTestMarkerTests(TestCase):
     """The VB411 restore-test marker check.
 
@@ -655,6 +778,28 @@ class DoctorRestoreTestMarkerTests(TestCase):
         # Either WARN (most likely) or SKIPPED (DATA_STORAGE_ROOT
         # not set in test env) — never ERROR.
         self.assertIn(restore_check["status"], ("warn", "skipped", "ok"))
+
+    def test_self_hosted_missing_marker_uses_current_restore_instructions(self):
+        """The warning points directly to the shipped backup and restore flow.
+
+        The old message said operators should wait until Phase 3 shipped even
+        though backup and restore recipes now exist. Keeping the remediation
+        current matters because this warning is intended to trigger action.
+        """
+        with (
+            tempfile.TemporaryDirectory() as data_root,
+            override_settings(DATA_STORAGE_ROOT=data_root),
+        ):
+            command = Command()
+            command.target = "self_hosted"
+            command._check_restore_test()
+
+        restore_check = next(
+            result for result in command.results if result.id == "VB411"
+        )
+        self.assertEqual(restore_check.status, CheckStatus.WARN)
+        self.assertNotIn("Phase 3", restore_check.fix_hint)
+        self.assertIn("just self-hosted backup", restore_check.fix_hint)
 
 
 class DoctorImagePolicyTests(TestCase):

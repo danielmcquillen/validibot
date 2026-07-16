@@ -126,6 +126,19 @@ def _wait_for_url_not_contains(driver, url_part: str, timeout: int = 20):
     WebDriverWait(driver, timeout).until_not(url_contains(url_part))
 
 
+def _wait_for_login_error(driver, timeout: int = 10) -> str:
+    """Return the visible login error without coupling tests to translated copy."""
+    alert = _wait_for_element(
+        driver,
+        By.CSS_SELECTOR,
+        "form.login .alert-danger",
+        timeout,
+    )
+    message = alert.text.strip()
+    assert message, "Expected a visible error message for invalid credentials"
+    return message
+
+
 @pytest.mark.skipif(
     os.getenv("SKIP_SELENIUM_LOGIN_TESTS"),
     reason="Selenium login tests skipped by environment flag.",
@@ -207,7 +220,7 @@ class TestLoginForm:
         live_server,
         test_user,
     ):
-        """Test that login fails with an incorrect password."""
+        """Ensure a mistyped password leaves the user signed out with feedback."""
         selenium_driver.delete_all_cookies()
         selenium_driver.get(self._get_login_url(live_server))
 
@@ -224,21 +237,14 @@ class TestLoginForm:
         submit_btn = selenium_driver.find_element(By.ID, "sign_in_btn")
         submit_btn.click()
 
-        # Wait for the page to reload with error
-        _wait_for_element(selenium_driver, By.CSS_SELECTOR, "form.login")
+        # Wait for the page to reload with a visible error.
+        _wait_for_login_error(selenium_driver)
 
         # Check that we're still on the login page
         assert "/accounts/login/" in selenium_driver.current_url
 
-        # Check for error message in the page
-        page_source = selenium_driver.page_source.lower()
-        assert any(
-            msg in page_source
-            for msg in ["unable to log in", "invalid", "incorrect", "error"]
-        ), "Expected an error message for invalid credentials"
-
     def test_login_with_nonexistent_user(self, selenium_driver, live_server, test_user):
-        """Test that login fails for a user that doesn't exist."""
+        """Ensure an unknown username cannot log in and receives visible feedback."""
         selenium_driver.delete_all_cookies()
         selenium_driver.get(self._get_login_url(live_server))
 
@@ -258,13 +264,7 @@ class TestLoginForm:
         # Wait to ensure we stay on an accounts page (login should fail)
         _wait_for_url_contains(selenium_driver, "/accounts/", timeout=20)
         assert "/accounts/login/" in selenium_driver.current_url
-
-        # Check for an error message indicating invalid credentials
-        page_source = selenium_driver.page_source.lower()
-        assert any(
-            msg in page_source
-            for msg in ["unable to log in", "invalid", "incorrect", "error"]
-        ), "Expected an error message for invalid credentials"
+        _wait_for_login_error(selenium_driver)
 
     def test_login_with_empty_fields(self, selenium_driver, live_server, test_user):
         """Test that login fails when fields are empty."""

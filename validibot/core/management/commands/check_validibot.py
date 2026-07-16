@@ -82,9 +82,9 @@ DOCTOR_SCHEMA_VERSION = "validibot.doctor.v1"
 # Phase 6 will publish the official matrix; for Phase 1 Session 2 we
 # hard-code reasonable minimums based on what Validibot actually
 # tests against. Versions below these produce ``ERROR`` on the
-# ``self_hosted`` and ``self_hosted_hardened`` profiles, ``WARN`` on
-# ``local_docker_compose`` (developers iterating may have older
-# versions and that's their problem).
+# ``self_hosted`` and ``self_hosted_hardened`` profiles. Host-specific
+# checks are skipped for ``local_docker_compose`` because doctor runs inside
+# the application container there, not on the Docker host.
 #
 # Why these specific minimums:
 #   - Docker 24.0 — Compose plugin v2 GA; older versions have
@@ -1016,77 +1016,74 @@ class Command(BaseCommand):
     # =========================================================================
 
     def _check_docker(self):
-        """Check Docker availability for advanced validators."""
-        import shutil
+        """Check the configured validator runner's Docker API access.
 
-        docker_path = shutil.which("docker")
-
-        if not docker_path:
-            self._add_result(
-                "VB301",
-                "docker",
-                "Docker",
-                CheckStatus.WARN,
-                "Docker not found in PATH",
-                details="Advanced validators (EnergyPlus, FMU) require Docker",
-                fix_hint=(
-                    "Install Docker or configure VALIDATOR_RUNNER for cloud execution"
-                ),
-            )
-            return
+        Local and self-hosted Compose deployments deliberately use the
+        Python Docker SDK through a mounted socket. The application container
+        does not need the Docker CLI, so checking ``shutil.which("docker")``
+        produces a false warning even when advanced validators can run.
+        Asking the configured runner exercises the same dependency and socket
+        path that real validation jobs use.
+        """
+        from validibot.validations.services.runners.registry import get_validator_runner
 
         try:
-            import subprocess
-
-            result = subprocess.run(
-                ["docker", "info"],  # noqa: S607
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-
-            if result.returncode == 0:
-                self._add_result(
-                    "VB302",
-                    "docker",
-                    "Docker",
-                    CheckStatus.OK,
-                    "Docker is available and running",
-                )
-
-                self._check_validator_images()
-            else:
-                self._add_result(
-                    "VB302",
-                    "docker",
-                    "Docker",
-                    CheckStatus.WARN,
-                    "Docker installed but not accessible",
-                    details=result.stderr[:200] if result.stderr else None,
-                    fix_hint="Start Docker daemon or check permissions",
-                )
-
-        except subprocess.TimeoutExpired:
-            self._add_result(
-                "VB303",
-                "docker",
-                "Docker",
-                CheckStatus.WARN,
-                "Docker command timed out",
-            )
+            runner = get_validator_runner()
+            runner_type = runner.get_runner_type()
         except Exception as e:
             self._add_result(
                 "VB304",
                 "docker",
                 "Docker",
                 CheckStatus.WARN,
-                f"Cannot check Docker: {e}",
+                f"Cannot initialize configured validator runner: {e}",
+                fix_hint=(
+                    "Check VALIDATOR_RUNNER and VALIDATOR_RUNNER_OPTIONS, then "
+                    "restart the application."
+                ),
+            )
+            return
+
+        if runner_type != "docker":
+            self._add_result(
+                "VB301",
+                "docker",
+                "Docker",
+                CheckStatus.SKIPPED,
+                f"Docker is not required by configured runner '{runner_type}'.",
+            )
+            return
+
+        if runner.is_available():
+            self._add_result(
+                "VB302",
+                "docker",
+                "Docker",
+                CheckStatus.OK,
+                "Docker runner can reach Docker Engine through the Docker API",
+            )
+            self._check_validator_images()
+        else:
+            self._add_result(
+                "VB302",
+                "docker",
+                "Docker",
+                CheckStatus.WARN,
+                "Configured Docker runner cannot reach Docker Engine",
+                details=(
+                    "Advanced validators such as EnergyPlus and FMU require "
+                    "access to the Docker API."
+                ),
+                fix_hint=(
+                    "Start Docker and verify that /var/run/docker.sock is "
+                    "mounted into the web and worker containers with usable "
+                    "permissions."
+                ),
             )
 
     def _check_validator_images(self):
-        """Check if validator Docker images are available."""
-        import subprocess
+        """Check validator images through the same SDK used by the runner."""
+        import docker
 
         expected_images = [
             "validibot-validator-backend-energyplus",
@@ -1094,51 +1091,48 @@ class Command(BaseCommand):
         ]
 
         try:
-            result = subprocess.run(
-                ["docker", "images", "--format", "{{.Repository}}"],  # noqa: S607
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+            client = docker.from_env()
+            available_images = {
+                tag.rsplit(":", 1)[0]
+                # Sparse listing avoids one inspect request (and one DEBUG log
+                # line) per host image. Repository tags are already present in
+                # Docker's list response, which is all this inventory needs.
+                for image in client.images.list(sparse=True)
+                for tag in image.tags
+            }
+            found = [img for img in expected_images if img in available_images]
+            missing = [img for img in expected_images if img not in available_images]
 
-            if result.returncode == 0:
-                available_images = set(result.stdout.strip().split("\n"))
-                found = [img for img in expected_images if img in available_images]
-                missing = [
-                    img for img in expected_images if img not in available_images
-                ]
+            if found:
+                self._add_result(
+                    "VB310",
+                    "docker",
+                    "Validator images",
+                    CheckStatus.OK,
+                    f"{len(found)} validator image(s) available",
+                    details="\n".join(f"  - {img}" for img in found)
+                    if self.verbose
+                    else None,
+                )
 
-                if found:
-                    self._add_result(
-                        "VB310",
-                        "docker",
-                        "Validator images",
-                        CheckStatus.OK,
-                        f"{len(found)} validator image(s) available",
-                        details="\n".join(f"  - {img}" for img in found)
-                        if self.verbose
-                        else None,
-                    )
-
-                if missing and self.verbose:
-                    self._add_result(
-                        "VB311",
-                        "docker",
-                        "Validator images (optional)",
-                        CheckStatus.SKIPPED,
-                        f"{len(missing)} validator image(s) not installed",
-                        details="\n".join(f"  - {img}" for img in missing),
-                        fix_hint=(
-                            "Build images: (in ../validibot-validator-backends) "
-                            "just build energyplus fmu"
-                        ),
-                    )
+            if missing and self.verbose:
+                self._add_result(
+                    "VB311",
+                    "docker",
+                    "Validator images (optional)",
+                    CheckStatus.SKIPPED,
+                    f"{len(missing)} validator image(s) not installed",
+                    details="\n".join(f"  - {img}" for img in missing),
+                    fix_hint=(
+                        "Build images: (in ../validibot-validator-backends) "
+                        "just build energyplus fmu"
+                    ),
+                )
 
         except Exception:  # noqa: S110
             # Non-critical: missing image listing shouldn't fail the
-            # whole doctor run. Operators can investigate via direct
-            # `docker images` if needed.
+            # whole doctor run. VB302 already verified runner availability;
+            # this is only an optional inventory hint.
             pass
 
     # =========================================================================
@@ -1378,10 +1372,10 @@ class Command(BaseCommand):
 
         Severity is target-aware: ``error`` for ``self_hosted`` /
         ``self_hosted_hardened`` (production deployments must run
-        supported versions); ``warn`` for ``local_docker_compose`` and
-        ``test`` (developers running older toolchains is their own
-        problem). ``info`` for GCP because Cloud Run / Cloud SQL
-        versions are externally managed.
+        supported versions); ``warn`` for developer/test runtime services;
+        and ``info`` for GCP because Cloud Run / Cloud SQL versions are
+        externally managed. Host-only checks skip local Compose because the
+        command runs inside an application container there.
         """
         # The error-vs-warn decision varies by target. We compute it
         # once here and reuse for each finding below.
@@ -1477,7 +1471,7 @@ class Command(BaseCommand):
         volumes and BuildKit secrets — the ``build-pro-image`` recipe
         relies on the latter.
         """
-        if self.target in ("gcp", "test"):
+        if self.target in ("gcp", "test", "local_docker_compose"):
             self._add_result(
                 "VB320",
                 "docker",
@@ -1491,7 +1485,8 @@ class Command(BaseCommand):
         import subprocess
 
         if shutil.which("docker") is None:
-            # Already covered by VB301 (Docker not in PATH).
+            # Runner availability is covered by VB302. This compatibility
+            # check only applies when the host CLI is visible.
             return
 
         try:
@@ -1572,14 +1567,14 @@ class Command(BaseCommand):
         hit this. We detect by checking whether ``which docker``
         resolves to ``/snap/bin/docker``.
         """
-        if self.target in ("gcp", "test"):
+        if self.target in ("gcp", "test", "local_docker_compose"):
             return  # Not applicable
 
         import shutil
 
         docker_path = shutil.which("docker")
         if docker_path is None:
-            return  # Covered by VB301
+            return  # Runner availability is covered by VB302.
 
         if "/snap/" in docker_path:
             self._add_result(
@@ -1613,12 +1608,24 @@ class Command(BaseCommand):
 
         Only enforces on Ubuntu for now — that's the supported host OS
         per the deployment matrix. Other Linux distros (Debian, RHEL,
-        Alpine) skip the check; macOS / Windows hosts running Docker
-        Desktop also skip (those are dev-only).
+        Alpine) produce an informational finding for self-hosted installs;
+        macOS / Windows hosts running Docker Desktop skip. Local Compose also
+        skips because ``/etc/os-release`` describes the application image,
+        not the developer's Docker host.
 
         ADR Phase 6 will expand the matrix to cover other distros.
         """
         if self.target in ("gcp", "test"):
+            return
+
+        if self.target == "local_docker_compose":
+            self._add_result(
+                "VB030",
+                "settings",
+                "OS version",
+                CheckStatus.SKIPPED,
+                "Host OS check is not applicable inside local Docker Compose.",
+            )
             return
 
         os_release = Path("/etc/os-release")
@@ -1714,11 +1721,21 @@ class Command(BaseCommand):
         is missing or its mtime is older than ``RESTORE_TEST_STALE_DAYS``,
         we warn the operator to run a restore drill.
 
-        This is forward-compatible: until Phase 3 ships, the file
-        won't exist on any install — every doctor run warns. That's
-        intentional. Operators ignoring backups are exactly who this
-        warning is for.
+        Local Compose data is intentionally disposable, so requiring a restore
+        drill there would add noise without improving operational readiness.
+        Self-hosted and hosted deployments retain the warning because operators
+        relying on persistent data need evidence that backups can be restored.
         """
+        if self.target == "local_docker_compose":
+            self._add_result(
+                "VB411",
+                "backups",
+                "Restore test",
+                CheckStatus.SKIPPED,
+                "Restore drills are not required for disposable local Compose data.",
+            )
+            return
+
         data_root = getattr(settings, "DATA_STORAGE_ROOT", None)
         if not data_root:
             self._add_result(
@@ -1739,8 +1756,8 @@ class Command(BaseCommand):
                 CheckStatus.WARN,
                 f"No restore drill recorded ({marker} missing).",
                 fix_hint=(
-                    "Once Phase 3 ships, run: just self-hosted backup, "
-                    "then test restore on a clean volume with: "
+                    "Run: just self-hosted backup, then test restore on a "
+                    "clean volume with: "
                     "just self-hosted restore <backup-path>. The restore "
                     "recipe writes the marker file."
                 ),

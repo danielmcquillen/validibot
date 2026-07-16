@@ -1,0 +1,21 @@
+# Integration-test override: dependencies communicate on the Compose network,
+# so no service needs a fixed host port. Resetting inherited ports lets this
+# isolated project run alongside Postgres.app and an active local dev stack.
+
+volumes:
+  integration_venv:
+
+services:
+  web:
+    ports: !reset []
+    volumes:
+      - integration_venv:/app/.venv
+
+  postgres:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+  mailpit:
+    ports: !reset []

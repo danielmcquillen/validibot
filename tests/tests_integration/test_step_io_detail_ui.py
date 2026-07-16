@@ -221,7 +221,7 @@ class TestStepIODetailModal:
 
         # Navigate to validator detail page
         detail_path = reverse(
-            "validations:validator_detail",
+            "validations:validator_step_io_tab",
             kwargs={"slug": validator.slug},
         )
         validator_url = f"{live_server.url}{detail_path}"
@@ -276,7 +276,7 @@ class TestStepIODetailModal:
 
         # Navigate to validator detail page
         detail_path = reverse(
-            "validations:validator_detail",
+            "validations:validator_step_io_tab",
             kwargs={"slug": validator.slug},
         )
         validator_url = f"{live_server.url}{detail_path}"
@@ -331,7 +331,7 @@ class TestStepIODetailModal:
 
         # Navigate to validator detail page
         detail_path = reverse(
-            "validations:validator_detail",
+            "validations:validator_step_io_tab",
             kwargs={"slug": validator.slug},
         )
         validator_url = f"{live_server.url}{detail_path}"
@@ -417,14 +417,14 @@ class TestStepIODetailModal:
 
         # Navigate to validator detail page
         detail_path = reverse(
-            "validations:validator_detail",
+            "validations:validator_step_io_tab",
             kwargs={"slug": validator.slug},
         )
         validator_url = f"{live_server.url}{detail_path}"
         selenium_driver.get(validator_url)
 
         # Wait for page to fully load
-        _wait_for_element(selenium_driver, By.CSS_SELECTOR, ".card")
+        _wait_for_element(selenium_driver, By.CSS_SELECTOR, "[data-sortable-table]")
 
         # Get full page source
         page_source = selenium_driver.page_source

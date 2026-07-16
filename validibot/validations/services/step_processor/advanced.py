@@ -193,11 +193,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         # metadata will survive the envelope serialization.
         # (On the async path, _record_pending_state() does the same thing.)
         if result.stats:
-            self.step_run.output = {
-                **(self.step_run.output or {}),
-                **result.stats,
-            }
-            self.step_run.save(update_fields=["output"])
+            self._persist_initial_stats(result.stats)
 
         if result.output_envelope is None:
             # Per ADR-2026-05-22 + May 2026 review's P2 finding: a
@@ -231,6 +227,22 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
             severity_counts,
             append_findings=True,  # Preserve input-stage findings
         )
+
+    def _persist_initial_stats(self, stats: dict[str, Any]) -> None:
+        """Store launch metadata before final-envelope artifact registration."""
+        self.step_run.output = {
+            **(self.step_run.output or {}),
+            **stats,
+        }
+        update_fields = ["output"]
+        backend_digest = stats.get("validator_backend_image_digest")
+        if backend_digest:
+            # Promote the runner identity before artifact registration so
+            # every artifact records the backend that produced it. Final
+            # envelope serialization does not itself carry this value.
+            self.step_run.validator_backend_image_digest = str(backend_digest)
+            update_fields.append("validator_backend_image_digest")
+        self.step_run.save(update_fields=update_fields)
 
     def complete_from_callback(self, output_envelope: Any) -> StepProcessingResult:
         """

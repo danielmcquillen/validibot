@@ -221,6 +221,13 @@ class ValidationStepProcessor(ABC):
         if error:
             self.step_run.error = error
 
-        self.step_run.save(
-            update_fields=["ended_at", "duration_ms", "status", "output", "error"],
-        )
+        update_fields = ["ended_at", "duration_ms", "status", "output", "error"]
+        # Synchronous advanced execution stores launch metadata before it
+        # receives the final envelope. Read from the merged output so that
+        # final envelope stats cannot hide an already-captured image digest.
+        backend_digest = output.get("validator_backend_image_digest")
+        if backend_digest:
+            self.step_run.validator_backend_image_digest = str(backend_digest)
+            update_fields.append("validator_backend_image_digest")
+
+        self.step_run.save(update_fields=update_fields)

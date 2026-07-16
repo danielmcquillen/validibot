@@ -150,6 +150,20 @@ down:
     export COMPOSE_PROFILES="${COMPOSE_PROFILES:+${COMPOSE_PROFILES},}mcp"
     docker compose -f "{{cloud_compose}}" down
 
+# Stop the complete cloud stack and delete every local data volume.
+#
+# This is the required reset path after an intentionally incompatible migration
+# rewrite. It removes PostgreSQL, Redis, uploaded artifacts, backups, and the
+# shared Python environment so the next ``up --build`` starts from a genuinely
+# empty deployment.
+# WARNING: this permanently deletes all local-cloud data.
+[no-cd]
+clean:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export COMPOSE_PROFILES="${COMPOSE_PROFILES:+${COMPOSE_PROFILES},}mcp"
+    docker compose -f "{{cloud_compose}}" down -v --remove-orphans
+
 # Rebuild and start containers, clearing the venv volume
 #
 # The venv lives in a named Docker volume so it persists across image
@@ -238,8 +252,13 @@ e2e-tests *args:
         exit 1
     fi
 
+    # The community command owns workflow fixtures; the cloud companion adds
+    # the trial/profile/credit state required by fail-closed hosted policies.
+    docker compose -f "$compose" exec -T web \
+        bash -c '{{_db_url}} python manage.py setup_e2e_cloud' >/dev/null
+
     # Filter out non-env lines (e.g. Django startup logs) and eval only KEY=VALUE lines
-    eval "$(echo "$env_output" | grep -E '^[A-Z_]+=.+$')"
+    eval "$(echo "$env_output" | grep -E '^[A-Z][A-Z0-9_]*=.+$')"
     export FULLSTACK_API_TOKEN FULLSTACK_ORG_SLUG E2E_ENERGYPLUS_TEMPLATE_WORKFLOW_ID
 
     # --- 5. Run E2E tests ---

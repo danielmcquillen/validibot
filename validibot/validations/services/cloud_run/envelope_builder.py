@@ -1411,24 +1411,17 @@ def build_input_envelope(
                     ResolvedInputTrace.objects.bulk_create(exc.traces)
                 raise
 
-            # Persist the fully-resolved input values twice, with different
-            # keys for different consumers:
-            #
-            # * ``input_values`` uses Validibot contract keys for downstream
-            #   ``steps.<key>.input.*`` access.
-            # * ``output["resolved_inputs"]`` preserves native/provider keys
-            #   because FMU start values and output-stage assertion payloads
-            #   historically use the provider variable names.
+            # Persist the fully resolved values once, under the canonical
+            # Validibot contract keys. Native/provider names belong only in
+            # the backend input envelope; assertions and downstream steps use
+            # ``ValidationStepRun.input_values`` and StepIODefinition keys.
             if current_step_run:
                 current_step_run.input_values = {
                     trace.input_contract_key: trace.value_snapshot
                     for trace in traces
                     if trace.resolved
                 }
-                output = dict(current_step_run.output or {})
-                output["resolved_inputs"] = input_values
-                current_step_run.output = output
-                current_step_run.save(update_fields=["input_values", "output"])
+                current_step_run.save(update_fields=["input_values"])
         elif _fmu_step_declares_inputs(step):
             msg = (
                 f"Step {step.id} declares FMU inputs but has no "

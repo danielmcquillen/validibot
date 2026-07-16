@@ -93,9 +93,9 @@ and restart. Do not reuse `DJANGO_SECRET_KEY`; API-token digest rotation must be
 independent from Django session/signing key rotation.
 
 ### `VB030` OS version
-**Severity:** error in self-hosted production, info on other targets, skipped on non-Linux
+**Severity:** error in self-hosted production, info for unsupported self-hosted distributions, skipped for local Compose and non-Linux
 **Trigger:** Host OS is below the minimum supported version (Ubuntu 22.04 LTS today). Older Ubuntu ships outdated Docker packages and misses the Compose plugin.
-**Fix:** Upgrade to Ubuntu 22.04 LTS or 24.04 LTS. If you're running a non-Ubuntu distro, this check skips with an info-level note — Validibot may work but isn't tested there. Phase 6 expands the supported matrix.
+**Fix:** Upgrade to Ubuntu 22.04 LTS or 24.04 LTS. If you're running a non-Ubuntu self-hosted distro, the check emits an info-level note — Validibot may work but isn't tested there. Local Compose skips this check because the application container's OS is not the Docker host OS.
 
 ---
 
@@ -166,32 +166,33 @@ self-hosted setup uses local filesystem.
 
 ## VB3xx — Docker and containers
 
-### `VB301` Docker not in PATH
-**Severity:** warn
-**Trigger:** No `docker` binary found.
-**Fix:** Install Docker if you need advanced validators (EnergyPlus,
-FMU). For community-only deployments using built-in validators, this
-warning is harmless — the worker only needs Docker if
-`VALIDATOR_RUNNER=docker`.
+### `VB301` Docker not required by configured runner
+**Severity:** skipped
+**Trigger:** `VALIDATOR_RUNNER` selects a non-Docker execution backend, such
+as Google Cloud Run or AWS Batch.
+**Fix:** No action. Docker availability is checked only when the configured
+runner actually uses Docker.
 
-### `VB302` Docker installed but not accessible
+### `VB302` Docker runner availability
 **Severity:** warn
-**Trigger:** `docker info` returns non-zero (typically permission
-denied because the user isn't in the docker group).
-**Fix:** Add the validibot user to the docker group:
-`sudo usermod -aG docker validibot`, then re-login.
+**Trigger:** The configured Docker runner cannot ping Docker Engine through
+the Python Docker SDK. This tests the same API path advanced validators use;
+the Docker CLI does not need to be installed inside the application container.
+**Fix:** Start Docker and verify `/var/run/docker.sock` is mounted into the web
+and worker containers with usable permissions.
 
 ### `VB303` Docker command timeout
-**Severity:** warn
-**Trigger:** `docker info` took longer than 10 seconds. Often means
-the Docker daemon is overloaded or unhealthy.
-**Fix:** Check Docker daemon: `sudo systemctl status docker` and the
-Docker logs.
+**Severity:** reserved
+**Trigger:** Retained as a stable historical check ID; the current doctor uses
+the configured runner's SDK availability result under `VB302` instead of
+invoking `docker info` with a separate timeout.
+**Fix:** No current finding emits this ID.
 
-### `VB304` Docker check unexpected error
+### `VB304` Validator runner initialization error
 **Severity:** warn
-**Trigger:** Some other Docker introspection failure.
-**Fix:** Run `docker info` directly to see the underlying error.
+**Trigger:** Doctor cannot import or instantiate the runner selected by
+`VALIDATOR_RUNNER` and `VALIDATOR_RUNNER_OPTIONS`.
+**Fix:** Correct the runner setting or its options and restart the application.
 
 ### `VB310` Validator images present
 **Severity:** ok
@@ -248,7 +249,7 @@ default scheduled tasks.
 appear on a normal install.
 
 ### `VB411` Restore test
-**Severity:** warn if missing or stale
+**Severity:** warn if missing or stale; skipped for local Compose
 **Trigger:** No `.last-restore-test` marker file in `DATA_STORAGE_ROOT`,
 or the marker is older than 90 days. The marker is written by the
 restore recipe after a successful restore drill.
@@ -256,6 +257,7 @@ restore recipe after a successful restore drill.
 `just self-hosted backup` followed by `just self-hosted restore <backup-path>`
 and then `just self-hosted doctor` plus `just self-hosted smoke-test`.
 Principle: a backup that has never been restored is not considered valid.
+Disposable local Compose data does not require a restore drill.
 
 ---
 

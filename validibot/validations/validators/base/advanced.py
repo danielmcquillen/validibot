@@ -383,7 +383,9 @@ class AdvancedValidator(BaseValidator):
         # parser-only despite docs claiming both sources populate i.*.
         # FMU/template input-stage assertions saw an empty i.* and any
         # reference like ``i.wall_r_value`` silently resolved to null.
-        contract_inputs: dict[str, Any] = {}
+        contract_inputs: dict[str, Any] = dict(
+            getattr(self.run_context, "step_input_contract_values", {}) or {},
+        )
         try:
             bound_inputs = self._resolve_bound_input_context(payload)
         except Exception:
@@ -615,9 +617,8 @@ class AdvancedValidator(BaseValidator):
                 # output is available via the ``output.`` prefix — matching
                 # the convention in ``_build_cel_context``.
                 #
-                # Prefer resolved_inputs (with defaults and nested-path
-                # resolution applied) over raw submission JSON when
-                # available.
+                # Prefer canonical step input values (with defaults and
+                # nested-path resolution applied) over raw submission JSON.
                 resolved_inputs = self._get_resolved_inputs(run_context)
                 assertion_payload = self._build_assertion_payload(
                     output_values,
@@ -686,17 +687,10 @@ class AdvancedValidator(BaseValidator):
 
     @staticmethod
     def _get_resolved_inputs(run_context: RunContext | None) -> dict[str, Any] | None:
-        """Retrieve resolved input values from the step_run, if available.
+        """Retrieve canonical contract-keyed input values for the step run.
 
-        The envelope builder stores fully-resolved input values (with
-        defaults applied and nested paths resolved) on
-        ``step_run.output["resolved_inputs"]`` during FMU envelope
-        construction.  This method looks up the active step_run for the
-        current run/step pair and returns those values.
-
-        Returns ``None`` when no step_run exists or no resolved_inputs
-        were stored (e.g., legacy steps without StepInputBinding rows),
-        allowing the caller to fall back to raw submission JSON.
+        Returns ``None`` when no step run or canonical values exist, allowing
+        validators without StepInputBinding rows to parse raw submission JSON.
         """
         if not run_context or not run_context.validation_run or not run_context.step:
             return None
@@ -720,15 +714,15 @@ class AdvancedValidator(BaseValidator):
             # silently degrade. Log at WARNING with a traceback so this is
             # visible in production, where DEBUG logging is suppressed.
             logger.warning(
-                "DB error looking up step_run for resolved_inputs (run=%s, step=%s)",
+                "DB error looking up canonical step inputs (run=%s, step=%s)",
                 getattr(run_context.validation_run, "id", "?"),
                 getattr(run_context.step, "id", "?"),
                 exc_info=True,
             )
             return None
 
-        if step_run and step_run.output:
-            return step_run.output.get("resolved_inputs")
+        if step_run and step_run.input_values:
+            return step_run.input_values
         return None
 
     @staticmethod
@@ -745,12 +739,12 @@ class AdvancedValidator(BaseValidator):
         step outputs alone don't contain the input values, so we merge in the
         resolved input values.
 
-        When ``resolved_inputs`` is provided (from ``step_run.output``),
-        those values are used as the input side of the payload.  This
+        When ``resolved_inputs`` is provided from canonical step inputs,
+        those values are used as the input side of the payload. This
         ensures assertions see the same values — with defaults applied
         and nested paths resolved — that the validator launch used.  When
         not provided, the method falls back to parsing the raw submission
-        JSON for backward compatibility.
+        JSON for validators that intentionally have no declared value inputs.
 
         **Name collision convention** (matches ``_build_cel_context``):
 
@@ -792,8 +786,8 @@ class AdvancedValidator(BaseValidator):
                 merged["output"] = output_ns
             return merged
 
-        # Fallback: parse raw submission JSON (for legacy steps without
-        # StepInputBinding rows or when resolved_inputs aren't available).
+        # For validators with no declared value-input contract, a JSON object
+        # submission is itself the input side of output-stage assertions.
         if not run_context or not run_context.validation_run:
             return dict(output_values)
 

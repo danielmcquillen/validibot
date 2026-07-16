@@ -18,7 +18,8 @@ This suite exercises the four moving parts of digest capture:
    image reference from the Execution resource's
    ``template.containers[0].image`` field. Best-effort, returning
    ``None`` on any failure mode.
-3. ``_finalize_step_run`` (sync orchestrator path) promotes the
+3. ``ValidationStepProcessor.finalize_step`` (the validator path) and
+   ``_finalize_step_run`` (the orchestrator action path) promote the
    digest from the validator's ``stats`` bag onto the typed
    ``ValidationStepRun.validator_backend_image_digest`` column so it
    survives independently of the JSON output blob.
@@ -363,6 +364,136 @@ class TestFinalizeStepRunPersistsDigest:
 
         step_run.refresh_from_db()
         assert step_run.validator_backend_image_digest == prelaunch_digest
+
+
+class TestStepProcessorFinalizePersistsDigest:
+    """The active step-processor path must persist Docker runner identity."""
+
+    def test_writes_digest_from_stats_to_typed_column(self):
+        """A synchronous processor finalization stores its captured image digest."""
+
+        from validibot.validations.models import ValidationStepRun
+        from validibot.validations.services.step_processor.base import (
+            ValidationStepProcessor,
+        )
+
+        class ConcreteProcessor(ValidationStepProcessor):
+            """Minimal concrete processor exposing the shared finalizer."""
+
+            def execute(self):
+                """Execution is not needed for this persistence test."""
+
+                raise NotImplementedError
+
+        workflow = WorkflowFactory(
+            allowed_file_types=[SubmissionFileType.JSON],
+            input_retention=SubmissionRetention.STORE_30_DAYS,
+        )
+        step = WorkflowStepFactory(workflow=workflow)
+        run = ValidationRunFactory(
+            workflow=workflow,
+            status=ValidationRunStatus.RUNNING,
+        )
+        step_run = ValidationStepRun.objects.create(
+            validation_run=run,
+            workflow_step=step,
+            step_order=step.order,
+            status=StepStatus.RUNNING,
+        )
+        digest = "sha256:" + "d" * 64
+
+        ConcreteProcessor(run, step_run).finalize_step(
+            StepStatus.PASSED,
+            {"validator_backend_image_digest": digest},
+        )
+
+        step_run.refresh_from_db()
+        assert step_run.validator_backend_image_digest == digest
+
+    def test_writes_digest_preserved_in_initial_execution_stats(self):
+        """Final envelope stats must not hide an earlier runner digest.
+
+        Advanced execution stores launch metadata on ``step_run.output`` before
+        it parses the output envelope. The finalizer later receives envelope
+        stats without that digest, so it must promote from the merged output.
+        """
+
+        from validibot.validations.models import ValidationStepRun
+        from validibot.validations.services.step_processor.base import (
+            ValidationStepProcessor,
+        )
+
+        class ConcreteProcessor(ValidationStepProcessor):
+            """Minimal concrete processor exposing the shared finalizer."""
+
+            def execute(self):
+                """Execution is not needed for this persistence test."""
+
+                raise NotImplementedError
+
+        workflow = WorkflowFactory(
+            allowed_file_types=[SubmissionFileType.JSON],
+            input_retention=SubmissionRetention.STORE_30_DAYS,
+        )
+        step = WorkflowStepFactory(workflow=workflow)
+        run = ValidationRunFactory(
+            workflow=workflow,
+            status=ValidationRunStatus.RUNNING,
+        )
+        digest = "sha256:" + "e" * 64
+        step_run = ValidationStepRun.objects.create(
+            validation_run=run,
+            workflow_step=step,
+            step_order=step.order,
+            status=StepStatus.RUNNING,
+            output={"validator_backend_image_digest": digest},
+        )
+
+        ConcreteProcessor(run, step_run).finalize_step(
+            StepStatus.PASSED,
+            {"status": "SUCCESS"},
+        )
+
+        step_run.refresh_from_db()
+        assert step_run.validator_backend_image_digest == digest
+        assert step_run.output["status"] == "SUCCESS"
+
+    def test_advanced_processor_promotes_digest_before_artifact_registration(self):
+        """Launch metadata must populate the typed column before finalization.
+
+        Artifact registration runs while the final output envelope is being
+        processed and reads this column to record producer identity.
+        """
+
+        from validibot.validations.models import ValidationStepRun
+        from validibot.validations.services.step_processor.advanced import (
+            AdvancedValidationProcessor,
+        )
+
+        workflow = WorkflowFactory(
+            allowed_file_types=[SubmissionFileType.JSON],
+            input_retention=SubmissionRetention.STORE_30_DAYS,
+        )
+        step = WorkflowStepFactory(workflow=workflow)
+        run = ValidationRunFactory(
+            workflow=workflow,
+            status=ValidationRunStatus.RUNNING,
+        )
+        step_run = ValidationStepRun.objects.create(
+            validation_run=run,
+            workflow_step=step,
+            step_order=step.order,
+            status=StepStatus.RUNNING,
+        )
+        digest = "sha256:" + "f" * 64
+
+        AdvancedValidationProcessor(run, step_run)._persist_initial_stats(
+            {"validator_backend_image_digest": digest, "execution_id": "local-1"},
+        )
+
+        step_run.refresh_from_db()
+        assert step_run.validator_backend_image_digest == digest
+        assert step_run.output["execution_id"] == "local-1"
 
 
 # ── _mark_step_run_running launch-time write ────────────────────────────

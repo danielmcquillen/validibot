@@ -735,10 +735,9 @@ Additionally, `validate_signal_name()` checks that names are valid CEL
 identifiers and not reserved words. The reserved names list includes all
 CEL context keys (`p`, `payload`, `s`, `signal`, `i`, `input`, `o`,
 `output`, `steps`, `submission`), CEL built-in functions, and CEL keywords.
-A one-time data migration
-(`workflows/0028_guard_submission_reserved_name`) also blocks deploys where a
-*pre-existing* signal or promotion was named `submission` before the name was
-reserved, with a clear remediation message.
+The current schema starts empty and accepts no historical exception for a
+signal or promotion named `submission`; all supported creation and update
+paths enforce the reservation directly.
 
 ## One source of truth: `CEL_NAMESPACE_ROOTS`
 

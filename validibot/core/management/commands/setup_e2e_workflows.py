@@ -50,6 +50,10 @@ from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorResourceFile
+from validibot.validations.services.input_bindings import ensure_step_input_bindings
+from validibot.validations.services.template_step_io import (
+    sync_step_template_io_definitions,
+)
 from validibot.validations.validators.energyplus.config import (
     config as energyplus_config,
 )
@@ -69,6 +73,38 @@ TEST_ORG_SLUG = "fullstack-test-org"
 # EnergyPlus template scenario
 EP_WORKFLOW_NAME = "E2E EnergyPlus Template Test"
 EP_WORKFLOW_SLUG = "e2e-energyplus-template"
+EP_WEATHER_FILENAME = "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw"
+EP_TEMPLATE_VARIABLES = [
+    {
+        "name": "U_FACTOR",
+        "description": "Window U-Factor",
+        "variable_type": "number",
+        "units": "W/m2-K",
+        "min_value": 0.1,
+        "max_value": 7.0,
+    },
+    {
+        "name": "SHGC",
+        "description": "Solar Heat Gain Coefficient",
+        "variable_type": "number",
+        "min_value": 0.01,
+        "max_value": 0.99,
+    },
+    {
+        "name": "VISIBLE_TRANSMITTANCE",
+        "description": "Visible Transmittance",
+        "variable_type": "number",
+        "min_value": 0.01,
+        "max_value": 0.99,
+    },
+]
+EP_DISPLAY_OUTPUTS = [
+    "window_heat_loss_kwh",
+    "window_heat_gain_kwh",
+    "window_transmitted_solar_kwh",
+    "heating_energy_kwh",
+    "cooling_energy_kwh",
+]
 
 
 class Command(BaseCommand):
@@ -206,16 +242,19 @@ class Command(BaseCommand):
             )
             return None
 
-        # Check for weather file
+        # Pin the scenario's weather explicitly. ValidatorResourceFile ordering
+        # is display-oriented (defaults, then name), so ``.first()`` across all
+        # weather resources would silently select Chicago instead.
         weather_resource = ValidatorResourceFile.objects.filter(
             validator=validator,
             resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
             org__isnull=True,
+            filename=EP_WEATHER_FILENAME,
         ).first()
         if not weather_resource:
             self.stderr.write(
                 self.style.WARNING(
-                    "No weather files found. "
+                    f"Required E2E weather file '{EP_WEATHER_FILENAME}' not found. "
                     "Run 'manage.py seed_weather_files' first. "
                     "Skipping EnergyPlus E2E workflow."
                 )
@@ -237,13 +276,19 @@ class Command(BaseCommand):
         )
 
         if not wf_created and workflow.steps.exists():
+            step = workflow.steps.order_by("order", "pk").first()
+            self._configure_energyplus_step(step, validator)
+            self._sync_energyplus_step_io(step)
+            self._attach_template_idf(step)
+            self._attach_weather_file(step, weather_resource)
+            self._create_output_assertions(step.ruleset, validator)
             logger.info(
-                "EnergyPlus E2E workflow already exists: %s",
+                "EnergyPlus E2E workflow reconciled with current contract: %s",
                 workflow.pk,
             )
             return workflow
 
-        # Create step with template variable config
+        # Create step with the current relational step I/O contract.
         step = self._create_energyplus_step(workflow, validator, org, user)
 
         # Attach template IDF and weather file
@@ -265,7 +310,7 @@ class Command(BaseCommand):
         org: Organization,
         user: User,
     ) -> WorkflowStep:
-        """Create the EnergyPlus workflow step with template variable config."""
+        """Create the EnergyPlus workflow step with relational template inputs."""
         ruleset = Ruleset.objects.create(
             org=org,
             user=user,
@@ -275,64 +320,48 @@ class Command(BaseCommand):
             version="1",
         )
 
-        # Partition the seed config into the semantic (hashed) and cosmetic
-        # buckets exactly as the real step-save path does (ADR-2026-06-18):
-        # run_simulation/case_sensitive stay in ``config``; display_step_outputs
-        # (cosmetic) and the legacy template_variables list (superseded by
-        # relational StepIODefinition rows, migration 0029) land in
-        # ``display_settings``.
-        from validibot.workflows.step_configs import partition_step_config
-
-        step_config, display_settings = partition_step_config(
-            getattr(validator, "validation_type", None),
-            {
-                "run_simulation": True,
-                "case_sensitive": True,
-                "template_variables": [
-                    {
-                        "name": "U_FACTOR",
-                        "description": "Window U-Factor",
-                        "variable_type": "number",
-                        "units": "W/m2-K",
-                        "min_value": 0.1,
-                        "max_value": 7.0,
-                    },
-                    {
-                        "name": "SHGC",
-                        "description": "Solar Heat Gain Coefficient",
-                        "variable_type": "number",
-                        "min_value": 0.01,
-                        "max_value": 0.99,
-                    },
-                    {
-                        "name": "VISIBLE_TRANSMITTANCE",
-                        "description": "Visible Transmittance",
-                        "variable_type": "number",
-                        "min_value": 0.01,
-                        "max_value": 0.99,
-                    },
-                ],
-                "display_step_outputs": [
-                    "window_heat_loss_kwh",
-                    "window_heat_gain_kwh",
-                    "window_transmitted_solar_kwh",
-                    "heating_energy_kwh",
-                    "cooling_energy_kwh",
-                ],
-            },
-        )
-        return WorkflowStep.objects.create(
+        step = WorkflowStep.objects.create(
             workflow=workflow,
             validator=validator,
             ruleset=ruleset,
             order=10,
             name="EnergyPlus Window Glazing Simulation",
-            config=step_config,
-            display_settings=display_settings,
+            config={"run_simulation": True, "case_sensitive": True},
+            display_settings={"display_step_outputs": EP_DISPLAY_OUTPUTS},
+        )
+        self._sync_energyplus_step_io(step)
+        return step
+
+    def _configure_energyplus_step(
+        self,
+        step: WorkflowStep,
+        validator: Validator,
+    ) -> None:
+        """Reconcile an existing E2E step without preserving obsolete JSON."""
+
+        step.validator = validator
+        step.name = "EnergyPlus Window Glazing Simulation"
+        step.order = 10
+        step.config = {"run_simulation": True, "case_sensitive": True}
+        step.display_settings = {"display_step_outputs": EP_DISPLAY_OUTPUTS}
+        step.save(
+            update_fields=[
+                "validator",
+                "name",
+                "order",
+                "config",
+                "display_settings",
+            ],
         )
 
+    def _sync_energyplus_step_io(self, step: WorkflowStep) -> None:
+        """Create current template and validator input definitions/bindings."""
+
+        sync_step_template_io_definitions(step, EP_TEMPLATE_VARIABLES)
+        ensure_step_input_bindings(step)
+
     def _attach_template_idf(self, step: WorkflowStep) -> None:
-        """Attach the window glazing template IDF as a step-owned resource."""
+        """Replace the E2E step's template with the code-shipped fixture."""
         template_path = (
             Path(settings.BASE_DIR)
             / "tests"
@@ -346,6 +375,7 @@ class Command(BaseCommand):
             raise FileNotFoundError(msg)
 
         content = template_path.read_bytes()
+        step.step_resources.filter(role=WorkflowStepResource.MODEL_TEMPLATE).delete()
         WorkflowStepResource.objects.create(
             step=step,
             role=WorkflowStepResource.MODEL_TEMPLATE,
@@ -363,7 +393,8 @@ class Command(BaseCommand):
         step: WorkflowStep,
         weather_resource: ValidatorResourceFile,
     ) -> None:
-        """Attach a weather file as a catalog-referenced step resource."""
+        """Replace the E2E step's weather link with its pinned catalog file."""
+        step.step_resources.filter(role=WorkflowStepResource.WEATHER_FILE).delete()
         WorkflowStepResource.objects.create(
             step=step,
             role=WorkflowStepResource.WEATHER_FILE,
@@ -377,11 +408,11 @@ class Command(BaseCommand):
     ) -> None:
         """Create the two blog-post output assertions.
 
-        Assertion 1: ``window_heat_loss_kwh < 800``
+        Assertion 1: ``o.window_heat_loss_kwh < 800``
             Targets the ``window_heat_loss_kwh`` step I/O definition.
             (target_io_definition is set, target_data_path is empty)
 
-        Assertion 2: ``cooling_energy_kwh < heating_energy_kwh``
+        Assertion 2: ``o.cooling_energy_kwh < o.heating_energy_kwh``
             A cross-output comparison with no single step-output target.
             (target_io_definition is None, target_data_path is set)
         """
@@ -392,19 +423,21 @@ class Command(BaseCommand):
         ).first()
 
         if heat_loss_output:
-            RulesetAssertion.objects.create(
+            RulesetAssertion.objects.update_or_create(
                 ruleset=ruleset,
                 order=10,
-                assertion_type=AssertionType.CEL_EXPRESSION,
-                operator=AssertionOperator.CEL_EXPR,
-                target_io_definition=heat_loss_output,
-                target_data_path="",
-                rhs={"expr": "window_heat_loss_kwh < 800"},
-                severity=Severity.ERROR,
-                message_template=(
-                    "Annual window heat loss must stay under 800 kWh "
-                    "to meet our team's standards."
-                ),
+                defaults={
+                    "assertion_type": AssertionType.CEL_EXPRESSION,
+                    "operator": AssertionOperator.CEL_EXPR,
+                    "target_io_definition": heat_loss_output,
+                    "target_data_path": "",
+                    "rhs": {"expr": "o.window_heat_loss_kwh < 800"},
+                    "severity": Severity.ERROR,
+                    "message_template": (
+                        "Annual window heat loss must stay under 800 kWh "
+                        "to meet our team's standards."
+                    ),
+                },
             )
         else:
             self.stderr.write(
@@ -416,17 +449,20 @@ class Command(BaseCommand):
             )
 
         # Assertion 2: cooling < heating (cross-output comparison)
-        RulesetAssertion.objects.create(
+        RulesetAssertion.objects.update_or_create(
             ruleset=ruleset,
             order=20,
-            assertion_type=AssertionType.CEL_EXPRESSION,
-            operator=AssertionOperator.CEL_EXPR,
-            target_data_path="cooling_energy_kwh",
-            rhs={"expr": "cooling_energy_kwh < heating_energy_kwh"},
-            severity=Severity.ERROR,
-            message_template=(
-                "The glazing must not create a cooling-dominated envelope. "
-                "In San Francisco's mild climate, cooling loads should be "
-                "below heating loads for a well-chosen window."
-            ),
+            defaults={
+                "assertion_type": AssertionType.CEL_EXPRESSION,
+                "operator": AssertionOperator.CEL_EXPR,
+                "target_io_definition": None,
+                "target_data_path": "cooling_energy_kwh",
+                "rhs": {"expr": "o.cooling_energy_kwh < o.heating_energy_kwh"},
+                "severity": Severity.ERROR,
+                "message_template": (
+                    "The glazing must not create a cooling-dominated envelope. "
+                    "In San Francisco's mild climate, cooling loads should be "
+                    "below heating loads for a well-chosen window."
+                ),
+            },
         )

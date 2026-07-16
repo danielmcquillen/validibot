@@ -805,9 +805,8 @@ class BuildAssertionPayloadTests(TestCase):
 
     def test_empty_resolved_inputs_falls_back_to_submission(self):
         """An empty resolved_inputs dict is treated as falsy, so the
-        method falls back to the raw submission JSON.  This preserves
-        backward compatibility for legacy steps without
-        StepInputBinding rows.
+        method parses raw submission JSON for validators that declare no
+        value-input bindings.
         """
         result = self._build(
             {"T_room": 296.63},
@@ -819,7 +818,7 @@ class BuildAssertionPayloadTests(TestCase):
 
     def test_none_resolved_inputs_falls_back_to_submission(self):
         """When resolved_inputs is explicitly None, the method falls
-        back to the raw submission JSON (backward compatibility).
+        back to raw JSON for validators without declared value inputs.
         """
         output_values = {"T_room": 296.63}
         run_context = MagicMock()
@@ -839,9 +838,9 @@ class BuildAssertionPayloadTests(TestCase):
 # ==============================================================================
 # _get_resolved_inputs — step_run lookup
 #
-# The _get_resolved_inputs helper retrieves resolved input values from
-# step_run.output, where the envelope builder stores them after
-# resolve_step_input_values() runs.  This enables output-stage
+# The _get_resolved_inputs helper retrieves canonical contract-keyed values
+# from step_run.input_values after resolve_step_input_values() runs. This
+# enables output-stage
 # assertions to see the same values (with defaults, nested paths) that
 # the validator launch used.
 # ==============================================================================
@@ -851,8 +850,7 @@ class GetResolvedInputsTests(TestCase):
     """Tests for the _get_resolved_inputs static method.
 
     This method looks up the ValidationStepRun for the current run/step
-    pair and returns the ``resolved_inputs`` dict stored in
-    ``step_run.output`` by the envelope builder.
+    pair and returns its canonical ``input_values`` mapping.
     """
 
     @classmethod
@@ -875,13 +873,10 @@ class GetResolvedInputsTests(TestCase):
         )
 
     def test_returns_resolved_inputs_from_step_run(self):
-        """When the step_run has resolved_inputs in its output, they
-        are returned for use in assertion payload building.
+        """Canonical step inputs are returned for assertion payload building.
 
-        This is the primary path: the envelope builder stored the fully
-        resolved input values (with defaults and nested-path resolution)
-        on step_run.output['resolved_inputs'] during FMU envelope
-        construction.
+        Contract keys, rather than provider-native names, preserve the authored
+        StepIODefinition vocabulary at output assertion time.
         """
         from validibot.validations.tests.factories import ValidationRunFactory
         from validibot.validations.tests.factories import ValidationStepRunFactory
@@ -894,7 +889,7 @@ class GetResolvedInputsTests(TestCase):
         ValidationStepRunFactory(
             validation_run=run,
             workflow_step=self.step,
-            output={"resolved_inputs": resolved},
+            input_values=resolved,
         )
         run_context = RunContext(validation_run=run, step=self.step)
 
@@ -918,11 +913,8 @@ class GetResolvedInputsTests(TestCase):
 
         self.assertIsNone(result)
 
-    def test_returns_none_when_no_resolved_inputs_key(self):
-        """When step_run.output exists but has no 'resolved_inputs' key
-        (e.g., legacy steps or EnergyPlus preprocessing metadata), returns
-        None for backward compatibility.
-        """
+    def test_returns_none_when_no_canonical_input_values(self):
+        """A step without canonical inputs lets the caller parse its payload."""
         from validibot.validations.tests.factories import ValidationRunFactory
         from validibot.validations.tests.factories import ValidationStepRunFactory
 

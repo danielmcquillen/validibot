@@ -15,13 +15,19 @@ from django.core.files.base import ContentFile
 from django.core.management import call_command
 
 from validibot.core.management.commands.seed_weather_files import WEATHER_FILES
+from validibot.core.management.commands.setup_e2e_workflows import EP_WEATHER_FILENAME
 from validibot.core.management.commands.setup_e2e_workflows import EP_WORKFLOW_SLUG
 from validibot.core.management.commands.setup_e2e_workflows import Command
 from validibot.projects.tests.factories import ProjectFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.validations.constants import ResourceFileType
+from validibot.validations.constants import StepIODirection
+from validibot.validations.constants import StepIOOriginKind
 from validibot.validations.constants import ValidationType
+from validibot.validations.models import RulesetAssertion
+from validibot.validations.models import StepInputBinding
+from validibot.validations.models import StepIODefinition
 from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.energyplus.config import (
@@ -30,6 +36,8 @@ from validibot.validations.validators.energyplus.config import (
 from validibot.workflows.tests.factories import WorkflowFactory
 
 pytestmark = pytest.mark.django_db
+
+EXPECTED_E2E_INPUT_BINDING_COUNT = 5
 
 
 def _energyplus_validator(*, version: int):
@@ -77,9 +85,17 @@ def test_setup_e2e_workflow_uses_current_energyplus_contract():
         validator=current,
         org=None,
         resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
-        name="Current weather",
-        filename="current.epw",
-        file=ContentFile(b"weather", name="current.epw"),
+        name="San Francisco weather",
+        filename=EP_WEATHER_FILENAME,
+        file=ContentFile(b"weather", name=EP_WEATHER_FILENAME),
+    )
+    ValidatorResourceFile.objects.create(
+        validator=current,
+        org=None,
+        resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+        name="Chicago weather",
+        filename="USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        file=ContentFile(b"other weather", name="chicago.epw"),
     )
     ValidatorResourceFile.objects.create(
         validator=historical,
@@ -112,3 +128,71 @@ def test_setup_e2e_workflow_uses_current_energyplus_contract():
     assert command._create_energyplus_step.call_args.args[1] == current
     command._attach_weather_file.assert_called_once_with(step, current_weather)
     assert command._create_output_assertions.call_args.args[1] == current
+
+
+def test_setup_e2e_step_uses_relational_io_and_prefixed_output_expressions():
+    """E2E provisioning must exercise the current architecture exclusively.
+
+    A green E2E suite is meaningful only when its fixture uses relational
+    template inputs, real bindings, and the same ``o.*`` CEL namespace authors
+    use. Reintroducing the retired template JSON would otherwise let setup
+    succeed while production preprocessing sees no parameters.
+    """
+
+    current = _energyplus_validator(version=energyplus_config.version)
+    for contract_key in ("primary_model", "weather_file"):
+        StepIODefinition.objects.create(
+            validator=current,
+            workflow_step=None,
+            contract_key=contract_key,
+            native_name=contract_key.replace("_", "-"),
+            label=contract_key.replace("_", " ").title(),
+            direction=StepIODirection.INPUT,
+            origin_kind=StepIOOriginKind.CATALOG,
+        )
+    for order, contract_key in enumerate(
+        ("window_heat_loss_kwh", "cooling_energy_kwh", "heating_energy_kwh"),
+        start=1,
+    ):
+        StepIODefinition.objects.create(
+            validator=current,
+            workflow_step=None,
+            contract_key=contract_key,
+            native_name=contract_key,
+            label=contract_key.replace("_", " ").title(),
+            direction=StepIODirection.OUTPUT,
+            origin_kind=StepIOOriginKind.CATALOG,
+            order=order,
+        )
+    org = OrganizationFactory()
+    user = UserFactory(orgs=[org])
+    project = ProjectFactory(org=org)
+    workflow = WorkflowFactory(org=org, user=user, project=project)
+    command = Command()
+
+    step = command._create_energyplus_step(workflow, current, org, user)
+    command._create_output_assertions(step.ruleset, current)
+
+    assert step.config == {"run_simulation": True, "case_sensitive": True}
+    assert set(step.display_settings) == {"display_step_outputs"}
+    template_definitions = StepIODefinition.objects.filter(
+        workflow_step=step,
+        origin_kind=StepIOOriginKind.TEMPLATE,
+    )
+    assert set(template_definitions.values_list("contract_key", flat=True)) == {
+        "u_factor",
+        "shgc",
+        "visible_transmittance",
+    }
+    assert (
+        StepInputBinding.objects.filter(workflow_step=step).count()
+        == EXPECTED_E2E_INPUT_BINDING_COUNT
+    )
+    assert list(
+        RulesetAssertion.objects.filter(ruleset=step.ruleset)
+        .order_by("order")
+        .values_list("rhs", flat=True),
+    ) == [
+        {"expr": "o.window_heat_loss_kwh < 800"},
+        {"expr": "o.cooling_energy_kwh < o.heating_energy_kwh"},
+    ]

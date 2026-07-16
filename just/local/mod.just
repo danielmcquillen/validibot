@@ -188,7 +188,7 @@ test-integration *args:
     #!/usr/bin/env bash
     set -euo pipefail
     PROJECT="validibot-test"
-    COMPOSE="docker compose {{local_compose_env_args}} -f {{local_compose}} -p $PROJECT"
+    COMPOSE="docker compose {{local_compose_env_args}} -f {{local_compose}} -f compose/local/docker-compose.integration.yml -p $PROJECT"
 
     cleanup() {
         echo "Cleaning up test containers..."

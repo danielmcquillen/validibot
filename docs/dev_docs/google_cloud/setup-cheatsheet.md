@@ -507,11 +507,12 @@ Since Cloud Run doesn't support `exec` into containers, use Cloud Run Jobs for o
 The `justfile` provides convenient commands for common operations:
 
 ```bash
-# Run database migrations
-just gcp migrate
+# Run database migrations and initialize application data if needed
+just gcp migrate prod
 
-# Run setup_validibot (configures site, seeds default data, creates superuser)
-just gcp setup-data
+# Recovery only: explicitly refresh site/default data, validators and Step I/O,
+# help content, and bundled validator resources.
+just gcp setup-data prod
 
 # Verify setup is correct.
 # Runs check_validibot in a stage-specific Cloud Run Job using the

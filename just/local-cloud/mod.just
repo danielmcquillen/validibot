@@ -234,11 +234,9 @@ e2e-tests *args:
     fi
 
     # --- 3. Run prerequisites (idempotent) ---
-    echo "Ensuring prerequisites (setup_validibot, seed_weather_files)..."
+    echo "Ensuring complete application-data initialization..."
     docker compose -f "$compose" exec -T web \
-        bash -c '{{_db_url}} python manage.py setup_validibot' >/dev/null 2>&1
-    docker compose -f "$compose" exec -T web \
-        bash -c '{{_db_url}} python manage.py seed_weather_files' >/dev/null 2>&1
+        bash -c '{{_db_url}} python manage.py initialize_validibot' >/dev/null 2>&1
 
     # --- 4. Provision E2E workflow data ---
     echo "Provisioning E2E workflow data..."

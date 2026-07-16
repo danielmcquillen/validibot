@@ -38,19 +38,15 @@ python manage.py collectstatic --noinput
 # commands instead of crashing the web process on startup.
 if [ "${APP_ROLE:-web}" = "web" ]; then
   if python manage.py shell -c "from django.db import connection; from validibot.users.models import Role; exit(0 if Role._meta.db_table in connection.introspection.table_names() else 1)" >/dev/null 2>&1; then
-    # First-run setup: initialize Validibot if this is a fresh installation.
-    # Checks if roles exist (created by setup_validibot) to detect first run.
-    # The command is idempotent, so it's safe to run even if already configured.
-    if ! python manage.py shell -c "from validibot.users.models import Role; exit(0 if Role.objects.exists() else 1)" >/dev/null 2>&1; then
-      echo "First run detected - running initial setup..."
-      python manage.py setup_validibot --noinput
-    else
-      # Sync system validators on every startup to ensure catalog entries are current.
-      # This is fast (idempotent) and ensures EnergyPlus/FMU/THERM signals are available.
-      python manage.py sync_validators
-    fi
+    # Managed deployment paths initialize before service cutover. This guarded
+    # call is a safe fallback for production runtimes that start the web service
+    # directly after applying migrations, and retries partial initialization.
+    python manage.py initialize_validibot --if-needed
+
+    # Strictly verify system validator configuration on every production start.
+    python manage.py sync_validators
   else
-    echo "Database schema not ready yet; skipping setup_validibot and sync_validators."
+    echo "Database schema not ready yet; skipping initialization and validator sync."
     echo "Run 'just docker-compose migrate' and 'just docker-compose setup-data' after the stack starts."
   fi
 fi

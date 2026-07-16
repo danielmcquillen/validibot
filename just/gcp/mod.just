@@ -25,8 +25,7 @@
 #   just gcp init-stage dev           # Create infrastructure
 #   # Create .envs/.dev/.google-cloud/.django manually (see .envs.example/)
 #   just gcp secrets dev              # Upload secrets to Secret Manager
-#   just gcp deploy-all dev           # Build, migrate, and deploy services
-#   just gcp setup-data dev           # Seed initial data
+#   just gcp deploy-all dev           # Build, migrate, initialize, and deploy
 #
 # Daily operations:
 #   source .envs/.production/.google-cloud/.just
@@ -1458,8 +1457,9 @@ _migrate stage:
 #   5. Show the execution logs for visibility
 #
 # The job runs: /entrypoint → gosu django → manage.py migrate --noinput
-# followed by manage.py ensure_oidc_clients so the Claude public client stays
-# registered without a manual admin step.
+# followed by the cache/OIDC setup and the guarded application-data
+# initializer. A fresh database is therefore complete before any new service
+# revision receives traffic.
 # This means it goes through the same entrypoint as the web service
 # (loading /secrets/.env, waiting for the DB, etc.) but runs migrate
 # instead of gunicorn.
@@ -1490,7 +1490,7 @@ _run-migrate-job stage image:
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Database Migration — {{stage}}"
+    echo "  Database Preparation — {{stage}}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  Job:     $JOB_NAME"
     echo "  Image:   {{image}}"
@@ -1514,7 +1514,7 @@ _run-migrate-job stage image:
             --task-timeout {{gcp_migrate_task_timeout}} \
             --execution-environment gen2 \
             --command "/bin/bash" \
-            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && python manage.py createcachetable && python manage.py ensure_oidc_clients && echo Migrations, cache table, and OIDC client bootstrap complete" \
+            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && python manage.py createcachetable && python manage.py ensure_oidc_clients && python manage.py initialize_validibot --if-needed && echo Migrations and application initialization complete" \
             --project {{gcp_project}} \
             --quiet
     else
@@ -1529,7 +1529,7 @@ _run-migrate-job stage image:
             --task-timeout {{gcp_migrate_task_timeout}} \
             --execution-environment gen2 \
             --command "/bin/bash" \
-            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && python manage.py createcachetable && python manage.py ensure_oidc_clients && echo Migrations, cache table, and OIDC client bootstrap complete" \
+            --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput && python manage.py createcachetable && python manage.py ensure_oidc_clients && python manage.py initialize_validibot --if-needed && echo Migrations and application initialization complete" \
             --project {{gcp_project}} \
             --quiet
     fi
@@ -1538,7 +1538,7 @@ _run-migrate-job stage image:
     # --wait blocks until the job finishes (success or failure).
     # We capture the execution name for log retrieval.
     # ────────────────────────────────────────────────────────────────────
-    echo "Executing migrations (waiting for completion)..."
+    echo "Executing migrations and guarded initialization (waiting for completion)..."
     EXECUTION=$(gcloud run jobs execute "$JOB_NAME" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
@@ -1546,7 +1546,7 @@ _run-migrate-job stage image:
         --format="value(metadata.name)" 2>&1) || {
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  ✗ MIGRATION FAILED on {{stage}}"
+        echo "  ✗ DATABASE PREPARATION FAILED on {{stage}}"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         echo "  The deploy has been ABORTED. No new instances will be started."
@@ -1560,6 +1560,7 @@ _run-migrate-job stage image:
         echo "    - Migration file conflicts (two developers created migrations on the same app)"
         echo "    - Database schema already modified manually"
         echo "    - Missing data migration dependency"
+        echo "    - Missing required runtime configuration or initialization resource"
         echo ""
         exit 1
     }
@@ -1577,7 +1578,7 @@ _run-migrate-job stage image:
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  ✓ Migrations complete on {{stage}}"
+    echo "  ✓ Migrations and application initialization complete on {{stage}}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -2395,8 +2396,9 @@ _run-restore stage path image:
     echo "    just gcp doctor {{stage}}"
     echo "    just gcp errors-since {{stage}} 5m"
 
-# Run setup_validibot to initialize site and default data
-# Configures site domain, validators, roles, workspaces, etc.
+# Manually refresh every application-data concern initialized after migrations.
+# Normal deploys run the guarded form automatically; this recipe is for
+# recovery or an explicit operator-requested refresh.
 # Usage: just gcp setup-data dev | just gcp setup-data prod
 [arg('stage', pattern='dev|staging|prod')]
 setup-data stage: _require-gcp-config
@@ -2417,7 +2419,7 @@ setup-data stage: _require-gcp-config
         SECRET="django-env-{{stage}}"
     fi
 
-    echo "Running setup_validibot on {{stage}}..."
+    echo "Refreshing all initialized application data on {{stage}}..."
 
     # Use the image currently deployed on the web service (not :latest)
     if [ "{{stage}}" = "prod" ]; then WEB_SERVICE="${APP_NAME}-web"; else WEB_SERVICE="${APP_NAME}-web-{{stage}}"; fi
@@ -2444,7 +2446,7 @@ setup-data stage: _require-gcp-config
         --memory 1Gi \
         --execution-environment gen2 \
         --command "/bin/bash" \
-        --args "-c,set -a && source /secrets/.env && set +a && python manage.py setup_validibot --noinput" \
+        --args "-c,set -a && source /secrets/.env && set +a && python manage.py initialize_validibot" \
         --project {{gcp_project}}
 
     # Execute and wait for completion
@@ -2464,7 +2466,7 @@ setup-data stage: _require-gcp-config
         --project {{gcp_project}} || true
 
     echo ""
-    echo "setup_validibot completed on {{stage}}"
+    echo "Application-data refresh completed on {{stage}}"
 
 # Run any Django management command on a deployed environment
 # Creates a temporary Cloud Run Job, executes the command, then cleans up.
@@ -2596,8 +2598,7 @@ job-logs job:
 #      Commercial add-ons may request additional env vars — their own
 #      deployment guides list them.
 #   3. just gcp secrets dev             # Upload secrets to Secret Manager
-#   4. just gcp deploy-all dev          # Build, migrate, and deploy services
-#   5. just gcp setup-data dev          # Seed initial data
+#   4. just gcp deploy-all dev          # Build, migrate, initialize, and deploy
 #
 # =============================================================================
 
@@ -3069,10 +3070,8 @@ init-stage stage: _require-gcp-config
     echo "                          - DJANGO_SECRET_KEY (generate a new one)"
     echo "                          - DJANGO_ALLOWED_HOSTS (add Cloud Run URL after first deploy)"
     echo "  2. Upload secrets:      just gcp secrets {{stage}}"
-    echo "  3. Deploy web service:  just gcp deploy {{stage}}  (runs migrations automatically)"
-    echo "  4. Seed data:           just gcp setup-data {{stage}}"
-    echo "  5. Set up scheduler:    just gcp scheduler-setup {{stage}}  (also runs as part of deploy-all)"
-    echo "  6. Deploy validators:   just gcp validators-deploy-all {{stage}}  (optional)"
+    echo "  3. Deploy services:     just gcp deploy-all {{stage}}  (migrates and initializes automatically)"
+    echo "  4. Deploy validators:   just gcp validators-deploy-all {{stage}}  (optional)"
     echo ""
     echo "Commercial add-ons (optional):"
     echo "  If you've installed a commercial add-on (e.g. the GCS audit-archive"

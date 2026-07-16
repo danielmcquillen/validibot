@@ -149,7 +149,7 @@ This command automatically:
 
 1. Checks the Docker Compose stack is running (starts it if needed)
 2. Verifies the EnergyPlus validator Docker image exists
-3. Runs prerequisite setup (`setup_validibot`, `seed_weather_files`)
+3. Runs the complete application initializer (`initialize_validibot`)
 4. Provisions the E2E workflow via `setup_e2e_workflows`
 5. Runs the pytest suite
 

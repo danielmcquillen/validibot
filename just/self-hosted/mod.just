@@ -185,7 +185,7 @@ _wait-web:
 # rows that make OAuth actually work.
 bootstrap: check-env build _wait-web
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py migrate --noinput
-    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py setup_validibot --noinput
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py initialize_validibot --if-needed
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py ensure_oidc_clients
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py check_validibot
     @echo ""
@@ -283,10 +283,9 @@ deploy-prebuilt: pull up
 migrate:
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py migrate --noinput
 
-# Run setup_validibot to initialize site and default data
-# Configures site domain, validators, roles, workspaces, etc.
+# Refresh every application-data concern required after migrations.
 setup-data:
-    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py setup_validibot --noinput
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py initialize_validibot
 
 # Run any Django management command
 # Usage: just self-hosted manage "createsuperuser"

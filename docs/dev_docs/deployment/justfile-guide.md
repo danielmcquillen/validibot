@@ -159,8 +159,8 @@ just gcp status-all          # Status of all stages
 just gcp open prod           # Open in browser
 
 # Database & Django
-just gcp migrate prod                  # Run migrations
-just gcp setup-data prod               # Initialize data
+just gcp migrate prod                  # Migrate and initialize if needed
+just gcp setup-data prod               # Explicitly refresh all initialized data
 just gcp management-cmd prod "shell"   # Run any command via a temp Cloud Run Job
 
 # Secrets — umbrella and surgical paths

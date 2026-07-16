@@ -604,6 +604,29 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert 'WEB_SERVICE="${APP_NAME}-web-{{stage}}"' in block
         assert "verify-backup" in block
 
+    def test_deploy_preparation_initializes_before_service_cutover(self):
+        """A fresh database must be complete before new services receive traffic."""
+        migration_block = self._block_between(
+            "_run-migrate-job stage image:",
+            "# _resolve-deployed-image",
+        )
+        deploy_header = next(
+            line
+            for line in self._gcp_mod_text().splitlines()
+            if line.startswith("deploy-all stage:")
+        )
+
+        expected_job_paths = {"create", "update"}
+        assert migration_block.count(
+            "python manage.py initialize_validibot --if-needed"
+        ) == len(expected_job_paths)
+        assert deploy_header.index("_maybe-migrate") < deploy_header.index(
+            "_deploy-web"
+        )
+        assert deploy_header.index("_maybe-migrate") < deploy_header.index(
+            "_deploy-worker"
+        )
+
     def test_operator_job_updates_converge_identity_and_database_binding(self):
         """Re-running an operator recipe must converge old Cloud Run Jobs.
 
@@ -622,7 +645,7 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
             ),
             self._block_between(
                 "_run-restore stage path image:",
-                "# Run setup_validibot to initialize site",
+                "# Manually refresh every application-data concern",
             ),
         ]
 
@@ -636,7 +659,7 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         """Restore must compare manifest size and sha256 before Cloud SQL import."""
         block = self._block_between(
             "_run-restore stage path image:",
-            "# Run setup_validibot to initialize site",
+            "# Manually refresh every application-data concern",
         )
 
         assert "Pre-flight 4/4: verifying DB dump integrity" in block

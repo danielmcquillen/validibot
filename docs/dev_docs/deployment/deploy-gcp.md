@@ -95,15 +95,15 @@ source .envs/.production/.google-cloud/.just
 just gcp init-stage dev
 just gcp secrets dev
 just gcp deploy-all dev
-just gcp setup-data dev
 just gcp validators-deploy-all dev
-just gcp scheduler-setup dev
 ```
 
-`just gcp deploy-all` runs migrations as part of its dependency chain,
-so there is no separate `just gcp migrate dev` step here. You can still
-run it explicitly if you need to (or set `GCP_SKIP_MIGRATE=1` to skip
-it).
+`just gcp deploy-all` runs migrations and the guarded, complete application
+initializer before any new service revision receives traffic. The initializer
+owns site/default data, validators and Step I/O, help content, and bundled
+validator resources. There are no separate migration, setup-data, help-sync,
+weather-seed, or scheduler commands in the first-time flow. You can still run
+`just gcp migrate dev` or `just gcp setup-data dev` explicitly for recovery.
 
 After that, verify the environment, then repeat the same process for `staging` or `prod` as needed.
 

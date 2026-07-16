@@ -159,15 +159,16 @@ just gcp deploy-all <stage>
 # e.g., just gcp deploy-all dev|staging|prod
 ```
 
-### Step 5: Run Migrations and Seed Data
+### Step 5: Database and Application Initialization
 
-```bash
-# Run database migrations
-just gcp migrate <stage>
+`just gcp deploy-all <stage>` already runs migrations and the complete guarded
+initializer before deploying services. A fresh database receives site/default
+data, validators and Step I/O, help content, and bundled validator resources.
+No separate first-install command is required.
 
-# Seed initial data (validators, default org, etc.)
-just gcp setup-data <stage>
-```
+For recovery, `just gcp migrate <stage>` reruns migration preparation and
+`just gcp setup-data <stage>` explicitly refreshes every initialized data
+concern using the currently deployed image.
 
 ### Step 6: Deploy Validators
 

@@ -67,7 +67,7 @@ dependencies = [
   "pydantic==2.13.4",
   "python-jsonpath==2.2.1",
   "python-slugify==8.0.4",
-  "sentry-sdk==2.64.0",
+  "sentry-sdk==2.65.0",
   # Task queue: Celery with Redis broker and periodic scheduling.
   # celery[redis] pulls in kombu's redis extra, which caps the redis version.
   # As of kombu 5.6.2 the cap is redis<6.5; kombu main has bumped to <7.1
@@ -88,7 +88,7 @@ dependencies = [
   # guerrillamail, tempmail, etc). Used by UserSignupForm when
   # REJECT_DISPOSABLE_EMAILS is enabled — off by default for community/
   # self-hosted deployments, on in cloud to deter free-trial abuse.
-  "disposable-email-domains==0.0.217",
+  "disposable-email-domains==0.0.222",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # 0.7.0 adds ``StepValidatorRecord.validator_backend_image_digest``;
   # 0.7.1–0.7.3 shipped publish-workflow fixes;
@@ -142,7 +142,7 @@ dependencies = [
 
 [project.optional-dependencies]
 cloud = [
-  "stripe==15.3.0",
+  "stripe==15.3.1",
 ]
 # Docker SDK for the Docker-based validator runner (VALIDATOR_RUNNER=docker).
 # Not needed for Cloud Run deployments. Reduces attack surface when omitted.
@@ -340,21 +340,21 @@ force-single-line = true
 [dependency-groups]
 dev = [
   # Testing
-  "coverage==7.15.0",
+  "coverage==7.15.2",
   "django-coverage-plugin==3.2.2",
   "factory-boy==3.3.3",
   "pytest==9.1.1",
   "pytest-django==4.12.0",
   "pytest-sugar==1.1.1",
-  "selenium==4.45.0",
+  "selenium==4.46.0",
   # Linting and formatting
-  "djlint==1.40.4",
+  "djlint==1.40.7",
   "pre-commit==4.6.0",
   "ruff==0.15.21",
   # Type checking
-  "django-stubs[compatible-mypy]==6.0.6",
+  "django-stubs[compatible-mypy]==6.0.7",
   "djangorestframework-stubs==3.17.0",
-  "mypy==2.1.0",
+  "mypy==2.3.0",
   # Debugging and development utilities
   "django-debug-toolbar==7.0.0",
   "django-extensions==4.1",
